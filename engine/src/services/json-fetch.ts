@@ -14,8 +14,6 @@ import { Duration, Effect, Layer, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { RequestPolicy, layer as httpClientLayer } from "@lando/http-client/live";
-import * as LandoConfigService from "./config.ts";
-import * as LandoEventService from "./event-service.ts";
 
 export interface HttpJsonResult {
   readonly status: number;
@@ -53,7 +51,11 @@ const headersRecord = (headers: HttpJsonOptions["headers"]): Record<string, stri
  * Throws when the request fails to connect (the rejected Effect cause). Non-2xx
  * responses still resolve so callers keep their own status handling.
  */
-export const httpJsonFetch = async (url: string, options: HttpJsonOptions = {}): Promise<HttpJsonResult> =>
+export const httpJsonFetch = async (
+  url: string,
+  options: HttpJsonOptions = {},
+  client?: HttpClient.HttpClient,
+): Promise<HttpJsonResult> =>
   Effect.runPromise(
     Effect.fn("HttpClient.jsonFetch")(
       function* () {
@@ -71,11 +73,6 @@ export const httpJsonFetch = async (url: string, options: HttpJsonOptions = {}):
       options.timeoutMs === undefined
         ? (effect) => effect
         : Effect.timeout(Duration.millis(options.timeoutMs)),
-      Effect.provide(
-        Layer.mergeAll(
-          httpClientLayer.pipe(Layer.provide(LandoEventService.layer)),
-          LandoConfigService.layer,
-        ),
-      ),
+      Effect.provide(client === undefined ? httpClientLayer : Layer.succeed(HttpClient.HttpClient, client)),
     )(),
   );

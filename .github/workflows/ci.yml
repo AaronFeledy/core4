@@ -285,6 +285,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -296,8 +304,7 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
-      # The builder publishes no routes, so it needs no router. Lando's global router always
-      # runs on the Lando-managed provider, which this job doesn't install.
+      # The builder publishes no routes, so the job skips router setup.
       - name: Set up Lando with Docker
         run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync
 
@@ -319,6 +326,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -420,6 +435,10 @@ jobs:
       - name: Regenerate paired Tomcat catalog
         run: bun run codegen:tomcat-catalog
 
+      # Gitignored output that container-runtime imports, so bundled plugins need it first.
+      - name: Regenerate provider images manifest
+        run: bun run codegen:provider-images
+
       - name: Regenerate bundled plugins
         run: bun run codegen:bundled-plugins
 
@@ -431,9 +450,6 @@ jobs:
 
       - name: Regenerate Mutagen versions manifest
         run: bun run codegen:mutagen-versions
-
-      - name: Regenerate provider images manifest
-        run: bun run codegen:provider-images
 
       - name: Regenerate OpenTUI native catalog
         run: bun run codegen:opentui-native-stubs
@@ -547,6 +563,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
@@ -601,6 +625,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
@@ -654,6 +686,14 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -712,6 +752,14 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -815,7 +863,7 @@ jobs:
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
 
@@ -829,11 +877,12 @@ jobs:
       - name: Verify managed runtime socket
         run: |
           for _ in {1..30}; do
-            test -S "$HOME/.local/share/lando/runtime/run/podman.sock" && break
+            test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" && break
             sleep 1
           done
-          test -S "$HOME/.local/share/lando/runtime/run/podman.sock"
-          echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"
+          test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
+          curl --fail --max-time 5 --unix-socket "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" http://localhost/_ping
+          echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
       - name: Gate platform readiness doctor
         run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
@@ -845,8 +894,8 @@ jobs:
 
       - name: Pre-pull container images
         run: |
-          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
-          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           pull_image() {
             local image="$1"
             for attempt in 1 2 3; do
@@ -895,8 +944,8 @@ jobs:
         if: always()
         run: |
           dist/lando poweroff || true
-          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
-          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
 
@@ -953,6 +1002,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
@@ -1006,6 +1063,14 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1641,6 +1706,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
@@ -1703,6 +1776,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
@@ -1764,6 +1845,14 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1830,6 +1919,14 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1917,7 +2014,7 @@ jobs:
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
 
@@ -1931,11 +2028,12 @@ jobs:
       - name: Verify managed runtime socket
         run: |
           for _ in {1..30}; do
-            test -S "$HOME/.local/share/lando/runtime/run/podman.sock" && break
+            test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" && break
             sleep 1
           done
-          test -S "$HOME/.local/share/lando/runtime/run/podman.sock"
-          echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"
+          test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
+          curl --fail --max-time 5 --unix-socket "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" http://localhost/_ping
+          echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
       - name: Gate platform readiness doctor
         run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
@@ -1947,8 +2045,8 @@ jobs:
 
       - name: Pre-pull container images
         run: |
-          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
-          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           pull_image() {
             local image="$1"
             for attempt in 1 2 3; do
@@ -2008,8 +2106,8 @@ jobs:
         if: always()
         run: |
           dist/lando poweroff || true
-          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
-          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
 
@@ -2023,11 +2121,11 @@ jobs:
             test -f "$log" || continue
             tail -n 100 "$log" > "provider-diagnostics/test-logs/$(basename "$log")"
           done
-          LANDO_RT="$HOME/.local/share/lando/runtime"
+          LANDO_RT="$LANDO_USER_DATA_ROOT/runtime"
           ls -la "$LANDO_RT/bin" > provider-diagnostics/runtime-bin.txt 2>&1 || true
           ls -la "$LANDO_RT/run" >> provider-diagnostics/runtime-bin.txt 2>&1 || true
           ps auxww | grep -i podman > provider-diagnostics/podman-processes.txt 2>&1 || true
-          cp -r "$HOME/.cache/lando/logs" provider-diagnostics/lando-logs 2>/dev/null || true
+          cp -r "$LANDO_USER_CACHE_ROOT/logs" provider-diagnostics/lando-logs 2>/dev/null || true
           LP="$LANDO_RT/bin/podman"
           if test -x "$LP"; then
             ldd "$LP" > provider-diagnostics/managed-podman-ldd.txt 2>&1 || true
@@ -2069,6 +2167,14 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -2116,19 +2222,12 @@ jobs:
 
       - name: Verify compiled Windows managed setup and API reachability
         env:
-          LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-          LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
-          LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-config
           LANDO_RUNTIME_BUNDLE_MANIFEST: ${{ github.workspace }}/dist/cache/runtime-bundle/runtime-bundle-versions.json
         run: |
           bun run scripts/windows-managed-setup-acceptance.ts --binary dist/lando-windows-x64.exe --report provider-diagnostics/windows-managed-setup.json
 
       - name: Teardown Windows managed machine
         if: always()
-        env:
-          LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
-          LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
-          LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-config
         run: |
           powershell.exe -NoProfile -Command '$podman = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\bin\podman.exe"; if (Test-Path $podman) { $env:CONTAINERS_CONF = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\config\containers.conf"; & $podman machine rm --force lando; if ($LASTEXITCODE -ne 0) { Write-Warning "managed machine teardown exited $LASTEXITCODE" } }; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $env:LANDO_USER_DATA_ROOT, $env:LANDO_USER_CACHE_ROOT, $env:LANDO_USER_CONF_ROOT; exit 0'
 
@@ -2160,6 +2259,14 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"

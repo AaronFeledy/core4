@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Cause, DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/core/cli/operations";
-import { ConfigError, LandofileValidationError, PluginManifestError } from "@lando/core/errors";
+import { LandofileValidationError, PluginManifestError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -209,6 +209,9 @@ const makeLayer = (options: {
   const registryLayer = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(options.provider),
@@ -256,6 +259,7 @@ const cachedPlanKey = async (
   provider: RuntimeProviderShape,
 ): Promise<string> =>
   deriveAppPlanCacheKey({
+    hostProvider: "lando",
     appRoot,
     landofile: { ...landofile, provider: ProviderId.make(provider.id) },
     pluginManifests: [],
@@ -897,8 +901,8 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       const brokenConfig = Layer.succeed(
         ConfigService,
         ConfigService.of({
-          load: Effect.fail(new ConfigError({ message: "config unavailable" })),
-          get: () => Effect.fail(new ConfigError({ message: "config unavailable" })),
+          load: Effect.die("Unexpected config read on script shortcut"),
+          get: () => Effect.die("Unexpected config read on script shortcut"),
         }),
       );
       const layer = makeLayer({ landofile, plan, provider, planCalls, configLayer: brokenConfig });

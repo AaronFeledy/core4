@@ -35,7 +35,9 @@
     "effect": "catalog:"
   },
   "devDependencies": {
-    "@lando/engine": "workspace:*"
+    "@lando/data-mover": "workspace:*",
+    "@lando/engine": "workspace:*",
+    "@lando/redaction": "workspace:*"
   },
   "scripts": {
     "build": "tsc -b",

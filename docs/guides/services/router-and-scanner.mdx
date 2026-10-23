@@ -7,7 +7,7 @@ tags: [beta, docs, services, router, scanner]
 
 # Turn the router off and tune the post-start URL scanner
 
-Lando starts a shared router for every app and, once the app is up, probes each published HTTP and HTTPS URL to make sure something answers. Both behaviors have knobs. Turn the router off when you only want host ports, and tune or disable the scanner per service when the default probe doesn't fit.
+Lando starts a shared router for every app that has routes and, once the app is up, probes each published HTTP and HTTPS URL to make sure something answers. Both behaviors have knobs. Turn the router off when you only want host ports, and tune or disable the scanner per service when the default probe doesn't fit.
 
 ```yaml
 name: router-and-scanner-demo
@@ -94,6 +94,8 @@ The value resolves through normal config precedence. Last one wins:
 - The app's Landofile: `router.enabled`.
 
 So a global `router.enabled: false` turns the router off for every app on the machine, and a single app can opt back in with `router.enabled: true` in its own Landofile. The reverse works too: leave the global default alone and disable the router for the one app that doesn't want it.
+
+You don't need any of that for an app with no routes. A database-only, worker, or build app never starts the router, and its `lando start` only withdraws routes it published earlier.
 
 ## Tune the scanner per service
 

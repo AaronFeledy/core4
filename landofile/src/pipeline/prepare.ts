@@ -9,10 +9,13 @@ import {
   isPlainRecord,
   override,
 } from "@lando/sdk/landofile";
-import { SERVICE_CONFIG_ALIASES, type ValidationIssue } from "@lando/sdk/schema";
+import { type LandofileLayer, SERVICE_CONFIG_ALIASES, type ValidationIssue } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
-export type AuthoredOrigin = NonNullable<ValidationIssue["source"]>;
+export type AuthoredOrigin = Extract<
+  NonNullable<ValidationIssue["source"]>,
+  { readonly layer: LandofileLayer }
+>;
 export type PreparedOverlay = ValueWithOrigins<AuthoredOrigin> & { readonly value: Record<string, unknown> };
 const emptyChildren: ReadonlyMap<string | number, ValueOrigins<AuthoredOrigin>> = new Map();
 interface AuthoredCursor {

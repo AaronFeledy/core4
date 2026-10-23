@@ -4,6 +4,8 @@
  * it; every job that compiles `lando` downloads it before embedding.
  */
 
+import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
+
 export const CONTAINER_HELPER_JOB_ID = "container-helper";
 export const CONTAINER_HELPER_ARM64_JOB_ID = "container-helper-arm64";
 export const CONTAINER_HELPER_ARTIFACT = "container-helper";
@@ -13,6 +15,8 @@ export const renderContainerHelperJob = (): string => `  ${CONTAINER_HELPER_JOB_
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+
+${isolateLandoRootsStep}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -25,8 +29,7 @@ export const renderContainerHelperJob = (): string => `  ${CONTAINER_HELPER_JOB_
       - name: Regenerate derived sources
         run: bun run codegen
 
-      # The builder publishes no routes, so it needs no router. Lando's global router always
-      # runs on the Lando-managed provider, which this job doesn't install.
+      # The builder publishes no routes, so the job skips router setup.
       - name: Set up Lando with Docker
         run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync
 
@@ -60,6 +63,8 @@ export const renderContainerHelperArm64Job = (): string => `  ${CONTAINER_HELPER
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+
+${isolateLandoRootsStep}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

@@ -624,7 +624,7 @@ export const renderScenarioTest = (
     platformSkip === undefined ? taggedTestName : `${taggedTestName} (${platformSkip})`,
   );
   const skippedE2eTestName = quote(
-    `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and a live provider socket via lando setup or LANDO_TEST_PODMAN_SOCKET)`,
+    `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to a live provider socket)`,
   );
   const e2eForcedSkip = usesE2eRuntime && forcedSkip;
   const testNameExpression =
@@ -660,11 +660,7 @@ ${
       : 'import { withScenarioContext } from "@lando/core/testing";'
 }
 
-${
-  usesE2eRuntime
-    ? 'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined && hasLiveProviderSocket();'
-    : ""
-}
+${usesE2eRuntime ? 'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1";' : ""}
 
 const matchesExpected = (actual: unknown, expected: unknown): boolean => {
   if (expected === undefined) return actual !== undefined;
@@ -684,7 +680,13 @@ const matchesExpected = (actual: unknown, expected: unknown): boolean => {
 };
 
 ${testFnExpression}(${testNameExpression}, async () => {
-  const exit = await Effect.runPromiseExit(
+${
+  usesE2eRuntime
+    ? `  if (!hasLiveProviderSocket()) throw new Error("LANDO_GUIDE_E2E=1 requires an answering LANDO_TEST_PODMAN_SOCKET; configure the job-owned runtime before running e2e guides.");
+  if (process.env.LANDO_SCENARIO_E2E_BINARY === undefined) throw new Error("LANDO_GUIDE_E2E=1 requires LANDO_SCENARIO_E2E_BINARY.");
+`
+    : ""
+}  const exit = await Effect.runPromiseExit(
     ${contextRunner}({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
         let lastRun: unknown;

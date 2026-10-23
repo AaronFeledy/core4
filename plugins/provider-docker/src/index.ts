@@ -16,7 +16,7 @@ import {
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import { VOLUME_WITNESS_IMAGE, volumeCreationLabels } from "@lando/container-runtime/data-plane";
+import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
 import {
   dockerLifecycleDialect,
   dockerPullDialect,
@@ -42,6 +42,7 @@ import type {
   EmitComposeResult,
   EmitComposeOptions as RuntimeEmitComposeOptions,
 } from "@lando/container-runtime/podman/compose";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect, publishedEndpointsFromInspect } from "@lando/container-runtime/podman/inspect";
 import { containerConsoleLogs, logs } from "@lando/container-runtime/podman/logs";
@@ -56,6 +57,7 @@ import {
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, redactString, withApiReason } from "@lando/container-runtime/redact";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -232,7 +234,7 @@ export const dockerCapabilitiesForHost = (
     rootless: false,
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
-    composeKnobs: { supported: ["restart", "extra_hosts"] },
+    composeKnobs: { supported: composeKnobsForDialect("docker") },
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
@@ -442,10 +444,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       ctx: DOCKER_CTX,
       providerId: ProviderId.make(PROVIDER_ID),
       endpointNamespace: resolvedDockerHost,
-      prepareWitnessImage: pullImage(dockerApi, VOLUME_WITNESS_IMAGE, {
-        ctx: DOCKER_CTX,
-        dialect: dockerPullDialect,
-      }),
+      pullHelperImage: (ref) =>
+        pullImage(dockerApi, ref, {
+          ctx: DOCKER_CTX,
+          dialect: dockerPullDialect,
+          policy: "missing",
+        }),
       api: dockerApi,
       capabilities: resolvedCapabilities,
       redactDetails,
@@ -468,6 +472,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
     const resolvedOps = bindResolvedProviderOps(planState, {
       ctx: DOCKER_CTX,
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: dockerApi, ctx: DOCKER_CTX }),
       noPlanError: (_app, operation) => makeUnavailable(operation),
       service: {
         lifecycle: (plan, target, action) =>

@@ -2,12 +2,7 @@ import { resolve } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import {
-  type ConfigError,
-  type LandoCommandError,
-  NotImplementedError,
-  PluginManifestError,
-} from "@lando/sdk/errors";
+import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
@@ -58,7 +53,7 @@ export const pluginLink = Effect.fn("PluginLink.link")(function* (
   options: PluginLinkOptions = {},
 ): Effect.fn.Return<
   PluginLinkResult,
-  ConfigError | LandoCommandError | NotImplementedError | PluginManifestError | PluginLinkConflictError,
+  LandoCommandError | NotImplementedError | PluginManifestError | PluginLinkConflictError,
   ConfigService
 > {
   const pluginsRoot = yield* resolvePluginsRoot(options, "meta:plugin:link");

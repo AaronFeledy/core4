@@ -11,6 +11,7 @@ import { RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { rememberVersionConstraintEntries } from "@lando/landofile/version-constraint";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const decode = Schema.decodeUnknownSync(LandofileShape);
 const web = ServiceName.make("web");
@@ -45,6 +46,9 @@ const appLayer = (root: string) =>
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
             capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
             select: () => Effect.succeed(TestRuntimeProvider),
@@ -57,7 +61,7 @@ const appLayer = (root: string) =>
 const withAppRoot = async (run: (root: AbsolutePath) => Promise<void>) => {
   const root = AbsolutePath.make(await realpath(await mkdtemp(join(tmpdir(), "decoded-selector-"))));
   try {
-    await run(root);
+    await withEnvVar("LANDO_PROVIDER", TestRuntimeProvider.id, () => run(root));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

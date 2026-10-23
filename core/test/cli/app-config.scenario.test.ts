@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import * as ConfigLayer from "@lando/engine/services/config";
 import { Effect, Exit, Layer, Schema } from "effect";
 
 import {
@@ -78,7 +79,10 @@ describe("lando app:config", () => {
     );
 
     const result = await Effect.runPromise(
-      appConfig().pipe(Effect.provide(Layer.merge(layer, testStateStoreLayer))),
+      appConfig().pipe(
+        Effect.provide(Layer.merge(layer, testStateStoreLayer)),
+        Effect.provide(ConfigLayer.layer),
+      ),
     );
 
     if (!("landofile" in result) || result.source !== "resolved")
@@ -128,7 +132,10 @@ describe("lando app:config", () => {
       );
       try {
         const result = await Effect.runPromise(
-          appConfig({ cwd: dir }).pipe(Effect.provide(Layer.merge(layer, testStateStoreLayer))),
+          appConfig({ cwd: dir }).pipe(
+            Effect.provide(Layer.merge(layer, testStateStoreLayer)),
+            Effect.provide(ConfigLayer.layer),
+          ),
         );
         if (!("hostEvents" in result)) throw new Error("Expected resolved host-event status");
         expect(result.hostEvents).toEqual([
@@ -179,7 +186,10 @@ describe("lando app:config", () => {
       );
       try {
         const result = await Effect.runPromise(
-          appConfig().pipe(Effect.provide(Layer.merge(layer, testStateStoreLayer))),
+          appConfig().pipe(
+            Effect.provide(Layer.merge(layer, testStateStoreLayer)),
+            Effect.provide(ConfigLayer.layer),
+          ),
         );
         if (!("hostEvents" in result)) throw new Error("Expected resolved host-event status");
         expect(result.hostEvents).toEqual([
@@ -219,6 +229,7 @@ describe("lando app:config", () => {
     const result = await Effect.runPromise(
       appConfig({ subcommand: "get", key: "services.web.type" }).pipe(
         Effect.provide(Layer.merge(layer, testStateStoreLayer)),
+        Effect.provide(ConfigLayer.layer),
       ),
     );
 
@@ -268,6 +279,7 @@ describe("lando app:config", () => {
     const exit = await Effect.runPromiseExit(
       appConfig({ subcommand: "bogus" as never }).pipe(
         Effect.provide(Layer.merge(layer, testStateStoreLayer)),
+        Effect.provide(ConfigLayer.layer),
       ),
     );
 

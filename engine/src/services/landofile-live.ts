@@ -1,4 +1,5 @@
 import {
+  Downloader,
   type LandofileService,
   type ManagedFileTransactionGuard,
   PathsService,
@@ -29,24 +30,30 @@ import {
   buildTemplateEngineRegistry,
   renderLandofileTemplate as renderLandofileTemplatePackage,
 } from "@lando/landofile/template-render";
-import { landofileRuntimeInputs } from "../composition.ts";
+import * as HttpClient from "effect/http/HttpClient";
+import { landofileRuntimeInputs, landofileSourcePorts } from "../composition.ts";
 
 export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs> = Effect.gen(function* () {
   const inputs = landofileRuntimeInputs();
   const paths = yield* Effect.serviceOption(PathsService);
   const stateStore = yield* Effect.serviceOption(StateStore);
+  const client = yield* Effect.serviceOption(HttpClient.HttpClient);
+  const downloader = yield* Effect.serviceOption(Downloader);
   return {
     ...inputs,
     ...(Option.isNone(stateStore) ? {} : { stateStore: stateStore.value }),
-    ...(Option.isNone(paths)
-      ? {}
-      : {
-          ports: {
-            ...inputs.ports,
+    ports: {
+      ...inputs.ports,
+      ...(Option.isSome(client) && Option.isSome(downloader)
+        ? landofileSourcePorts(client.value, downloader.value)
+        : {}),
+      ...(Option.isNone(paths)
+        ? {}
+        : {
             resolveUserIncludesDir: () => paths.value.userIncludesDir,
             resolveUserCacheRoot: () => paths.value.roots.userCacheRoot,
-          },
-        }),
+          }),
+    },
   };
 });
 

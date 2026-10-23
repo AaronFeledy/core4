@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 
-import { ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 
 import { executeDbCommand } from "../src/execute.ts";
 import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
@@ -159,7 +159,7 @@ test("rejects a replaced volume when replacement occurs while waiting for its lo
   expect(harness.lifecycle()).toEqual([]);
 });
 
-for (const mismatch of ["owner", "service"] as const) {
+for (const mismatch of ["owner", "appRoot", "service"] as const) {
   test(`rejects physical restore when snapshot ${mismatch} differs`, async () => {
     // Given: a snapshot matches the volume, root, and runtime but not its owner or service.
     const harness = makeSqlTestDeps({ password: "test-password" });
@@ -170,12 +170,16 @@ for (const mismatch of ["owner", "service"] as const) {
           Effect.map((snapshots) =>
             snapshots.map((snapshot) => ({
               ...snapshot,
+              owner: {
+                ...snapshot.owner,
+                ownerKey: mismatch === "owner" ? "foreign-owner" : snapshot.owner.ownerKey,
+                appRoot: mismatch === "appRoot" ? AbsolutePath.make("/foreign-root") : snapshot.owner.appRoot,
+              },
               ...(snapshot.metadata === undefined
                 ? {}
                 : {
                     metadata: {
                       ...snapshot.metadata,
-                      ownerKey: mismatch === "owner" ? "foreign-owner" : "owner:sql-app",
                       service: ServiceName.make(mismatch === "service" ? "foreign-service" : "database"),
                     },
                   }),
@@ -213,7 +217,5 @@ test("binds physical ownership to canonical appRoot when plan.root differs", asy
 
   // Then: provenance matches the labeled owner root, not the unresolved plan path.
   expect(Exit.isSuccess(exit)).toBe(true);
-  expect(String(harness.snapshots()[0]?.metadata?.sourceRoot)).toBe(
-    String(harness.deps.plan.identity?.appRoot),
-  );
+  expect(String(harness.snapshots()[0]?.owner.appRoot)).toBe(String(harness.deps.plan.identity?.appRoot));
 });

@@ -39,6 +39,9 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
   const providerLayer = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       select: (plan) =>
@@ -133,6 +136,7 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
       ScratchResourceScanner.of({
         listScratchIds: Effect.die("unexpected scratch scan"),
         pruneScratch: () => Effect.die("registered scratch must use destroy"),
+        prepareScratch: () => Effect.die("registered scratch must use destroy"),
       }),
     ),
   );
@@ -145,14 +149,38 @@ test("stops owning providers before host teardown when no stop seam is injected"
     // When: the same default operation used by command execution runs.
     const result = await Effect.runPromise(poweroff(options).pipe(Effect.provide(layer)));
     // Then: actual provider stops, scratch cleanup, and host teardown are ordered.
-    expect(calls).toEqual(["docker:user", "scratch:scratch-one", "lando:global", "runtime"]);
+    expect(calls).toEqual(["docker:user", "scratch:scratch-one", "docker:global", "runtime"]);
     expect(result.appsPoweredOff).toEqual(["user", "scratch-one", "global"]);
+  });
+});
+
+test("poweroff destroys cached scratch entries even without observed services", async () => {
+  // Given a registered scratch represented only by cached state.
+  await withPoweroff(async ({ root, calls, options, layer }) => {
+    // When poweroff resolves that scratch through its lifecycle service.
+    await Effect.runPromise(
+      poweroff({
+        ...options,
+        discoverContainers: async () => [
+          {
+            appId: "scratch-cached",
+            appName: "scratch-cached",
+            appRoot: root,
+            providerId: "cache",
+            services: [],
+            scratch: true,
+          },
+        ],
+      }).pipe(Effect.provide(layer)),
+    );
+    // Then it is destroyed before runtime shutdown rather than skipped like an ordinary cached app.
+    expect(calls).toEqual(["scratch:scratch-cached", "runtime"]);
   });
 });
 
 test.each([
   [true, false, ["docker:user", "scratch:scratch-one", "runtime"], 0],
-  [false, true, ["docker:user", "lando:global", "runtime"], 1],
+  [false, true, ["docker:user", "docker:global", "runtime"], 1],
   [true, true, ["docker:user", "runtime"], 1],
 ] as const)(
   "honors keep-global=%s and keep-scratch=%s in the production default",

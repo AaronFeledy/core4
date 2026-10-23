@@ -5,6 +5,7 @@ import {
   containerHelperDownloadStep,
   renderContainerHelperJob,
 } from "./_container-helper-workflow.ts";
+import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
 
 import {
   landoManagedPodmanTeardownCommands,
@@ -48,6 +49,7 @@ const providerLandoE2eJob = `
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+${isolateLandoRootsStep}
 ${bunSetupStep}
 
 ${containerHelperDownloadStep}
@@ -66,9 +68,9 @@ ${renderAssertPodman6Step()}
         run: |
           podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
           echo "$!" > /tmp/podman-service.pid
-          for i in {1..30}; do test -S /tmp/podman.sock && exit 0; sleep 1; done
-          cat /tmp/podman-service.log
-          exit 1
+          for i in {1..30}; do test -S /tmp/podman.sock && break; sleep 1; done
+          curl --fail --max-time 5 --unix-socket /tmp/podman.sock http://localhost/_ping
+          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
 
       - name: Build Linux x64 binary
         run: |
@@ -84,14 +86,12 @@ ${renderAssertPodman6Step()}
         env:
           LANDO_GUIDE_E2E: "1"
           LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"
-          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
           LANDO_CONFIG__default_provider_id: lando
 
       - name: Run live integration suites
         run: |
           bun test core/test/live
         env:
-          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
           LANDO_CONFIG__default_provider_id: lando
 
       - name: Teardown Podman
@@ -130,6 +130,7 @@ const publishedManifestSetupJob = `
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+${isolateLandoRootsStep}
 ${bunSetupStep}
 
 ${containerHelperDownloadStep}
@@ -152,7 +153,7 @@ ${landoRootlessPrereqSteps}
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
 
@@ -180,10 +181,10 @@ ${landoRootlessPrereqSteps}
             sleep 1
           done
           test -S ${landoRuntimeSocketPath}
-          test -x "$HOME/.local/share/lando/runtime/bin/podman"
-          if ldd "$HOME/.local/share/lando/runtime/bin/podman" | grep -E 'libgpgme|libassuan|not found'; then
+          test -x "$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          if ldd "$LANDO_USER_DATA_ROOT/runtime/bin/podman" | grep -E 'libgpgme|libassuan|not found'; then
             echo "::error title=runtime-bundle-portability::managed podman has non-portable or missing shared libraries"
-            ldd "$HOME/.local/share/lando/runtime/bin/podman" || true
+            ldd "$LANDO_USER_DATA_ROOT/runtime/bin/podman" || true
             exit 1
           fi
 
@@ -205,9 +206,9 @@ const distributionSanitizeLines = CI_PLATFORMS.map(
   (platform) => `          bun run scripts/sanitize-compiled-binary.ts ${distributionBundlePath(platform)}`,
 ).join("\n");
 
-const distributionLinuxSmokePath = distributionBundlePath(
-  CI_PLATFORMS.find((platform) => platform.id === "linux-x64") ?? CI_PLATFORMS[0],
-);
+const linuxX64Platform = CI_PLATFORMS.find((platform) => platform.id === "linux-x64");
+if (linuxX64Platform === undefined) throw new Error("CI_PLATFORMS must include linux-x64.");
+const distributionLinuxSmokePath = distributionBundlePath(linuxX64Platform);
 
 const distributionRehearsalJob = `
   distribution-rehearsal-linux-x64:
@@ -265,6 +266,7 @@ const renderJob = (job: NightlyJob): string => `
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+${isolateLandoRootsStep}
 ${bunSetupStep}
 ${contractTestStep(job.platform)}`;
 
@@ -323,6 +325,7 @@ const mysqlArmClientLinuxArm64Job = `
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
+${isolateLandoRootsStep}
 ${bunSetupStep}
 
 ${containerHelperDownloadStep}
@@ -383,12 +386,6 @@ ${landoRootlessPrereqSteps}
           ./dist/${linuxArm64.binaryName} --version
           test "$(uname -m)" = aarch64
 
-      - name: Isolate Lando roots
-        run: |
-          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
-          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
-          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
-
       - name: Configure rootless overlay storage
         run: |
           cat > "$RUNNER_TEMP/lando-storage.conf" <<EOF
@@ -396,7 +393,7 @@ ${landoRootlessPrereqSteps}
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$RUNNER_TEMP/lando-data/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$RUNNER_TEMP/lando-storage.conf" >> "$GITHUB_ENV"
 

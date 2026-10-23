@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 
-import type { ConfigError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
@@ -20,7 +19,7 @@ export interface NetworkTrustDoctorStatus {
 
 export const networkTrustDoctorStatus = Effect.fnUntraced(function* (
   env: NodeJS.ProcessEnv,
-): Effect.fn.Return<NetworkTrustDoctorStatus, ConfigError, ConfigService> {
+): Effect.fn.Return<NetworkTrustDoctorStatus, never, ConfigService> {
   const configService = yield* ConfigService;
   const config = yield* configService.load;
   const proxyUrls: ReadonlyArray<string | undefined> = [

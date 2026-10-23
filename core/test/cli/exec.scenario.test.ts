@@ -144,6 +144,7 @@ const makeProvider = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: (target, spec) => {
       const record = {
         service: String(target.service),
@@ -197,6 +198,7 @@ const makeProvider = (
       Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
+    removeVolumeSnapshot: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
     locateVolume: () => Effect.die("not used"),
     listVolumes: () => Effect.succeed([]),
@@ -231,6 +233,9 @@ const makeLayer = (options: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(options.provider),
@@ -606,6 +611,9 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     const failingRegistry = Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () =>

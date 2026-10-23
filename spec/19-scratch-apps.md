@@ -104,9 +104,11 @@ The `Scratch` scope extends §3.5 with every event below:
 
 Payloads carry the scratch `AppRef`, source, plan where applicable, isolation and global-storage policy, detached state, trigger or destroy reason, retained artifacts, and timestamp. Standard App-scope events still fire inside Scratch-scope events with `app.kind === "scratch"`.
 
+Destroy payloads carry the teardown plan when one is available, `reason` (`explicit`, `scope-close`, `poweroff`, `gc`, or `acquire-failure`) and `retainedArtifacts` (`volumes`, and `snapshots` as `none`, `kept`, or `unknown-owner`). Source, isolation, global-storage policy, and detached state are recorded registry values and are omitted for an unregistered orphan rather than inferred; a minimal orphan event carries only scope, app, reason, retained artifacts, and timestamp. Without a plan or registry entry, the `AppRef` root is the instance directory.
+
 #### 21.6.3 Standard event sequence
 
-Acquisition wraps materialization and start; scratch start wraps the standard App lifecycle and any required global-service start (§20.6.3). Scope close emits scratch destroy around standard stop and destroy. `apps:poweroff` destroys scratch apps before stopping the global app. `--keep-scratch` suppresses every scratch destroy block and composes with `--keep-global`.
+Acquisition wraps materialization and start; scratch start wraps the standard App lifecycle and any required global-service start (§20.6.3). Every scratch destroy (explicit `apps:scratch:destroy`, scope close, poweroff, GC reap, and acquisition-failure rollback) nests `pre-scratch-destroy`, the standard stop pair, the standard destroy pair, instance-root and registry cleanup, then `post-scratch-destroy`. A failure at any step keeps the registry entry and skips `post-scratch-destroy`. GC reaps paint no task tree. `apps:poweroff` destroys scratch apps before stopping the global app. `--keep-scratch` suppresses every scratch destroy block and composes with `--keep-global`.
 
 ### 21.7 Mount isolation: the `--isolate` knob
 
@@ -130,6 +132,8 @@ At plan time, scratch storage obeys this rewrite:
 | `app` | `app` | Removed. |
 | `global` | `app` by default | Removed. |
 | `global` with `--share-global-storage` | `global` | Preserved under §6.5. |
+
+Scratch destroy also removes the scratch app's catalogued snapshots, because the ephemeral root leaves nothing else that could reclaim them; this is the one retention exception to §10.11.2. Selection uses the plan's owner key and the scratch app id together, matching the volume selector, so a `--isolate=cwd` scratch that shares the source app's owner never removes the source app's snapshots. `--keep-volumes` keeps both volumes and snapshots. Without a plan, snapshot purge is skipped and reported as `unknown-owner`.
 
 The `scope: global` to `scope: app` rewrite is mandatory unless `--share-global-storage` is explicitly set. It MUST NOT be inferred from another flag. Scratch volumes carry the scratch labels and standard storage ownership labels using the effective scope.
 
@@ -174,7 +178,7 @@ Scratch startup MUST pass the shared §6.7 readiness barrier before reporting su
 
 #### 21.10.2 Top-level alias reservation
 
-The `scratch:` prefix, bare `scratch`, and bare `run` are reserved under §8.1.2. Conflicting plugin or tooling aliases raise `CommandAliasConflictError`. User alias overrides MAY remap them; canonical `apps:scratch:*` ids remain callable.
+The `scratch:` prefix, bare `scratch`, and bare `run` are reserved under §8.1.2. Conflicting plugin aliases raise `CommandAliasConflictError`; user alias overrides MAY remap plugin claims. Reserved tooling names are rejected outright by lint and planning as `landofile.tooling` issues (§7.8). Canonical `apps:scratch:*` ids remain callable.
 
 #### 21.10.3 `apps:scratch:run` and the disposable tool runner
 
@@ -184,7 +188,7 @@ Arguments after `--` pass verbatim to provider exec. Stdin and PTY follow the §
 
 ### 21.11 Cleanup, registry, and orphan reaping
 
-The `scratch-registry` at `<userCacheRoot>/scratch/registry.bin` (§12.1) is the active-process source of truth. Entries identify the scratch, source, isolation, global-storage policy, detached and owner state, managed paths, lifecycle status, and timestamps. Acquisition records state before provider operations, marks running after start, and removes the entry after destroy. Failed finalization leaves a cleanup-pending entry.
+The `scratch-registry` at `<userCacheRoot>/scratch/registry.bin` (§12.1) is the active-process source of truth. Entries identify the scratch, source, isolation, global-storage policy, detached and owner state, managed paths, lifecycle status, and timestamps. Acquisition records state before provider operations, marks running after start, and removes the entry after destroy. Failed finalization leaves a cleanup-pending entry: a destroy that fails after `pre-scratch-destroy` records `destroyed-pending-cleanup` best effort, without replacing the original failure, and GC treats that entry as a candidate whatever its owner liveness or detached state.
 
 Registry updates MUST use the canonical atomic, lockable `StateStore` contract (§12.7). `apps:scratch:gc` combines two authorities:
 

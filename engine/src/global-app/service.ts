@@ -7,8 +7,6 @@ import { GlobalAppError, GlobalDistConflictError, GlobalLandofilePathConflictErr
 import { AbsolutePath, type MountInput, type ServiceConfig } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, GlobalAppService } from "@lando/sdk/services";
 
-import { MANAGED_PROVIDER_ID } from "../providers/managed.ts";
-
 export { GlobalAppService } from "@lando/sdk/services";
 
 export const GLOBAL_APP_ID = "global";
@@ -101,14 +99,7 @@ const emitServices = (services: Readonly<Record<string, ServiceConfig>>): Readon
   sortedEntries(services).flatMap(([serviceId, service]) => emitValue(serviceId, service, 2));
 
 const buildDistBody = (services: Readonly<Record<string, ServiceConfig>>): string =>
-  [
-    "name: global",
-    "runtime: 4",
-    `provider: ${MANAGED_PROVIDER_ID}`,
-    "services:",
-    ...emitServices(services),
-    "",
-  ].join("\n");
+  ["name: global", "runtime: 4", "services:", ...emitServices(services), ""].join("\n");
 
 const buildDistContent = (services: Readonly<Record<string, ServiceConfig>>): string => {
   const body = buildDistBody(services);
@@ -160,14 +151,6 @@ const makeGlobalAppService = (
   fileSystem: Context.Service.Shape<typeof FileSystem>,
 ): Context.Service.Shape<typeof GlobalAppService> => {
   const root = configService.get("userDataRoot").pipe(
-    Effect.mapError(
-      (cause) =>
-        new GlobalAppError({
-          message: "Unable to resolve the user data root for the global app.",
-          operation: "root",
-          cause,
-        }),
-    ),
     Effect.flatMap((userDataRoot) =>
       userDataRoot === undefined
         ? Effect.fail(
@@ -357,6 +340,9 @@ const makeGlobalAppService = (
     );
   return GlobalAppService.of({
     id: GLOBAL_APP_ID,
+    providerId: Effect.fail(
+      globalAppError("providerId", "Global provider resolution requires the app runtime.", undefined),
+    ),
     root,
     ensureRoot,
     paths,

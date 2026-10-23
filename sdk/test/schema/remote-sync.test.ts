@@ -48,7 +48,7 @@ describe("remote-sync SDK schemas", () => {
       Schema.decodeUnknownSync(DatasetApplyResult)({
         changed: true,
         localStore: { app: "my-app", store: "db" },
-        snapshot: { id: "snap-1", store: { app: "my-app", store: "db" } },
+        snapshot: { ownerKey: "a".repeat(64), id: "snap-1", store: { app: "my-app", store: "db" } },
       }).changed,
     ).toBe(true);
     expect(
