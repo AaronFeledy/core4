@@ -87,12 +87,13 @@ import type {
   CheckResult,
   ConfigLintResult,
   DatasetKind,
+  Environment,
   LandofileShape,
   ProviderId,
   RemoteConfig,
   RemoteEnvironment,
   RemoteTestResult,
-  ServiceCreds,
+  ServiceCredsDisplay,
   ServiceName,
   SyncResult,
   TunnelSession,
@@ -376,7 +377,7 @@ export interface InfoAppService {
   readonly status: InfoServiceStatus;
   readonly endpoints: ReadonlyArray<string>;
   readonly logSources?: ReadonlyArray<InfoLogSource>;
-  readonly creds?: ServiceCreds;
+  readonly creds?: ServiceCredsDisplay;
 }
 
 export interface InfoAppAgentEnv {
@@ -405,7 +406,7 @@ export interface ExecAppOptions {
   readonly command: ReadonlyArray<string>;
   readonly user?: string;
   readonly cwd?: string;
-  readonly env?: Readonly<Record<string, string>>;
+  readonly env?: Environment;
   readonly interactive?: boolean;
   readonly tty?: boolean;
 }
@@ -434,7 +435,7 @@ export interface ToolingOptions {
   readonly args?: ReadonlyArray<string>;
   readonly user?: string;
   readonly cwd?: string;
-  readonly env?: Readonly<Record<string, string>>;
+  readonly env?: Environment;
   readonly cacheRoot?: string;
   /** Explicitly request a provider PTY. Omission remains noninteractive. */
   readonly tty?: boolean;

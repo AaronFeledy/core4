@@ -3,6 +3,7 @@ import { Context, type Effect } from "effect";
 import type {
   AppIdReservedError,
   ComposeKeyRejectedError,
+  ConfigExpressionError,
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileFormConflictError,
@@ -21,7 +22,7 @@ import type {
   NotImplementedError,
   RouteInputError,
 } from "../errors/index.ts";
-import type { LandofileShape } from "../schema/index.ts";
+import type { LoadScopedLandofile } from "../schema/index.ts";
 
 export type LandofileServiceError =
   | Lando3LandofileDetected
@@ -40,6 +41,7 @@ export type LandofileServiceError =
   | LandofileLoadOutsideRootError
   | NotImplementedError
   | ComposeKeyRejectedError
+  | ConfigExpressionError
   | ManagedFileTransactionError;
 
 export type UserLandofileError = LandofileServiceError | LandofileVersionConstraintError | AppIdReservedError;
@@ -47,6 +49,6 @@ export type UserLandofileError = LandofileServiceError | LandofileVersionConstra
 export class LandofileService extends Context.Service<
   LandofileService,
   {
-    readonly discover: Effect.Effect<LandofileShape, LandofileServiceError>;
+    readonly discover: Effect.Effect<LoadScopedLandofile, LandofileServiceError>;
   }
 >()("@lando/core/LandofileService") {}

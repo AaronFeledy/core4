@@ -1,59 +1,62 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  DATABASE_FAMILY_DEFAULT_PORTS,
+  DATABASE_FAMILY_ENV_KEYS,
   DATABASE_PORT_ENV_KEY,
-  databaseEnvCreds,
-  databaseEnvPort,
-  firstEnv,
 } from "@lando/sdk/database-creds";
+import { ServiceConnection } from "@lando/sdk/schema";
+import { Result, Schema } from "effect";
 
-describe("databaseEnvPort", () => {
+describe("database connection facts", () => {
   test.each([
     ["mysql", 3306],
     ["mariadb", 3306],
     ["postgres", 5432],
     ["mongodb", 27017],
     ["mssql", 1433],
-  ] as const)("uses the %s published default when the planned port is absent", (family, port) => {
-    expect(databaseEnvPort(family, {})).toBe(port);
+  ] as const)("preserves %s's planned port independently of published default %s", (family, port) => {
+    // Given
+    const input = {
+      family,
+      port: 43210,
+      creds: { user: "alice", database: "appdb", password: { _tag: "SecretRef", reference: "DB_PASSWORD" } },
+    };
+    // When
+    const connection = Schema.decodeUnknownSync(ServiceConnection)(input);
+    // Then
+    expect(connection.port).toBe(43210);
+    expect(DATABASE_FAMILY_DEFAULT_PORTS[family]).toBe(port);
+    expect(connection.creds.password).toEqual({ _tag: "SecretRef", reference: "DB_PASSWORD" });
   });
-  test.each(["", "0", "65536", "1.5", "port"])("falls back to the family default for %j", (value) => {
-    expect(databaseEnvPort("mongodb", { [DATABASE_PORT_ENV_KEY]: value })).toBe(27017);
-  });
+  test.each(["", 0, 65536, 1.5, "port"])(
+    "rejects invalid explicit ports rather than applying an observation fallback: %j",
+    (port) => {
+      // Given / When
+      const result = Schema.decodeUnknownResult(ServiceConnection)({
+        family: "mongodb",
+        port,
+        creds: { user: "mongo", database: "mongodb", password: "literal" },
+      });
+      // Then
+      expect(Result.isFailure(result)).toBe(true);
+    },
+  );
   test.each(["mysql", "mariadb", "postgres", "mongodb", "mssql"] as const)(
-    "reads %s's planned port rather than its family default",
+    "does not invent missing %s connection facts from native environment keys",
     (family) => {
-      expect(databaseEnvPort(family, { [DATABASE_PORT_ENV_KEY]: "43210" })).toBe(43210);
+      // Given / When
+      const result = Schema.decodeUnknownResult(ServiceConnection)({
+        family,
+        environment: { [DATABASE_PORT_ENV_KEY]: "43210" },
+      });
+      // Then
+      expect(Result.isFailure(result)).toBe(true);
     },
   );
 });
 
-describe("firstEnv", () => {
-  test.each([
-    { environment: { FIRST: "first", SECOND: "second" }, expected: "first" },
-    { environment: { SECOND: "second" }, expected: "second" },
-    { environment: { FIRST: "", SECOND: "second" }, expected: "" },
-    { environment: {}, expected: undefined },
-  ])("returns $expected when resolving defined values in key order", ({ environment, expected }) => {
-    // Given
-    const keys = ["FIRST", "SECOND"];
-    // When
-    const value = firstEnv(environment, keys);
-    // Then
-    expect(value).toBe(expected);
-  });
-
-  test("returns undefined when no keys are requested", () => {
-    // Given
-    const environment = { FIRST: "first" };
-    // When
-    const value = firstEnv(environment, []);
-    // Then
-    expect(value).toBeUndefined();
-  });
-});
-
-describe("databaseEnvCreds", () => {
+describe("native database aliases", () => {
   test.each([
     {
       family: "mysql",
@@ -105,34 +108,42 @@ describe("databaseEnvCreds", () => {
       },
     },
   ] as const)(
-    "resolves $family credentials when family env keys are set",
+    "retains every native $family credential alias for resolution",
     ({ family, environment, expected }) => {
       // Given: the family's environment and independently specified expected credentials.
       // When
-      const creds = databaseEnvCreds(family, environment);
+      const aliases: Readonly<Record<keyof typeof expected, readonly string[]>> =
+        DATABASE_FAMILY_ENV_KEYS[family];
+      const values = Object.fromEntries(
+        Object.entries(aliases).map(([field, keys]) => [
+          field,
+          keys.map((key) => Reflect.get(environment, key)).filter((value) => value !== undefined),
+        ]),
+      );
       // Then
-      expect(creds).toEqual(expected);
+      for (const [field, value] of Object.entries(expected)) {
+        if (value === undefined) expect(values[field]).toEqual([]);
+        else expect(values[field]).toContain(value);
+      }
     },
   );
 
   test.each(["mysql", "mariadb", "postgres", "mongodb", "mssql"] as const)(
-    "returns undefined fields for %s when no family keys are set",
+    "does not match unrelated input for %s",
     (family) => {
       // Given
       const environment = { UNRELATED: "ignored" };
       // When
-      const creds = databaseEnvCreds(family, environment);
+      const keys = DATABASE_FAMILY_ENV_KEYS[family];
+      const matching = Object.values(keys)
+        .flat()
+        .filter((key) => Object.hasOwn(environment, key));
       // Then
-      expect(creds).toEqual({
-        user: undefined,
-        password: undefined,
-        database: undefined,
-        rootPassword: undefined,
-      });
+      expect(matching).toEqual([]);
     },
   );
 
-  test("prefers MYSQL_* when both MariaDB env prefixes are set", () => {
+  test("retains both MariaDB aliases for the service type's conflict check", () => {
     // Given
     const environment = {
       MYSQL_USER: "mysql-user",
@@ -145,13 +156,9 @@ describe("databaseEnvCreds", () => {
       MARIADB_ROOT_PASSWORD: "maria-root",
     };
     // When
-    const creds = databaseEnvCreds("mariadb", environment);
+    const aliases = DATABASE_FAMILY_ENV_KEYS.mariadb;
+    const passwords = aliases.password.map((key) => environment[key]);
     // Then
-    expect(creds).toEqual({
-      user: "mysql-user",
-      password: "mysql-secret",
-      database: "mysql-db",
-      rootPassword: "mysql-root",
-    });
+    expect(passwords).toEqual(["mysql-secret", "maria-secret"]);
   });
 });

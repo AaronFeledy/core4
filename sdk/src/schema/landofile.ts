@@ -11,6 +11,7 @@ import { ComposeServiceKnobFields } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
+import { Environment, EnvironmentValue } from "./environment-value.ts";
 import { StringImportRef } from "./landofile-reference.ts";
 import { type LayerMergeRule, layerMerge } from "./layer-merge.ts";
 import { LogSourceInput } from "./log-source.ts";
@@ -31,6 +32,7 @@ import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { RouteFilter } from "./route-filter.ts";
+import { ServiceCreds } from "./service-connection.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
@@ -192,11 +194,15 @@ const ComposeScalarMapInput = mapInputWithPrecheck(
 const COMPOSE_ENVIRONMENT_DESCRIPTION =
   "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry or null map value is rejected because Landofiles do not read host environment variables.";
 
-const ComposeEnvironmentInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)])
+const ComposeEnvironmentMapInput = mapInputWithPrecheck(
+  Schema.Record(Schema.String, Schema.Union([EnvironmentValue, Schema.Finite, Schema.Boolean, Schema.Null])),
+  reservedMapKeyCheck,
+);
+const ComposeEnvironmentInput = Schema.Union([ComposeEnvironmentMapInput, Schema.Array(Schema.String)])
   .annotate({ description: COMPOSE_ENVIRONMENT_DESCRIPTION })
   .pipe(
     Schema.decodeTo(
-      StringRecord,
+      Environment,
       SchemaTransformation.transformEffect({
         decode: (input, _options) => {
           if (!Array.isArray(input)) {
@@ -212,7 +218,14 @@ const ComposeEnvironmentInput = Schema.Union([ComposeScalarMapInput, Schema.Arra
                 ),
               );
             }
-            return Effect.succeed(Object.fromEntries(entries.map(([key, value]) => [key, String(value)])));
+            return Effect.succeed(
+              Object.fromEntries(
+                entries.map(([key, value]) => [
+                  key,
+                  typeof value === "object" && value !== null ? value : String(value),
+                ]),
+              ),
+            );
           }
           const entries: Array<readonly [string, string]> = [];
           for (const entry of input) {
@@ -548,25 +561,7 @@ const ServiceSecurityField = ServiceSecurityInput.pipe(
 /**
  * Login credentials a catalog service may author under `services.<name>.creds`.
  */
-export const ServiceCreds = Schema.Struct({
-  user: Schema.String.annotate({
-    description: "Username created or used by the service.",
-  }),
-  password: Schema.String.annotate({
-    description: "Password for the service user.",
-  }),
-  database: Schema.String.annotate({
-    description: "Database name the service user can access.",
-  }),
-  rootPassword: Schema.optionalKey(Schema.String).annotate({
-    description: "Optional administrative password distinct from the service user password.",
-  }),
-}).annotate({
-  identifier: "ServiceCreds",
-  title: "Service Creds",
-  description: "Username, password, and database credentials for a catalog service.",
-});
-export type ServiceCreds = typeof ServiceCreds.Type;
+export { ServiceCreds } from "./service-connection.ts";
 
 /**
  * App-relative file-backed configuration a catalog service may author under
@@ -685,7 +680,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     database: Schema.optionalKey(Schema.String).annotate({
       description: "Default database, bucket, or equivalent data namespace created for the service.",
     }),
-    password: Schema.optionalKey(Schema.String).annotate({
+    password: Schema.optionalKey(EnvironmentValue).annotate({
       description:
         "Redis authentication password, passed through the container environment rather than command arguments.",
     }),
@@ -936,7 +931,7 @@ export const ToolingVar = Schema.Union([
 ]);
 export type ToolingVar = typeof ToolingVar.Type;
 
-const ToolingEnvironment = Schema.Record(Schema.String, ToolingVarLiteral).annotate({
+const ToolingEnvironment = ComposeEnvironmentInput.annotate({
   description: "Environment variables supplied to a tooling task as scalar values.",
 });
 

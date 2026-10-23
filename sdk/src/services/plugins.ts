@@ -15,6 +15,7 @@ import type {
   ProviderCapabilities,
   ProviderId,
   ServiceConfig,
+  ServiceConnection,
   ToolingTaskShape,
 } from "../schema/index.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
@@ -103,6 +104,7 @@ export interface FeatureRef {
  * A service type MUST NOT hand-build a `ServicePlan`.
  */
 export interface ServiceTypeResolution {
+  readonly connection?: ServiceConnection;
   readonly base: "l337" | "lando";
   readonly normalizedConfig: ServiceConfig;
   readonly features: ReadonlyArray<FeatureRef>;

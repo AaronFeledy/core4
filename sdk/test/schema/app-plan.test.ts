@@ -8,6 +8,7 @@ import {
   AppId,
   AppPlan,
   AppRef,
+  CurrentExecutableAppPlan,
   DataStorePlan,
   PortablePath,
   ProviderId,
@@ -138,6 +139,22 @@ describe("ServicePlan", () => {
     expect(decoded.metadata.runtime).toBe(4);
   });
 
+  test.each([
+    "${secret:TOKEN}",
+    { _tag: "SecretRef", reference: "TOKEN" },
+    { _tag: "BoundText", parts: ["prefix", { reference: "TOKEN", encoding: "uri-component" }] },
+  ] as const)("round-trips environment descriptors through JSON: %j", (value) => {
+    // Given
+    const authored = { ...servicePlanFixture, environment: { TOKEN: value } };
+    // When
+    const json = JSON.stringify(
+      Schema.encodeSync(ServicePlan)(Schema.decodeUnknownSync(ServicePlan)(authored)),
+    );
+    const decoded = Schema.decodeUnknownSync(ServicePlan)(JSON.parse(json));
+    // Then
+    expect(decoded.environment).toEqual({ TOKEN: value });
+  });
+
   test("rejects a malformed service (missing required `metadata`) with a structured ParseError", () => {
     const { metadata: _omitted, ...withoutMetadata } = servicePlanFixture;
     const result = Schema.decodeUnknownResult(ServicePlan)(withoutMetadata);
@@ -162,6 +179,19 @@ describe("ServicePlan", () => {
 });
 
 describe("AppPlan", () => {
+  test("preserves missing legacy eligibility and requires an explicit current marker", () => {
+    // Given
+    const historical = appPlanFixture;
+    // When
+    const observed = Schema.decodeUnknownSync(AppPlan)(historical);
+    const executable = Schema.decodeUnknownResult(CurrentExecutableAppPlan)(historical);
+    // Then
+    expect(Object.hasOwn(observed, "valueModel")).toBe(false);
+    expect(Result.isFailure(executable)).toBe(true);
+    expect(
+      Schema.decodeUnknownSync(CurrentExecutableAppPlan)({ ...historical, valueModel: 1 }).valueModel,
+    ).toBe(1);
+  });
   test("decodes data stores with default data kind and explicit cache keys", () => {
     const dataStore = Schema.decodeUnknownSync(DataStorePlan)({
       name: "myapp-db-data",

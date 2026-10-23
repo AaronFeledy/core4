@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
+import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { LogSource } from "./log-source.ts";
 import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan } from "./mounts.ts";
@@ -27,6 +28,7 @@ import {
   ProviderId,
   ServiceName,
 } from "./primitives.ts";
+import { ServiceConnection } from "./service-connection.ts";
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.
@@ -39,7 +41,10 @@ export const ServicePlan = Schema.Struct({
   artifact: Schema.optionalKey(Schema.Union([ArtifactRef, ArtifactBuildSpec])),
   command: Schema.optionalKey(CommandSpec),
   entrypoint: Schema.optionalKey(CommandSpec),
-  environment: Schema.Record(Schema.String, Schema.String),
+  environment: Environment,
+  connection: Schema.optionalKey(ServiceConnection).annotate({
+    description: "Canonical database connection resolved by the service type.",
+  }),
   user: Schema.optionalKey(Schema.String),
   workingDirectory: Schema.optionalKey(PortablePath),
   appMount: Schema.optionalKey(AppMountPlan),
@@ -195,33 +200,47 @@ export const AppIdentity = Schema.Struct({
 export type AppIdentity = typeof AppIdentity.Type;
 
 export const AppPlan = Schema.Struct({
-  id: AppId,
-  name: Schema.String,
-  slug: Schema.String,
-  root: AbsolutePath,
+  valueModel: Schema.optionalKey(Schema.Literal(1)).annotate({
+    description:
+      "Environment descriptor model version; absence is historical observation only, never execution eligibility.",
+  }),
+  id: AppId.annotate({ description: "Stable application identifier." }),
+  name: Schema.String.annotate({ description: "User-facing application name." }),
+  slug: Schema.String.annotate({ description: "Normalized application runtime name." }),
+  root: AbsolutePath.annotate({ description: "Canonical application root." }),
   identity: Schema.optionalKey(AppIdentity).annotate({
     description: "Canonical ownership and optional repository grouping identity.",
   }),
-  provider: ProviderId,
-  services: Schema.Record(ServiceName, ServicePlan),
-  routes: Schema.Array(RoutePlan),
-  networks: Schema.Array(NetworkPlan),
+  provider: ProviderId.annotate({ description: "Provider selected to realize this application." }),
+  services: Schema.Record(ServiceName, ServicePlan).annotate({
+    description: "Service plans keyed by service name.",
+  }),
+  routes: Schema.Array(RoutePlan).annotate({ description: "Resolved application routes." }),
+  networks: Schema.Array(NetworkPlan).annotate({
+    description: "Provider-neutral networks owned by this application.",
+  }),
   /**
    * Typed per-app networking intent: the per-app bridge plus optional
    * shared cross-app network membership. Populated by the planner; omitted for
    * service-less apps and legacy/hand-built plans (providers then fall back to
    * slug-derived network names).
    */
-  networking: Schema.optionalKey(NetworkingPlan),
-  stores: Schema.Array(DataStorePlan),
+  networking: Schema.optionalKey(NetworkingPlan).annotate({
+    description: "Private bridge and shared network membership intent.",
+  }),
+  stores: Schema.Array(DataStorePlan).annotate({
+    description: "Named data stores owned or referenced by this application.",
+  }),
   /**
    * File-sync sessions auto-selected by the planner for accelerated mounts.
    * Empty when no file sync is needed (native bind-mount providers, or no
    * accelerated mounts on a slow provider).
    */
-  fileSync: Schema.Array(FileSyncPlan),
-  metadata: PlanMetadata,
-  extensions: ProviderExtensionConfig,
+  fileSync: Schema.Array(FileSyncPlan).annotate({
+    description: "File-sync sessions selected during planning.",
+  }),
+  metadata: PlanMetadata.annotate({ description: "Plan provenance and resolution timestamp." }),
+  extensions: ProviderExtensionConfig.annotate({ description: "Provider-specific extension intent." }),
   router: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.Boolean.annotate({ description: "Whether shared routing is enabled for this app." }),
@@ -240,6 +259,17 @@ export const AppPlan = Schema.Struct({
     Schema.Struct({
       globalServices: Schema.Array(Schema.String),
     }),
-  ),
+  ).annotate({ description: "Global services that must be running before application start." }),
 });
 export type AppPlan = typeof AppPlan.Type;
+
+export const CurrentExecutableAppPlan = Schema.Struct({
+  ...AppPlan.fields,
+  valueModel: Schema.Literal(1).annotate({
+    description: "Required current descriptor model marker; never defaulted during decoding.",
+  }),
+}).annotate({
+  identifier: "CurrentExecutableAppPlan",
+  description: "Current plan eligible for creation after environment resolution.",
+});
+export type CurrentExecutableAppPlan = typeof CurrentExecutableAppPlan.Type;

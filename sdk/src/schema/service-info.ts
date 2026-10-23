@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 
 import { EndpointInfo } from "./endpoint.ts";
-import { ServiceCreds } from "./landofile.ts";
 import { RoutePlan } from "./networking.ts";
+import { ServiceCredsDisplay } from "./service-connection.ts";
 
 // ServiceInfo — provider-neutral runtime info returned by `lando info`.
 
@@ -18,7 +18,7 @@ export const ServiceInfo = Schema.Struct({
   endpoints: Schema.optionalKey(Schema.Array(EndpointInfo)),
   /** Resolved routes pointing at this service. */
   routes: Schema.optionalKey(Schema.Array(RoutePlan)),
-  creds: Schema.optionalKey(ServiceCreds).annotate({
+  creds: Schema.optionalKey(ServiceCredsDisplay).annotate({
     description: "Service login credentials surfaced by `lando info` when the service publishes them.",
   }),
 });

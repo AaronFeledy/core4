@@ -9,7 +9,12 @@
 import type { Effect, Schema } from "effect";
 
 import type { AppFeatureError } from "../errors/index.ts";
-import type { ProviderCapabilities, ServiceConfig } from "../schema/index.ts";
+import type {
+  EnvironmentValue,
+  ProviderCapabilities,
+  ServiceConfig,
+  ServiceConnection,
+} from "../schema/index.ts";
 import type {
   ServiceAppMountIntent,
   ServiceBuildStepIntent,
@@ -54,6 +59,7 @@ export interface AppFeatureServiceView {
   readonly primary: boolean;
   readonly featureIds: ReadonlyArray<string>;
   readonly normalizedConfig: ServiceConfig;
+  readonly connection?: ServiceConnection | undefined;
 }
 
 /**
@@ -63,7 +69,7 @@ export interface AppFeatureServiceView {
  */
 export interface AppFeatureServiceMutators {
   readonly service: AppFeatureServiceView;
-  addEnv(name: string, value: string): void;
+  addEnv(name: string, value: EnvironmentValue): void;
   addMount(mount: ServiceMountIntent): void;
   setAppMount(mount: ServiceAppMountIntent): void;
   addBuildStep(step: ServiceBuildStepIntent): void;

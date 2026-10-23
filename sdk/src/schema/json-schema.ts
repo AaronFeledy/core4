@@ -39,6 +39,7 @@ import {
 } from "../docs/components/props.ts";
 import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { PublicTranscript, Transcript } from "../docs/transcript.ts";
+import { EnvironmentValueResolutionError, PlanReplanRequiredError } from "../errors/environment-value.ts";
 import {
   AppPlacementError,
   LandofileExpressionEvalError,
@@ -154,10 +155,20 @@ import {
   TunnelStatusEvent,
 } from "../events/index.ts";
 import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
-import { AppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
+import { AppPlan, CurrentExecutableAppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
 import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { CommandTrace, CommandTraceSpan } from "./command-trace.ts";
+import {
+  CompilationContext,
+  CompiledLandofile,
+  ComposedCompiledLandofile,
+  IdentityScopedLandofile,
+  LoadScopedLandofile,
+  ParsedPendingSite,
+  ServiceScopedLandofile,
+  SourceCompiledLandofile,
+} from "./compiled-landofile.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import * as ConfigTranslateSchemas from "./config-translate.ts";
 import { GlobalConfigView } from "./config-view.ts";
@@ -217,6 +228,14 @@ import {
 } from "./downloader.ts";
 import { EmbeddingPluginPolicy } from "./embedding-plugin-policy.ts";
 import { BindAddress, InternalEndpoint, PublishedEndpoint } from "./endpoint.ts";
+import {
+  BoundText,
+  BoundTextReference,
+  Environment,
+  EnvironmentValue,
+  SecretRef,
+  SecretReference,
+} from "./environment-value.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
   FileSyncEngineCapabilities,
@@ -401,6 +420,7 @@ import {
   StyledSpanTone,
 } from "./renderer-panel.ts";
 import { RouteFilter, RouteFilterType } from "./route-filter.ts";
+import { ServiceConnection, ServiceCreds, ServiceCredsDisplay } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceInfo } from "./service-info.ts";
 import {
@@ -491,6 +511,26 @@ export type PublicSchemaReferencePage = {
 };
 
 const basePublicSchemaRegistry = schemaRegistry({
+  SecretReference,
+  SecretRef,
+  BoundTextReference,
+  BoundText,
+  EnvironmentValue,
+  Environment,
+  ServiceCreds,
+  ServiceConnection,
+  ServiceCredsDisplay,
+  CurrentExecutableAppPlan,
+  CompilationContext,
+  ParsedPendingSite,
+  SourceCompiledLandofile,
+  ComposedCompiledLandofile,
+  LoadScopedLandofile,
+  IdentityScopedLandofile,
+  ServiceScopedLandofile,
+  CompiledLandofile,
+  EnvironmentValueResolutionError,
+  PlanReplanRequiredError,
   SshAgentConfig,
   GpgAgentConfig,
   AgentSocketKind,
@@ -947,6 +987,26 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   AgentSocketBridgeInput: "App-owned relay session handed to a scoped provider bridge.",
   AgentSocketBridgeResult: "Provider-visible directory or volume containing the requested agent socket.",
   SecretStoreContribution: "Plugin secret store implementation and owned reference schemes.",
+  SecretReference: "Validated raw SecretStore reference identifier.",
+  SecretRef: "Deferred secret reference without resolved secret bytes.",
+  BoundTextReference: "Deferred raw or URI-component reference in flat text.",
+  BoundText: "Flat literal and secret-reference text descriptor.",
+  EnvironmentValue: "Normalized literal or deferred environment value.",
+  Environment: "Single typed environment map.",
+  ServiceCreds: "Credentials with typed deferred passwords.",
+  ServiceConnection: "Canonical database family, credentials and planned port.",
+  ServiceCredsDisplay: "String-only redacted credential display.",
+  CurrentExecutableAppPlan: "Explicitly current plan required for creation eligibility.",
+  CompilationContext: "Ephemeral app root and captured environment snapshot.",
+  ParsedPendingSite: "Parsed authored expression with stable identity and source attribution.",
+  SourceCompiledLandofile: "Source-stage compilation carrier.",
+  ComposedCompiledLandofile: "Composed-stage compilation carrier.",
+  LoadScopedLandofile: "Load-scoped compilation carrier accepted by the planner.",
+  IdentityScopedLandofile: "Identity-scoped compilation carrier.",
+  ServiceScopedLandofile: "Service-scoped compilation carrier.",
+  CompiledLandofile: "Explicit ephemeral staged compilation carrier.",
+  EnvironmentValueResolutionError: "Environment resolution failed before dispatch.",
+  PlanReplanRequiredError: "Historical plans require replanning before creation.",
   RecipeSourceKind: "Origin class of a recipe producer, keeping bundled and local families distinct.",
   RecipeContentDigest: "SHA-256 over canonical recipe inputs, excluding the digest itself and history.",
   RecipeProducer: "Versioned identity of the recipe that produced generated authoring data.",

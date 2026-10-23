@@ -35,12 +35,13 @@ describe("@lando/sdk package exports", () => {
   test("yaml entry point exports the shared scalar policy and document emitter", async () => {
     // Given / When: a consumer imports the public YAML entry point.
     const yaml = await import("@lando/sdk/yaml");
-    // Then: all six runtime exports are available through that subpath.
+    // Then: the shared lexer remains available alongside the emitter.
     expect(Object.keys(yaml).sort()).toEqual([
       "YamlEmitError",
       "emitYamlDocument",
       "isYamlPlainSafe",
       "quoteYamlScalar",
+      "stripYamlLineComment",
       "yamlMappingKeyText",
       "yamlScalarText",
     ]);
@@ -642,15 +643,12 @@ describe("@lando/sdk package exports", () => {
     expect(probe.ProbeTimeoutError).toBeDefined();
   });
 
-  test("database-creds entry point exports the pure family env helpers", async () => {
+  test("database-creds entry point exports service-type native aliases and defaults", async () => {
     const databaseCreds = await import("@lando/sdk/database-creds");
 
-    expect(databaseCreds.databaseEnvCreds).toBeDefined();
-    expect(databaseCreds.firstEnv).toBeDefined();
     expect(databaseCreds.DATABASE_FAMILY_ENV_KEYS).toBeDefined();
     expect(databaseCreds.DATABASE_PORT_ENV_KEY).toBe("LANDO_DB_PORT");
     expect(databaseCreds.DATABASE_FAMILY_DEFAULT_PORTS).toBeDefined();
-    expect(databaseCreds.databaseEnvPort("mysql", { LANDO_DB_PORT: "13306" })).toBe(13306);
   });
 
   test("digest entry point exports the hashing and canonical JSON helpers", async () => {

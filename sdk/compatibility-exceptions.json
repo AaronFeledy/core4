@@ -1,5 +1,17 @@
 [
   {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Pre-release service environments normalize mixed scalar and explicit binding values into one typed environment map."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Trusted compilation admits deferred descriptors alongside scalar environment authoring inputs; raw reserved tags still require rejection before decoding."
+  },
+  {
     "surface": "schema:PreDestroyEvent",
     "changeKind": "property-added",
     "path": "$.evidence",
@@ -3442,5 +3454,167 @@
     "changeKind": "unsupported-construct",
     "path": "$.plan.networking.perAppBridge.anyOf",
     "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostScratchDestroyEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Pre-release nested service plans replace the unshipped parallel secret map with typed environment descriptors and canonical connection facts; historical literal environments remain readable."
+  },
+  {
+    "surface": "schema:PreScratchDestroyEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Pre-release nested service plans replace the unshipped parallel secret map with typed environment descriptors and canonical connection facts; historical literal environments remain readable."
+  },
+  {
+    "surface": "schema:ServicePlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.environment.additionalProperties",
+    "justification": "Pre-release environment values now include explicit SecretRef and BoundText descriptors; literal strings remain literal data."
+  },
+  {
+    "surface": "schema:ServicePlan",
+    "changeKind": "property-removed",
+    "path": "$.environmentSecrets",
+    "justification": "Remove the unshipped parallel secret map; each environment entry now owns its complete literal or deferred value."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.password.anyOf",
+    "justification": "Database passwords now accept explicit deferred descriptors as well as literal strings before first release."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.rootPassword.anyOf",
+    "justification": "Administrative passwords use the same typed environment-value model as user passwords before first release."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.password.anyOf",
+    "justification": "Redis passwords use the common literal or deferred environment-value model before first release."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.password.anyOf",
+    "justification": "Password authoring boundaries accept typed compiled descriptors only after authored-site admission; raw reserved tags remain forbidden."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.rootPassword.anyOf",
+    "justification": "Administrative password authoring uses the common deferred descriptor model after trusted compilation admission."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.password.anyOf",
+    "justification": "Redis password authoring uses the common deferred descriptor model after trusted compilation admission."
+  },
+  {
+    "surface": "schema:ToolingDefaultsShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.env.anyOf",
+    "justification": "Tooling environments now normalize scalar inputs into the same typed environment map as service environments."
+  },
+  {
+    "surface": "schema:ToolingTaskShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.env.anyOf",
+    "justification": "Task environment values retain explicit deferred bindings until dispatch rather than eagerly becoming strings."
+  },
+  {
+    "surface": "schema:ToolingStepShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.env.anyOf",
+    "justification": "Step environment overrides replace complete typed values, sharing the service and task environment model."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.toolingDefaults.env.anyOf",
+    "justification": "Tooling defaults share typed literal or deferred environment values with services before first release."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.events.additionalProperties",
+    "justification": "Provider event command environments now use the shared typed environment-value model until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-destroy.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-init.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-rebuild.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-restart.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-start.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-stop.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-destroy.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-init.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-rebuild.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-restart.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-start.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-stop.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
   }
 ]
