@@ -1,7 +1,7 @@
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { CORE_VERSION } from "@lando/engine/version";
 import * as LandoHttpClient from "@lando/http-client";
-import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
+import { RedactionService, collectSecretStructuralValues } from "@lando/redaction/service";
 import { Effect, Layer, type Tracer } from "effect";
 import * as OtlpExporter from "effect/observability/OtlpExporter";
 import * as OtlpSerialization from "effect/observability/OtlpSerialization";
@@ -16,7 +16,7 @@ export const withCommandTracing = async (
 ): Promise<void> => {
   const secrets = [
     ...Object.values(selection.headers),
-    ...collectSecretEnvValues(
+    ...collectSecretStructuralValues(
       Object.fromEntries(
         Object.entries(flags).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
       ),

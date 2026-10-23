@@ -108,7 +108,9 @@ The fixture's `app` service is `node:22` and marked `primary: true`, so it is th
 
 Human modes for `lando exec`, tooling, and `lando run` mask only known secret values on the live byte stream. Pattern classes stay off that path so binary dumps keep their shape. `lando logs` and other structured surfaces still use the full secrets profile. The service itself still gets the real value.
 
-Lando's published default credentials, `lando` and `landolando`, are not collected as secrets just because an environment key looks sensitive. Explicit registration or resolution from a [secret store](../config/secret-stores.mdx) still masks them.
+Lando does not add its published defaults, `lando` and `landolando`, to the list of known secret values just because they appear under a sensitive configuration key. The same exception applies to a database password or root password that exactly matches its own user or database name. For example, with `creds: { user: magento, password: magento, database: magento }`, the word `magento` remains readable in package names and paths.
+
+These exceptions apply to values discovered from configuration, not values explicitly registered as secrets or resolved from a [secret store](../config/secret-stores.mdx). Those remain masked. Password fields in structured output, such as `lando info --format=json`, also remain masked.
 
 ## Machine-readable output
 

@@ -17,7 +17,7 @@ services:
     type: mariadb
     creds:
       user: magento
-      password: magento-dev
+      password: magento
       database: magento
   search:
     type: opensearch

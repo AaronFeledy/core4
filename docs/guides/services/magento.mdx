@@ -39,7 +39,7 @@ services:
     type: mariadb
     creds:
       user: magento
-      password: magento-dev
+      password: magento
       database: magento
   search:
     type: opensearch
@@ -58,6 +58,8 @@ tooling:
     user: www-data
     description: Run bin/magento inside the appserver service.
 ```
+
+These sample credentials initialize a new database. If you followed an earlier version of this guide, keep your existing database credentials and Magento connection settings. Editing `creds` does not change the password stored in an existing MariaDB volume. Don't delete the volume to match this example; see [MariaDB's initialization rules](https://mariadb.com/docs/server/server-management/automated-mariadb-deployment-and-administration/docker-and-mariadb/mariadb-server-docker-official-image-environment-variables).
 
 Save this as `php.ini` beside it:
 
@@ -144,7 +146,7 @@ lando magento setup:install \
   --base-url='<appserver-url>/' \
   --base-url-secure='<appserver-url>/' \
   --use-secure=1 --use-secure-admin=1 \
-  --db-host=database --db-name=magento --db-user=magento --db-password=magento-dev \
+  --db-host=database --db-name=magento --db-user=magento --db-password=magento \
   --search-engine=opensearch --opensearch-host=search --opensearch-port=9200 \
   --opensearch-enable-auth=0 --opensearch-index-prefix=magento2 \
   --admin-firstname=Admin --admin-lastname=User --admin-email=admin@example.com \

@@ -462,6 +462,7 @@
       "DATABASE_FAMILY_DEFAULT_PORTS",
       "DATABASE_FAMILY_ENV_KEYS",
       "DATABASE_PORT_ENV_KEY",
+      "LANDO_DB_ENV_KEYS",
       "databaseEnvCreds",
       "databaseEnvPort",
       "firstEnv"
@@ -1759,6 +1760,9 @@
       "createRedactor",
       "createSecretRedactor",
       "isPublicDefaultCredential",
+      "isSecretEnvName",
+      "isSecretFieldName",
+      "isSecretStructuralName",
       "isUsableExactRedactionValue",
       "parseSecretReference"
     ],
