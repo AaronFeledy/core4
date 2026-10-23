@@ -489,6 +489,10 @@
       "digest": "df96558b651021bf7df0d882b8a92e97daeb3d6d9dc411382d2fd34a8761b1cd"
     },
     {
+      "fixture": "docs/guides/node-playwright/fixtures/playwright-demo",
+      "digest": "7a07cec9f964825aca7f28fddfa28707839dfd570afa2e80c3f4dc807c453c60"
+    },
+    {
       "fixture": "docs/guides/node-postgres-scaffold/fixtures/invalid-service-type",
       "digest": "5d44c18a040b444d7daef194e8a3ca0c400bdc8e2e0748e1ab2fa456c3829bfd"
     },
@@ -547,6 +551,10 @@
     {
       "fixture": "docs/guides/offline-dev/fixtures/offline-dev-demo",
       "digest": "d4ca26563b33f554f10a29552e6b81f010f86a5d92365d7bfa70fd275734709a"
+    },
+    {
+      "fixture": "docs/guides/ollama/fixtures/ollama-demo",
+      "digest": "9191a0b49df33e43ab8e9de2cc600a19888178d59c1598f147fbdd2a5444ff56"
     },
     {
       "fixture": "docs/guides/opensearch/fixtures/opensearch-demo",
