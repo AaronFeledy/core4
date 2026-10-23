@@ -1,6 +1,6 @@
 import { posix, win32 } from "node:path";
 
-import type { AppId } from "@lando/sdk/schema";
+import { AppId } from "@lando/sdk/schema";
 
 import type { ProxyPaths } from "./proxy-types.ts";
 
@@ -33,10 +33,24 @@ export const dashboardConfigFile = (paths: ProxyPaths): string =>
   joinFor(paths)(dynamicConfigDir(paths), "dashboard.yml");
 
 export const routeFile = (paths: ProxyPaths, app: AppId): string =>
-  joinFor(paths)(
-    dynamicConfigDir(paths),
-    `${ROUTE_FILE_PREFIX}${encodeURIComponent(String(app))}${ROUTE_FILE_SUFFIX}`,
-  );
+  joinFor(paths)(dynamicConfigDir(paths), routeFileName(app));
+
+export const routeFileName = (app: AppId): string =>
+  `${ROUTE_FILE_PREFIX}${encodeURIComponent(String(app))}${ROUTE_FILE_SUFFIX}`;
+
+export const isRouteFileName = (name: string): boolean => {
+  if (!name.startsWith(ROUTE_FILE_PREFIX) || !name.endsWith(ROUTE_FILE_SUFFIX)) return false;
+  return name.slice(ROUTE_FILE_PREFIX.length, -ROUTE_FILE_SUFFIX.length).length > 0;
+};
+
+export const routeFileAppId = (name: string): AppId | undefined => {
+  if (!isRouteFileName(name)) return undefined;
+  try {
+    return AppId.make(decodeURIComponent(name.slice(ROUTE_FILE_PREFIX.length, -ROUTE_FILE_SUFFIX.length)));
+  } catch {
+    return undefined;
+  }
+};
 
 export const routingStateFile = (paths: ProxyPaths): string =>
   joinFor(paths)(dynamicConfigDir(paths), ".lando-routing-state");

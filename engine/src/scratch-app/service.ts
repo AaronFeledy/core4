@@ -25,6 +25,7 @@ import {
   type RouterConfig,
   ServiceName,
   landoNetworkingPlan,
+  planAppIdentity,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import {
@@ -602,7 +603,9 @@ const makeScratchAppService = Effect.fnUntraced(function* (
               const defaultDomain = yield* resolveProxyDefaultDomain;
               const { router, routerPin } = yield* resolveRouterConfigForApp(landofileRouter);
               yield* Effect.scoped(service.setup({ defaultDomain, router, routerPin })).pipe(
-                Effect.andThen(service.applyRoutes(plan.routes, plan.id)),
+                Effect.andThen(
+                  service.applyRoutes(plan.routes, plan.id, { ownerKey: planAppIdentity(plan).ownerKey }),
+                ),
               );
             },
             Effect.asVoid,

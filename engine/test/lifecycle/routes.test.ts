@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
 import { ProxyError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  appIdentityKey,
+} from "@lando/sdk/schema";
 import type { RouterServiceShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 
@@ -121,6 +128,43 @@ describe("applyAppRoutes", () => {
       });
     });
   }
+
+  test("forwards the plan ownerKey when publishing routes", async () => {
+    const received: Array<{ readonly app: AppPlan["id"]; readonly ownerKey: string | undefined }> = [];
+    const base = makeTestRouterService();
+    const plan: AppPlan = {
+      ...cachedPlan,
+      identity: { appRoot: cachedPlan.root, ownerKey: "owner-from-plan" },
+      router: { enabled: true },
+    };
+    const proxy: RouterServiceShape = {
+      ...base,
+      applyRoutes: (routes, app, options) => {
+        received.push({ app, ownerKey: options?.ownerKey });
+        return base.applyRoutes(routes, app, options);
+      },
+    };
+
+    await Effect.runPromise(applyAppRoutes(proxy, plan));
+
+    expect(received).toEqual([{ app: plan.id, ownerKey: "owner-from-plan" }]);
+  });
+
+  test("derives ownerKey from the canonical root when the plan omits identity", async () => {
+    const received: string[] = [];
+    const base = makeTestRouterService();
+    const proxy: RouterServiceShape = {
+      ...base,
+      applyRoutes: (routes, app, options) => {
+        received.push(options?.ownerKey ?? "");
+        return base.applyRoutes(routes, app, options);
+      },
+    };
+
+    await Effect.runPromise(applyAppRoutes(proxy, { ...cachedPlan, router: { enabled: true } }));
+
+    expect(received).toEqual([appIdentityKey("owner", cachedPlan.root)]);
+  });
 });
 
 describe("routeUrlsForPlan", () => {

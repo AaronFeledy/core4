@@ -2,7 +2,7 @@ import { AppResolveError } from "@lando/sdk/errors";
 import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events";
 import { DateTime, Effect } from "effect";
 
-import { AbsolutePath, AppId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, planAppIdentity } from "@lando/sdk/schema";
 import {
   EventService,
   FileSystem,
@@ -169,7 +169,9 @@ export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(f
   }
   if (selection.routes !== undefined) {
     const router = yield* RouterService;
-    yield* router.applyRoutes(selection.routes, selection.plan.id);
+    yield* router.applyRoutes(selection.routes, selection.plan.id, {
+      ownerKey: planAppIdentity(selection.plan).ownerKey,
+    });
   }
   return {
     changed: services.length > 0,

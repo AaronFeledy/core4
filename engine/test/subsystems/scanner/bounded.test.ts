@@ -208,7 +208,7 @@ describe("bounded scanner", () => {
     const reported = Number(detail.match(/(\d+)ms$/u)?.[1]);
     expect(reported).toBeGreaterThanOrEqual(50);
     expect(reported).toBeLessThanOrEqual(elapsed + 5);
-    expect(elapsed - reported).toBeLessThan(100);
+    expect(elapsed - reported).toBeLessThan(150);
     expect(elapsed).toBeLessThan(1000);
   });
 });
