@@ -120,9 +120,9 @@ Check that `xhprof` appears in the module list. Composer writes `composer.json` 
 
 Run `lando info` and open the `app` URL in your browser. The page prints `fib(25) = 75025`.
 
-Open the `xhgui` URL from `lando info`. Check that the run list shows a run for `/`, then open it and check that its function table lists `fib`. Every page load adds a run.
+Open the `xhgui` URL from `lando info`. Check that the run list shows a run for `/`, then open it and check that its function table lists `fib`. Every page load adds a run, so reload a few times to compare.
 
-If no run appears, check that `xhprof` is in `lando exec app -- php -m` and that `vendor/perftools/php-profiler` exists in your app directory.
+If no run appears, check that `xhprof` is in `lando exec app -- php -m` and that `vendor/perftools/php-profiler` exists in your app directory, and that `lando logs -s app` shows no `xhgui:` errors.
 
 ## Keep profiles local
 
