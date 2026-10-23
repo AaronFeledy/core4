@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, backdrop, php, mariadb, bee]
 
 # Run the Backdrop recipe
 
+Start PHP and MariaDB for a new Backdrop site, then install Bee and Backdrop using the steps below. Run these commands from your host terminal; initialization creates the environment, not the Backdrop application.
+
 ```sh
 lando init --recipe backdrop --name=backdrop-demo --yes
 cd backdrop-demo
@@ -131,7 +133,7 @@ lando exec appserver -- sh -c 'set -eu; cd /tmp; rm -rf backdrop
   unzip -q backdrop.zip && cp -a backdrop/. /app/ && rm -rf backdrop backdrop.zip'
 ```
 
-Leave `settings.php` as shipped; `BACKDROP_SETTINGS` carries the credentials. Generate an admin password locally and install:
+Leave `settings.php` as shipped; `BACKDROP_SETTINGS` carries the credentials. The following password-generation commands require a POSIX shell with `openssl` on your host. On Windows, generate a password with your preferred tool and pass it to Bee's `--password` option. Generate an admin password locally and install:
 
 ```sh
 BACKDROP_ADMIN_PASSWORD="$(openssl rand -base64 24)"
@@ -148,7 +150,7 @@ lando bee install --auto \
 unset BACKDROP_ADMIN_PASSWORD
 ```
 
-`--auto` skips Bee's prompts and takes the defaults for anything you leave out. Bee's `install` still wants the `--db-*` flags; pass the values from `BACKDROP_SETTINGS`, with `--db-name` set to the app name (here `backdrop-demo`). The snippet assumes a POSIX shell with `openssl`. On Windows, generate the password however you like and pass it the same way.
+`--auto` skips Bee's prompts and takes the defaults for anything you leave out. Bee's `install` still wants the `--db-*` flags; pass the values from `BACKDROP_SETTINGS`, with `--db-name` set to the app name (here `backdrop-demo`).
 
 Check the install:
 
@@ -200,7 +202,7 @@ lando bee status
 
 ## Import and export the database
 
-Export first: `db:import --yes` replaces whatever the database holds.
+Export first: `db:import --yes` executes the dump's SQL without confirmation and can change or replace existing data.
 
 ```sh
 lando db:export backdrop.sql.gz

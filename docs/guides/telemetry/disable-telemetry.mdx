@@ -8,19 +8,23 @@ tags: [beta, docs, telemetry, config]
 
 # Disable telemetry
 
-Turn telemetry off from the config file:
+Run this on the host to disable telemetry in your global config:
 
 ```sh
 lando config telemetry off
 ```
 
 This writes `telemetry.enabled=false` to the global config file. Future CLI runs resolve telemetry
-from config when no higher-precedence env or flag override is present.
+from config when no higher-precedence environment or flag override is present.
+Run `lando config telemetry status` afterward to check the effective state and
+which source selected it.
 
 ## Disable it for one process
 
-To disable telemetry only for the current process, set an env override instead of touching the
-config file:
+For a process-specific override, pass the environment variable below to the
+Lando process instead of changing the config file. In a POSIX shell, place the
+assignment immediately before the command you want to run; an assignment on its
+own is not necessarily exported to child processes:
 
 ```sh
 LANDO_CONFIG__TELEMETRY__ENABLED=0

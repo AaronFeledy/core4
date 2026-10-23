@@ -1,20 +1,20 @@
 # Lando Core v4
 
 > **Experimental proof of concept.** This repository is a ground-up, from-scratch
-> reimagining of [Lando](https://lando.dev) Core for v4 — an experiment in
+> reimagining of [Lando](https://lando.dev) Core for v4, an experiment in
 > rebuilding the tool on Bun + Effect. It is not an official release and is not
 > production-ready. Treat it as a research prototype, not the Lando you install
 > today.
 
 Lando v4 is a local development environment and DevOps tool that defines your
-whole stack — services, proxy, certificates, file sync, and tooling — from a
+whole stack, services, proxy, certificates, file sync, and tooling, from a
 single `.lando.yml` Landofile, then realizes it on a container runtime you
 control (Lando-managed Podman by default, or system Docker/Podman).
 
 This repository is the v4 implementation, structured as a [Bun](https://bun.sh)
 workspace. The runtime is built on [Effect](https://effect.website): every
 meaningful operation returns a typed `Effect.Effect<A, E, R>`, and every public
-contract is an Effect Schema. Plugins are the unit of extension — providers,
+contract is an Effect Schema. Plugins are the unit of extension, providers,
 services, the proxy, the certificate authority, file sync, loggers, renderers,
 and template engines all ship as separate packages.
 
@@ -34,17 +34,35 @@ On Intel Macs (`darwin-x64`), Docker is the live path. The default provider stay
 
 Drupal already ships as a public recipe at `recipes/drupal`. `recipes/` is the public recipe source of truth.
 
-Rails is bundled for Alpha 1 (id `rails`). Public source of truth is `recipes/rails/`; the existing builtin stub is upgraded rather than duplicated. Services are Ruby/Rails, PostgreSQL, and Redis. Tooling is `rails` and `bundle`. Every prompt has a non-interactive default. The public tree requires an executable README.mdx.
+Rails is bundled for Alpha 1 as `rails`, with Ruby/Rails, PostgreSQL, and Redis services and `rails` and `bundle` tooling. Every prompt has a non-interactive default. Its public source is `recipes/rails/`.
 
-Alpha 1 exits when every compile target has live `lando setup`, live `lando doctor`, a live Drupal canonical journey, and a live Rails canonical journey. Compile smoke is not an exit. A long-term roadmap rewrite is not an Alpha 1 exit.
+## Try the Alpha
+
+Start with [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md). It covers:
+
+- How to download the unsigned `v4.0.0-dev.N` GitHub prerelease binaries for all six compile targets
+- How to build from source
+- Running `lando setup` and `lando doctor` for first-time configuration
+- Where to file bug reports with the right diagnostic files
+
+> The default provider's runtime bundle manifest pins real published release
+> assets, so `lando setup` works end-to-end. To test an unpublished runtime
+> bundle, build it locally with `scripts/build-runtime-bundle.ts` and point
+> `LANDO_RUNTIME_BUNDLE_MANIFEST` at it.
+
+## Find your next step
+
+- **Run an app:** use the [app lifecycle tutorial](./docs/guides/tutorial/app-lifecycle.mdx) after installation and setup.
+- **Embed Lando:** read the [library guide](./docs/embedding.md).
+- **Contribute:** start with [the repository instructions](./AGENTS.md) and the source-build steps below.
 
 ## Layout
 
 ```text
 .
-├── core/              # @lando/core — runtime, planner, single native CLI dispatcher, library API
-├── sdk/               # @lando/sdk — schemas, tags, types only (plugin authors import this)
-├── container-runtime/ # @lando/container-runtime — private provider-agnostic runtime helpers
+├── core/              # @lando/core, runtime, planner, single native CLI dispatcher, library API
+├── sdk/               # @lando/sdk, schemas, tags, types only (plugin authors import this)
+├── container-runtime/ # @lando/container-runtime, private provider-agnostic runtime helpers
 ├── plugins/           # Bundled reference plugins (separate packages, optional at runtime)
 │   ├── service-lando/        # opinionated `lando` service base (env, packages, mounts, healthchecks, certs, SSH, hooks)
 │   ├── provider-lando/       # Lando-managed Podman runtime (default provider)
@@ -57,11 +75,11 @@ Alpha 1 exits when every compile target has live `lando setup`, live `lando doct
 │   ├── template-mustache/    # Mustache whole-file Landofile template engine
 │   └── renderer-lando/       # bundled default Lando Renderer plugin
 ├── recipes/           # Bundled recipes (drupal, drupal-cms, lamp, lemp, wordpress)
-├── spec/              # Authored planning material (PRDs, ROADMAP); not a shipped artifact — may be deleted
+├── spec/              # Authored planning material (PRDs, ROADMAP); not a shipped artifact, may be deleted
 ├── scripts/           # Codegen, release orchestrator, guide/scenario + CI workflow tooling
 ├── docs/              # CI runbook, install guide, embedding guide, executable guides (MDX)
 ├── test/              # Cross-package and generated scenario tests
-├── biome.json         # Lint + format config (Biome — replaces ESLint + Prettier)
+├── biome.json         # Lint + format config (Biome, replaces ESLint + Prettier)
 ├── tsconfig.base.json # Shared strict TS settings
 ├── tsconfig.json      # Workspace project references
 └── package.json       # Bun workspace root
@@ -74,7 +92,7 @@ Alpha 1 exits when every compile target has live `lando setup`, live `lando doct
   surface is compatibility-locked (see `sdk/AGENTS.md`).
 - **`@lando/core`** owns the runtime: it discovers and validates a Landofile,
   *plans* it into an `AppPlan`, and hands that plan to a `RuntimeProvider` to
-  apply. It exposes two imperative shells — the CLI and the embeddable
+  apply. It exposes two imperative shells, the CLI and the embeddable
   [library API](./docs/embedding.md).
 - **Providers** (`provider-lando`, `provider-docker`, `provider-podman`)
   implement the same `RuntimeProvider` contract and declare capabilities
@@ -84,25 +102,11 @@ Alpha 1 exits when every compile target has live `lando setup`, live `lando doct
   cross-cutting services (the Traefik proxy today). User apps that need a global
   service auto-start it on `lando start`.
 - **Scratch apps** are short-lived apps whose lifetime is bound to an Effect
-  `Scope` — their state is purged when the scope closes.
+  `Scope`, their state is purged when the scope closes.
 - **Bootstrap layers** are code-generated per bootstrap level under
   `core/src/runtime/generated/layers/` so the runtime composes only the services
   a given command tier needs (the CLI cold-start / first-byte path stays free of
   Effect/OCLIF/plugin imports).
-
-## Try the Alpha
-
-**Want to try Lando v4 Alpha?** See [alpha install and bug reports](./docs/alpha-install-and-bug-reports.md) for:
-
-- How to download the unsigned `v4.0.0-dev.N` GitHub prerelease binaries for all six compile targets
-- How to build from source
-- Running `lando setup` and `lando doctor` for first-time configuration
-- Where to file bug reports with the right diagnostic files
-
-> The default provider's runtime bundle manifest pins real published release
-> assets, so `lando setup` works end-to-end. To test an unpublished runtime
-> bundle, build it locally with `scripts/build-runtime-bundle.ts` and point
-> `LANDO_RUNTIME_BUNDLE_MANIFEST` at it.
 
 ## Toolchain
 
@@ -112,8 +116,8 @@ Alpha 1 exits when every compile target has live `lando setup`, live `lando doct
 - **Lint + format:** Biome.
 - **Type checks:** `tsc -b` (project references; Bun runs `.ts` directly at runtime).
 - **CLI framework:** one native command registry and dispatcher is shared by source and compiled modes. The CLI surface lives in `core/src/cli/spec/` (spec machinery), `core/src/cli/command-specs/` (per-command declarations), and `core/src/cli/commands/` (operation invocation and render helpers). OCLIF is not a shipping engine.
-- **Runtime model:** Effect — every meaningful operation returns an `Effect.Effect<A, E, R>`.
-- **Schema:** Effect Schema — single source of truth for every public contract.
+- **Runtime model:** Effect, every meaningful operation returns an `Effect.Effect<A, E, R>`.
+- **Schema:** Effect Schema, single source of truth for every public contract.
 - **In-container helper:** a small static Go program in `core/container-helper/`, built with Lando itself (`bun run build:container-helper`). You don't need Go installed.
 
 ## Building from source
@@ -144,7 +148,7 @@ bun test
 
 On Linux, the full test suite needs the built helper; compiling `lando` needs it on every host. Rebuild after editing `core/container-helper/` sources or `.lando.yml`; compilation refuses stale helpers. See [the helper build instructions](./docs/contributing/ci.md#in-container-helper) for provider prerequisites and verification.
 
-> The combined CI gate is `bun run typecheck` **and** `bun test` — root `tsc -b`
+> The combined CI gate is `bun run typecheck` **and** `bun test`, root `tsc -b`
 > typechecks source and non-docs test trees, while Astro owns `docs/**` through `docs:check` and `docs:test`.
 > Run a focused test by path, e.g.
 > `bun test core/test/unit/bootstrap.test.ts`.
@@ -173,7 +177,7 @@ prove every command, output, and verification shown to readers actually works,
 and failures source-map back to the MDX line. A failing guide means *a promise
 we publish to users is broken*. **Integration tests**
 (`*.integration.test.ts`, env-gated, serial) verify our code against real
-external systems — a failing one means *our model of the outside world is
+external systems, a failing one means *our model of the outside world is
 broken*. Coverage that validates a user-visible workflow belongs in a guide
 scenario; boundary checks and regressions with no docs home belong in
 integration or standalone fixture-scenario tests, not in a rendered page.
@@ -201,11 +205,13 @@ All command output flows through the `Renderer` service; pick a mode with
 `--renderer=lando|json|plain|verbose` (default `lando`; precedence: flag >
 `LANDO_RENDERER` env > config > default). `--verbose` flips the default renderer to `verbose`. `--debug` also raises `--log-level=debug`. An explicit `--renderer` stays put.
 
-## Building from source
+<a id="building-from-source-1"></a>
+
+## Compile a standalone binary
 
 The compiled binary is produced with `bun build --compile --bytecode` targeting
 `core/bin/lando.ts` (not `index.ts`). The release pipeline compiles for six
-platforms — `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
+platforms, `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
 `windows-x64`, and `windows-arm64`, with bytecode enabled for native and cross-platform builds alike.
 Bun 1.4.2 includes the cross-platform bytecode fix released in 1.4.1, so Windows
 cross-compilation no longer needs a bytecode exception. Source and compiled entries now share the native dispatcher in
@@ -213,7 +219,7 @@ cross-compilation no longer needs a bytecode exception. Source and compiled entr
 `execute()` cannot dispatch inside a compiled Bun binary:
 a probe importing only `@oclif/core` and calling `execute()` was compiled with
 `bun build --compile` and run outside the source tree, and it failed before any
-command ran — `Config.load`'s `findRoot()` walk expects an adjacent `package.json`
+command ran, `Config.load`'s `findRoot()` walk expects an adjacent `package.json`
 that a relocated single-file binary doesn't have, and even with a static manifest,
 command dispatch still resolves a runtime `import(pathToFileURL(filePath))` that
 `bun build --compile` never embeds (a runtime-computed path isn't statically
@@ -231,6 +237,10 @@ Build it locally with `bun run docs:dev` or `bun run docs:build`.
 
 Repo-specific quirks and conventions that agents and contributors must follow
 live in [`AGENTS.md`](./AGENTS.md) and the per-package `AGENTS.md` files.
+
+### Alpha completion criteria
+
+For contributors, Alpha 1 is complete only when every compile target passes live `lando setup`, live `lando doctor`, and live canonical Drupal and Rails journeys. Compilation alone is not enough, and a roadmap rewrite does not meet these criteria. The public Rails recipe uses an executable `README.mdx`; its existing builtin implementation is upgraded rather than duplicated.
 
 ## Known limitations
 

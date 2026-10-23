@@ -9,7 +9,7 @@ tags: [beta, docs, tooling, php, composer]
 
 [Composer on PHP](composer-php.mdx) covers routing a `composer` tooling task. This guide makes `composer install` part of the build so you do not run it by hand after every `lando start`.
 
-Put it under `build.app`. It runs on first start or when its build key changes, after the project code is mounted. `lando rebuild` forces it to run again:
+In a PHP project with `composer.json`, add the command under `services.appserver.build.app` in `.lando.yml`. It runs on first start or when its build key changes, after the project code is mounted. `lando rebuild` forces it to run again:
 
 ```yaml
 name: php-composer-workflows-demo
@@ -30,7 +30,7 @@ tooling:
       - composer
 ```
 
-`build.app` runs after the code is mounted, so `composer install` sees `composer.json` and writes `vendor/` into the project. The flags keep it non-interactive, quiet, and production-mode.
+Run `lando start` from the project directory to apply the configuration and install dependencies. `build.app` runs after the code is mounted, so Composer can read `composer.json`. By default, `vendor/` is a service-owned excluded directory, not the host’s `vendor/`; see [app mount excludes](../setup/file-sync-excludes.mdx). The flags keep installation non-interactive and quiet, and `--no-dev` omits development dependencies. Remove that flag if your development workflow needs them.
 
 ## Install global tools in the image
 

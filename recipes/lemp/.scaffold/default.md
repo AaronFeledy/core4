@@ -1,6 +1,12 @@
 # LEMP
 
-`lando init --recipe lemp` scaffolds nginx, PHP-FPM, and MariaDB.
+Create a PHP development stack with nginx, PHP-FPM, and MariaDB. Put your
+`index.php` in the project root so nginx has an application to serve.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe lemp --name=my-lemp-app --yes

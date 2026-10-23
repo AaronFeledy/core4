@@ -7,13 +7,15 @@ tags: [beta, docs, recipes, drupal, multisite]
 
 # Run Drupal multisite on one appserver
 
-The `drupal` recipe scaffolds one PHP appserver and one database. There is no recipe knob for multisite. You add routes, per-site `settings.php`, and Drush URI aliases on top of the generated Landofile.
+The `drupal` recipe scaffolds one PHP appserver and one database. To run several sites, add routes, per-site `settings.php`, and Drush URI aliases to that generated Landofile.
+
+Start with a running Drupal app and project-local Drush, as described in [Run the Drupal recipe](./drupal-workflow.mdx). Before installing the sites below, have a database administrator create the `site1` and `site2` databases and grant your chosen Drupal account access to both. The default MariaDB app account has access only to the initial app database; it cannot provision this multisite setup on its own.
 
 Every site still shares the same appserver, PHP version, webroot, and database service. Multisite splits the Drupal document root and config, not the containers.
 
 ## Route one hostname per site
 
-Add one `routes:` entry per hostname. Every hostname hits the same appserver.
+In `.lando.yml`, add one `routes:` entry per hostname under `services.appserver`. Every hostname reaches the same appserver.
 
 ```yaml
 services:
@@ -30,7 +32,7 @@ Confirm the list with `lando app:config --format=json` before you start the app.
 
 ## Write per-site settings.php
 
-Point Drupal's `sites/sites.php` at your Lando hostnames:
+Create or edit `web/sites/sites.php` in your app root to map your Lando hostnames:
 
 ```php
 <?php
@@ -38,7 +40,7 @@ $sites['site1.lndo.site'] = 'site1';
 $sites['site2.lndo.site'] = 'site2';
 ```
 
-Then `web/sites/site1/settings.php` connects to the shared `database` service. Usually only the database name changes:
+Create `web/sites/site1/settings.php` with the connection settings for `site1`, then create the corresponding file for `site2`. Both use the shared `database` service. The examples use a separately provisioned account named `drupal` with password `drupal`; these are example values, not the recipe defaults. Replace them in each settings file and in the install commands with the account your administrator configured:
 
 ```php
 <?php
@@ -52,14 +54,7 @@ $databases['default']['default'] = [
 ];
 ```
 
-The stock `mariadb` service provisions one schema named after the app. Create extra schemas before each site's installer:
-
-```sh
-lando mysql -e "CREATE DATABASE site1"
-lando mysql -e "CREATE DATABASE site2"
-```
-
-Use the matching client if your engine is not MariaDB.
+The stock `mariadb` service provisions one database named after the app. It provides `lando mariadb`, not a `lando mysql` alias. The additional databases and account grants are prerequisites for the installers below; confirm they are in place before continuing.
 
 ## Add Drush URI aliases
 
@@ -79,20 +74,22 @@ tooling:
       - --uri=https://site2.lndo.site
 ```
 
-Then you stop retyping `--uri`:
-
-```sh
-lando drush-site1 status
-lando drush-site2 status
-```
+Each task supplies its site URI, so you do not need to repeat `--uri`.
 
 ## Install each site
 
-Start the app. Lando starts Traefik and issues certificates for each route. Then install:
+Run `lando start` to apply the routes. Lando starts the proxy and issues certificates for each route. After confirming both databases and their account grants, install each site:
 
 ```sh
 lando drush-site1 site-install standard --db-url=mysql://drupal:drupal@database/site1 -y
 lando drush-site2 site-install standard --db-url=mysql://drupal:drupal@database/site2 -y
+```
+
+Check both installed sites:
+
+```sh
+lando drush-site1 status
+lando drush-site2 status
 ```
 
 Open each hostname:

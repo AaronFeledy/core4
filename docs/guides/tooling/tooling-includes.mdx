@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, includes]
 
 # Include tooling fragments
 
-Tooling fragments load through `includes:` with `kind: tooling`. The `toolingIncludes:` shorthand uses the same machinery. Inside a tooling fragment, only `toolingIncludes:` nests further fragments. A bare `includes:` key in a fragment fails closed with tagged `LandofileIncludeError`.
+Add tooling fragment references to `.lando.yml` through `includes:` with `kind: tooling`. The example below expects `docs/.lando.tasks.yml` and `api/.lando.tasks.yml` to exist under your app root; each supplies the tooling tasks you want to include. The `toolingIncludes:` shorthand uses the same machinery. Inside a tooling fragment, only `toolingIncludes:` nests further fragments. A bare `includes:` key in a fragment fails closed with tagged `LandofileIncludeError`.
 
 ```yaml
 name: tooling-includes-demo
@@ -33,6 +33,8 @@ tooling:
     service: web
     cmd: bun run build
 ```
+
+Save the Landofile and referenced files, then run `lando app:config --format=json` from the app directory. Check that the expected namespaced tasks appear. A missing file fails unless its include is marked `optional: true`.
 
 <Guide>
   <Scenario id="namespaced-tooling-fragments" render>
