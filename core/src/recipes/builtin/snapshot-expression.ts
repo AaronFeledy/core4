@@ -55,11 +55,13 @@ const base64 = (value: string): string => {
  * verbatim. `snapshot-yaml.ts` refuses double quotes, tabs, line breaks, and
  * whitespace before `#`, all of which appear in the multi-line shell scaffolds
  * and JSON settings blobs these recipes author. Base64 uses none of them, and
- * `b64decode` is already on the closed snapshot helper allowlist, so the
- * published snapshot stays inert declarative data.
+ * The reserved Literal payload is decoded by the SDK snapshot renderers before
+ * compilation, preserving authored intent. Ordinary b64decode calls remain data.
+ * This cold-path module cannot import the Effect-bearing SDK recipes barrel.
  *
  * The readable source string stays in its own module; only its serialized form
  * is encoded. A fresh node is returned per call because the snapshot input
  * budget treats a repeated object reference as a cycle.
  */
-export const encodedStringNode = (value: string): ExpressionNode => call("b64decode", lit(base64(value)));
+export const encodedStringNode = (value: string): ExpressionNode =>
+  lit(`lando:authoring:base64:${base64(value)}`);

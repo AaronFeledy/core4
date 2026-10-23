@@ -68,8 +68,8 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
 
       // Then
-      const tooling = landofile.tooling as Record<string, Record<string, unknown>>;
-      const services = landofile.services as Record<string, Record<string, unknown>>;
+      const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
+      const services = landofile.document.services as Record<string, Record<string, unknown>>;
       const routes = services.appserver?.routes as ReadonlyArray<Record<string, unknown>>;
       expect(tooling["drupal-scaffold"]?.cmd).toBe(drupalScaffoldCommand(drupalDefaults.drupal));
       expect(services.appserver?.type).toBe(`php:${drupalDefaults.php}`);
@@ -85,8 +85,8 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
 
       // Then
-      const tooling = landofile.tooling as Record<string, Record<string, unknown>>;
-      const services = landofile.services as Record<string, Record<string, unknown>>;
+      const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
+      const services = landofile.document.services as Record<string, Record<string, unknown>>;
       expect(tooling["drupal-scaffold"]?.cmd).toBe(drupalScaffoldCommand("10"));
       expect(services.appserver?.type).toBe("php:8.4");
     });
@@ -99,8 +99,8 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
       { ...drupalCmsDefaults },
       async (appRoot) => {
         const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
-        const tooling = landofile.tooling as Record<string, Record<string, unknown>>;
-        const services = landofile.services as Record<string, Record<string, unknown>>;
+        const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
+        const services = landofile.document.services as Record<string, Record<string, unknown>>;
         expect(tooling["drupal-cms-scaffold"]?.cmd).toBe(DRUPAL_CMS_SCAFFOLD_COMMAND);
         expect(services.appserver?.type).toBe(`php:${drupalCmsDefaults.php}`);
         expect(services.appserver?.webroot).toBe(drupalCmsDefaults.webroot);
