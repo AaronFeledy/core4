@@ -35,7 +35,7 @@ describe("docs workspace", () => {
       private: true,
       type: "module",
       scripts: {
-        build: "astro build",
+        build: "bun scripts/build.mjs",
         dev: "astro dev",
         preview: "astro preview",
       },
