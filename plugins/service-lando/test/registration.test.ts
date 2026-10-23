@@ -93,6 +93,8 @@ describe("@lando/service-lando registration", () => {
       "node",
       "node:lts",
       "node:22",
+      "node:24",
+      "node:26",
       "opensearch",
       "opensearch:2",
       "php:8.1",

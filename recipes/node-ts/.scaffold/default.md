@@ -13,10 +13,19 @@ The generated Landofile reads two environment variables at load time:
 
 | Variable | Used for | Fallback |
 | --- | --- | --- |
-| `LANDO_NODE_VERSION` | the Node image tag for the `web` service | `lts` |
+| `LANDO_NODE_VERSION` | the Node image tag for the `web` service | `24` |
 | `NODE_ENV` | `NODE_ENV` inside the `web` service | `development` |
 
-Set either one in your shell before `lando start` and the app picks it up on the next load. No rebuild of the Landofile, no second config file.
+The default image is `node:24`, so changes to the upstream `node:lts` tag do
+not move this app to another major version. `LANDO_NODE_VERSION` selects an
+image tag directly; this recipe does not use Lando's Node service type.
+
+If you choose a Node 26 image, it will not include Yarn or Corepack. To use
+Node-service features such as `globals` package installation, replace the
+`web` service's `image:` field with an explicit type such as `type: node:26`.
+That type selects the version directly instead of reading `LANDO_NODE_VERSION`.
+
+Set either environment variable in your host shell before `lando start`. The Landofile reads it on the next load; you do not need a second config file.
 
 ```sh
 LANDO_NODE_VERSION=22 lando start

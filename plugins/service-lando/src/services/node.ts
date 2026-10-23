@@ -20,11 +20,28 @@ import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_pac
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
-export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
+export const SUPPORTED_NODE_MAJORS = [
+  { major: 22, codename: "jod" },
+  { major: 24, codename: "krypton", lts: true },
+  { major: 26 },
+] as const;
+
+export type SupportedNodeMajor = (typeof SUPPORTED_NODE_MAJORS)[number]["major"];
+export const SUPPORTED_NODE_VERSIONS = ["lts", "22", "24", "26"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
-const NODE_ARTIFACTS = Object.fromEntries(
-  SUPPORTED_NODE_VERSIONS.map((version) => [version, `node:${version}`]),
+
+const NODE_LTS_MAJOR = SUPPORTED_NODE_MAJORS.find((entry) => "lts" in entry && entry.lts)?.major ?? 24;
+
+const NODE_ARTIFACTS: Readonly<Record<SupportedNodeVersion, string>> = Object.fromEntries([
+  ["lts", `node:${NODE_LTS_MAJOR}`],
+  ...SUPPORTED_NODE_MAJORS.map((entry) => [String(entry.major), `node:${entry.major}`] as const),
+]) as Readonly<Record<SupportedNodeVersion, string>>;
+
+const NODE_MAJOR_IDS = SUPPORTED_NODE_MAJORS.map((entry) => String(entry.major));
+const NODE_CODENAMES = SUPPORTED_NODE_MAJORS.flatMap((entry) =>
+  "codename" in entry && entry.codename !== undefined ? [entry.codename] : [],
 );
+const NVMRC_REMEDIATION = `Use a supported Node major (${NODE_MAJOR_IDS.join(", ")}), an LTS codename (${NODE_CODENAMES.join(", ")}), lts/*, or an exact pin of a supported major.`;
 
 export const NODE_FEATURE_ID = "service-lando.node" as const;
 export const NODE_FEATURE_PRIORITY = 600;
@@ -46,8 +63,6 @@ type NodeFeatureConfig = typeof NodeFeatureConfigSchema.Type;
 const REMEDIATION_VERSION = (requested: string): string =>
   `Set type to one of: ${SUPPORTED_NODE_VERSIONS.map((v) => `node:${v}`).join(", ")} (got node:${requested}).`;
 
-const NODE_MAJOR = 22;
-const NODE_LTS_CODENAME = "jod";
 const PROJECT_FILE_LIMIT = 1_048_576;
 
 export class NodeInferenceError extends Error {
@@ -73,72 +88,75 @@ type ParsedNvmrc = NodeInferenceSelection & {
 
 const exactPinRemediation = "Add an exact pin in .nvmrc, or a channel-preserving Node pin, then retry.";
 
+const majorSelection = (
+  major: number,
+  sourcePath: string,
+  normalizedConstraint: string = String(major),
+): ParsedNvmrc => ({
+  artifact: `node:${major}`,
+  normalizedConstraint,
+  sourcePath,
+  range: String(major),
+  exactVersion: undefined,
+});
+
 const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: true }): ParsedNvmrc => {
   const constraint = input.text
     .split(/\r?\n/u)
     .map((line) => line.replace(/#.*$/u, "").trim().toLowerCase())
     .find((line) => line.length > 0);
   if (constraint === undefined) {
-    throw new NodeInferenceError(
-      `Unsupported Node version "" in ${input.path}.`,
-      `Use Node ${NODE_MAJOR}, ${NODE_LTS_CODENAME}, lts/*, or an exact Node ${NODE_MAJOR} pin.`,
-    );
+    throw new NodeInferenceError(`Unsupported Node version "" in ${input.path}.`, NVMRC_REMEDIATION);
   }
-  const major = new RegExp(`^v?${NODE_MAJOR}$`, "u");
-  const minor = new RegExp(`^v?${NODE_MAJOR}\\.(\\d+)$`, "u").exec(constraint);
-  const exact = new RegExp(`^v?${NODE_MAJOR}\\.(\\d+)\\.(\\d+)$`, "u").exec(constraint);
 
-  if (exact !== null) {
-    const normalized = constraint.replace(/^v/u, "");
-    if (valid(normalized) === null) {
-      throw new NodeInferenceError(
-        `Invalid Node version "${constraint}" in ${input.path}.`,
-        exactPinRemediation,
-      );
+  if (constraint === "lts" || constraint === "lts/*") {
+    return majorSelection(NODE_LTS_MAJOR, input.path, constraint);
+  }
+
+  for (const entry of SUPPORTED_NODE_MAJORS) {
+    const major = entry.major;
+    const exact = new RegExp(`^v?${major}\\.(\\d+)\\.(\\d+)$`, "u").exec(constraint);
+    const minor = new RegExp(`^v?${major}\\.(\\d+)$`, "u").exec(constraint);
+    const isMajor = new RegExp(`^v?${major}$`, "u").test(constraint);
+    const codename = "codename" in entry ? entry.codename : undefined;
+
+    if (exact !== null) {
+      const normalized = constraint.replace(/^v/u, "");
+      if (valid(normalized) === null) {
+        throw new NodeInferenceError(
+          `Invalid Node version "${constraint}" in ${input.path}.`,
+          exactPinRemediation,
+        );
+      }
+      return {
+        artifact: `node:${normalized}`,
+        normalizedConstraint: normalized,
+        sourcePath: input.path,
+        range: undefined,
+        exactVersion: normalized,
+      };
     }
-    return {
-      artifact: `node:${normalized}`,
-      normalizedConstraint: normalized,
-      sourcePath: input.path,
-      range: undefined,
-      exactVersion: normalized,
-    };
+    if (minor !== null && valid(`${major}.${minor[1]}.0`) !== null) {
+      const normalized = `${major}.${minor[1]}`;
+      return {
+        artifact: `node:${normalized}`,
+        normalizedConstraint: normalized,
+        sourcePath: input.path,
+        range: normalized,
+        exactVersion: undefined,
+      };
+    }
+    if (
+      isMajor ||
+      (codename !== undefined && (constraint === codename || constraint === `lts/${codename}`))
+    ) {
+      return majorSelection(major, input.path);
+    }
   }
-  if (minor !== null && valid(`${NODE_MAJOR}.${minor[1]}.0`) !== null) {
-    const normalized = `${NODE_MAJOR}.${minor[1]}`;
-    return {
-      artifact: `node:${normalized}`,
-      normalizedConstraint: normalized,
-      sourcePath: input.path,
-      range: normalized,
-      exactVersion: undefined,
-    };
-  }
-  if (
-    major.test(constraint) ||
-    constraint === NODE_LTS_CODENAME ||
-    constraint === `lts/${NODE_LTS_CODENAME}`
-  ) {
-    return {
-      artifact: `node:${NODE_MAJOR}`,
-      normalizedConstraint: String(NODE_MAJOR),
-      sourcePath: input.path,
-      range: String(NODE_MAJOR),
-      exactVersion: undefined,
-    };
-  }
-  if (constraint === "lts/*") {
-    return {
-      artifact: "node:lts",
-      normalizedConstraint: constraint,
-      sourcePath: input.path,
-      range: "*",
-      exactVersion: undefined,
-    };
-  }
+
   throw new NodeInferenceError(
     `Unsupported Node version "${constraint}" in ${input.path}.`,
-    `Use Node ${NODE_MAJOR}, ${NODE_LTS_CODENAME}, lts/*, or an exact Node ${NODE_MAJOR} pin.`,
+    NVMRC_REMEDIATION,
   );
 };
 
@@ -192,6 +210,13 @@ const compatibleWithEngine = (selection: ParsedNvmrc, engine: string): boolean =
   return subset(selection.range, engine);
 };
 
+const selectMajorForEngine = (engine: string): SupportedNodeMajor | undefined => {
+  const compatible = SUPPORTED_NODE_MAJORS.filter((entry) => subset(String(entry.major), engine));
+  if (compatible.length === 0) return undefined;
+  const lts = compatible.find((entry) => "lts" in entry && entry.lts);
+  return (lts ?? compatible.at(-1))?.major;
+};
+
 export const resolveNodeInference = (
   inputs: ReadonlyArray<ServiceTypeProjectFileInput>,
 ): NodeInferenceSelection => {
@@ -210,16 +235,16 @@ export const resolveNodeInference = (
     return selection;
   }
   if (engine !== undefined) {
-    const supportedRange = String(NODE_MAJOR);
-    if (subset(supportedRange, engine)) {
+    const major = selectMajorForEngine(engine);
+    if (major !== undefined) {
       return {
-        artifact: `node:${NODE_MAJOR}`,
+        artifact: `node:${major}`,
         normalizedConstraint: engine,
         sourcePath: packageJson?.path ?? "package.json",
       };
     }
     throw new NodeInferenceError(
-      `package.json engines.node "${engine}" does not prove that the complete Node ${NODE_MAJOR} image channel is compatible.`,
+      `package.json engines.node "${engine}" does not prove that a complete supported Node image channel (${NODE_MAJOR_IDS.join(", ")}) is compatible.`,
       exactPinRemediation,
     );
   }
@@ -248,8 +273,14 @@ const validateVersion = (
   );
 };
 
-// Official Node images ship Corepack shims at /usr/local/bin/{yarn,pnpm}.
-// --force lets authored globals replace those stubs instead of failing EEXIST.
+const artifactFor = (version: string): string =>
+  Object.hasOwn(NODE_ARTIFACTS, version)
+    ? NODE_ARTIFACTS[version as SupportedNodeVersion]
+    : `node:${version}`;
+
+// Official Node images ship `yarn` as a Yarn 1 symlink; pnpm is absent.
+// Node 26 drops both that symlink and Corepack. --force lets authored globals
+// replace a Yarn 1 stub instead of failing EEXIST.
 const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
   [
     "set -eux",
@@ -262,10 +293,9 @@ const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
 const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { version } = ctx.config as NodeFeatureConfig;
-  const serviceType = `node:${version}`;
   const port = service.port ?? DEFAULT_PORT;
 
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? serviceType });
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? artifactFor(version) });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   ctx.addEnv("PORT", String(port));
   applyAuthoredProcessFields(ctx, ["user"]);
@@ -326,6 +356,8 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
 
 export const nodeLtsServiceType: ServiceType = makeNodeServiceType("lts");
 export const node22ServiceType: ServiceType = makeNodeServiceType("22");
+export const node24ServiceType: ServiceType = makeNodeServiceType("24");
+export const node26ServiceType: ServiceType = makeNodeServiceType("26");
 
 export const nodeServiceType: ServiceType = {
   id: "node",

@@ -468,7 +468,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:lts
+          pull_image docker.io/library/node:24
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
