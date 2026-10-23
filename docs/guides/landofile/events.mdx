@@ -7,7 +7,7 @@ tags: [beta, docs, landofile, events]
 
 # Run tasks at app lifecycle events
 
-Use `events:` when work must run every time an app reaches a lifecycle point:
+Use `events:` to run a command or tooling task before or after an app lifecycle operation. Add the steps to your Landofile. This example runs a host command before start and a tooling task inside `web` after start:
 
 ```yaml
 name: events-demo
@@ -27,13 +27,16 @@ tooling:
     cmd: echo "Cache ready"
 ```
 
-`pre-*` failures stop the lifecycle operation before it starts. `post-start` and `post-stop` failures warn, and the warning carries the step's redacted output so you can see why it failed; other `post-*` failures fail the operation with a tagged `LandofileEventStepFailedError` and a redacted output tail. If the operation itself fails, its `post-*` steps never run. Event output uses the normal renderer and secret redaction.
+Run the commands from the app directory:
 
-A bare or plain-string step defaults to provider exec, which needs a running service. `pre-start` fires before any service exists, so a `pre-start` step must use the object form with `service: ":host"`. Use `pre-stop` for work inside a running service. `post-stop` fires after that service is gone and needs `service: ":host"` for shell work.
+```sh
+lando app:config:lint
+lando start
+```
 
-Every command reads `events:` from the Landofile in the app folder when you run it. Add a `pre-destroy` step after `lando start` and it runs on the next `lando destroy`; no restart needed. `lando stop` and `lando destroy` tear down what is actually running, so if the folder has no Landofile (including `lando destroy --root`), the Landofile fails to load, or it now names a different app or provider than the one that is running, Lando prints one notice saying why, skips the Landofile steps, and still stops or destroys the app. Scripts and agents read the same fact from the result instead of the notice: `lando stop --format=json` and `lando destroy --format=json` carry `landofileEvents`, with `status: "ran"` when the steps came from your Landofile and `status: "skipped"` plus a `reason` otherwise.
+After the app starts, the `warm-cache` task runs inside `web`. In this example it prints `Cache ready`. Replace its `cmd` with the work your app needs.
 
-One exception guards your data. If the folder still has a Landofile that Lando cannot use (it fails to load, or it names another app or provider), a `pre-destroy` backup step it declares would not run, so `lando destroy --volumes`, `--purge`, and `--purge-caches` ask before removing data. Pass `--yes` to remove it anyway; non-interactive runs without `--yes` fail with `LandofileEventsSkippedError` and change nothing. A folder with no Landofile has nothing to run and is not gated.
+A plain-string step runs inside a service by default. Before start, that service may not exist yet, so use `service: ":host"` for `pre-start` shell commands. Use `pre-stop` for work that needs a running service, and `service: ":host"` for shell work after stop.
 
 <Guide>
   <Scenario id="ordered-lifecycle-tasks" render>
@@ -69,9 +72,32 @@ One exception guards your data. If the folder still has a Landofile that Lando c
 
 You can attach tasks to `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, and `post-destroy`. Steps run in declaration order. `lando restart` fires `pre-restart`, then the stop and start event trees, then `post-restart`.
 
-`lando stop` and `lando destroy` run the steps in your current Landofile and `hostEvents`, so an edit takes effect without a restart. If the Landofile can't be loaded, or now names a different app, they print a notice, skip your steps, and still tear the app down. Cleaning up leftovers (orphaned containers, ownership records, or `--purge` snapshots after the app is gone) fires both destroy events for plugins but skips your steps, since Lando has no record of a successful start to run them against. A destroy that fails partway skips `post-destroy`.
-
 Every non-internal tooling task also gets `pre-<task>` and `post-<task>`. See [Run steps before and after a tooling task](../events/task-events.mdx).
+
+## Handle a failed step
+
+A failed `pre-*` step prevents the lifecycle operation from running. If the operation itself fails, its `post-*` steps do not run.
+
+A failed `post-start` or `post-stop` step produces a warning with the step's redacted output tail, but does not fail the completed operation. Other `post-*` failures fail the command with `LandofileEventStepFailedError` and a redacted output tail. Event output uses Lando's normal secret redaction.
+
+## Change stop and destroy hooks
+
+`lando stop` and `lando destroy` use the Landofile at the recorded app root to find the steps to run. They do not take hooks from an old saved plan or a different Landofile in your working directory. A `pre-destroy` step added after `lando start` therefore runs on the next `lando destroy`, without a restart.
+
+If that root has no Landofile, Lando prints an info notice and skips the Landofile and host-event steps. If the Landofile cannot load, or describes a different app, app root, or provider, Lando prints a warning and skips those steps. This also applies when you target an app with `--root`. The operation can still stop or destroy the recorded app, subject to the data-removal check below. Ownership checks and recovery of an unfinished start still fail when Lando cannot establish that cleanup is safe.
+
+**Check backup hooks before removing data.** If a Landofile is present but unusable, a `pre-destroy` backup step might not run. With `lando destroy --volumes`, `--purge`, or `--purge-caches`, Lando asks before proceeding without those steps. Fix the Landofile to run them. Pass `--yes` only if you intend to remove data without them. A non-interactive run without `--yes` fails with `LandofileEventsSkippedError` before changing the app. This extra confirmation does not apply when the root has no Landofile.
+
+For scripts, inspect the result of `lando stop --format=json` or `lando destroy --format=json`. When the operation tears down an app whose steps could have run, `landofileEvents` contains:
+
+- `{ status: "ran" }` when Lando could use the Landofile's event plan.
+- `{ status: "skipped", reason }` when it could not.
+
+`ran` describes how the event plan was sourced, not whether every step succeeded. Steps may still warn or be skipped under the rules on this page. The field can be absent for a no-op or cleanup without an applied app.
+
+Cleaning up leftovers, such as orphaned containers, ownership records, or snapshots after the app is gone, skips your steps. Destroy still publishes the plugin lifecycle events; a destroy that fails partway does not publish `post-destroy`.
+
+If you embed Lando, an existing library `App` handle keeps the Landofile snapshot it was resolved from. Resolve a new handle to pick up edited project hooks. Host-wide hooks use the host-configuration snapshot held by the runtime.
 
 ## Run the same steps on every app
 
