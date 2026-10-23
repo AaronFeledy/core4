@@ -114,7 +114,7 @@ lando exec app -- php -m
 lando composer require perftools/php-profiler
 ```
 
-Check that `xhprof` appears in the module list. Composer writes `composer.json` and `composer.lock` to your app directory; commit both so the next `lando composer install` gets the same profiler release.
+Check that `xhprof` appears in the module list. Composer writes `composer.json` and `composer.lock` to your app directory; commit both so the next `lando composer install` gets the same profiler release. The `vendor` directory stays inside the `app` service, not on your host.
 
 ## Profile a request
 
@@ -122,7 +122,7 @@ Run `lando info` and open the `app` URL in your browser. The page prints `fib(25
 
 Open the `xhgui` URL from `lando info`. Check that the run list shows a run for `/`, then open it and check that its function table lists `fib`. Every page load adds a run, so reload a few times to compare.
 
-If no run appears, check that `xhprof` is in `lando exec app -- php -m` and that `vendor/perftools/php-profiler` exists in your app directory, and that `lando logs -s app` shows no `xhgui:` errors.
+If no run appears, check that `xhprof` is in `lando exec app -- php -m`, that `lando exec app -- ls /app/vendor/perftools/php-profiler` lists the package, and that `lando logs -s app` shows no `xhgui:` errors.
 
 ## Keep profiles local
 
