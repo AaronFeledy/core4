@@ -186,8 +186,8 @@ lando artisan horizon:forget JOB_UUID
 
 | You see | Fix |
 | --- | --- |
-| `/horizon` and every route but `/` return 404 | `mod_rewrite` is off. Add the `a2enmod rewrite` build step and run `lando rebuild -y`. |
-| `worker` stays `stopped` after `horizon:terminate` | The service has no `restart: unless-stopped`. Add it and run `lando rebuild -y`. |
+| `/horizon` and every route but `/` return 404 | `mod_rewrite` is off. Add the `a2enmod rewrite` build step and run `lando start`. |
+| `worker` stays `stopped` after `horizon:terminate` | The service has no `restart: unless-stopped`. Add it and run `lando start`. |
 | `No processes to terminate.` | You ran it on `appserver`. Use `lando exec worker -- php artisan horizon:terminate`. |
 | `horizon:status` says `Horizon is inactive.` | Check `lando logs -s worker`. A worker started before `artisan` existed retries automatically; finish installation and configuration, then check status again. |
 

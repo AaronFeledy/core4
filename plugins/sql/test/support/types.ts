@@ -1,9 +1,19 @@
-import type { DataTransferSpec, SnapshotFilter, SnapshotMetadata } from "@lando/sdk/schema";
+import type {
+  AppIdentity,
+  DataTransferSpec,
+  SnapshotFilter,
+  SnapshotHandle,
+  SnapshotMetadata,
+  SnapshotRestoreOptions,
+  VolumeRef,
+} from "@lando/sdk/schema";
 import type { SqlCommandDeps } from "../../src/run.ts";
 
 export type ExtraSqlService = { readonly name: string; readonly type: string };
 export type SqlTestOptions = {
   readonly password: string;
+  readonly appliedPlans?: SqlCommandDeps["appliedPlans"];
+  readonly inspectSource?: SqlCommandDeps["inspectSource"];
   readonly rootPassword?: string;
   readonly type?: string;
   readonly environment?: Readonly<Record<string, string>>;
@@ -30,9 +40,11 @@ export type RecordedExec = {
   readonly env?: Readonly<Record<string, string>>;
 };
 export type RecordedSnapshot = {
+  readonly owner: AppIdentity;
   readonly store: string;
   readonly format?: string;
   readonly label?: string;
+  readonly repoGroupKey?: string;
   readonly metadata?: SnapshotMetadata;
 };
 export type SqlLifecycleStep = "lock" | "snapshot" | "stop" | "restore" | "start" | "resume" | "suspend";
@@ -41,6 +53,12 @@ export type SqlTestHarness = {
   readonly deps: SqlCommandDeps;
   readonly transfers: () => ReadonlyArray<DataTransferSpec>;
   readonly snapshots: () => ReadonlyArray<RecordedSnapshot>;
+  readonly restores: () => ReadonlyArray<{
+    readonly id: string;
+    readonly handle: SnapshotHandle;
+    readonly store: VolumeRef;
+    readonly opts?: SnapshotRestoreOptions;
+  }>;
   readonly execs: () => ReadonlyArray<RecordedExec>;
   readonly published: () => ReadonlyArray<string>;
   readonly lifecycle: () => ReadonlyArray<SqlLifecycleStep>;

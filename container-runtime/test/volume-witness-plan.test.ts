@@ -1,28 +1,23 @@
 import { expect, test } from "bun:test";
 import { AbsolutePath, AppId, PortablePath } from "@lando/sdk/schema";
 import { Effect, Schema, Stream } from "effect";
-import { type DataPlaneHttpRequest, makeProviderDataPlane } from "../src/data-plane.ts";
+import { type DataPlaneHttpRequest, makeProviderDataPlane, volumeWitnessImage } from "../src/data-plane.ts";
+import { echoHelperPull } from "./helper-pull-support.ts";
 
 test("pins both adoption helpers to the existing container rather than auto-creating a named volume", async () => {
   const calls: DataPlaneHttpRequest[] = [];
-  let imageReady = false;
-  let pulls = 0;
+  const pulledRefs: string[] = [];
   const ownerRoot = AbsolutePath.make("/canonical/app");
   const witness = { version: 1, ownerRoot, generation: "a1234567-1234-4123-8123-123456789abc" };
   const plane = makeProviderDataPlane({
     providerId: "podman",
-    snapshotMode: "copy",
+    capabilities: { volumeSnapshot: "none" },
     endpointNamespace: "unix:///fixture.sock",
-    prepareWitnessImage: Effect.sync(() => {
-      imageReady = true;
-      pulls++;
-    }),
+    pullHelperImage: echoHelperPull(pulledRefs),
     redactDetails: (value) => value,
     api: {
       request: (input) => {
         calls.push(input);
-        if (input.path.startsWith("/images/") && !imageReady)
-          return Effect.succeed({ status: 404, body: "{}" });
         return Effect.succeed({
           status: 200,
           body: JSON.stringify(
@@ -62,6 +57,8 @@ test("pins both adoption helpers to the existing container rather than auto-crea
       )(call.body),
     );
   expect(helpers).toHaveLength(2);
+  expect(helpers.map((helper) => helper.Image)).toEqual([volumeWitnessImage.ref, volumeWitnessImage.ref]);
+  expect(calls.some((call) => call.path.startsWith("/images/"))).toBe(false);
   const intents = helpers.map((helper) => {
     expect(helper.User).toBe("0:0");
     expect(helper.HostConfig.Binds).toBeUndefined();
@@ -81,5 +78,42 @@ test("pins both adoption helpers to the existing container rather than auto-crea
   expect(calls.filter((call) => call.method === "DELETE")).toHaveLength(2);
   expect(calls.some((call) => call.path === "/volumes/create")).toBe(false);
   expect(result.identity?.origin).toBe("adopted");
-  expect(pulls).toBe(1);
+  expect(pulledRefs).toEqual([volumeWitnessImage.ref, volumeWitnessImage.ref]);
+});
+
+test("refuses to create a witness helper when the acquired image is not the pinned digest", async () => {
+  const calls: DataPlaneHttpRequest[] = [];
+  const plane = makeProviderDataPlane({
+    providerId: "podman",
+    capabilities: { volumeSnapshot: "none" },
+    endpointNamespace: "unix:///fixture.sock",
+    pullHelperImage: (ref) => Effect.succeed({ ref, digest: `sha256:${"0".repeat(64)}` }),
+    redactDetails: (value) => value,
+    api: {
+      request: (input) => {
+        calls.push(input);
+        return Effect.succeed({
+          status: 200,
+          body: JSON.stringify(
+            input.path === "/containers/existing/json"
+              ? { Mounts: [{ Type: "volume", Name: "actual", Destination: "/data" }] }
+              : { Name: "actual", Driver: "local" },
+          ),
+        });
+      },
+      stream: () => Stream.empty,
+    },
+  });
+  const result = await Effect.runPromise(
+    plane
+      .adoptVolume({
+        app: AppId.make("irrelevant-slug"),
+        containerId: "existing",
+        destination: PortablePath.make("/data"),
+        ownerRoot: AbsolutePath.make("/canonical/app"),
+      })
+      .pipe(Effect.result),
+  );
+  expect(result._tag).toBe("Failure");
+  expect(calls.some((call) => call.path.startsWith("/containers/create"))).toBe(false);
 });

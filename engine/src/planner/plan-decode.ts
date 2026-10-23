@@ -12,6 +12,7 @@ export const decodeAppPlan = (
   return Effect.fail(
     new LandofileValidationError({
       message: `Planned AppPlan is invalid: ${issues.map(formatValidationIssueLine).join(", ")}.`,
+      remediation: "Correct the reported plan fields or the plugin that produced them.",
       file: `${appRoot}/.lando.yml`,
       issues,
     }),

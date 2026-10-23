@@ -1,9 +1,22 @@
 import { Schema } from "effect";
 
+import { ValidationIssue } from "../schema/validation-issue.ts";
+
+/**
+ * A service type rejected the service's configuration while resolving it.
+ * `issues` names the offending fields with paths relative to that service's
+ * own config (`["environment", "PGPORT"]`, not `["services", "db", ...]`);
+ * the planner places them under `services.<name>`. Without issues the
+ * failure is reported against the whole service.
+ */
 export class ServiceTypeError extends Schema.TaggedError<ServiceTypeError>()("ServiceTypeError", {
   message: Schema.String,
   serviceType: Schema.String,
   cause: Schema.optional(Schema.Unknown),
+  issues: Schema.optional(Schema.Array(ValidationIssue)).annotate({
+    description:
+      "Offending fields with paths relative to the service's own config; absent or empty means the whole service.",
+  }),
 }) {}
 
 export class ServiceFeatureError extends Schema.TaggedError<ServiceFeatureError>()("ServiceFeatureError", {

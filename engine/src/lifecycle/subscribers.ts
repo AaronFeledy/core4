@@ -22,7 +22,6 @@ import { RedactionService } from "@lando/redaction/service";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { builtInCommandIds, bundledPluginModules } from "../composition.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
-import { GlobalPluginManifests } from "../plugins/global-manifests.ts";
 import { EventDispatchControl } from "../services/event-service.ts";
 import { makePublishRender } from "./publish-render.ts";
 import { resolveNotifyConfig } from "./subscriber-config.ts";
@@ -149,7 +148,6 @@ export const layer = (
   Layer.effectDiscard(
     Effect.gen(function* () {
       const plugins = yield* PluginRegistry;
-      const globalPlugins = yield* GlobalPluginManifests;
       const configService = yield* ConfigService;
       const events = yield* EventService;
       const dispatchControl = yield* EventDispatchControl;
@@ -160,17 +158,13 @@ export const layer = (
       const httpClient = yield* HttpClient.HttpClient;
       const redaction = yield* RedactionService;
       const manifests = yield* plugins.list;
-      const globalManifests = yield* globalPlugins.list;
       const commandRegistry = yield* CommandRegistry;
       const resolvedCommands = yield* commandRegistry.list;
       const commandIds = canonicalSubscriberCommandIds(manifests, resolvedCommands, builtIns);
-      const notifyCommandIds = new Set(canonicalSubscriberCommandIds(globalManifests, [], builtIns));
       const hasNotifySubscriber = manifests.some((manifest) =>
         manifest.subscribers?.some((subscriber) => subscriber.configKey === "notify"),
       );
-      const notify = hasNotifySubscriber
-        ? yield* resolveNotifyConfig(yield* configService.load, notifyCommandIds)
-        : undefined;
+      const notify = hasNotifySubscriber ? yield* resolveNotifyConfig(yield* configService.load) : undefined;
       const closure = makeSubscriberRegistrationClosure(manifests);
       const index = yield* closure.close(commandIds);
       const handlers = new Map<IndexedSubscriber, Effect.Effect<RuntimeSubscriberHandler, PluginLoadError>>();

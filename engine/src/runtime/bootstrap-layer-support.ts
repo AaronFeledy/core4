@@ -2,7 +2,7 @@ import { type Context, Effect, type Layer, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LogLevel, ProviderCapabilities, ProviderId, type ResolvedPluginInput } from "@lando/sdk/schema";
-import { Renderer, type RootOverrides, RuntimeProvider } from "@lando/sdk/services";
+import { Renderer, RuntimeProvider } from "@lando/sdk/services";
 
 import type { LoggerMode } from "../logging/service.ts";
 import type { BootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
@@ -33,7 +33,7 @@ export interface BootstrapLayerInputs {
   readonly pluginManifests: ReadonlyArray<ResolvedPluginInput>;
   readonly externalImports: boolean;
   readonly cwd: string;
-  readonly rootOverrides: RootOverrides;
+  readonly configInputs: import("../services/config.ts").GlobalConfigSources["Service"];
 }
 
 const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
@@ -95,6 +95,7 @@ export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvide
   waitForExit: () => Effect.fail(unsupportedProviderOperation("waitForExit")),
   destroy: () => Effect.succeed({ kind: "no-op", reason: "no-applied-plan" }),
   removeObservedService: () => Effect.succeed({ kind: "absent" }),
+  readAppEnvironment: () => Effect.succeed([]),
   exec: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot exec" }),
   execStream: () => Stream.empty,
   run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot run" }),
@@ -103,6 +104,7 @@ export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvide
   inspect: () => Effect.die("runtime provider stub cannot inspect services"),
   list: () => Effect.succeed([]),
   snapshotVolume: () => Effect.die("runtime provider stub cannot snapshot volumes"),
+  removeVolumeSnapshot: () => Effect.die("runtime provider stub cannot remove volume snapshots"),
   restoreVolume: () => Effect.die("runtime provider stub cannot restore volumes"),
   locateVolume: () => Effect.die("runtime provider stub cannot locate volumes"),
   listVolumes: () => Effect.die("runtime provider stub cannot list volumes"),

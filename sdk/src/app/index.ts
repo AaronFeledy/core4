@@ -14,12 +14,12 @@ import type { Effect, Scope, Stream } from "effect";
 import type {
   AppIdReservedError,
   AppLockTimeoutError,
+  AppPlacementError,
   AppResolveError,
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
   CacheError,
   CommandAliasConflictError,
-  ConfigError,
   EventError,
   FileSyncDriftError,
   FileSyncStartError,
@@ -42,7 +42,6 @@ import type {
   LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileTransactionError,
@@ -75,7 +74,6 @@ import type {
   ToolingCompileError,
   ToolingDisabledError,
   ToolingExecError,
-  ToolingIncludeCycleError,
   ToolingInputError,
   TunnelProviderUnavailableError,
   VolumeOperationError,
@@ -86,9 +84,11 @@ import type {
   AbsolutePath,
   AppPlan,
   AppRef,
+  CheckResult,
   ConfigLintResult,
   DatasetKind,
   LandofileShape,
+  ProviderId,
   RemoteConfig,
   RemoteEnvironment,
   RemoteTestResult,
@@ -141,6 +141,7 @@ import type { ScratchAcquireInput, ScratchHandle } from "../services/scratch.ts"
  * requirement channel because the retained runtime already satisfies them.
  */
 export type LandoRuntimeServices =
+  | import("../services/host-assets.ts").ContainerHelperAssets
   | Logger
   | Renderer
   | Telemetry
@@ -199,6 +200,7 @@ export interface StartAppOptions {
 }
 
 export interface StartAppResult {
+  readonly checks?: ReadonlyArray<CheckResult>;
   readonly app: string;
   readonly servicesStarted: ReadonlyArray<{
     readonly name: string;
@@ -210,6 +212,8 @@ export interface StartAppResult {
 export type AppPlanResolutionError = UserLandofileError | ProviderSelectionError | AppPlannerError;
 
 export type StartAppError =
+  | AppPlacementError
+  | AppResolveError
   | ServiceNotReadyError
   | UserLandofileError
   | AppPlannerError
@@ -273,7 +277,6 @@ export type StopAppError =
   | LandofileTimeoutError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | LandoCommandError
   | AppLockTimeoutError
@@ -292,6 +295,7 @@ export interface RestartAppOptions {
 }
 
 export interface RestartAppResult {
+  readonly checks?: ReadonlyArray<CheckResult>;
   readonly app: string;
   readonly servicesStarted: StartAppResult["servicesStarted"];
 }
@@ -304,6 +308,7 @@ export interface RebuildAppOptions {
 }
 
 export interface RebuildAppResult {
+  readonly checks?: ReadonlyArray<CheckResult>;
   readonly app: string;
   readonly servicesRebuilt: ReadonlyArray<string>;
   readonly servicesStarted: StartAppResult["servicesStarted"];
@@ -312,8 +317,10 @@ export interface RebuildAppResult {
 export type RebuildAppError = StartAppError | AppResolveError;
 
 export interface DestroyAppOptions {
+  readonly providerId?: ProviderId;
   readonly volumes?: boolean;
   readonly purgeCaches?: boolean;
+  readonly purgeSnapshots?: boolean;
   readonly yes?: boolean;
 }
 
@@ -322,9 +329,16 @@ export interface DestroyAppResult {
   readonly outcome?: "destroyed" | "unchanged";
   readonly servicesDestroyed: ReadonlyArray<string>;
   readonly volumesRemoved: boolean;
+  readonly snapshotsRemoved: number;
 }
 
-export type DestroyAppError = StopAppError | ProxyError | StateStoreError | CacheError;
+export type DestroyAppError =
+  | StopAppError
+  | ProxyError
+  | StateStoreError
+  | CacheError
+  | DataMoverError
+  | ProviderSelectionError;
 
 export interface InfoAppOptions {
   readonly deep?: boolean;
@@ -377,11 +391,12 @@ export interface InfoAppResult {
 }
 
 export type InfoAppError =
+  | StateStoreError
+  | AppResolveError
   | UserLandofileError
   | AppPlannerError
   | ProviderSelectionError
   | ProviderError
-  | ConfigError
   | LandoCommandError
   | ProxyError;
 
@@ -409,7 +424,6 @@ export type ExecAppError =
   | AppPlannerError
   | ProviderSelectionError
   | ProviderError
-  | ConfigError
   | ToolingExecError;
 
 /**
@@ -422,7 +436,6 @@ export interface ToolingOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly cacheRoot?: string;
-  readonly renderProgress?: boolean;
   /** Explicitly request a provider PTY. Omission remains noninteractive. */
   readonly tty?: boolean;
 }
@@ -433,10 +446,10 @@ export interface ToolingResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
-  readonly rendered?: boolean;
 }
 
 export type ToolingError =
+  | CommandAliasConflictError
   | UserLandofileError
   | AppPlannerError
   | ProviderSelectionError
@@ -446,7 +459,6 @@ export type ToolingError =
   | LandofileEventStepFailedError
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
-  | ConfigError
   | ShellExecError
   | ShellScriptOutsideRootError
   | ToolingCompileError
@@ -464,6 +476,8 @@ export interface LogsAppOptions {
 }
 
 export type LogsAppError =
+  | StateStoreError
+  | AppResolveError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | AppPlannerError
@@ -477,7 +491,6 @@ export type LogsAppError =
   | LandofileTimeoutError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | LandoCommandError
   | ToolingExecError;
@@ -529,10 +542,8 @@ export type RemoteSyncError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | RemoteSourceError
   | DatasetServiceError
@@ -604,11 +615,7 @@ export interface AppConfigApi {
     options?: AppConfigLintOptions,
   ) => Effect.Effect<
     ConfigLintResult,
-    | LandofileNotFoundError
-    | LandofileUnknownEventError
-    | LandofileValidationError
-    | CommandAliasConflictError
-    | NotImplementedError
+    LandofileNotFoundError | LandofileValidationError | NotImplementedError
   >;
 }
 
@@ -664,6 +671,7 @@ export interface App {
 /** Resolution union for `runtime.scratch`. */
 export type ScratchAcquireError =
   | ScratchAppError
+  | AppPlacementError
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | LandofileVersionConstraintError;

@@ -23,7 +23,6 @@ import {
 } from "@lando/redaction/service";
 import {
   HOST_PROXY_CONTAINER_LANDO,
-  HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_SOCKET,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
   connectHostProxyRunLando,
@@ -71,6 +70,7 @@ const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
   }),
 );
@@ -146,17 +146,17 @@ describe("hostProxyRunLandoFeature", () => {
       {
         type: "bind",
         source: session.shimPath,
-        target: "/usr/local/lib/lando/host-proxy-client",
-        readOnly: true,
-        realization: "passthrough",
-      },
-      {
-        type: "bind",
-        source: session.shimPath,
         target: "/usr/local/bin/lando",
         readOnly: true,
         realization: "passthrough",
       },
+      ...["/usr/local/bin/xdg-open", "/usr/local/bin/open"].map((target) => ({
+        type: "bind" as const,
+        source: session.shimPath,
+        target,
+        readOnly: true,
+        realization: "passthrough" as const,
+      })),
     ]);
     await session.close();
   });
@@ -234,17 +234,17 @@ describe("hostProxyRunLandoFeature", () => {
         LANDO_HOST_PROXY_DEPTH: "0",
       },
       mounts: [
+        ...["/usr/local/bin/xdg-open", "/usr/local/bin/open"].map((target) => ({
+          type: "bind" as const,
+          source: "/tmp/lando-shim",
+          target: PortablePath.make(target),
+          readOnly: true,
+          realization: "passthrough" as const,
+        })),
         {
           type: "bind" as const,
           source: "/tmp/host-proxy.sock",
           target: PortablePath.make(HOST_PROXY_CONTAINER_SOCKET),
-          readOnly: true,
-          realization: "passthrough" as const,
-        },
-        {
-          type: "bind" as const,
-          source: "/tmp/lando-shim",
-          target: PortablePath.make(HOST_PROXY_CONTAINER_SHIM),
           readOnly: true,
           realization: "passthrough" as const,
         },

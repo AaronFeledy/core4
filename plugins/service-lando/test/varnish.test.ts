@@ -139,7 +139,13 @@ describe("varnish ServiceType", () => {
         expect(result._tag).toBe("Failure");
         if (result._tag !== "Failure") throw new Error("expected missing backend to fail");
         expect(result.failure).toBeInstanceOf(ServiceTypeError);
-        expect(result.failure.message).toContain("backend:");
+        expect(result.failure.issues).toEqual([
+          {
+            path: ["backend"],
+            message: "A backend naming an app service to cache is required.",
+            suggestion: "Add backend: pointing at an existing service in this Landofile.",
+          },
+        ]);
         expect(result.failure.message).toContain("cache");
       });
     });

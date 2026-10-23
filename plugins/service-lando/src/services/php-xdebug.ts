@@ -1,6 +1,7 @@
 import type { ToolingTaskShape } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
+import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import type { PhpVia } from "./php-via.ts";
 
 export const PHP_XDEBUG_RELEASE = {
@@ -44,12 +45,18 @@ const parseModeString = (value: string): string => {
     .map((token) => token.trim())
     .filter((token) => token.length > 0);
   if (tokens.includes("off")) {
-    throw new Error(
-      `xdebug: ${JSON.stringify(value)} installs nothing useful; "off" is the runtime toggle, not an install mode. ${XDEBUG_REMEDIATION}`,
+    throw new ServiceConfigIssue(
+      ["xdebug"],
+      `Xdebug mode ${JSON.stringify(value)} installs nothing useful; "off" is the runtime toggle, not an install mode.`,
+      XDEBUG_REMEDIATION,
     );
   }
   if (tokens.length === 0 || tokens.some((token) => !isXdebugMode(token))) {
-    throw new Error(`Unsupported Xdebug mode ${JSON.stringify(value)}. ${XDEBUG_REMEDIATION}`);
+    throw new ServiceConfigIssue(
+      ["xdebug"],
+      `Unsupported Xdebug mode ${JSON.stringify(value)}.`,
+      XDEBUG_REMEDIATION,
+    );
   }
   return tokens.join(",");
 };
@@ -58,14 +65,20 @@ export const resolvePhpXdebug = (value: unknown): PhpXdebug => {
   if (value === undefined || value === false) return false;
   if (value === true) return { mode: "debug", release: PHP_XDEBUG_RELEASE };
   if (typeof value === "string") return { mode: parseModeString(value), release: PHP_XDEBUG_RELEASE };
-  throw new Error(`Unsupported Xdebug mode ${JSON.stringify(value)}. ${XDEBUG_REMEDIATION}`);
+  throw new ServiceConfigIssue(
+    ["xdebug"],
+    `Unsupported Xdebug mode ${JSON.stringify(value)}.`,
+    XDEBUG_REMEDIATION,
+  );
 };
 
 export const assertPhpXdebugSupported = (phpVersion: string, xdebug: PhpXdebug): void => {
   if (xdebug === false) return;
   if (phpVersion !== "8.6") return;
-  throw new Error(
-    `Xdebug is not available on PHP 8.6. The shipped pin is ${PHP_XDEBUG_RELEASE.version} and supports PHP 8.0 through 8.5. Remove xdebug: or set type to php:8.5.`,
+  throw new ServiceConfigIssue(
+    ["xdebug"],
+    `Xdebug is not available on PHP 8.6. The shipped pin is ${PHP_XDEBUG_RELEASE.version} and supports PHP 8.0 through 8.5.`,
+    "Remove xdebug: or set type to php:8.5.",
   );
 };
 

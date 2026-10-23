@@ -20,17 +20,15 @@ import {
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import { VOLUME_WITNESS_IMAGE } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import {
-  type LogFileHelperPayloads,
-  logFileHelperPayloadForTargets,
-} from "@lando/container-runtime/log-file-helper-payloads";
-import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
+  type ResolveContainerHelper,
+  makeProviderLogSourceBinding,
+} from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
@@ -40,7 +38,7 @@ import {
   podmanVolumeCreationLabels,
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
-import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { getContainerDiedEvents as getRuntimeContainerDiedEvents } from "@lando/container-runtime/podman/container-events";
 import {
   discoverLabeledContainers,
@@ -58,11 +56,13 @@ import {
   bindResolvedProviderOps,
   forgetAppliedPlanUnlessKept,
   makeProviderPlanState,
+  makeResourceOwnershipStore,
   noPlanErrorFactory,
   providerHostInputs,
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, redactString } from "@lando/container-runtime/redact";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -330,7 +330,7 @@ export const podmanCapabilitiesForPlatform = (
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
-    volumeSnapshot: "copy",
+    volumeSnapshot: "none",
     serviceFileCopy: "native",
     artifactExport: true,
     artifactImport: true,
@@ -338,7 +338,7 @@ export const podmanCapabilitiesForPlatform = (
     tlsCertificates: "none",
     rootless: true,
     composeSpec: "native",
-    composeKnobs: { supported: podmanComposeKnobs() },
+    composeKnobs: { supported: composeKnobsForDialect("libpod") },
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
@@ -506,7 +506,7 @@ export interface ProviderLayerOptions {
   ) => Effect.Effect<void, ProviderLandoConflictError | ProviderLandoStateError>;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
-  readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly resolveContainerHelper?: ResolveContainerHelper;
   readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
 }
 
@@ -638,10 +638,8 @@ const assembleRuntimeProvider = (
           const logSourceBinding = makeProviderLogSourceBinding({
             providerId: PROVIDER_ID,
             logFileAccess: options.logFileAccess,
-            helperPayload: logFileHelperPayloadForTargets(
-              options.logFileHelperPayloads,
-              capabilities.hostProxy?.containerTargets,
-            ),
+            helperTarget: capabilities.hostProxy?.containerTargets[0],
+            resolveHelper: options.resolveContainerHelper,
           });
           return {
             serverVersion,
@@ -673,198 +671,187 @@ const assembleRuntimeProvider = (
       return cause;
     }),
   );
-  const planState = makeProviderPlanState({
-    ctx: PODMAN_CTX,
-    providerId: providerIdBranded,
-    endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
-    prepareWitnessImage: pullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
+  return Effect.gen(function* () {
+    yield* conflictCheck;
+    const { serverVersion, capabilities: resolvedCapabilities, logSourceBinding } = yield* gatedRuntime;
+    const agentBridge = yield* resolvePodmanAgentBridge({ ...options, platform });
+    const planState = makeProviderPlanState({
       ctx: PODMAN_CTX,
-      dialect: libpodPullDialect,
-    }),
-    api: podmanApi,
-    snapshotMode: "copy",
-    redactDetails,
-    volumeCreationLabels: podmanVolumeCreationLabels,
-    providerName: "provider-podman",
-    ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
-    ...(options.sanitizeAppliedPlan === undefined
-      ? {}
-      : { sanitizeAppliedPlan: options.sanitizeAppliedPlan }),
-    load: loadAppliedPlan,
-    persist: persistAppliedPlan,
-    remove: removeAppliedPlan,
-  });
-  const { appliedPlans } = planState;
-  const plans = appliedPlans.plans;
-  const resolvePlan = appliedPlans.resolvePlan;
+      providerId: providerIdBranded,
+      endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
+      pullHelperImage: (ref) =>
+        pullImage(podmanApi, ref, {
+          ctx: PODMAN_CTX,
+          dialect: libpodPullDialect,
+          policy: "missing",
+        }),
+      api: podmanApi,
+      capabilities: resolvedCapabilities,
+      redactDetails,
+      volumeCreationLabels: podmanVolumeCreationLabels,
+      providerName: "provider-podman",
+      ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
+      ...(options.sanitizeAppliedPlan === undefined
+        ? {}
+        : { sanitizeAppliedPlan: options.sanitizeAppliedPlan }),
+      load: loadAppliedPlan,
+      persist: persistAppliedPlan,
+      remove: removeAppliedPlan,
+    });
+    const { appliedPlans } = planState;
+    const plans = appliedPlans.plans;
+    const resolvePlan = appliedPlans.resolvePlan;
 
-  const resolvedOps = bindResolvedProviderOps(planState, {
-    ctx: PODMAN_CTX,
-    noPlanError: makeNoPlanError,
-    service: {
-      lifecycle: (plan, target, action) =>
-        postServiceLifecycle(plan, target, action, { api: podmanApi, ctx: PODMAN_CTX }),
-      resume: (target, identity) =>
-        postExactServiceLifecycle(target, identity, "start", { api: podmanApi, ctx: PODMAN_CTX }),
-      suspend: (target, identity) =>
-        postExactServiceLifecycle(target, identity, "stop", { api: podmanApi, ctx: PODMAN_CTX }),
-      waitForExit: (plan, target, waitOptions) =>
-        waitForExit(plan, target, {
+    const resolvedOps = bindResolvedProviderOps(planState, {
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: podmanApi, ctx: PODMAN_CTX }),
+      ctx: PODMAN_CTX,
+      noPlanError: makeNoPlanError,
+      service: {
+        lifecycle: (plan, target, action) =>
+          postServiceLifecycle(plan, target, action, { api: podmanApi, ctx: PODMAN_CTX }),
+        resume: (target, identity) =>
+          postExactServiceLifecycle(target, identity, "start", { api: podmanApi, ctx: PODMAN_CTX }),
+        suspend: (target, identity) =>
+          postExactServiceLifecycle(target, identity, "stop", { api: podmanApi, ctx: PODMAN_CTX }),
+        waitForExit: (plan, target, waitOptions) =>
+          waitForExit(plan, target, {
+            api: podmanApi,
+            ctx: PODMAN_CTX,
+            dialect: libpodWaitDialect,
+            ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
+          }),
+        exec: (plan, target, command) => exec(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
+        execStream: (plan, target, command) =>
+          execStream(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
+        inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX }),
+      },
+    });
+
+    return {
+      id: PROVIDER_ID,
+      inspectResourceNames: Effect.fn("RuntimeProvider.inspectResourceNames")((query) =>
+        inspectEngineResourceNames(podmanApi, query, PODMAN_CTX),
+      ),
+      displayName: "Podman Runtime Provider (user-installed)",
+      version: "0.0.0",
+      platform,
+      capabilities: {
+        ...resolvedCapabilities,
+        ...(agentBridge === undefined ? {} : { agentSocket: { delivery: "guest-bridge" } }),
+      },
+      ...agentBridge,
+      isAvailable: podmanApi.info.pipe(
+        Effect.as(true),
+        Effect.catch(() => Effect.succeed(false)),
+      ),
+      appliedPlans:
+        options.appliedPlanState === undefined
+          ? Effect.succeed([])
+          : listAppliedPlans(options.appliedPlanState),
+      planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
+        Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
+      ),
+      setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
+      getStatus: Effect.succeed({ running: true, message: "ready" }),
+      getVersions: Effect.succeed({ provider: "0.0.0", runtime: serverVersion }),
+      getContainerDiedEvents: getContainerDiedEvents(podmanApi),
+      buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
+        buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi }),
+      ),
+      pullArtifact: Effect.fn("RuntimeProvider.pullArtifact")((spec) =>
+        pullImage(podmanApi, spec.ref, {
+          ctx: PODMAN_CTX,
+          dialect: libpodPullDialect,
+          ...(spec.policy === undefined ? {} : { policy: spec.policy }),
+          publish: (event) =>
+            options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ?? Effect.void,
+        }).pipe(
+          Effect.map((result) => ({
+            providerId: providerIdBranded,
+            ref: result.ref,
+            ...(result.digest === undefined ? {} : { digest: result.digest }),
+          })),
+        ),
+      ),
+      removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
+      apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+        yield* planState.ownership.prepare(plan, yield* appliedPlans.resolvePlan(plan.id));
+        return yield* bringUp(plan, {
           api: podmanApi,
           ctx: PODMAN_CTX,
-          dialect: libpodWaitDialect,
-          ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
-        }),
-      exec: (plan, target, command) => exec(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
-      execStream: (plan, target, command) =>
-        execStream(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
-      inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX }),
-    },
-  });
-
-  return conflictCheck.pipe(
-    Effect.flatMap(() => gatedRuntime),
-    Effect.flatMap((runtime) =>
-      resolvePodmanAgentBridge({ ...options, platform }).pipe(
-        Effect.map((agentBridge) => ({ ...runtime, agentBridge })),
-      ),
-    ),
-    Effect.map(
-      ({
-        serverVersion,
-        agentBridge,
-        capabilities: resolvedCapabilities,
-        logSourceBinding,
-      }): RuntimeProviderWithContainerEvents => ({
-        id: PROVIDER_ID,
-        inspectResourceNames: Effect.fn("RuntimeProvider.inspectResourceNames")((query) =>
-          inspectEngineResourceNames(podmanApi, query, PODMAN_CTX),
-        ),
-        displayName: "Podman Runtime Provider (user-installed)",
-        version: "0.0.0",
-        platform,
-        capabilities: {
-          ...resolvedCapabilities,
-          ...(agentBridge === undefined ? {} : { agentSocket: { delivery: "guest-bridge" } }),
-        },
-        ...agentBridge,
-        isAvailable: podmanApi.info.pipe(
-          Effect.as(true),
-          Effect.catch(() => Effect.succeed(false)),
-        ),
-        appliedPlans:
-          options.appliedPlanState === undefined
-            ? Effect.succeed([])
-            : listAppliedPlans(options.appliedPlanState),
-        planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
-          Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
-        ),
-        setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
-        getStatus: Effect.succeed({ running: true, message: "ready" }),
-        getVersions: Effect.succeed({ provider: "0.0.0", runtime: serverVersion }),
-        getContainerDiedEvents: getContainerDiedEvents(podmanApi),
-        buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
-          buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi }),
-        ),
-        pullArtifact: Effect.fn("RuntimeProvider.pullArtifact")((spec) =>
-          pullImage(podmanApi, spec.ref, {
-            ctx: PODMAN_CTX,
-            dialect: libpodPullDialect,
-            ...(spec.policy === undefined ? {} : { policy: spec.policy }),
-            publish: (event) =>
-              options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ?? Effect.void,
-          }).pipe(
-            Effect.map((result) => ({
-              providerId: providerIdBranded,
-              ref: result.ref,
-              ...(result.digest === undefined ? {} : { digest: result.digest }),
-            })),
-          ),
-        ),
-        removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
-        apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
-          return yield* bringUp(plan, {
-            api: podmanApi,
-            ctx: PODMAN_CTX,
-            ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
-            platform,
-            daemonUrl: socketPath,
-            ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
-            ...(applyOptions.serviceEnvironment === undefined
-              ? {}
-              : { serviceEnvironment: applyOptions.serviceEnvironment }),
-            reconcile: applyOptions.reconcile,
-            ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
-            completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
-            ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
-        }),
-        destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
-          const plan = target.plan ?? (yield* resolvePlan(target.app));
-          if (plan === undefined) return DESTROY_NO_OP;
-          yield* bringDown(plan, {
-            api: podmanApi,
-            ctx: PODMAN_CTX,
-            volumes: destroyOptions.volumes,
-            ...(destroyOptions.purgeCaches === undefined ? {} : { purgeCaches: destroyOptions.purgeCaches }),
-          });
-          yield* forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions);
-          return DESTROYED;
-        }),
-        removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
-          removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }).pipe(
-            Effect.map(observedRemoval),
-          ),
-        ),
-        logs: (target, logOptions) =>
-          Stream.unwrap(
-            (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
-              Effect.map((plan) =>
-                plan === undefined
-                  ? Stream.fail(makeNoPlanError(target.app, "logs"))
-                  : logs(plan, target, logOptions, {
-                      api: podmanApi,
-                      ctx: PODMAN_CTX,
-                      ...logSourceBinding.bind(podmanApi, serviceContainerName(plan, target.service)),
-                    }),
-              ),
-            ),
-          ),
-        list: Effect.fn("RuntimeProvider.list")(function* (filter) {
-          const persistedPlans =
-            options.appliedPlanState === undefined ? [] : yield* listAppliedPlans(options.appliedPlanState);
-          const allPlans = [...plans.values(), ...persistedPlans.filter((plan) => !plans.has(plan.id))];
-
-          const snapshots = yield* Effect.forEach(allPlans, (plan) =>
-            Effect.forEach(Object.values(plan.services), (service) =>
-              inspect(
-                plan,
-                { app: plan.id, service: service.name },
-                { api: podmanApi, ctx: PODMAN_CTX },
-              ).pipe(
-                Effect.map((snapshot) => ({
-                  ...snapshot,
-                  appRoot: plan.root,
-                  providerId: providerIdBranded,
-                  labels: scratchLabelsForPlan(plan),
-                })),
-              ),
-            ),
-          );
-
-          const discovered =
-            filter.includeUnplanned === true ? yield* discoverLabeledContainers(podmanApi, PODMAN_CTX) : [];
-          const flat = mergeDiscoveredContainers(
-            snapshots.flat(),
-            discovered,
-            filter.includeScratch === true,
-          );
-          return filter.app === undefined ? flat : flat.filter((snapshot) => snapshot.app === filter.app);
-        }),
-        ...resolvedOps,
+          ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
+          platform,
+          daemonUrl: socketPath,
+          ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
+          ...(applyOptions.serviceEnvironment === undefined
+            ? {}
+            : { serviceEnvironment: applyOptions.serviceEnvironment }),
+          reconcile: applyOptions.reconcile,
+          onVolumeCreated: applyOptions.onVolumeCreated,
+          ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
+          completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
+          ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
+        }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
       }),
-    ),
-  );
+      cleanupOwnedResources: planState.cleanupOwnedResources,
+      destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
+        const plan = target.plan ?? (yield* resolvePlan(target.app));
+        if (plan === undefined) return DESTROY_NO_OP;
+        yield* bringDown(plan, {
+          api: podmanApi,
+          ctx: PODMAN_CTX,
+          volumes: destroyOptions.volumes,
+          ...(destroyOptions.purgeCaches === undefined ? {} : { purgeCaches: destroyOptions.purgeCaches }),
+        });
+        yield* forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions);
+        return DESTROYED;
+      }),
+      removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
+        removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }).pipe(
+          Effect.map(observedRemoval),
+        ),
+      ),
+      logs: (target, logOptions) =>
+        Stream.unwrap(
+          (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
+            Effect.map((plan) =>
+              plan === undefined
+                ? Stream.fail(makeNoPlanError(target.app, "logs"))
+                : logs(plan, target, logOptions, {
+                    api: podmanApi,
+                    ctx: PODMAN_CTX,
+                    ...logSourceBinding.bind(podmanApi, serviceContainerName(plan, target.service)),
+                  }),
+            ),
+          ),
+        ),
+      list: Effect.fn("RuntimeProvider.list")(function* (filter) {
+        const persistedPlans =
+          options.appliedPlanState === undefined ? [] : yield* listAppliedPlans(options.appliedPlanState);
+        const allPlans = [...plans.values(), ...persistedPlans.filter((plan) => !plans.has(plan.id))];
+
+        const snapshots = yield* Effect.forEach(allPlans, (plan) =>
+          Effect.forEach(Object.values(plan.services), (service) =>
+            inspect(plan, { app: plan.id, service: service.name }, { api: podmanApi, ctx: PODMAN_CTX }).pipe(
+              Effect.map((snapshot) => ({
+                ...snapshot,
+                appRoot: plan.root,
+                providerId: providerIdBranded,
+                labels: scratchLabelsForPlan(plan),
+              })),
+            ),
+          ),
+        );
+
+        const discovered =
+          filter.includeUnplanned === true ? yield* discoverLabeledContainers(podmanApi, PODMAN_CTX) : [];
+        const flat = mergeDiscoveredContainers(snapshots.flat(), discovered, filter.includeScratch === true);
+        return filter.app === undefined ? flat : flat.filter((snapshot) => snapshot.app === filter.app);
+      }),
+      ...resolvedOps,
+    } satisfies RuntimeProviderWithContainerEvents;
+  });
 };
 
 export const makeRuntimeProvider = (
@@ -947,14 +934,16 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        resourceOwnership: (ctx, root) =>
+          makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
         appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
-          const { paths, platform, logFileHelperPayloads, sanitizeAppliedPlan } = yield* providerHostInputs;
+          const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan } = yield* providerHostInputs;
           return yield* makeRuntimeProvider({
             platform,
             stateDir: `${paths.roots.userDataRoot}/providers`,
             appliedPlanState: ctx.stateStore,
-            logFileHelperPayloads,
+            resolveContainerHelper,
             sanitizeAppliedPlan,
           });
         }),

@@ -38,6 +38,7 @@ const dispatchDeps = (entry: McpCommandEntry): McpDispatchDeps => ({
     Effect.succeed({
       _tag: "success",
       value: {
+        source: "resolved" as const,
         landofile: authoredLandofile,
       },
     } satisfies CommandResultOutcome),
@@ -72,7 +73,7 @@ describe("env_file machine-output redaction", () => {
       resultSchema: ExecJsonResultSchema,
       io,
       redactionTokens: extractTokens,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
 
@@ -103,7 +104,7 @@ describe("env_file machine-output redaction", () => {
         resultSchema: appConfigSpec.resultSchema,
         io,
         redactionTokens: appConfigRedactionTokens,
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       },
     );

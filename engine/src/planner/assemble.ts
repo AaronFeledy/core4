@@ -3,7 +3,12 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
-import { CapabilityError, LandofileValidationError, causeMessage } from "@lando/sdk/errors";
+import {
+  CapabilityError,
+  LandofileValidationError,
+  RouteProviderMismatchError,
+  causeMessage,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -25,7 +30,7 @@ import {
   type PathsService,
   type PluginRegistry,
 } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Predicate, Result } from "effect";
+import { type Context, DateTime, Effect, Predicate } from "effect";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -35,9 +40,12 @@ import {
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { routerEnabledFrom } from "../config/router-config.ts";
 import type { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
-import { type ComposeAppFeature, composeAppFeatures } from "../services/app-feature.ts";
+import {
+  type ComposeAppFeature,
+  composeAppFeatures,
+  snapshotAppFeatureEnv,
+} from "../services/app-feature.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
-import { mergeLogSources } from "../services/log-sources.ts";
 import { loadGlobalSecurityCas, resolveSecurityFeature } from "../services/network-inject.ts";
 import { resolveCertsFeature } from "../services/service-certs.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY, resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
@@ -53,7 +61,7 @@ import {
 } from "../subsystems/ssh/intent.ts";
 import { CORE_VERSION } from "../version.ts";
 import * as AppDefaults from "./app-defaults.ts";
-import { normalizeAuthoredRoutes, planServiceDrafts } from "./authored.ts";
+import { planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
   assertComposeKnobsSupported,
@@ -73,6 +81,7 @@ import { attachServiceCredsScope } from "./landofile-scopes.ts";
 import { appNetworkName } from "./naming.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
+import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
 import {
   type ResolvedService,
@@ -81,7 +90,7 @@ import {
   contributionId,
   resolvedServiceCacheInput,
 } from "./service-types.ts";
-import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
+import { authoredStorageScopes } from "./storage.ts";
 
 export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   pluginRegistry: Context.Service.Shape<typeof PluginRegistry>,
@@ -108,9 +117,11 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     globalConfig,
     appDefaults,
     provider,
+    hostProvider,
     manifests,
     topLevelEnvFiles,
     serviceCredsScope,
+    routes: resolvedRoutes,
   } = yield* resolveKnownEventSet({
     pluginRegistry,
     configService,
@@ -134,6 +145,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     catch: (cause) =>
       new LandofileValidationError({
         message: `Global network trust configuration is invalid: ${causeMessage(cause)}`,
+        remediation: "Correct the global network trust configuration and retry planning.",
         file: landofilePath,
         issues: [
           validationIssue(
@@ -167,6 +179,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         (error) =>
           new LandofileValidationError({
             message: error instanceof Error ? error.message : `App feature ${ref.id} is not registered.`,
+            remediation: `Install or repair the plugin that provides app feature ${ref.id}.`,
             file: landofilePath,
             issues: [
               validationIssue(
@@ -199,31 +212,18 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       envFileInputs,
     } = seed;
     const service = seed.authoredService;
-    const routes = yield* normalizeAuthoredRoutes({ name, service, landofile });
+    const routes = resolvedRoutes.get(name);
     const configSourceInputs = yield* resolveServiceConfigSources({
       appRoot,
       serviceName: name,
       config: service.config,
     });
     const resolvedAuthored = authoredStorageScopes(appRoot, name, resolution.normalizedConfig);
-    if (resolvedAuthored.invalidCacheEntry !== undefined)
-      yield* Effect.fail(resolvedAuthored.invalidCacheEntry);
-    if (resolvedAuthored.globalEntry !== undefined) {
-      yield* Effect.fail(rejectGlobalScope(appRoot, name, resolvedAuthored.globalEntry));
-    }
     const authoredStores = new Map(authored.byStore);
     for (const [store, info] of resolvedAuthored.byStore) authoredStores.set(store, info);
     const storageAuthored = { ...authored, byStore: authoredStores };
-    const mergedLogSources = mergeLogSources({
-      appRoot,
-      serviceName: name,
-      base: resolution.base,
-      typeSources: resolution.logSources ?? [],
-      userSources: service.logs ?? [],
-    });
-    const logSources = yield* Result.isFailure(mergedLogSources)
-      ? Effect.fail(mergedLogSources.failure)
-      : Effect.succeed(mergedLogSources.success);
+    const logSources = seed.logSources;
+    const seededFeatureIds = plannerSeededFeatureIds(resolution.base);
     const resolutionFeatureIds = new Set(resolution.features.map((feature) => feature.id));
     const baseDefaultIds = baseDefaultFeatureIds(resolution.base).filter(
       (id) => !resolutionFeatureIds.has(id),
@@ -268,7 +268,11 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         id: featureRef.id,
         ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
       })),
-    ].map((featureRef) => plannerSeededFeatures.find((seeded) => seeded.id === featureRef.id) ?? featureRef);
+    ].map((featureRef) =>
+      seededFeatureIds.has(featureRef.id)
+        ? (plannerSeededFeatures.find((seeded) => seeded.id === featureRef.id) ?? featureRef)
+        : featureRef,
+    );
     if (
       sshAgentIntent.mode === "host" &&
       featureRefs.some((feature) => feature.id === SSH_AGENT_FEATURE_ID) &&
@@ -336,11 +340,14 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       ]),
     );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
+  const appFeatureEnv = snapshotAppFeatureEnv(appFeatures);
   const cacheKey = deriveAppPlanCacheKey({
+    hostProvider,
     appRoot,
     landofile: { ...cacheLandofile, provider },
     providerCapabilities,
     pluginManifests: manifests,
+    appFeatureEnv: appFeatureEnv.bindings,
     config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, {
       ...appDefaults,
       defaultDomain,
@@ -370,9 +377,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     },
   });
   if (cacheService !== undefined) {
-    const cached = yield* readCachedAppPlan({ cacheRoot, appName: appSlug, appRoot, key: cacheKey }).pipe(
-      Effect.catch(() => Effect.succeed(null)),
-    );
+    const cached = yield* readCachedAppPlan({
+      cacheRoot,
+      appName: appSlug,
+      appRoot,
+      key: cacheKey,
+      fileSystem,
+    }).pipe(Effect.catch(() => Effect.succeed(null)));
     if (cached !== null) {
       yield* validateServiceDependencies(appRoot, cached.services);
       yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
@@ -402,6 +413,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     appRoot,
     services: plannedServiceDrafts.map((entry) => entry.draft),
     features: appFeatures,
+    env: appFeatureEnv.env,
   }).pipe(Effect.mapError((error) => appFeatureError(appRoot, error)));
   const activatedFeatureIds = new Set(appFeatureResult.activatedFeatures.map((entry) => entry.id));
   for (const capability of appFeatureResult.requires.providerCapabilities) {
@@ -418,14 +430,24 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     plannedServiceDrafts,
     appId,
     appRoot,
-    appName,
     appSlug,
     defaultDomain,
     provider,
     providerCapabilities,
     metadata,
     fileSyncEngineId,
+    fileSystem,
   });
+  if (routerEnabled && finalized.routes.length > 0 && provider !== hostProvider) {
+    return yield* Effect.fail(
+      new RouteProviderMismatchError({
+        message: `App provider ${provider} differs from host router provider ${hostProvider}.`,
+        providerId: provider,
+        hostProviderId: hostProvider,
+        remediation: `Run lando setup --provider=${provider} to move the global app and router there; remove provider: from the Landofile so the app follows the host provider; or set router.enabled: false and use published host ports.`,
+      }),
+    );
+  }
   if (routerEnabled && finalized.routes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
     yield* Effect.fail(
       new CapabilityError({
@@ -439,12 +461,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   }
   const serviceNames = Object.keys(finalized.services);
   const hasServices = serviceNames.length > 0;
-  const networks: ReadonlyArray<NetworkPlan> = hasServices
-    ? [{ name: appNetworkName(appSlug), shared: false, driver: "bridge" }]
-    : [];
+  const perAppBridge = appId !== "global";
+  const networks: ReadonlyArray<NetworkPlan> =
+    hasServices && perAppBridge ? [{ name: appNetworkName(appSlug), shared: false, driver: "bridge" }] : [];
   const networking: NetworkingPlan | undefined = hasServices
     ? landoNetworkingPlan({
         slug: appSlug,
+        perAppBridge,
         serviceNames,
         sharedCrossAppNetwork: providerCapabilities.sharedCrossAppNetwork,
         serviceHostnames: finalized.serviceHostnames,
@@ -510,6 +533,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       key: cacheKey,
       plan,
       versionConstraints,
+      shadowHostChecks: finalized.shadowHostChecks,
+      gitHostChecks: finalized.gitHostChecks,
     }).pipe(
       Effect.provideService(CacheService, cacheService),
       Effect.catch(() => Effect.void),

@@ -76,7 +76,8 @@ export const formatPlainEvent = (event: RenderableEvent): string | null => {
       const taskId = asString(event.taskId) ?? "task";
       const summary = asString(event.summary);
       const tail = summary === undefined ? "" : `: ${summary}`;
-      const glyph = asString(event.outcome) === "warn" ? "⚠" : "✓";
+      const outcome = asString(event.outcome);
+      const glyph = outcome === "info" ? "•" : outcome === "warn" ? "⚠" : "✓";
       return `[${taskId}] ${glyph} complete${tail}${formatDurationSuffix(asNumber(event.durationMs))}`;
     }
     case "task.fail": {

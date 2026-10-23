@@ -246,24 +246,19 @@ describe("rails-journey workflow", () => {
     }
   });
 
-  test("builds host-proxy shim and log-file helper into dist before the binary", async () => {
+  test("embeds the in-container helper via build-compiled-binary without sidecar builds", async () => {
     // Given: the generated Rails journey workflow.
     const workflow = await readWorkflow();
 
     // When: every cell's compile step is inspected.
-    // Then: local sidecar builds copy into dist/ before build-compiled-binary.ts.
+    // Then: no host-proxy/log-file sidecar builds; the compiled binary embeds the helper.
     for (const id of PLATFORM_IDS) {
       const job = jobBlock(workflow, id);
-      const shim = job.indexOf("build:host-proxy-shim");
-      const helper = job.indexOf("build:log-file-helper");
-      const hostProxyCopy = job.indexOf("core/dist/host-proxy");
-      const logFileCopy = job.indexOf("core/dist/log-file-access");
-      const binary = job.indexOf("scripts/build-compiled-binary.ts");
-      expect(shim).toBeGreaterThan(-1);
-      expect(helper).toBeGreaterThan(shim);
-      expect(hostProxyCopy).toBeGreaterThan(helper);
-      expect(logFileCopy).toBeGreaterThan(hostProxyCopy);
-      expect(binary).toBeGreaterThan(logFileCopy);
+      expect(job).not.toContain("build:host-proxy-shim");
+      expect(job).not.toContain("build:log-file-helper");
+      expect(job).not.toContain("core/dist/host-proxy");
+      expect(job).not.toContain("core/dist/log-file-access");
+      expect(job.indexOf("scripts/build-compiled-binary.ts")).toBeGreaterThan(-1);
     }
   });
 

@@ -1,19 +1,18 @@
 import { Effect } from "effect";
 
 import type {
+  AppPlacementError,
   ProxyApplyError,
-  ProxyError,
   ProxySetupError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
   RouterWatcherError,
 } from "@lando/sdk/errors";
 import type { AppPlan, ProxyApplyResult, RouterConfig, ServiceName } from "@lando/sdk/schema";
-import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
+import type { RouterServiceShape } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
-import { runAllAndMergeFailures } from "./failure-compensation.ts";
 import { proxyUrlsByService } from "./route-urls.ts";
 
 export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
@@ -22,10 +21,15 @@ export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
   landofileRouter?: RouterConfig,
 ): Effect.fn.Return<
   ProxyApplyResult,
-  ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError | ProxyApplyError
+  | AppPlacementError
+  | ProxySetupError
+  | RouterPortsExhausted
+  | RouterPortPinMismatch
+  | RouterWatcherError
+  | ProxyApplyError
 > {
-  if (!routerEnabled(plan)) {
-    // Best-effort: a disabled plan must not leave previously published hostnames live.
+  if (!routerEnabled(plan) || plan.routes.length === 0) {
+    // Best-effort: a disabled or route-free plan must withdraw previously published hostnames.
     yield* proxy.removeRoutes(plan.id).pipe(Effect.catch(() => Effect.void));
     return { app: plan.id, appliedRoutes: [], authorities: [] };
   }
@@ -35,25 +39,6 @@ export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
     Effect.andThen(proxy.applyRoutes(plan.routes, plan.id)),
   );
 });
-
-export const teardownAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan) =>
-  provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false });
-
-export const removeRoutesAndDestroyApp = (
-  proxy: RouterServiceShape,
-  provider: RuntimeProviderShape,
-  plan: AppPlan,
-) =>
-  runAllAndMergeFailures<ProxyError | ProviderError, never>([
-    proxy.removeRoutes(plan.id),
-    teardownAppliedApp(provider, plan),
-  ]);
-
-export const destroyAppAndRemoveRoutes = <E, R>(
-  providerDestroy: Effect.Effect<void, E, R>,
-  proxy: RouterServiceShape,
-  plan: AppPlan,
-) => runAllAndMergeFailures<E | ProxyError, R>([providerDestroy, proxy.removeRoutes(plan.id)]);
 
 export const routeUrlsForPlan = (proxy: RouterServiceShape, plan: AppPlan) =>
   routerEnabled(plan)

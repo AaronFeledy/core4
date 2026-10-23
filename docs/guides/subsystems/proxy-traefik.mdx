@@ -58,11 +58,17 @@ lando restart
 lando info
 ```
 
+Use a plain DNS domain like `lndo.test`, with no scheme, port, path, or wildcard. Each label can have at most 63 characters, and the whole domain at most 253. `lando config set` rejects other values with an issue naming `proxy.defaultDomain` and leaves the config file unchanged. Preview validation without writing with `--dry-run`:
+
+```sh
+lando config set proxy.defaultDomain lndo.site:8080 --dry-run --format=json
+```
+
 Default hostnames move to the new domain, like `web.myapp.lndo.test`, and so do recipe routes written as `{{ app.name }}.{{ proxy.defaultDomain }}`. Hostnames you spelled out in full under `routes:` stay as written. Restart each app to publish its new routes and issue certificates for the new names.
 
 Restarting an app with routing enabled also moves the Traefik dashboard to `traefik.lndo.test/dashboard/`. Traefik picks up the change without recreating its container. Global services publish their routes when the global app starts, so run `lando global:restart` to move global Mailpit to `https://mailpit.lndo.test`.
 
-Lando does not add DNS for your domain. Point `*.lndo.test` at `127.0.0.1` with dnsmasq or your resolver, or add each hostname to `/etc/hosts`. Until then, if URL scanning is on, `lando restart` warns that each URL `did not answer` with `ENOTFOUND`.
+Lando does not add DNS for your domain. Point `*.lndo.test` at `127.0.0.1` with dnsmasq or your resolver, or add each hostname to `/etc/hosts`. Until then, if URL checking is on, `lando restart` marks each affected row with `!` and an `unreachable` reason such as `ENOTFOUND`. Those are Lando-side problems. Rows that get an HTTP response say what your app or web server returned; a `•` row is your app's own answer, not a Lando warning.
 
 ## Set router ports
 
@@ -133,6 +139,13 @@ A `preferred-host-ports` warn means something else owns 80 or 443. Read the sele
 Lando starts the proxy. Do not launch Traefik yourself.
 
 <Guide>
+  <Scenario id="reject-invalid-default-domain" render>
+    <Step name="validate-domain-without-writing">
+      <Run command="lando config set proxy.defaultDomain lndo.site:8080 --dry-run --format=json" expectExit={1} />
+      <Verify errorTag="LandofileWriteValidationError" expect={{ regex: "\\[\\W*proxy\\W+defaultDomain\\W*\\]" }} />
+    </Step>
+  </Scenario>
+
   <Scenario id="router-config" render>
     <Step name="scaffold">
       <UseFixture name="proxy-host-ports" />

@@ -71,6 +71,9 @@ const harnessLayer = (input: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -97,6 +100,7 @@ const harnessLayer = (input: {
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: () => Effect.succeed(createRedactor("secrets")),
       }),
     ),
@@ -150,7 +154,9 @@ test.each([0, 7])("keeps CLI, event and MCP tooling argv and exit %i equal", asy
               target.spec.run(input).pipe(
                 Effect.provide(context),
                 Effect.map((value) => ({ _tag: "success", value }) as const),
-                Effect.catch((error) => Effect.succeed({ _tag: "failure", error } as const)),
+                Effect.catch((error) =>
+                  Effect.succeed({ _tag: "failure", error, additionalErrors: [] } as const),
+                ),
               ),
           },
         );

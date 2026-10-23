@@ -15,11 +15,13 @@ describe("container engine dialects", () => {
   test("selects engine-specific lifecycle behavior", () => {
     // Given / When / Then
     expect(libpodLifecycleDialect).toEqual({
+      engine: "libpod",
       wait: libpodWaitDialect,
       sharedNetworkAttachment: "create-body",
       volumePrune: { enabled: true },
     });
     expect(dockerLifecycleDialect).toEqual({
+      engine: "docker",
       wait: dockerWaitDialect,
       sharedNetworkAttachment: "connect-after-create",
     });
@@ -114,11 +116,14 @@ describe("container engine dialects", () => {
     expect(dockerPullDialect.frameError({ error: "failed" })).toBe("failed");
     expect(dockerPullDialect.frameError({ errorDetail: { message: 42 } })).toBeUndefined();
     expect(
-      dockerPullDialect.inspect?.decodeDigest({
-        RepoDigests: ["team/app@sha256:first", "team/app@sha256:second"],
-      }),
+      dockerPullDialect.inspect?.decodeDigest(
+        {
+          RepoDigests: ["team/app@sha256:first", "team/app@sha256:second"],
+        },
+        "team/app:latest",
+      ),
     ).toBe("sha256:first");
-    expect(dockerPullDialect.inspect?.decodeDigest({ RepoDigests: ["invalid"] })).toBeUndefined();
+    expect(dockerPullDialect.inspect?.decodeDigest({ RepoDigests: ["invalid"] }, "team/app")).toBeUndefined();
   });
 
   test("builds libpod pull requests and reads only string error fields", () => {
@@ -143,6 +148,49 @@ describe("container engine dialects", () => {
     });
     expect(libpodPullDialect.frameError({ error: "denied" })).toBe("denied");
     expect(libpodPullDialect.frameError({ errorDetail: "ignored" })).toBeUndefined();
-    expect(libpodPullDialect.inspect).toBeUndefined();
+    expect(libpodPullDialect.inspect?.request("team/app@sha256:pin")).toEqual({
+      method: "GET",
+      path: "/libpod/images/team%2Fapp%40sha256%3Apin/json",
+    });
+  });
+
+  describe.each([dockerPullDialect, libpodPullDialect])("digest decoding", (dialect) => {
+    test.each([
+      { reference: "team/app@sha256:second", expected: "sha256:second" },
+      { reference: "team/app:latest", expected: "sha256:first" },
+      { reference: "team/app@sha256:absent", expected: "sha256:first" },
+    ])("selects a reported digest for $reference", ({ reference, expected }) => {
+      // Given
+      const json = {
+        RepoDigests: [
+          null,
+          42,
+          "invalid",
+          "app@",
+          "@sha256:bad",
+          "app@bad",
+          "app@sha256:",
+          "team/app@sha256:first",
+          "team/app@sha256:second",
+        ],
+      };
+      // When
+      const digest = dialect.inspect?.decodeDigest(json, reference);
+      // Then
+      expect(digest).toBe(expected);
+    });
+
+    test.each([
+      null,
+      {},
+      { RepoDigests: [] },
+      { RepoDigests: "app@sha256:pin" },
+      { RepoDigests: [null, "app@", "invalid"] },
+    ])("omits a digest when inspect has no valid entries: %j", (json) => {
+      // Given / When
+      const digest = dialect.inspect?.decodeDigest(json, "app@sha256:pin");
+      // Then
+      expect(digest).toBeUndefined();
+    });
   });
 });

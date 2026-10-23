@@ -25,8 +25,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
+import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { waitForServiceReadiness } from "./service-readiness.ts";
@@ -158,7 +157,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(function* (
         };
 
   const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const provider = yield* registry.select(plan.provider);
   const builds = yield* BuildOrchestrator;
   // Managed global service configuration is generated locally and has no sync session lifecycle.
   const realizedPlan = withOrdinaryMounts(planToApply);
@@ -166,14 +165,13 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(function* (
   const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
 
   yield* Effect.scoped(
-    provider
-      .apply(builtPlan, {
-        reconcile: false,
-        recordedPlan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-        serviceEnvironment,
-      })
-      .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
+    provider.apply(builtPlan, {
+      reconcile: false,
+      recordedPlan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      serviceEnvironment,
+      onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
+    }),
   );
 
   const servicesStarted = yield* waitForServiceReadiness({

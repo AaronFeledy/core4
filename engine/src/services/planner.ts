@@ -19,12 +19,10 @@ import {
   applyAuthoredHealthcheck,
   validateAuthoredAppMount,
 } from "../planner/authored.ts";
-import { attachEffectiveEvents, compiledEventsForPlan } from "../planner/effective-events.ts";
-import { attachEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
-import { FILE_SYNC_DEFAULT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
-import { attachServiceCredsScope, serviceCredsScopeForPlan } from "../planner/landofile-scopes.ts";
+import { DEFAULT_APP_MOUNT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
 import { adoptMysqlVolume } from "../planner/mysql-volume.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
+import { carryPlanAttachments } from "../planner/plan-attachments.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
@@ -32,7 +30,7 @@ export {
   applyAuthoredDependencies,
   applyAuthoredHealthcheck,
   DEFAULT_PROXY_DOMAIN,
-  FILE_SYNC_DEFAULT_EXCLUDES,
+  DEFAULT_APP_MOUNT_EXCLUDES,
   mergeDefaultExcludes,
   validateAuthoredAppMount,
 };
@@ -65,15 +63,8 @@ export const layer = Layer.effect(
           providerCapabilities,
           identity.appRoot,
         );
-        const identified = { ...plan, root: identity.appRoot, identity };
-        const tooling = effectiveToolingForPlan(plan);
-        const events = compiledEventsForPlan(plan);
-        const credsScope = serviceCredsScopeForPlan(plan);
-        const adopted = yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
-        if (tooling !== undefined) attachEffectiveTooling(adopted, tooling);
-        if (events !== undefined) attachEffectiveEvents(adopted, events);
-        if (credsScope !== undefined) attachServiceCredsScope(adopted, credsScope);
-        return adopted;
+        const identified = carryPlanAttachments(plan, { ...plan, root: identity.appRoot, identity });
+        return yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
       }),
     } satisfies Context.Service.Shape<typeof AppPlanner>);
   }),

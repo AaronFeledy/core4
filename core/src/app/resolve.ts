@@ -1,10 +1,10 @@
 import { dirname, join } from "node:path";
 
-import { Effect, Scope } from "effect";
+import { Effect, Schema, Scope } from "effect";
 
 import type { App, AppSelector } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
-import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
+import { type AppPlan, LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 
 import { type AppHandleRuntimeServices, makeAppHandle } from "@lando/engine/app/handle";
@@ -23,6 +23,8 @@ import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-stat
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { runtimeServiceContext } from "@lando/engine/runtime/observability";
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
+import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
 
@@ -79,7 +81,18 @@ const planFromShape = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const sourcePath = join(appRoot, ".lando.yml");
   const stateStore = yield* StateStore;
-  const landofile = yield* resolveLandofileIncludes({ landofile: shape, appRoot, sourcePath, stateStore });
+  const authored = copyLandofileProvenance(
+    shape,
+    yield* Schema.encodeEffect(LandofileShape)(shape, { onExcessProperty: "error" }),
+  );
+  const loadScope = yield* buildLandofileLoadScope([{ file: sourcePath, value: authored }]);
+  const landofile = yield* resolveLandofileIncludes({
+    landofile: authored,
+    appRoot,
+    sourcePath,
+    stateStore,
+    loadScope,
+  });
   yield* assertUserAppIdNotReserved(landofile);
   yield* assertLandoVersionConstraint(landofile, { sourcePath });
   return yield* planResolvedLandofile(landofile, appRoot);
@@ -250,6 +263,11 @@ export const buildAppHandle = Effect.fnUntraced(function* (
  * Landofile are captured once; handle methods reuse them instead of
  * re-discovering from the host's working directory. Selector precedence is
  * `id > landofile > root > cwd`.
+ * File edits, including app agentEnv:false, require re-resolution with the
+ * original selector (and an updated shape for object selectors). Exec, deep
+ * info, and tooling reuse the captured object even when agentEnv is omitted.
+ * Global ConfigService policy and the process emergency veto remain live at
+ * invocation time under their existing semantics; provider status stays live.
  */
 export const resolveApp = Effect.fn("LandoRuntime.resolveApp")(function* (
   selector?: AppSelector,

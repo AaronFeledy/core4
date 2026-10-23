@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
+import { commonContainerLabels } from "@lando/container-runtime/plan";
 import { bringUpRecreateReasons } from "@lando/container-runtime/podman/bring-up-recreate";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import {
@@ -55,12 +56,25 @@ const plan: AppPlan = {
   },
 };
 
-test.each([false, true])("Windows restart preflight detects actual network drift: %s", async (missing) => {
+test.each([
+  { scenario: "unchanged networks", missing: false, changed: false },
+  { scenario: "logical labels without physical proof", missing: false, changed: false, logicalLabels: true },
+  { scenario: "missing network", missing: true, changed: false },
+  {
+    scenario: "changed immutable command versus old physical labels still reports config",
+    missing: false,
+    changed: true,
+  },
+])("Windows restart preflight: $scenario", async ({ missing, changed, logicalLabels }) => {
   // Given a container attached to the current machine's physical networks.
   const createdAt = "2026-10-09T00:00:00Z";
   const physical = windowsMachineNetworkPlan(plan, createdAt);
+  const physicalService = physical.services[service.name];
+  if (physicalService === undefined) throw new Error("Missing physical web service fixture");
+  const desiredService: ServicePlan = changed ? { ...service, command: ["nginx", "-t"] } : service;
+  const desired: AppPlan = { ...plan, services: { [service.name]: desiredService } };
   const names = [
-    physical.networking?.perAppBridge.name,
+    physical.networking?.perAppBridge?.name,
     physical.networking?.sharedNetworkMembership?.name,
   ].filter((name): name is string => name !== undefined);
   const api: PodmanApiClient = {
@@ -71,6 +85,7 @@ test.each([false, true])("Windows restart preflight detects actual network drift
         status: 200,
         body: JSON.stringify({
           Id: "existing-web",
+          Config: { Labels: commonContainerLabels(logicalLabels ? plan : physical, physicalService) },
           State: { Running: true },
           Mounts: [],
           HostConfig: { PortBindings: {} },
@@ -98,9 +113,11 @@ test.each([false, true])("Windows restart preflight detects actual network drift
     }),
   );
   // When the public provider inspect surface supplies the restart preflight.
-  const runtime = await Effect.runPromise(provider.inspect({ app: plan.id, service: service.name, plan }));
+  const runtime = await Effect.runPromise(
+    provider.inspect({ app: desired.id, service: service.name, plan: desired }),
+  );
   // Then physical naming alone is not drift, but a missing attachment is.
-  expect(bringUpRecreateReasons(plan, service, runtime, { skipAbsentFields: true })).toEqual(
-    missing ? ["network"] : [],
+  expect(bringUpRecreateReasons(desired, desiredService, runtime, { skipAbsentFields: true })).toEqual(
+    changed || logicalLabels ? ["config"] : missing ? ["network"] : [],
   );
 });

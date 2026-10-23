@@ -5,7 +5,11 @@ import { gzipSync } from "node:zlib";
 
 import { DateTime, Effect } from "effect";
 
-import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
+import {
+  SnapshotAmbiguousError,
+  SnapshotNotFoundError,
+  SqlRecoveryUnavailableError,
+} from "@lando/sdk/errors";
 import type {
   DataTransferResult,
   DataTransferSpec,
@@ -14,7 +18,14 @@ import type {
   VolumeInfo,
   VolumeInitializationRecord,
 } from "@lando/sdk/schema";
-import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  ProviderId,
+  ServiceName,
+  SnapshotInfo,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 
 import type { SqlCommandDeps } from "../../src/run.ts";
 import type { SqlLandofile, SqlPlan } from "../../src/views.ts";
@@ -35,6 +46,7 @@ const liveHarnesses: SqlTestHarness[] = [];
 export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const transfers: DataTransferSpec[] = [];
   const snapshots: RecordedSnapshot[] = [];
+  const restores: Array<ReturnType<SqlTestHarness["restores"]>[number]> = [];
   const execs: RecordedExec[] = [];
   const published: string[] = [];
   const lifecycle: SqlLifecycleStep[] = [];
@@ -83,14 +95,14 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     ),
   };
 
-  const root = mkdtempSync(join(tmpdir(), "lando-sql-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lando-sql-")));
+  const owner = planAppIdentity({ root: AbsolutePath.make(root) });
   const plan: SqlPlan = {
     id: "sql-app",
     name: "sql-app",
     root,
     identity: {
-      appRoot: root,
-      ownerKey: "owner:sql-app",
+      ...owner,
       repoGroupKey: "repository:sql-app",
     },
     services,
@@ -103,6 +115,48 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const deps: SqlCommandDeps = {
     landofile,
     plan,
+    providerId: "test",
+    ...(options.appliedPlans === undefined ? {} : { appliedPlans: options.appliedPlans }),
+    inspectSource:
+      options.inspectSource ??
+      ((target) =>
+        Effect.succeed({
+          app: target.app,
+          service: target.service,
+          providerId: ProviderId.make("test"),
+          status: "running",
+        })),
+    resolveSnapshot(reference, scope) {
+      const list = this.listSnapshots;
+      return Effect.gen(function* () {
+        const exact = (yield* list({ ...scope, id: reference })).find((entry) => entry.id === reference);
+        if (exact !== undefined) return exact;
+        const matches = (yield* list({ ...scope, label: reference }))
+          .filter((entry) => entry.label === reference)
+          .toSorted(
+            (left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
+          );
+        if (matches.length > 1)
+          return yield* Effect.fail(
+            new SnapshotAmbiguousError({
+              message: `Snapshot label ${reference} is ambiguous.`,
+              snapshotId: reference,
+              matchCount: matches.length,
+              candidateIds: matches.map((entry) => entry.id),
+              remediation: "Run `lando db:snapshots` and retry with a snapshot id.",
+            }),
+          );
+        const match = matches[0];
+        if (match !== undefined) return match;
+        return yield* Effect.fail(
+          new SnapshotNotFoundError({
+            message: `Snapshot ${reference} was not found.`,
+            snapshotId: reference,
+            remediation: "Run `lando db:snapshots` to list snapshot ids and labels.",
+          }),
+        );
+      });
+    },
     transfer: (spec) =>
       Effect.sync((): DataTransferResult => {
         transfers.push(spec);
@@ -117,14 +171,21 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         lifecycle.push("snapshot");
         if (options.snapshotFails === true) throw new FakeRestoreError();
         snapshots.push({
+          owner,
           store: store.store,
           ...(opts?.format === undefined ? {} : { format: opts.format }),
           ...(opts?.label === undefined ? {} : { label: opts.label }),
+          ...(opts?.repoGroupKey === undefined ? {} : { repoGroupKey: opts.repoGroupKey }),
           ...(opts?.metadata === undefined ? {} : { metadata: opts.metadata }),
         });
-        return { id: `snap-${store.store}-${snapshots.length}`, store };
+        return {
+          id: `snap-${store.store}-${snapshots.length}`,
+          store,
+          ownerKey: owner.ownerKey,
+        };
       }),
-    restore: () => {
+    restore: (handle, store, opts) => {
+      restores.push({ id: handle.id, handle, store, ...(opts === undefined ? {} : { opts }) });
       lifecycle.push("restore");
       return options.restoreFails === true ? Effect.fail(new FakeRestoreError()) : Effect.void;
     },
@@ -135,14 +196,13 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
           ? []
           : [
               SnapshotInfo.make({
+                owner,
                 id: filter.id,
                 store: { app: AppId.make("sql-app"), store: storage[0]?.store ?? "" },
                 digest: "sha256:test",
                 sizeBytes: 12,
                 createdAt: DateTime.makeUnsafe("2026-09-11T00:00:00Z"),
                 metadata: {
-                  sourceRoot: AbsolutePath.make(root),
-                  ownerKey: plan.identity?.ownerKey ?? "owner:sql-app",
                   service: ServiceName.make("database"),
                   volumeInstanceId:
                     options.snapshotVolumeInstance ?? `volume-instance:${storage[0]?.store ?? ""}`,
@@ -173,7 +233,10 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         joined.includes("SHOW server_version") ||
         joined.includes("db.version()") ||
         joined.includes("SERVERPROPERTY('ProductVersion')");
-      const isCount = joined.includes("information_schema") || joined.includes("COUNT(*)");
+      const isCount =
+        joined.includes("information_schema") ||
+        joined.includes("COUNT(*)") ||
+        joined.includes("db.getCollectionNames().length");
       if (isVersion) {
         execs.push({ command, ...(env === undefined ? {} : { env }) });
         return Effect.succeed({ ok: true, stdout: options.observedVersion ?? "8.0" });
@@ -261,6 +324,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     deps,
     transfers: () => transfers,
     snapshots: () => snapshots,
+    restores: () => restores,
     execs: () => execs,
     published: () => published,
     lifecycle: () => lifecycle,

@@ -23,6 +23,7 @@ const spec = (id: string, run: McpCommandSpec["run"] = () => Effect.void): McpCo
 
 const redactionLayer = Layer.succeed(RedactionService, {
   registerValues: registerRedactionValues,
+  payloadValues: () => Effect.succeed(() => ["topsecret"]),
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
 });
 

@@ -86,7 +86,7 @@ export const globalStop = Effect.fn("GlobalStop.stop")(function* (
     Effect.gen(function* () {
       const receipt =
         selection === undefined
-          ? yield* executeGlobalTeardown(loaded, { volumes: false, removeState: false })
+          ? yield* executeGlobalTeardown(loaded, { intent: "stop", volumes: false, removeState: false })
           : yield* executeGlobalStopSelection(loaded, selection);
       if (selection === undefined) {
         const router = yield* RouterService;

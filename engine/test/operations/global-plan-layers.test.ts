@@ -8,7 +8,11 @@ import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema"
 import { AppPlanner, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { type LoadGlobalPlanResult, loadGlobalPlan } from "../../src/operations/global-plan.ts";
+import {
+  type LoadGlobalPlanResult,
+  decodeGlobalLandofile,
+  loadGlobalPlan,
+} from "../../src/operations/global-plan.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 
 const withGlobalFiles = async <A>(
@@ -26,6 +30,7 @@ const withGlobalFiles = async <A>(
   };
   const globalApp = GlobalAppService.of({
     id: "global",
+    providerId: Effect.succeed(ProviderId.make("lando")),
     root: Effect.succeed(paths.root),
     paths: Effect.succeed(paths),
     ensureRoot: Effect.void,
@@ -39,10 +44,13 @@ const withGlobalFiles = async <A>(
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: (plan) => {
-          expect(plan).toMatchObject({ provider: "lando" });
+          expect(typeof plan === "string" ? plan : plan?.provider).toBe(ProviderId.make("lando"));
           return Effect.succeed(TestRuntimeProvider);
         },
       }),
@@ -123,6 +131,49 @@ test("global directives are consumed before the managed-provider plan", async ()
     expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.routes).toEqual(["global.test"]);
     expect(loaded.plan.provider).toBe(ProviderId.make("lando"));
   });
+});
+
+test("global loading materializes typed sites before per-layer validation", async () => {
+  // Given
+  await withGlobalFiles(async ({ root, load }) => {
+    await writeFile(
+      join(root, ".lando.base.yml"),
+      'services:\n  mailpit:\n    primary: "{{ eq(recipe.flag, false) }}"\n',
+    );
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "recipe:",
+        "  id: lamp",
+        "  version: 0.1.0",
+        "  options:",
+        "    flag: false",
+        "  producer:",
+        "    sourceKind: bundled",
+        '    packageName: "@lando/recipe-lamp"',
+        "    recipeId: lamp",
+        "    manifestVersion: 0.1.0",
+        `    contentDigest: sha256:${"0".repeat(64)}`,
+        "",
+      ].join("\n"),
+    );
+    // When
+    const loaded = await load();
+    // Then
+    if (!loaded.materialized) throw new Error("Expected global Landofile");
+    expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.primary).toBe(true);
+  });
+});
+
+test("global explicit decode compiles typed expressions with the shared validator", async () => {
+  // Given
+  const content = 'services:\n  web:\n    primary: "{{ eq(1, 2) }}"\n';
+  // When
+  const result = await Effect.runPromise(
+    decodeGlobalLandofile({ file: "/global/.lando.yml", cwd: "/global", content }),
+  );
+  // Then
+  expect(result.services?.[ServiceName.make("web")]?.primary).toBe(false);
 });
 
 test("merges all six global YAML layers in low-to-high precedence", async () => {
@@ -213,15 +264,19 @@ for (const name of [
   ".lando.local.yml",
   ".lando.user.yml",
 ]) {
-  test(`strictly validates ${name} before merging later valid overrides`, async () => {
+  test(`validates the effective value after composing ${name}`, async () => {
     // Given an invalid service value and a later valid override where available.
     await withGlobalFiles(async ({ root, load }) => {
       await writeFile(join(root, ".lando.user.yml"), "services:\n  mailpit:\n    home: false\n");
       const file = join(root, name);
       await writeFile(file, "services:\n  mailpit:\n    home: wrong\n");
-      // When the global app loads, then the invalid layer cannot be hidden by merging.
+      // When the global app loads, then only the effective value is runtime-validated.
       const result = await load().catch((error: unknown) => error);
-      expect(result).toMatchObject({ _tag: "LandofileValidationError", file });
+      expect(result).toMatchObject(
+        name === ".lando.user.yml"
+          ? { _tag: "LandofileValidationError", file }
+          : { materialized: true, landofile: { services: { mailpit: { home: false } } } },
+      );
     });
   });
 }

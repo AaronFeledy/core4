@@ -32,10 +32,10 @@ gd, intl, mbstring, mysqli, opcache, pcntl, pdo_mysql, pdo_pgsql, pdo_sqlite, zi
 
 Stock PHP services with `framework: wordpress` also install pinned, checksum-verified WP-CLI at `/usr/local/bin/wp` and set `WP_CLI_ALLOW_ROOT=1` for Lando tooling. Custom images supply their own WP-CLI and extensions.
 
-Rebuild an existing service to pick up the current extension set, then check it. Replace `app` with your PHP service name:
+Start an existing service to pick up the current extension set, then check it. Replace `app` with your PHP service name:
 
 ```sh
-lando rebuild -y
+lando start
 lando exec app -- php --ri pcntl
 ```
 
@@ -49,8 +49,8 @@ Xdebug is not a `build.artifact` PECL one-off. Set `xdebug: true` (or a mode str
 
 `db_client: auto` is the default. At plan time Lando looks at the other services in your app (MySQL, MariaDB, Postgres, MongoDB) and installs the matching client CLI into the PHP container. Managed MySQL services select 8.0, 8.4, or 9.7 to match their declared series. You can force one with `db_client: "mysql:9.7"` or `db_client: "mariadb:11.4"`, or skip clients entirely with `db_client: false`.
 Detection is deterministic from the resolved plan; it never probes the
-provider. Changing `db_client` changes the build key, so a running app needs
-`lando rebuild`. A custom `image:` still validates the option but skips
+provider. Changing `db_client` changes the build key, so the next `lando start`
+rebuilds that image. A custom `image:` still validates the option but skips
 the install steps.
 
 Oracle MySQL clients use Oracle's signed Bookworm APT repository on amd64. On Linux arm64, Lando installs pinned Oracle EL9 client RPM payloads: 8.0.46, 8.4.11, or 9.7.2 to match the selected series. All four package SHA256 checks must pass before extraction. Lando installs the client libraries and plugin paths without running RPM install scripts. Other architectures stop with `Unsupported architecture`; no MariaDB or wrong-series MySQL client is substituted.
@@ -130,17 +130,17 @@ it uses PHP's OpenSSL extension, which the stock image includes. PIE enables
 Imagick through the image's `docker-php-ext-enable` helper, so you don't need
 a second enable command.
 
-Rebuild, then check that PHP loads the extension:
+Start, then check that PHP loads the extension:
 
 ```sh
-lando rebuild -y
+lando start
 lando exec app -- php --ri imagick
 ```
 
 An artifact step runs after Lando's own PHP prerequisite build steps, in
 the same image, so a manually compiled extension can depend on the apt
 packages Lando already installed. A `build.artifact` edit changes the
-build key, so `lando rebuild` is required for it to take effect. Restart alone reuses the previous image.
+build key, so the next `lando start` rebuilds that image. Bare `restart` also stop/starts and applies it. Selected `lando restart -s` stays in place and refuses the drift.
 
 ## Mount a custom php.ini
 
@@ -177,9 +177,9 @@ services:
         mode: "0444"
 ```
 
-Changing the source file busts the app-plan cache. Run
-`lando app:cache:refresh` to rehash. Rebuild to remount a `mode:` copy.
-A mode-less grant binds the live host file.
+Changing the source file busts the app-plan cache. Run `lando start` to
+refresh the plan and apply the updated `mode:` copy. A mode-less grant binds
+the live host file; changing its contents alone does not force an image build.
 
 ## Replace the image
 
@@ -192,7 +192,7 @@ you get none of the built-in extensions above, no generated Apache
 startup, and no `db_client:` packages. The image's own `CMD`/`ENTRYPOINT` runs instead. Invalid `db_client:` values still fail at plan time.
 
 What still applies regardless of `image:`: the app mount (`/app` unless
-`appMount.target` moves it, or `appMount: false` removes it), HTTP endpoint,
+`appMount: /site` moves it, or `appMount: false` removes it), HTTP endpoint,
 healthcheck, working directory, and `LANDO_*` environment.
 
 ## Prove the config

@@ -14,6 +14,7 @@ import {
   type SnapshotId,
   type SnapshotInfo,
   type SnapshotOptions,
+  type SnapshotRestoreOptions,
   type VolumeRef,
 } from "@lando/sdk/schema";
 
@@ -42,8 +43,16 @@ export type SqlExec = (
 export type SqlMover = {
   readonly transfer: (spec: DataTransferSpec) => Effect.Effect<DataTransferResult, unknown>;
   readonly snapshot: (store: VolumeRef, opts?: SnapshotOptions) => Effect.Effect<SnapshotHandle, unknown>;
-  readonly restore: (id: string, store: VolumeRef) => Effect.Effect<void, unknown>;
+  readonly restore: (
+    handle: SnapshotHandle,
+    store: VolumeRef,
+    opts?: SnapshotRestoreOptions,
+  ) => Effect.Effect<void, unknown>;
   readonly listSnapshots: (filter: SnapshotFilter) => Effect.Effect<ReadonlyArray<SnapshotInfo>, unknown>;
+  readonly resolveSnapshot: (
+    reference: string,
+    scope: SnapshotFilter,
+  ) => Effect.Effect<SnapshotInfo, unknown>;
   readonly pruneSnapshots: (policy: PrunePolicy) => Effect.Effect<ReadonlyArray<SnapshotId>, unknown>;
 };
 
@@ -95,7 +104,7 @@ export const runExport = Effect.fn("Sql.export")(function* (
       const path = AbsolutePath.make(workingPath);
       if (input.family === "mssql") {
         const bak = mssqlBackupServicePath(input.creds.database);
-        const backup = mssqlBackupCommand(input.creds.database);
+        const backup = mssqlBackupCommand(input.creds.database, input.creds.port);
         return Effect.gen(function* () {
           const prepare = mssqlPrepareBackupCommand();
           yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
@@ -170,7 +179,7 @@ export const runImport = Effect.fn("Sql.import")(function* (
             overwrite: true,
             ...(digest === undefined ? {} : { expectedDigest: digest }),
           });
-          const restore = mssqlRestoreCommand(input.creds.database);
+          const restore = mssqlRestoreCommand(input.creds.database, input.creds.port);
           yield* requireExecOk(yield* exec(input.service, restore, input.env), input.service, restore);
           return transfer;
         });
@@ -199,7 +208,7 @@ export const runReset = Effect.fn("Sql.reset")(function* (
   env: Readonly<Record<string, string>>,
 ) {
   const usesMysqlRoot = (family === "mysql" || family === "mariadb") && creds.rootPassword !== undefined;
-  const command = resetCommand(family, usesMysqlRoot ? { user: "root", database: creds.database } : creds);
+  const command = resetCommand(family, usesMysqlRoot ? { ...creds, user: "root" } : creds);
   const resetEnv = usesMysqlRoot ? { ...env, MYSQL_PWD: creds.rootPassword } : env;
   return yield* exec(service, command, resetEnv).pipe(
     Effect.flatMap((result) => requireExecOk(result, service, command)),

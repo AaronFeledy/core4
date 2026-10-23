@@ -5,7 +5,7 @@ import validRange from "semver/ranges/valid.js";
 
 import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 import { BuildBlock } from "./build-block.ts";
-import { HealthcheckCanonicalBase, HealthcheckField } from "./compose-healthcheck.ts";
+import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import { ComposeServiceKnobFields } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
@@ -20,6 +20,8 @@ import { ScannerConfig } from "./networking.ts";
 import {
   AbsoluteContainerPath,
   CommandSpec,
+  ContainerUser,
+  PortNumber,
   PortablePath,
   ProviderExtensionConfig,
   ProviderId,
@@ -58,14 +60,18 @@ export { ServiceDependencyCondition } from "./service-dependency.ts";
 
 /** Route input as authored under `services.<name>.routes` (or top-level `proxy:`). */
 export const RouteObjectInput = Schema.Struct({
-  hostname: Schema.String.annotate({ description: "Host header pattern for this route." }),
+  hostname: Schema.String.annotate({
+    description: "Host pattern only, without a port or path; use endpoint and pathPrefix for those.",
+  }),
   scheme: Schema.optionalKey(Schema.Literals(["http", "https", "both"])).annotate({
     description: "HTTP or HTTPS schemes served by this route.",
   }),
   endpoint: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])).annotate({
     description: "Target service endpoint name or port.",
   }),
-  pathPrefix: Schema.optionalKey(Schema.String).annotate({ description: "Request path prefix to match." }),
+  pathPrefix: Schema.optionalKey(Schema.String).annotate({
+    description: "Request path prefix to match, beginning with / and without a query string or fragment.",
+  }),
   filters: Schema.optionalKey(
     layerMerge(Schema.Array(RouteFilter), {
       kind: "keyed",
@@ -79,10 +85,16 @@ export const RouteObjectInput = Schema.Struct({
 });
 export type RouteObjectInput = typeof RouteObjectInput.Type;
 
-export const RouteInput = Schema.Union([Schema.NonEmptyString, RouteObjectInput]);
+export const RouteInput = Schema.Union([Schema.NonEmptyString, RouteObjectInput]).annotate({
+  identifier: "RouteInput",
+  expected: "a non-empty route shorthand string or route object",
+  message: "Expected a non-empty route shorthand string or route object",
+});
 export type RouteInput = typeof RouteInput.Type;
 
 /** Mount input — short ("./src:/app") or expanded form. */
+const MOUNT_INPUT_DESCRIPTION =
+  "Service mount as a short source:target string or an expanded bind, tmpfs, or volume object.";
 export const MountInput = Schema.Union([
   Schema.String,
   Schema.Struct({
@@ -90,15 +102,17 @@ export const MountInput = Schema.Union([
     source: Schema.optionalKey(Schema.String),
     target: Schema.String,
     readOnly: Schema.optionalKey(Schema.Boolean),
-    /** Excludes (gitignore-flavoured) — bind only; realized as volume shadows. */
+    /** Overlay excludes (gitignore-flavoured) — bind only; realized as volume shadows. */
     excludes: Schema.optionalKey(Schema.Array(Schema.String)),
     /** Includes — re-bind specific excluded paths. */
     includes: Schema.optionalKey(Schema.Array(Schema.String)),
   }),
-]);
+]).annotate({ description: MOUNT_INPUT_DESCRIPTION });
 export type MountInput = typeof MountInput.Type;
 
 /** Storage input — named volume reference. */
+const STORAGE_INPUT_DESCRIPTION =
+  "Named data or cache volume as a short target path or an expanded store object with optional scope, kind, and key.";
 export const StorageInput = Schema.Union([
   Schema.String,
   Schema.Struct({
@@ -109,12 +123,10 @@ export const StorageInput = Schema.Union([
     kind: Schema.optionalKey(Schema.Literals(["data", "cache"])),
     key: Schema.optionalKey(Schema.String),
   }),
-]);
+]).annotate({ description: STORAGE_INPUT_DESCRIPTION });
 export type StorageInput = typeof StorageInput.Type;
 
-/** Canonical Lando healthcheck schema; Compose-capable authoring is accepted by `ServiceConfig`. */
-export const HealthcheckInput = HealthcheckCanonicalBase;
-export type HealthcheckInput = typeof HealthcheckInput.Type;
+export { HealthcheckInput } from "./compose-healthcheck.ts";
 
 export const ServiceDependency = Schema.Struct({
   service: Schema.String,
@@ -433,7 +445,7 @@ const SERVICE_CERTS_DESCRIPTION =
   "Leaf TLS certificate for this service: true issues one from the active certificate authority, false disables issuance, a path supplies a custom certificate, and an object supplies an explicit certificate and key. Separate from security.ca, which adds trusted certificate authorities.";
 
 /** Certs input — leaf TLS toggle, custom certificate path, or explicit certificate and key pair. */
-const CertsInput = Schema.Union([
+export const CertsInput = Schema.Union([
   Schema.Boolean,
   Schema.String,
   Schema.Struct({
@@ -445,16 +457,21 @@ const CertsInput = Schema.Union([
     }),
   }),
 ]).annotate({ description: SERVICE_CERTS_DESCRIPTION });
+export type CertsInput = typeof CertsInput.Type;
 
 const SERVICE_SECURITY_DESCRIPTION =
   "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings.";
 
-const ServiceSecurityCaEntry = Schema.Union([Schema.String, StringImportRef]).annotate({
+/** Trusted CA path or import reference used under `services.<name>.security.ca`. */
+export const CaInput = Schema.Union([Schema.String, StringImportRef]).annotate({
   acceptsImportRef: true,
+  description:
+    "Trusted CA certificate as a path string or an import reference for a service security.ca entry.",
 });
+export type CaInput = typeof CaInput.Type;
 
 const ServiceSecurity = Schema.Struct({
-  ca: Schema.optionalKey(layerMerge(Schema.Array(ServiceSecurityCaEntry), REPLACE)).annotate({
+  ca: Schema.optionalKey(layerMerge(Schema.Array(CaInput), REPLACE)).annotate({
     description: "Additional CA certificate paths for this service.",
   }),
   inheritNetworkCa: Schema.optionalKey(Schema.Boolean).annotate({
@@ -465,15 +482,12 @@ const ServiceSecurity = Schema.Struct({
   }),
 });
 
-const ServiceSecurityCaAlias = Schema.Union([
-  ServiceSecurityCaEntry,
-  layerMerge(Schema.Array(ServiceSecurityCaEntry), REPLACE),
-]);
+const ServiceSecurityCaAlias = Schema.Union([CaInput, layerMerge(Schema.Array(CaInput), REPLACE)]);
 const Forbidden = Schema.optionalKey(Schema.Never);
 
 const ServiceSecurityInput = Schema.Union([
   Schema.Struct({
-    ca: Schema.optionalKey(layerMerge(Schema.Array(ServiceSecurityCaEntry), REPLACE)),
+    ca: Schema.optionalKey(layerMerge(Schema.Array(CaInput), REPLACE)),
     cas: Forbidden,
     "certificate-authority": Forbidden,
     "certificate-authorities": Forbidden,
@@ -595,6 +609,57 @@ export type PhpComposerConfig = typeof PhpComposerConfig.Type;
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
+const AppMountEntry = Schema.String.check(
+  Schema.makeFilter((entry) =>
+    entry.startsWith("!")
+      ? `Use includes: [${entry.slice(1)}] to keep ${entry.slice(1)}; \`!\` entries are not supported.`
+      : undefined,
+  ),
+);
+
+const AppMountObject = Schema.Struct({
+  target: Schema.String.annotate({ description: "Container destination for application source." }),
+  readOnly: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Mount application source read-only.",
+  }),
+  excludes: Schema.optionalKey(Schema.Array(AppMountEntry)).annotate({
+    description: "Paths excluded from application source synchronization.",
+  }),
+  includes: Schema.optionalKey(Schema.Array(AppMountEntry)).annotate({
+    description: "Excluded paths to include explicitly.",
+  }),
+});
+const AppMountCanonical = Schema.Union([Schema.Literal(false), AppMountObject]);
+const APP_MOUNT_DESCRIPTION =
+  "Application source mount as a destination string or configuration object, or false to disable the app mount.";
+export const AppMountInput = Schema.Union([
+  Schema.String,
+  Schema.Literal(false),
+  AppMountObject.pipe(
+    Schema.fieldsAssign({
+      type: Schema.optionalKey(Schema.Never),
+      source: Schema.optionalKey(Schema.Never),
+    }),
+  ),
+])
+  .annotate({
+    identifier: "AppMountInput",
+    description: APP_MOUNT_DESCRIPTION,
+    expected: "false, a destination string, or an app-mount object",
+    message: "Expected false, a destination string, or an app-mount object",
+  })
+  .pipe(
+    Schema.decodeTo(
+      AppMountCanonical,
+      SchemaTransformation.transform({
+        decode: (input) => (typeof input === "string" ? { target: input } : input),
+        encode: (input) => input,
+      }),
+    ),
+  )
+  .annotate({ description: APP_MOUNT_DESCRIPTION });
+export type AppMountInput = typeof AppMountInput.Type;
+
 const ServiceConfigWithExtensions = Schema.StructWithRest(
   Schema.Struct({
     api: Schema.optionalKey(Schema.Literal(4)),
@@ -611,7 +676,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     entrypoint: Schema.optionalKey(CommandSpec).annotate({
       description: "Entrypoint used to launch the service container.",
     }),
-    user: Schema.optionalKey(Schema.String).annotate({
+    user: Schema.optionalKey(ContainerUser).annotate({
       description: "Container user used to run service processes.",
     }),
     workingDirectory: Schema.optionalKey(PortablePath).annotate({
@@ -642,8 +707,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         "Mailpit PHP senders: omitted selects every resolved PHP service, false selects none, and a list selects named PHP services in authored order with duplicates removed.",
     }),
     cores: Schema.optionalKey(Schema.Array(Schema.String)),
-    port: Schema.optionalKey(Schema.Number).annotate({
-      description: "Primary container port exposed by the service.",
+    port: Schema.optionalKey(PortNumber).annotate({
+      description: "Primary container TCP port number (integer 1-65535) exposed by the service.",
     }),
     framework: Schema.optionalKey(Schema.String),
     packageRoot: Schema.optionalKey(Schema.String).annotate({
@@ -652,7 +717,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     webroot: Schema.optionalKey(PortablePath).annotate({
       description:
-        'Document root for this service\'s HTTP server: a path relative to the app mount (default ".") or an absolute container path. With appMount: false it must be absolute.',
+        "Root whose meaning and defaults are determined by the selected features: webservers use it as their document root; Ruby provides context only and does not start a server. An explicit value requires a final feature declaration of support. Relative paths resolve against the app mount. Built-in Ruby context is unavailable with appMount: false, while a webserver can still use an absolute container root without an app mount.",
     }),
     backend: Schema.optionalKey(Schema.String).annotate({
       description: "Name of the app service this cache or proxy fronts.",
@@ -709,19 +774,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         "Compose profile names; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
     }),
 
-    appMount: Schema.optionalKey(
-      Schema.Union([
-        Schema.Literal(false),
-        Schema.Struct({
-          target: Schema.String,
-          readOnly: Schema.optionalKey(Schema.Boolean),
-          excludes: Schema.optionalKey(Schema.Array(Schema.String)),
-          includes: Schema.optionalKey(Schema.Array(Schema.String)),
-        }),
-      ]),
-    ).annotate({
-      description: "Application source mount configuration, or false to disable the app mount.",
-    }),
+    appMount: Schema.optionalKey(AppMountInput),
     mounts: Schema.optionalKey(layerMerge(Schema.Array(MountInput), REPLACE)).annotate({
       description: "Additional host or managed-file mounts attached to the service.",
     }),
@@ -753,7 +806,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         "Hostnames routed to service endpoints. An empty list disables the generated default route.",
     }),
 
-    healthcheck: Schema.optionalKey(HealthcheckField),
+    healthcheck: Schema.optionalKey(HealthcheckInput),
     logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
     hostnames: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -1373,7 +1426,6 @@ export const IncludeEntry = Schema.Union([
     }),
     path: Schema.optionalKey(Schema.String),
     version: Schema.optionalKey(Schema.String),
-    checksum: Schema.optionalKey(Schema.String),
     namespace: Schema.optionalKey(Schema.String).annotate({
       description:
         'kind: "tooling" only — the sub-namespace included tasks register under. Required unless flatten is true.',

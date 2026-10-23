@@ -11,6 +11,16 @@ const ProviderErrorBase = {
   cause: Schema.optional(Schema.Unknown),
 };
 
+export class RouteProviderMismatchError extends Schema.TaggedError<RouteProviderMismatchError>()(
+  "RouteProviderMismatchError",
+  {
+    message: Schema.String.annotate({ description: "Why the app cannot use the host router." }),
+    providerId: ProviderId.annotate({ description: "Provider selected for the app." }),
+    hostProviderId: ProviderId.annotate({ description: "Host provider running the global app and router." }),
+    remediation: Schema.String.annotate({ description: "Options to align providers or disable routing." }),
+  },
+) {}
+
 export class ProviderUnavailableError extends Schema.TaggedError<ProviderUnavailableError>()(
   "ProviderUnavailableError",
   ProviderErrorBase,
@@ -99,6 +109,7 @@ export const ServiceRestartWouldRecreateReason = Schema.Literals([
   "bind-source",
   "network",
   "host-port",
+  "config",
 ]);
 export type ServiceRestartWouldRecreateReason = typeof ServiceRestartWouldRecreateReason.Type;
 

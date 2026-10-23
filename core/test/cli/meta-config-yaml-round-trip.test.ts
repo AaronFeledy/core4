@@ -32,7 +32,7 @@ test("config yaml output round-trips a record root through Bun.YAML.parse", asyn
     resultSchema: metaConfigSpec.resultSchema,
     io,
     render: () => undefined,
-    formatError: String,
+    formatError: ({ error }) => String(error),
   });
   // Then
   const envelope = Schema.decodeUnknownSync(Schema.Struct({ result: ConfigResultSchema }))(
@@ -54,7 +54,7 @@ test("config yaml output round-trips a scalar root", async () => {
       resultSchema: metaConfigSpec.resultSchema,
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
     });
     const envelope = Schema.decodeUnknownSync(Schema.Struct({ result: ConfigResultSchema }))(
       Bun.YAML.parse(io.stdout()) as unknown,
@@ -76,7 +76,7 @@ test("config yaml output round-trips an array root", async () => {
     resultSchema: metaConfigSpec.resultSchema,
     io,
     render: () => undefined,
-    formatError: String,
+    formatError: ({ error }) => String(error),
   });
   // Then
   const envelope = Schema.decodeUnknownSync(Schema.Struct({ result: ConfigResultSchema }))(
@@ -103,7 +103,7 @@ test("dotted config keys stay plain and ambiguous keys are quoted", async () => 
     resultSchema: metaConfigSpec.resultSchema,
     io,
     render: () => undefined,
-    formatError: String,
+    formatError: ({ error }) => String(error),
   });
   const rendered = io.stdout();
   // Then

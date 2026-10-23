@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { commonContainerLabels } from "@lando/container-runtime/plan";
 import {
   bringUpRecreateReasons,
   inspectBindSources,
@@ -57,6 +58,7 @@ for (const kind of ["ssh", "gpg"] as const) {
         },
       };
       let applied: AppPlan = eligible;
+      let labels: ReturnType<typeof commonContainerLabels> = {};
       let appliedCalls = 0;
       let stops = 0;
       const desired = stripGpgAgentOverlay(stripSshAgentOverlay(eligible));
@@ -69,6 +71,7 @@ for (const kind of ["ssh", "gpg"] as const) {
             providerId: plan.provider,
             status: "running",
             bindSources: runtimeBindSources(applied),
+            labels,
           }),
         onStop: () => {
           stops += 1;
@@ -77,7 +80,7 @@ for (const kind of ["ssh", "gpg"] as const) {
           appliedCalls += 1;
           for (const service of Object.values(selected.services)) {
             const bindSources = runtimeBindSources(applied);
-            expect(bringUpRecreateReasons(selected, service, { bindSources })).toEqual([]);
+            expect(bringUpRecreateReasons(selected, service, { bindSources, labels })).toEqual([]);
           }
         },
       });
@@ -91,7 +94,8 @@ for (const kind of ["ssh", "gpg"] as const) {
         appRoot: app.root,
         sessionId: "retained",
         kind,
-        protocolVersion: 1 as const,
+        protocolVersion: 2 as const,
+        configDigest: "digest",
         pid: process.pid,
         controlToken: "unchanged",
         controlPort: PortNumber.make(12345),
@@ -118,6 +122,9 @@ for (const kind of ["ssh", "gpg"] as const) {
               runtimeSession,
               join(paths.agentRelayRunDir("gpg", plan.id, plan.root), "keyring"),
             );
+      const originalService = applied.services[web.name];
+      if (originalService === undefined) throw new TypeError("Expected original overlay service");
+      labels = commonContainerLabels(applied, originalService);
 
       // When the selected service is restarted without replacing its relay.
       const exit = await Effect.runPromise(
@@ -165,6 +172,9 @@ test("retains the managed SSH sidecar volume without restarting its session", as
     mount: { _tag: "volume", volume: "retained-agent" },
   });
   const bindSources = runtimeBindSources(runtimePlan);
+  const originalService = runtimePlan.services[web.name];
+  if (originalService === undefined) throw new TypeError("Expected original sidecar service");
+  const labels = commonContainerLabels(runtimePlan, originalService);
   let setupCalls = 0;
   let applyCalls = 0;
   const harness = makeHarness({
@@ -176,11 +186,12 @@ test("retains the managed SSH sidecar volume without restarting its session", as
         providerId: plan.provider,
         status: "running",
         bindSources,
+        labels,
       }),
     onApply: (selected) => {
       applyCalls += 1;
       for (const service of Object.values(selected.services)) {
-        expect(bringUpRecreateReasons(selected, service, { bindSources })).toEqual([]);
+        expect(bringUpRecreateReasons(selected, service, { bindSources, labels })).toEqual([]);
       }
     },
   });

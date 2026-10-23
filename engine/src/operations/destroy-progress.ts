@@ -14,6 +14,8 @@ export interface DestroyProgressChildren {
   readonly fileSync: boolean;
   readonly proxy: boolean;
   readonly snapshots: boolean;
+  readonly provider?: boolean;
+  readonly hostProxy?: boolean;
 }
 
 export const withDestroyProgress = <A, E, R>(input: {
@@ -24,10 +26,10 @@ export const withDestroyProgress = <A, E, R>(input: {
 }): Effect.Effect<A, E, R> => {
   const children: TaskSpec[] = [
     ...(input.children.fileSync ? [{ id: "file-sync", label: "Stop file sync" }] : []),
-    { id: "provider", label: "Destroy services" },
-    { id: "host-proxy", label: "Clean host-proxy state" },
-    ...(input.children.proxy ? [{ id: "routes", label: "Remove routes" }] : []),
     ...(input.children.snapshots ? [{ id: "snapshots", label: "Remove snapshots" }] : []),
+    ...(input.children.provider === false ? [] : [{ id: "provider", label: "Destroy services" }]),
+    ...(input.children.hostProxy === false ? [] : [{ id: "host-proxy", label: "Clean host-proxy state" }]),
+    ...(input.children.proxy ? [{ id: "routes", label: "Remove routes" }] : []),
   ];
   return runWithTaskTree(
     makeTaskTree(input.events, {

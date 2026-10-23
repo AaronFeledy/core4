@@ -24,6 +24,7 @@ import type { AppFeatureError } from "@lando/sdk/errors";
 import {
   type ExpressionContext,
   evaluateTemplateEither,
+  expressionScopeMembers,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 import type { ProviderCapabilities, ServiceConfig } from "@lando/sdk/schema";
@@ -70,6 +71,7 @@ export interface ComposeAppFeaturesInput {
   readonly services: ReadonlyArray<AppFeatureServiceDraft>;
   readonly features: ReadonlyArray<ComposeAppFeature>;
   readonly resolveFromConfig?: FromConfigSelectorResolver | undefined;
+  readonly env?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface ActivatedAppFeature {
@@ -125,9 +127,43 @@ const expressionEnv = (): Readonly<Record<string, string>> =>
     Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   );
 
+/** Capture once so cache dependencies and selector evaluation see identical bindings. */
+export const snapshotAppFeatureEnv = (
+  features: ReadonlyArray<ComposeAppFeature>,
+  env: Readonly<Record<string, string>> = expressionEnv(),
+): {
+  readonly env: Readonly<Record<string, string>>;
+  readonly bindings: Readonly<Record<string, string | null>>;
+} => {
+  const names = new Set<string>();
+  for (const feature of features) {
+    const expression = feature.definition.selectors?.fromConfig;
+    if (expression === undefined) continue;
+    const parsed = parseExpressionEither(expression, { filePath: "<app-feature-selector>" });
+    // Invalid selectors are reported during composition, not cache-key derivation.
+    if (Result.isFailure(parsed)) continue;
+    const dependencies = expressionScopeMembers(parsed.success, "env");
+    if (!dependencies.analyzable) {
+      return {
+        env,
+        bindings: Object.fromEntries(
+          Object.keys(env)
+            .sort()
+            .map((name) => [name, env[name] ?? null]),
+        ),
+      };
+    }
+    for (const name of dependencies.members) names.add(name);
+    for (const segment of parsed.success.segments) {
+      if (segment.kind === "ShellParamSegment") names.add(segment.name);
+    }
+  }
+  return { env, bindings: Object.fromEntries([...names].sort().map((name) => [name, env[name] ?? null])) };
+};
+
 const selectFromConfig = (
   expression: string,
-  input: ComposeAppFeaturesInput,
+  input: ComposeAppFeaturesInput & { readonly env: Readonly<Record<string, string>> },
   feature: ComposeAppFeature,
 ): Effect.Effect<ReadonlyArray<string>, AppFeatureError> => {
   if (input.resolveFromConfig !== undefined) {
@@ -155,7 +191,7 @@ const selectFromConfig = (
   }
   const context: ExpressionContext = {
     app: { name: input.appName, root: input.appRoot },
-    env: expressionEnv(),
+    env: input.env,
     services: servicesScope,
     vars: feature.config ?? {},
   };
@@ -187,7 +223,7 @@ const selectFromConfig = (
 
 const selectServices = Effect.fnUntraced(function* (
   feature: ComposeAppFeature,
-  input: ComposeAppFeaturesInput,
+  input: ComposeAppFeaturesInput & { readonly env: Readonly<Record<string, string>> },
 ): Effect.fn.Return<ReadonlyArray<string>, AppFeatureError> {
   const selectors = feature.definition.selectors;
   if (selectors === undefined) return input.services.map((service) => service.serviceName);
@@ -470,6 +506,7 @@ const dedupe = <T>(values: ReadonlyArray<T>): ReadonlyArray<T> => {
 export const composeAppFeatures = Effect.fn("AppPlanner.composeFeatures")(function* (
   input: ComposeAppFeaturesInput,
 ): Effect.fn.Return<ComposeAppFeaturesResult, AppFeatureError> {
+  const selectorInput = { ...input, env: input.env ?? expressionEnv() };
   const ordered: ReadonlyArray<OrderedAppFeature> = input.features
     .map((feature, index) => ({ ...feature, index }))
     .sort((left, right) => left.definition.priority - right.definition.priority || left.index - right.index);
@@ -478,7 +515,7 @@ export const composeAppFeatures = Effect.fn("AppPlanner.composeFeatures")(functi
   for (const feature of ordered) {
     const triggeredByServices = triggeredBy(feature.definition, input.services);
     if (triggeredByServices.length === 0) continue;
-    const selectedServices = yield* selectServices(feature, input);
+    const selectedServices = yield* selectServices(feature, selectorInput);
     if (selectedServices.length === 0) {
       return yield* Effect.fail(
         new AppFeatureSelectorMatchedNothingError({

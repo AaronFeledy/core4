@@ -8,7 +8,6 @@ import type {
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
 import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
-import { makeRuntimeProvider } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -18,6 +17,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("mailpit-app");
@@ -74,6 +74,7 @@ interface FakeApiOptions {
 
 const makeFakeApi = (options: FakeApiOptions = {}) => {
   const requests: string[] = [];
+  const pulledImages = new Set<string>();
   const existing = new Set<string>();
   const running = new Set<string>();
   let createIndex = 0;
@@ -87,14 +88,20 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
           return { status: 404, body: "" };
         if (request.path === "/networks/create") return { status: 201, body: "" };
         if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
+          const ref = decodeURIComponent(request.path.slice("/libpod/images/".length, -"/json".length));
           return {
-            status: options.inspectStatus ?? 404,
+            status: pulledImages.has(ref) ? 200 : (options.inspectStatus ?? 404),
             body: JSON.stringify(
-              options.inspectBody ?? { Os: "linux", Architecture: "arm64", RepoDigests: [] },
+              options.inspectBody ?? {
+                Os: "linux",
+                Architecture: "arm64",
+                RepoDigests: [`${ref}@sha256:test`],
+              },
             ),
           };
         }
         if (request.method === "POST" && request.path.startsWith("/libpod/images/pull")) {
+          pulledImages.add(new URL(`http://localhost${request.path}`).searchParams.get("reference") ?? "");
           return { status: 200, body: '{"status":"Pull complete"}\n' };
         }
         if (
@@ -153,6 +160,34 @@ const applyFailure = async (plan: AppPlan, api: PodmanApiClient) => {
 };
 
 describe("provider-podman apply image pull", () => {
+  test.each(["always", "missing", "never"] as const)(
+    "reports the observed pinned digest for %s",
+    async (policy) => {
+      // Given
+      const ref = `team/helper@sha256:${"a".repeat(64)}`;
+      const fake = makeFakeApi({
+        inspectStatus: 200,
+        inspectBody: { RepoDigests: ["team/helper@sha256:other", ref] },
+      });
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({
+          platform: "linux",
+          env: {},
+          podmanApi: fake.api,
+          conflictDetector: () => Effect.void,
+        }),
+      );
+      // When
+      const artifact = await Effect.runPromise(provider.pullArtifact({ ref, policy }));
+      // Then
+      expect(artifact).toEqual({ providerId, ref, digest: `sha256:${"a".repeat(64)}` });
+      expect(fake.requests).toEqual([
+        ...(policy === "always" ? [`POST ${buildImagePullRequest(ref, libpodPullDialect).path}`] : []),
+        `GET /libpod/images/${encodeURIComponent(ref)}/json`,
+      ]);
+    },
+  );
+
   test("apply forwards secret-only overrides without dropping planned environment", async () => {
     // Given
     const service = {

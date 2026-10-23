@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
-  "homepage": "https://github.com/lando-community/core4",
+  "homepage": "https://github.com/AaronFeledy/core4",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lando-community/core4.git",
+    "url": "git+https://github.com/AaronFeledy/core4.git",
     "directory": "plugins/service-lando"
   },
   "type": "module",
@@ -21,7 +21,15 @@
     ".": "./src/index.ts",
     "./php-internals": "./src/php-internals.ts"
   },
-  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml", "./README.md"],
+  "files": [
+    "./src",
+    "./dist",
+    "!./dist/**/*.tsbuildinfo",
+    "./plugin.yaml",
+    "./README.md",
+    "./tomcat/LICENSE",
+    "./tomcat/NOTICE"
+  ],
   "keywords": ["lando", "lando-plugin"],
   "lando": {
     "manifest": "./plugin.yaml"

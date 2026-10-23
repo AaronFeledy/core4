@@ -50,7 +50,14 @@ test.each(["lando", "plain", "verbose"] as const)(
         continued = true;
         return "done";
       }),
-      { runtime, rendererMode, io, render: (value) => value, formatError: String, setExitCode: () => {} },
+      {
+        runtime,
+        rendererMode,
+        io,
+        render: (value) => value,
+        formatError: ({ error }) => String(error),
+        setExitCode: () => {},
+      },
     );
     // Then
     expect(continued).toBe(true);
@@ -80,7 +87,7 @@ test("progress still drains at command end when no early retirement is requested
       rendererMode: "plain",
       io,
       render: (value) => value,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => {},
     },
   );

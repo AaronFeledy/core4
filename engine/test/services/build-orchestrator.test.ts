@@ -122,6 +122,9 @@ const registryLayer = (provider = TestRuntimeProvider) =>
   Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      appliedPlansFor: () => Effect.succeed([]),
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -155,6 +158,7 @@ const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
     registerValues: registerRedactionValues,
+    payloadValues: () => Effect.succeed(() => ["topsecret"]),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
   }),
 );
@@ -921,6 +925,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: (options) => Effect.succeed(() => [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""]),
         forProfile: (_profile, options) =>
           Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
       } satisfies Context.Service.Shape<typeof RedactionService>),
@@ -971,6 +976,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => ["latersecret"]),
         forProfile: () =>
           Effect.sync(() => {
             profileReads += 1;

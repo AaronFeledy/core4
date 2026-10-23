@@ -1,9 +1,9 @@
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
-import { Effect, Predicate, Schema } from "effect";
+import type { FileSystem } from "@lando/sdk/services";
+import { type Context, Effect, Predicate, Schema } from "effect";
 
 import {
   type CapabilityError,
-  type ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   HomePathCapabilityError,
   LandofileValidationError,
@@ -22,10 +22,6 @@ import {
 } from "@lando/sdk/schema";
 
 import { validationIssue } from "@lando/sdk/schema";
-import {
-  promoteRoutableEndpointsForHostProxy,
-  usesManagedProxyNetwork,
-} from "../lifecycle/cross-engine-routes.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
@@ -39,10 +35,11 @@ import {
 import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
+import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
 import { applyServiceHome } from "./home.ts";
-import { evaluateRouteHostname } from "./route-hostname.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
+import { type ShadowHostCheck, checkShadowHosts } from "./shadow-host-checks.ts";
 import { expandExcludesToShadows } from "./storage.ts";
 
 const duplicateEndpointNameError = (
@@ -52,6 +49,7 @@ const duplicateEndpointNameError = (
 ): LandofileValidationError =>
   new LandofileValidationError({
     message: `Service ${serviceName} declares duplicate endpoint name ${endpointName}.`,
+    remediation: `Give each endpoint of service ${serviceName} a unique name.`,
     file: `${appRoot}/.lando.yml`,
     issues: [
       validationIssue(
@@ -74,21 +72,8 @@ export const resolveRoute = Effect.fnUntraced(function* (
   serviceName: string,
   endpoints: ServicePlan["endpoints"],
   route: NormalizedRoute,
-  expression: {
-    readonly routeIndex: number;
-    readonly appName: string;
-    readonly appSlug: string;
-    readonly defaultDomain: string;
-  },
-): Effect.fn.Return<RoutePlan, LandofileValidationError | ConfigExpressionError> {
-  const hostname = yield* evaluateRouteHostname(route.hostname, {
-    appRoot,
-    serviceName,
-    routeIndex: expression.routeIndex,
-    appName: expression.appName,
-    appSlug: expression.appSlug,
-    defaultDomain: expression.defaultDomain,
-  });
+): Effect.fn.Return<RoutePlan, LandofileValidationError> {
+  const hostname = route.hostname;
   const candidates = endpoints.filter(isRoutableEndpoint);
   const endpoint =
     route.endpoint === undefined
@@ -101,6 +86,7 @@ export const resolveRoute = Effect.fnUntraced(function* (
     return yield* Effect.fail(
       new LandofileValidationError({
         message: `Route ${hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`,
+        remediation: `Select an HTTP endpoint of service ${serviceName} for route ${hostname}.`,
         file: `${appRoot}/.lando.yml`,
         issues: [
           validationIssue(
@@ -128,6 +114,8 @@ export const resolveRoute = Effect.fnUntraced(function* (
 });
 
 export interface FinalizedServices {
+  readonly gitHostChecks: readonly GitHostCheck[];
+  readonly shadowHostChecks: readonly ShadowHostCheck[];
   readonly services: Record<string, unknown>;
   readonly serviceHostnames: Record<string, ReadonlyArray<string>>;
   readonly stores: ReadonlyArray<{
@@ -144,13 +132,13 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly plannedServiceDrafts: ReadonlyArray<PlannedServiceDraft>;
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
-  readonly appName: string;
   readonly appSlug: string;
   readonly defaultDomain: string;
   readonly provider: ProviderId;
   readonly providerCapabilities: ProviderCapabilities;
   readonly metadata: ServicePlan["metadata"];
   readonly fileSyncEngineId: string | undefined;
+  readonly fileSystem?: Context.Service.Shape<typeof FileSystem> | undefined;
 }): Effect.fn.Return<
   FinalizedServices,
   | LandofileValidationError
@@ -158,10 +146,11 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
-  | ConfigExpressionError
   | RouteInputError
 > {
   const services: Record<string, unknown> = {};
+  const shadowHostChecks: ShadowHostCheck[] = [];
+  const gitHostChecks: GitHostCheck[] = [];
   const serviceHostnames: Record<string, ReadonlyArray<string>> = {};
   const stores: Array<FinalizedServices["stores"][number]> = [];
   const fileSync: Array<FileSyncPlan> = [];
@@ -289,7 +278,19 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
 
     const realization = bindRealization(input.providerCapabilities);
-    const shadowResult = expandExcludesToShadows(input.appSlug, name, withArtifact, input.appRoot);
+    const hostChecks = yield* checkShadowHosts(withArtifact.appMount, input.fileSystem);
+    const shadowableExcludes = new Set<string>();
+    for (const { exclude, ...check } of hostChecks) {
+      shadowHostChecks.push(check);
+      if (check.shadowed) shadowableExcludes.add(exclude);
+    }
+    const shadowResult = expandExcludesToShadows(
+      input.appSlug,
+      name,
+      withArtifact,
+      input.appRoot,
+      shadowableExcludes,
+    );
     if (shadowResult instanceof LandofileValidationError) {
       return yield* Effect.fail(shadowResult);
     }
@@ -303,8 +304,20 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ),
     };
 
+    let gitDirectories: GitHostCheck["directories"] = null;
+    if (realization === "passthrough" && appMount !== undefined) {
+      const gitPath = `${appMount.source}/.git`;
+      gitDirectories = yield* readGitDirectories(gitPath, appMount.target, input.fileSystem);
+      gitHostChecks.push({ path: gitPath, target: appMount.target, directories: gitDirectories });
+    }
     const withHome = applyServiceHome({
-      servicePlan: servicePlanWithCapabilityRealization,
+      servicePlan: {
+        ...servicePlanWithCapabilityRealization,
+        mounts: [
+          ...servicePlanWithCapabilityRealization.mounts,
+          ...worktreeGitMounts(servicePlanWithCapabilityRealization, gitDirectories),
+        ],
+      },
       serviceName: name,
       appSlug: input.appSlug,
       appRoot: input.appRoot,
@@ -332,12 +345,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       for (const [routeIndex, route] of authoredRoutes.entries()) {
         routeRefs.push(
           ...(yield* routeAccumulator.add(
-            yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, route, {
-              routeIndex,
-              appName: input.appName,
-              appSlug: input.appSlug,
-              defaultDomain: input.defaultDomain,
-            }),
+            yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, route),
             route.source ?? { key: `services.${name}.routes[${routeIndex}]` },
           )),
         );
@@ -369,9 +377,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       routes: routeRefs.filter(
         (ref, index) => routeRefs.findIndex((other) => other.index === ref.index) === index,
       ),
-      endpoints: usesManagedProxyNetwork(input.provider)
-        ? servicePlanWithHome.endpoints
-        : promoteRoutableEndpointsForHostProxy(servicePlanWithHome.endpoints),
     };
 
     if (
@@ -442,6 +447,8 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
 
   yield* validateServiceDependencies(input.appRoot, services);
   return {
+    gitHostChecks,
+    shadowHostChecks,
     services,
     serviceHostnames,
     stores,

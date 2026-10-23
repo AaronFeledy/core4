@@ -41,10 +41,24 @@ const readinessError = (exit: Exit.Exit<unknown, unknown>): ServiceNotReadyError
 };
 
 test("delayed exit without a healthcheck fails start with evidence and retains the applied app", async () => {
+  const plannedApp: AppPlan = {
+    ...plan,
+    routes: [
+      {
+        hostname: "web.test-start.lndo.site",
+        priority: 2,
+        scheme: "https",
+        service: web.name,
+        endpoint: 3000,
+        backend: { service: web.name, protocol: "http", port: 3000 },
+      },
+    ],
+  };
   let destroyed = 0;
   let routesRemoved = 0;
   const inspected = Deferred.makeUnsafe<void>();
   const harness = makeHarness({
+    plannedApp,
     logs,
     onDestroy: () => {
       destroyed++;
@@ -58,7 +72,7 @@ test("delayed exit without a healthcheck fails start with evidence and retains t
       ).pipe(Effect.tap(() => Deferred.succeed(inspected, undefined))),
   });
   const timed = await runExitUnderClock(
-    startApp({}, target).pipe(Effect.provide(harness.layer)),
+    startApp({}, { ...target, plan: plannedApp }).pipe(Effect.provide(harness.layer)),
     "500 millis",
     Deferred.await(inspected),
   );
@@ -231,13 +245,17 @@ test("retained sessions transfer to managed ownership even when readiness fails"
     remediation: "Read logs",
   });
   const exit = await Effect.runPromiseExit(
-    withRetainedSession(Effect.succeed("session"), () => Effect.fail(error), {
-      scope,
-      close: () =>
-        Effect.sync(() => {
-          closed++;
-        }),
-    }),
+    withRetainedSession(
+      (publish) => publish("session").pipe(Effect.as("session")),
+      () => Effect.fail(error),
+      {
+        scope,
+        close: () =>
+          Effect.sync(() => {
+            closed++;
+          }),
+      },
+    ),
   );
   expect(readinessError(exit)).toBe(error);
   expect(closed).toBe(0);

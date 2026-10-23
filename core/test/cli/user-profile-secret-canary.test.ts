@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Queue, Stream } from "effect";
+import * as ContainerHelperAssetsLayer from "../../src/container-helper/assets.ts";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import {
@@ -23,6 +24,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProviderInternalError } from "@lando/sdk/errors";
@@ -142,6 +144,9 @@ test.each([
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando")]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -157,17 +162,31 @@ test.each([
       Layer.succeed(
         LandofileService,
         LandofileService.of({
-          discover: resolveLandofileIncludes({
-            landofile: { name: "profile-canary", includes: ["user:profile.yml"] },
-            appRoot,
-            cacheRoot: paths.roots.userCacheRoot,
-            ports: { ...landofileRuntimeInputs().ports, resolveUserIncludesDir: () => paths.userIncludesDir },
-            stateStore: store,
-          }),
+          discover: buildLandofileLoadScope([
+            {
+              file: join(appRoot, ".lando.yml"),
+              value: { name: "profile-canary", includes: ["user:profile.yml"] },
+            },
+          ]).pipe(
+            Effect.flatMap((loadScope) =>
+              resolveLandofileIncludes({
+                landofile: { name: "profile-canary", includes: ["user:profile.yml"] },
+                loadScope,
+                appRoot,
+                cacheRoot: paths.roots.userCacheRoot,
+                ports: {
+                  ...landofileRuntimeInputs().ports,
+                  resolveUserIncludesDir: () => paths.userIncludesDir,
+                },
+                stateStore: store,
+              }),
+            ),
+          ),
         }),
       ),
     );
     const layer = Layer.mergeAll(
+      ContainerHelperAssetsLayer.layer.pipe(Layer.provide(dependencies)),
       dependencies,
       AppPlannerLayer.layer.pipe(Layer.provide(dependencies)),
       BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)),
@@ -214,7 +233,7 @@ test.each([
               events: [...(yield* Queue.clear(queue))],
             };
           }),
-        ).pipe(Effect.provide(layer)),
+        ).pipe(Effect.provide(layer), Effect.provide(LandoConfigService.layer)),
       );
 
       // Then: provider action sees the value; durable identities and every observed surface do not.
@@ -223,7 +242,7 @@ test.each([
       expect(appliedPlan?.services[web]?.environment.VALUE).toBe(reference);
       expect(result.plan.services[web]?.environment.VALUE).toBe(reference);
       expect(result.cachedPlan).toEqual(result.plan);
-      expect(result.get.value).toBe(reference);
+      expect("value" in result.get ? result.get.value : undefined).toBe(reference);
       expect(appSteps(result.cachedPlan)).toEqual(result.buildIdentity);
       expect(result.buildIdentity).toHaveLength(1);
       expect(executions).toBe(1);

@@ -3,7 +3,7 @@ import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import type {
   EngineHttpRequest,
@@ -14,7 +14,6 @@ import { volumeSelectorValue } from "@lando/container-runtime/podman/volume-prun
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
   HOST_PROXY_CONTAINER_LANDO,
-  HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_SOCKET,
   stripHostProxyRunLando,
 } from "@lando/engine/subsystems/host-proxy/transport-feature";
@@ -124,13 +123,6 @@ const hostProxyPlan: AppPlan = {
         {
           type: "bind",
           source: "/tmp/lando-shim",
-          target: PortablePath.make(HOST_PROXY_CONTAINER_SHIM),
-          readOnly: true,
-          realization: "passthrough",
-        },
-        {
-          type: "bind",
-          source: "/tmp/lando-shim",
           target: PortablePath.make(HOST_PROXY_CONTAINER_LANDO),
           readOnly: true,
           realization: "passthrough",
@@ -220,6 +212,8 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
   const running = new Set<string>();
   const existing = new Set<string>();
   const networks = new Set<string>();
+  const networkLabels = new Map<string, Readonly<Record<string, string>>>();
+  const containerLabels = new Map<string, Readonly<Record<string, string>>>();
   const volumes = new Set<string>(plan.stores.map((store) => store.name));
   const volumeLabels = new Map<string, Readonly<Record<string, string>>>(
     plan.stores.map((store): readonly [string, Readonly<Record<string, string>>] => [
@@ -238,7 +232,8 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
-        const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
+        const reference = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
+        const name = Array.from(existing).find((name) => `${name}-id` === reference) ?? reference;
         const action = containerMatch?.[2];
 
         if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
@@ -252,9 +247,31 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
           };
         }
         if (request.path === "/networks/create") {
-          const requested = (request.body as { Name?: string }).Name ?? "";
-          networks.add(requested);
-          return { status: 201, body: "{}" };
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({
+              Name: Schema.String,
+              Labels: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+            }),
+          )(request.body);
+          networks.add(body.Name);
+          networkLabels.set(body.Name, body.Labels ?? {});
+          return { status: 201, body: JSON.stringify({ Id: `${body.Name}-id` }) };
+        }
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const network = Array.from(networks).find(
+            (name) => name === reference || `${name}-id` === reference,
+          );
+          return network === undefined
+            ? { status: 404, body: "{}" }
+            : {
+                status: 200,
+                body: JSON.stringify({
+                  Id: `${network}-id`,
+                  Name: network,
+                  Labels: networkLabels.get(network),
+                }),
+              };
         }
         if (request.path === "/volumes/create") {
           const body = request.body as { Name?: string; Labels?: Readonly<Record<string, string>> };
@@ -268,8 +285,12 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
           return { status: 200, body: "[]" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
-          const network = decodeURIComponent(request.path.slice("/networks/".length));
-          const deleted = networks.delete(network);
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const network = Array.from(networks).find(
+            (name) => name === reference || `${name}-id` === reference,
+          );
+          const deleted = network !== undefined && networks.delete(network);
+          if (network !== undefined) networkLabels.delete(network);
           return { status: deleted ? 204 : 404, body: "" };
         }
         if (request.method === "POST" && request.path.startsWith("/containers/create")) {
@@ -278,7 +299,11 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
             return { status: 409, body: "already exists" };
           }
           existing.add(created);
-          return { status: 201, body: "{}" };
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }),
+          )(request.body);
+          containerLabels.set(created, body.Labels);
+          return { status: 201, body: JSON.stringify({ Id: `${created}-id` }) };
         }
         if (request.method === "GET" && action === "json") {
           if (!existing.has(name)) {
@@ -287,6 +312,8 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
           return {
             status: 200,
             body: JSON.stringify({
+              Id: `${name}-id`,
+              Config: { Labels: containerLabels.get(name) },
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "created" },
             }),
           };
@@ -305,6 +332,7 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
         if (request.method === "DELETE" && request.path.startsWith("/containers/")) {
           const deleted = existing.delete(name);
           running.delete(name);
+          containerLabels.delete(name);
           return { status: deleted ? 204 : 404, body: "" };
         }
         if (request.method === "GET" && request.path.startsWith("/volumes/")) {
@@ -371,7 +399,6 @@ describe("provider-lando cross-process state", () => {
       expect(persisted).not.toContain("LANDO_HOST_PROXY_SOCKET");
       expect(persisted).not.toContain("LANDO_HOST_PROXY_DEPTH");
       expect(persisted).not.toContain("host-proxy.sock");
-      expect(persisted).not.toContain(HOST_PROXY_CONTAINER_SHIM);
       expect(persisted).not.toContain(HOST_PROXY_CONTAINER_LANDO);
 
       const createdBodies = fake.calls
@@ -613,6 +640,20 @@ describe("provider-lando cross-process state", () => {
 
       const failed = await runOnce(Effect.result(providerA.destroy({ app: plan.id }, { volumes: true })));
       expect(failed._tag).toBe("Failure");
+      if (failed._tag === "Failure") {
+        expect(failed.failure).toBeInstanceOf(ProviderUnavailableError);
+        if (!(failed.failure instanceof ProviderUnavailableError)) throw new Error("expected volume failure");
+        expect(failed.failure.operation).toBe("bringDown.volume");
+        expect(failed.failure.details).toEqual({
+          name: "crossprocessapp_database_data",
+          body: "volume busy",
+        });
+      }
+      expect(
+        fake.calls.filter(
+          (call) => call.method === "DELETE" && call.path === "/volumes/crossprocessapp_database_data",
+        ),
+      ).toHaveLength(1);
       expect(fake.existing.size).toBe(0);
       expect(fake.volumes.has("crossprocessapp_database_data")).toBe(true);
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(true);

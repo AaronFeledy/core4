@@ -12,6 +12,7 @@ import {
 import { type ValidationIssuePath, validationIssue } from "@lando/sdk/schema";
 import { kebab, shortHash } from "./naming.ts";
 import type { AuthoredStorageInfo } from "./service-types.ts";
+import { effectiveShadowExcludes } from "./shadow-host-checks.ts";
 
 const GLOBAL_SCOPE_REMEDIATION =
   "Use scope: app or scope: service. Storage scope: global is deferred until global app support lands.";
@@ -30,6 +31,7 @@ export const plannedContainerDestination = (
   if (!parsed.ok) {
     return new LandofileValidationError({
       message: containerDestinationRefusalMessage(parsed.reason, target),
+      remediation: "Use an absolute in-container destination without parent traversal.",
       file: `${appRoot}/.lando.yml`,
       issues: [validationIssue(issue, containerDestinationRefusalMessage(parsed.reason, target))],
     });
@@ -55,6 +57,7 @@ export const authoredStorageScopes = (
         byStore,
         invalidCacheEntry: new LandofileValidationError({
           message: `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}] in ${appRoot}/.lando.yml. Cache storage is shared across apps by design.`,
+          remediation: "Remove scope: service from cache storage; caches are shared across apps.",
           file: `${appRoot}/.lando.yml`,
           issues: [
             validationIssue(
@@ -137,6 +140,7 @@ export const expandExcludesToShadows = (
   serviceName: string,
   servicePlan: ServicePlan,
   appRoot: string,
+  shadowableExcludes: ReadonlySet<string>,
 ):
   | {
       servicePlan: ServicePlan;
@@ -145,13 +149,11 @@ export const expandExcludesToShadows = (
   | LandofileValidationError => {
   const appMount = servicePlan.appMount;
   if (appMount === undefined) return { servicePlan, shadowStores: [] };
-  const excludes = appMount.excludes ?? [];
-  const includes = new Set(appMount.includes ?? []);
-  const effectiveExcludes = excludes.filter((entry) => !entry.startsWith("!") && !includes.has(entry));
+  const effectiveExcludes = effectiveShadowExcludes(appMount);
   if (effectiveExcludes.length === 0) return { servicePlan, shadowStores: [] };
 
   const shadowStores: Array<{ name: string; scope: StorageScope }> = [];
-  const shadowTargets = new Set<string>();
+  const shadowTargets = new Set<string>(servicePlan.storage.map((mount) => String(mount.target)));
   const shadowMounts: Array<{
     readonly store: string;
     readonly target: PortablePath;
@@ -159,6 +161,7 @@ export const expandExcludesToShadows = (
   }> = [];
 
   for (const excludePath of effectiveExcludes) {
+    if (!shadowableExcludes.has(excludePath)) continue;
     const destination = joinPathSegments(appMount.target, excludePath);
     const mountTarget = plannedContainerDestination(destination, appRoot, [
       "services",

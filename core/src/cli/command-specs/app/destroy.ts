@@ -2,7 +2,9 @@
  * `lando app:destroy` — native command metadata adapter.
  */
 import { resolve } from "node:path";
+import { ProviderId } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import { yesFlag } from "../../spec/confirmation-flag";
 import { Flags } from "../../spec/metadata";
 
 import {
@@ -49,8 +51,12 @@ export const runDestroyCommand = Effect.fn("DestroyCommand.run")(function* (inpu
     }),
   });
   const options = {
+    ...(stringFlag(flags, "provider") === undefined
+      ? {}
+      : { providerId: ProviderId.make(stringFlag(flags, "provider") ?? "") }),
     volumes,
     purgeCaches: booleanFlag(flags, "purge-caches"),
+    purgeSnapshots: booleanFlag(flags, "purge"),
     yes: booleanFlag(flags, "yes"),
   };
   return yield* root === undefined ? destroyApp(options) : destroyAppAtRoot(root, options);
@@ -65,6 +71,7 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   flags: {
+    provider: Flags.string({ description: "Destroy only this provider's applied app and owned resources." }),
     root: Flags.string({
       description: "Clean up an app whose folder no longer exists, using the path lando doctor prints.",
     }),
@@ -73,18 +80,15 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
       default: false,
     }),
     purge: Flags.boolean({
-      description: "Also remove app/service-scoped storage volumes and snapshots.",
+      description:
+        "Also remove app/service-scoped storage volumes and this folder's snapshots, including provider-stored data.",
       default: false,
     }),
     "purge-caches": Flags.boolean({
       description: "Remove cache storage volumes.",
       default: false,
     }),
-    yes: Flags.boolean({
-      char: "y",
-      description: "Skip the confirmation prompt.",
-      default: false,
-    }),
+    yes: yesFlag("Skip the confirmation prompt."),
   },
   run: runDestroyCommand,
   render: (result) => renderDestroyAppResult(result as DestroyAppResult),

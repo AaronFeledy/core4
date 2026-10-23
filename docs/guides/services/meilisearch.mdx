@@ -7,14 +7,15 @@ tags: [beta, docs, meilisearch, service, search, node]
 
 # Index and search with Meilisearch
 
-Put `type: meilisearch` on a service, add a `curl` tooling alias, then create an
-index, add documents, and search over HTTP. You need Lando 4 with a ready
-provider. The default provider is `lando` (managed Podman).
+Add Meilisearch to your app, put three documents in an index, and search them over HTTP. You can then run the same query from a Node service with the official JavaScript client.
+
+You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman). Run host commands from a new app directory for this demo. If you're adding search to an existing app, merge the service and tooling entries rather than replacing the Landofile.
+
+Lando's default master key is the public value `lando`. The examples use it only for a disposable local demo. Don't expose this instance to untrusted users, and never put a real master or admin key in browser code. Use a private master key and scoped API keys before using real data.
 
 ## Configure Meilisearch and tooling
 
-Save this as `.lando.yml`. The Meilisearch type does not ship a client task, so
-declare one. The optional Node service is for the SDK path below:
+Save this as `.lando.yml` in your app directory:
 
 ```yaml
 name: meilisearch-demo
@@ -29,7 +30,7 @@ tooling:
   meili:
     service: search
     description: Call the Meilisearch HTTP API with curl.
-    cmd: [curl, -sf]
+    cmd: [curl, -fsS]
   node:
     service: app
     cmd: [node]
@@ -42,76 +43,53 @@ tooling:
     dir: /app
 ```
 
-`type: meilisearch` resolves to `getmeili/meilisearch:v1.11`, listens on `7700`,
-stores index data under `/meili_data`, and turns off Meilisearch telemetry
-(`MEILI_NO_ANALYTICS=true`) in development mode (`MEILI_ENV=development`).
-`cmd: [curl, -sf]` runs curl inside `search`, with your flags and URL appended.
+The `meili` alias runs curl inside `search`, with your arguments appended. Lando doesn't add a Meilisearch client command automatically. `app` is an idle Node service for the SDK example; `endpoints: []` gives it no endpoint because it isn't serving HTTP.
 
-Start it and check info:
+## Start and check the API
 
 ```sh
 lando start
-lando info
-```
-
-`lando info` lists an HTTPS URL for `search` under the app domain. Day-to-day
-API traffic in the examples below uses port `7700` inside the app network (and
-through the `meili` alias). If something else owns 80 or 443, Lando picks the
-next free ports and `lando info` shows them.
-
-## Use the default master key
-
-Lando seeds `MEILI_MASTER_KEY=lando` on every Meilisearch service. That is the
-published local-dev default, not a secret, so tooling prints it as-is. `/health`
-stays open without a header. Every other route needs the key:
-
-```sh
 lando meili http://localhost:7700/health
-lando exec search -- printenv MEILI_MASTER_KEY
 lando meili -H 'Authorization: Bearer lando' http://localhost:7700/indexes
 ```
 
-A healthy node returns `{"status":"available"}`. `printenv` prints `lando`.
-Listing indexes without the header fails (curl exit `22`). With the header, an
-empty engine reports `total: 0`.
+The health response should report `status: available`. The authenticated index list should have `total: 0` on a fresh instance. `localhost:7700` works here because the alias runs inside the Meilisearch container. `/health` doesn't require a key, but index, document, and task requests do.
 
-Override the key when you want a private one. Keep real credentials in an
-untracked local Landofile:
-
-```yaml
-services:
-  search:
-    type: meilisearch
-    environment:
-      MEILI_MASTER_KEY: your-key-here
-```
-
-Rebuild after changing it. Non-default keys are redacted in `printenv` and
-similar output. Swap `lando` for your key in every `Authorization` header and
-SDK `apiKey` below.
+If curl cannot connect, run `lando logs -s search` and resolve the startup error before continuing. An HTTP error makes the alias exit non-zero; missing or invalid authentication is different from a server that cannot be reached.
 
 ## Create an index and search
 
-Meilisearch's day-to-day API is plain HTTP. Create an index, add documents, wait
-for the indexing task, then search:
+Create a `movies` index with `id` as its primary key:
 
 ```sh
 lando meili -X POST -H 'Authorization: Bearer lando' -H 'Content-Type: application/json' \
   --data '{"uid":"movies","primaryKey":"id"}' \
   http://localhost:7700/indexes
+```
 
+The response contains a `taskUid`. It means the request was queued, not that the index is ready. Replace `<taskUid>` in the quoted URL with that number, then repeat the request until `status` is `succeeded`:
+
+```sh
+lando meili -H 'Authorization: Bearer lando' 'http://localhost:7700/tasks/<taskUid>'
+```
+
+If the task is `failed` or `canceled`, stop rather than polling forever. For a failed task, read its `error` field. If it reports `index_already_exists` on a repeated run, confirm that this is your demo index and that its primary key is `id` before continuing:
+
+```sh
+lando meili -H 'Authorization: Bearer lando' http://localhost:7700/indexes/movies
+```
+
+Add the documents only after index creation succeeds. This request replaces any existing documents with the same IDs, so use a separate demo index rather than one containing data you need:
+
+```sh
 lando meili -X POST -H 'Authorization: Bearer lando' -H 'Content-Type: application/json' \
   --data '[{"id":1,"title":"Casablanca","genres":["Drama","Romance"]},{"id":2,"title":"Cloud City","genres":["Sci-Fi"]},{"id":3,"title":"The Empire Strikes Back","genres":["Sci-Fi","Adventure"]}]' \
   http://localhost:7700/indexes/movies/documents
 ```
 
-Each write returns a `taskUid`. Replace `<taskUid>` below with the value from the write you want to check, and poll until that task reports `succeeded`:
+This write returns a new `taskUid`. Check that task with the same `/tasks/` command, using the new number, and wait for `succeeded` before searching. If it fails, inspect the task's `error` instead of assuming a successful HTTP response means the documents were indexed. See [Meilisearch's task lifecycle](https://www.meilisearch.com/docs/capabilities/indexing/tasks_and_batches/async_operations).
 
-```sh
-lando meili -H 'Authorization: Bearer lando' http://localhost:7700/tasks/<taskUid>
-```
-
-Then search. Typo tolerance is the whole point, so `casa` still hits Casablanca:
+Search for the prefix `casa`:
 
 ```sh
 lando meili -X POST -H 'Authorization: Bearer lando' -H 'Content-Type: application/json' \
@@ -119,41 +97,28 @@ lando meili -X POST -H 'Authorization: Bearer lando' -H 'Content-Type: applicati
   http://localhost:7700/indexes/movies/search
 ```
 
-The response reports `hits` with the matching document. Confirm the running
-package version:
-
-```sh
-lando meili -H 'Authorization: Bearer lando' http://localhost:7700/version
-```
-
-That body includes `pkgVersion` (for example `1.11.3` on the current `v1.11`
-image). The `meili` alias runs curl inside `search`, so `localhost:7700` reaches
-Meilisearch.
+Check that `hits` includes the document titled `Casablanca`. This demonstrates [prefix search](https://www.meilisearch.com/docs/resources/internals/prefix), not a misspelling. An empty result after adding documents is a reason to check the document task again.
 
 ## Reach Meilisearch from another service
 
-Other services on the app join the same network. The hostname is the service
-key `search`, and the port is `7700`:
+From another service, use `http://search:7700`: `search` is the service key. `localhost` inside `app` means the Node container, not Meilisearch.
 
-```
-http://search:7700
-```
-
-From the Node service:
+Check both network access and authentication from `app`:
 
 ```sh
-lando exec app -- curl -sf http://search:7700/health
-lando exec app -- curl -sf -H 'Authorization: Bearer lando' http://search:7700/indexes
+lando exec app -- curl -fsS http://search:7700/health
+lando exec app -- curl -fsS -H 'Authorization: Bearer lando' http://search:7700/indexes
 ```
 
-Do not use `localhost` inside another container. That is the container itself,
-not Meilisearch.
+For a host client, run `lando info` and use the URL it lists for `search`. Don't assume that the internal name `search` resolves on your host, or that port `7700` is published there.
 
 ## Query from Node
 
-Use the official [`meilisearch`](https://www.npmjs.com/package/meilisearch)
-client against `http://search:7700`. Add `package.json` and `search.mjs` next to
-the Landofile:
+Complete the HTTP indexing steps first. This script queries the existing `movies` index; it doesn't create it or load documents.
+
+Use the official [JavaScript client](https://github.com/meilisearch/meilisearch-js/tree/v0.62.0). The pinned release below supports Node 22.12 or newer on the Node 22 line. Check `lando node --version` before installing it; use an up-to-date Node 22 service image if yours is older.
+
+Save this as `package.json` next to the Landofile, or add the dependency to your existing package:
 
 ```json
 {
@@ -161,51 +126,91 @@ the Landofile:
   "private": true,
   "type": "module",
   "dependencies": {
-    "meilisearch": "^0.45.0"
+    "meilisearch": "0.62.0"
   }
 }
 ```
 
-```js
-import { MeiliSearch } from "meilisearch";
+Save this as `search.mjs` in the same directory:
 
-const client = new MeiliSearch({
+```js
+import { Meilisearch } from "meilisearch";
+
+const client = new Meilisearch({
   host: "http://search:7700",
   apiKey: "lando",
 });
 
 const health = await client.health();
 const results = await client.index("movies").search("casa");
-console.log(JSON.stringify({ health, hits: results.hits.map((h) => h.title) }));
+console.log(JSON.stringify({ health, hits: results.hits.map((hit) => hit.title) }));
 ```
 
-Install and run:
+Install and run inside `app`:
 
 ```sh
 lando npm install
 lando node search.mjs
 ```
 
-You should see `status: available` and a `hits` array that includes
-`Casablanca`. Point `apiKey` at your overridden master key when you set one.
+Check that the output includes `status: available` and `Casablanca` in `hits`. Keep `package-lock.json` with your project; later installs can use `lando npm ci`. The SDK version and server version don't use matching numbers: this SDK supports the Meilisearch v1 API used here.
+
+## Use a private key
+
+For anything beyond the disposable demo, generate a random master key of at least 16 bytes. Add `.lando.local.yml` to `.gitignore` before saving a real key there. Use this local override, replacing the placeholder with your generated value:
+
+```yaml
+services:
+  search:
+    environment:
+      MEILI_MASTER_KEY: replace-with-your-generated-secret
+```
+
+Run `lando rebuild` after changing the key. Updating the master key also changes the derived API keys, so update your clients before retrying their requests. Don't print or paste real credentials into logs or shared examples.
+
+Use the master key to manage API keys, then give backend code an admin or narrowly scoped key and browser search code a search-only key. Replace the demo `lando` credential in the HTTP headers and Node `apiKey` with the appropriate key. Follow [Meilisearch's key guidance](https://www.meilisearch.com/docs/resources/self_hosting/security/master_api_keys) when connecting a real application.
+
+## Inspect the server and diagnose requests
+
+The service type uses `getmeili/meilisearch:v1.11`, listens on `7700`, and stores index data under `/meili_data`. It sets `MEILI_ENV=development`, `MEILI_NO_ANALYTICS=true`, and the default `MEILI_MASTER_KEY=lando` unless you override them.
+
+Check the running server's actual release rather than assuming the patch version behind the image tag:
+
+```sh
+lando meili -H 'Authorization: Bearer lando' http://localhost:7700/version
+```
+
+Read `pkgVersion` in the response. Substitute your key if you changed it.
+
+The alias's `-f` flag makes HTTP errors fail, `-s` hides curl's progress meter, and `-S` keeps curl's error message visible. To see an API error's response body during diagnosis, run curl without `-f`. For example, this deliberately omits authentication:
+
+```sh
+lando exec search -- curl -sS -i http://localhost:7700/indexes
+```
+
+Expect an authentication error, not the index list. Add the correct Bearer header for normal requests.
 
 ## Pin a version
 
-Set `image:` when the default `v1.11` is not the release you want:
+An image change is not a data migration. Before changing Meilisearch releases on an existing volume, back up your data and follow the [upgrade instructions for your source and target versions](https://www.meilisearch.com/docs/resources/migration/updating). Don't attach an older image to a database created by a newer release.
+
+For a fresh instance, this example pins a patch release on the default v1.11 line:
 
 ```yaml
 services:
   search:
     type: meilisearch
-    image: getmeili/meilisearch:v1.10
+    image: getmeili/meilisearch:v1.11.3
+    home: false
 ```
 
-Keep the master key and API shape the same across bumps unless that release's
-upgrade notes say otherwise. Index data lives in the
-`<app>-meilisearch-data` volume. Destroying the app without volume purge keeps
-it.
+`home: false` disables home-directory persistence for the custom image. Without it or an explicit `home.path`, Lando can't infer the home and planning fails. The separate `/meili_data` volume still persists index data.
 
-## Start, inspect, destroy
+After an authorized version change and any required migration, run `lando rebuild`, then repeat the health and `/version` checks. Also rerun a search; a running container alone doesn't prove the data is usable.
+
+## Check the Lando configuration
+
+These checks exercise the declared services, tooling, and app plan. They don't verify indexing or search against a real Meilisearch server; use the HTTP and SDK commands above for that:
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -220,7 +225,7 @@ it.
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"search\":\\s*\\{[^}]*\"type\":\\s*\"meilisearch\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"meili\":\\s*\\{[^}]*\"service\":\\s*\"search\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"meili\":\\s*\\{[^}]*\"cmd\":\\s*\\[\\s*\"curl\"\\s*,\\s*\"-sf\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"meili\":\\s*\\{[^}]*\"cmd\":\\s*\\[\\s*\"curl\"\\s*,\\s*\"-fsS\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
     </Step>
@@ -236,5 +241,12 @@ it.
   </Scenario>
 </Guide>
 
-`lando destroy -y` removes containers and networks. Pass `--volumes` or
-`--purge` when you want a fresh index on the next start.
+## Keep or remove the index data
+
+`lando destroy -y` removes app containers and networks but keeps the `<app>-meilisearch-data` volume, so the index remains available after the next start:
+
+```sh
+lando destroy -y
+```
+
+Only add `--volumes` when you intend to delete the app's persistent volumes, including its indexes and the Node dependency volume. Back up anything you need first. Your source files stay on the host.

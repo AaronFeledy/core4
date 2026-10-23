@@ -2,6 +2,7 @@ import { GlobalAppError, type ServiceNotReadyError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { ApplyOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
+import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { waitForServiceReadiness } from "./service-readiness.ts";
@@ -63,6 +64,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
               apply.provider.apply(builtPlan, {
                 ...apply.options,
                 serviceEnvironment,
+                onVolumeCreated: yield* volumeCreationRecorder(apply.provider, builtPlan),
                 ...(apply.options.reconcile === true ? { recordedPlan } : {}),
                 completionPlan: plan,
               }),

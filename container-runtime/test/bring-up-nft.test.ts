@@ -115,7 +115,8 @@ describe("bringUp start-failure remediation hook", () => {
     // Then
     expect(error._tag).toBe("ServiceStartError");
     expect(error.remediation).toBe(APPLY_REMEDIATION);
-    expect(APPLY_REMEDIATION).toContain("lando destroy");
+    expect(APPLY_REMEDIATION).not.toContain("lando destroy");
+    expect(APPLY_REMEDIATION).toContain("lando start");
     expect(APPLY_REMEDIATION).toContain("lando doctor");
   });
 
@@ -211,7 +212,7 @@ describe("bringUp network-create remediation hook", () => {
     );
 
     // Then
-    expect(error.operation).toBe("bringUp.network");
+    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", operation: "bringUp.network" });
     expect(error.remediation).toBe("hook remediation");
     expect(seen).toHaveLength(1);
     expect(seen[0]?.service).toBeUndefined();
@@ -257,7 +258,7 @@ describe("bringUp provider identity", () => {
 
     // Then
     expect(error.providerId).toBe("podman");
-    expect(error.operation).toBe("bringUp.network");
+    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", operation: "bringUp.network" });
     expect(error.message).toContain("network create refused");
   });
 });

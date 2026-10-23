@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from "effect";
 
 import {
-  type ConfigError,
+  type AppPlacementError,
   type LandofileVersionConstraintError,
   ScratchAppError,
   type ScratchAppNotFoundError,
@@ -13,6 +13,7 @@ import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type ConfigService,
   type FileSystem,
+  type ProviderError,
   RuntimeProviderRegistry,
   type ScratchAppService,
 } from "@lando/sdk/services";
@@ -66,12 +67,13 @@ export const ScratchRunResultSchema = Schema.Struct({
 });
 
 export type ScratchRunError =
+  | ProviderError
+  | AppPlacementError
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | ScratchAppError
   | ScratchAppNotFoundError
   | ScratchRunTargetError
-  | ConfigError
   | LandofileVersionConstraintError;
 
 export type ScratchRunServices =
@@ -98,12 +100,11 @@ export const defaultScratchRunDeps: ScratchRunDeps = {
   readLandofile: readScratchLandofile,
 };
 
+// Forwarded agent markers are identity flags, not secrets; only long values are registered.
 const MIN_REDACTION_TOKEN_LENGTH = 8;
 
-const redactionTokensFromEnv = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> => {
-  if (env === undefined) return [];
-  return Object.values(env).filter((value) => value.trim().length >= MIN_REDACTION_TOKEN_LENGTH);
-};
+const redactionTokensFromEnv = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> =>
+  Object.values(env ?? {}).filter((value) => value.trim().length >= MIN_REDACTION_TOKEN_LENGTH);
 
 export const scratchRunRedactionTokens = (result: ScratchRunResult): ReadonlyArray<string> =>
   result.redactionTokens ?? [];

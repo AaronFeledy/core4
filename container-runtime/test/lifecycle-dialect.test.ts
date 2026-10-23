@@ -8,9 +8,11 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  landoNetworkingPlan,
 } from "@lando/sdk/schema";
-import { dockerLifecycleDialect } from "../src/dialect.ts";
+import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
+import { commonContainerLabels } from "../src/plan.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
@@ -55,7 +57,7 @@ const plan: AppPlan = {
 
 const makeBringUpApi = (
   createResponses: ReadonlyArray<EngineHttpResponse> = [{ status: 201, body: "{}" }],
-  options: { readonly existing?: boolean } = {},
+  options: { readonly existing?: boolean; readonly plan?: AppPlan } = {},
 ) => {
   const requests: EngineHttpRequest[] = [];
   let created = options.existing === true;
@@ -72,7 +74,14 @@ const makeBringUpApi = (
         }
         if (request.method === "GET" && request.path.endsWith("/json")) {
           return created
-            ? { status: 200, body: JSON.stringify({ State: { Running: true, Status: "running" } }) }
+            ? {
+                status: 200,
+                body: JSON.stringify({
+                  Id: "lando-lifecycle-dialect-app-web-id",
+                  Config: { Labels: commonContainerLabels(options.plan ?? plan, service) },
+                  State: { Running: true, Status: "running" },
+                }),
+              }
             : { status: 404, body: "{}" };
         }
         if (request.method === "POST" && request.path.startsWith("/containers/create?")) {
@@ -193,6 +202,68 @@ describe("lifecycle dialect", () => {
     });
   });
 
+  for (const dialect of [dockerLifecycleDialect, libpodLifecycleDialect]) {
+    test(`${dialect.engine} uses explicit shared-only membership without a later connect`, async () => {
+      // Given
+      const globalPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("not-a-magic-id"),
+        name: "global",
+        slug: "global",
+        networking: landoNetworkingPlan({
+          slug: "global",
+          serviceNames: ["web"],
+          sharedCrossAppNetwork: true,
+          perAppBridge: false,
+        }),
+      };
+      const fake = makeBringUpApi();
+
+      // When
+      await Effect.runPromise(bringUp(globalPlan, { api: fake.api, ctx, dialect }));
+
+      // Then
+      expect(
+        fake.requests.find((request) => request.path.startsWith("/containers/create?"))?.body,
+      ).toMatchObject({
+        NetworkingConfig: {
+          EndpointsConfig: { lando_bridge_network: { Aliases: ["web.global.internal"] } },
+        },
+      });
+      expect(fake.requests.filter((request) => request.path.endsWith("/connect"))).toEqual([]);
+      expect(
+        fake.requests.filter((request) => request.path === "/networks/create").map((request) => request.body),
+      ).toEqual([{ Name: "lando_bridge_network", Driver: "bridge" }]);
+    });
+    test(`${dialect.engine} honors a private bridge even with the reserved app id`, async () => {
+      const fake = makeBringUpApi();
+      const networking = landoNetworkingPlan({
+        slug: "shop",
+        serviceNames: ["web"],
+        sharedCrossAppNetwork: true,
+      });
+      await Effect.runPromise(
+        bringUp({ ...plan, id: AppId.make("global"), networking }, { api: fake.api, ctx, dialect }),
+      );
+      const create = fake.requests.find((request) => request.path.startsWith("/containers/create?"));
+      expect(create?.body).toMatchObject({
+        NetworkingConfig: { EndpointsConfig: { "lando-shop": { Aliases: ["web"] } } },
+      });
+      expect(
+        fake.requests
+          .filter((request) => request.path === "/networks/create")
+          .map((request) =>
+            typeof request.body === "object" && request.body !== null
+              ? Reflect.get(request.body, "Name")
+              : undefined,
+          ),
+      ).toEqual(["lando-shop", "lando_bridge_network"]);
+      expect(fake.requests.filter((request) => request.path.endsWith("/connect"))).toHaveLength(
+        dialect.engine === "docker" ? 1 : 0,
+      );
+    });
+  }
+
   test("reconnects an existing container to the shared network", async () => {
     const fake = makeBringUpApi([{ status: 201, body: "{}" }], { existing: true });
 
@@ -212,6 +283,40 @@ describe("lifecycle dialect", () => {
         body: {
           Container: "lando-lifecycle-dialect-app-web",
           EndpointConfig: { Aliases: ["web.lifecycle-dialect-app.internal"] },
+        },
+      },
+    ]);
+  });
+
+  test("reattaches a global container on later Docker bring-ups without connecting redundantly on creation", async () => {
+    const globalPlan: AppPlan = {
+      ...plan,
+      id: AppId.make("global"),
+      slug: "global",
+      networking: landoNetworkingPlan({
+        slug: "global",
+        serviceNames: ["web"],
+        sharedCrossAppNetwork: true,
+        perAppBridge: false,
+      }),
+    };
+    const fake = makeBringUpApi(undefined, { plan: globalPlan });
+    const options = { api: fake.api, ctx, dialect: dockerLifecycleDialect };
+
+    await Effect.runPromise(bringUp(globalPlan, options));
+    expect(fake.requests.filter((request) => request.path.endsWith("/connect"))).toEqual([]);
+    fake.requests.length = 0;
+
+    await Effect.runPromise(bringUp(globalPlan, options));
+
+    expect(fake.requests.some((request) => request.path.startsWith("/containers/create?"))).toBe(false);
+    expect(fake.requests.filter((request) => request.path.endsWith("/connect"))).toEqual([
+      {
+        method: "POST",
+        path: "/networks/lando_bridge_network/connect",
+        body: {
+          Container: "lando-global-web",
+          EndpointConfig: { Aliases: ["web.global.internal"] },
         },
       },
     ]);

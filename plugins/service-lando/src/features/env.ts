@@ -1,12 +1,11 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { isCoreServiceEnvKey } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { appNameFor } from "../app-name.ts";
 import { MAILPIT_SHARED_NETWORK_HOST, MAILPIT_SMTP_PORT } from "../mailpit-constants.ts";
-import { addEnvRecord } from "../services/_feature-helpers.ts";
+import { ServiceConfigIssue, addEnvRecord, serviceFeatureApply } from "../services/_feature-helpers.ts";
 
 const GLOBAL_APP_NAME = "global" as const;
 
@@ -29,10 +28,12 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
   const userEnv = ctx.normalizedConfig.environment ?? {};
 
   const reserved = Object.keys(userEnv).filter(isCoreServiceEnvKey);
-  if (reserved.length > 0) {
-    throw new Error(
-      `User environment cannot override reserved LANDO_* keys: ${reserved.join(", ")}. ` +
-        `Remove these from services.${ctx.serviceName}.environment; plugins use LANDO_PLUGIN_<NAME>_* instead.`,
+  const firstReserved = reserved[0];
+  if (firstReserved !== undefined) {
+    throw new ServiceConfigIssue(
+      ["environment", firstReserved],
+      `User environment cannot override reserved LANDO_* keys: ${reserved.join(", ")}.`,
+      "Remove these environment keys; plugins use LANDO_PLUGIN_<NAME>_* instead.",
     );
   }
 
@@ -68,14 +69,5 @@ export const landoEnvFeature: ServiceFeatureDefinition = {
   id: LANDO_ENV_FEATURE_ID,
   schema: LandoEnvFeatureConfigSchema as unknown as Schema.Codec<unknown>,
   priority: LANDO_ENV_FEATURE_PRIORITY,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyEnv(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "lando.env failed to apply",
-          feature: LANDO_ENV_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(LANDO_ENV_FEATURE_ID, "lando.env failed to apply", applyEnv),
 };

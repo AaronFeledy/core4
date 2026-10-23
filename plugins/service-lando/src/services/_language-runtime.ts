@@ -2,14 +2,19 @@ import { Schema } from "effect";
 
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
-import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import {
+  ServiceConfigIssue,
+  addEnvRecord,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
 export interface LanguageFrameworkPreset {
   readonly port: number;
-  readonly defaultCommand: ReadonlyArray<string> | null;
   readonly env?: ReadonlyMap<string, string>;
   readonly webroot?: string;
 }
@@ -18,7 +23,6 @@ interface LanguageFeatureConfig<V extends string, F extends string> {
   readonly framework: F;
   readonly version: V;
   readonly port: number;
-  readonly defaultCommand?: ReadonlyArray<string> | null;
   readonly webroot?: string;
 }
 
@@ -48,8 +52,10 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
   const validateFramework = (raw: string | undefined): F => {
     const framework = spec.frameworks.find((candidate) => candidate === (raw ?? "none"));
     if (framework !== undefined) return framework;
-    throw new Error(
-      `Unsupported ${spec.displayName} framework "${raw}". Set framework to one of: ${spec.frameworks.join(", ")} (got ${raw}).`,
+    throw new ServiceConfigIssue(
+      ["framework"],
+      `Unsupported ${spec.displayName} framework "${raw}".`,
+      `Set framework to one of: ${spec.frameworks.join(", ")} (got ${raw}).`,
     );
   };
 
@@ -59,14 +65,16 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     const requested = declaredType.slice(prefix.length);
     const version = spec.versions.find((candidate) => candidate === requested);
     if (version !== undefined) return version;
-    throw new Error(
-      `Unsupported ${spec.displayName} version "${requested}". Set type to one of: ${spec.versions.map((v) => `${prefix}${v}`).join(", ")} (got ${prefix}${requested}).`,
+    throw new ServiceConfigIssue(
+      ["type"],
+      `Unsupported ${spec.displayName} version "${requested}".`,
+      `Set type to one of: ${spec.versions.map((v) => `${prefix}${v}`).join(", ")} (got ${prefix}${requested}).`,
     );
   };
 
   const applyFeature = (ctx: ServiceFeatureContext): void => {
     const service = ctx.normalizedConfig;
-    const { framework, version, port, webroot, defaultCommand } = spec.configFor(ctx);
+    const { framework, version, port, webroot } = spec.configFor(ctx);
     ctx.setArtifact({ kind: "ref", ref: service.image ?? spec.artifactFor(version) });
     const env = { ...spec.baseEnv };
     for (const [key, value] of spec.presets[framework].env ?? []) env[key] = value;
@@ -78,7 +86,6 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     ctx.addExtension(spec.extensionKey, {
       framework,
       version,
-      defaultCommand: defaultCommand ?? null,
       port,
       ...(webroot === undefined ? {} : { webroot }),
     });
@@ -107,7 +114,13 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
         const endpointPort = input.service.port ?? preset.port;
         const webroot =
           spec.includeWebrootInFeatureConfig && input.service.appMount !== false
-            ? { webroot: resolveWebroot(spec.displayName, preset.webroot, input.service.appMount) }
+            ? {
+                webroot: resolveWebroot(
+                  spec.displayName,
+                  input.service.webroot ?? preset.webroot,
+                  input.service.appMount,
+                ),
+              }
             : {};
         return {
           base: "lando" as const,
@@ -120,7 +133,6 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
                 version: resolvedVersion,
                 port: endpointPort,
                 ...webroot,
-                defaultCommand: preset.defaultCommand,
               },
             },
             { id: "lando.env", config: webroot },

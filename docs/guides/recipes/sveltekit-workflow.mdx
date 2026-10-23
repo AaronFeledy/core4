@@ -171,7 +171,7 @@ services:
       DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
 ```
 
-Then `lando rebuild`. Read `process.env.DATABASE_URL` in your app code, so the password never lands in a committed file. `lando info` redacts it. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
+Then `lando start`. Read `process.env.DATABASE_URL` in your app code, so the password never lands in a committed file. `lando info` redacts it. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
 
 Query it with the `psql` tooling. It logs in with the service credentials, so you never type the password:
 

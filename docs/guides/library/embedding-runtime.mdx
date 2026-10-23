@@ -29,6 +29,10 @@ retained runtime scope. A no-selector `runtime.app()` resolves the project at th
 runtime's construction working directory, and the handle stays bound to that root
 even if the host later changes its process working directory.
 
+The handle retains its resolved plan and captured Landofile. `exec`, deep `info`, and handle-bound tooling reuse that object, including when `agentEnv` is omitted. A later file edit does not refresh the handle. Re-resolve with `runtime.app(originalSelector)` or layer-native `resolveApp(originalSelector)` to capture edits; supply an updated object when the selector contains a Landofile shape. Ordinary CLI invocations still discover fresh configuration.
+
+That is a privacy boundary: an existing handle does not observe a later app `agentEnv: false` edit. Invocation-time `ConfigService.get("agentEnv")` and the current `LANDO_AGENT_ENV=0` emergency veto still disable automatic forwarding. Global config is a snapshot taken when the runtime was built, so a later `config.yml` edit is not seen until you build a new runtime. Vetoes do not remove explicit service or command env and do not revoke commands already running. Provider status remains live, including shallow `info`, which does not load a Landofile for a supplied target.
+
 ```ts
 import { Effect } from "effect";
 import { openLandoRuntime } from "@lando/core";
@@ -48,7 +52,11 @@ const info = await Effect.runPromise(Effect.scoped(program));
 
 `app.start()` keeps start-state resources (such as file-sync sessions) alive on a
 managed scope between calls; `app.stop()`, `app.restart()`, `app.destroy()`, and
-runtime-scope close each tear that scope down exactly once. Use
+runtime-scope close each tear that scope down exactly once. A failed or
+interrupted `app.start()` keeps the current managed scope while the runtime
+scope remains open. It also leaves containers and published routes in place.
+Call `app.start()` again to converge, or `app.stop()` / `app.destroy()` to
+shut down or remove the app. Use
 `app.start({ detached: true })` when you want the started resources to outlive the
 runtime scope, matching the CLI's detached semantics.
 
@@ -81,6 +89,54 @@ runtime can import `resolveLandoRoots()`, `makeLandoPaths()`, and
 Effect-free, OCLIF-free path primitive for pre-bootstrap code such as editor
 integrations, installers, and test harness setup.
 
+## Supply global config
+
+Global config resolves once, while the runtime layer builds. The layers are the
+same as the CLI's, plus one for you: built-in defaults, then `config.yml`, then
+`config.d/*.yml`, then environment (`LANDO_CONFIG__*`, aliases, root vars), then
+the host `config` option. `config` accepts any `GlobalConfig` field, not only
+roots:
+
+```ts
+import { makeLandoRuntime } from "@lando/core";
+
+const runtime = makeLandoRuntime({
+  bootstrap: "minimal",
+  config: {
+    userDataRoot: "/srv/lando/data",
+    router: { httpPort: 8123 },
+    appEnv: { TEAM: "platform" },
+  },
+});
+```
+
+`configSources` turns the user and environment layers off for hermetic hosts.
+`{ user: false }` skips `config.yml` and `config.d`; `{ env: false }` skips
+`LANDO_CONFIG__*`, aliases, `LANDO_USER_*` root vars, `LANDO_PROVIDER`, and the
+proxy and CA variables (`HTTPS_PROXY`, `NO_PROXY`, `LANDO_NETWORK_CA_CERTS`)
+the HTTP client would otherwise read. Platform defaults still come from `HOME`
+or `APPDATA`, so set the roots in `config` when you want full isolation:
+
+```ts
+const hermetic = makeLandoRuntime({
+  bootstrap: "minimal",
+  configSources: { user: false, env: false },
+  config: { userConfRoot: "/tmp/host/conf", userDataRoot: "/tmp/host/data", userCacheRoot: "/tmp/host/cache" },
+});
+```
+
+The merged result is validated once. An invalid value from any layer fails the
+layer build with a `ConfigError` whose `issues[]` carry `path`, `message`,
+`suggestion`, and `source`. A bad host value reports `source: { layer: "host", path }`
+and a suggestion naming the option to fix. The error keeps its own tag; it is not
+wrapped in `LandoRuntimeBootstrapError`.
+
+Once built, `ConfigService.load` and `ConfigService.get` never fail. They return
+the snapshot the runtime was built with, and the runtime's `StateStore`, plugin
+trust store, and HTTP egress use that snapshot's roots and environment rather
+than `process.env`. Two runtimes in one process never share a snapshot. To pick
+up a changed `config.yml` or environment, build a new runtime.
+
 ## Running arbitrary effects and command operations
 
 A retained runtime also exposes `runtime.run(effect)`, which provides the retained
@@ -104,7 +160,7 @@ For command-shaped dispatch, `@lando/core/cli` exposes the programmatic `runCli`
 entry point, while the lower-level Effect operations behind built-in commands remain
 available from `@lando/core/cli/operations` (for example `startApp`, `infoApp`, and
 `stopApp`). These are building blocks for hosts that want command parity without
-OCLIF — they return typed results rather than rendered text — but they are not the
+OCLIF. They return typed results rather than rendered text, but they are not the
 preferred app lifecycle API. Prefer the `App` handle for lifecycle work and reach
 for the raw operations only when you need command-level dispatch.
 
@@ -119,12 +175,26 @@ reporter? See [Observe an embedded runtime](./embedding-observability.mdx).
         code={`const [{ RouterService }, { TestRouterService }] = yield* Effect.promise(() =>
   Promise.all([import("@lando/core/services"), import("@lando/sdk/test")]),
 );
+const appliedPlans = new Map<string, import("@lando/core/schema").AppPlan>();
+const provider = LandoCore.RuntimeProvider.of({
+  ...LandoTesting.TestRuntimeProvider,
+  appliedPlans: Effect.sync(() => [...appliedPlans.values()]),
+  apply: (plan, options) => LandoTesting.TestRuntimeProvider.apply(plan, options).pipe(
+    Effect.tap(() => Effect.sync(() => appliedPlans.set(plan.root, plan))),
+  ),
+});
 const providerLayers = [
-  LandoTesting.withService(LandoCore.RuntimeProvider, LandoTesting.TestRuntimeProvider),
+  LandoTesting.withService(LandoCore.RuntimeProvider, provider),
   LandoTesting.withService(LandoCore.RuntimeProviderRegistry, {
+    appliedPlansFor: (root) => Effect.sync(() => [...appliedPlans.values()].filter((plan) => plan.root === root)),
     list: Effect.succeed([]),
-    capabilities: Effect.succeed(LandoTesting.TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(LandoTesting.TestRuntimeProvider),
+    capabilities: Effect.succeed(provider.capabilities),
+    select: () => Effect.succeed(provider),
+    resolveAppliedPlan: (root) => Effect.sync(() => appliedPlans.get(root)),
+    resolveTeardownEvidence: (root) => Effect.sync(() => {
+      const plan = appliedPlans.get(root);
+      return plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan };
+    }),
   }),
   LandoTesting.withService(RouterService, TestRouterService),
 ];
@@ -134,14 +204,7 @@ yield* Effect.promise(() =>
     "name: embedded-app\nruntime: 4\nprovider: test\nservices:\n  cache:\n    type: redis\n    primary: true\n",
   ),
 );
-const previousShimArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
-const shimArtifact = join(context.testDir, "lando-shim");
-yield* Effect.promise(() => Bun.write(shimArtifact, "#!/usr/bin/env sh\nexit 0\n"));
-
-let lifecycle;
-try {
-  process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = shimArtifact;
-  lifecycle = yield* LandoCore.openLandoRuntime({
+const lifecycle = yield* LandoCore.openLandoRuntime({
     cwd: context.testDir,
     plugins: { policy: "bundled-only", layers: providerLayers },
   }).pipe(
@@ -153,10 +216,6 @@ try {
       ),
     ),
   );
-} finally {
-  if (previousShimArtifact === undefined) Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-  else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousShimArtifact;
-}
 
 expect(lifecycle.info.app).toBe("embedded-app");
 expect(lifecycle.started.servicesStarted.map((service) => service.name)).toContain("cache");
@@ -261,6 +320,40 @@ const secondValue = await Effect.runPromise(
 );
 
 console.log(secondValue);`}
+      />
+    </Step>
+  </Scenario>
+  <Scenario id="invalid-host-config">
+    <Step name="build-with-bad-host-value">
+      <Run
+        runtime="library"
+        code={`const runtime = LandoCore.makeLandoRuntime({
+  bootstrap: "minimal",
+  configSources: { user: false, env: false },
+  config: { router: { httpPort: 99999 } },
+});
+const failure = yield* Effect.flip(
+  Effect.flatMap(LandoCore.ConfigService, (config) => config.load).pipe(Effect.provide(runtime)),
+);
+expect(failure._tag).toBe("ConfigError");
+if (failure._tag !== "ConfigError") throw new Error("Expected ConfigError");
+expect(failure.issues).toHaveLength(1);
+expect(failure.issues?.[0]?.path).toEqual(["router", "httpPort"]);
+expect(failure.issues?.[0]?.source).toEqual({ layer: "host", path: ["router", "httpPort"] });
+expect(failure.issues?.[0]?.suggestion).toMatch(/router\.httpPort.*host config option/);`}
+        displayCode={`import { Effect } from "effect";
+import { ConfigService, makeLandoRuntime } from "@lando/core";
+
+const runtime = makeLandoRuntime({
+  bootstrap: "minimal",
+  configSources: { user: false, env: false },
+  config: { router: { httpPort: 99999 } },
+});
+
+const failure = await Effect.runPromise(
+  Effect.flip(Effect.flatMap(ConfigService, (config) => config.load).pipe(Effect.provide(runtime))),
+);
+console.log(failure._tag, failure.issues?.[0]?.source, failure.issues?.[0]?.suggestion);`}
       />
     </Step>
   </Scenario>

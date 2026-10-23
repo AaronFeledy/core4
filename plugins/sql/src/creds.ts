@@ -1,4 +1,4 @@
-import { databaseEnvCreds } from "@lando/sdk/database-creds";
+import { databaseEnvCreds, databaseEnvPort } from "@lando/sdk/database-creds";
 
 import type { SqlFamily } from "./families.ts";
 
@@ -9,6 +9,7 @@ export type SqlCreds = {
   readonly user: string;
   readonly password: string;
   readonly database: string;
+  readonly port: number;
   readonly rootPassword?: string;
 };
 
@@ -30,12 +31,13 @@ export const resolveSqlCreds = (input: ResolveSqlCredsInput): SqlCreds => {
     user: authored?.user ?? fromEnv.user ?? defaultUser,
     password: authored?.password ?? password ?? DEFAULT_SQL_PASSWORD,
     database: authored?.database ?? fromEnv.database ?? input.appName,
+    port: databaseEnvPort(input.family, input.planEnvironment),
     ...(rootPassword === undefined ? {} : { rootPassword }),
   };
 };
 
 const mongoUri = (creds: SqlCreds): string =>
-  `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@127.0.0.1:27017/${encodeURIComponent(creds.database)}?authSource=admin`;
+  `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@127.0.0.1:${creds.port}/${encodeURIComponent(creds.database)}?authSource=admin`;
 
 export const credsEnv = (family: SqlFamily, creds: SqlCreds): Record<string, string> => {
   switch (family) {

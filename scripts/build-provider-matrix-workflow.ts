@@ -1,5 +1,11 @@
 import { resolve } from "node:path";
 
+import {
+  CONTAINER_HELPER_JOB_ID,
+  containerHelperDownloadStep,
+  renderContainerHelperJob,
+} from "./_container-helper-workflow.ts";
+import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 import { PROVIDER_ACCEPTANCE_CELLS, type ProviderAcceptanceCellPlan } from "./provider-matrix-plan.ts";
@@ -46,8 +52,6 @@ const managedLandoSteps = `${landoRootlessPrereqStep}
         run: |
           mkdir -p dist
           bun run --filter='@lando/core' build:manifest
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
@@ -59,12 +63,6 @@ const managedLandoSteps = `${landoRootlessPrereqStep}
           test -z "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
           test -z "\${LANDO_RUNTIME_BUNDLE_URL:-}"
           test -z "\${LANDO_RUNTIME_BUNDLE_SHA256:-}"
-          export LANDO_USER_CONF_ROOT="$RUNNER_TEMP/lando-conf"
-          export LANDO_USER_DATA_ROOT="$RUNNER_TEMP/lando-data"
-          export LANDO_USER_CACHE_ROOT="$RUNNER_TEMP/lando-cache"
-          echo "LANDO_USER_CONF_ROOT=$LANDO_USER_CONF_ROOT" >> "$GITHUB_ENV"
-          echo "LANDO_USER_DATA_ROOT=$LANDO_USER_DATA_ROOT" >> "$GITHUB_ENV"
-          echo "LANDO_USER_CACHE_ROOT=$LANDO_USER_CACHE_ROOT" >> "$GITHUB_ENV"
           export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
           mkdir -p "$XDG_RUNTIME_DIR"
           cat > "$RUNNER_TEMP/lando-storage.conf" <<EOF
@@ -82,25 +80,69 @@ const managedLandoSteps = `${landoRootlessPrereqStep}
         if: \${{ matrix.cell == 'lando-podman6-linux' }}
         run: |
           for _ in {1..30}; do
-            test -S "$RUNNER_TEMP/lando-data/runtime/run/podman.sock" && break
+            test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" && break
             sleep 1
           done
-          test -S "$RUNNER_TEMP/lando-data/runtime/run/podman.sock"
-          "$RUNNER_TEMP/lando-data/runtime/bin/podman" --version
+          test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
+          curl --fail --max-time 5 --unix-socket "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" http://localhost/_ping
+          "$LANDO_USER_DATA_ROOT/runtime/bin/podman" --version
           dist/lando doctor --format json > /tmp/lando-managed-provider-doctor.json
-          echo "LANDO_TEST_PODMAN_SOCKET=$RUNNER_TEMP/lando-data/runtime/run/podman.sock" >> "$GITHUB_ENV"
+          echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"
           echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"`;
 
 const managedLandoTeardown = `      - name: Teardown managed Lando runtime
         if: \${{ always() && matrix.cell == 'lando-podman6-linux' }}
         run: |
           dist/lando poweroff || true
-          LANDO_PODMAN="$RUNNER_TEMP/lando-data/runtime/bin/podman"
-          LANDO_PODMAN_ARGS=(--root "$RUNNER_TEMP/lando-data/runtime/storage" --runroot "$RUNNER_TEMP/lando-data/runtime/run" --config "$RUNNER_TEMP/lando-data/runtime/config")
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           if test -x "$LANDO_PODMAN"; then
             "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" rm -f || true
             "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network rm || true
           fi`;
+
+const dockerFallbackSmoke = `  docker-fallback-smoke:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/docker-fallback/conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/docker-fallback/data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/docker-fallback/cache" >> "$GITHUB_ENV"
+
+${setupBunSteps}
+
+${containerHelperDownloadStep}
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Set up Docker fallback with global services
+        run: bun core/bin/lando.ts setup --provider=docker --yes --no-interactive
+
+      - name: Start routed Docker fixture and curl through the router
+        working-directory: scripts/fixtures/docker-fallback
+        run: |
+          bun "$GITHUB_WORKSPACE/core/bin/lando.ts" start
+          bun "$GITHUB_WORKSPACE/core/bin/lando.ts" info --format=json > "$RUNNER_TEMP/docker-fallback-info.json"
+          URL=$(jq -er '[.result.services[] | select(.service == "web") | .endpoints[] | select(startswith("https://docker-fallback.lndo.site"))][0]' "$RUNNER_TEMP/docker-fallback-info.json")
+          PORT=$(bun -e 'console.log(new URL(process.argv[1]).port || "443")' "$URL")
+          curl --fail --silent --show-error --insecure --noproxy '*' --retry 10 --retry-all-errors --retry-delay 1 --resolve "docker-fallback.lndo.site:$PORT:127.0.0.1" "$URL" > "$RUNNER_TEMP/docker-fallback-response.html"
+          grep -Fq 'Welcome to nginx!' "$RUNNER_TEMP/docker-fallback-response.html"
+
+      - name: Destroy Docker fixture
+        if: always()
+        working-directory: scripts/fixtures/docker-fallback
+        run: bun "$GITHUB_WORKSPACE/core/bin/lando.ts" destroy --provider=docker --yes
+
+      - name: Destroy Docker global app
+        if: always()
+        run: bun core/bin/lando.ts global:destroy --provider=docker --yes
+`;
 
 export const renderProviderMatrixWorkflow = (): string => `${GENERATED_HEADER}
 name: provider-matrix
@@ -114,7 +156,10 @@ permissions:
   contents: read
 
 jobs:
+${renderContainerHelperJob()}
+${dockerFallbackSmoke}
   provider-contracts:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     env:
       LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE: \${{ vars.LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE }}
       LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE: \${{ vars.LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE }}
@@ -129,7 +174,11 @@ ${matrixInclude}
     steps:
       - uses: actions/checkout@v5
 
+${isolateLandoRootsStep}
+
 ${setupBunSteps}
+
+${containerHelperDownloadStep}
 
       - name: Notice unsupported hosted runner cell
         if: \${{ matrix['advisory-skip'] == true }}
@@ -152,11 +201,8 @@ ${renderAssertPodman6Step({ condition: "matrix.cell == 'podman-podman6-linux'" }
             test -S /tmp/podman.sock && break
             sleep 1
           done
-          if test -S /tmp/podman.sock; then
-            echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
-          else
-            echo "::warning title=provider-matrix::Podman socket was not ready; acceptance runner will emit a structured skip."
-          fi
+          curl --fail --max-time 5 --unix-socket /tmp/podman.sock http://localhost/_ping
+          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
           echo "LANDO_CONFIG__default_provider_id=\${{ matrix.provider }}" >> "$GITHUB_ENV"
 
       - name: Configure Docker socket
@@ -172,7 +218,7 @@ ${renderAssertPodman6Step({ condition: "matrix.cell == 'podman-podman6-linux'" }
           for image in node:22-alpine postgres:16-alpine alpine:3.20; do
             case "\${{ matrix.cell }}" in
               lando-podman6-linux)
-                CONTAINERS_REGISTRIES_CONF="$RUNNER_TEMP/lando-data/runtime/config/registries.conf" "$RUNNER_TEMP/lando-data/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"
+                CONTAINERS_REGISTRIES_CONF="$LANDO_USER_DATA_ROOT/runtime/config/registries.conf" "$LANDO_USER_DATA_ROOT/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"
                 ;;
               podman-podman6-linux)
                 podman --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"

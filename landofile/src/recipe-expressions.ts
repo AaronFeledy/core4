@@ -5,9 +5,11 @@ import {
   expressionInterpolationsTouchOnlyScopes,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
+import { isLandofileOverride, isLandofileReset, isPlainRecord, override } from "@lando/sdk/landofile";
 import { Predicate, Result } from "effect";
 
 import type { ValidationIssuePath } from "@lando/sdk/schema";
+import { escapeLoadProducedText } from "./load-expression-literals.ts";
 
 /**
  * None of these scopes depend on service resolution, so the planner can
@@ -29,10 +31,9 @@ export const PLAN_SERVICE_EXPRESSION_SCOPES: ReadonlyArray<string> = [
  *
  * `app`, `proxy`, and `services` stay unevaluated until the planner knows the
  * app identity, the proxy domain, and the resolved service credentials.
- * `recipe` and `env` are resolvable from the file and the host, but only once
- * every layer has merged, so the load walk defers them too and
- * {@link materializeLoadScopeExpressions} resolves them against the merged
- * document.
+ * `recipe` and `env` resolve after authored composition and before effective
+ * validation, against merged recipe options and one captured environment. Mixed-scope sites remain
+ * wholly deferred to the planner.
  */
 export const LOAD_DEFERRED_EXPRESSION_SCOPES: ReadonlyArray<string> = PLAN_SERVICE_EXPRESSION_SCOPES;
 
@@ -79,9 +80,14 @@ export interface UnresolvedLoadScopeExpression {
 
 export interface MaterializedLoadScopeExpressions {
   /** The document with every resolvable expression replaced by its value. */
-  readonly value: Record<string, unknown>;
+  readonly value: unknown;
   /** Sites referencing data the merged document and host environment do not provide. */
   readonly unresolved: ReadonlyArray<UnresolvedLoadScopeExpression>;
+}
+
+export interface LandofileLoadScope {
+  readonly env: Readonly<Record<string, string>>;
+  readonly recipe: Readonly<Record<string, unknown>> | undefined;
 }
 
 /**
@@ -126,15 +132,16 @@ export const recipeOptionScope = (
  * how the planner sees its own interpolation.
  */
 export const materializeLoadScopeExpressions = (
-  merged: Record<string, unknown>,
+  merged: unknown,
   filePath: string,
-  env: Readonly<Record<string, string>>,
+  scope: LandofileLoadScope,
 ): MaterializedLoadScopeExpressions => {
-  const options = recipeOptionScope(merged);
+  const options = scope.recipe;
   const materialized = materializeExpressionScopes(merged, filePath, {
-    context: { env, recipe: options },
+    context: { env: scope.env, recipe: options },
     scopes: LOAD_RESOLVABLE_EXPRESSION_SCOPES,
     unavailableScopes: options === undefined ? ["recipe"] : [],
+    producedValue: escapeLoadProducedText,
   });
   return {
     value: materialized.value,
@@ -156,30 +163,51 @@ export const materializeLoadScopeExpressions = (
   };
 };
 
-export const materializeExpressionScopes = <T extends object>(
-  merged: T,
-  filePath: string,
-  input: {
-    readonly context: ExpressionContext;
-    readonly scopes: ReadonlyArray<string>;
-    readonly budget?: EvaluationBudget;
-    readonly unavailableScopes?: ReadonlyArray<string>;
-    /**
-     * Later passes select previously deferred sites to avoid reinterpreting
-     * values produced by an earlier pass as expressions.
-     */
-    readonly eligible?: (value: string, path: ReadonlyArray<string | number>) => boolean;
-  },
-): {
+interface MaterializeInput {
+  readonly context: ExpressionContext;
+  readonly scopes: ReadonlyArray<string>;
+  readonly budget?: EvaluationBudget;
+  readonly unavailableScopes?: ReadonlyArray<string>;
+  readonly textOnly?: boolean;
+  readonly producedValue?: (value: unknown) => unknown;
+  /**
+   * Later passes select previously deferred sites to avoid reinterpreting
+   * values produced by an earlier pass as expressions.
+   */
+  readonly eligible?: (value: string, path: ReadonlyArray<string | number>) => boolean;
+}
+interface MaterializedExpressions<T> {
   readonly value: T;
   readonly unresolved: ReadonlyArray<UnresolvedLoadScopeExpression & { readonly expression: string }>;
   /** Sites left untouched because an interpolation reads a scope outside `scopes`. */
   readonly deferred: ReadonlyArray<{ readonly path: ValidationIssuePath; readonly expression: string }>;
-} => {
+}
+
+export function materializeExpressionScopes<T extends object>(
+  merged: T,
+  filePath: string,
+  input: MaterializeInput & { readonly textOnly: true },
+): MaterializedExpressions<T>;
+export function materializeExpressionScopes(
+  merged: unknown,
+  filePath: string,
+  input: MaterializeInput,
+): MaterializedExpressions<unknown>;
+export function materializeExpressionScopes(
+  merged: unknown,
+  filePath: string,
+  input: MaterializeInput,
+): MaterializedExpressions<unknown> {
   const unresolved: Array<UnresolvedLoadScopeExpression & { readonly expression: string }> = [];
   const deferred: Array<{ readonly path: ValidationIssuePath; readonly expression: string }> = [];
 
   const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
+    if (isPlainRecord(value) && (value._tag === "FileRef" || value._tag === "ImportRef")) return value;
+    if (isLandofileReset(value)) return value;
+    if (isLandofileOverride(value)) {
+      const visited = visit(value.value, path);
+      return visited === value.value ? value : override(visited);
+    }
     if (typeof value === "string") {
       if (!value.includes("{{") || input.eligible?.(value, path) === false) return value;
       const parsed = parseExpressionEither(value, { filePath, bareShellParameters: "preserve" });
@@ -202,7 +230,15 @@ export const materializeExpressionScopes = <T extends object>(
         unresolved.push({ path, expression: value, reason: evaluated.failure.message });
         return value;
       }
-      return evaluated.success;
+      if (input.textOnly && typeof evaluated.success !== "string") {
+        unresolved.push({
+          path,
+          expression: value,
+          reason: "This plan-time expression site takes text; use an expression that returns a string.",
+        });
+        return value;
+      }
+      return input.producedValue === undefined ? evaluated.success : input.producedValue(evaluated.success);
     }
     if (Array.isArray(value)) {
       const visited = value.map((entry, index) => visit(entry, [...path, index]));
@@ -222,8 +258,8 @@ export const materializeExpressionScopes = <T extends object>(
 
   // Provenance is inert data the user reads; never rewrite it.
   return {
-    value: visit(merged, []) as T,
+    value: visit(merged, []),
     unresolved,
     deferred,
   };
-};
+}

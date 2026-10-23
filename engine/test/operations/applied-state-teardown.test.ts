@@ -1,18 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { mkdtempSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
-import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
+import { DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import {
-  AppResolveError,
-  FileSyncStartError,
-  LandofileValidationError,
-  ProviderUnavailableError,
-} from "@lando/sdk/errors";
+import { AppResolveError, LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -34,20 +30,24 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
-import { beginAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
+import { beginOrResumeAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
 import {
   teardownDesiredOrUnchanged,
   withTeardownResolution,
 } from "../../src/operations/applied-state-target.ts";
 import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
+import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
+const isolatedDataRoot = mkdtempSync(join(tmpdir(), "lando-applied-teardown-data-"));
+afterAll(() => rm(isolatedDataRoot, { recursive: true, force: true }));
 
 for (const kind of ["applied", "orphans", "absent"] as const) {
   test(`dispatches only the ${kind} handler when teardown evidence is ${kind}`, async () => {
@@ -71,6 +71,7 @@ for (const kind of ["applied", "orphans", "absent"] as const) {
         withResolvedCwd(
           root,
           withTeardownResolution({
+            owned: () => handler("owned"),
             applied: () => handler("applied"),
             orphans: () => handler("orphans"),
             absent: () => handler("absent"),
@@ -192,6 +193,7 @@ const appliedPlanMismatches: ReadonlyArray<readonly [string, (plan: AppPlan) => 
 
 const invalidDesiredConfig = new LandofileValidationError({
   message: "The current Landofile is invalid.",
+  remediation: "Fix the current Landofile before applying it.",
   file: ".lando.yml",
   issues: [{ path: [], message: "invalid test fixture" }],
 });
@@ -211,10 +213,12 @@ const makeLayer = (input: {
   readonly desiredPlan?: AppPlan;
   readonly orphans?: ReadonlyArray<AppliedOrphanGroup>;
   readonly providerId?: string;
+  readonly ambiguous?: boolean;
   readonly destroy?: () => Effect.Effect<void, ProviderUnavailableError>;
   readonly observed?: ReadonlyArray<ServiceRuntimeInfo>;
   readonly listFailure?: ProviderUnavailableError;
   readonly removalFailure?: ProviderUnavailableError;
+  readonly ownershipFailure?: ProviderUnavailableError;
   /** Observed services whose container survives removal; every other one is reported removed. */
   readonly survivingServices?: ReadonlyArray<string>;
 }) => {
@@ -231,6 +235,7 @@ const makeLayer = (input: {
   const removalAttempts: Array<{ readonly service: string; readonly containerId: string | undefined }> = [];
   const desiredLoads: string[] = [];
   const evidenceRoots: string[] = [];
+  const published: string[] = [];
   let appliedPlan = input.appliedPlan;
   const provider = {
     ...TestRuntimeProvider,
@@ -291,6 +296,10 @@ const makeLayer = (input: {
       ),
   };
   const registry = {
+    appliedPlansFor: (root: AbsolutePath) =>
+      Effect.succeed(
+        appliedPlan !== undefined && appliedPlan.identity?.appRoot === root ? [appliedPlan] : [],
+      ),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
@@ -299,6 +308,15 @@ const makeLayer = (input: {
     // malformed plan still reaches the ownership validators under test.
     resolveTeardownEvidence: (root: AbsolutePath) => {
       evidenceRoots.push(root);
+      if (input.ambiguous === true)
+        return Effect.flatMap(TeardownProvider, (selected) =>
+          selected === appliedPlan?.provider && appliedPlan !== undefined
+            ? Effect.succeed({ kind: "applied" as const, plan: appliedPlan })
+            : Effect.fail(
+                new AppResolveError({ message: "Two providers claim this root", reason: "ambiguous" }),
+              ),
+        );
+      if (input.ownershipFailure !== undefined) return Effect.fail(input.ownershipFailure);
       if (
         appliedPlan !== undefined &&
         (appliedPlan.root === root || appliedPlan.identity?.appRoot === root)
@@ -317,10 +335,21 @@ const makeLayer = (input: {
     },
   };
   const layer = Layer.mergeAll(
+    emptySnapshotsLayer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     Layer.succeed(StateStore, makeTestStateStore().service),
-    Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({
+        userDataRoot: isolatedDataRoot,
+        userCacheRoot: join(isolatedDataRoot, "cache"),
+        userConfRoot: join(isolatedDataRoot, "conf"),
+        systemPluginRoot: join(isolatedDataRoot, "sys"),
+        env: {},
+        platform: "linux",
+      }),
+    ),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
@@ -345,7 +374,7 @@ const makeLayer = (input: {
     Layer.succeed(
       EventService,
       EventService.of({
-        publish: () => Effect.void,
+        publish: (event) => Effect.sync(() => void published.push(event._tag)),
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
@@ -364,6 +393,7 @@ const makeLayer = (input: {
     removalAttempts,
     desiredLoads,
     evidenceRoots,
+    published,
     appliedPlan: () => appliedPlan,
   };
 };
@@ -410,6 +440,45 @@ const orphanGroup = (input: {
 });
 
 describe("applied-state teardown", () => {
+  test("destroy with an explicit provider resolves ambiguous applied state and retains volumes", async () => {
+    await withTempRoot(async (root) => {
+      const applied = planAt(root);
+      const harness = makeLayer({ appliedPlan: applied, ambiguous: true });
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, destroyApp({ providerId: applied.provider })).pipe(
+          Effect.provide(harness.layer),
+        ),
+      );
+      expect(result.outcome).toBe("destroyed");
+      expect(harness.destroyCalls).toEqual([applied]);
+      expect(harness.destroyTargets[0]?.volumes).toBe(false);
+    });
+  });
+  test.each(["stop", "destroy"] as const)(
+    "explicit-target %s preflights other-provider inventory before mutation",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        // Given
+        const appliedPlan = planAt(root);
+        const failure = new ProviderUnavailableError({
+          providerId: "docker",
+          operation: "resource-ownership",
+          message: "Other provider inventory is corrupt.",
+        });
+        const harness = makeLayer({ appliedPlan, ownershipFailure: failure });
+        // When
+        const result = await Effect.runPromise(
+          (operation === "stop"
+            ? stopAppForTarget(undefined, targetFor(appliedPlan)).pipe(Effect.asVoid)
+            : destroyAppForTarget(undefined, targetFor(appliedPlan)).pipe(Effect.asVoid)
+          ).pipe(Effect.provide(harness.layer), Effect.result),
+        );
+        // Then
+        expect(result).toMatchObject({ _tag: "Failure", failure });
+        expect(harness.mutationOrder).toEqual([]);
+      });
+    },
+  );
   test.each(["cwd", "root"] as const)(
     "%s destroy removes only same-app, same-root stray containers before the plan",
     async (mode) => {
@@ -628,6 +697,7 @@ describe("applied-state teardown", () => {
         outcome: "unchanged",
         servicesDestroyed: [],
         volumesRemoved: false,
+        snapshotsRemoved: 0,
       });
       expect(harness.destroyCalls).toEqual([]);
       expect(harness.desiredLoads).toEqual([]);
@@ -653,7 +723,7 @@ describe("applied-state teardown", () => {
         servicesDestroyed: ["leftover"],
         volumesRemoved: true,
       });
-      expect(harness.evidenceRoots).toEqual([root, root]);
+      expect(harness.evidenceRoots).toEqual([root, root, root]);
     });
   });
 
@@ -764,6 +834,7 @@ describe("applied-state teardown", () => {
         outcome: "unchanged",
         servicesDestroyed: [],
         volumesRemoved: false,
+        snapshotsRemoved: 0,
       });
       expect(second).toEqual(first);
       expect(harness.destroyCalls).toEqual([]);
@@ -791,7 +862,7 @@ describe("applied-state teardown", () => {
   );
 
   test.each(["stop", "destroy"] as const)(
-    "%s consults applied state before it loads the desired config",
+    "%s preserves the applied plan while loading desired config for authored events",
     async (operation) => {
       await withTempRoot(async (root) => {
         const appliedPlan = planAt(root);
@@ -803,7 +874,7 @@ describe("applied-state teardown", () => {
           await Effect.runPromise(withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)));
         }
 
-        expect(harness.desiredLoads).toEqual([]);
+        expect(harness.desiredLoads).toEqual(["discover"]);
         expect(harness.destroyCalls).toEqual([appliedPlan]);
       });
     },
@@ -822,6 +893,7 @@ describe("applied-state teardown", () => {
         outcome: "destroyed",
         servicesDestroyed: [],
         volumesRemoved: true,
+        snapshotsRemoved: 0,
       });
       expect(harness.removedVolumes).toEqual([{ store: "database", generation: "generation-database" }]);
     });
@@ -941,19 +1013,8 @@ describe("applied-state teardown", () => {
         orphans: [orphanGroup({ root, services: ["web"] })],
       });
       await Effect.runPromise(
-        beginAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
-          Effect.flatMap((pending) =>
-            pending
-              .retainTargets(
-                Cause.fail(
-                  new FileSyncStartError({
-                    engineId: "mutagen",
-                    message: "interrupted after helper preparation",
-                  }),
-                ),
-              )
-              .pipe(Effect.asVoid),
-          ),
+        beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
+          Effect.flatMap((pending) => pending.advance("apply-intent")),
           Effect.provide(harness.layer),
         ),
       );
@@ -967,25 +1028,54 @@ describe("applied-state teardown", () => {
     });
   });
 
+  test("CLI destroy reads the root journal once across recorded orphan identities", async () => {
+    await withTempRoot(async (root) => {
+      const base = planAt(root);
+      const retainedPlan = retainedPlanAt(root);
+      const other = orphanGroup({ root, services: ["db"] });
+      const otherId = AppId.make("aaa-other-app");
+      const harness = makeLayer({
+        desiredPlan: retainedPlan,
+        orphans: [
+          {
+            ...other,
+            appId: otherId,
+            services: other.services.map((service) => ({ ...service, app: otherId })),
+          },
+          orphanGroup({ root, services: ["web"] }),
+        ],
+      });
+      await Effect.runPromise(
+        beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
+          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.provide(harness.layer),
+        ),
+      );
+      const result = await Effect.runPromiseExit(
+        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
+      );
+      // Both identities share the root's journal, so destroy takes the retained path once
+      // and reaches session disposal instead of refusing an ambiguous match.
+      expect(Exit.isFailure(result)).toBe(true);
+      expect(JSON.stringify(result)).toContain("An accelerated mount has no matching file sync engine.");
+      expect(harness.mutationOrder).toEqual([]);
+      expect(harness.removalAttempts).toEqual([]);
+      expect(harness.published).not.toContain("pre-destroy");
+    });
+  });
+
   test("CLI destroy does not use the old ordinary applied plan for retained migration", async () => {
     await withTempRoot(async (root) => {
       const oldPlan = planAt(root);
       const retainedPlan = retainedPlanAt(root);
       const harness = makeLayer({ appliedPlan: oldPlan, desiredPlan: retainedPlan });
       await Effect.runPromise(
-        beginAcceleratedStart(retainedPlan, { kind: "user", id: oldPlan.id, root: oldPlan.root }).pipe(
-          Effect.flatMap((pending) =>
-            pending
-              .retainTargets(
-                Cause.fail(
-                  new FileSyncStartError({
-                    engineId: "mutagen",
-                    message: "migration failed after sync preparation",
-                  }),
-                ),
-              )
-              .pipe(Effect.asVoid),
-          ),
+        beginOrResumeAcceleratedStart(retainedPlan, {
+          kind: "user",
+          id: oldPlan.id,
+          root: oldPlan.root,
+        }).pipe(
+          Effect.flatMap((pending) => pending.advance("apply-intent")),
           Effect.provide(harness.layer),
         ),
       );

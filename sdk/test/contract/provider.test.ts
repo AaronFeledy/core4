@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 
 import { Cause, Effect, Result, Schema, Stream } from "effect";
 
@@ -43,11 +43,136 @@ const expectContractFailure = async (
 };
 
 describe("RuntimeProvider contract", () => {
+  beforeEach(async () => {
+    await Effect.runPromise(TestRuntimeProvider.destroy({ app: TEST_APP_ID }, { volumes: false }));
+  });
+
+  test("reads no secrets when the app has no containers", async () => {
+    const target = { app: AppId.make("absent-secret-app") };
+    const values = await Effect.runPromise(
+      TestRuntimeProvider.readAppEnvironment(target, { appserver: ["VALUE"] }),
+    );
+    expect(values).toEqual([]);
+  });
+
+  test("checks the runner-supplied digest when artifact pull is supported", async () => {
+    // Given
+    const ref = `registry.example/helper@sha256:${"a".repeat(64)}`;
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+    };
+    // When
+    const result = await Effect.runPromise(runProviderContract(provider, ref));
+    // Then
+    expect(result).toBeUndefined();
+  });
+
+  test.each([undefined, `sha256:${"b".repeat(64)}`])(
+    "rejects an unverified pull digest: %s",
+    async (digest) => {
+      // Given
+      const provider: typeof TestRuntimeProvider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+        pullArtifact: ({ ref }) =>
+          Effect.succeed({
+            providerId: TEST_PROVIDER_ID,
+            ref,
+            ...(digest === undefined ? {} : { digest }),
+          }),
+      };
+      // When
+      const failure = await Effect.runPromise(
+        runProviderContract(provider, `registry.example/helper@sha256:${"a".repeat(64)}`).pipe(Effect.flip),
+      );
+      // Then
+      expect(failure).toBeInstanceOf(ContractFailure);
+      expect(failure.assertion).toBe("pullArtifact reports the requested digest");
+    },
+  );
+
+  test("skips the digest fixture when artifact pull is unsupported", async () => {
+    // Given
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: false },
+      pullArtifact: () => Effect.die("unsupported artifact pull must not run"),
+    };
+    // When
+    const result = await Effect.runPromise(runProviderContract(provider, "helper@sha256:pin"));
+    // Then
+    expect(result).toBeUndefined();
+  });
+
+  test("rejects a tag-only pull fixture before calling the provider", async () => {
+    // Given
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: () => Effect.die("invalid fixture must not reach the provider"),
+    };
+    // When
+    const failure = await Effect.runPromise(runProviderContract(provider, "helper:latest").pipe(Effect.flip));
+    // Then
+    expect(failure).toBeInstanceOf(ContractFailure);
+    expect(failure.assertion).toBe("pull fixture is digest-qualified");
+  });
+
+  test.each([
+    [["lando-contract-split-", "line", "L".repeat(20_000)], "logs reassemble a line written in pieces"],
+    [
+      ["lando-contract-split-line", "L".repeat(16_384), "L".repeat(3_616)],
+      "logs reassemble a line longer than the engine split size",
+    ],
+    [
+      ["lando-contract-split-line", "lando-contract-split-line", "L".repeat(20_000)],
+      "logs reassemble a line written in pieces",
+    ],
+    [
+      ["L".repeat(20_000), "L".repeat(20_000), "lando-contract-split-line"],
+      "logs reassemble a line longer than the engine split size",
+    ],
+  ] as const)("rejects incomplete or duplicate console lines (case %#)", async (lines, assertion) => {
+    const provider = {
+      ...TestRuntimeProvider,
+      logs: (target) =>
+        Stream.fromIterable(lines.map((line) => ({ service: target.service, stream: "stdout", line }))),
+    } satisfies typeof TestRuntimeProvider;
+
+    await expectContractFailure(provider, assertion);
+  });
+
   test("exports a runnable Effect contract helper", async () => {
     const contract = runProviderContract(TestRuntimeProvider);
 
     expect(Effect.isEffect(contract)).toBe(true);
     await expect(Effect.runPromise(contract)).resolves.toBeUndefined();
+  });
+
+  test("rejects an environment reader that returns no applied values", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      readAppEnvironment: () => Effect.succeed([]),
+    } satisfies typeof TestRuntimeProvider;
+
+    await expectContractFailure(
+      provider,
+      "readAppEnvironment returns exactly one Redacted requested value after apply",
+    );
+  });
+
+  test("rejects an environment reader that includes unrequested applied names", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      readAppEnvironment: (target) =>
+        TestRuntimeProvider.readAppEnvironment(target, { web: ["REQUESTED", "UNREQUESTED"] }),
+    } satisfies typeof TestRuntimeProvider;
+
+    await expectContractFailure(
+      provider,
+      "readAppEnvironment returns exactly one Redacted requested value after apply",
+    );
   });
 
   test("rejects compose knob support when composeSpec is not native", async () => {
@@ -416,6 +541,39 @@ describe("RuntimeProvider contract", () => {
       ),
     ).resolves.toBeUndefined();
   });
+
+  test.each([true, false])(
+    "data-plane contract requires a typed failure from unsupported snapshots: %s",
+    async (rejects) => {
+      const error = new ProviderCapabilityError({
+        providerId: "test",
+        operation: "snapshotVolume",
+        capability: "volumeSnapshot",
+        requiredValue: "native",
+        actualValue: "none",
+        message: "Native snapshots are unsupported.",
+        remediation: "Use DataMover host archives.",
+      });
+      const result = await Effect.runPromise(
+        runProviderDataPlaneContract({
+          factory: () =>
+            Effect.succeed({
+              ...TestRuntimeProvider,
+              capabilities: { ...TestRuntimeProvider.capabilities, volumeSnapshot: "none" },
+              snapshotVolume: (spec) =>
+                rejects ? Effect.fail(error) : TestRuntimeProvider.snapshotVolume(spec),
+              restoreVolume: () => Effect.die("Unsupported providers must not restore snapshots."),
+              removeVolumeSnapshot: () => Effect.die("Unsupported providers must not remove snapshots."),
+            }),
+        }).pipe(Effect.result),
+      );
+      expect(result._tag).toBe(rejects ? "Success" : "Failure");
+      if (result._tag === "Failure")
+        expect(result.failure.assertion).toBe(
+          "unsupported volume snapshots fail with a typed capability error",
+        );
+    },
+  );
 
   test("data-plane contract uses a unique data-store id for each run", async () => {
     const stores = new Set<string>();

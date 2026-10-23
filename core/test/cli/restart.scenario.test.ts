@@ -3,9 +3,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Stream } from "effect";
 
 import { renderRestartAppResult, restartApp } from "@lando/core/cli/operations";
+import { ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -51,6 +52,7 @@ import {
   createStandaloneRedactor,
   registerRedactionValues,
 } from "@lando/redaction/service";
+import { ContainerHelperAssets } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 const testStateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
 import "../../src/runtime/engine-composition.ts";
@@ -174,6 +176,10 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
   Layer.mergeAll(
+    Layer.succeed(
+      ContainerHelperAssets,
+      ContainerHelperAssets.of({ resolve: () => Effect.die("unused container helper") }),
+    ),
     PrivateFileAccessService.layer,
     TestLandofileLayers.layerTransactionGuard,
     LandoConfigService.layer,
@@ -195,6 +201,7 @@ const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
       }),
     ),
@@ -203,7 +210,10 @@ const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
   );
 
 const makeRestartLayer = (
-  options: { readonly buildEffect?: Effect.Effect<AppPlan>; readonly plannedApp?: AppPlan } = {},
+  options: {
+    readonly buildEffect?: Effect.Effect<AppPlan, ProviderUnavailableError>;
+    readonly plannedApp?: AppPlan;
+  } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
   const events: string[] = [];
@@ -296,6 +306,8 @@ const makeRestartLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
@@ -410,14 +422,32 @@ describe("lando restart", () => {
     });
   });
 
-  test("removes retained routes when the restart start phase fails", async () => {
-    const harness = makeRestartLayer({ buildEffect: Effect.die("build failed") });
+  test("retains routes with only the primary build failure when the restart start phase fails", async () => {
+    // Given
+    const failure = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "buildArtifact",
+      message: "build failed",
+    });
+    const harness = makeRestartLayer({ buildEffect: Effect.fail(failure) });
 
+    // When
     const exit = await Effect.runPromiseExit(restartApp().pipe(Effect.provide(harness.layer)));
 
+    // Then
     expect(exit._tag).toBe("Failure");
-    expect(harness.routeRemovals).toEqual([String(plan.id)]);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(exit.cause.reasons).toHaveLength(1);
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBe(failure);
+    expect(harness.routeRemovals).toEqual([]);
+    expect(harness.routeApplies).toEqual([]);
+    expect(harness.applyCalls).toEqual([]);
+    expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls).toMatchObject([{ options: { volumes: false, removeState: false } }]);
+    expect(harness.events).toContain("post-app-stop");
+    expect(harness.events).toContain("pre-app-start");
+    expect(harness.events).not.toContain("post-app-start");
+    expect(harness.events).not.toContain("post-restart");
   });
 
   test("restarts one named service without destroying others or applying routes", async () => {

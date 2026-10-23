@@ -4,16 +4,77 @@ import { Effect } from "effect";
 import { detectLandofileTags, parseLandofile, parseLegacyLandofile } from "@lando/sdk/landofile";
 
 const file = "/app/.lando.yml";
+const genericRemediation =
+  "Rewrite the flow mapping as an indented block mapping; use a block sequence for mapping items.";
+const simpleAbRemediation = ["Rewrite the flow mapping as a block mapping:", "a: 1", "b: 2"].join("\n");
 const mappings = [
-  { text: "[{a: 1, b: 2}, {c: 3}]", value: [{ a: 1, b: 2 }, { c: 3 }], column: 9 },
-  { text: "{a: [1, 2]}", value: { a: [1, 2] }, column: 8 },
-  { text: "[{a: [1, 2], b: [3, 4]}]", value: [{ a: [1, 2], b: [3, 4] }], column: 9 },
-  { text: "[[{a: 1, b: 2}]]", value: [[{ a: 1, b: 2 }]], column: 10 },
-  { text: '["}, {", {a: 1, b: 2}]', value: ["}, {", { a: 1, b: 2 }], column: 17 },
+  {
+    text: "[{a: 1, b: 2}, {c: 3}]",
+    value: [{ a: 1, b: 2 }, { c: 3 }],
+    column: 9,
+    // First rejected member is the simple `{a: 1, b: 2}` pair (no parent key).
+    remediation: simpleAbRemediation,
+  },
+  {
+    text: "{a: [1, 2]}",
+    value: { a: [1, 2] },
+    column: 8,
+    remediation: genericRemediation,
+  },
+  {
+    text: "[{a: [1, 2], b: [3, 4]}]",
+    value: [{ a: [1, 2], b: [3, 4] }],
+    column: 9,
+    remediation: genericRemediation,
+  },
+  {
+    text: "[[{a: 1, b: 2}]]",
+    value: [[{ a: 1, b: 2 }]],
+    column: 10,
+    remediation: simpleAbRemediation,
+  },
+  {
+    text: '["}, {", {a: 1, b: 2}]',
+    value: ["}, {", { a: 1, b: 2 }],
+    column: 17,
+    remediation: simpleAbRemediation,
+  },
 ] as const;
 
 describe("Landofile flow collections", () => {
-  test.each([...mappings])("v4 rejects populated flow mappings in $text", ({ text, column }) => {
+  test.each(["custom key", " custom key ", "custom:key", ""])(
+    "reparses the suggested rewrite with the original parent key %j",
+    (key) => {
+      const content = `${JSON.stringify(key)}: {enabled: true}\n`;
+      const result = Effect.runSync(Effect.result(parseLandofile({ file, content, cwd: "/app" })));
+      if (result._tag !== "Failure") throw new Error("Expected rejected flow mapping");
+      const rewrite = result.failure.remediation?.split("\n").slice(1).join("\n");
+      if (rewrite === undefined) throw new Error("Expected concrete rewrite");
+      expect(Effect.runSync(parseLandofile({ file, content: rewrite, cwd: "/app" }))).toEqual({
+        [key]: { enabled: true },
+      });
+    },
+  );
+
+  test("reparses the healthcheck disable rewrite without changing its values", () => {
+    const result = Effect.runSync(
+      Effect.result(
+        parseLandofile({
+          file,
+          content: "healthcheck: {disable: true, timeout: 5s}",
+          cwd: "/app",
+        }),
+      ),
+    );
+    if (result._tag !== "Failure") throw new Error("Expected rejected flow mapping");
+    const rewrite = result.failure.remediation?.split("\n").slice(1).join("\n");
+    if (rewrite === undefined) throw new Error("Expected concrete rewrite");
+    expect(Effect.runSync(parseLandofile({ file, content: rewrite, cwd: "/app" }))).toEqual({
+      healthcheck: { disable: true, timeout: "5s" },
+    });
+  });
+
+  test.each([...mappings])("v4 rejects populated flow mappings in $text", ({ text, column, remediation }) => {
     // Given
     const content = `value: ${text}\n`;
     // When
@@ -22,7 +83,65 @@ describe("Landofile flow collections", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") throw new Error("Expected a parse failure, not fragmented scalar values");
     expect(result.failure).toMatchObject({ _tag: "LandofileParseError", filePath: file, line: 1, column });
-    expect(result.failure.remediation).toMatch(/block/i);
+    expect(result.failure.remediation).toBe(remediation);
+  });
+
+  test("v4 simple single-level flow mapping remediation rewrites under the parent key", () => {
+    // Given
+    const content = "healthcheck: {disable: true, timeout: 5s}\n";
+    // When
+    const result = Effect.runSync(Effect.result(parseLandofile({ file, content, cwd: "/app" })));
+    // Then
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("Expected a parse failure");
+    expect(result.failure).toMatchObject({ _tag: "LandofileParseError", filePath: file, line: 1 });
+    expect(result.failure.remediation).toBe(
+      [
+        "Rewrite the flow mapping as a block mapping:",
+        "healthcheck:",
+        "  disable: true",
+        "  timeout: 5s",
+      ].join("\n"),
+    );
+  });
+
+  test("v4 simple flow mapping without a parent key still shows a block rewrite", () => {
+    // Given: sequence item has no mapping parent key to thread
+    const content = "mounts:\n  - {source: ./app, target: /app}\n";
+    // When
+    const result = Effect.runSync(Effect.result(parseLandofile({ file, content, cwd: "/app" })));
+    // Then
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("Expected a parse failure");
+    expect(result.failure.remediation).toBe(
+      ["Rewrite the flow mapping as a block mapping:", "source: ./app", "target: /app"].join("\n"),
+    );
+  });
+
+  test("v4 flow mapping with quoted separators keeps the generic remediation", () => {
+    // Given
+    const content = 'labels: {"a,b": 1, c: 2}\n';
+    // When
+    const result = Effect.runSync(Effect.result(parseLandofile({ file, content, cwd: "/app" })));
+    // Then
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("Expected a parse failure");
+    expect(result.failure.remediation).toBe(
+      "Rewrite the flow mapping as an indented block mapping; use a block sequence for mapping items.",
+    );
+  });
+
+  test("v4 safely preserves quoted scalars without separators in the suggested block", () => {
+    // Given
+    const content = 'healthcheck: {command: "true"}\n';
+    // When
+    const result = Effect.runSync(Effect.result(parseLandofile({ file, content, cwd: "/app" })));
+    // Then
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("Expected a parse failure");
+    expect(result.failure.remediation).toBe(
+      'Rewrite the flow mapping as a block mapping:\nhealthcheck:\n  command: "true"',
+    );
   });
 
   test.each([...mappings])("legacy mode parses nested flow collections in $text", ({ text, value }) => {

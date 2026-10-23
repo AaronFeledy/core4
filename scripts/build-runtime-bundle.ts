@@ -52,7 +52,7 @@ const COMMITTED_MANIFEST = join(PROVIDER_DIR, "runtime-bundle-versions.json");
 const DEFAULT_STAGING_DIR = resolve(import.meta.dir, "..", "dist", "cache", "runtime-bundle");
 
 /** Fallback repository slug when the publishing workflow does not export `GITHUB_REPOSITORY`. */
-export const LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT = "lando-community/core4";
+export const LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT = "AaronFeledy/core4";
 
 export const resolveRuntimeBundleRepository = (
   env: Record<string, string | undefined> = process.env,

@@ -11,8 +11,8 @@ import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
+  ContainerHelperAssets,
   Downloader,
-  LogFileHelperAssets,
   ManagedFileService,
   PluginRegistry,
   RuntimeProviderRegistry,
@@ -40,7 +40,7 @@ const registryLayerFor = (harness: ReturnType<typeof makeHarness>) => {
         plan.provider,
         {
           id: plan.provider,
-          appliedPlans: () => Effect.die("not used"),
+          appliedPlans: () => Effect.succeed([]),
           make: () => harness.runtimeProviderRegistry.select(),
         },
       ],
@@ -65,7 +65,10 @@ const registryLayerFor = (harness: ReturnType<typeof makeHarness>) => {
       HttpClient.HttpClient,
       HttpClient.make((request) => Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null)))),
     ),
-    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
+    Layer.succeed(
+      ContainerHelperAssets,
+      ContainerHelperAssets.of({ resolve: () => Effect.die("unused helper") }),
+    ),
     Layer.succeed(ManagedFileService, Effect.runSync(makeTestManagedFileStore()).service),
     Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (value) => value })),
   );

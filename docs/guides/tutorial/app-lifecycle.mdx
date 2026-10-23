@@ -90,22 +90,19 @@ Tooling aliases declared under `tooling:` run inside their target service.
 
 `lando rebuild` and `lando destroy` ask for confirmation first. Pass `-y` to skip the prompt in scripts.
 
-`restart` cycles the running processes; `rebuild` recreates the containers.
-Reach for `rebuild` when configuration changed, `restart` when only the
-running process needs cycling:
+Bare `restart` stops then starts, so it removes and recreates containers. It is not an in-place process restart. `lando start` applies Landofile changes such as command, environment, image, and mounts, and keeps unchanged containers and volumes. Reach for `rebuild` when you need a forced image pull or a forced rerun of build steps whose command text did not change. `start` does not take `-y`.
 
 ```sh
 # Stop the app's containers but keep volumes and state
 lando stop
 
-# Bring a stopped app back up using the existing plan and volumes
+# Bring the app up and apply create-config changes. Volumes stay
 lando start
 
 # Stop then start in one step
 lando restart
 
-# Recreate containers from the current Landofile. Use after changing
-# service types, images, or build steps
+# Force a pull and build refresh, then recreate containers
 lando rebuild
 ```
 
@@ -116,6 +113,16 @@ lando rebuild
 ```sh
 lando destroy -y
 ```
+
+Snapshots survive plain `destroy` and `--volumes`. **`lando destroy --purge -y` also deletes this folder's catalogued snapshots**, including native data through the provider that recorded each snapshot. It works when an earlier destroy left only ownership inventory. Snapshots belong to the source volume's canonical owner root, so other app folders keep theirs even if they share this app's name. See [Import and export app databases](../tooling/db-import-export.mdx) before moving a database between apps or providers.
+
+Changing providers doesn't move an applied app. If `lando start` fails with `AppPlacementError`, retire the old copy explicitly:
+
+```sh
+lando destroy --provider=lando --yes
+```
+
+Only the selected provider's state and resources are touched. See [Recover an app left on another provider](../setup/provider-selection.mdx#recover-an-app-left-on-another-provider).
 
 `stop` and `destroy` use the provider's last applied plan when the Landofile is
 missing or invalid. That means you can still tear down an app after deleting its
@@ -149,7 +156,7 @@ it stopped. Results stay on stdout; progress goes to stderr:
       <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: { regex: "complete" } }} />
     </Step>
     <Step name="inspect">
-      <Verify command="lando info" expect={{ stdout: { regex: "(^|\\n)app\\trunning\\t[\\s\\S]*\\ndb\\trunning\\t" }, stderr: "" }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"app\"[^}]*\"status\":\\s*\"running\"[\\s\\S]*\"service\":\\s*\"db\"[^}]*\"status\":\\s*\"running\"" }, stderr: "" }} />
     </Step>
     <Step name="stop">
       <Verify command="lando stop" expect={{ stdout: { regex: "stopped: app-lifecycle-demo" }, stderr: "" }} />

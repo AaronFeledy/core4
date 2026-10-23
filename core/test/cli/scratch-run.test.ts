@@ -152,6 +152,7 @@ interface Recorded {
 }
 
 interface HarnessOptions {
+  readonly stopCalls?: DestroyCall[];
   readonly applyOptions?: ApplyOptions[];
   readonly buildCalls?: string[];
   readonly artifactBuild?: boolean;
@@ -211,10 +212,13 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: (target, destroyOptions) =>
       Effect.sync(() => {
-        recorded.destroyCalls.push({ app: String(target.app), volumes: destroyOptions.volumes });
+        const call = { app: String(target.app), volumes: destroyOptions.volumes };
+        if (destroyOptions.removeState === false) options.stopCalls?.push(call);
+        else recorded.destroyCalls.push(call);
         return { kind: "destroyed" as const };
       }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: () => die("exec"),
     execStream: (target, spec) => {
       const record = Effect.sync(() => {
@@ -254,6 +258,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => die("snapshotVolume"),
+    removeVolumeSnapshot: () => die("removeVolumeSnapshot"),
     restoreVolume: () => die("restoreVolume"),
     locateVolume: () => die("locateVolume"),
     listVolumes: () => Effect.succeed([]),
@@ -273,6 +278,9 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -291,6 +299,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     ScratchInitAppPortLayer.layer,
     BunDataMover.layer.pipe(
+      Layer.provide(registryLive),
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,
@@ -546,6 +555,7 @@ describe("scratchRun", () => {
   test("runs the command in the toolbox scratch and destroys it on scope close", async () => {
     await withTempProject(async (dir) => {
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const stopCalls: DestroyCall[] = [];
       const result = await Effect.runPromise(
         scratchRun({
           command: ["echo", "ok"],
@@ -554,7 +564,7 @@ describe("scratchRun", () => {
           answers: {},
           issues: [],
         }).pipe(
-          Effect.provide(makeHarnessLayer(recorded, { execStdout: "ok\n" })),
+          Effect.provide(makeHarnessLayer(recorded, { execStdout: "ok\n", stopCalls })),
           Effect.provide(testSupportLayer()),
         ),
       );
@@ -576,6 +586,7 @@ describe("scratchRun", () => {
 
       expect(recorded.destroyCalls).toHaveLength(1);
       expect(recorded.destroyCalls[0]?.app).toBe(String(plan.id));
+      expect(stopCalls).toEqual([{ app: String(plan.id), volumes: false }]);
 
       const toolboxService = plan.services[Object.keys(plan.services)[0] as keyof typeof plan.services];
       const mountsCwd =
@@ -1180,7 +1191,7 @@ describe("scratch run rendering", () => {
           ...(streamingMode === undefined ? {} : { streamingMode }),
           io,
           resultSchema: appsScratchRunSpec.resultSchema,
-          formatError: String,
+          formatError: ({ error }) => String(error),
         },
       );
       const frames = io

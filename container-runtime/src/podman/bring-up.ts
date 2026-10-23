@@ -1,5 +1,5 @@
 import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
-import { PROVIDER_LABEL, SCRATCH_ID_LABEL, SCRATCH_LABEL } from "../labels.ts";
+import { PROVIDER_LABEL } from "../labels.ts";
 
 import {
   ProviderInternalError,
@@ -17,7 +17,6 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
-  landoAppNetworkName,
   landoServiceNetworkAliases,
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
@@ -33,6 +32,13 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi, parseEngineJson } from "../engine-errors.ts";
+import {
+  containerOwnershipLabels,
+  inspectOwnedNativeId,
+  isSharedNetwork,
+  networkOwnershipLabels,
+  verifiedNativeId,
+} from "../native-ownership.ts";
 import {
   commonContainerLabels,
   containerCreateBodyFragment,
@@ -58,6 +64,7 @@ import { waitForExit } from "../wait-for-exit.ts";
 import {
   bringUpRecreateReasons,
   inspectBindSources,
+  inspectContainerLabels,
   inspectNetworkNames,
   makeServiceRestartWouldRecreateError,
 } from "./bring-up-recreate.ts";
@@ -66,18 +73,11 @@ import { exec } from "./exec.ts";
 import { logs } from "./logs.ts";
 import { podmanNetworkNames } from "./networks.ts";
 
-const appNetworkName = landoAppNetworkName;
 const networkNames = podmanNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
 const sharedNetworkName = landoSharedNetworkName;
 
-export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
-  const scratch = plan.extensions["@lando/core/scratch"];
-  const scratchId = typeof scratch === "object" && scratch !== null ? Reflect.get(scratch, "id") : undefined;
-  return scratchId === plan.id && typeof scratchId === "string"
-    ? { [SCRATCH_LABEL]: "TRUE", [SCRATCH_ID_LABEL]: scratchId }
-    : {};
-};
+export { scratchLabelsForPlan } from "../labels.ts";
 
 type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
 type BringUpError =
@@ -92,7 +92,7 @@ type BringUpError =
  * failure by returning `undefined`.
  */
 export const APPLY_REMEDIATION =
-  "Run `lando destroy` to clean up any partial app state, then retry `lando start`. Run `lando doctor` if the failure persists.";
+  "Fix the reported error, then run `lando start`; it reuses what this attempt created. Run `lando doctor` if the failure persists.";
 
 export const GLOBAL_APPLY_REMEDIATION =
   "Fix the error above, then run `lando global:start` to retry the global services. Run `lando doctor` if the failure persists.";
@@ -103,6 +103,7 @@ interface InspectResult {
   readonly publishFingerprint: string;
   readonly bindSources: Readonly<Record<string, string>> | undefined;
   readonly networkNames: ReadonlyArray<string> | undefined;
+  readonly labels?: Readonly<Record<string, string>>;
   readonly body?: unknown;
 }
 
@@ -137,6 +138,7 @@ export interface BringUpOptions {
   readonly reconcile?: boolean;
   readonly startFailureRemediation?: StartFailureRemediation;
   readonly serviceEnvironment?: ApplyOptions["serviceEnvironment"];
+  readonly onVolumeCreated?: ApplyOptions["onVolumeCreated"];
   readonly platform?: HostPlatform;
   readonly daemonUrl?: string;
   readonly probeBind?: ServicePublishProbe;
@@ -247,6 +249,7 @@ const inspectContainer = Effect.fnUntraced(function* (
       publishFingerprint: fingerprintInspectPublishPorts(body),
       bindSources: inspectBindSources(body),
       networkNames: inspectNetworkNames(body),
+      labels: inspectContainerLabels(body),
       body,
     };
   }
@@ -256,6 +259,7 @@ const inspectContainer = Effect.fnUntraced(function* (
     publishFingerprint: fingerprintInspectPublishPorts(body),
     bindSources: inspectBindSources(body),
     networkNames: inspectNetworkNames(body),
+    labels: inspectContainerLabels(body),
     body,
   };
 });
@@ -287,6 +291,7 @@ const createContainerRequest = (
   endpoints: ReadonlyArray<EndpointPlan>,
 ) => {
   const knobs = realizePodmanComposeKnobs(service, {
+    dialect: (deps.options.dialect ?? libpodLifecycleDialect).engine,
     onInvalid: (message, details) => {
       throw podmanFailure(deps, { service, operation: "bringUp.knobs", message, details });
     },
@@ -325,23 +330,20 @@ const createContainerRequest = (
   const body = {
     ...containerCreateBodyFragment(plan, service, {
       name,
-      labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
+      labels: commonContainerLabels(plan, service),
       hostConfig: {
         ...baseHostConfig,
         ...knobs.hostConfig,
       },
       networkingConfig: {
-        EndpointsConfig:
-          (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
-            ? { [appNetworkName(plan)]: { Aliases: [service.name] } }
-            : Object.fromEntries(
-                networkNames(plan).map((name) => [
-                  name,
-                  name === sharedNetworkName(plan)
-                    ? { Aliases: serviceNetworkAliases(plan, service) }
-                    : { Aliases: [service.name] },
-                ]),
-              ),
+        EndpointsConfig: Object.fromEntries(
+          createBodyNetworkNames(deps, plan).map((name) => [
+            name,
+            name === sharedNetworkName(plan)
+              ? { Aliases: serviceNetworkAliases(plan, service) }
+              : { Aliases: [service.name] },
+          ]),
+        ),
       },
       onMissingArtifact: (artifact) => {
         throw podmanFailure(deps, {
@@ -363,23 +365,29 @@ const createContainerRequest = (
 const ensureNetwork = (
   deps: BringUpDeps,
   name: string,
-): Effect.Effect<boolean, ProviderUnavailableError | ProviderInternalError> => {
+  plan: AppPlan,
+): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError> => {
   return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
       if (inspectResponse.status === 200) {
-        return Effect.succeed(false);
+        return Effect.void;
       }
       return request(deps, {
         method: "POST",
         path: "/networks/create",
-        body: { Name: name, Driver: "bridge" },
+        body: {
+          Name: name,
+          Driver: "bridge",
+          ...(isSharedNetwork(plan, name)
+            ? {}
+            : {
+                Labels: networkOwnershipLabels(plan),
+              }),
+        },
       }).pipe(
         Effect.flatMap((response) => {
-          if (response.status === 201 || response.status === 200) {
-            return Effect.succeed(true);
-          }
-          if (response.status === 409) {
-            return Effect.succeed(false);
+          if (response.status === 201 || response.status === 200 || response.status === 409) {
+            return Effect.void;
           }
           const details = { status: response.status, body: response.body };
           const message = withApiReason(
@@ -554,6 +562,23 @@ const createContainer = Effect.fnUntraced(function* (
 const isAlreadyConnectedResponse = (response: EngineHttpResponse): boolean =>
   response.status === 403 && /already\s+(exists|connected)|endpoint.*exists|same name/iu.test(response.body);
 
+/** Docker accepts one network in the create body; the rest are connected after create. */
+const createBodyNetworkNames = (deps: BringUpDeps, plan: AppPlan): ReadonlyArray<string> =>
+  (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
+    ? networkNames(plan).slice(0, 1)
+    : networkNames(plan);
+
+/** Existing Docker containers need an idempotent connect even when create would attach the shared network. */
+const sharedNetworkAfterCreate = (deps: BringUpDeps, plan: AppPlan, created: boolean): string | undefined => {
+  const shared = sharedNetworkName(plan);
+  if (
+    !created &&
+    (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
+  )
+    return shared;
+  return shared === undefined || createBodyNetworkNames(deps, plan).includes(shared) ? undefined : shared;
+};
+
 const connectSharedNetwork = (
   deps: BringUpDeps,
   plan: AppPlan,
@@ -595,11 +620,6 @@ const stopContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<voi
     Effect.catch(() => Effect.void),
   );
 
-const removeContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<void> =>
-  request(deps, { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }).pipe(
-    Effect.catch(() => Effect.void),
-  );
-
 const removeContainer = (
   deps: BringUpDeps,
   service: ServicePlan,
@@ -618,26 +638,6 @@ const removeContainer = (
             }),
           ),
     ),
-  );
-
-const removeNetworkSilent = (deps: BringUpDeps, plan: AppPlan): Effect.Effect<void> =>
-  request(deps, {
-    method: "DELETE",
-    path: `/networks/${encodeURIComponent(appNetworkName(plan))}`,
-  }).pipe(Effect.catch(() => Effect.void));
-
-const removeCreatedNetworksSilent = (
-  deps: BringUpDeps,
-  createdNetworks: ReadonlySet<string>,
-): Effect.Effect<void> =>
-  Effect.forEach(
-    createdNetworks,
-    (name) =>
-      request(deps, {
-        method: "DELETE",
-        path: `/networks/${encodeURIComponent(name)}`,
-      }).pipe(Effect.catch(() => Effect.void)),
-    { discard: true },
   );
 
 const publish = (
@@ -663,7 +663,6 @@ const startService = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
   service: ServicePlan,
-  recordTouched: (container: TouchedContainer) => void,
 ): Effect.fn.Return<StartResult, BringUpError> {
   const name = containerName(plan, service);
   const providerId = ProviderId.make(deps.options.ctx.providerId);
@@ -690,6 +689,13 @@ const startService = Effect.fnUntraced(function* (
   );
 
   const inspected = yield* inspectContainer(deps, name);
+  const existingId = inspected.exists
+    ? yield* verifiedNativeId(
+        JSON.stringify(inspected.body),
+        containerOwnershipLabels(plan, service.name),
+        deps.options.ctx,
+      )
+    : undefined;
   if (!inspected.exists && deps.options.forbidRecreate === true) {
     return yield* Effect.fail(
       new ServiceStartError({
@@ -709,7 +715,7 @@ const startService = Effect.fnUntraced(function* (
     plannedFingerprint.length > 0 &&
     inspected.publishFingerprint.length > 0 &&
     inspected.publishFingerprint !== plannedFingerprint;
-  const recreateReasons = bringUpRecreateReasons(plan, service, inspected);
+  const recreateReasons = inspected.exists ? bringUpRecreateReasons(plan, service, inspected) : [];
   let before = inspected;
   if (before.exists && (deps.options.reconcile === true || recreateReasons.length > 0)) {
     if (deps.options.forbidRecreate === true && recreateReasons.length > 0) {
@@ -722,8 +728,10 @@ const startService = Effect.fnUntraced(function* (
         }),
       );
     }
-    yield* stopContainerSilent(deps, name);
-    yield* removeContainer(deps, service, name);
+    if (existingId !== undefined) {
+      yield* stopContainerSilent(deps, existingId);
+      yield* removeContainer(deps, service, existingId);
+    }
     before = {
       exists: false,
       running: false,
@@ -732,11 +740,6 @@ const startService = Effect.fnUntraced(function* (
       networkNames: undefined,
     };
   }
-  recordTouched({
-    name,
-    created: !before.exists,
-    startedExisting: before.exists && !before.running,
-  });
   const publishHost = classifyServicePublishHost({
     platform: deps.options.platform ?? process.platform,
     ...(deps.options.daemonUrl === undefined ? {} : { daemonUrl: deps.options.daemonUrl }),
@@ -764,11 +767,8 @@ const startService = Effect.fnUntraced(function* (
     createEndpoints = yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
     changed = true;
   }
-  const sharedNetwork = sharedNetworkName(plan);
-  if (
-    (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create" &&
-    sharedNetwork !== undefined
-  ) {
+  const sharedNetwork = sharedNetworkAfterCreate(deps, plan, !before.exists);
+  if (sharedNetwork !== undefined) {
     yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
   }
   if (!before.running) {
@@ -792,17 +792,20 @@ const startService = Effect.fnUntraced(function* (
             }),
           );
         }
-        yield* stopContainerSilent(deps, name);
-        yield* removeContainer(deps, service, name);
-        recordTouched({ name, created: true, startedExisting: false });
+        const recoveryId = yield* inspectOwnedNativeId(
+          deps.api,
+          { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
+          deps.options.ctx,
+        );
+        if (recoveryId !== undefined) {
+          yield* stopContainerSilent(deps, recoveryId);
+          yield* removeContainer(deps, service, recoveryId);
+        }
         createEndpoints = yield* prepareEndpoints(assigned);
         yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
-        if (
-          (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment ===
-            "connect-after-create" &&
-          sharedNetwork !== undefined
-        ) {
-          yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
+        const retrySharedNetwork = sharedNetworkAfterCreate(deps, plan, true);
+        if (retrySharedNetwork !== undefined) {
+          yield* connectSharedNetwork(deps, plan, service, name, retrySharedNetwork);
         }
         retry = yield* startContainer(deps, name);
       }
@@ -870,40 +873,6 @@ const startService = Effect.fnUntraced(function* (
   );
 
   return { changed };
-});
-
-interface TouchedContainer {
-  readonly name: string;
-  readonly created: boolean;
-  readonly startedExisting: boolean;
-}
-
-const cleanupTouchedContainers = Effect.fnUntraced(function* (
-  deps: BringUpDeps,
-  touched: ReadonlyArray<TouchedContainer>,
-): Effect.fn.Return<void> {
-  yield* Effect.forEach(
-    touched.filter((container) => container.created || container.startedExisting),
-    (container) => stopContainerSilent(deps, container.name),
-    { discard: true },
-  );
-  yield* Effect.forEach(
-    touched.filter((container) => container.created),
-    (container) => removeContainerSilent(deps, container.name),
-    { discard: true },
-  );
-});
-
-const rollbackPartialApply = Effect.fnUntraced(function* (
-  deps: BringUpDeps,
-  plan: AppPlan,
-  touched: ReadonlyArray<TouchedContainer>,
-  createdNetworks: ReadonlySet<string>,
-): Effect.fn.Return<void> {
-  // Volumes are preserved so rollback does not discard persistent data.
-  yield* cleanupTouchedContainers(deps, touched);
-  if (deps.options.forbidRecreate !== true) yield* removeNetworkSilent(deps, plan);
-  yield* removeCreatedNetworksSilent(deps, createdNetworks);
 });
 
 const SERVICE_START_LOG_TAIL_LINES = 50;
@@ -987,11 +956,9 @@ const withServiceStartLogTail = (
         logTail,
       });
 
-const rollbackAfterStartFailure = (
+const captureStartFailure = (
   deps: BringUpDeps,
   plan: AppPlan,
-  touched: ReadonlyArray<TouchedContainer>,
-  createdNetworks: ReadonlySet<string>,
   error: BringUpError,
 ): Effect.Effect<never, BringUpError> => {
   const aborted = deps.options.signal?.aborted === true;
@@ -1001,7 +968,6 @@ const rollbackAfterStartFailure = (
       : undefined;
   const capture = named === undefined ? Effect.succeed(undefined) : captureServiceLogTail(deps, plan, named);
   return capture.pipe(
-    Effect.ensuring(rollbackPartialApply(deps, plan, touched, createdNetworks)),
     Effect.flatMap((logTail) =>
       deps.options.signal?.aborted === true
         ? Effect.interrupt
@@ -1013,7 +979,7 @@ const rollbackAfterStartFailure = (
 export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   plan: AppPlan,
   options: BringUpOptions,
-): Effect.fn.Return<ApplyResult, BringUpError> {
+): Effect.fn.Return<ApplyResult, ProviderError> {
   const api = options.api;
   if (api?.request === undefined) {
     return yield* Effect.fail(missingApi(options.ctx, "bringUp"));
@@ -1034,39 +1000,24 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     remediation: plan.id === "global" ? GLOBAL_APPLY_REMEDIATION : APPLY_REMEDIATION,
   };
 
-  const createdNetworks = new Set<string>();
   for (const name of networkNames(plan)) {
-    if (yield* ensureNetwork(deps, name)) {
-      createdNetworks.add(name);
-    }
+    yield* ensureNetwork(deps, name, plan);
   }
   const createdVolumes: VolumeCreationFact[] = [];
   for (const store of plan.stores) {
-    createdVolumes.push(...(yield* ensureVolume(deps, plan, store)));
+    for (const fact of yield* ensureVolume(deps, plan, store)) {
+      if (options.onVolumeCreated !== undefined) yield* options.onVolumeCreated(fact);
+      createdVolumes.push(fact);
+    }
   }
-  const touched: TouchedContainer[] = [];
   const result = yield* runServiceStartSchedule(plan, {
     startService: Effect.fnUntraced(function* (service) {
       if (options.signal?.aborted === true) {
         return yield* Effect.interrupt;
       }
-      const started = yield* startService(deps, plan, service, (container) => {
-        // Recovery replaces the touched record so rollback removes the recreation exactly once.
-        const index = touched.findIndex((entry) => entry.name === container.name);
-        if (index === -1) touched.push(container);
-        else touched[index] = container;
-      }).pipe(
+      return yield* startService(deps, plan, service).pipe(
         Effect.catch((error) => (options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
       );
-      return { changed: started.changed };
-    }),
-    cleanupOptionalStartFailure: Effect.fnUntraced(function* (service) {
-      const name = containerName(plan, service);
-      const index = touched.findIndex((container) => container.name === name);
-      const container = touched[index];
-      if (container === undefined) return;
-      yield* cleanupTouchedContainers(deps, [container]);
-      touched.splice(index, 1);
     }),
     execHealthcheck: (service, command) =>
       exec(
@@ -1086,13 +1037,9 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
           ...(options.signal === undefined ? {} : { signal: options.signal }),
         },
       ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
-  }).pipe(
-    Effect.catch((error) => rollbackAfterStartFailure(deps, plan, touched, createdNetworks, error)),
-    Effect.onInterrupt(() => rollbackPartialApply(deps, plan, touched, createdNetworks)),
-  );
+  }).pipe(Effect.catch((error) => captureStartFailure(deps, plan, error)));
 
   if (result._tag === "Cycle") {
-    yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
     return yield* Effect.fail(
       new ProviderInternalError({
         providerId: options.ctx.providerId,
@@ -1116,7 +1063,6 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             ...(blocked.timedOut === true ? { timedOut: true } : {}),
           });
     return yield* capture.pipe(
-      Effect.ensuring(rollbackPartialApply(deps, plan, touched, createdNetworks)),
       Effect.flatMap((logTail): Effect.Effect<never, BringUpError> => {
         if (options.signal?.aborted === true) return Effect.interrupt;
         if (service === undefined) {

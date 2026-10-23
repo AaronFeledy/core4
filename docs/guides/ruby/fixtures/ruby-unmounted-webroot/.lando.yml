@@ -1,0 +1,7 @@
+name: ruby-unmounted-webroot
+services:
+  app:
+    type: "ruby:3.3"
+    framework: rails
+    appMount: false
+    webroot: public

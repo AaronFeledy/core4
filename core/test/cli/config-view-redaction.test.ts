@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { config } from "@lando/engine/operations/config";
+import { GlobalConfigSources } from "@lando/engine/services/config";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { GlobalConfig } from "@lando/sdk/schema";
-import { ConfigService } from "@lando/sdk/services";
-import { Effect, Layer, Schema } from "effect";
+import { Layer, Schema } from "effect";
 import { metaConfigSpec } from "../../src/cli/command-specs/meta/config.ts";
 import { configRedactionTokens } from "../../src/cli/commands/config-redaction.ts";
 import { renderConfigResult } from "../../src/cli/commands/config.ts";
@@ -26,13 +29,11 @@ const loaded = Schema.decodeUnknownSync(GlobalConfig)({
     otlp: { headers: { "x-team": "opaque-otlp-header-669", authorization: "opaque-otlp-auth-669" } },
   },
 });
-const runtime = Layer.succeed(
-  ConfigService,
-  ConfigService.of({
-    load: Effect.succeed({ ...loaded, setup: { completed: true } }),
-    get: (key) => Effect.succeed(loaded[key]),
-  }),
-);
+const runtime = Layer.succeed(GlobalConfigSources, {
+  env: {},
+  host: { ...loaded, setup: { completed: true } },
+  sources: { user: false, env: false },
+});
 
 test("marks arbitrary OTLP header names as secrets in scalar set and map get shapes", () => {
   expect(
@@ -67,7 +68,7 @@ for (const rendererMode of ["lando", "plain", "verbose", "json"] as const) {
           redactionTokens: (result) => metaConfigSpec.redactionTokens?.(result) ?? [],
           render: renderConfigResult,
           io,
-          formatError: String,
+          formatError: ({ error }) => String(error),
           setExitCode: (code) => expect(code).toBe(0),
         });
         // Then
@@ -89,3 +90,81 @@ for (const rendererMode of ["lando", "plain", "verbose", "json"] as const) {
     }
   }
 }
+
+for (const headers of ["scalar", "map", "array"] as const) {
+  for (const subcommand of ["view", "get"] as const) {
+    test(`raw ${subcommand} redacts ${headers} headers and nested secret-key values`, async () => {
+      const root = await mkdtemp(join(tmpdir(), "lando-raw-redaction-"));
+      const canary = "raw-header-secret-canary-134687";
+      const secretKeyCanary = "raw-key-secret-canary-568972";
+      const value =
+        headers === "scalar"
+          ? canary
+          : headers === "map"
+            ? `\n      x-team: ${canary}`
+            : `\n      - ${canary}`;
+      await writeFile(
+        join(root, "config.yml"),
+        `tracing:\n  otlp:\n    headers: ${value}\npluginConfig:\n  example:\n    API_TOKEN:\n      nested: ${secretKeyCanary}\n`,
+      );
+      const io = createBufferedRendererIO();
+      try {
+        await runWithRendererHandling(config({ subcommand, source: "raw", key: "tracing.otlp.headers" }), {
+          runtime: Layer.succeed(GlobalConfigSources, {
+            env: {},
+            rootOverrides: { userConfRoot: root },
+            sources: { user: true, env: false },
+          }),
+          rendererMode: "json",
+          resultFormat: "json",
+          resultSchema: metaConfigSpec.resultSchema,
+          redactionTokens: configRedactionTokens,
+          render: renderConfigResult,
+          io,
+          formatError: ({ error }) => String(error),
+          setExitCode: (code) => expect(code).toBe(0),
+        });
+        expect(JSON.parse(io.stdout()).ok).toBe(true);
+        expect(io.stdout()).toContain("[redacted]");
+        expect(io.stdout()).not.toContain(canary);
+        expect(io.stdout()).not.toContain(secretKeyCanary);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  }
+}
+
+test.each(["view", "validate"] as const)(
+  "%s error envelope does not echo invalid secret values",
+  async (subcommand) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-failure-redaction-"));
+    const canary = "failure-header-secret-canary-943628";
+    await writeFile(join(root, "config.yml"), `tracing:\n  otlp:\n    headers: ${canary}\n`);
+    const io = createBufferedRendererIO();
+    try {
+      await runWithRendererHandling(config({ subcommand }), {
+        runtime: Layer.succeed(GlobalConfigSources, {
+          env: {},
+          rootOverrides: { userConfRoot: root },
+          sources: { user: true, env: false },
+        }),
+        rendererMode: "json",
+        resultFormat: "json",
+        resultSchema: metaConfigSpec.resultSchema,
+        redactionTokens: configRedactionTokens,
+        render: renderConfigResult,
+        io,
+        formatError: ({ error }) => String(error),
+        setExitCode: (code) => expect(code).toBe(1),
+      });
+      expect(JSON.parse(io.stdout())).toMatchObject({
+        ok: false,
+        error: { _tag: "ConfigError", issues: [{ path: ["tracing", "otlp", "headers"] }] },
+      });
+      expect(io.stdout() + io.stderr()).not.toContain(canary);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

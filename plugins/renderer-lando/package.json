@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
-  "homepage": "https://github.com/lando-community/core4",
+  "homepage": "https://github.com/AaronFeledy/core4",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lando-community/core4.git",
+    "url": "git+https://github.com/AaronFeledy/core4.git",
     "directory": "plugins/renderer-lando"
   },
   "type": "module",
@@ -32,13 +32,13 @@
     "manifest": "./plugin.yaml"
   },
   "dependencies": {
+    "@lando/renderer": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@opentui/core": "^0.4.3",
     "effect": "catalog:"
   },
   "devDependencies": {
     "@lando/engine": "workspace:*",
-    "@lando/renderer": "workspace:*",
     "@lando/paths": "workspace:*"
   },
   "scripts": {

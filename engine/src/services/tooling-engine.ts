@@ -15,7 +15,6 @@ import { withTerminalEnv } from "../config/terminal-env.ts";
 import { collectExecStream } from "../operations/exec-stream.ts";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
-import { registerAppPlanRedactionTokens } from "./app-plan-redaction.ts";
 
 const findPrimary = (services: AppPlan["services"]): ReadonlyArray<ServicePlan> =>
   Object.values(services).filter((service) => service.primary === true);
@@ -142,7 +141,6 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     return yield* Effect.fail(noCommandsError(invocation.tool));
   }
   const service = yield* resolveService(invocation, plan);
-  yield* registerAppPlanRedactionTokens(plan);
   const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
   const env = withAgentContextEnv(invocation.env, process.env, {
     lowerThanEnv: service.environment,

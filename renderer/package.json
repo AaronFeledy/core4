@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
-  "homepage": "https://github.com/lando-community/core4",
+  "homepage": "https://github.com/AaronFeledy/core4",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lando-community/core4.git",
+    "url": "git+https://github.com/AaronFeledy/core4.git",
     "directory": "renderer"
   },
   "type": "module",
@@ -21,7 +21,9 @@
     ".": "./src/index.ts",
     "./console-layout": "./src/console-layout.ts",
     "./io": "./src/io.ts",
+    "./native-stdio": "./src/native-stdio.ts",
     "./output": "./src/output.ts",
+    "./output-drain": "./src/output-drain.ts",
     "./runtime": "./src/runtime.ts",
     "./stdio": "./src/stdio.ts",
     "./summary": "./src/summary.ts",

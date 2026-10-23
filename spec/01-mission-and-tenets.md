@@ -32,7 +32,7 @@ These tenets are non-negotiable and reviewable on every PR.
 | **Functional core, imperative shell** | Business logic is pure Effect; filesystem, process, network, and terminal effects live behind services. CLI and library hosts are imperative shells. |
 | **Type-driven design** | Effect Schema defines public contracts and TypeScript types are inferred from it. |
 | **Tagged errors only** | Core failures are `Schema.TaggedError` values with machine `_tag` and actionable remediation, not thrown generic exceptions. |
-| **Resource-safe by construction** | Handles, locks, files, ports, networks, and subprocesses are acquired in `Scope`; interruption cleans them up. |
+| **Resource-safe by construction** | Handles, locks, files, ports, networks, and subprocesses are acquired in `Scope` with an explicit lifetime owner. Acquisition-local resources finalize on failure or interruption; established user and global app resources stay app-owned (§6.7) until their owning lifecycle ends. |
 | **Capability before plan, plan before action** | Providers declare capabilities; planning validates intent; providers execute only valid plans. |
 | **Performance is a feature** | Published p95 end-to-end, first-paint, and hot-path budgets in §2.1 are release contracts; embedding hosts that reuse one `LandoRuntime` across sequential operations are held to the same hot-path budgets (§16.3). Streaming render, bytecode, generated bootstrap layers, lazy services, bounded caches, efficient event dispatch, concurrency, and runtime reuse remain mandatory where their owning sections specify them. Regressions are release-blocking. |
 | **Hot path stays hot** | Tooling commands that do not need full app init MUST run from cached plans without provider contact. |
@@ -63,9 +63,10 @@ Core does not own:
 - Docker, Podman, Lima, OrbStack, Hyper-V, WSL, BuildKit, or other host-runtime integration.
 - Traefik configuration, proxy labels, or proxy daemon lifecycle.
 - mkcert, dockerode, dockerfile generators, Compose binaries, or provider-specific runtimes.
-- v3 execution, resource adoption, state import, retired image emulation, hoster synchronization, or Lando 3 binary management.
+- v3 execution, resource adoption, state import, retired image emulation, or Lando 3 binary management.
+- Hoster-specific synchronization: vendor APIs, vendor tools, environment models, and credential formats belong to `RemoteSource`, `Dataset`, and `InitSource` plugins. Core owns only the generic orchestration, `CodeSync`, setup, and tool-execution contracts of §10.12 and §8.8.13.
 
-Core and the bundled translator MUST NOT adopt v3 containers, volumes, networks, state, custom basename settings, images, helpers, environment, or execution order; MUST NOT perform hoster synchronization; and MUST NOT download or manage a Lando 3 binary. Explicit custom-name settings are diagnosed only.
+Core and the bundled Lando 3 translator MUST NOT adopt v3 containers, volumes, networks, state, custom basename settings, images, helpers, environment, or execution order, or download/manage a Lando 3 binary. The Lando 3 translator MUST NOT perform hoster synchronization; generic orchestration delegates vendor behavior to §10.12 plugins. Explicit custom-name settings are diagnosed only.
 
 ### 1.4 Default distribution
 
@@ -75,7 +76,7 @@ Bundled plugins remain separate packages governed by the public plugin contract.
 |---|---|---|
 | Managed runtime | `@lando/provider-lando` | Bundled default, optional |
 | System Docker / Podman | `@lando/provider-docker`, `@lando/provider-podman` | Optional |
-| Canonical `lando4` translation | `@lando/lando4` | Bundled, two-way, explicit-only; MUST depend only on `@lando/sdk` and MUST NOT participate in normal bootstrap |
+| Canonical `lando4` translation | `@lando/lando4` | Bundled, two-way; explicit conversion and encoding for declared refresh (§7.4.2) only. MUST depend only on `@lando/sdk` and MUST NOT participate in discovery/ordinary loading. |
 | Lando 3 conversion | `@lando/lando3` | Bundled, decode-only, explicit-only; also contributes the read-only `lando3-leftovers` / `lando3-shadow` doctor checks (§10.9); MUST depend only on `@lando/sdk` and `@lando/paths` and MUST NOT participate in normal bootstrap |
 | Proxy / CA | `@lando/proxy-traefik`, `@lando/ca-mkcert` | Optional |
 | Service base | `@lando/service-lando` | Required for `type: lando` |
@@ -103,7 +104,8 @@ The forms ship from the same source at the same version and MUST NOT drift.
 
 ### 14.1 Non-goals
 
-- v3 execution/emulation, automatic conversion, resource adoption, legacy state import, retired image manufacture, hoster synchronization, or Lando 3 binary management.
+- v3 execution/emulation, automatic conversion, resource adoption, legacy state import, retired image manufacture, or Lando 3 binary management.
+- Hoster-specific synchronization logic in core; §10.12 specifies generic orchestration, not a core vendor connector or a claim of shipped implementation.
 - Docker Compose as core's runtime model; only the documented input subset is supported (§7.4).
 - Required Traefik or Docker implementations.
 - Built-in Kubernetes, plugin sandboxing, registry push workflows, or core SQL helpers.
@@ -126,3 +128,7 @@ The following extension constraints apply without committing to an implementatio
 | Persistent local agent | The runtime is transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in module-global mutable state, caches pinned to `process.pid`). The per-app `HostProxyService` worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
 | Explicit `dependsOn: ["global:<service>"]` | Add only if usage proves `AppFeature.requires.globalServices` plus explicit global start is insufficient. |
 | Service-type `topLevelAlias` enforcement | Enforce once the tooling schema lifts the current catalog-wide rejection of `topLevelAlias` (§6.11, §8.5). |
+| OS-keychain credential backend | Add a keychain-backed writable `SecretStore` (macOS Keychain, Windows Credential Manager, Secret Service) as a peer of the file-backed `lando` store once its threat model (§9.5.1) proves insufficient; the file store stays the default until then. |
+| Windows credential ACL and agent interoperability | Before the first bundled hoster connector ships, demonstrate owner-only ACL enforcement for `<userDataRoot>/secrets/` and named-pipe agent interoperability for host `git` on Windows (§9.5.1, §10.4). |
+| Hoster code push | Core moves code only by pull and switch (§10.12.1). Add a core code-push contract only if two or more bundled connectors need the same commit-and-push semantics. |
+| Tethered sessions | Require §10.12.5 interactive-only entry, stopped-app ownership, revocable forwarding, and no production/staging/unknown/protected targets or persisted opt-in. Unsupported revocation MUST be refused. Relaxing a constraint requires a recorded threat-model review. |

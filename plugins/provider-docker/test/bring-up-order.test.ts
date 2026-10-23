@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Schema, Stream } from "effect";
 
-import { type DockerApiClient, type DockerHttpResponse, makeRuntimeProvider } from "@lando/provider-docker";
+import { commonContainerLabels } from "@lando/container-runtime/plan";
+import type { DockerApiClient, DockerHttpResponse } from "@lando/provider-docker";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServicePlan } from "@lando/sdk/schema";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("bring-up-order-app");
@@ -64,16 +66,30 @@ const planWith = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
   extensions: {},
 });
 
+const CreateBodyLabels = Schema.Struct({
+  Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+});
+
 const makeFakeApi = (
   healthExitCode: number,
   existing: ReadonlyArray<string> = [],
   failedStarts: ReadonlyArray<string> = [],
 ) => {
   const requests: string[] = [];
+  const labels = new Map<string, Readonly<Record<string, string>>>();
   const existingNames = new Set(existing);
   const runningNames = new Set<string>();
   const failedStartNames = new Set(failedStarts);
+  const ids = new Map<string, string>(existing.map((name) => [name, `id-${name}-original`]));
   const images = new Set<string>();
+  let createdSeq = 0;
+  const resolveContainer = (ref: string) => {
+    if (existingNames.has(ref) || ids.has(ref)) return ref;
+    for (const [name, id] of ids) {
+      if (id === ref) return name;
+    }
+    return ref;
+  };
   const responseFor = (method: string, path: string): DockerHttpResponse => {
     if (method === "GET" && path.startsWith("/networks/")) return { status: 404, body: "" };
     if (path === "/networks/create") return { status: 201, body: "" };
@@ -97,18 +113,29 @@ const makeFakeApi = (
       return { status: 200, body: '{"status":"Pull complete"}\n' };
     }
     if (method === "GET" && path.startsWith("/containers/") && path.endsWith("/json")) {
-      const name = path.slice("/containers/".length, -"/json".length);
+      const name = resolveContainer(path.slice("/containers/".length, -"/json".length));
       return existingNames.has(name)
-        ? { status: 200, body: JSON.stringify({ State: { Running: runningNames.has(name) } }) }
+        ? {
+            status: 200,
+            body: JSON.stringify({
+              Id: ids.get(name),
+              Config: { Labels: labels.get(name) },
+              State: { Running: runningNames.has(name) },
+            }),
+          }
         : { status: 404, body: "" };
     }
     if (path.startsWith("/containers/create?")) {
       const name = new URL(`http://localhost${path}`).searchParams.get("name");
-      if (name !== null) existingNames.add(name);
+      if (name !== null) {
+        existingNames.add(name);
+        createdSeq += 1;
+        ids.set(name, `id-${name}-created-${createdSeq}`);
+      }
       return { status: 201, body: "" };
     }
     if (path.endsWith("/start")) {
-      const name = path.slice("/containers/".length, -"/start".length);
+      const name = resolveContainer(path.slice("/containers/".length, -"/start".length));
       if (failedStartNames.has(name)) return { status: 500, body: '{"message":"synthetic start failure"}' };
       runningNames.add(name);
       return { status: 204, body: "" };
@@ -118,13 +145,19 @@ const makeFakeApi = (
       return { status: 200, body: JSON.stringify({ ExitCode: healthExitCode }) };
     }
     if (path.endsWith("/stop")) {
-      runningNames.delete(path.slice("/containers/".length, -"/stop".length));
+      const name = resolveContainer(path.slice("/containers/".length, -"/stop".length));
+      if (!existingNames.has(name)) return { status: 404, body: "" };
+      runningNames.delete(name);
       return { status: 204, body: "" };
     }
     if (method === "DELETE") {
       if (path.startsWith("/containers/")) {
-        existingNames.delete(path.slice("/containers/".length).split("?")[0] ?? "");
-        runningNames.delete(path.slice("/containers/".length).split("?")[0] ?? "");
+        const name = resolveContainer(path.slice("/containers/".length).split("?")[0] ?? "");
+        const removed = existingNames.delete(name);
+        runningNames.delete(name);
+        labels.delete(name);
+        ids.delete(name);
+        return { status: removed ? 204 : 404, body: "" };
       }
       return { status: 204, body: "" };
     }
@@ -132,8 +165,13 @@ const makeFakeApi = (
   };
   const api: DockerApiClient = {
     info: Effect.succeed({}),
-    request: ({ method, path }) => {
+    request: ({ method, path, body }) => {
       requests.push(`${method} ${path}`);
+      if (method === "POST" && path.startsWith("/containers/create?")) {
+        const name = new URL(`http://localhost${path}`).searchParams.get("name") ?? "";
+        const decoded = Schema.decodeUnknownSync(CreateBodyLabels)(body);
+        labels.set(name, decoded.Labels ?? {});
+      }
       return Effect.succeed(responseFor(method, path));
     },
     stream: ({ method, path }) => {
@@ -144,7 +182,7 @@ const makeFakeApi = (
       return Stream.empty;
     },
   };
-  return { api, requests };
+  return { api, requests, labels, existingNames, runningNames, failedStartNames, ids };
 };
 
 const apply = async (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal, reconcile = false) => {
@@ -165,16 +203,20 @@ describe("provider-docker bringUp dependency order", () => {
     const name = "lando-bring-up-order-app-web";
     const fake = makeFakeApi(0, [name]);
     const plan = planWith([service("web", { dependsOn: [] })]);
+    fake.labels.set(name, commonContainerLabels(plan, service("web", { dependsOn: [] })));
+    const originalId = fake.ids.get(name);
+    if (originalId === undefined) throw new TypeError("expected seeded generation id");
 
     // When
     await apply(plan, fake.api, undefined, true);
 
     // Then
-    const removed = fake.requests.indexOf(`DELETE /containers/${name}?force=true`);
+    const removed = fake.requests.indexOf(`DELETE /containers/${originalId}?force=true`);
     const created = fake.requests.indexOf(`POST /containers/create?name=${name}`);
     expect(removed).toBeGreaterThan(-1);
     expect(created).toBeGreaterThan(removed);
     expect(fake.requests.indexOf(`POST /containers/${name}/start`)).toBeGreaterThan(created);
+    expect(fake.ids.get(name)).not.toBe(originalId);
   });
 
   test("starts a pre-existing stopped container without deleting it when reconcile is false", async () => {
@@ -182,6 +224,7 @@ describe("provider-docker bringUp dependency order", () => {
     const name = "lando-bring-up-order-app-web";
     const fake = makeFakeApi(0, [name]);
     const plan = planWith([service("web", { dependsOn: [] })]);
+    fake.labels.set(name, commonContainerLabels(plan, service("web", { dependsOn: [] })));
 
     // When
     await apply(plan, fake.api, undefined, false);
@@ -212,7 +255,7 @@ describe("provider-docker bringUp dependency order", () => {
     expect(webStart).toBeGreaterThan(dbExec);
   });
 
-  test("fails naming the unmet gate and rolls back when a required gate fails", async () => {
+  test("fails naming the unmet gate and retains started containers", async () => {
     // Given
     const web = service("web", {
       dependsOn: [{ service: healthyDb.name, condition: "service_healthy", required: true }],
@@ -227,8 +270,9 @@ describe("provider-docker bringUp dependency order", () => {
     expect(failure).toMatchObject({ _tag: "ServiceStartError", service: "web" });
     expect(failure.message).toContain("db:healthy");
     expect(fake.requests).not.toContain("POST /containers/lando-bring-up-order-app-web/start");
-    expect(fake.requests.some((request) => request.endsWith("/stop"))).toBe(true);
-    expect(fake.requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app-db/start");
+    expect(fake.requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
+    expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
 
   test("succeeds without rolling back when only an optional gate fails", async () => {
@@ -249,7 +293,7 @@ describe("provider-docker bringUp dependency order", () => {
     expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toHaveLength(0);
   });
 
-  test("does not delete a pre-existing stopped container during rollback", async () => {
+  test("retains a pre-existing stopped container when a required gate fails", async () => {
     // Given
     const web = service("web", {
       dependsOn: [{ service: healthyDb.name, condition: "service_healthy", required: true }],
@@ -257,16 +301,18 @@ describe("provider-docker bringUp dependency order", () => {
     const plan = planWith([web, healthyDb]);
     const db = "lando-bring-up-order-app-db";
     const fake = makeFakeApi(1, [db]);
+    fake.labels.set(db, commonContainerLabels(plan, healthyDb));
 
     // When
     await applyFailure(plan, fake.api);
 
     // Then
-    expect(fake.requests).toContain(`POST /containers/${db}/stop`);
-    expect(fake.requests).not.toContain(`DELETE /containers/${db}?force=true`);
+    expect(fake.requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
+    expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
+    expect(fake.requests).toContain(`POST /containers/${db}/start`);
   });
 
-  test("cleans only a failed optional dependency and preserves an unrelated started service", async () => {
+  test("optional start failure retains the failed dependency and preserves unrelated started services", async () => {
     // Given
     const api = service("api", { dependsOn: [] });
     const web = service("web", {
@@ -282,12 +328,82 @@ describe("provider-docker bringUp dependency order", () => {
 
     // Then
     expect(fake.requests).toContain(`POST /containers/${apiName}/start`);
-    expect(fake.requests).toContain(`POST /containers/${dbName}/stop`);
-    expect(fake.requests).toContain(`DELETE /containers/${dbName}?force=true`);
-    expect(fake.requests).not.toContain(`POST /containers/${apiName}/stop`);
-    expect(fake.requests).not.toContain(`DELETE /containers/${apiName}?force=true`);
+    expect(fake.requests).toContain(`POST /containers/${dbName}/start`);
+    expect(fake.requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
+    expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
     expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app-web/start");
     expect(fake.requests.some((request) => request.startsWith("DELETE /networks/"))).toBe(false);
+  });
+
+  test("unchanged container ID across failed B then retry", async () => {
+    // Given two independent services; B fails on the first attempt on the same fake daemon.
+    const apiSvc = service("api", { dependsOn: [] });
+    const webSvc = service("web", { dependsOn: [] });
+    const plan = planWith([apiSvc, webSvc]);
+    const apiName = "lando-bring-up-order-app-api";
+    const webName = "lando-bring-up-order-app-web";
+    const fake = makeFakeApi(0, [], [webName]);
+    await applyFailure(plan, fake.api);
+    const apiIdAfterFail = fake.ids.get(apiName);
+    const webIdAfterFail = fake.ids.get(webName);
+    if (apiIdAfterFail === undefined || webIdAfterFail === undefined) {
+      throw new TypeError("expected generation-unique A/B ids after failed attempt");
+    }
+    expect(apiIdAfterFail).not.toBe(webIdAfterFail);
+    expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
+
+    // When: clear the injected start fault and retry on the same daemon state.
+    fake.failedStartNames.delete(webName);
+    const requestsBeforeRetry = fake.requests.length;
+    await apply(plan, fake.api);
+    const retryRequests = fake.requests.slice(requestsBeforeRetry);
+
+    // Then: A and B keep their generation-unique identities; neither is recreated.
+    expect(fake.ids.get(apiName)).toBe(apiIdAfterFail);
+    expect(fake.ids.get(webName)).toBe(webIdAfterFail);
+    expect(retryRequests.some((request) => request.includes("/containers/create"))).toBe(false);
+    expect(retryRequests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
+    expect(retryRequests).toContain(`POST /containers/${webName}/start`);
+  });
+
+  test("corrected config recreates ONLY B", async () => {
+    // Given A starts and B fails start under the original create-config on one fake daemon.
+    const apiSvc = service("api", { dependsOn: [] });
+    const webSvc = service("web", { dependsOn: [] });
+    const plan = planWith([apiSvc, webSvc]);
+    const apiName = "lando-bring-up-order-app-api";
+    const webName = "lando-bring-up-order-app-web";
+    const fake = makeFakeApi(0, [], [webName]);
+    await applyFailure(plan, fake.api);
+    const apiId = fake.ids.get(apiName);
+    const webId = fake.ids.get(webName);
+    if (apiId === undefined || webId === undefined) {
+      throw new TypeError("expected generation-unique A/B ids after failed B start");
+    }
+
+    // When: correct B environment/command, clear the injected start fault, retry same fake.
+    const correctedWeb = { ...webSvc, environment: { FIXED: "yes" }, command: ["sleep", "infinity"] };
+    const corrected = planWith([apiSvc, correctedWeb]);
+    fake.failedStartNames.delete(webName);
+    const requestsBeforeRetry = fake.requests.length;
+    await apply(corrected, fake.api);
+    const retryRequests = fake.requests.slice(requestsBeforeRetry);
+
+    // Then: only B is recreated; A identity is unchanged.
+    const webIdAfter = fake.ids.get(webName);
+    if (webIdAfter === undefined) throw new TypeError("expected recreated B id");
+    expect(fake.ids.get(apiName)).toBe(apiId);
+    expect(webIdAfter).not.toBe(webId);
+    expect(retryRequests.some((request) => request === `DELETE /containers/${webId}?force=true`)).toBe(true);
+    expect(
+      retryRequests.some((request) => request.startsWith("DELETE /containers/") && request.includes(apiId)),
+    ).toBe(false);
+    expect(
+      retryRequests.filter((request) => request === `POST /containers/create?name=${webName}`).length,
+    ).toBeGreaterThan(0);
+    expect(retryRequests.filter((request) => request === `POST /containers/create?name=${apiName}`)).toEqual(
+      [],
+    );
   });
 
   test("interrupts an aborted optional dependency instead of starting its dependent", async () => {

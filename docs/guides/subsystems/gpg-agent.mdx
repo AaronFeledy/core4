@@ -33,7 +33,7 @@ Prereq: GnuPG on the host, with `gpg-agent` running. The service image has to sh
 `gpgAgent.forward` defaults to false. Set it per app, or in global config when every app on this machine should sign:
 
 ```sh
-lando config set gpgAgent.forward true --type=boolean
+lando config set gpgAgent.forward true
 ```
 
 Each field resolves Landofile, then global config, then the default. To pin the socket instead of letting Lando ask `gpgconf`:
@@ -68,7 +68,7 @@ Forwarding applies to every `type: lando` service in the app. There is no per-se
 | `LANDO_GPG_AGENT_SOCKET` | `/run/lando/gpg-agent/S.gpg-agent` |
 | `LANDO_GPG_KEYRING` | `/run/lando/gpg-agent-keys` |
 
-On every start Lando exports only the public keyring and ownertrust. Right after the provider applies the plan, Lando runs an uncached command as each opted-in service's resolved user to copy the public keyring, import ownertrust, and link `S.gpg-agent` into `GNUPGHOME`. Preparation creates the home as the service user with mode `0700` and runs on every start, independent of the app build cache, so a rebuilt image or a new key on the host shows up on the next `lando start`. That command needs `gpg` in the service image. If preparation fails in any service, the start fails and Lando tears the applied app back down. The socket the service opens is a per-app relay, not your host socket.
+On every start Lando exports only the public keyring and ownertrust. Right after the provider applies the plan, Lando runs an uncached command as each opted-in service's resolved user to copy the public keyring, import ownertrust, and link `S.gpg-agent` into `GNUPGHOME`. Preparation creates the home as the service user with mode `0700` and runs on every start, independent of the app build cache, so a rebuilt image or a new key on the host shows up on the next `lando start`. That command needs `gpg` in the service image. If preparation fails in any service, the start fails and the applied app and relay stay up. Run `lando start` again after you fix the image; it prepares `GNUPGHOME` again. The socket the service opens is a per-app relay, not your host socket.
 
 The relay uses the same delivery as SSH agent forwarding:
 
@@ -96,11 +96,11 @@ Forwarding is opt-in, and it fails closed. A provider without `agentSocket` deli
 | `GpgAgentTransportError` | `broker` or `bridge` | The relay broke. Run `lando restart`. |
 | `GpgAgentTransportError` | `worker` | Check the relay and service home preparation. Install `gpg` in the service image and ensure the service user can write `GNUPGHOME`. |
 
-If `GNUPGHOME` preparation fails in a service, the start fails with `GpgAgentTransportError` and the applied app is torn down. Install `gpg` in the service image, fix write permissions for the service user, then run `lando rebuild`.
+If `GNUPGHOME` preparation fails in a service, the start fails with `GpgAgentTransportError`. The applied app and the relay stay up. Install `gpg` in the service image, fix write permissions for the service user, then run `lando start`; it prepares `GNUPGHOME` again.
 
 The relay socket on the host is mode `0666` inside a per-user `0700` run directory. On Windows the bridge into the Podman machine uses a loopback TCP broker without a token, so another local account on that host could reach it while the app runs. Private keys still never leave `gpg-agent`; the restricted socket only signs.
 
-`lando stop` and `lando destroy` tear the relay down.
+`lando stop` and `lando destroy` tear the relay down. Another `lando start` on a running app reuses a relay that is still healthy and unchanged, the same way as SSH agent forwarding, and it refreshes the public keyring and `GNUPGHOME` either way.
 
 ## Check it with lando doctor
 

@@ -7,7 +7,7 @@ tags: [beta, docs, services, router, scanner]
 
 # Turn the router off and tune the post-start URL scanner
 
-Lando starts a shared router for every app and, once the app is up, probes each published HTTP and HTTPS URL to make sure something answers. Both behaviors have knobs. Turn the router off when you only want host ports, and tune or disable the scanner per service when the default probe doesn't fit.
+Lando starts a shared router for every app that has routes and, once the app is up, probes each published HTTP and HTTPS URL to make sure something answers. Both behaviors have knobs. Turn the router off when you only want host ports, and tune or disable the scanner per service when the default probe doesn't fit.
 
 ```yaml
 name: router-and-scanner-demo
@@ -95,9 +95,20 @@ The value resolves through normal config precedence. Last one wins:
 
 So a global `router.enabled: false` turns the router off for every app on the machine, and a single app can opt back in with `router.enabled: true` in its own Landofile. The reverse works too: leave the global default alone and disable the router for the one app that doesn't want it.
 
+You don't need any of that for an app with no routes. A database-only, worker, or build app never starts the router, and its `lando start` only withdraws routes it published earlier.
+
 ## Tune the scanner per service
 
-Once the app is up, `lando start` probes every HTTP and HTTPS URL each service publishes before returning. A URL that doesn't answer, or answers with a status outside the accepted set, gets a warning. A failed probe doesn't fail `lando start`; the app is up and the warning tells you which URL to go look at. Cancelling during the scan still interrupts start and closes its in-flight requests.
+Once the app is up, `lando start` checks every HTTP and HTTPS URL each service publishes before returning. Rows say what your app or web server returned. Your app's own answer isn't a Lando warning; only Lando-side problems enter command warnings. A failed check doesn't fail `lando start`. Cancelling during the check still interrupts start and closes its in-flight requests.
+
+The app check has its own progress tree, with one row per URL. Each row spins while
+its probe runs and shows the attempt number and reason while retrying. Settled
+rows show the HTTP status or failure reason. A `•` row is your app's own answer,
+not a Lando warning. A `!` row with `unreachable` identifies a Lando-side problem;
+a web-server error row says what the web server returned without adding a command warning.
+The tree finishes with the number of URLs that answered, or counts of errors and unreachable URLs.
+Full `lando restart` and `lando rebuild` show the same scan progress. Services with
+`scanner: false` get no scan row, and an app with no scan targets gets no empty tree.
 
 The scanner skips `tcp://`, `udp://`, and database endpoints; `lando info` still lists them. A Compose port mapping such as `9080:9080` describes the transport, not the application protocol. If you know that port serves HTTP, check it directly:
 

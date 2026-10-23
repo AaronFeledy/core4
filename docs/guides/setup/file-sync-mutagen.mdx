@@ -21,7 +21,7 @@ Setup installs checksum-verified Mutagen binaries and a private Docker command-l
 
 The `file-sync` doctor check verifies that the installed tools and session client are available. The separate `filesystem-watch` check creates a temporary Windows file and verifies that a native watcher receives its event. That watch check covers the host temporary directory; it does not test every project directory or a container watcher.
 
-## Start or rebuild the app
+## Start the app
 
 From your project directory:
 
@@ -30,10 +30,10 @@ lando start
 lando info
 ```
 
-If the app already uses ordinary mounts, rebuild it after setup so its containers use the accelerated mounts:
+If the app already uses ordinary mounts, start it after setup so its containers use the accelerated mounts:
 
 ```sh
-lando rebuild
+lando start
 lando doctor
 ```
 
@@ -69,6 +69,14 @@ Stopping pauses the app's sessions and retains their history. Starting resumes t
 
 `lando destroy` removes the app's sync sessions and disposable sync caches after syncing pending changes in included paths back to the project. Resolve reported sync errors before retrying destroy. The normal destroy rules for application data volumes still apply.
 
+## Finish an interrupted start
+
+```sh
+lando start
+```
+
+If a start fails or you press Ctrl-C at any point, valid sync sessions, their targets, and every container Lando already created stay where they are, even if some containers already ran and wrote to the targets. The next `lando start` finishes any unfinished accelerated-start attempt with the same sessions and their history and reuses the containers that match the plan. `lando restart` and `lando rebuild` finish an unfinished attempt first, then continue with their explicit stop/recreate work. Lando never reseeds an existing target from your project. `lando doctor` lists an unfinished attempt until provider apply completes. `lando stop` and `lando destroy` work on it like any other app, with one exception: destroy refuses when a sync target may hold app writes and its session is gone, until you restore that session's history in Mutagen. See [Finish an interrupted accelerated start](../subsystems/doctor-walkthrough.mdx#finish-an-interrupted-accelerated-start).
+
 ## Resolve a file conflict
 
 If start reports a conflict, keep the session and inspect the affected paths:
@@ -93,3 +101,18 @@ Directory, deletion, and symbolic-link conflicts need a decision about which con
 `lando setup --skip-file-sync` skips installing sync tools. It does not remove tools that are already installed or change your provider.
 
 Native Linux providers keep their native bind mounts and skip this file-sync check. Accelerated sessions described here require Windows and the managed `lando` provider; other provider and host combinations keep their existing mount behavior.
+
+Lint the exclude before you start. The check reads the Landofile. It does not install Mutagen or boot a session.
+
+<Guide>
+  <Scenario id="accelerated-excludes-lint" render>
+    <Step name="lint-excludes">
+      <UseFixture name="accelerated-excludes" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/app\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"excludes\":\\s*\\[\\s*\"dist\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>

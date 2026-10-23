@@ -2,6 +2,8 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
+import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
+import { makeLandoPaths } from "@lando/paths";
 import {
   Cause,
   Clock,
@@ -16,6 +18,7 @@ import {
   Schema,
   Stream,
 } from "effect";
+import * as ContainerHelperAssetsLayer from "../container-helper/assets.ts";
 
 import {
   CacheError,
@@ -54,6 +57,7 @@ import {
   type LandoEvent,
   LandofileService,
   Logger,
+  PathsService,
   PluginRegistry,
   type PluginTrustState,
   PluginTrustStore,
@@ -169,6 +173,7 @@ type MinimalTestRuntimeServices =
   | ProcessRunner
   | PrivateFileAccessService;
 type ProviderTestRuntimeServices =
+  | import("@lando/sdk/services").ContainerHelperAssets
   | MinimalTestRuntimeServices
   | PluginRegistry
   | RuntimeProviderRegistry
@@ -434,11 +439,17 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     output: {
       stdout: (chunk) =>
         Effect.sync(() => {
-          calls.renderer.push({ stream: "stdout", chunk });
+          calls.renderer.push({
+            stream: "stdout",
+            chunk: typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk),
+          });
         }),
       stderr: (chunk) =>
         Effect.sync(() => {
-          calls.renderer.push({ stream: "stderr", chunk });
+          calls.renderer.push({
+            stream: "stderr",
+            chunk: typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk),
+          });
         }),
     },
   });
@@ -766,10 +777,15 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   });
 
   const runtimeProviderRegistryService = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(runtimeProvider.capabilities),
-    select: () => Effect.succeed(runtimeProvider),
+    select: (target) =>
+      Effect.succeed(
+        outputRegisteredTestProvider(runtimeProvider, typeof target === "object" ? target : undefined),
+      ),
     resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   });
 
   const globalPaths = {
@@ -779,6 +795,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   };
   const globalAppService = GlobalAppService.of({
     id: "global",
+    providerId: Effect.succeed(providerId),
     root: Effect.succeed(globalPaths.root),
     ensureRoot: Effect.void,
     paths: Effect.succeed(globalPaths),
@@ -910,6 +927,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const scratchResourceScannerService = ScratchResourceScanner.of({
     listScratchIds: Effect.succeed([]),
     pruneScratch: () => Effect.void,
+    prepareScratch: () => Effect.succeed({ stop: Effect.succeed(false), destroy: Effect.succeed(false) }),
   });
 
   const toolingEngineService = ToolingEngine.of({
@@ -1000,6 +1018,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   );
 
   const providerLayer: Layer.Layer<ProviderTestRuntimeServices> = Layer.mergeAll(
+    ContainerHelperAssetsLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
     minimalLayer,
     Layer.succeed(PluginRegistry, pluginRegistryService),
     Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistryService),

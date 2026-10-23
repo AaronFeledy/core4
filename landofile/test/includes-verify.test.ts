@@ -7,8 +7,8 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { verifyLandofileIncludes as verifyLandofileIncludesPackage } from "../src/includes.ts";
 import type { GitIncludeCloner } from "../src/includes.ts";
+import { verifyAuthoredIncludes as verifyLandofileIncludesPackage } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const verifyLandofileIncludes = (options: Parameters<typeof verifyLandofileIncludesPackage>[0]) =>
@@ -74,11 +74,15 @@ describe("verifyLandofileIncludes", () => {
 
   test("a fresh matching lock verifies ok", async () => {
     const source = "github:acme/fragments/postgres.yml";
-    await writeFile(join(appRoot, ".lando.lock.yml"), lockfile(source, "abc123", sha256(FRAGMENT)), "utf8");
+    await writeFile(
+      join(appRoot, ".lando.lock.yml"),
+      lockfile(source, "a".repeat(40), sha256(FRAGMENT)),
+      "utf8",
+    );
 
     const report = await runVerify(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-      clonerFor(FRAGMENT, "abc123"),
+      clonerFor(FRAGMENT, "a".repeat(40)),
     );
 
     expect(report.ok).toBe(true);
@@ -87,23 +91,27 @@ describe("verifyLandofileIncludes", () => {
       {
         source,
         status: "ok",
-        expected: `abc123:${sha256(FRAGMENT)}`,
-        actual: `abc123:${sha256(FRAGMENT)}`,
+        expected: `${"a".repeat(40)}:${sha256(FRAGMENT)}`,
+        actual: `${"a".repeat(40)}:${sha256(FRAGMENT)}`,
       },
     ]);
     // Read-only: lockfile content is unchanged.
     expect(await readFile(join(appRoot, ".lando.lock.yml"), "utf8")).toBe(
-      lockfile(source, "abc123", sha256(FRAGMENT)),
+      lockfile(source, "a".repeat(40), sha256(FRAGMENT)),
     );
   });
 
   test("a checksum/ref drift reports a mismatch in the LandofileLockMismatchError schema", async () => {
     const source = "github:acme/fragments/postgres.yml";
-    await writeFile(join(appRoot, ".lando.lock.yml"), lockfile(source, "old123", "a".repeat(64)), "utf8");
+    await writeFile(
+      join(appRoot, ".lando.lock.yml"),
+      lockfile(source, "a".repeat(40), "a".repeat(64)),
+      "utf8",
+    );
 
     const report = await runVerify(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-      clonerFor(FRAGMENT, "new456"),
+      clonerFor(FRAGMENT, "a".repeat(40)),
     );
 
     expect(report.ok).toBe(false);
@@ -111,8 +119,8 @@ describe("verifyLandofileIncludes", () => {
       {
         source,
         status: "mismatch",
-        expected: `old123:${"a".repeat(64)}`,
-        actual: `new456:${sha256(FRAGMENT)}`,
+        expected: `${"a".repeat(40)}:${"a".repeat(64)}`,
+        actual: `${"a".repeat(40)}:${sha256(FRAGMENT)}`,
       },
     ]);
     expect(report.mismatches).toHaveLength(1);
@@ -120,19 +128,23 @@ describe("verifyLandofileIncludes", () => {
     expect(mismatch?._tag).toBe("LandofileLockMismatchError");
     expect(mismatch?.source).toBe(source);
     expect(mismatch?.lockfile).toBe(join(appRoot, ".lando.lock.yml"));
-    expect(mismatch?.expected).toBe(`old123:${"a".repeat(64)}`);
-    expect(mismatch?.actual).toBe(`new456:${sha256(FRAGMENT)}`);
+    expect(mismatch?.expected).toBe(`${"a".repeat(40)}:${"a".repeat(64)}`);
+    expect(mismatch?.actual).toBe(`${"a".repeat(40)}:${sha256(FRAGMENT)}`);
     expect(mismatch?.remediation).toContain("lando app:includes:update");
     // Read-only: lockfile is NOT rewritten.
     expect(await readFile(join(appRoot, ".lando.lock.yml"), "utf8")).toBe(
-      lockfile(source, "old123", "a".repeat(64)),
+      lockfile(source, "a".repeat(40), "a".repeat(64)),
     );
   });
 
   test("a remote include with no lock entry reports a missing status", async () => {
     const report = await runVerify(
       { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-      clonerFor(FRAGMENT, "abc123"),
+      {
+        clone: async () => {
+          throw new Error("missing pins must not acquire");
+        },
+      },
     );
 
     expect(report.ok).toBe(false);
@@ -141,29 +153,33 @@ describe("verifyLandofileIncludes", () => {
         source: "github:acme/fragments/postgres.yml",
         status: "missing",
         expected: null,
-        actual: `abc123:${sha256(FRAGMENT)}`,
+        actual: "<default>",
       },
     ]);
     expect(report.mismatches[0]?.expected).toBe("<missing>");
-    expect(report.mismatches[0]?.actual).toBe(`abc123:${sha256(FRAGMENT)}`);
+    expect(report.mismatches[0]?.actual).toBe("<default>");
     // Read-only: no lockfile is written.
     expect(await Bun.file(join(appRoot, ".lando.lock.yml")).exists()).toBe(false);
   });
 
   test("an orphan lock entry with no resolved fragment reports a stale status", async () => {
     const source = "github:acme/fragments/postgres.yml";
-    await writeFile(join(appRoot, ".lando.lock.yml"), lockfile(source, "abc123", sha256(FRAGMENT)), "utf8");
+    await writeFile(
+      join(appRoot, ".lando.lock.yml"),
+      lockfile(source, "a".repeat(40), sha256(FRAGMENT)),
+      "utf8",
+    );
 
     const report = await runVerify({ name: "demo", recipe: "lamp" });
 
     expect(report.ok).toBe(false);
     expect(report.entries).toEqual([
-      { source, status: "stale", expected: `abc123:${sha256(FRAGMENT)}`, actual: null },
+      { source, status: "stale", expected: `${"a".repeat(40)}:${sha256(FRAGMENT)}`, actual: null },
     ]);
     expect(report.mismatches[0]?.actual).toBe("<missing>");
     // Read-only: orphan lock entry is preserved.
     expect(await readFile(join(appRoot, ".lando.lock.yml"), "utf8")).toBe(
-      lockfile(source, "abc123", sha256(FRAGMENT)),
+      lockfile(source, "a".repeat(40), sha256(FRAGMENT)),
     );
   });
 });

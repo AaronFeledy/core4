@@ -24,9 +24,7 @@ Then verify:
 lando doctor --provider=podman
 ```
 
-After a successful `lando setup --provider=podman`, later commands stay on Podman. You do not need to repeat the flag.
-
-`LANDO_PROVIDER=podman lando setup` does not persist. If you only set the env, keep it for later commands.
+Later commands stay on Podman without repeating the flag. See [What persists](./provider-selection.mdx#what-persists).
 
 `--yes` consents to confirmation and privileged host changes. It does not switch providers.
 

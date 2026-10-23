@@ -13,9 +13,9 @@ test.each(["service", "standalone"] as const)(
     // Given
     const output: string[] = [];
     const secret = `executor-registration-${mode}`;
-    const write = (body: string) =>
+    const write = (body: string | Uint8Array) =>
       Effect.sync(() => {
-        output.push(body);
+        output.push(typeof body === "string" ? body : new TextDecoder().decode(body));
       });
     const renderer = {
       id: "plain",

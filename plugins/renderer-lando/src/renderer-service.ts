@@ -1,9 +1,10 @@
 import { DateTime, Effect, Fiber, Layer, Option, Queue } from "effect";
 
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
-import type { RendererCapabilities, RendererIO } from "@lando/sdk/renderer";
+import type { RendererCapabilities, RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
+import { waitForRendererOutput } from "@lando/renderer/output-drain";
 import { renderLandoLine } from "./format.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
 
@@ -31,7 +32,7 @@ const layerEventConsumer = (handle: (event: LandoEvent) => void): Layer.Layer<ne
 
 const nowTimestamp = (): DateTime.Utc => DateTime.nowUnsafe();
 
-const makeMessageContract = (io: RendererIO) => {
+const makeMessageContract = (io: RendererNarrationIO) => {
   const output = outputJournalFor(io);
   const emit = (event: LandoEvent): Effect.Effect<void> =>
     Effect.sync(() => {
@@ -69,14 +70,20 @@ export const makeLandoService = (
         },
         message: makeMessageContract(io),
         output: {
-          stdout: (chunk: string) => Effect.sync(() => output.writeStdout(chunk)),
-          stderr: (chunk: string) => Effect.sync(() => output.writeStderr(chunk)),
+          stdout: (chunk: string | Uint8Array) =>
+            Effect.sync(() =>
+              output.writeOutput(chunk, () => io.writeStdout(chunk), io.stdoutIsTTY === true),
+            ).pipe(Effect.andThen(waitForRendererOutput(io, "stdout"))),
+          stderr: (chunk: string | Uint8Array) =>
+            Effect.sync(() => output.writeOutput(chunk, () => io.writeStderr(chunk), io.isTTY === true)).pipe(
+              Effect.andThen(waitForRendererOutput(io, "stderr")),
+            ),
         },
       });
     })(),
   );
 
-export const makeLineModeConsumer = (io: RendererIO): Layer.Layer<never, never, EventService> =>
+export const makeLineModeConsumer = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
   layerEventConsumer((event) => {
     const line = renderLandoLine(event, io.isTTY === true, io.terminalColumns);
     if (line !== null) io.writeStderr(`${line}\n`);

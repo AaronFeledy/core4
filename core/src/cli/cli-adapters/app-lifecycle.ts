@@ -11,6 +11,7 @@ import {
 } from "../commands/doctor-report";
 import { compiledCommandInputFromArgv } from "../compiled-input";
 import {
+  activeCommandId,
   activeDeprecationWarnings,
   activeJq,
   activeProjectResultKeys,
@@ -24,12 +25,12 @@ import {
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
 
 export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
-  if (rejectInvalidInvocation("meta:setup", argv)) return;
+  if (await rejectInvalidInvocation("meta:setup", argv)) return;
   const installDir = dirname(process.execPath);
   const input = compiledCommandInputFromArgv("meta:setup", argv);
   const hostProxy = input.flags["host-proxy"];
   if (hostProxy !== undefined && hostProxy !== "auto" && hostProxy !== "none") {
-    emitDiagnosticLine("Invalid --host-proxy value. Expected one of: auto, none.");
+    await emitDiagnosticLine("Invalid --host-proxy value. Expected one of: auto, none.");
     process.exitCode = 2;
     return;
   }
@@ -59,8 +60,8 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       resultSchema: setupSpec.resultSchema,
       deprecationWarnings: activeDeprecationWarnings,
       render: (value, ctx) => setupSpec.render?.(value, undefined, ctx),
-      formatError: (error) => {
-        const message = commandErrorMessage(error);
+      formatError: (failure) => {
+        const message = commandErrorMessage(failure, activeCommandId);
         return activeRendererMode === "json" ? message : `${message}\nLANDO_INSTALL_DIR="${installDir}"`;
       },
     },

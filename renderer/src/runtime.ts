@@ -5,14 +5,14 @@ import {
   RENDERER_CAPABILITIES_NONE,
   RENDERER_CAPABILITIES_VERBOSE_TTY,
   type RendererCapabilities,
-  isRenderableTaskTreeEvent,
   renderJsonLine,
   renderPlainLine,
   renderVerboseLine,
 } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
-import { type RendererIO, withStdioTerminalNewlines } from "./io.ts";
+import { type RendererIO, type RendererNarrationIO, withStdioTerminalNewlines } from "./io.ts";
+import { waitForRendererOutput } from "./output-drain.ts";
 
 type LineFormatter = (event: LandoEvent) => string | null;
 
@@ -39,38 +39,33 @@ const layerEventConsumer = (handle: (event: LandoEvent) => void): Layer.Layer<ne
     }),
   );
 
-const layerRenderer = (formatter: LineFormatter, io: RendererIO): Layer.Layer<never, never, EventService> =>
+const layerRenderer = (
+  formatter: LineFormatter,
+  io: RendererNarrationIO,
+): Layer.Layer<never, never, EventService> =>
   layerEventConsumer((event) => {
     const line = formatter(event);
     if (line !== null) io.writeStderr(`${line}\n`);
   });
 
-const renderPlainTaskDetailLine = (event: LandoEvent): string | null => {
-  if (isRenderableTaskTreeEvent(event) && event._tag !== "task.detail") return null;
-  return renderPlainLine(event);
-};
-
-export const layerPlain = (io: RendererIO): Layer.Layer<never, never, EventService> =>
+export const layerPlain = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
   layerRenderer(renderPlainLine, io);
 
-export const layerPlainTaskDetail = (io: RendererIO): Layer.Layer<never, never, EventService> =>
-  layerRenderer(renderPlainTaskDetailLine, io);
-
-export const layerJson = (io: RendererIO): Layer.Layer<never, never, EventService> =>
+export const layerJson = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
   layerRenderer(renderJsonLine, withStdioTerminalNewlines(io, false));
 
-export const layerJsonNotification = (io: RendererIO): Layer.Layer<never, never, EventService> =>
+export const layerJsonNotification = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
   layerRenderer(
     (event) => (event._tag === "notify.desktop" ? JSON.stringify(event) : null),
     withStdioTerminalNewlines(io, false),
   );
 
-export const layerVerbose = (io: RendererIO): Layer.Layer<never, never, EventService> =>
+export const layerVerbose = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
   layerRenderer(renderVerboseLine, io);
 
 export const drainRendererSync = (
   formatter: LineFormatter,
-  io: RendererIO,
+  io: RendererNarrationIO,
   events: ReadonlyArray<LandoEvent>,
 ): void => {
   for (const event of events) {
@@ -79,10 +74,10 @@ export const drainRendererSync = (
   }
 };
 
-export const renderPlain = (io: RendererIO, events: ReadonlyArray<LandoEvent>): void =>
+export const renderPlain = (io: RendererNarrationIO, events: ReadonlyArray<LandoEvent>): void =>
   drainRendererSync(renderPlainLine, io, events);
 
-export const renderJson = (io: RendererIO, events: ReadonlyArray<LandoEvent>): void =>
+export const renderJson = (io: RendererNarrationIO, events: ReadonlyArray<LandoEvent>): void =>
   drainRendererSync(renderJsonLine, withStdioTerminalNewlines(io, false), events);
 
 const nowTimestamp = (): DateTime.Utc => DateTime.nowUnsafe();
@@ -94,7 +89,7 @@ const nowTimestamp = (): DateTime.Utc => DateTime.nowUnsafe();
  * is byte-identical to the event-consumer path so imperative and published
  * messages render the same way.
  */
-const makeMessageContract = (formatter: LineFormatter, io: RendererIO) => {
+const makeMessageContract = (formatter: LineFormatter, io: RendererNarrationIO) => {
   const emit = (event: LandoEvent): Effect.Effect<void> =>
     Effect.sync(() => {
       const line = formatter(event);
@@ -122,8 +117,10 @@ const makeMessageContract = (formatter: LineFormatter, io: RendererIO) => {
  * results (stdout) and process-level failure diagnostics (stderr).
  */
 const makeOutputChannel = (io: RendererIO) => ({
-  stdout: (chunk: string): Effect.Effect<void> => Effect.sync(() => io.writeStdout(chunk)),
-  stderr: (chunk: string): Effect.Effect<void> => Effect.sync(() => io.writeStderr(chunk)),
+  stdout: (chunk: string | Uint8Array): Effect.Effect<void> =>
+    Effect.sync(() => io.writeStdout(chunk)).pipe(Effect.andThen(waitForRendererOutput(io, "stdout"))),
+  stderr: (chunk: string | Uint8Array): Effect.Effect<void> =>
+    Effect.sync(() => io.writeStderr(chunk)).pipe(Effect.andThen(waitForRendererOutput(io, "stderr"))),
 });
 
 const capabilitiesForFallback = (id: "plain" | "json" | "verbose", io: RendererIO): RendererCapabilities => {

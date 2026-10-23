@@ -47,6 +47,8 @@ Six-platform support is an **exit target**, not a claim about today.
 
 Feature freeze begins only after every Alpha PRD story passes. No new 4.0 feature surface after that.
 
+App checks (§10.5.2) replace the URL scanner before freeze, in order: ownership-classified verdicts with a neutral `expected` state and router error marker; `checks` replacing `scanner` with app-level rules and profiles; `command` and `tcp` kinds plus `app:check`.
+
 ### Alpha 1 exit criteria
 
 1. Every story in [`spec/alpha/prd-alpha-00-index.md`](./alpha/prd-alpha-00-index.md) is accepted (US-592 through US-600).
@@ -85,7 +87,7 @@ Tag `4.0.0` from the last green RC onto `stable`. Version bumps and RC bug fixes
 Post-GA minors. Out of 4.0:
 
 - `TunnelService` / `lando share` (contract frozen; no bundled tunnel)
-- `RemoteSource` / `Dataset` pull and push (contract frozen; no hoster wiring)
+- Hoster synchronization remains planned for this wave, not shipped by these spec edits: §10.12 source/Dataset orchestration, `CodeSync`, protected operations, revocable foreground tether, vendor tools, and the bundled `dotenv` plugin; §9.5.1 durable grants and scope-local credentials; §10.4 SSH identities; §8.8.13 init sources; §7.4.2 local-snapshot translation with explicit metadata refresh. Bundled Pantheon, Acquia, and Upsun connectors remain here. Any of this core surface moves into 4.0 only through an accepted Alpha PRD story before feature freeze; nothing lands in Beta 1.
 - Renderer 4.1: rich render events, panel slots, keymap remapping, interactive `app:logs --follow` viewer
 - Deferred meta commands: `meta:plugin:login`, `meta:plugin:logout`, `meta:events:follow`
 

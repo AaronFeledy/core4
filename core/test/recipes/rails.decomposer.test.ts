@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
+import { mergeLandofiles } from "@lando/sdk/landofile";
 import {
   computeRecipeContentDigest,
   fullRecipeMigratability,
@@ -40,6 +41,23 @@ const manifest = Schema.decodeUnknownSync(RecipeManifest)(
 );
 
 describe("rails decomposition", () => {
+  test("preserves authored settings when a local layer overrides the scaffold", () => {
+    // Given the recipe's materialized defaults and distinct local values.
+    const local = {
+      services: {
+        web: {
+          webroot: "static",
+          port: 3100,
+          environment: { RAILS_ENV: "test", RAILS_LOG_TO_STDOUT: "false" },
+        },
+      },
+    };
+    // When the local Landofile layer is applied.
+    const merged = mergeLandofiles([authoringOf(defaults), local]);
+    // Then the author's values win without losing the framework identity.
+    expect(merged).toMatchObject({ services: { web: { framework: "rails", ...local.services.web } } });
+  });
+
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
     await Effect.runPromise(
       runRecipeDecomposerContractSuite({
@@ -67,8 +85,11 @@ describe("rails decomposition", () => {
         web: {
           type: "ruby:3.3",
           framework: "rails",
+          webroot: "public",
           port: 3000,
           environment: {
+            RAILS_ENV: "development",
+            RAILS_LOG_TO_STDOUT: "true",
             DATABASE_URL:
               "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
             REDIS_URL: "redis://cache:6379",

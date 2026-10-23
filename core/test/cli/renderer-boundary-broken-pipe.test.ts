@@ -60,7 +60,7 @@ test("a command that writes forever is interrupted when stdout breaks, resolves,
     runtime: Layer.empty,
     rendererMode: "plain",
     io: createStdioRendererIO(stdout.stream, stderr.stream, fakeStdin),
-    formatError: String,
+    formatError: ({ error }) => String(error),
     setExitCode: (code) => {
       exitCodes.push(code);
     },
@@ -104,7 +104,7 @@ test("finalizers still run when a stream breaks", async () => {
     runtime: Layer.empty,
     rendererMode: "plain",
     io: createStdioRendererIO(stdout.stream, stderr.stream, fakeStdin),
-    formatError: String,
+    formatError: ({ error }) => String(error),
     setExitCode: () => {},
   });
   // Then

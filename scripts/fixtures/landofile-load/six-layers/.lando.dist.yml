@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../../../dist/schemas/landofile-shape.json
+services:
+  web:
+    environment:
+      DISTRIBUTION: standard
+    healthcheck:
+      retries: 4

@@ -45,7 +45,7 @@ services:
 
 The object form requires both `cert` and `key`. Custom paths must stay inside the app root and be readable.
 
-With `certs: true`, Lando issues a leaf that covers the service name, its internal alias, `hostnames:`, proxied hostnames, `localhost`, and `127.0.0.1`.
+With `certs: true`, Lando issues a leaf that covers the service name, its internal alias, `hostnames:`, proxied hostnames, `localhost`, and `127.0.0.1`. Each `hostnames:` entry must be a plain DNS name: letters, digits, and hyphens in each label, no scheme, port, path, or wildcard. `lando app:config:lint` and `lando start` both reject anything else at `services.<name>.hostnames[<index>]`.
 
 Inside the service the cert lands at:
 

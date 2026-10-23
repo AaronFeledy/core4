@@ -3,28 +3,35 @@ import type { AppId, AppPlan } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   type ApplyOptions,
+  ContainerHelperAssets,
   type DestroyOptions,
   EventService,
-  LogFileHelperAssets,
   PathsService,
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
+import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
+import { makeResourceOwnershipStore } from "./resource-ownership.ts";
+export { makeResourceOwnershipStore } from "./resource-ownership.ts";
+export { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { type ProviderDataPlaneOptions, makeProviderDataPlane } from "./data-plane.ts";
 import type { ProviderErrorContext } from "./engine-api.ts";
 import { type EmitComposeOptions, composePath, emitCompose, renderCompose } from "./podman/compose.ts";
 import { type ResolvedProviderOpsInput, makeResolvedProviderOps } from "./runtime-provider.ts";
 
+/**
+ * Host inputs for provider factories. Container helper resolution is lazy via
+ * `resolveContainerHelper` — no helper bytes are read at construction.
+ */
 export const providerHostInputs = Effect.gen(function* () {
   const paths = yield* PathsService;
-  const assets = yield* LogFileHelperAssets;
+  const assets = yield* ContainerHelperAssets;
   const appPlanSanitizer = yield* AppPlanSanitizer;
   const eventService = yield* Effect.serviceOption(EventService);
-  const logFileHelperPayloads = yield* assets.payloads;
   return {
     paths,
     platform: paths.platform,
-    logFileHelperPayloads,
+    resolveContainerHelper: assets.resolve,
     sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
     ...Option.match(eventService, { onNone: () => ({}), onSome: (eventService) => ({ eventService }) }),
   };
@@ -37,17 +44,21 @@ type ProviderPlanStateOptions = AppliedPlanCacheOptions &
   };
 
 export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
+  ownership: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
+  cleanupOwnedResources: makeOwnedResourcesCleanup({
+    store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
+    ctx: options.ctx,
+    ...(options.api === undefined ? {} : { api: options.api }),
+  }),
   ...(options.api === undefined
     ? {}
     : {
         dataPlane: makeProviderDataPlane({
           providerId: options.ctx.providerId,
           api: options.api,
-          snapshotMode: options.snapshotMode,
+          capabilities: options.capabilities,
           redactDetails: options.redactDetails,
-          ...(options.prepareWitnessImage === undefined
-            ? {}
-            : { prepareWitnessImage: options.prepareWitnessImage }),
+          ...(options.pullHelperImage === undefined ? {} : { pullHelperImage: options.pullHelperImage }),
           ...(options.volumeCreationLabels === undefined
             ? {}
             : { volumeCreationLabels: options.volumeCreationLabels }),

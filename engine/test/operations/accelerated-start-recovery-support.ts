@@ -1,15 +1,17 @@
-import { FileSyncStartError } from "@lando/sdk/errors";
+import { FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import {
   AbsoluteContainerPath,
   type AppPlan,
+  type FileSyncSessionFilter,
   type FileSyncSessionInfo,
   FileSyncSessionRef,
   type FileSyncSessionSpec,
   PortablePath,
 } from "@lando/sdk/schema";
+import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestFileSyncEngine } from "@lando/sdk/test";
-import { Cause, DateTime, Effect } from "effect";
-import { beginAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
+import { DateTime, Effect, Option } from "effect";
+import { beginOrResumeAcceleratedStart } from "../../src/operations/accelerated-start-journal.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 export const app = { kind: "user", id: plan.id, root: plan.root } as const;
@@ -20,7 +22,7 @@ export const session = {
   source: plan.root,
   target: { _tag: "volume", name: "test-start-web-app-mount", path: PortablePath.make("/app") },
   mode: "two-way-safe",
-  excludes: [],
+  excludes: [".git"],
 } as const;
 export const acceleratedPlan: AppPlan = {
   ...plan,
@@ -46,11 +48,14 @@ export const recoveryHarness = Effect.fnUntraced(function* (
     readonly replica?: boolean;
     readonly extraSession?: boolean;
     readonly failFlush?: boolean;
-    readonly phase?: "retained" | "preparing";
+    readonly phase?: "preparing" | "sessions-ready" | "apply-intent";
     readonly appliedState?: "unknown";
     readonly changedVolume?: boolean;
     readonly preparedVolumeNames?: readonly string[];
     readonly cleanupHooks?: boolean;
+    readonly engineOverrides?: Partial<FileSyncEngineShape>;
+    readonly harnessOptions?: Parameters<typeof makeHarness>[0];
+    readonly recoverMissing?: "none" | "history";
   } = {},
 ) {
   const calls: string[] = [];
@@ -87,11 +92,20 @@ export const recoveryHarness = Effect.fnUntraced(function* (
     },
     appLifecycle: {
       invalidateDrain: () => Effect.sync(() => calls.push("invalidate")),
+      // Mirrors Mutagen: an app with no owned sessions has nothing to drain.
       drain: () =>
-        Effect.sync(() => {
-          calls.push("drain");
-          phase = "drained";
-        }),
+        sessions.length === 0
+          ? Effect.fail(
+              new FileSyncStopError({
+                engineId: "mutagen",
+                sessionRef: String(app.id),
+                message: "App has no Mutagen sessions to drain.",
+              }),
+            )
+          : Effect.sync(() => {
+              calls.push("drain");
+              phase = "drained";
+            }),
       dispose: () =>
         Effect.sync(() => {
           calls.push("dispose");
@@ -106,7 +120,32 @@ export const recoveryHarness = Effect.fnUntraced(function* (
       disposalPhase: () =>
         Effect.sync(() => (phase === "active" && sessions.length === 0 ? ("absent" as const) : phase)),
     },
-    listSessions: () => Effect.sync(() => [...sessions]),
+    listSessions: (filter: FileSyncSessionFilter) =>
+      Effect.sync(() =>
+        sessions.filter(
+          (entry) =>
+            (filter.mountKey === undefined || entry.mountKey === filter.mountKey) &&
+            (filter.service === undefined || entry.service === filter.service),
+        ),
+      ),
+    ...(options.recoverMissing === undefined
+      ? {}
+      : {
+          recoverSession: (spec: FileSyncSessionSpec) =>
+            Effect.sync(() => {
+              calls.push("recover");
+              if (options.recoverMissing === "none") return Option.none();
+              const ref = FileSyncSessionRef.make("recovered");
+              sessions.push({
+                ...spec,
+                ref,
+                spec,
+                status: "running",
+                lastUpdatedAt: DateTime.makeUnsafe("2026-01-01"),
+              });
+              return Option.some(ref);
+            }),
+        }),
     createSession: (spec: FileSyncSessionSpec) =>
       Effect.sync(() => {
         calls.push(`create:${spec.mode}`);
@@ -147,11 +186,12 @@ export const recoveryHarness = Effect.fnUntraced(function* (
   };
   const durableEngine = {
     ...fileSync,
-    bindPreparedTargets: () => Effect.succeed({ ...fileSync, boundApp: app }),
+    ...options.engineOverrides,
+    bindPreparedTargets: () => Effect.succeed({ ...fileSync, ...options.engineOverrides, boundApp: app }),
   };
   const harness = makeHarness({
+    persistAppliedFileSync: true,
     plannedApp: acceleratedPlan,
-    providerHasFileSyncRollback: false,
     ...(options.appliedState === undefined ? {} : { appliedFileSyncState: options.appliedState }),
     ...(options.changedVolume
       ? {
@@ -188,14 +228,11 @@ export const recoveryHarness = Effect.fnUntraced(function* (
             }),
         }),
     fileSync: durableEngine,
+    ...options.harnessOptions,
   });
-  yield* beginAcceleratedStart(acceleratedPlan, app).pipe(
+  yield* beginOrResumeAcceleratedStart(acceleratedPlan, app).pipe(
     Effect.flatMap((pending) =>
-      options.phase === "preparing"
-        ? Effect.void
-        : pending.retainTargets(
-            Cause.fail(new FileSyncStartError({ engineId: "mutagen", message: "failed" })),
-          ),
+      options.phase === "preparing" ? Effect.void : pending.advance(options.phase ?? "apply-intent"),
     ),
     Effect.provide(harness.layer),
   );

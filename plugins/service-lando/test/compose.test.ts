@@ -217,7 +217,7 @@ describe("compose ServiceType (raw passthrough)", () => {
 
     return expectComposePlanRejects(
       planComposeService({ service, serviceName: "api" }),
-      /requires either "image:" or "build:"/,
+      /requires an image or build artifact/,
     );
   });
 

@@ -15,6 +15,9 @@ import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations
 import { runBunShellTooling } from "../../src/operations/tooling-bun-script.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 
+const frameText = (frame: StreamFrameSinkFrame) =>
+  typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
+
 test("emits both output streams before the script can finish", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-script-live-"));
@@ -32,11 +35,15 @@ test("emits both output streams before the script can finish", async () => {
     emit: (frame) =>
       Effect.sync(() => {
         frames.push(frame);
-        if (
-          frames.some((entry) => entry._tag === "stdout" && entry.chunk === "first\n") &&
-          frames.some((entry) => entry._tag === "stderr" && entry.chunk === "diagnostic\n")
-        )
-          gate.resolve();
+        const stdout = frames
+          .filter((entry) => entry._tag === "stdout")
+          .map(frameText)
+          .join("");
+        const stderr = frames
+          .filter((entry) => entry._tag === "stderr")
+          .map(frameText)
+          .join("");
+        if (stdout.includes("first\n") && stderr.includes("diagnostic\n")) gate.resolve();
       }),
   });
   try {
@@ -68,19 +75,21 @@ test("emits both output streams before the script can finish", async () => {
     // Then
     expect(result).toMatchObject({
       exitCode: 3,
-      stdout: "<b c>\nfirst\nsecond\ntail",
-      stderr: "diagnostic\n",
-      rendered: true,
+      stdout: "",
+      stderr: "",
     });
-    expect(frames.filter((frame) => frame._tag === "stdout").map((frame) => frame.chunk)).toEqual([
-      "<b c>\n",
-      "first\n",
-      "second\n",
-      "tail",
-    ]);
-    expect(frames.filter((frame) => frame._tag === "stderr").map((frame) => frame.chunk)).toEqual([
-      "diagnostic\n",
-    ]);
+    expect(
+      frames
+        .filter((frame) => frame._tag === "stdout")
+        .map(frameText)
+        .join(""),
+    ).toBe("<b c>\nfirst\nsecond\ntail");
+    expect(
+      frames
+        .filter((frame) => frame._tag === "stderr")
+        .map(frameText)
+        .join(""),
+    ).toBe("diagnostic\n");
   } finally {
     gate.resolve();
     server.stop(true);
@@ -141,6 +150,9 @@ test.each(["direct", "fallback"] as const)(
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            appliedPlansFor: () => Effect.succeed([]),
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             list: Effect.die("unused"),
             capabilities: Effect.die("unused"),
             select: () => Effect.die("unused"),

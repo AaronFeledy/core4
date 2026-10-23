@@ -29,9 +29,11 @@ import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
+import { legacySnapshotCatalogsDoctor } from "./doctor-legacy-snapshot-catalogs";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
 import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust";
+import { orphanedSnapshotsDoctor } from "./doctor-orphaned-snapshots";
 import {
   type DoctorSectionId,
   type DoctorSectionOutcome,
@@ -76,7 +78,15 @@ export const appConfigForReport = () =>
         app: "",
         file: "(none)",
         valid: false,
-        violations: [{ path: [], message: error.message }],
+        violations: [
+          {
+            rule: "landofile.discovery",
+            severity: "error",
+            path: [],
+            scopes: ["fragment"],
+            message: error.message,
+          },
+        ],
       } satisfies ConfigLintResult),
     ),
     Effect.catchTag("LandofileFormConflictError", (error) =>
@@ -84,16 +94,14 @@ export const appConfigForReport = () =>
         app: "",
         file: error.yamlPath,
         valid: false,
-        violations: [{ path: [], message: error.message }],
-      } satisfies ConfigLintResult),
-    ),
-    Effect.catchTag("LandofileUnknownEventError", (error) =>
-      Effect.succeed({
-        app: "",
-        file: error.file,
-        valid: false,
         violations: [
-          { path: ["events", error.event], message: error.message, suggestion: error.remediation },
+          {
+            rule: "landofile.discovery",
+            severity: "error",
+            path: [],
+            scopes: ["fragment"],
+            message: error.message,
+          },
         ],
       } satisfies ConfigLintResult),
     ),
@@ -313,6 +321,22 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     redact,
   });
   if (missingRoots.self !== undefined) selfChecks.push(missingRoots.self);
+  const orphanedSnapshots = yield* isolateDoctorSection({
+    section: "orphaned-volume-snapshots",
+    effect: orphanedSnapshotsDoctor(redact),
+    fallback: [],
+    budgetMs,
+    redact,
+  });
+  if (orphanedSnapshots.self !== undefined) selfChecks.push(orphanedSnapshots.self);
+  const legacyCatalogs = yield* isolateDoctorSection({
+    section: "legacy-snapshot-catalogs",
+    effect: legacySnapshotCatalogsDoctor(redact),
+    fallback: [],
+    budgetMs,
+    redact,
+  });
+  if (legacyCatalogs.self !== undefined) selfChecks.push(legacyCatalogs.self);
   const filesystemWatch = yield* isolateDoctorSection({
     section: "filesystem-watch",
     effect: filesystemWatchDoctor(redact, options.platform),
@@ -325,7 +349,14 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     version: CORE_VERSION,
     provider: { checks: provider.checks },
     subsystems: {
-      checks: [...subsystems.checks, ...accelerated.value, ...missingRoots.value, ...filesystemWatch.value],
+      checks: [
+        ...subsystems.checks,
+        ...accelerated.value,
+        ...missingRoots.value,
+        ...orphanedSnapshots.value,
+        ...legacyCatalogs.value,
+        ...filesystemWatch.value,
+      ],
     },
     globalApp,
     mcp,

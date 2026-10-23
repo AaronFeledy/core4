@@ -47,7 +47,6 @@ test.each(["alpha\nbeta\n", "no-newline"])(
     );
 
     // Then
-    expect(io.stdout()).toBe(payload);
     expect(io.stderrLines()).toEqual([
       "▼ gen (1 step)",
       "[tooling:gen:exec] start: executing",

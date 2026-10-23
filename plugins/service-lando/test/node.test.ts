@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { SchemaIssue } from "effect";
 import { Result, Schema } from "effect";
 
@@ -56,7 +57,12 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
     () => undefined,
     (error: unknown) => {
       rejected = true;
-      const message = error instanceof Error ? error.message : String(error);
+      const message =
+        error instanceof ServiceTypeError
+          ? [error.message, ...(error.issues ?? []).map((issue) => issue.suggestion ?? "")].join(" ")
+          : error instanceof Error
+            ? error.message
+            : String(error);
       expect(message).toMatch(pattern);
     },
   );

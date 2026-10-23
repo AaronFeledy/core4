@@ -7,6 +7,7 @@ import { ComposePreservedPathCapabilities } from "./compose-preserved-path-capab
 import { ComposeProjectFieldCapabilities } from "./compose-project-field-capabilities.ts";
 import { ComposeServiceFieldCapabilities } from "./compose-service-field-capabilities.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
+import { RouteHostname, RoutePathPrefix } from "./hostname.ts";
 import { AbsolutePath, CommandSpec, PortNumber, ServiceName } from "./primitives.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
@@ -63,7 +64,7 @@ export const RoutePlan = Schema.Struct({
         "Planner-assigned router priority; higher wins. Priority 1 is reserved for diagnostics. Standalone routes default to 2.",
     }),
   /** Host header pattern (`*.lndo.site`, `app.example.test`, …). */
-  hostname: Schema.String,
+  hostname: RouteHostname,
   /** TLS scheme (`http`, `https`, `both`). */
   scheme: Schema.Literals(["http", "https", "both"]),
   /** Service name this route targets. */
@@ -71,7 +72,7 @@ export const RoutePlan = Schema.Struct({
   /** Endpoint name or port to forward to. */
   endpoint: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])),
   /** Optional path prefix (e.g., `/api`). */
-  pathPrefix: Schema.optionalKey(Schema.String),
+  pathPrefix: Schema.optionalKey(RoutePathPrefix),
   filters: Schema.optionalKey(Schema.Array(RouteFilter)).annotate({
     description: "Ordered provider-neutral filters applied to this route.",
   }),
@@ -156,6 +157,24 @@ export const ScanPlan = Schema.Struct({
 });
 export type ScanPlan = typeof ScanPlan.Type;
 
+// ============================================================================
+// HTTP app check results
+// ============================================================================
+const ScanVerdictSchema = Schema.Literals(["ready", "app-error", "service-error", "lando-error"]);
+export type ScanVerdict = typeof ScanVerdictSchema.Type;
+
+export const CheckResult = Schema.Struct({
+  id: Schema.String.annotate({ description: "Stable check identifier: http:<service>:<url>." }),
+  kind: Schema.Literal("http").annotate({ description: "Observation kind." }),
+  service: ServiceName.annotate({ description: "Service that owns the checked endpoint." }),
+  url: Schema.String.annotate({ description: "Checked host-facing URL." }),
+  verdict: ScanVerdictSchema.annotate({ description: "Readiness and ownership of the observation." }),
+  statusCode: Schema.optionalKey(Schema.Int).annotate({ description: "Observed HTTP response status." }),
+  message: Schema.optionalKey(Schema.String).annotate({ description: "Redacted result summary." }),
+  detail: Schema.optionalKey(Schema.String).annotate({ description: "Redacted diagnostic detail." }),
+}).annotate({ identifier: "CheckResult", description: "An owner-classified post-start HTTP check." });
+export type CheckResult = typeof CheckResult.Type;
+
 /**
  * Certificate plan — leaf certs reserved for this service.
  */
@@ -238,7 +257,7 @@ export type SharedNetworkMembershipPlan = typeof SharedNetworkMembershipPlan.Typ
 
 /**
  * Networking plan — the per-app networking *intent*. Core defines the intent;
- * the `RuntimeProvider` realizes it: a per-app bridge network plus
+ * the `RuntimeProvider` realizes it: a nullable per-app bridge network plus
  * optional membership in the provider-owned shared cross-app network.
  *
  * `sharedNetworkMembership` is present when the selected provider advertises
@@ -246,8 +265,8 @@ export type SharedNetworkMembershipPlan = typeof SharedNetworkMembershipPlan.Typ
  * networking, which keeps cross-app features from silently depending on it.
  */
 export const NetworkingPlan = Schema.Struct({
-  /** The per-app bridge network the provider must create for intra-app DNS. */
-  perAppBridge: PerAppBridgePlan,
+  /** The per-app bridge to create, or null for shared-only services such as the global app. */
+  perAppBridge: Schema.NullOr(PerAppBridgePlan),
   /** Shared cross-app network membership, present when the app joins it. */
   sharedNetworkMembership: Schema.optionalKey(SharedNetworkMembershipPlan),
 });
@@ -331,7 +350,7 @@ export const ProviderCapabilities = Schema.Struct({
   bindMountPerformance: Schema.Literals(["native", "slow", "none"]),
   copyMounts: Schema.Boolean,
   copyOnWriteAppRoot: Schema.Boolean,
-  volumeSnapshot: Schema.Literals(["native", "copy", "none"]),
+  volumeSnapshot: Schema.Literals(["native", "none"]),
   serviceFileCopy: Schema.Literals(["native", "exec", "none"]),
   artifactExport: Schema.Boolean,
   artifactImport: Schema.Boolean,

@@ -12,6 +12,8 @@ export interface ShellCommandOptions {
   readonly env?: Readonly<Record<string, string>>;
   readonly shell?: "bun";
   readonly argv?: ReadonlyArray<string>;
+  readonly stdinStream?: AsyncIterable<Uint8Array>;
+  readonly signal?: AbortSignal;
 }
 
 /** Options for running a host script file through `ShellRunner.runScript`. */
@@ -19,8 +21,8 @@ export interface ShellScriptOptions extends ShellCommandOptions {
   /**
    * How the script reaches the host terminal. Omitted, the script's stdin is ignored.
    * `stdin` inherits Lando's stdin descriptor (pipe, file, or terminal) and still captures
-   * and streams output. `terminal` inherits stdin, stdout, and stderr, so the script owns
-   * the terminal and its output is not captured.
+   * and streams output. `terminal` also inherits stdin, after CLI progress retirement;
+   * output still goes through the stream sink so redaction cannot be bypassed.
    */
   readonly hostIo?: "stdin" | "terminal";
   /** Aborting kills the script process. */

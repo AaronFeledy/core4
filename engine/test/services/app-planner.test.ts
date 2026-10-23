@@ -41,9 +41,10 @@ import * as AppCacheService from "../../src/cache/service.ts";
 import { resolvePinnedArtifactTag } from "../../src/planner/service-types.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
+import { GlobalConfigSources } from "../../src/services/config.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
-import { FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/services/planner.ts";
+import { DEFAULT_APP_MOUNT_EXCLUDES } from "../../src/services/planner.ts";
 import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
@@ -129,6 +130,10 @@ const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCap
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
+      Effect.provideService(GlobalConfigSources, {
+        env: { ...process.env },
+        sources: { user: false, env: true },
+      }),
     ),
   );
 
@@ -191,8 +196,10 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     "AppPlanner.finalizeServices",
   ]);
   const discover = spans.find((span) => span.name === "AppPlanner.discover");
+  const resolvedLandofile = spans.find((span) => span.name === "AppPlanner.resolve");
   const resolve = spans.find((span) => span.name === "AppPlanner.resolveServices");
-  expect(Option.getOrUndefined(resolve?.parent ?? Option.none())?.spanId).toBe(discover?.spanId);
+  expect(Option.getOrUndefined(resolvedLandofile?.parent ?? Option.none())?.spanId).toBe(discover?.spanId);
+  expect(Option.getOrUndefined(resolve?.parent ?? Option.none())?.spanId).toBe(resolvedLandofile?.spanId);
   expect(
     spans.some((span) => span.name === "AppPlanner.validateDependencies" && span.status._tag === "Ended"),
   ).toBe(true);
@@ -1438,7 +1445,7 @@ describe("AppPlannerLayer.layer", () => {
     process.env.LANDO_PROVIDER = "docker";
     try {
       const appPlan = await planWithConfig(
-        { ...landofileFixture, provider: ProviderId.make("podman") },
+        { ...landofileFixture, provider: ProviderId.make("podman"), router: { enabled: false } },
         ProviderId.make("lando"),
       );
       expect(String(appPlan.provider)).toBe("podman");
@@ -2804,7 +2811,7 @@ describe("AppPlannerLayer.layer", () => {
   test.each([
     [
       { type: "node:22.11.0" },
-      /LandofileValidationError: Service web requests version 22\.11\.0 of service type node, but that ServiceType does not publish any supported versions\. Use the bare type node or choose a ServiceType with shipped version metadata\./,
+      /services.web.type: Service web requests version 22\.11\.0 of service type node, but that ServiceType does not publish any supported versions\. Use the bare type node or choose a ServiceType with shipped version metadata\./,
     ],
     [{ type: "node", image: "node:22" }, /cannot combine bare type: node inference with image/i],
     [{ type: "node:22", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
@@ -3035,7 +3042,7 @@ describe("AppPlannerLayer.layer", () => {
         expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
           "services.worker",
         ]);
-        expect(failure.message).toContain('requires either "image:" or "build:"');
+        expect(failure.message).toContain("requires an image or build artifact");
       }
     });
   });
@@ -3439,7 +3446,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("default excludes (node_modules, vendor, .git, tmp) are always merged into appMount.excludes", async () => {
+  test("default overlay and sync-only excludes are merged separately", async () => {
     await withTempCwd(async () => {
       const appPlan = await planWithCustomRegistry({
         name: "defapp",
@@ -3449,7 +3456,7 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
       const web = appPlan.services[ServiceName.make("web")];
-      expect(web?.appMount?.excludes).toEqual(FILE_SYNC_DEFAULT_EXCLUDES);
+      expect(web?.appMount?.excludes).toEqual(DEFAULT_APP_MOUNT_EXCLUDES);
     });
   });
 
@@ -3467,7 +3474,7 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
       const web = appPlan.services[ServiceName.make("web")];
-      expect(web?.appMount?.excludes).toEqual([...FILE_SYNC_DEFAULT_EXCLUDES, "dist"]);
+      expect(web?.appMount?.excludes).toEqual([...DEFAULT_APP_MOUNT_EXCLUDES, "dist"]);
     });
   });
 
@@ -3489,7 +3496,7 @@ describe("AppPlannerLayer.layer", () => {
       );
       const web = appPlan.services[ServiceName.make("web")];
       expect(web?.appMount?.excludes).toEqual(
-        expect.arrayContaining([...FILE_SYNC_DEFAULT_EXCLUDES, "__pycache__", "dist"]),
+        expect.arrayContaining([...DEFAULT_APP_MOUNT_EXCLUDES, "__pycache__", "dist"]),
       );
       expect(web?.appMount?.excludes).toContain("__pycache__");
     });
@@ -3532,7 +3539,6 @@ describe("AppPlannerLayer.layer", () => {
 
       const storeNames = appPlan.stores.map((s) => s.name).sort();
       expect(storeNames).toEqual([
-        "shadowapp-web-app-git-12945185",
         "shadowapp-web-app-node-modules-ad806e3f",
         "shadowapp-web-app-tmp-43bdc5ce",
         "shadowapp-web-app-vendor-64784057",
@@ -3542,12 +3548,11 @@ describe("AppPlannerLayer.layer", () => {
       const web = appPlan.services[ServiceName.make("web")];
       const shadowTargets = web?.storage.map((entry) => entry.target).sort() ?? [];
       expect(shadowTargets).toEqual([
-        PortablePath.make("/app/.git"),
         PortablePath.make("/app/node_modules"),
         PortablePath.make("/app/tmp"),
         PortablePath.make("/app/vendor"),
       ]);
-      expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor", ".git", "tmp"]);
+      expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor", "tmp"]);
     });
   });
 
@@ -3680,7 +3685,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("rejects healthcheck kind: tcp with a CapabilityError citing serviceHealth", async () => {
+  test("rejects authored tcp at the validation boundary", async () => {
     await withTempCwd(async () => {
       const exit = await planExit({
         name: "myapp",
@@ -3701,18 +3706,15 @@ describe("AppPlannerLayer.layer", () => {
       });
 
       const failure = expectSomeFailure(exit);
-      expect(failure).toBeInstanceOf(CapabilityError);
-      if (failure instanceof CapabilityError) {
-        expect(failure.service).toBe("web");
-        expect(failure.feature).toBe("healthcheck kind tcp");
-        expect(failure.capability).toBe("serviceHealth");
-        expect(failure.providerId).toBe("lando");
-        expect(failure.remediation).toContain("kind: command");
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "kind"]);
+        expect(failure.issues[0]?.suggestion).toContain("kind: command");
       }
     });
   });
 
-  test("rejects healthcheck kind: http with a CapabilityError citing serviceHealth", async () => {
+  test("rejects authored http at the validation boundary", async () => {
     await withTempCwd(async () => {
       const exit = await planExit({
         name: "myapp",
@@ -3733,13 +3735,10 @@ describe("AppPlannerLayer.layer", () => {
       });
 
       const failure = expectSomeFailure(exit);
-      expect(failure).toBeInstanceOf(CapabilityError);
-      if (failure instanceof CapabilityError) {
-        expect(failure.service).toBe("web");
-        expect(failure.feature).toBe("healthcheck kind http");
-        expect(failure.capability).toBe("serviceHealth");
-        expect(failure.providerId).toBe("lando");
-        expect(failure.remediation).toContain("kind: command");
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure.issues[0]?.path).toEqual(["services", "web", "healthcheck", "kind"]);
+        expect(failure.issues[0]?.suggestion).toContain("kind: command");
       }
     });
   });

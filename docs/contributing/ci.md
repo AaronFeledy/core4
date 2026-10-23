@@ -85,6 +85,51 @@ For focused local checks, CI regenerates the HEAD schemas with `bun run codegen:
 
 That fixture is the job's only porcelain path; modifying, deleting, or regenerating it as untracked fails the gate. The SDK schema and command-result schema trees, including both indexes, are ignored derived outputs validated by regeneration and semantic comparison rather than by git status. The job regenerates the command reference (`bun run codegen:command-registry-manifest` then `bun run codegen:command-reference`) and verifies `docs/reference/commands.mdx` with `git diff --exit-code`. It then regenerates the Compose key matrix (`bun run codegen:compose-key-matrix`) and applies the same check to `docs/reference/compose-key-matrix.mdx`. Other focused codegen checks run `bun run codegen:bundled-plugins`, `bun run codegen:bundled-recipes`, and `bun run codegen:mutagen-versions`.
 
+## Update the paired Tomcat catalog
+
+Run the explicit network updater from the repository root:
+
+```bash
+bun run update:tomcat
+```
+
+It resolves the public Docker Hub `9-jre21`, `10-jre21`, and `11-jre21` indexes without a container daemon, verifies manifest/config bytes and both Linux architectures, checks a consistent Tomcat version and distribution environment, and verifies that each exact version tag resolves to the same index. Registry blob redirects are restricted to Docker's `production.cloudfront.docker.com` storage host, with no pull token forwarded. It fetches `server.xml` from the matching Apache release tag's immutable commit. All three candidates must validate before any pin or baseline is written. Same-version image rebuilds count as updates. Network or validation failures leave the previous files untouched.
+
+Review `plugins/service-lando/tomcat/pins.json` and all three `server-*.xml` files together. Keep the Apache notices. The report separates upstream baseline changes from Lando's single intentional HTTP-port substitution. Comments-only classification requires byte-identical active text; formatting changes still require review. A new active config shape fails closed until the local template contract is reviewed.
+
+Regenerate and run the focused checks:
+
+```bash
+bun run codegen:tomcat-catalog
+bun run codegen:service-type-reference
+bun test plugins/service-lando/test/tomcat.test.ts plugins/service-lando/test/tomcat-port.test.ts core/test/scripts/tomcat-update.test.ts core/test/scripts/tomcat-catalog.test.ts core/test/build/tomcat-bump-workflow.test.ts
+LANDO_TEST_PODMAN_SOCKET=/path/to/podman.sock bun test plugins/service-lando/test/tomcat-config.integration.test.ts
+```
+
+The live test builds and starts each major at the default and nondefault ports, checks ROOT content and authored startup, and verifies the old port is closed. It needs a running Podman-compatible provider socket. A skipped live test is not compatibility evidence.
+
+Normal codegen is offline: it checks local hashes and template invariants and derives the ignored embedded TypeScript catalog. Commit only paired inputs and the generated workflow, not the derived catalog. The daily/dispatch `tomcat-bump` workflow merges `main` into its rolling branch, prepares candidates, runs focused unit checks before proposing, then explicitly dispatches `ci.yml` on the proposal branch. That CI run includes service-lando live integration tests; the workflow does not auto-merge.
+
+## Extend the internal maintenance workflows
+
+`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts` and `build-compose-vendor-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and exact-title failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+
+Each consumer supplies its identity, schedule, branch, owned paths, and two trusted repository-authored shell hooks. `prepare` runs after branch reconciliation and may exit successfully when discovery finds nothing to do. The envelope then checks both working-tree and pending-branch owned-path differences. `checkAndReport` runs before any publication and must set `TITLE` (also the commit message) and `BODY_FILE`. Hook failures stop publication.
+
+Owned-path detection includes staged and untracked outputs. Commits include only owned paths, even when a hook stages an unrelated file.
+
+Tomcat keeps paired candidate validation in `update:tomcat`, captures the `main` baseline, runs codegen and focused candidate checks, and reports baseline changes. Compose keeps stable-tag selection through `selectNewerComposeGoTag`, skips schema fetching when current without a pending bump, reconciles pending bumps even without a newer tag, and reports schema-key differences with a versioned title. Compose does not run `check:compose-coverage` before proposing or classify new keys automatically. PR CI and human review own classification.
+
+To add another internal consumer, keep discovery, updating, checks, and reporting in its generator's local hooks; declare only paths it owns. Reuse the envelope rather than adding pipeline modes or a public configuration surface. Keep each real generator in `scripts/codegen-catalog.ts`; the shared renderer is not a generator entry. Regenerate YAML through the consumer generator, never by hand.
+
+Run the bounded shell coverage with:
+
+```bash
+bun test core/test/build/maintenance-workflow.test.ts core/test/build/maintenance-workflow-renderer.test.ts core/test/build/tomcat-bump-workflow.test.ts core/test/build/compose-vendor-bump-workflow.test.ts
+```
+
+The POSIX behavioral tests use Bash, Git, and jq. `core/test/build/support/maintenance-workflow-harness.ts` exports isolated real-Git/local-bare-remote fixtures with fake GitHub and domain I/O, plus extracted generated scripts for driver or PTY checks. It changes no global Git configuration or process cwd. Native shell cases skip Windows; YAML checks remain portable.
+
 ## Library API and recipe test layers
 
 CI runs the Alpha library API and recipe layers as separate branch-protectable jobs:
@@ -93,6 +138,26 @@ CI runs the Alpha library API and recipe layers as separate branch-protectable j
 bun test core/test/library sdk/test/library
 bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 ```
+
+## In-container helper
+
+Every compiled `lando` embeds a static Go helper for `linux-x64` and `linux-arm64`. Inside a container it is the host-proxy `lando` client and the reader behind `lando logs --source`. You don't need Go installed: the helper builds with Lando itself, in the pinned `golang` image from `core/container-helper/.lando.yml`.
+
+```bash
+bun run --filter='@lando/core' build:container-helper
+```
+
+Run this after `bun install` and `bun run codegen` on a clean checkout, before `bun test` on Linux or compiling `lando` on any host. It needs a working provider configured by `lando setup`; no host Go installation is needed. If default setup fails on Linux, use `lando setup --provider=docker` with a working system Docker.
+
+That starts the `lando-container-helper` builder app with the source-mode CLI, writes `core/container-helper/dist/linux-{x64,arm64}/lando-container-helper` plus the source digest they were built from, and destroys the builder. Every checkout shares that app name, so builds in several git worktrees work one after another, not at the same time. Pass `--test` (`bun run scripts/build-container-helper.ts --test`) to run `go vet` and `go test` first. `bun run build` doesn't run it: compiling embeds the helper already in `dist/` and refuses a missing or stale one, so rerun the helper build after editing `core/container-helper/` sources or `core/container-helper/.lando.yml`. To embed prebuilt binaries instead, set `LANDO_CONTAINER_HELPER_DIR` to a directory laid out the same way.
+
+Verify the host-architecture helper on Linux:
+
+```bash
+bun test core/test/container-helper/helper.integration.test.ts
+```
+
+In CI, the `container-helper` job sets up Lando with the Docker provider and no router, builds both architectures, runs the integration suite on x64, and uploads the `container-helper` artifact. The `container-helper-arm64` job downloads it and runs the same suite on `ubuntu-24.04-arm` without Lando or Docker setup. The required `static-checks` aggregate rejects any arm64 helper result other than success, including skipped and cancelled runs. Every job that compiles `lando` or runs live provider tests downloads that artifact into `core/container-helper/dist`.
 
 ## Platform binary builds
 
@@ -223,7 +288,28 @@ export LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock
 LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
 ```
 
-Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (25 minutes for Linux jobs, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
+Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (35 minutes for the live linux-x64 job, 25 minutes for linux-arm64, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
+
+## Lint guide YAML and negative fixtures
+
+Run `bun run lint:guides` to validate identifiable Landofile fences and fixture files.
+Full `.lando.yml` documents keep full authoring requirements, including native
+`!reset` and `!override` placement checks. `.lando.*.yml` files are fragments.
+Unrelated YAML, such as Actions workflows, Kubernetes resources, recipe manifests,
+and command envelopes, is not validated as a Landofile. Unknown siblings do not
+exclude a document that has a Landofile-specific key such as `services` or `tooling`.
+
+For an intentionally invalid fixture, put `# lando-lint: expect-invalid REASON`
+on its first physical line. A UTF-8 BOM before the comment and CRLF line endings
+are accepted. Leading blank lines or license comments make the marker misplaced
+and produce `guide.fixture.landofile-marker-placement`. Every marker asserts a
+native authoring failure; its reason never selects another dialect, even when it
+starts with `lando3`. A body that validates produces
+`guide.fixture.landofile-unexpected-valid`. Keep the negative body invalid rather
+than hiding it behind a skip.
+
+Only a standalone `nolint` fence metadata token opts out. A title such as
+`title="nolint-example.yaml"` or a quoted value containing `nolint` does not.
 
 ## Guide e2e smoke subset
 

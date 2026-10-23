@@ -35,7 +35,7 @@ interface ReleaseManifest {
 }
 
 const artifactFormatError = "--artifact must be formatted as <binary|library>:<path>";
-const defaultRepository = "lando-community/core4";
+const defaultRepository = "AaronFeledy/core4";
 const defaultWorkflowPath = ".github/workflows/release.yml";
 
 const normalizeManifestPath = (path: string): string => path.replace(/^\.\//, "");
@@ -176,7 +176,7 @@ const buildSlsaProvenance = ({
     predicateType: "https://slsa.dev/provenance/v1",
     predicate: {
       buildDefinition: {
-        buildType: "https://github.com/lando-community/core4/release/v1",
+        buildType: "https://github.com/AaronFeledy/core4/release/v1",
         externalParameters: { releaseVersion: version, sourceRef, workflowPath },
         resolvedDependencies: [
           { uri: `git+https://github.com/${repository}@${sourceRef}`, digest: { gitCommit: commitSha } },

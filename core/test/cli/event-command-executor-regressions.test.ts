@@ -4,6 +4,7 @@ import { Context, Effect, Queue, Schema, Stream } from "effect";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import {
   RedactionService,
+  createPayloadValues,
   createStandaloneRedactor,
   registerRedactionValues,
 } from "@lando/redaction/service";
@@ -43,12 +44,16 @@ const makeHarness = (): Harness => {
       error: (body: string) => Effect.sync(() => output.push(body)),
     },
     output: {
-      stdout: (chunk: string) => Effect.sync(() => output.push(chunk)),
-      stderr: (chunk: string) => Effect.sync(() => output.push(chunk)),
+      stdout: (chunk: string | Uint8Array) =>
+        Effect.sync(() => output.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk))),
+      stderr: (chunk: string | Uint8Array) =>
+        Effect.sync(() => output.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk))),
     },
   } satisfies Context.Service.Shape<typeof Renderer>;
   const redaction = {
     registerValues: registerRedactionValues,
+    payloadValues: (options?: Parameters<typeof createStandaloneRedactor>[1]) =>
+      Effect.succeed(createPayloadValues([], options)),
     forProfile: (
       profile: "secrets" | "telemetry" | "transcript",
       options?: Parameters<typeof createStandaloneRedactor>[1],
@@ -241,7 +246,7 @@ describe("event command executor regressions", () => {
       expect(embedded.exitCode).toBe(17);
       expect(process.exitCode).toBe(73);
     } finally {
-      process.exitCode = previousExitCode;
+      process.exitCode = previousExitCode ?? 0;
     }
   });
 });

@@ -78,17 +78,19 @@ const serviceCrossAppAliases = (
 ): ReadonlyArray<string> => Array.from(new Set([`${serviceName}.${slug}.internal`, ...hostnames]));
 
 /**
- * Build the typed per-app `NetworkingPlan`: a per-app bridge network plus
- * shared cross-app membership when the selected provider supports
+ * Build the typed `NetworkingPlan`: a private bridge unless explicitly disabled,
+ * plus shared cross-app membership when the selected provider supports
  * `sharedCrossAppNetwork`. The planner emits this; providers consume it.
  */
 export const landoNetworkingPlan = (input: {
   readonly slug: string;
   readonly serviceNames: ReadonlyArray<string>;
   readonly sharedCrossAppNetwork: boolean;
+  readonly perAppBridge?: boolean;
   readonly serviceHostnames?: Readonly<Record<string, ReadonlyArray<string>>> | undefined;
 }): NetworkingPlan => {
-  const perAppBridge = { name: perAppBridgeNetworkName(input.slug), driver: "bridge" };
+  const perAppBridge =
+    input.perAppBridge === false ? null : { name: perAppBridgeNetworkName(input.slug), driver: "bridge" };
   if (!input.sharedCrossAppNetwork) return { perAppBridge };
   const aliases: Record<string, ReadonlyArray<string>> = {};
   for (const serviceName of input.serviceNames) {
@@ -104,16 +106,17 @@ export const landoNetworkingPlan = (input: {
   };
 };
 
-export const landoAppNetworkName = (plan: Pick<AppPlan, "slug" | "networking">): string =>
-  plan.networking?.perAppBridge.name ?? perAppBridgeNetworkName(plan.slug);
+export const landoAppNetworkName = (plan: Pick<AppPlan, "slug" | "networking">): string | undefined =>
+  plan.networking === undefined ? perAppBridgeNetworkName(plan.slug) : plan.networking.perAppBridge?.name;
 
-export const landoAppNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">): ReadonlyArray<string> => [
-  landoAppNetworkName(plan),
-];
+export const landoAppNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">): ReadonlyArray<string> => {
+  const name = landoAppNetworkName(plan);
+  return name === undefined ? [] : [name];
+};
 
 export const landoNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">): ReadonlyArray<string> => {
   if (plan.networking !== undefined) {
-    const names = [plan.networking.perAppBridge.name];
+    const names = [...landoAppNetworkNames(plan)];
     if (plan.networking.sharedNetworkMembership !== undefined) {
       names.push(plan.networking.sharedNetworkMembership.name);
     }
@@ -175,6 +178,10 @@ export type FileSyncPlan = typeof FileSyncPlan.Type;
  */
 export const appIdentityKey = (kind: "owner" | "repository", canonicalPath: string): string =>
   sha256Hex(`${kind}\0${canonicalPath}`);
+
+/** Resolve ownership from a planned identity or an older plan's canonical root. */
+export const planAppIdentity = (plan: Pick<AppPlan, "root" | "identity">): AppIdentity =>
+  plan.identity ?? { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) };
 
 export const AppIdentity = Schema.Struct({
   appRoot: AbsolutePath.annotate({ description: "Canonical root that owns this app instance." }),

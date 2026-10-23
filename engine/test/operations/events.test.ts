@@ -136,12 +136,16 @@ const runWithFakes = (
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
       }),
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -234,12 +238,16 @@ const eventRuntime = (
       RedactionService,
       RedactionService.of({
         registerValues: registerRedactionValues,
+        payloadValues: () => Effect.succeed(() => []),
         forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
       }),
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -448,7 +456,7 @@ describe("runAppEvent tooling-step kernel", () => {
     ]);
   });
 
-  test("redacts secrets introduced by resolved task variables before live event publication", async () => {
+  test("publishes resolved task output only after redacting task variables", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const plan = attachEffectiveTooling(
@@ -471,7 +479,9 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     const published = JSON.stringify(details);
     expect(published).not.toContain("resolved-secret-value");
-    expect(published).toContain("[redacted]");
+    expect(details).toHaveLength(1);
+    expect(details[0]?.line).toContain("[redacted]");
+    expect(invocations[0]?.commands[0]?.[2]).toContain("resolved-secret-value");
   });
 
   test("redacts resolved task variables from host shell lifecycle events", async () => {
@@ -506,11 +516,11 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(published.pre).toHaveLength(1);
     expect(published.post).toHaveLength(1);
-    expect(published.details).toHaveLength(2);
+    expect(published.details.map((detail) => detail.line)).toEqual(["[redacted]:unset", "[redacted]"]);
     expect(published.pre[0]?.command).toContain("[redacted]");
     expect(published.post[0]?.command).toContain("[redacted]");
-    expect(published.post[0]?.stdout).toBe("[redacted]:unset");
-    expect(published.post[0]?.stderr).toBe("[redacted]");
+    expect(published.post[0]?.stdout).toBe("");
+    expect(published.post[0]?.stderr).toBe("");
     const payload = JSON.stringify(published);
     expect(payload).not.toContain(secret);
     expect(payload).toContain("[redacted]");
@@ -945,6 +955,9 @@ describe("hostEvents runtime", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                appliedPlansFor: () => Effect.succeed([]),
+                resolveAppliedPlan: () => Effect.succeed(undefined),
+                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                 list: Effect.succeed([ProviderId.make("test")]),
                 capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),
@@ -1064,6 +1077,9 @@ describe("hostEvents runtime", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                appliedPlansFor: () => Effect.succeed([]),
+                resolveAppliedPlan: () => Effect.succeed(undefined),
+                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                 list: Effect.succeed([ProviderId.make("test")]),
                 capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),
@@ -1105,6 +1121,9 @@ describe("hostEvents runtime", () => {
               Layer.succeed(
                 RuntimeProviderRegistry,
                 RuntimeProviderRegistry.of({
+                  appliedPlansFor: () => Effect.succeed([]),
+                  resolveAppliedPlan: () => Effect.succeed(undefined),
+                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                   list: Effect.succeed([ProviderId.make("test")]),
                   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                   select: () => Effect.succeed(inspecting),
@@ -1171,6 +1190,9 @@ describe("hostEvents runtime", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                appliedPlansFor: () => Effect.succeed([]),
+                resolveAppliedPlan: () => Effect.succeed(undefined),
+                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                 list: Effect.succeed([ProviderId.make("test")]),
                 capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),

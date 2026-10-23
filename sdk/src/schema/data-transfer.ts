@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { AppIdentity } from "./app-plan.ts";
 import { StorageScope } from "./mounts.ts";
 import { AbsolutePath, AppId, CommandSpec, PortablePath, ServiceName } from "./primitives.ts";
 import { VolumeIdentity } from "./volume-identity.ts";
@@ -115,6 +116,45 @@ export const VolumeSnapshotRef = Schema.Struct({
 });
 export type VolumeSnapshotRef = typeof VolumeSnapshotRef.Type;
 
+/** Provider-observed snapshot image, independent of the host snapshot index. */
+export const VolumeSnapshotArtifact = Schema.Struct({
+  ref: VolumeSnapshotRef.annotate({ description: "Immutable provider snapshot reference." }),
+  createdAt: Schema.DateTimeUtcFromString.annotate({ description: "Provider image creation time." }),
+  labels: LabelMap.annotate({ description: "Labels carried by the snapshot image." }),
+});
+export type VolumeSnapshotArtifact = typeof VolumeSnapshotArtifact.Type;
+
+export const SnapshotGcOrphan = Schema.Struct({
+  id: Schema.String.annotate({ description: "Provider snapshot identifier." }),
+  provider: Schema.String.annotate({ description: "Provider that holds the snapshot image." }),
+  sizeBytes: Schema.Number.annotate({ description: "Provider image size in bytes." }),
+  createdAt: Schema.DateTimeUtcFromString.annotate({ description: "Provider image creation time." }),
+  app: Schema.optionalKey(Schema.String).annotate({ description: "Owning app label when present." }),
+});
+export const SnapshotGcProviderReport = Schema.Struct({
+  provider: Schema.String.annotate({ description: "Provider inspected for orphaned images." }),
+  status: Schema.Literals(["checked", "unavailable", "failed"]).annotate({
+    description:
+      "checked: inspected; unavailable: not running or not reachable without starting it; failed: inspection or removal errored.",
+  }),
+  error: Schema.optionalKey(Schema.String).annotate({
+    description: "Why the provider was unavailable or failed, when known.",
+  }),
+  orphans: Schema.Array(SnapshotGcOrphan).annotate({
+    description: "Unindexed snapshot images eligible for removal.",
+  }),
+});
+export const SnapshotGcReport = Schema.Struct({
+  providers: Schema.Array(SnapshotGcProviderReport).annotate({
+    description: "Inspection result for each native-snapshot provider.",
+  }),
+  totalCount: Schema.Number.annotate({ description: "Number of eligible orphaned snapshot images." }),
+  totalBytes: Schema.Number.annotate({ description: "Total provider image size of eligible orphans." }),
+  removedCount: Schema.Number.annotate({ description: "Number of orphan removal operations completed." }),
+  prune: Schema.Boolean.annotate({ description: "Whether removal was requested." }),
+});
+export type SnapshotGcReport = typeof SnapshotGcReport.Type;
+
 /**
  * Request to snapshot a volume natively.
  */
@@ -191,13 +231,6 @@ export const DataTransferProgress = Schema.Struct({
 export type DataTransferProgress = typeof DataTransferProgress.Type;
 
 export const SnapshotMetadata = Schema.Struct({
-  sourceRoot: AbsolutePath.annotate({ description: "Canonical app root that owns the snapshot." }),
-  ownerKey: Schema.optionalKey(Schema.String).annotate({
-    description: "Stable owner identity derived from the canonical app root.",
-  }),
-  repoGroupKey: Schema.optionalKey(Schema.String).annotate({
-    description: "Stable identity shared by snapshots from sibling Git worktrees.",
-  }),
   service: ServiceName.annotate({ description: "Database service captured by the snapshot." }),
   volumeInstanceId: Schema.String.annotate({
     description: "Physical source volume creation identity.",
@@ -219,16 +252,31 @@ export const SnapshotOptions = Schema.Struct({
   volumeSnapshot: Schema.optionalKey(Schema.Literals(["copy", "native"])),
   label: Schema.optionalKey(Schema.String),
   labels: Schema.optionalKey(LabelMap),
+  repoGroupKey: Schema.optionalKey(Schema.String).annotate({
+    description: "Repository grouping hint for snapshot listings; never ownership proof.",
+  }),
   metadata: Schema.optionalKey(SnapshotMetadata).annotate({
-    description: "Physical ownership and database compatibility metadata supplied by the caller.",
+    description: "Database compatibility and recovery metadata supplied by the caller.",
   }),
 });
 export type SnapshotOptions = typeof SnapshotOptions.Type;
 
 /**
+ * Options for restoring a volume snapshot.
+ */
+export const SnapshotRestoreOptions = Schema.Struct({
+  mode: Schema.optionalKey(Schema.Literals(["restore", "seed"])).annotate({
+    description:
+      "restore (default) requires the snapshot's original physical volume instance; seed requires a freshly created volume of the snapshot's own app, owner, and store with an in-progress initialization claim.",
+  }),
+});
+export type SnapshotRestoreOptions = typeof SnapshotRestoreOptions.Type;
+
+/**
  * Handle returned by `snapshot`, enough to locate the snapshot sidecar.
  */
 export const SnapshotHandle = Schema.Struct({
+  ownerKey: Schema.String.annotate({ description: "Owner catalog containing this snapshot." }),
   id: SnapshotId,
   store: VolumeRef,
 });
@@ -238,6 +286,7 @@ export type SnapshotHandle = typeof SnapshotHandle.Type;
  * Persisted snapshot sidecar record.
  */
 export const SnapshotInfo = Schema.Struct({
+  owner: AppIdentity.annotate({ description: "Canonical snapshot owner and optional repository group." }),
   id: SnapshotId,
   store: VolumeRef,
   digest: Schema.String,
@@ -248,10 +297,16 @@ export const SnapshotInfo = Schema.Struct({
   labels: Schema.optionalKey(LabelMap),
   native: Schema.optionalKey(VolumeSnapshotRef),
   metadata: Schema.optionalKey(SnapshotMetadata).annotate({
-    description: "Physical ownership and database compatibility metadata recorded at creation.",
+    description: "Database compatibility and recovery metadata recorded at creation.",
   }),
 });
 export type SnapshotInfo = typeof SnapshotInfo.Type;
+
+export const snapshotHandle = (info: SnapshotInfo): SnapshotHandle => ({
+  ownerKey: info.owner.ownerKey,
+  id: info.id,
+  store: info.store,
+});
 
 /**
  * Match criteria for listing snapshots.
@@ -260,10 +315,9 @@ export const SnapshotFilter = Schema.Struct({
   id: Schema.optionalKey(SnapshotId),
   app: Schema.optionalKey(AppId),
   store: Schema.optionalKey(Schema.String),
-  sourceRoot: Schema.optionalKey(AbsolutePath).annotate({ description: "Canonical source app root." }),
-  ownerKey: Schema.optionalKey(Schema.String).annotate({ description: "Canonical source owner identity." }),
+  ownerKey: Schema.optionalKey(Schema.String).annotate({ description: "Match the snapshot owner's key." }),
   repoGroupKey: Schema.optionalKey(Schema.String).annotate({
-    description: "Git worktree group identity shared by eligible sources.",
+    description: "Match the snapshot owner's repository group.",
   }),
   service: Schema.optionalKey(ServiceName).annotate({
     description: "Database service captured by the snapshot.",
@@ -282,5 +336,13 @@ export type SnapshotFilter = typeof SnapshotFilter.Type;
 export const PrunePolicy = Schema.Struct({
   filter: Schema.optionalKey(SnapshotFilter),
   keepLatest: Schema.optionalKey(Schema.Number),
+  recovery: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Prune automatic recovery snapshots instead of manual or unclassified snapshots. Defaults to false.",
+  }),
+  retainSnapshotIds: Schema.optionalKey(Schema.Array(SnapshotId)).annotate({
+    description:
+      "Keep these snapshots first within the selected bucket's keepLatest budget, regardless of timestamp.",
+  }),
 });
 export type PrunePolicy = typeof PrunePolicy.Type;

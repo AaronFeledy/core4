@@ -98,6 +98,13 @@ test("provider-podman pullArtifact uses the Podman pull stream seam", async () =
       paths.push(request.path);
       return Stream.fromIterable([encoder.encode('{"stream":"Trying to pull alpine..."}\n')]);
     },
+    request: (request) => {
+      paths.push(request.path);
+      return Effect.succeed({
+        status: 200,
+        body: JSON.stringify({ RepoDigests: ["docker.io/library/alpine@sha256:test"] }),
+      });
+    },
   };
   const provider = await Effect.runPromise(
     makeRuntimeProvider({
@@ -110,7 +117,8 @@ test("provider-podman pullArtifact uses the Podman pull stream seam", async () =
 
   const artifact = await Effect.runPromise(provider.pullArtifact({ ref: "docker.io/library/alpine:3.20.3" }));
 
-  expect(artifact).toEqual({ providerId, ref: "docker.io/library/alpine:3.20.3" });
+  expect(artifact).toEqual({ providerId, ref: "docker.io/library/alpine:3.20.3", digest: "sha256:test" });
+  expect(paths[1]).toBe("/libpod/images/docker.io%2Flibrary%2Falpine%3A3.20.3/json");
   expect(paths[0]).toContain("/libpod/images/pull");
   expect(paths[0]).toContain("pullProgress=true");
 });

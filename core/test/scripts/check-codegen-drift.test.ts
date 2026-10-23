@@ -19,6 +19,8 @@ const EXPECTED_CATALOG_PATHS = [
   "plugins/file-sync-mutagen/mutagen-versions.json",
   "plugins/file-sync-mutagen/docker-cli-versions.json",
   "plugins/service-lando/src/services/php-msmtp-pins.json",
+  "plugins/service-lando/tomcat/pins.json",
+  "plugins/service-lando/tomcat/server-*.xml",
   "recipes/*/.scaffold/*",
   "sdk/src/schema/generated/core-service-env.ts",
   "sdk/test/fixtures/bundled-plugin-manifests.json",
@@ -26,7 +28,7 @@ const EXPECTED_CATALOG_PATHS = [
 
 const GITIGNORED_DERIVED_PATHS = [
   "core/src/cli/generated",
-  "data-mover/src/generated/provider-images.ts",
+  "container-runtime/src/generated/provider-images.ts",
   "core/src/plugins/generated",
   "core/src/recipes/bundled.ts",
   "core/src/runtime/generated/layers",

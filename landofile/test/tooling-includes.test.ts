@@ -8,8 +8,8 @@ import { Effect } from "effect";
 import type { LandofileShape } from "@lando/sdk/schema";
 
 import { getLocalIncludePaths } from "../src/include-provenance.ts";
-import { resolveLandofileIncludes } from "../src/includes.ts";
 import { getInternalToolingTasks } from "../src/tooling-include-provenance.ts";
+import { authoredRecipe, resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const resolve = (landofile: LandofileShape, appRoot: string) =>
@@ -63,6 +63,28 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
 
   afterEach(async () => {
     await rm(appRoot, { recursive: true, force: true });
+  });
+
+  test("materializes a typed tooling fragment value with the including scope", async () => {
+    // Given
+    await writeFile(
+      join(appRoot, "tasks.yml"),
+      'tooling:\n  build:\n    cmd: build\n    flags:\n      debug:\n        required: "{{ recipe.required }}"\n',
+    );
+    // When
+    const result = await Effect.runPromise(
+      resolveLandofileIncludes({
+        landofile: {
+          includes: [{ source: "./tasks.yml", kind: "tooling", namespace: "typed" }],
+          recipe: authoredRecipe({ required: true }),
+        },
+        appRoot,
+        cacheRoot: join(appRoot, ".cache"),
+        stateStore: makeTestLandofileStateStore(),
+      }),
+    );
+    // Then
+    expect(result.tooling?.["typed:build"]?.flags?.debug?.required).toBe(true);
   });
 
   test("namespaces included tasks, aliases the namespace, applies excludes, and layers include vars", async () => {
@@ -510,7 +532,7 @@ describe("tooling includes — failure modes", () => {
     }
   });
 
-  test("a cyclic tooling include fails with ToolingIncludeCycleError", async () => {
+  test("a cyclic tooling include fails with LandofileIncludeError", async () => {
     // Given two fragments that include each other
     await writeFile(
       join(appRoot, "a.tasks.yml"),
@@ -527,8 +549,9 @@ describe("tooling includes — failure modes", () => {
     const error = await failure({ toolingIncludes: { a: { file: "./a.tasks.yml" } } }, appRoot);
 
     // Then
-    expect(error._tag).toBe("ToolingIncludeCycleError");
-    if (error._tag === "ToolingIncludeCycleError") {
+    expect(error._tag).toBe("LandofileIncludeError");
+    if (error._tag === "LandofileIncludeError") {
+      expect(error.kind).toBe("cycle");
       expect(error.remediation.length).toBeGreaterThan(0);
     }
   });
