@@ -99,6 +99,8 @@ command:
 
 Typesense also reads `TYPESENSE_DATA_DIR`, `TYPESENSE_API_KEY`, and `TYPESENSE_ENABLE_CORS` from `environment:` if you would rather not put the key on the command line.
 
+`lando app:config` masks the key either way: the command shows `--api-key=[redacted]` and `TYPESENSE_API_KEY` shows `[redacted]`. The container still gets the real value.
+
 Splitting is not a shell. It does not expand `$VARS`, globs, or `~`, and an unquoted `;`, `&`, `|`, `<`, or `>` ends the argv there, so `a && b` only ever runs `a`. The Typesense image has a binary entrypoint, so every argv entry goes to that binary; a `sh -c` prefix would too. For the shell pattern on an image that has one, see [Add a Compose service](../compose-passthrough/).
 
 Malformed quotes fail planning with `LandofileValidationError`. This split applies only to `type: compose`. Other service types keep their string `command` as a shell script.
@@ -131,7 +133,7 @@ Keep the data directory and API key the same across bumps unless that release's 
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"compose\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "typesense/typesense:30\\.2" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"--data-dir /data --api-key=xyz --enable-cors\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"--data-dir /data --api-key=\\[redacted\\] --enable-cors\"" } }} />
     </Step>
     <Step name="plan">
       <Run command="lando app:cache:refresh --format=json" />
