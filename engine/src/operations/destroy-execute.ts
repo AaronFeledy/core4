@@ -47,7 +47,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
   const events = yield* EventService;
   const proxy = yield* Effect.serviceOption(RouterService);
   const applied = evidence === "applied" ? plan.applied : undefined;
-  const hooks = applied === undefined ? undefined : plan.authored;
+  const hooks = plan.authored;
   const authored = hooks?.plan;
   if (
     hooks?.skipLevel === "warn" &&
