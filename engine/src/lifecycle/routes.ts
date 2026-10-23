@@ -8,7 +8,13 @@ import type {
   RouterPortsExhausted,
   RouterWatcherError,
 } from "@lando/sdk/errors";
-import type { AppPlan, ProxyApplyResult, RouterConfig, ServiceName } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type ProxyApplyResult,
+  type RouterConfig,
+  type ServiceName,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import type { RouterServiceShape } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
@@ -36,7 +42,7 @@ export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
   const defaultDomain = yield* resolveProxyDefaultDomain;
   const { router, routerPin } = yield* resolveRouterConfigForApp(landofileRouter);
   return yield* Effect.scoped(proxy.setup({ defaultDomain, router, routerPin })).pipe(
-    Effect.andThen(proxy.applyRoutes(plan.routes, plan.id)),
+    Effect.andThen(proxy.applyRoutes(plan.routes, plan.id, { ownerKey: planAppIdentity(plan).ownerKey })),
   );
 });
 

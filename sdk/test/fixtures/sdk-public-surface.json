@@ -290,7 +290,7 @@
       "output:{ stdout:(chunk:string|Uint8Array) => Effect.Effect<void>;stderr:(chunk:string|Uint8Array) => Effect.Effect<void>;}"
     ],
     "RouterService": [
-      "applyRoutes:(routes:ReadonlyArray<RoutePlan>,appId:AppId) => Effect.Effect<ProxyApplyResult,ProxyApplyError>",
+      "applyRoutes:(routes:ReadonlyArray<RoutePlan>,appId:AppId,options?:{ ownerKey?:string;}) => Effect.Effect<ProxyApplyResult,ProxyApplyError>",
       "capabilities:ProxyCapabilities",
       "id:string",
       "prepare?:(config:ProxyConfig) => Effect.Effect<void,AppPlacementError|ProxySetupError|RouterPortsExhausted|RouterPortPinMismatch>",

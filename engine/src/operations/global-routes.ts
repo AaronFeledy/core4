@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import type { ProxyApplyError } from "@lando/sdk/errors";
-import type { AppPlan, ServiceName } from "@lando/sdk/schema";
+import { type AppPlan, type ServiceName, planAppIdentity } from "@lando/sdk/schema";
 import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
 
 import { routerEnabled } from "../config/router-config.ts";
@@ -41,5 +41,7 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
       .map((service) => service.service),
   );
   const routes = plan.routes.filter((route) => started.has(route.service) || active.has(route.service));
-  return appliedProxyUrlsByService(yield* router.applyRoutes(routes, plan.id));
+  return appliedProxyUrlsByService(
+    yield* router.applyRoutes(routes, plan.id, { ownerKey: planAppIdentity(plan).ownerKey }),
+  );
 });

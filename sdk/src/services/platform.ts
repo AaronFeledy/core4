@@ -94,6 +94,9 @@ export class RouterService extends Context.Service<
     readonly applyRoutes: (
       routes: ReadonlyArray<RoutePlan>,
       appId: AppId,
+      options?: {
+        readonly ownerKey?: string;
+      },
     ) => Effect.Effect<ProxyApplyResult, ProxyApplyError>;
     readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
     readonly status: Effect.Effect<ProxyStatus, ProxyError>;

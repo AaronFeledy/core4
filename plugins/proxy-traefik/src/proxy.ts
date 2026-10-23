@@ -44,6 +44,7 @@ import {
   fallbackConfigFile,
   joinFor,
   routeFile,
+  routeFileAppId,
   routingStateFile,
   watcherDiagnosticFile,
 } from "./proxy-paths.ts";
@@ -54,6 +55,7 @@ import {
   publishFallbackWarn,
 } from "./proxy-setup.ts";
 import type { TraefikProxyDependencies, TraefikRouterLists, TraefikRouterPin } from "./proxy-types.ts";
+import { ownerKeyFromRouteConfig, routeOwnerKeyComment } from "./route-ownership.ts";
 import {
   acknowledge,
   certificatePairIsCurrent,
@@ -276,6 +278,30 @@ export const makeTraefikRouterService = (
         })
       : operation;
 
+  const withdrawSameOwnerRouteFiles = Effect.fnUntraced(function* (ownerKey: string, currentApp: AppId) {
+    const directory = dynamicConfigDir(dependencies.paths);
+    if (!(yield* dependencies.fileSystem.exists(directory))) return;
+    const names = yield* dependencies.fileSystem.readDir(directory);
+    yield* Effect.forEach(
+      names,
+      (name) =>
+        Effect.gen(function* () {
+          const staleApp = routeFileAppId(name);
+          if (staleApp === undefined || String(staleApp) === String(currentApp)) return;
+          const path = joinFor(dependencies.paths)(directory, name);
+          const content = yield* readOptional(dependencies, path);
+          if (content === undefined || ownerKeyFromRouteConfig(content) !== ownerKey) return;
+          if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+            yield* invalidateAcknowledgement(dependencies.stateStore, staleApp);
+          }
+          yield* dependencies.fileSystem.remove(path);
+          yield* removeAppCertificates(dependencies, staleApp);
+          routes.delete(String(staleApp));
+          pendingReload.add(String(staleApp));
+        }),
+      { discard: true },
+    );
+  });
   const acquire = Effect.fn("TraefikRouter.acquirePorts")(function* (config: ProxyConfig) {
     yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
     yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
@@ -370,7 +396,7 @@ export const makeTraefikRouterService = (
         Effect.mapError(mapStartupRevalidationError),
       )(),
       applyRoutes: Effect.fn("RouterService.applyRoutes")(
-        (nextRoutes, app) => {
+        (nextRoutes, app, options) => {
           const apply = Effect.gen(function* () {
             const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
             authorityPorts =
@@ -383,6 +409,8 @@ export const makeTraefikRouterService = (
             defaultDomain = normalizeDefaultDomain(persistedDomain) || defaultDomain || "lndo.site";
             yield* ensureDashboardFile(dependencies, defaultDomain);
             const appKey = String(app);
+            const ownerKey = options?.ownerKey;
+            const stamp = ownerKey === undefined ? "" : routeOwnerKeyComment(ownerKey);
             const file = routeFile(dependencies.paths, app);
             const hadRouteFile = yield* dependencies.fileSystem.exists(file);
             if (nextRoutes.length === 0) {
@@ -396,7 +424,7 @@ export const makeTraefikRouterService = (
             } else {
               const hostnames = httpsHostnames(nextRoutes);
               const expectedTls = hostnames.length === 0 ? undefined : persistedTlsFiles(app);
-              const expectedConfig = renderTraefikDynamicConfig(nextRoutes, app, expectedTls);
+              const expectedConfig = `${stamp}${renderTraefikDynamicConfig(nextRoutes, app, expectedTls)}`;
               if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
                 const snapshot = yield* routeReloadSnapshot(dependencies, app, defaultDomain);
                 const [persistedConfig, certificate, privateKey, defaultCertificate, defaultPrivateKey] =
@@ -430,6 +458,7 @@ export const makeTraefikRouterService = (
                   (yield* isAcknowledged(dependencies.stateStore, app, digest))
                 ) {
                   routes.set(appKey, nextRoutes);
+                  if (ownerKey !== undefined) yield* withdrawSameOwnerRouteFiles(ownerKey, app);
                   return {
                     app,
                     appliedRoutes: nextRoutes,
@@ -486,7 +515,7 @@ export const makeTraefikRouterService = (
                       refreshAppCertificate,
                       refreshDefaultCertificate,
                     });
-              const nextConfig = renderTraefikDynamicConfig(nextRoutes, app, tlsFiles);
+              const nextConfig = `${stamp}${renderTraefikDynamicConfig(nextRoutes, app, tlsFiles)}`;
               const previousConfig = hadRouteFile ? yield* dependencies.fileSystem.readText(file) : undefined;
               if (previousConfig !== nextConfig || refreshAppCertificate || missingCertificate) {
                 yield* dependencies.fileSystem.writeAtomic(file, nextConfig);
@@ -494,6 +523,7 @@ export const makeTraefikRouterService = (
               }
               routes.set(appKey, nextRoutes);
             }
+            if (ownerKey !== undefined) yield* withdrawSameOwnerRouteFiles(ownerKey, app);
             if (pendingReload.has(appKey)) {
               if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
                 const before = yield* routeReloadSnapshot(dependencies, app, defaultDomain);
