@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -37,6 +37,7 @@ const service: ServicePlan = {
   extensions: {},
 };
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("fingerprint"),
   name: "Fingerprint",
   slug: "fingerprint",
@@ -53,9 +54,23 @@ const plan: AppPlan = {
 const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
   commonContainerLabels(app, value)[CREATE_CONFIG_LABEL];
 
-afterEach(resetRegisteredRedactionValuesForTesting);
+const fixtureRedaction = makeRedactionService();
 
 describe("desired immutable create config", () => {
+  test("distinguishes literal, reference, raw composite, and encoded composite identities", () => {
+    // Given
+    const values = [
+      "${secret:TOKEN}",
+      { _tag: "SecretRef", reference: "TOKEN" },
+      { _tag: "BoundText", parts: ["prefix", { reference: "TOKEN", encoding: "raw" }] },
+      { _tag: "BoundText", parts: ["prefix", { reference: "TOKEN", encoding: "uri-component" }] },
+    ] as const;
+    // When
+    const fingerprints = values.map((value) => fingerprint({ ...service, environment: { TOKEN: value } }));
+    // Then
+    expect(new Set(fingerprints).size).toBe(values.length);
+  });
+
   const changes: ReadonlyArray<readonly [string, Partial<ServicePlan>]> = [
     ["environment", { environment: { MODE: "after" } }],
     ["command", { command: ["sleep", "60"] }],
@@ -153,7 +168,7 @@ describe("desired immutable create config", () => {
       environment: { PASSWORD: "${secret:db/password}", LITERAL: "credential-canary" },
     };
     const before = fingerprint(desired);
-    Effect.runSync(registerRedactionValues(["credential-canary", "${secret:db/password}"]));
+    Effect.runSync(fixtureRedaction.registerValues(["credential-canary", "${secret:db/password}"]));
     // When registered redaction values change before another label emission.
     const after = fingerprint(desired);
     // Then redaction cannot collapse distinct desired values or expose raw values in the label.

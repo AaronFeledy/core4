@@ -22,6 +22,51 @@ import { podmanNetworkNames } from "./podman/networks.ts";
 
 export const CREATE_CONFIG_LABEL = "dev.lando.create-config";
 
+const CREATE_ARTIFACT_IDENTITY = "@lando/container-runtime/create-artifact";
+
+const artifactInputIdentity = (service: ServicePlan): string => {
+  const features = service.extensions["@lando/core/service-features"];
+  const steps =
+    typeof features === "object" && features !== null && "buildSteps" in features
+      ? features.buildSteps
+      : undefined;
+  return sha256Hex(
+    canonicalJson({
+      artifact: service.artifact,
+      buildSteps: Array.isArray(steps)
+        ? steps.filter(
+            (step: unknown) =>
+              typeof step !== "object" || step === null || !("phase" in step) || step.phase !== "app",
+          )
+        : [],
+    }),
+  );
+};
+
+const createArtifactIdentity = (service: ServicePlan): string => {
+  const identity = artifactInputIdentity(service);
+  const retained = service.extensions[CREATE_ARTIFACT_IDENTITY];
+  return typeof retained === "object" &&
+    retained !== null &&
+    "source" in retained &&
+    typeof retained.source === "string" &&
+    "realized" in retained &&
+    retained.realized === identity
+    ? retained.source
+    : identity;
+};
+
+export const retainCreateArtifactIdentity = (source: ServicePlan, realized: ServicePlan): ServicePlan => ({
+  ...realized,
+  extensions: {
+    ...realized.extensions,
+    [CREATE_ARTIFACT_IDENTITY]: {
+      source: createArtifactIdentity(source),
+      realized: artifactInputIdentity(realized),
+    },
+  },
+});
+
 const agentEnvironment: Readonly<Record<string, string>> = {
   SSH_AUTH_SOCK: `${AGENT_SOCKET_CONTAINER_DIR.ssh}/${SSH_AGENT_SOCKET_NAME}`,
   GNUPGHOME: "/tmp/lando-gnupg",
@@ -38,7 +83,6 @@ export const createConfigFingerprint = (
       throw new ContainerPlanError(message, details);
     },
   });
-  const artifact = service.artifact;
   const appMount = service.appMount;
   const sessionMountTargets = new Set<string>();
   if (service.environment.SSH_AUTH_SOCK === agentEnvironment.SSH_AUTH_SOCK) {
@@ -55,7 +99,7 @@ export const createConfigFingerprint = (
     sessionMountTargets.add("/usr/local/bin/open");
   }
   const projection = {
-    artifact: artifact?.kind === "ref" ? { ref: artifact.ref, digest: artifact.digest } : undefined,
+    artifact: createArtifactIdentity(service),
     command: normalizeCommand(service.command),
     entrypoint: normalizeEntrypoint(service.entrypoint),
     user: service.user === "" ? undefined : service.user,

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -89,7 +89,7 @@ export const makeLayer = (provider: RuntimeProviderShape) => {
   const redaction = Layer.succeed(
     RedactionService,
     RedactionService.of({
-      registerValues: registerRedactionValues,
+      ...makeRedactionService(),
       payloadValues: () => Effect.succeed(() => []),
       forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
     }),

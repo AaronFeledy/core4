@@ -18,7 +18,8 @@ import {
 } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { ProviderInternalError, StateStoreError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -157,7 +158,7 @@ const layerWithRedaction = (provider: RuntimeProviderShape, redaction: Layer.Lay
 const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
-    registerValues: registerRedactionValues,
+    ...makeRedactionService(),
     payloadValues: () => Effect.succeed(() => ["topsecret"]),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
   }),
@@ -208,6 +209,15 @@ describe("BuildOrchestratorLayer.layer", () => {
         LANDO_CA_BUNDLE: "/etc/lando/certs/ca-bundle.pem",
         LANDO_CA_DIR: "/etc/lando/certs",
       };
+      const buildSteps = [
+        {
+          id: "lando.security:trust-store",
+          phase: "build",
+          command: "install-trust",
+          buildKeyInputs: { caDigests: [digest] },
+          caFiles: [{ path: "/host/corp.pem", digest, archiveName: `lando-${digest}.crt` }],
+        },
+      ];
       const trustService: ServicePlan = {
         ...web,
         artifact: { kind: "ref", ref: "debian:12" },
@@ -230,15 +240,7 @@ describe("BuildOrchestratorLayer.layer", () => {
         ],
         extensions: {
           "@lando/core/service-features": {
-            buildSteps: [
-              {
-                id: "lando.security:trust-store",
-                phase: "build",
-                command: "install-trust",
-                buildKeyInputs: { caDigests: [digest] },
-                caFiles: [{ path: "/host/corp.pem", digest, archiveName: `lando-${digest}.crt` }],
-              },
-            ],
+            buildSteps,
           },
         },
       };
@@ -287,7 +289,17 @@ describe("BuildOrchestratorLayer.layer", () => {
       expect(builtService?.environment.LANDO_CA_BUNDLE).toBe(caEnvironment.LANDO_CA_BUNDLE);
       expect(builtService?.environment.LANDO_CA_DIR).toBe(caEnvironment.LANDO_CA_DIR);
       expect(cachedService?.environment).toEqual(builtService?.environment);
-      expect(cachedService?.extensions).toEqual(trustService.extensions);
+      const expectedExtensions = {
+        ...trustService.extensions,
+        "@lando/container-runtime/create-artifact": {
+          source: sha256Hex(canonicalJson({ artifact: trustService.artifact, buildSteps })),
+          realized: sha256Hex(
+            canonicalJson({ artifact: { kind: "ref", ref: "debian:12-lando-ca" }, buildSteps }),
+          ),
+        },
+      };
+      expect(builtService?.extensions).toEqual(expectedExtensions);
+      expect(cachedService?.extensions).toEqual(expectedExtensions);
     });
   });
 
@@ -924,7 +936,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const envRedactionLayer = Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
+        ...makeRedactionService(),
         payloadValues: (options) => Effect.succeed(() => [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""]),
         forProfile: (_profile, options) =>
           Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
@@ -975,7 +987,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const lazyRedactionLayer = Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
+        ...makeRedactionService(),
         payloadValues: () => Effect.succeed(() => ["latersecret"]),
         forProfile: () =>
           Effect.sync(() => {
