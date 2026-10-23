@@ -24,15 +24,9 @@ function parseHtml(html) {
   return { ids, references, baseHref };
 }
 
-export async function checkStrictFragments(pages, origin, siteOrigin) {
+export async function checkStrictFragments(pages, localUrl) {
   const cache = new Map();
   const documents = [];
-  const localUrl = (url) => {
-    if (siteOrigin && url.origin === siteOrigin) {
-      return new URL(`${url.pathname}${url.search}${url.hash}`, origin);
-    }
-    return url.origin === origin ? url : undefined;
-  };
   const key = (url) => `${url.origin}${url.pathname}`;
   for (const page of pages) {
     const parsed = parseHtml(await readFile(page.file, "utf8"));

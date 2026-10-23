@@ -47,6 +47,10 @@ async function runBuild(
     `<html><head><link rel="stylesheet" href="${base}styles.css" /></head><body>
       <h1 id="local">Home</h1><a href="#local">local</a>
       <a href="https://docs.example.test${targetRoute}#caf%C3%A9">absolute</a>
+      <a href="//docs.example.test${targetRoute}#caf%C3%A9">protocol-relative</a>
+      <a href="//docs.example.test:443${targetRoute}#caf%C3%A9">explicit default port</a>
+      <img src="//docs.example.test${base}pixel.svg" />
+      <a href="//docs.example.test:8443/foreign#missing">different port</a>
       <a href="${targetRoute}#named">named</a>
       <a href="${externalUrl}">external</a><a href="mailto:test@example.test">mail</a>
       <img src="${base}pixel.svg" />${extra}</body></html>`,
@@ -119,6 +123,11 @@ describe("build-time internal links", () => {
     expect(absoluteAnchor.length).toBeGreaterThan(0);
     expect(absoluteAnchor.every((link) => link.state === "OK")).toBe(true);
     expect(result.links.some((link) => link.url === externalUrl && link.state === "SKIPPED")).toBe(true);
+    expect(
+      result.links.some(
+        (link) => link.url === "http://docs.example.test:8443/foreign#missing" && link.state === "SKIPPED",
+      ),
+    ).toBe(true);
   }, 60_000);
 
   test.each([
@@ -152,8 +161,32 @@ describe("build-time internal links", () => {
       '<a href="https://docs.example.test/nested/docs/target/#absolute-missing">bad fragment</a>',
       "/nested/docs/target/#absolute-missing",
     ],
+    [
+      '<a href="//docs.example.test/nested/docs/protocol-relative-missing/">protocol-relative route</a>',
+      "/nested/docs/protocol-relative-missing/",
+    ],
+    [
+      '<img src="//docs.example.test/nested/docs/protocol-relative-missing.png" />',
+      "/nested/docs/protocol-relative-missing.png",
+    ],
+    [
+      '<a href="//docs.example.test/nested/docs/target/#protocol-relative-missing">protocol-relative fragment</a>',
+      "/nested/docs/target/#protocol-relative-missing",
+    ],
+    [
+      '<a href="//docs.example.test:443/nested/docs/explicit-port-missing/">default-port route</a>',
+      "/nested/docs/explicit-port-missing/",
+    ],
+    [
+      '<img src="//docs.example.test:443/nested/docs/explicit-port-missing.png" />',
+      "/nested/docs/explicit-port-missing.png",
+    ],
+    [
+      '<a href="//docs.example.test:443/nested/docs/target/#explicit-port-missing">default-port fragment</a>',
+      "/nested/docs/target/#explicit-port-missing",
+    ],
   ])(
-    "checks absolute production-site URLs: %s",
+    "checks configured-site URLs: %s",
     async (extra, target) => {
       const result = await runBuild(extra);
       expect(result.exitCode).not.toBe(0);
@@ -226,6 +259,7 @@ describe("build-time internal links", () => {
     await mkdir(join(cliRoot, "public"));
     await copyFile(new URL(script), join(cliRoot, "scripts/build.mjs"));
     await copyFile(new URL("./strict-fragments.mjs", script), join(cliRoot, "scripts/strict-fragments.mjs"));
+    await copyFile(new URL("./site-urls.mjs", script), join(cliRoot, "scripts/site-urls.mjs"));
     await copyFile(join(root, "public/pixel.svg"), join(cliRoot, "public/pixel.svg"));
     await writeFile(
       join(cliRoot, "package.json"),

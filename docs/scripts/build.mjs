@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build, preview } from "astro";
 import { LinkChecker, LinkState } from "linkinator";
+import { createSiteUrlPolicy } from "./site-urls.mjs";
 import { checkStrictFragments } from "./strict-fragments.mjs";
 
 async function builtPaths(directory, prefix = "") {
@@ -25,7 +26,7 @@ export async function checkBuiltLinks(config, server) {
   const origin = `http://127.0.0.1:${server.port}`;
   const base = `${config.base.replace(/\/$/, "")}/`;
   const checker = new LinkChecker();
-  const siteOrigin = config.site ? new URL(config.site).origin : undefined;
+  const siteUrls = createSiteUrlPolicy(config.site, origin);
   const urlFor = (page) => {
     let route = page.replace(/(^|\/)index\.html$/, "$1");
     if (config.trailingSlash === "never") route = route.replace(/\/$/, "");
@@ -41,23 +42,12 @@ export async function checkBuiltLinks(config, server) {
     retryErrors: true,
     retryErrorsCount: 1,
     retryErrorsJitter: 0,
-    urlRewriteExpressions: siteOrigin
-      ? [
-          {
-            pattern: new RegExp(`^${siteOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=/|$)`),
-            replacement: origin,
-          },
-        ]
-      : [],
-    linksToSkip: async (link) => {
-      const linkOrigin = new URL(link).origin;
-      return linkOrigin !== origin && linkOrigin !== siteOrigin;
-    },
+    urlRewriteExpressions: siteUrls.urlRewriteExpressions,
+    linksToSkip: siteUrls.linksToSkip,
   });
   const strict = await checkStrictFragments(
     pages.map((page) => ({ file: join(fileURLToPath(config.outDir), page), url: urlFor(page) })),
-    origin,
-    siteOrigin,
+    siteUrls.toLocalUrl,
   );
   for (const link of strict.links) {
     if (
