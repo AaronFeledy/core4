@@ -2,18 +2,21 @@ import { Duration, Effect } from "effect";
 
 import { SqlCommandFailedError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
+import type { Environment } from "@lando/sdk/schema";
 
 import type { SqlExec } from "./actions.ts";
+import { resolveSqlEnvironment } from "./environment.ts";
 
-export const waitForSqlDatabase = (
+export const waitForSqlDatabase = Effect.fn("Sql.waitForDatabase")(function* (
   exec: SqlExec,
   target: {
     readonly service: string;
     readonly command: ReadonlyArray<string>;
-    readonly env: Readonly<Record<string, string>>;
+    readonly env: Environment;
   },
-) =>
-  runProbe(
+) {
+  const env = yield* resolveSqlEnvironment(target.env);
+  return yield* runProbe(
     {
       id: `sql-ready:${target.service}`,
       policy: {
@@ -30,7 +33,7 @@ export const waitForSqlDatabase = (
         failure: () => "red",
       },
     },
-    Effect.suspend(() => exec(target.service, target.command, target.env)),
+    Effect.suspend(() => exec(target.service, target.command, env)),
   ).pipe(
     Effect.flatMap((result) =>
       result.outcome === "green"
@@ -45,3 +48,4 @@ export const waitForSqlDatabase = (
           ),
     ),
   );
+});

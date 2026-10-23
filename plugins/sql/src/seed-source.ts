@@ -6,7 +6,7 @@ import { ServiceName } from "@lando/sdk/schema";
 
 import { secretTokens } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
-import { credsEnv, resolveSqlCreds } from "./creds.ts";
+import { credsEnv, currentAppliedServiceConnection, resolveSqlCreds } from "./creds.ts";
 import { dumpCommand } from "./families.ts";
 import { type SqlTarget, resolveSqlTarget, sqlCandidates } from "./target.ts";
 import { toSqlPlan } from "./views.ts";
@@ -109,12 +109,13 @@ export const resolveSeedSource = Effect.fn("Sql.resolveSeedSource")(function* (
       }),
     );
   }
-  const creds = resolveSqlCreds({
-    family: service.family,
-    serviceName: service.name,
-    appName: plan.name,
-    planEnvironment: plan.services[service.name]?.environment ?? {},
+  const appliedService = plan.services[service.name];
+  if (appliedService === undefined) return yield* Effect.die(new Error("Selected SQL source disappeared"));
+  const connection = yield* currentAppliedServiceConnection(appliedService, {
+    app: plan.id,
+    providerId: deps.providerId,
   });
+  const creds = resolveSqlCreds(connection);
   return {
     endpoint: {
       _tag: "serviceCmd" as const,

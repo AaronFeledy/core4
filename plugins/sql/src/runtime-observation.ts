@@ -5,6 +5,7 @@ import type { ServiceRuntimeIdentity } from "@lando/sdk/services";
 
 import type { SqlExec } from "./actions.ts";
 import type { SqlCreds } from "./creds.ts";
+import { isSqlBindingFailure } from "./environment.ts";
 import { type SqlFamily, parseObservedVersion, versionCommand } from "./families.ts";
 
 export type SqlRuntimeObservation = {
@@ -93,7 +94,7 @@ export const observeDatabaseVersion = (input: {
   readonly service: string;
   readonly family: SqlFamily;
   readonly creds: SqlCreds;
-  readonly env: Readonly<Record<string, string>>;
+  readonly env: import("@lando/sdk/schema").Environment;
   readonly runtime: ObservedSqlRuntime;
 }) => {
   const query = versionCommand(input.family, input.creds);
@@ -101,12 +102,14 @@ export const observeDatabaseVersion = (input: {
     const result = yield* input.deps
       .exec(input.service, query, input.env)
       .pipe(
-        Effect.mapError(() =>
-          recoveryUnavailable(
-            input.service,
-            "The database family/version query could not run on the inspected runtime.",
-            "Verify the configured database family and credentials, then create a logical export before recovery.",
-          ),
+        Effect.mapError((error) =>
+          isSqlBindingFailure(error)
+            ? error
+            : recoveryUnavailable(
+                input.service,
+                "The database family/version query could not run on the inspected runtime.",
+                "Verify the configured database family and credentials, then create a logical export before recovery.",
+              ),
         ),
       );
     yield* verifyRuntimeState(input.deps, input.service, input.runtime, true);

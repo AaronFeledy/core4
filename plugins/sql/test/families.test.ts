@@ -146,9 +146,9 @@ describe("family command builders", () => {
 
   test("mongodb dump uses MONGO_URI from the environment", () => {
     const argv = dumpCommand("mongodb", creds);
-    expect(argv[0]).toBe("sh");
+    expect(argv[0]).toBe("bash");
     expect(argv[1]).toBe("-c");
-    expect(argv[2]).toContain('mongodump --archive --uri="$MONGO_URI"');
+    expect(argv[2]).toContain("mongodump --archive --config=/dev/fd/3");
     expect(argv[2]).toContain("--db='appdb'");
     expect(argvHasSecret(argv)).toBe(false);
   });
@@ -172,8 +172,8 @@ describe("family command builders", () => {
 
   test("mongodb load uses MONGO_URI from the environment", () => {
     const argv = loadCommand("mongodb", creds);
-    expect(argv[0]).toBe("sh");
-    expect(argv[2]).toContain('mongorestore --archive --uri="$MONGO_URI"');
+    expect(argv[0]).toBe("bash");
+    expect(argv[2]).toContain("mongorestore --archive --config=/dev/fd/3");
     expect(argv[2]).toContain("--nsInclude='appdb.*'");
     expect(argvHasSecret(argv)).toBe(false);
   });
@@ -230,10 +230,15 @@ describe("family command builders", () => {
       "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",
     ]);
     const mongoCount = countCommand("mongodb", creds);
-    expect(mongoCount[0]).toBe("sh");
-    expect(mongoCount[2]).toContain('mongosh "$MONGO_URI" --quiet');
-    expect(mongoCount[2]).not.toContain("--uri");
-    expect(mongoCount[2]).toContain("db.getCollectionNames().length");
+    expect(mongoCount).toEqual([
+      "mongosh",
+      "--nodb",
+      "--quiet",
+      "--eval",
+      "db=connect(process.env.MONGO_URI)",
+      "--eval",
+      "db.getCollectionNames().length",
+    ]);
     expect(countCommand("mssql", creds)).toEqual([
       "/opt/mssql-tools18/bin/sqlcmd",
       "-S",
@@ -274,10 +279,15 @@ describe("family command builders", () => {
       "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO alice;",
     ]);
     const mongoReset = resetCommand("mongodb", creds);
-    expect(mongoReset[0]).toBe("sh");
-    expect(mongoReset[2]).toContain('mongosh "$MONGO_URI" --quiet');
-    expect(mongoReset[2]).not.toContain("--uri");
-    expect(mongoReset[2]).toContain("db.dropDatabase()");
+    expect(mongoReset).toEqual([
+      "mongosh",
+      "--nodb",
+      "--quiet",
+      "--eval",
+      "db=connect(process.env.MONGO_URI)",
+      "--eval",
+      "db.dropDatabase()",
+    ]);
     const mssql = resetCommand("mssql", creds);
     expect(mssql[0]).toBe("/opt/mssql-tools18/bin/sqlcmd");
     expect(mssql).toContain(
