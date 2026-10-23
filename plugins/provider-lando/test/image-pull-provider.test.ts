@@ -249,6 +249,7 @@ const makeApplyService = (compose?: Record<string, unknown>): ServicePlan => ({
 });
 
 const makeApplyPlan = (service: ServicePlan): AppPlan => ({
+  valueModel: 1,
   id: applyAppId,
   name: "Mailpit App",
   slug: "mailpit-app",
@@ -328,13 +329,13 @@ const applyPlan = async (plan: AppPlan, api: PodmanApiClient) => {
 };
 
 describe("provider-lando apply image pull", () => {
-  test("apply forwards secret-only overrides without dropping planned environment", async () => {
+  test("apply forwards the complete resolved environment callback", async () => {
     // Given
     const service = {
       ...makeApplyService(),
       environment: {
         PLAIN: "visible",
-        TOKEN: "${secret:API_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "API_TOKEN" } as const,
         SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
       },
     };
@@ -362,7 +363,8 @@ describe("provider-lando apply image pull", () => {
       Effect.scoped(
         provider.apply(makeApplyPlan(service), {
           reconcile: false,
-          serviceEnvironment: { [service.name]: { TOKEN: "resolved-canary" } },
+          resolveServiceEnvironment: () =>
+            Effect.succeed({ ...service.environment, TOKEN: "resolved-canary" }),
         }),
       ),
     );

@@ -55,6 +55,7 @@ const makePlan = (id: string): AppPlan => {
   };
   return {
     id: appId,
+    valueModel: 1,
     name: id,
     slug: id,
     root: AbsolutePath.make(`/tmp/${id}`),
