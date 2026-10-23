@@ -25,7 +25,11 @@ export type TeardownPlan = {
   readonly name: string;
   readonly refs: ReadonlyArray<AppRef>;
   readonly applied: ResolvedAppTarget | undefined;
-  /** The Landofile hooks for an applied teardown, resolved from the Landofile at the applied root. */
+  /**
+   * The Landofile hooks for an applied teardown, resolved from the Landofile at the applied root.
+   * Undefined for retained recovery: that target is the desired plan itself, so its Landofile
+   * loaded, and the executor runs no authored steps while disposing an unfinished start.
+   */
   readonly authored: LandofileEventPlan | undefined;
   readonly retained: ResolvedAppTarget | undefined;
   readonly target: ResolvedAppTarget | undefined;
