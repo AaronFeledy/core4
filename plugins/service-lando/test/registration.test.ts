@@ -8,6 +8,7 @@ import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
 import { globalServices, services } from "../src/index.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
 
@@ -47,10 +48,9 @@ const registryLayer = Layer.merge(services, PluginRegistryLayer.layer);
 
 const plan = (landofile: LandofileShape) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
-      Effect.provide(registryLayer),
-    ),
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      appPlanner.plan(compileTestLandofile(landofile), providerCapabilities),
+    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(registryLayer)),
   );
 
 describe("@lando/service-lando registration", () => {
@@ -347,8 +347,11 @@ describe("@lando/service-lando registration", () => {
     // Then
     expect(database.environment).toMatchObject({ ACCEPT_EULA: "Y", MSSQL_PID: "Developer" });
     const saPassword = database.environment.SA_PASSWORD;
-    if (saPassword === undefined) throw new Error("mssql SA_PASSWORD missing");
+    if (typeof saPassword !== "string") throw new Error("default mssql SA_PASSWORD must be literal");
     expect(saPassword).toStartWith("Lando!");
+    expect(database.environment.SQLCMDPASSWORD).toBe(saPassword);
+    expect(database.environment.LANDO_DB_USER).toBe("sa");
+    expect(database.environment.LANDO_DB_PASSWORD).toBe(saPassword);
     expect(database.storage).toContainEqual({
       store: "sql-app-mssql-data",
       target: PortablePath.make("/var/opt/mssql"),
@@ -360,8 +363,6 @@ describe("@lando/service-lando registration", () => {
       "localhost,1433",
       "-U",
       "sa",
-      "-P",
-      saPassword,
       "-C",
       "-Q",
       "SELECT 1",

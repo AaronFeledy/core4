@@ -4,6 +4,7 @@ import {
   type PlanMetadata,
   ProviderId,
   type ServiceConfig,
+  type ServiceConnection,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
@@ -18,6 +19,7 @@ import {
   validateAuthoredAppMount,
 } from "@lando/engine/services/planner";
 import { serviceFeatures } from "../../src/features/index.ts";
+import { assertConnectionProjections } from "../../src/services/_connection-helpers.ts";
 
 export interface ComposeServicePlanArgs {
   readonly serviceType: ServiceType;
@@ -49,10 +51,14 @@ const featureDefinitionFor = (
 const composeFeatureFor = (
   featureRef: { readonly id: string; readonly config?: Record<string, unknown> },
   featureOverrides: ReadonlyMap<string, ServiceFeatureDefinition> | undefined,
+  connection: ServiceConnection | undefined,
 ): ComposeServiceFeature => ({
   id: featureRef.id,
   ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
-  definition: featureDefinitionFor(featureRef.id, featureOverrides),
+  definition: {
+    ...featureDefinitionFor(featureRef.id, featureOverrides),
+    apply: (ctx) => featureDefinitionFor(featureRef.id, featureOverrides).apply({ ...ctx, connection }),
+  },
 });
 
 export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<ServicePlan> => {
@@ -75,8 +81,9 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
   const baseDefaultIds = baseDefaultFeatureIds(resolution.base).filter((id) => !resolutionFeatureIds.has(id));
   const defaultFeatures = baseDefaultIds.map((id) => featureDefinitionFor(id, args.featureOverrides));
   const features = resolution.features.map((featureRef) =>
-    composeFeatureFor(featureRef, args.featureOverrides),
+    composeFeatureFor(featureRef, args.featureOverrides, resolution.connection),
   );
+
   const rawPlan = await Effect.runPromise(
     composeService({
       base: {
@@ -98,6 +105,8 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
     }),
   );
 
+  if (resolution.connection !== undefined)
+    assertConnectionProjections(resolution.connection, rawPlan.environment);
   if (args.applyAuthoredWrappers === false) return rawPlan;
   const appMountError = validateAuthoredAppMount(args.service, args.appRoot, serviceName);
   if (appMountError !== undefined) throw appMountError;

@@ -5,6 +5,7 @@ import { Schema } from "effect";
 
 import {
   AbsolutePath,
+  type Environment,
   type LogSource,
   LogSourceId,
   PortablePath,
@@ -20,6 +21,7 @@ import {
 } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
+import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -62,7 +64,7 @@ const mariadbCreds = (
   serviceName: string,
   service: {
     readonly creds?: ServiceCreds | undefined;
-    readonly environment?: Readonly<Record<string, string>> | undefined;
+    readonly environment?: Environment | undefined;
     readonly database?: string | undefined;
   },
 ): ServiceCreds => {
@@ -94,15 +96,14 @@ const mariadbCreds = (
 const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  const creds = mariadbCreds(ctx, ctx.serviceName, service);
-  assertListenerConfig(service, MARIADB_LISTENER);
-  const port = plannedPort(service, MARIADB_LISTENER);
+  const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, {
     ...familyEnvFor("mariadb", creds),
     ...landoDbEnvFor(creds, port),
     MYSQL_TCP_PORT: String(port),
+    MYSQL_PWD: creds.password,
   });
   ctx.addStorage({
     store: `${appName}-mariadb-data`,
@@ -112,7 +113,7 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   ctx.setHealthcheck(
     commandHealthcheck(
-      ["sh", "-c", `mariadb-admin ping -h 127.0.0.1 -P ${port} -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent`],
+      ["mariadb-admin", "ping", "-h", "127.0.0.1", "-P", String(port), "-u", creds.user, "--silent"],
       60,
     ),
   );
@@ -148,11 +149,13 @@ export const mariadbServiceType: ServiceType = {
   identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) => {
-    const creds = mariadbCreds(input, input.name, input.service);
     return serviceTypeResolve("mariadb", "mariadb service type failed to resolve", () => {
+      const creds = mariadbCreds(input, input.name, input.service);
+      const port = plannedPort(input.service, MARIADB_LISTENER);
       assertListenerConfig(input.service, MARIADB_LISTENER);
       return {
         base: "lando",
+        connection: { family: "mariadb", creds, port },
         normalizedConfig: {
           ...input.service,
           type: "mariadb",
@@ -169,16 +172,7 @@ export const mariadbServiceType: ServiceType = {
             description: "Open the MariaDB client for this service.",
             dir: PortablePath.make("/"),
             service: input.name,
-            cmd: [
-              "mariadb",
-              "-h",
-              "127.0.0.1",
-              "-P",
-              String(plannedPort(input.service, MARIADB_LISTENER)),
-              "-u",
-              creds.user,
-              creds.database,
-            ],
+            cmd: ["mariadb", "-h", "127.0.0.1", "-P", String(port), "-u", creds.user, creds.database],
             env: { MYSQL_PWD: creds.password },
           },
         },

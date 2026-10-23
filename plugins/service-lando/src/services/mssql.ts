@@ -1,5 +1,4 @@
 import { sha256Hex } from "@lando/sdk/digest";
-import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 
 import { Effect, Schema } from "effect";
 
@@ -15,6 +14,7 @@ import {
 } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
+import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -39,8 +39,8 @@ const defaultRootPassword = (appName: string, serviceName: string): string =>
   `Lando!${sha256Hex(`${appName}:${serviceName}:root`).slice(0, 24)}`;
 
 const defaultCreds = (appName: string, serviceName: string) => ({
-  user: "lando",
-  password: DEFAULT_PASSWORD,
+  user: "sa",
+  password: defaultRootPassword(appName, serviceName),
   database: appName,
   rootPassword: defaultRootPassword(appName, serviceName),
 });
@@ -54,14 +54,12 @@ const sqlcmdToolingArgv = (port: number): readonly string[] => [
   "-C",
 ];
 
-const sqlcmdHealthcheckArgv = (rootPassword: string, port: number): readonly string[] => [
+const sqlcmdHealthcheckArgv = (port: number): readonly string[] => [
   SQLCMD,
   "-S",
   `localhost,${port}`,
   "-U",
   "sa",
-  "-P",
-  rootPassword,
   "-C",
   "-Q",
   "SELECT 1",
@@ -71,17 +69,9 @@ const hostRunsMssqlWithoutEmulation = (arch: string): boolean => AMD64_HOST_ARCH
 
 const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  assertListenerConfig(service, MSSQL_LISTENER);
-  const port = plannedPort(service, MSSQL_LISTENER);
+  const { creds, port } = connectionFor(ctx);
   const appName = appNameFor(ctx);
   const environment = service.environment ?? {};
-  const creds = resolveServiceCreds({
-    family: "mssql",
-    environment,
-    defaults: defaultCreds(appName, ctx.serviceName),
-    ...(service.creds === undefined ? {} : { authored: service.creds }),
-  });
-  const rootPassword = creds.rootPassword ?? defaultRootPassword(appName, ctx.serviceName);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["2022"] });
   ctx.addEnv("ACCEPT_EULA", environment.ACCEPT_EULA ?? "Y");
@@ -97,7 +87,7 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port, protocol: "tcp" });
-  ctx.setHealthcheck(commandHealthcheck([...sqlcmdHealthcheckArgv(rootPassword, port)], 30));
+  ctx.setHealthcheck(commandHealthcheck([...sqlcmdHealthcheckArgv(port)], 30));
 
   applyAuthoredProcessFields(ctx);
 };
@@ -141,17 +131,18 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
 
     const appName = appNameFor(input);
     const authoredEnv = input.service.environment ?? {};
-    const creds = resolveServiceCreds({
-      family: "mssql",
-      environment: authoredEnv,
-      defaults: defaultCreds(appName, input.name),
-      ...(input.service.creds === undefined ? {} : { authored: input.service.creds }),
-    });
-    const rootPassword = creds.rootPassword ?? defaultRootPassword(appName, input.name);
     return serviceTypeResolve(id, "mssql service type failed to resolve", () => {
+      const creds = resolveServiceCreds({
+        family: "mssql",
+        environment: authoredEnv,
+        defaults: defaultCreds(appName, input.name),
+        ...(input.service.creds === undefined ? {} : { authored: input.service.creds }),
+      });
+      const port = plannedPort(input.service, MSSQL_LISTENER);
       assertListenerConfig(input.service, MSSQL_LISTENER);
       return {
         base: "lando",
+        connection: { family: "mssql", creds, port },
         normalizedConfig: {
           ...input.service,
           type: "mssql",
@@ -166,8 +157,8 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
         tooling: {
           sqlcmd: {
             service: input.name,
-            cmd: [...sqlcmdToolingArgv(plannedPort(input.service, MSSQL_LISTENER))],
-            env: { SQLCMDPASSWORD: rootPassword },
+            cmd: [...sqlcmdToolingArgv(port)],
+            env: { SQLCMDPASSWORD: creds.password },
           },
         },
       };

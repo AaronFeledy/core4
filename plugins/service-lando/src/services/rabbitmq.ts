@@ -7,6 +7,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import {
   ServiceConfigIssue,
   commandHealthcheck,
+  literalEnvironmentValue,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
@@ -33,7 +34,11 @@ const assertDistributionPort = (service: ServiceConfig): void => {
   const port = plannedPort(service, RABBITMQ_LISTENER);
   const authored = service.environment?.RABBITMQ_DIST_PORT;
   const distribution =
-    authored === undefined ? port + 20000 : /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
+    authored === undefined
+      ? port + 20000
+      : typeof authored === "string" && /^[0-9]+$/.test(authored)
+        ? Number(authored)
+        : Number.NaN;
   if (authored === undefined && distribution > 65535) {
     throw new ServiceConfigIssue(
       ["port"],
@@ -136,7 +141,13 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
           rabbitmqctl: { service: input.name, cmd: "rabbitmqctl" },
           rabbitmqadmin: {
             service: input.name,
-            cmd: ["rabbitmqadmin", "--username", managementUser, "--password", managementPass],
+            cmd: [
+              "rabbitmqadmin",
+              "--username",
+              literalEnvironmentValue(managementUser, ["environment", "RABBITMQ_DEFAULT_USER"]),
+              "--password",
+              literalEnvironmentValue(managementPass, ["environment", "RABBITMQ_DEFAULT_PASS"]),
+            ],
           },
         },
       };

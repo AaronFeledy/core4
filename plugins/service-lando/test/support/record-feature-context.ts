@@ -1,7 +1,7 @@
 import type { ServiceFeatureContext } from "@lando/sdk/services";
 
 export const recordFeatureContext = (
-  input: Pick<ServiceFeatureContext, "serviceType" | "normalizedConfig" | "config">,
+  input: Pick<ServiceFeatureContext, "serviceType" | "normalizedConfig" | "config" | "connection">,
 ) => {
   const calls: unknown[][] = [];
   const record =

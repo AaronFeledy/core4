@@ -1,6 +1,13 @@
-import { Effect, Schema } from "effect";
+import { concatenateEnvironmentValues, encodeEnvironmentComponent } from "@lando/sdk/expressions";
+import { Schema } from "effect";
 
-import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
+import {
+  type EnvironmentValue,
+  PortNumber,
+  PortablePath,
+  type ServiceConfig,
+  type ServiceCreds,
+} from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
@@ -8,9 +15,11 @@ import {
   loopbackTcpHealthcheck,
   rootIdentity,
   serviceFeatureApply,
+  serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
+import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -48,14 +57,21 @@ const credsFor = (
   });
 };
 
-const mongoUri = (creds: ServiceCreds, port: number): string =>
-  `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@127.0.0.1:${port}/${encodeURIComponent(creds.database)}?authSource=admin`;
+const mongoUri = (creds: ServiceCreds, port: number): EnvironmentValue =>
+  concatenateEnvironmentValues([
+    "mongodb://",
+    encodeEnvironmentComponent(creds.user),
+    ":",
+    encodeEnvironmentComponent(creds.password),
+    `@127.0.0.1:${port}/`,
+    encodeEnvironmentComponent(creds.database),
+    "?authSource=admin",
+  ]);
 
 const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  const port = service.port ?? DEFAULT_PORT;
-  const creds = credsFor(ctx, service);
+  const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, {
@@ -108,26 +124,35 @@ export const mongodbServiceType: ServiceType = {
   identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) => {
-    const creds = credsFor(input, input.service);
-    return Effect.succeed({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: "mongodb",
-        creds,
-        environment: {
-          ...input.service.environment,
-          ...familyEnvFor(FAMILY, creds),
+    return serviceTypeResolve("mongodb", "mongodb service type failed to resolve", () => {
+      const creds = credsFor(input, input.service);
+      const port = PortNumber.make(input.service.port ?? DEFAULT_PORT);
+      return {
+        base: "lando",
+        connection: { family: "mongodb", creds, port },
+        normalizedConfig: {
+          ...input.service,
+          type: "mongodb",
+          creds,
+          environment: {
+            ...input.service.environment,
+            ...familyEnvFor(FAMILY, creds),
+          },
         },
-      },
-      features: [{ id: MONGODB_FEATURE_ID }],
-      tooling: {
-        mongosh: {
-          service: input.name,
-          cmd: ["sh", "-c", 'exec mongosh "$MONGO_URI" "$@"', "mongosh"],
-          env: { MONGO_URI: mongoUri(creds, input.service.port ?? DEFAULT_PORT) },
+        features: [{ id: MONGODB_FEATURE_ID }],
+        tooling: {
+          mongosh: {
+            service: input.name,
+            cmd: [
+              "sh",
+              "-c",
+              'for arg do case "$arg" in --eval|--eval=*|--json|--json=*|--shell|-f|--file|--file=*|*.js|*.mongodb) exec mongosh --nodb --eval "db=connect(process.env.MONGO_URI)" "$@";; esac; done; exec mongosh --nodb --eval "db=connect(process.env.MONGO_URI)" --shell "$@"',
+              "mongosh",
+            ],
+            env: { MONGO_URI: mongoUri(creds, port) },
+          },
         },
-      },
+      };
     });
   },
 };

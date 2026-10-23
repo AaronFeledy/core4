@@ -23,8 +23,6 @@ import {
   type AuthoredHostsWire,
   type PmaCreds,
   authoredPmaCreds,
-  credentialsFor,
-  portsForHosts,
   resolveAuthoredHosts,
 } from "./_phpmyadmin-hosts.ts";
 import { assertListenerConfig, plannedPort } from "./_port-helpers.ts";
@@ -135,11 +133,11 @@ const addSiblingDependencies = (
 
 const applyPmaEnv = (
   mutator: AppFeatureServiceMutators,
-  target: { readonly hosts: ReadonlyArray<string>; readonly siblings: ReadonlyArray<AppFeatureServiceView> },
+  target: { readonly hosts: ReadonlyArray<string>; readonly ports: readonly number[] },
   creds: PmaCreds,
 ): void => {
   mutator.addEnv("PMA_HOSTS", target.hosts.join(","));
-  mutator.addEnv("PMA_PORTS", portsForHosts(target.hosts, target.siblings).join(","));
+  mutator.addEnv("PMA_PORTS", target.ports.join(","));
   mutator.addEnv("PMA_USER", creds.user);
   mutator.addEnv("PMA_PASSWORD", creds.password);
 };
@@ -151,8 +149,7 @@ const applyPhpMyAdminWire = (ctx: AppFeatureContext): Effect.Effect<void, PhpMyA
   const authored = new Map<string, AuthoredHostsOk>();
   for (const view of ctx.selected) {
     if (view.serviceType !== "phpmyadmin") continue;
-    const hosts = authoredHosts(view.normalizedConfig);
-    if (hosts === undefined) continue;
+    const hosts = authoredHosts(view.normalizedConfig) ?? siblings.map((sibling) => sibling.serviceName);
     const resolved = resolveAuthoredHosts({
       hosts,
       siblings,
@@ -174,16 +171,10 @@ const applyPhpMyAdminWire = (ctx: AppFeatureContext): Effect.Effect<void, PhpMyA
     if (mutator.service.serviceType !== "phpmyadmin") return;
     const override = authored.get(mutator.service.serviceName);
     if (override !== undefined) {
-      applyPmaEnv(mutator, { hosts: override.hosts, siblings: override.matched }, override.creds);
+      applyPmaEnv(mutator, override, override.creds);
       addSiblingDependencies(mutator, override.matched);
       return;
     }
-    applyPmaEnv(
-      mutator,
-      { hosts: siblings.map((sibling) => sibling.serviceName), siblings },
-      credentialsFor(siblings),
-    );
-    addSiblingDependencies(mutator, siblings);
   });
   return Effect.void;
 };

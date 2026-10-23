@@ -13,6 +13,7 @@ import {
 } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
+import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -65,9 +66,7 @@ const credsFor = (input: {
 const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  const creds = credsFor({ appName: ctx.appName, appRoot: ctx.appRoot, service });
-  assertListenerConfig(service, POSTGRES_LISTENER);
-  const port = plannedPort(service, POSTGRES_LISTENER);
+  const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, familyEnvFor("postgres", creds));
@@ -120,11 +119,13 @@ export const postgresServiceType: ServiceType = {
   identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) => {
-    const creds = credsFor(input);
     return serviceTypeResolve("postgres", "postgres service type failed to resolve", () => {
+      const creds = credsFor(input);
+      const port = plannedPort(input.service, POSTGRES_LISTENER);
       assertListenerConfig(input.service, POSTGRES_LISTENER);
       return {
         base: "lando",
+        connection: { family: "postgres", creds, port },
         normalizedConfig: {
           ...input.service,
           type: "postgres",
@@ -140,15 +141,7 @@ export const postgresServiceType: ServiceType = {
             description: "Open the PostgreSQL client for this service.",
             dir: PortablePath.make("/"),
             service: input.name,
-            cmd: [
-              "psql",
-              "-p",
-              String(plannedPort(input.service, POSTGRES_LISTENER)),
-              "-U",
-              creds.user,
-              "-d",
-              creds.database,
-            ],
+            cmd: ["psql", "-p", String(port), "-U", creds.user, "-d", creds.database],
             env: { PGPASSWORD: creds.password },
           },
         },

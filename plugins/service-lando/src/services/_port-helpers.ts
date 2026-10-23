@@ -18,19 +18,21 @@ interface Listener {
   readonly reserved?: readonly { readonly port: number; readonly use: string }[];
 }
 
-export const plannedPort = (service: ServiceConfig, listener: Listener): number =>
-  service.port ?? listener.port;
+export const plannedPort = (service: ServiceConfig, listener: Listener): PortNumber =>
+  PortNumber.make(service.port ?? listener.port);
 
 export const assertListenerConfig = (service: ServiceConfig, listener: Listener): void => {
   const port = plannedPort(service, listener);
   const variable = listener.variable;
   const authored = variable === undefined ? undefined : service.environment?.[variable];
   if (authored !== undefined && variable !== undefined) {
-    const value = /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
+    const value = typeof authored === "string" && /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
     if (!Number.isInteger(value) || value < 1 || value > 65_535) {
       throw new ServiceConfigIssue(
         ["environment", variable],
-        `${variable} is ${JSON.stringify(authored)}, which is not a TCP port number.`,
+        typeof authored === "string"
+          ? `${variable} is ${JSON.stringify(authored)}, which is not a TCP port number.`
+          : `${variable} requires a literal TCP port number.`,
         `Remove it and set port: instead; Lando sets ${variable} from port:.`,
       );
     }

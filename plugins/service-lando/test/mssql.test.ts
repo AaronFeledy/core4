@@ -158,14 +158,15 @@ describe("mssql ServiceType", () => {
           MSSQL_PID: "Developer",
           SA_PASSWORD: rootPassword,
         });
-        expect(plan.environment.MSSQL_SA_PASSWORD).toBeUndefined();
-        expect(plan.environment.LANDO_DB_USER).toBe("lando");
-        expect(plan.environment.LANDO_DB_PASSWORD).toBe("lando");
+        expect(plan.environment.MSSQL_SA_PASSWORD).toBe(rootPassword);
+        expect(plan.environment.SQLCMDPASSWORD).toBe(rootPassword);
+        expect(plan.environment.LANDO_DB_USER).toBe("sa");
+        expect(plan.environment.LANDO_DB_PASSWORD).toBe(rootPassword);
         expect(plan.environment.LANDO_DB_NAME).toBe("myapp");
         expect(plan.environment.LANDO_DB_ROOT_PASSWORD).toBe(rootPassword);
         expect(plan.healthcheck).toEqual({
           kind: "command",
-          command: [SQLCMD, "-S", "localhost,1433", "-U", "sa", "-P", rootPassword, "-C", "-Q", "SELECT 1"],
+          command: [SQLCMD, "-S", "localhost,1433", "-U", "sa", "-C", "-Q", "SELECT 1"],
           intervalSeconds: 10,
           timeoutSeconds: 5,
           retries: 5,
@@ -178,8 +179,8 @@ describe("mssql ServiceType", () => {
         const rootPassword = defaultRootPassword("myapp", "database");
 
         expect(resolution.normalizedConfig.creds).toEqual({
-          user: "lando",
-          password: "lando",
+          user: "sa",
+          password: rootPassword,
           database: "myapp",
           rootPassword,
         });
@@ -198,8 +199,8 @@ describe("mssql ServiceType", () => {
 
       test("authored creds win over defaults", async () => {
         const creds = {
-          user: "appuser",
-          password: "app-secret",
+          user: "sa",
+          password: "pa'ss; rm -rf /",
           database: "appdb",
           rootPassword: "pa'ss; rm -rf /",
         };
@@ -223,8 +224,6 @@ describe("mssql ServiceType", () => {
           "localhost,1433",
           "-U",
           "sa",
-          "-P",
-          creds.rootPassword,
           "-C",
           "-Q",
           "SELECT 1",
@@ -255,8 +254,6 @@ describe("mssql ServiceType", () => {
           "localhost,1433",
           "-U",
           "sa",
-          "-P",
-          saPassword,
           "-C",
           "-Q",
           "SELECT 1",

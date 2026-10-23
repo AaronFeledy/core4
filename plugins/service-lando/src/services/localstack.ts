@@ -3,7 +3,12 @@ import { Effect, Schema } from "effect";
 import { PortablePath } from "@lando/sdk/schema";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  commandHealthcheck,
+  literalEnvironmentValue,
+  rootIdentity,
+  serviceFeatureApply,
+} from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -33,7 +38,9 @@ const gatewayListenForPort = (authored: string | undefined, port: number): strin
 
 const applyLocalStackFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const authoredGateway = service.environment?.GATEWAY_LISTEN;
+  const gateway = service.environment?.GATEWAY_LISTEN;
+  const authoredGateway =
+    gateway === undefined ? undefined : literalEnvironmentValue(gateway, ["environment", "GATEWAY_LISTEN"]);
   const port =
     service.port ??
     (authoredGateway === undefined ? undefined : portFromGatewayListen(authoredGateway)) ??

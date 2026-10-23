@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
+import { serviceTypes } from "../src/index.ts";
 
 import { resolveBindSource } from "../src/services/_volume-helpers.ts";
 import { MARIADB_CONFIG_TARGET, mariadbServiceFeature } from "../src/services/mariadb.ts";
@@ -28,10 +29,21 @@ describe.each([
   ["postgres", postgresServiceFeature, POSTGRES_CONFIG_TARGET],
   ["mongodb", mongodbServiceFeature, MONGODB_CONFIG_TARGET],
 ] as const)("%s server config mount", (serviceType, feature, target) => {
+  const type = serviceTypes.get(serviceType);
+  if (type === undefined) throw new Error("missing service type");
+  const { connection } = Effect.runSync(
+    type.resolve({
+      name: "web",
+      service: { type: serviceType },
+      appRoot: "/srv/apps/myapp",
+      metadata: { resolvedAt: "2026-10-23T00:00:00Z", source: "/srv/apps/myapp/.lando.yml", runtime: 4 },
+    }),
+  );
   test.each([undefined, ""])("omits the mount and config startup when server is %p", (server) => {
     // Given
     const { ctx, calls } = recordFeatureContext({
       serviceType,
+      connection,
       normalizedConfig: { config: server === undefined ? {} : { server } },
       config: {},
     });
@@ -50,6 +62,7 @@ describe.each([
     // Given
     const { ctx, calls } = recordFeatureContext({
       serviceType,
+      connection,
       normalizedConfig: { config: { server } },
       config: {},
     });
