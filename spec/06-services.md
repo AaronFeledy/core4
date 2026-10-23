@@ -339,9 +339,13 @@ Catalog membership is frozen by this specification; additions or removals requir
 
 #### 6.12.4 The `creds:` schema
 
-`ServiceCreds` contains `user`, `password`, `database`, and optional `rootPassword`. `mariadb`, `mysql`, `postgres`, `mongodb`, and opted-in plugin types share this contract.
+`ServiceCreds` contains literal `user` and `database` plus `password` and optional `rootPassword` as `EnvironmentValue` (§7.3.1). `mariadb`, `mysql`, `postgres`, `mongodb`, `mssql`, and opted-in plugin types share this contract.
 
-Types provide deterministic defaults resolved at planning; authored `creds:` fields win. Values appear in `service.creds.*`, `services.<name>.creds.*`, `LANDO_DB_*`, and `ServiceInfo.creds`. Structured output redacts password fields by default; a type MAY mark additional fields secret. Free-text output follows §3.7, which prints published default credentials as-is.
+A database type resolves its connection exactly once and returns it through `ServiceTypeResolution` as `ServiceConnection { family, creds, port }`; the planner persists it on `ServicePlan.connection` and exposes it read-only to service and app features. Defaults fill only missing facts. Effective `creds` and any authored native alias (`POSTGRES_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `MONGO_INITDB_ROOT_PASSWORD`, `SA_PASSWORD`, and siblings) MUST agree, and aliases MUST agree with each other, compared as descriptors, never as decrypted values; a conflict fails planning naming both paths without values. After feature composition the planner checks that type-owned projections still agree with the connection.
+
+Initialization environment, `LANDO_DB_*` metadata, generated client environment (`PGPASSWORD` and equivalents), SQL operations, `ServiceInfo.creds`, and the `services.<name>.creds.*` and `services.<name>.port` expression scopes derive from the connection facts. Consumers MUST NOT rescrape the plan environment or apply SQL-specific credential defaults. Projections are typed and deliberate: a bound password stays a `SecretRef`/`BoundText` through every native key, metadata variable, client environment, and URL template, and bundled URL templates use the connection `port` with explicit `url.encodeComponent()` on the password. MongoDB dump/restore pass credentials through a bounded anonymous-fd config, and MSSQL clients read the password from projected environment; no bundled tooling places a secret in argv.
+
+`ServiceInfo.creds` is the string-only `ServiceCredsDisplay`, redacted without any store read. Structured output redacts password fields by default; a type MAY mark additional fields secret. Free-text output follows §3.7, which prints published default credentials as-is. Clients of an existing database use the applied connection fact and resolve references afresh per operation; Lando does not reconcile a changed store value against a running database or rotate credentials.
 
 #### 6.12.5 PHP service depth
 
