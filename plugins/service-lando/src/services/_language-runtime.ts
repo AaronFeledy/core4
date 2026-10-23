@@ -2,7 +2,13 @@ import { Schema } from "effect";
 
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
-import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import {
+  ServiceConfigIssue,
+  addEnvRecord,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
@@ -46,8 +52,10 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
   const validateFramework = (raw: string | undefined): F => {
     const framework = spec.frameworks.find((candidate) => candidate === (raw ?? "none"));
     if (framework !== undefined) return framework;
-    throw new Error(
-      `Unsupported ${spec.displayName} framework "${raw}". Set framework to one of: ${spec.frameworks.join(", ")} (got ${raw}).`,
+    throw new ServiceConfigIssue(
+      ["framework"],
+      `Unsupported ${spec.displayName} framework "${raw}".`,
+      `Set framework to one of: ${spec.frameworks.join(", ")} (got ${raw}).`,
     );
   };
 
@@ -57,8 +65,10 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     const requested = declaredType.slice(prefix.length);
     const version = spec.versions.find((candidate) => candidate === requested);
     if (version !== undefined) return version;
-    throw new Error(
-      `Unsupported ${spec.displayName} version "${requested}". Set type to one of: ${spec.versions.map((v) => `${prefix}${v}`).join(", ")} (got ${prefix}${requested}).`,
+    throw new ServiceConfigIssue(
+      ["type"],
+      `Unsupported ${spec.displayName} version "${requested}".`,
+      `Set type to one of: ${spec.versions.map((v) => `${prefix}${v}`).join(", ")} (got ${prefix}${requested}).`,
     );
   };
 

@@ -39,7 +39,7 @@ export type UpdateChecksumSignatureVerifier = (
 ) => Effect.Effect<void, unknown, ProcessRunner>;
 
 const UPDATE_COSIGN_CERTIFICATE_IDENTITY_REGEXP =
-  "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$";
+  "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$";
 
 const verifyCosignBlob = ({
   blobBytes,

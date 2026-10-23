@@ -102,10 +102,7 @@ const toSetupRouter = (
 const resolveGlobalRouter: Effect.Effect<RouterConfig | undefined> = Effect.gen(function* () {
   const configOpt = yield* Effect.serviceOption(ConfigService);
   if (configOpt._tag === "None") return undefined;
-  return yield* configOpt.value.load.pipe(
-    Effect.map((config) => config.router),
-    Effect.catch(() => Effect.succeed(undefined)),
-  );
+  return yield* configOpt.value.load.pipe(Effect.map((config) => config.router));
 });
 
 export const resolveRouterConfigForApp = Effect.fnUntraced(function* (

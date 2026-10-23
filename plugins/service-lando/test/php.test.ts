@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { Schema } from "effect";
 
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
@@ -68,7 +69,12 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
     () => undefined,
     (error: unknown) => {
       rejected = true;
-      const message = error instanceof Error ? error.message : String(error);
+      const message =
+        error instanceof ServiceTypeError
+          ? [error.message, ...(error.issues ?? []).map((issue) => issue.suggestion ?? "")].join(" ")
+          : error instanceof Error
+            ? error.message
+            : String(error);
       expect(message).toMatch(pattern);
     },
   );
@@ -223,15 +229,16 @@ describe("php:8.3 ServiceType", () => {
   });
 
   test("rejects unsupported PHP versions with remediation", async () => {
-    await expectRejectsToThrow(
-      composePhpPlan(php83ServiceType, { type: "php:9.0" }),
-      /Unsupported PHP version "9.0"\./,
-    );
-
-    await expectRejectsToThrow(
-      composePhpPlan(php83ServiceType, { type: "php:9.0" }),
-      /Set type to one of: php:8.1, php:8.2, php:8.3, php:8.4, php:8.5, php:8.6/,
-    );
+    await expect(composePhpPlan(php83ServiceType, { type: "php:9.0" })).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["type"],
+          message: 'Unsupported PHP version "9.0".',
+          suggestion:
+            "Set type to one of: php:8.1, php:8.2, php:8.3, php:8.4, php:8.5, php:8.6 (got php:9.0).",
+        },
+      ],
+    });
   });
 
   test("rejects versions outside the supported catalog", async () => {

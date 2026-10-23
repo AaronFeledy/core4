@@ -291,10 +291,16 @@ describe("buildCatalog", () => {
 
     expect(catalog.tools.map((tool) => tool.toolId)).toEqual(["app:config:get", "app:config:view"]);
     expect(catalog.tools.find((tool) => tool.toolId === "app:config:get")?.inputSchema).toMatchObject({
-      properties: { args: { required: ["key"] }, flags: { properties: {} } },
+      properties: {
+        args: { properties: { key: { type: "string" } } },
+        flags: { properties: { source: { enum: ["raw", "merged", "resolved"] }, path: { type: "string" } } },
+      },
     });
     expect(catalog.tools.find((tool) => tool.toolId === "app:config:view")?.inputSchema).toMatchObject({
-      properties: { args: { properties: {} }, flags: { properties: {} } },
+      properties: {
+        args: { properties: {} },
+        flags: { properties: { source: { enum: ["raw", "merged", "resolved"] }, path: { type: "string" } } },
+      },
     });
   });
 });

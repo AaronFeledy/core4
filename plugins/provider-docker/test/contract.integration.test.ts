@@ -38,6 +38,7 @@ import {
   runProviderContract,
   runProviderContractMatrix,
   runProviderDataPlaneContract,
+  runProviderStartRetentionContract,
   runProviderVolumeCreationContract,
 } from "@lando/sdk/test";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
@@ -439,7 +440,8 @@ const makeFakeApi = () => {
           return { status: existed ? 204 : 404, body: "" };
         }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const key = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const name = existing.has(key) ? key : key.replace(/-id$/u, "");
           if (!existing.has(name)) {
             return { status: 404, body: "" };
           }
@@ -485,7 +487,13 @@ const makeFakeApi = () => {
         return Stream.fromIterable([attachFrame(1, "exec-ok\n")]);
       }
       if (request.path.includes("/logs?")) {
-        return Stream.fromIterable([attachFrame(1, "2026-05-17T12:00:00.000Z ready\n")]);
+        return Stream.fromIterable([
+          attachFrame(1, "2026-05-17T12:00:00.000Z ready\n"),
+          attachFrame(1, "2026-05-17T12:00:00.000Z lando-contract-split-"),
+          attachFrame(1, "2026-05-17T12:00:00.000Z line\n"),
+          attachFrame(1, `2026-05-17T12:00:00.000Z ${"L".repeat(16_384)}`),
+          attachFrame(1, `2026-05-17T12:00:00.000Z ${"L".repeat(3_616)}\n`),
+        ]);
       }
       if (request.path.startsWith("/containers/") && request.path.includes("/archive?")) {
         const name = decodeURIComponent(
@@ -784,12 +792,40 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
   const configs = new Map<string, unknown>();
   const running = new Set<string>();
   const existing = new Set<string>();
+  const containerIds = new Map<string, string>();
+  const idToName = new Map<string, string>();
+  let createGeneration = 0;
   const volumes = hooks.volumes ?? new Set<string>();
   const volumeLabels = new Map<string, Readonly<Record<string, string>>>(
     [...volumes].map((name) => [name, { "dev.lando.volume-owner": "/tmp/lando-sdk-contract-myapp" }]),
   );
   const images = new Set<string>();
   const calls: DockerHttpRequest[] = [];
+  const failStartFor = new Set<string>(hooks.failStartFor ?? []);
+  let abortAfterStarts = 0;
+  let abortController: AbortController | undefined;
+  let successfulStarts = 0;
+
+  const resolveContainerName = (key: string): string => {
+    const stripped = key.replace(/-id$/u, "");
+    if (existing.has(key)) return key;
+    if (existing.has(stripped)) return stripped;
+    return idToName.get(key) ?? key;
+  };
+
+  const retentionHooks = {
+    setFailStartFor: (containerNames: ReadonlyArray<string>) => {
+      failStartFor.clear();
+      for (const name of containerNames) failStartFor.add(name);
+    },
+    setAbortAfterStarts: (count: number, controller?: AbortController) => {
+      abortAfterStarts = count;
+      abortController = controller;
+      successfulStarts = 0;
+    },
+    hasNetwork: (networkName: string) => networks.has(networkName),
+    hasVolume: (volumeName: string) => volumes.has(volumeName),
+  };
 
   const api: DockerApiClient = {
     info: Effect.succeed({}),
@@ -855,13 +891,19 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
           if (existing.has(createdName)) {
             return { status: 409, body: "already exists" };
           }
+          createGeneration += 1;
+          const id = `${createdName}-g${createGeneration}`;
           existing.add(createdName);
           configs.set(createdName, request.body);
-          return { status: 201, body: "{}" };
+          containerIds.set(createdName, id);
+          idToName.set(id, createdName);
+          return { status: 201, body: JSON.stringify({ Id: id }) };
         }
         if (request.path.endsWith("/start")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/start".length));
-          if (hooks.failStartFor?.has(name) === true) {
+          const name = resolveContainerName(
+            decodeURIComponent(request.path.slice("/containers/".length, -"/start".length)),
+          );
+          if (failStartFor.has(name)) {
             return {
               status: 500,
               body: hooks.startFailureBody ?? `forced start failure for ${name}`,
@@ -871,33 +913,41 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
             return { status: 304, body: "" };
           }
           running.add(name);
+          successfulStarts += 1;
+          if (abortAfterStarts > 0 && successfulStarts >= abortAfterStarts && abortController !== undefined) {
+            abortController.abort();
+          }
           return { status: 204, body: "" };
         }
         if (request.path.endsWith("/stop")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length)).replace(
-            /-id$/u,
-            "",
+          const name = resolveContainerName(
+            decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length)),
           );
           running.delete(name);
           return { status: 204, body: "" };
         }
         if (request.path.endsWith("?force=true") && request.method === "DELETE") {
-          const name = decodeURIComponent(
-            request.path.slice("/containers/".length, -"?force=true".length),
-          ).replace(/-id$/u, "");
+          const name = resolveContainerName(
+            decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length)),
+          );
+          const id = containerIds.get(name);
           const existed = existing.delete(name);
           running.delete(name);
+          containerIds.delete(name);
+          if (id !== undefined) idToName.delete(id);
           return { status: existed ? 204 : 404, body: "" };
         }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const name = resolveContainerName(
+            decodeURIComponent(request.path.slice("/containers/".length, -"/json".length)),
+          );
           if (!existing.has(name)) {
             return { status: 404, body: "" };
           }
           return {
             status: 200,
             body: JSON.stringify({
-              Id: `${name}-id`,
+              Id: containerIds.get(name) ?? `${name}-id`,
               Config: configs.get(name),
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
               NetworkSettings: {
@@ -909,7 +959,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
         if (request.path.startsWith("/containers/json?")) {
           // Handle container list for discovery
           const containers = Array.from(existing).map((name) => ({
-            Id: `${name}-id`,
+            Id: containerIds.get(name) ?? `${name}-id`,
             Names: [`/${name}`],
             State: running.has(name) ? "running" : "exited",
             Status: running.has(name) ? "Up 5 minutes" : "Exited (0) 2 minutes ago",
@@ -931,7 +981,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
     },
   };
 
-  return { api, calls, running, existing, volumes, volumeLabels };
+  return { api, calls, running, existing, volumes, volumeLabels, containerIds, retentionHooks };
 };
 
 const dbServiceName = ServiceName.make("db");
@@ -1205,14 +1255,14 @@ describe("provider-docker RuntimeProvider contract", () => {
       },
     ]);
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
-    expect(logs).toEqual([
-      {
+    expect(logs).toEqual(
+      ["ready", "lando-contract-split-line", "L".repeat(20_000)].map((line) => ({
         service: serviceName,
         stream: "stdout",
-        line: "ready",
+        line,
         timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
-      },
-    ]);
+      })),
+    );
     expect(
       fake.calls.find((call) => call.path === "/containers/create?name=lando-myapp-web")?.body,
     ).toMatchObject({
@@ -1768,14 +1818,14 @@ describe("provider-docker RuntimeProvider contract", () => {
       },
     ]);
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
-    expect(logs).toEqual([
-      {
+    expect(logs).toEqual(
+      ["ready", "lando-contract-split-line", "L".repeat(20_000)].map((line) => ({
         service: serviceName,
         stream: "stdout",
-        line: "ready",
+        line,
         timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
-      },
-    ]);
+      })),
+    );
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
       "GET /networks/lando-myapp",
       "POST /networks/create",
@@ -1902,87 +1952,52 @@ describe("provider-docker RuntimeProvider contract", () => {
     ]);
   });
 
-  test("rolls back network when the first service start fails after network create", async () => {
-    const fake = makeFakeApiWithHooks({ failStartFor: new Set(["lando-myapp-db"]) });
+  test.each(["db", "web"])("retains containers and networks when %s start fails", async (failedService) => {
+    const fake = makeFakeApiWithHooks({ failStartFor: new Set([`lando-myapp-${failedService}`]) });
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
     const plan = makeMultiServicePlan();
 
-    const exit = await Effect.runPromiseExit(Effect.scoped(provider.apply(plan, { reconcile: true })));
+    const exit = await Effect.runPromiseExit(Effect.scoped(provider.apply(plan, { reconcile: false })));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.existing.size).toBe(0);
+    expect(fake.existing.has("lando-myapp-db")).toBe(true);
+    expect(fake.existing.has("lando-myapp-web")).toBe(failedService === "web");
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
-      true,
+      false,
     );
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
       false,
     );
   });
 
-  test("rolls back the first service and network when the second service start fails", async () => {
-    const fake = makeFakeApiWithHooks({ failStartFor: new Set(["lando-myapp-web"]) });
-    const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
-    );
-    const plan = makeMultiServicePlan();
-
-    const exit = await Effect.runPromiseExit(Effect.scoped(provider.apply(plan, { reconcile: true })));
-
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.existing.size).toBe(0);
-    expect(fake.running.size).toBe(0);
-    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.includes("lando-myapp-db"))).toBe(
-      true,
-    );
-    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.includes("lando-myapp-web"))).toBe(
-      true,
-    );
-    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
-      true,
-    );
-    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
-      false,
-    );
-  });
-
-  test("cleans up already-started services when abort signal is observed", async () => {
-    const inner = makeFakeApiWithHooks({});
+  test("retains already-started services when abort signal is observed", async () => {
+    const fake = makeFakeApiWithHooks({});
     const controller = new AbortController();
-    let startCallCount = 0;
-    const wrappedApi: DockerApiClient = {
-      info: inner.api.info,
-      request: (req) => {
-        const request = inner.api.request;
-        if (request === undefined) {
-          throw new Error("expected request handler");
-        }
-        if (req.path.endsWith("/start")) {
-          startCallCount++;
-          const result = request(req);
-          if (startCallCount === 1) {
-            return result.pipe(Effect.tap(() => Effect.sync(() => controller.abort())));
-          }
-          return result;
-        }
-        return request(req);
-      },
-      ...(inner.api.stream === undefined ? {} : { stream: inner.api.stream }),
-    };
-
+    fake.retentionHooks.setAbortAfterStarts(1, controller);
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: wrappedApi }))),
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
     const plan = makeMultiServicePlan();
 
     const exit = await Effect.runPromiseExit(
-      Effect.scoped(provider.apply(plan, { reconcile: true, signal: controller.signal })),
+      Effect.scoped(provider.apply(plan, { reconcile: false, signal: controller.signal })),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(inner.running.size).toBe(0);
-    expect(inner.calls.some((call) => call.path.includes("/stop"))).toBe(true);
+    expect(fake.existing.size).toBeGreaterThan(0);
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.includes("lando-myapp-"))).toBe(
+      false,
+    );
+  });
+
+  test("runs the provider start-retention contract through the Docker Engine API", async () => {
+    const fake = makeFakeApiWithHooks({});
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
+    );
+    await Effect.runPromise(runProviderStartRetentionContract(provider, fake.retentionHooks));
   });
 
   test("failure errors include providerId, operation, remediation, and redacted details", async () => {
@@ -2010,7 +2025,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(startError.operation).toBe("bringUp.create");
     expect(startError.service).toBe("db");
     expect(typeof startError.remediation).toBe("string");
-    expect(startError.remediation).toMatch(/lando destroy/u);
+    expect(startError.remediation).toMatch(/lando start/u);
     const details = startError.details as { status: number; body: string } | undefined;
     expect(details?.status).toBe(500);
     expect(details?.body).toContain("[redacted]");
@@ -2041,7 +2056,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         (error as { _tag: string })._tag === "ServiceStartError",
     ) as ServiceStartError | undefined;
     expect(startError?.operation).toBe("bringUp.network.connect");
-    expect(startError?.remediation).toMatch(/lando destroy/u);
+    expect(startError?.remediation).toMatch(/lando start/u);
     expect(startError?.remediation).not.toContain("The image is not present");
   });
 

@@ -19,7 +19,7 @@ If you came here for `${VARS}` magic in volumes or tooling, that path is still n
 
 ## Load-time recipe and env
 
-Recipe Landofiles keep values like `php:{{ recipe.php }}`. Lando fills those from the app's merged `recipe.options`, across every Landofile layer, before it validates the file. It does not look up a recipe plugin or run recipe code.
+Recipe Landofiles keep values like `php:{{ recipe.php }}`. Lando first composes the authored layers and their fragments, then fills those sites from the merged `recipe.options` before validating the effective Landofile once. It does not look up a recipe plugin or run recipe code.
 
 `{{ default(env.LANDO_NODE_VERSION, 'lts') }}` reads the host environment. A missing variable fails closed unless the expression supplies a `default()`.
 
@@ -60,6 +60,8 @@ router:
 ```
 
 `app.primary` is `false`, `httpPort` is the number `8088`, and `environment` is the object `{ NODE_ENV: development }`. Mix text with an expression and you get text: `"flag={{ recipe.primary }}"` is `"flag=false"`.
+
+A whole-value result replaces its expression site. If a local layer sets `environment:` to an expression returning an object, that object does not merge back into the inherited environment. Lando does not discover new app fragments or evaluate expression-looking text inside that result a second time.
 
 ### Convert env text with `number()` and `boolean()`
 

@@ -1,3 +1,4 @@
+import { AbsolutePath, planAppIdentity } from "@lando/sdk/schema";
 import { Predicate } from "effect";
 import type { SqlCreds } from "./creds.ts";
 
@@ -30,6 +31,14 @@ export type SqlPlan = {
   };
   readonly services: Readonly<Record<string, SqlPlanService>>;
 };
+
+export const sqlPlanIdentity = (plan: SqlPlan) =>
+  planAppIdentity({
+    root: AbsolutePath.make(plan.root),
+    ...(plan.identity === undefined
+      ? {}
+      : { identity: { ...plan.identity, appRoot: AbsolutePath.make(plan.identity.appRoot) } }),
+  });
 
 const objectOrArray = Predicate.or(Predicate.isObject, (value: unknown): value is Record<string, unknown> =>
   Array.isArray(value),

@@ -3,12 +3,13 @@ import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
-import type { AgentRelayOptions } from "@lando/engine/subsystems/ssh-agent/relay";
+import { type AgentRelayOptions, makeAgentRelayToken } from "@lando/engine/subsystems/ssh-agent/relay";
 import { sshAgentSessionPaths } from "@lando/engine/subsystems/ssh-agent/session";
 import {
   AgentRelayWorkerInput,
   identifyAgentRelayWorker,
 } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { AbsolutePath, type AgentSocketBridgeInput, type AppPlan, type ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -25,11 +26,16 @@ describe("agent relay worker runtime", () => {
       test(`${delivery} reports its mount and retains resources on ${platform}`, async () => {
         // Given a provider bridge and relay factory with observable lifetimes.
         const root = await mkdtemp(join(tmpdir(), "lando-agent-worker-"));
+        const upstreamToken = makeAgentRelayToken();
         const input = Schema.decodeUnknownSync(AgentRelayWorkerInput)({
           app: { kind: "user", id: "test", root },
           plan: { id: "test", provider: "docker" },
           kind: "ssh",
-          upstream: { _tag: "named-pipe", path: "\\\\.\\pipe\\agent" },
+          configDigest: "runtime-digest",
+          upstream:
+            delivery === "volume-relay"
+              ? { _tag: "loopback-tcp", port: 23456, token: upstreamToken }
+              : { _tag: "named-pipe", path: "\\\\.\\pipe\\agent" },
           delivery,
           socketName: "agent.sock",
           paths: { userDataRoot: root },
@@ -57,6 +63,9 @@ describe("agent relay worker runtime", () => {
         const registry = Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([]),
             capabilities: Effect.succeed(provider.capabilities),
             select: (plan) => {
@@ -73,6 +82,11 @@ describe("agent relay worker runtime", () => {
                 const ready = yield* scopedAgentRelayWorker(input, {
                   platform,
                   createRelay: async (options) => {
+                    const redactor = createStandaloneRedactor("secrets");
+                    if (options.upstream._tag === "loopback-tcp")
+                      expect(redactor.redactString(upstreamToken)).toBe("[redacted]");
+                    if (options.listen._tag === "loopback-tcp" && options.listen.token !== undefined)
+                      expect(redactor.redactString(options.listen.token)).toBe("[redacted]");
                     listeners.push(options);
                     return {
                       address:
@@ -93,7 +107,8 @@ describe("agent relay worker runtime", () => {
                   kind: "ssh",
                   pid: process.pid,
                   sessionId: ready.sessionId,
-                  protocolVersion: 1,
+                  protocolVersion: 2,
+                  configDigest: "runtime-digest",
                 });
                 expect(closed).toEqual([]);
                 return ready;
@@ -145,6 +160,11 @@ describe("agent relay worker runtime", () => {
                 : {}),
             });
           expect(closed).toEqual(delivery === "bind-directory" ? ["relay"] : ["bridge", "relay"]);
+          const redactor = createStandaloneRedactor("secrets");
+          expect(redactor.redactString(ready.controlToken)).toBe("[redacted]");
+          const listen = listeners[0]?.listen;
+          if (listen?._tag === "loopback-tcp" && listen.token !== undefined)
+            expect(redactor.redactString(listen.token)).toBe("[redacted]");
         } finally {
           await rm(root, { recursive: true, force: true });
         }
@@ -160,6 +180,7 @@ describe("agent relay worker runtime", () => {
       app: { kind: "user", id: "test", root },
       plan: { id: "test", provider: "docker" },
       kind: "ssh",
+      configDigest: "runtime-digest",
       upstream: { _tag: "unix", path: "/agent.sock" },
       delivery: "volume-relay",
       socketName: "agent.sock",
@@ -195,6 +216,9 @@ describe("agent relay worker runtime", () => {
           Effect.provideService(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              resolveAppliedPlan: () => Effect.succeed(undefined),
+              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.succeed([]),
               capabilities: Effect.succeed(provider.capabilities),
               select: () => Effect.succeed(provider),
@@ -234,6 +258,7 @@ describe("agent relay worker runtime", () => {
       app: { kind: "user", id: "test", root },
       plan: { id: "test", provider: "docker" },
       kind: "ssh",
+      configDigest: "runtime-digest",
       upstream: { _tag: "unix", path: join(root, "upstream.sock") },
       delivery: "bind-directory",
       socketName: "agent.sock",
@@ -249,6 +274,9 @@ describe("agent relay worker runtime", () => {
           return Layer.succeed(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              resolveAppliedPlan: () => Effect.succeed(undefined),
+              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.succeed([]),
               capabilities: Effect.succeed(runtimeProviderService.capabilities),
               select: () => Effect.succeed(runtimeProviderService),
@@ -293,6 +321,7 @@ describe("agent relay worker runtime", () => {
       app: { kind: "user", id: "test", root },
       plan: { id: "test", provider: "docker" },
       kind: "ssh",
+      configDigest: "runtime-digest",
       upstream: { _tag: "named-pipe", path: "\\\\.\\pipe\\agent" },
       delivery: "guest-bridge",
       socketName: "agent.sock",
@@ -309,6 +338,9 @@ describe("agent relay worker runtime", () => {
           return Layer.succeed(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              resolveAppliedPlan: () => Effect.succeed(undefined),
+              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.succeed([]),
               capabilities: Effect.succeed(runtimeProviderService.capabilities),
               select: () => Effect.succeed(runtimeProviderService),

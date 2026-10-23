@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Lando3LandofileDetected, LandofileDialectMixError } from "@lando/sdk/errors";
 import { Schema } from "effect";
-import surface from "../fixtures/sdk-mvp-surface.json";
+import surface from "../fixtures/sdk-public-surface.json";
 
 test("round-trips canonical detection context through its public schema", () => {
   // Given

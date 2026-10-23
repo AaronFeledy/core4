@@ -13,6 +13,7 @@ import { EventService } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 import { type HostProxyMountInfo, remapContainerCwd } from "./cwd-remap.ts";
+import type { HostProxyOpenExecutor, HostProxyOpenRequest } from "./open-target.ts";
 import { filterHostProxyEnv } from "./shim.ts";
 
 /**
@@ -166,4 +167,42 @@ export const dispatchRunLando = Effect.fn("HostProxyService.dispatchRunLando")(f
   );
 
   return result;
+});
+
+export const dispatchHostOpen = Effect.fn("HostProxyService.dispatchOpen")(function* (
+  request: HostProxyOpenRequest,
+  deps: Omit<DispatchRunLandoDeps, "executor" | "allowlist"> & { readonly executor: HostProxyOpenExecutor },
+) {
+  const events = yield* EventService;
+  const redaction = yield* RedactionService;
+  const target = request._tag === "openUrl" ? request.url : request.path;
+  const redactor = yield* redaction.forProfile("secrets", {
+    sourceEnv: process.env,
+    authoritativeTokens: [target],
+  });
+  const start = yield* Clock.currentTimeMillis;
+  const callId = deps.callId ?? `hp-${start}-${Math.random().toString(36).slice(2, 10)}`;
+  const summary = {
+    kind: request._tag,
+    argvSummary: [redactor.redactString(target)],
+  };
+  const common = {
+    app: deps.app,
+    callId,
+    request: summary,
+    callerService: deps.callerService,
+    depth: deps.depth,
+  };
+  yield* events.publish(PreHostProxyCallEvent.make({ ...common, timestamp: yield* DateTime.now }));
+  const result = yield* Effect.result(deps.executor(request, deps.mountInfo));
+  yield* events.publish(
+    PostHostProxyCallEvent.make({
+      ...common,
+      timestamp: yield* DateTime.now,
+      durationMs: (yield* Clock.currentTimeMillis) - start,
+      outcome: result._tag === "Success" ? "success" : "failure",
+      ...(result._tag === "Failure" ? { failureDetail: result.failure._tag } : {}),
+    }),
+  );
+  if (result._tag === "Failure") return yield* Effect.fail(result.failure);
 });

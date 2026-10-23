@@ -5,10 +5,11 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { providerImages } from "@lando/data-mover/provider-images";
+import { providerImages } from "@lando/container-runtime/provider-images";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { resolveCompiledBinaryVersion } from "../../../scripts/compiled-binary-version.ts";
 import corePackage from "../../package.json";
+import { stubContainerHelperDir } from "./fixtures/container-helper-stubs.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const binaryPath = resolve(coreRoot, "dist/lando");
@@ -63,7 +64,10 @@ describe("compiled binary build command", () => {
 
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compiled Linux x64 binary", () => {
   test("builds an executable lando binary with version and help fast paths", async () => {
-    const build = await runCommand([process.execPath, "run", "build"]);
+    const buildEnv = { ...process.env, LANDO_CONTAINER_HELPER_DIR: await stubContainerHelperDir() };
+    const manifest = await runCommand([process.execPath, "run", "build:manifest"], { env: buildEnv });
+    expect(manifest.exitCode).toBe(0);
+    const build = await runCommand([process.execPath, "run", "build:compile"], { env: buildEnv });
     expect(build.exitCode).toBe(0);
 
     const binary = await stat(binaryPath);

@@ -8,6 +8,7 @@ import {
   ServiceName,
   type SnapshotInfo,
   type VolumeRef,
+  snapshotHandle,
 } from "@lando/sdk/schema";
 
 import { type SqlExec, runImport } from "./actions.ts";
@@ -36,7 +37,7 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
       remediation: "Create a fresh database volume or explicitly import into the existing database.",
     });
   const identity = context.volumeIdentity;
-  if (!identity || identity.origin !== "created" || identity.ownerRoot !== context.metadata.sourceRoot)
+  if (identity.origin !== "created" || identity.ownerRoot !== context.owner.appRoot)
     return yield* Effect.fail(reject("unknown"));
   const state = yield* deps.initialization(identity);
   const status = (yield* state.read)?.state._tag ?? "unknown";
@@ -53,7 +54,7 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
       }),
     );
   }
-  const seedSnapshotId = input.snapshot?.id;
+  const seedHandle = input.snapshot === undefined ? undefined : snapshotHandle(input.snapshot);
   if (input.snapshot !== undefined) {
     yield* requireSeedCompatibleSnapshot(input.snapshot, context);
   }
@@ -76,13 +77,13 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
             overwrite: true,
           });
         }
-        return yield* seedSnapshotId === undefined
+        return yield* seedHandle === undefined
           ? runImport(deps, deps.exec, input)
           : Effect.gen(function* () {
               if (context.running) yield* context.suspend;
               yield* context.verifyVolume;
               yield* deps.restore(
-                seedSnapshotId,
+                seedHandle,
                 { ...input.store, store: identity.nativeName },
                 { mode: "seed" },
               );

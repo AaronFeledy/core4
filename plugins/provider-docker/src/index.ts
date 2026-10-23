@@ -16,7 +16,7 @@ import {
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import { VOLUME_WITNESS_IMAGE, volumeCreationLabels } from "@lando/container-runtime/data-plane";
+import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
 import {
   dockerLifecycleDialect,
   dockerPullDialect,
@@ -27,10 +27,9 @@ import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import {
-  type LogFileHelperPayloads,
-  logFileHelperPayloadForTargets,
-} from "@lando/container-runtime/log-file-helper-payloads";
-import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
+  type ResolveContainerHelper,
+  makeProviderLogSourceBinding,
+} from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
@@ -43,9 +42,10 @@ import type {
   EmitComposeResult,
   EmitComposeOptions as RuntimeEmitComposeOptions,
 } from "@lando/container-runtime/podman/compose";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect, publishedEndpointsFromInspect } from "@lando/container-runtime/podman/inspect";
-import { logs } from "@lando/container-runtime/podman/logs";
+import { containerConsoleLogs, logs } from "@lando/container-runtime/podman/logs";
 import {
   bindResolvedProviderOps,
   composeAdaptersFor,
@@ -57,6 +57,7 @@ import {
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, redactString, withApiReason } from "@lando/container-runtime/redact";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -65,7 +66,6 @@ import {
   postServiceLifecycle,
   removeObservedContainer,
 } from "@lando/container-runtime/service-lifecycle";
-import { makeLogDecoder as makeRuntimeLogDecoder } from "@lando/container-runtime/streams";
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
 import { DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
@@ -86,11 +86,7 @@ import {
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 import {
-  type LogChunk,
-  type LogOptions,
-  type LogTarget,
   PathsService,
-  type ProviderError,
   RuntimeProvider,
   type RuntimeProviderShape,
   type ServiceRuntimeInfo,
@@ -136,7 +132,7 @@ export interface ProviderLayerOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
-  readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly resolveContainerHelper?: ResolveContainerHelper;
   readonly appliedPlanState?: PluginStateStore;
   readonly appliedPlanStateDir?: string;
   readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
@@ -199,13 +195,6 @@ const request = Effect.fn("DockerApi.request")(
     api.request === undefined ? Effect.fail(missingApi(operation)) : api.request(input),
 );
 
-const stream = (
-  api: DockerApiClient,
-  operation: string,
-  input: DockerHttpRequest,
-): Stream.Stream<Uint8Array, ProviderUnavailableError | ProviderInternalError> =>
-  api.stream === undefined ? Stream.fail(missingApi(operation)) : api.stream(input);
-
 const unixSocketPath = (dockerHost: string) =>
   dockerHost.startsWith("unix://") ? dockerHost.slice("unix://".length) : dockerHost;
 
@@ -245,7 +234,7 @@ export const dockerCapabilitiesForHost = (
     rootless: false,
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
-    composeKnobs: { supported: ["restart", "extra_hosts"] },
+    composeKnobs: { supported: composeKnobsForDialect("docker") },
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
@@ -407,60 +396,6 @@ const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
     .filter((container): container is DiscoveredContainer => container !== undefined);
 });
 
-const parseLogLine = (service: ServicePlan, streamName: "stdout" | "stderr", line: string): LogChunk => {
-  const match = /^(\d{4}-\d{2}-\d{2}T\S+)\s+(.*)$/u.exec(line);
-  if (match === null) {
-    return { service: service.name, stream: streamName, line };
-  }
-  const timestamp = DateTime.make(match[1] ?? "");
-  return Option.isNone(timestamp)
-    ? { service: service.name, stream: streamName, line }
-    : {
-        service: service.name,
-        stream: streamName,
-        line: match[2] ?? "",
-        timestamp: DateTime.toDate(timestamp.value),
-      };
-};
-
-interface LogsRuntime {
-  readonly api: DockerApiClient;
-  readonly logFileAccess?: LogFileAccess;
-}
-
-const logsWithoutPlan = (
-  containerNameOrId: string,
-  serviceName: ServiceName,
-  _target: LogTarget,
-  options: Partial<LogOptions>,
-  runtime: LogsRuntime,
-): Stream.Stream<LogChunk, ProviderError> => {
-  const query = new URLSearchParams({
-    stdout: "true",
-    stderr: "true",
-    follow: String(options.follow ?? true),
-    timestamps: "true",
-  });
-  if (options.tail !== undefined) {
-    query.set("tail", String(options.tail));
-  }
-  if (options.since !== undefined) {
-    query.set("since", options.since);
-  }
-
-  return Stream.suspend(() => {
-    const decodeChunk = makeRuntimeLogDecoder({
-      parseLine: (streamName, line) => parseLogLine({ name: serviceName } as ServicePlan, streamName, line),
-    });
-    const consoleStream = stream(runtime.api, "logs", {
-      method: "GET",
-      path: `/containers/${encodeURIComponent(containerNameOrId)}/logs?${query}`,
-    }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
-
-    return consoleStream;
-  });
-};
-
 const makeUnavailable = (operation: string) => notImplementedError(PROVIDER_ID, operation);
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
@@ -491,10 +426,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       const logSourceBinding = makeProviderLogSourceBinding({
         providerId: PROVIDER_ID,
         logFileAccess: options.logFileAccess,
-        helperPayload: logFileHelperPayloadForTargets(
-          options.logFileHelperPayloads,
-          resolved.hostProxy?.containerTargets,
-        ),
+        helperTarget: resolved.hostProxy?.containerTargets[0],
+        resolveHelper: options.resolveContainerHelper,
       });
       return {
         capabilities: {
@@ -511,10 +444,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       ctx: DOCKER_CTX,
       providerId: ProviderId.make(PROVIDER_ID),
       endpointNamespace: resolvedDockerHost,
-      prepareWitnessImage: pullImage(dockerApi, VOLUME_WITNESS_IMAGE, {
-        ctx: DOCKER_CTX,
-        dialect: dockerPullDialect,
-      }),
+      pullHelperImage: (ref) =>
+        pullImage(dockerApi, ref, {
+          ctx: DOCKER_CTX,
+          dialect: dockerPullDialect,
+          policy: "missing",
+        }),
       api: dockerApi,
       capabilities: resolvedCapabilities,
       redactDetails,
@@ -537,6 +472,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
     const resolvedOps = bindResolvedProviderOps(planState, {
       ctx: DOCKER_CTX,
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: dockerApi, ctx: DOCKER_CTX }),
       noPlanError: (_app, operation) => makeUnavailable(operation),
       service: {
         lifecycle: (plan, target, action) =>
@@ -702,7 +639,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 ),
               ).pipe(
                 Stream.flatMap((container) =>
-                  logsWithoutPlan(container.name, target.service, target, logOptions, { api: dockerApi }),
+                  containerConsoleLogs(dockerApi, DOCKER_CTX, container.name, target.service, logOptions),
                 ),
               );
             }),
@@ -809,12 +746,12 @@ export const plugin = definePlugin({
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
-          const { paths, platform, logFileHelperPayloads, sanitizeAppliedPlan, eventService } =
+          const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan, eventService } =
             yield* providerHostInputs;
           return yield* makeRuntimeProvider({
             platform,
             ...(eventService === undefined ? {} : { eventService }),
-            logFileHelperPayloads,
+            resolveContainerHelper,
             appliedPlanState: ctx.stateStore,
             appliedPlanStateDir: paths.pluginStateDir(PLUGIN_NAME),
             sanitizeAppliedPlan,

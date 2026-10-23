@@ -3,7 +3,6 @@ import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
   type ConfigLintViolation,
-  LandofileShape,
   ServiceConfig,
   type ValidationIssuePath,
   formatValidationIssuePath,
@@ -11,12 +10,10 @@ import {
   validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 import type { SchemaIssue } from "effect";
-import { Predicate, Result, Schema } from "effect";
+import { Predicate } from "effect";
 import type { ComposeRejectionMatch } from "./compose/rejections.ts";
-import { normalizeRoutes } from "./route-normalize.ts";
 import { type SchemaIssueLeaf, plannerScopeSuggestion, schemaIssueLeaves } from "./validation.ts";
 
-const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
 const lastKey = (path: ReadonlyArray<PropertyKey>): string | undefined =>
   path.length === 0 ? undefined : String(path[path.length - 1]);
 const MISPLACED_COMPOSE_SURFACE_REMEDIATION = {
@@ -77,10 +74,12 @@ const violationFromIssue = (
         ? `Add the required "${key ?? formatted}" field.`
         : undefined);
   return suggestion === undefined
-    ? { path, message: issue.message }
-    : { path, message: issue.message, suggestion };
+    ? { rule: "landofile.validation", severity: "error", path, message: issue.message }
+    : { rule: "landofile.validation", severity: "error", path, message: issue.message, suggestion };
 };
 export const rejectionViolation = (match: ComposeRejectionMatch): ConfigLintViolation => ({
+  rule: "landofile.compose-rejection",
+  severity: "error",
   path: pathFromText(match.documentPath),
   message: `Compose key "${match.matrixPath}" is rejected: ${match.rationale}`,
   suggestion: match.remediation,
@@ -88,30 +87,13 @@ export const rejectionViolation = (match: ComposeRejectionMatch): ConfigLintViol
 const fallsWithinRejectedPath = (path: string, rejectedPath: string): boolean =>
   path === rejectedPath || path.startsWith(`${rejectedPath}.`) || path.startsWith(`${rejectedPath}[`);
 
-export const violationsFor = (
+export const violationsFromSchema = (
+  issue: SchemaIssue.Issue,
   parsed: unknown,
-  rejections: ReadonlyArray<ComposeRejectionMatch> = [],
-): ReadonlyArray<ConfigLintViolation> => {
-  const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
-  if (Result.isSuccess(decoded)) {
-    return [
-      ...Object.entries(decoded.success.services ?? {}).map(([name, service]) =>
-        normalizeRoutes(service.routes ?? [], { keyPath: `services.${name}.routes` }),
-      ),
-      ...Object.entries(decoded.success.proxy ?? {}).map(([name, routes]) =>
-        normalizeRoutes(routes, { keyPath: `proxy.${name}` }),
-      ),
-    ].flatMap((result) =>
-      Result.match(result, {
-        onFailure: (error) => [
-          { path: pathFromText(error.key), message: error.message, suggestion: error.remediation },
-        ],
-        onSuccess: () => [],
-      }),
-    );
-  }
-  const suggestions = closestKeySuggestions(decoded.failure.issue);
-  return schemaIssueLeaves(decoded.failure.issue)
+  rejections: readonly ComposeRejectionMatch[] = [],
+): readonly ConfigLintViolation[] => {
+  const suggestions = closestKeySuggestions(issue);
+  return schemaIssueLeaves(issue)
     .map((issue) => {
       const violation = violationFromIssue(issue, suggestions);
       const suggestion = issue._tag === "Type" ? plannerScopeSuggestion(parsed, violation.path) : undefined;

@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:f
 import { join } from "node:path";
 import { Cause, Clock, DateTime, Effect, Exit, Option } from "effect";
 
+import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
 import {
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
@@ -16,7 +17,14 @@ import {
   SqlServiceAmbiguousError,
   VolumeNotFoundError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  ServiceName,
+  SnapshotInfo,
+  appIdentityKey,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 
 import { dumpCommand, loadCommand } from "../src/families.ts";
 import { type SqlCommandDeps, dbInputFromCommand, executeDbCommand } from "../src/run.ts";
@@ -105,10 +113,18 @@ describe("executeDbCommand", () => {
         throw new Error("expected command transfer");
       expect([transfer.from.app, transfer.to.app]).toEqual([AppId.make("shop"), AppId.make("sql-app")]);
       expect(transfer.from.command).toEqual(
-        dumpCommand(family, { user: "source-user", database: "source-db" }),
+        dumpCommand(family, {
+          user: "source-user",
+          database: "source-db",
+          port: DATABASE_FAMILY_DEFAULT_PORTS[family],
+        }),
       );
       expect(transfer.to.command).toEqual(
-        loadCommand(family, { user: "lando", database: "sql-app" }, "source-db"),
+        loadCommand(
+          family,
+          { user: "lando", database: "sql-app", port: DATABASE_FAMILY_DEFAULT_PORTS[family] },
+          "source-db",
+        ),
       );
       expect(Object.values(transfer.from.env ?? {}).join(" ")).toContain("source-secret");
       expect(Object.values(transfer.to.env ?? {}).join(" ")).toContain(SECRET);
@@ -310,18 +326,29 @@ describe("executeDbCommand", () => {
     expect({ fromApp, fromPath }).toEqual({ fromApp: "sibling", fromPath: "/workspace/sibling" });
   });
 
-  test("lists only snapshots owned by the current canonical app root by default", async () => {
-    // Given: snapshots stored under an app id shared by more than one worktree.
-    const harness = makeSqlTestDeps({ password: SECRET });
+  test.each([false, true])(
+    "lists only the current owner with an identity-less plan: %s",
+    async (legacyPlan) => {
+      // Given: snapshots stored under an app id shared by more than one worktree.
+      const harness = makeSqlTestDeps({ password: SECRET });
+      const { identity: _identity, ...planWithoutIdentity } = harness.deps.plan;
 
-    // When: the user lists snapshots without an explicit source selector.
-    await run(harness.deps, { action: "snapshots", yes: false });
+      // When: the user lists snapshots without an explicit source selector.
+      await run(
+        { ...harness.deps, plan: legacyPlan ? planWithoutIdentity : harness.deps.plan },
+        { action: "snapshots", yes: false },
+      );
 
-    // Then: the query is constrained by planner-owned app identity.
-    expect(harness.snapshotFilters()).toEqual([
-      { app: AppId.make("sql-app"), store: "sql-app_database_data", ownerKey: "owner:sql-app" },
-    ]);
-  });
+      // Then: the query is constrained by planner-owned app identity.
+      expect(harness.snapshotFilters()).toEqual([
+        {
+          app: AppId.make("sql-app"),
+          store: "sql-app_database_data",
+          ownerKey: appIdentityKey("owner", harness.root),
+        },
+      ]);
+    },
+  );
 
   test("constrains an explicit app source to sibling worktrees in the same repository", async () => {
     // Given: an app with a proven Git repository group.
@@ -381,7 +408,7 @@ describe("executeDbCommand", () => {
     // Then: the query uses the canonical physical source root.
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(harness.snapshotFilters()).toEqual([
-      { sourceRoot: AbsolutePath.make(sibling), service: ServiceName.make("database") },
+      { ownerKey: appIdentityKey("owner", sibling), service: ServiceName.make("database") },
     ]);
   });
 
@@ -409,16 +436,16 @@ describe("executeDbCommand", () => {
   test("previews and confirms retention within the current root and service", async () => {
     // Given: two manual snapshots and an automatic recovery point for the selected database.
     const harness = makeSqlTestDeps({ password: SECRET });
+    const owner = planAppIdentity({ root: AbsolutePath.make(harness.root) });
     const snapshots = [
       SnapshotInfo.make({
         id: "manual-new",
+        owner,
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:new",
         sizeBytes: 12,
         createdAt: DateTime.makeUnsafe("2026-09-11T03:00:00Z"),
         metadata: {
-          sourceRoot: AbsolutePath.make(harness.root),
-          ownerKey: "owner:sql-app",
           service: ServiceName.make("database"),
           volumeInstanceId: "volume-instance:database",
           family: "mysql",
@@ -429,13 +456,12 @@ describe("executeDbCommand", () => {
       }),
       SnapshotInfo.make({
         id: "manual-old",
+        owner,
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:old",
         sizeBytes: 12,
         createdAt: DateTime.makeUnsafe("2026-09-11T01:00:00Z"),
         metadata: {
-          sourceRoot: AbsolutePath.make(harness.root),
-          ownerKey: "owner:sql-app",
           service: ServiceName.make("database"),
           volumeInstanceId: "volume-instance:database",
           family: "mysql",
@@ -446,13 +472,12 @@ describe("executeDbCommand", () => {
       }),
       SnapshotInfo.make({
         id: "reset-recovery",
+        owner,
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:recovery",
         sizeBytes: 12,
         createdAt: DateTime.makeUnsafe("2026-09-11T00:00:00Z"),
         metadata: {
-          sourceRoot: AbsolutePath.make(harness.root),
-          ownerKey: "owner:sql-app",
           service: ServiceName.make("database"),
           volumeInstanceId: "volume-instance:database",
           family: "mysql",
@@ -489,7 +514,11 @@ describe("executeDbCommand", () => {
     expect(confirmed.value.retentionApplied).toBe(true);
     expect(policies).toEqual([
       {
-        filter: { app: AppId.make("sql-app"), store: "sql-app_database_data", ownerKey: "owner:sql-app" },
+        filter: {
+          app: AppId.make("sql-app"),
+          store: "sql-app_database_data",
+          ownerKey: appIdentityKey("owner", harness.root),
+        },
         keepLatest: 1,
       },
     ]);
@@ -518,7 +547,9 @@ describe("executeDbCommand", () => {
     expect(transfer?.from._tag).toBe("serviceCmd");
     expect(transfer?.to._tag).toBe("hostPath");
     if (transfer?.from._tag === "serviceCmd") {
-      expect(transfer.from.command).toEqual(dumpCommand("mysql", { user: "lando", database: "sql-app" }));
+      expect(transfer.from.command).toEqual(
+        dumpCommand("mysql", { user: "lando", database: "sql-app", port: 3306 }),
+      );
       expect(transfer.from.env?.MYSQL_PWD).toBe(SECRET);
       expect(JSON.stringify(transfer.from.command)).not.toContain(SECRET);
     }
@@ -540,7 +571,9 @@ describe("executeDbCommand", () => {
     const transfer = harness.transfers()[0];
     expect(transfer?.from._tag).toBe("serviceCmd");
     if (transfer?.from._tag === "serviceCmd") {
-      expect(transfer.from.command).toEqual(dumpCommand("postgres", { user: "lando", database: "sql-app" }));
+      expect(transfer.from.command).toEqual(
+        dumpCommand("postgres", { user: "lando", database: "sql-app", port: 5432 }),
+      );
       expect(transfer.from.env?.PGPASSWORD).toBe(SECRET);
     }
   });
@@ -655,7 +688,9 @@ describe("executeDbCommand", () => {
     const transfer = harness.transfers()[0];
     expect(transfer?.to._tag).toBe("serviceCmd");
     if (transfer?.to._tag === "serviceCmd") {
-      expect(transfer.to.command).toEqual(loadCommand("mysql", { user: "lando", database: "sql-app" }));
+      expect(transfer.to.command).toEqual(
+        loadCommand("mysql", { user: "lando", database: "sql-app", port: 3306 }),
+      );
     }
     if (transfer?.from._tag === "hostPath") expect(transfer.from.path).not.toBe(file);
   });
@@ -851,7 +886,9 @@ describe("executeDbCommand", () => {
     expect(transfer?.from._tag).toBe("hostPath");
     expect(transfer?.to._tag).toBe("serviceCmd");
     if (transfer?.to._tag === "serviceCmd") {
-      expect(transfer.to.command).toEqual(loadCommand("mysql", { user: "lando", database: "sql-app" }));
+      expect(transfer.to.command).toEqual(
+        loadCommand("mysql", { user: "lando", database: "sql-app", port: 3306 }),
+      );
       const command = transfer.to.command;
       expect(typeof command === "string" ? command : command.join(" ")).not.toContain("gunzip");
       expect(typeof command === "string" ? command : command.join(" ")).not.toContain("zstd");
@@ -884,7 +921,7 @@ describe("executeDbCommand", () => {
     expect(harness.snapshots()[0]?.metadata?.recoveryReason).toBe("reset");
     const exec = harness.execs().find((entry) => entry.command.join(" ").includes("DROP DATABASE"));
     expect(exec?.command[0]).toBe("mysql");
-    expect(exec?.command.slice(0, 5)).toEqual(["mysql", "-h", "127.0.0.1", "-u", "root"]);
+    expect(exec?.command.slice(0, 7)).toEqual(["mysql", "-h", "127.0.0.1", "-P", "3306", "-u", "root"]);
     expect(exec?.env?.MYSQL_PWD).toBe(rootPassword);
     expect(exec?.command.join(" ")).not.toContain(SECRET);
     expect(exec?.command.join(" ")).not.toContain(rootPassword);
@@ -945,8 +982,9 @@ describe("executeDbCommand", () => {
     expect(exit.value.snapshotId).not.toBe("before-change");
     expect(harness.snapshots()[0]?.store).toBe("sql-app_database_data");
     expect(harness.snapshots()[0]?.format).toBe("tar.gz");
+    expect(harness.snapshots()[0]?.repoGroupKey).toBe("repository:sql-app");
     const metadata = harness.snapshots()[0]?.metadata;
-    expect(String(metadata?.sourceRoot)).toBe(harness.root);
+    expect(harness.snapshots()[0]?.owner.appRoot).toBe(AbsolutePath.make(harness.root));
     expect(String(metadata?.service)).toBe("database");
     expect(metadata?.volumeInstanceId).toBe("volume-instance:sql-app_database_data");
     expect(metadata?.family).toBe("mysql");
@@ -1120,6 +1158,11 @@ describe("executeDbCommand", () => {
     expect(harness.restores()).toEqual([
       {
         id: "seed-source",
+        handle: {
+          id: "seed-source",
+          ownerKey: appIdentityKey("owner", harness.root),
+          store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
+        },
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         opts: { mode: "seed" },
       },
@@ -1165,11 +1208,16 @@ describe("executeDbCommand", () => {
       expect(Exit.isSuccess(exit)).toBe(true);
       expect(harness.restores()[0]).toMatchObject({ id: "source-id" });
       expect(filters).toEqual([
-        { id: "baseline" },
+        {
+          id: "baseline",
+          app: AppId.make("sql-app"),
+          store: "sql-app_database_data",
+          ownerKey: appIdentityKey("owner", harness.root),
+        },
         {
           app: AppId.make("sql-app"),
           store: "sql-app_database_data",
-          ownerKey: "owner:sql-app",
+          ownerKey: appIdentityKey("owner", harness.root),
           label: "baseline",
         },
       ]);
@@ -1245,9 +1293,9 @@ describe("executeDbCommand", () => {
       const metadata = source.metadata;
       const incompatible = {
         version: { version: "5.7" },
-        ownerKey: { ownerKey: "foreign-owner" },
+        ownerKey: {},
         imageIdentity: { imageIdentity: "foreign-image" },
-        sourceRoot: { sourceRoot: AbsolutePath.make("/foreign-root") },
+        sourceRoot: {},
         service: { service: ServiceName.make("other-service") },
         family: { family: "postgres" },
       };
@@ -1257,6 +1305,11 @@ describe("executeDbCommand", () => {
           Effect.succeed([
             {
               ...source,
+              owner: {
+                ...source.owner,
+                ...(mismatch === "ownerKey" ? { ownerKey: "foreign-owner" } : {}),
+                ...(mismatch === "sourceRoot" ? { appRoot: AbsolutePath.make("/foreign-root") } : {}),
+              },
               metadata: { ...metadata, ...incompatible[mismatch] },
             },
           ]),

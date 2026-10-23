@@ -11,7 +11,7 @@ Put `type: go:1.23` on the primary service. Go has no bare `type: go` alias, so 
 supports `go:1.22` and `go:1.23`, and derives the default image
 (`golang:1.23` for `go:1.23`) from the version you pin. Your repository is
 bind-mounted read-write at `/app` by default, which is also the working
-directory; set `appMount.target` to move both:
+directory; set `appMount: /site` to move both:
 
 ```yaml
 name: go-demo

@@ -9,6 +9,7 @@ import { Effect, Exit, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import * as gpgAgentModule from "../../src/operations/start-gpg-agent.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/gpg-agent/intent.ts";
+import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/ssh/intent.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
@@ -51,21 +52,31 @@ for (const prepareExit of [0, 1]) {
     });
     const provider = await Effect.runPromise(harness.runtimeProviderRegistry.select());
     let closed = 0;
-    const gpgSession = spyOn(gpgAgentModule, "startGpgAgentSession").mockImplementation(() =>
-      Effect.succeed({
-        session: {
-          appId: selected.id,
-          sessionId: "gpg-rebuild-session",
-          kind: "gpg",
-          socketName: "S.gpg-agent",
-          mount: { _tag: "bind-directory", directory: AbsolutePath.make("/relay/gpg-socket") },
-          closed: Promise.resolve(),
-          close: async () => {
-            closed += 1;
-          },
-        },
-        keyringDir: "/relay/gpg-keyring",
-      }),
+    const gpgSession = spyOn(gpgAgentModule, "startGpgAgentSession").mockImplementation(
+      (_plan, _app, _capabilities, _intent, options = {}) =>
+        Effect.succeed({
+          session: {
+            appId: selected.id,
+            sessionId: "gpg-rebuild-session",
+            kind: "gpg",
+            socketName: "S.gpg-agent",
+            mount: { _tag: "bind-directory", directory: AbsolutePath.make("/relay/gpg-socket") },
+            closed: Promise.resolve(),
+            close: async () => {
+              closed += 1;
+            },
+          } satisfies AgentRelaySession,
+          keyringDir: "/relay/gpg-keyring",
+        }).pipe(
+          Effect.tap((agent) =>
+            options.managed === undefined
+              ? Effect.void
+              : Scope.addFinalizer(
+                  options.managed.scope,
+                  Effect.promise(() => agent.session.close()),
+                ),
+          ),
+        ),
     );
     try {
       // When
@@ -142,7 +153,7 @@ for (const prepareExit of [0, 1]) {
           _tag: "Failure",
           failure: { _tag: "GpgAgentTransportError", stage: "worker" },
         });
-        expect(calls).toEqual(["stop:web", "apply", "gpg-prepare", "stop:web"]);
+        expect(calls).toEqual(["stop:web", "apply", "gpg-prepare"]);
       }
     } finally {
       gpgSession.mockRestore();

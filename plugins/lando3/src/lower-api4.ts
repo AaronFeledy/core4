@@ -256,7 +256,7 @@ export const lowerApi4Service = (
   if (hasPlainObjectPrototype(service.packages))
     for (const key of Object.keys(service.packages)) drop(["packages", key]);
   const health = service.healthcheck;
-  if (health === false) patch.healthcheck = { kind: "none" };
+  if (health === false) patch.healthcheck = false;
   else if (typeof health === "string") patch.healthcheck = { command: health };
   else if (hasPlainObjectPrototype(health)) {
     patch.healthcheck = {

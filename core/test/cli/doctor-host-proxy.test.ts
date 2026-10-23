@@ -14,7 +14,8 @@ import { AbsolutePath, GlobalConfig, ProviderId } from "@lando/sdk/schema";
 
 import {
   HOST_PROXY_WORKER_PROTOCOL_VERSION,
-  writeWorkerRecord,
+  type HostProxyWorkerRecord,
+  writeWorkerRecord as writeWorkerRecordV2,
 } from "@lando/engine/subsystems/host-proxy/worker-state";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import {
@@ -28,6 +29,26 @@ import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const roots: string[] = [];
 const servers: Server[] = [];
+const writeWorkerRecord = (
+  app: Parameters<typeof writeWorkerRecordV2>[0],
+  paths: Parameters<typeof writeWorkerRecordV2>[1],
+  record: Omit<HostProxyWorkerRecord, "sessionId" | "token" | "configDigest" | "providerId"> & {
+    readonly providerId?: string;
+  },
+  access: Parameters<typeof writeWorkerRecordV2>[3],
+) =>
+  writeWorkerRecordV2(
+    app,
+    paths,
+    {
+      providerId: String(TestRuntimeProvider.id),
+      sessionId: "doctor-session",
+      token: "doctor-bearer",
+      configDigest: "doctor-config",
+      ...record,
+    },
+    access,
+  );
 
 afterEach(async () => {
   await Promise.all(
@@ -50,6 +71,9 @@ const tempRoot = async (): Promise<string> => {
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
   RuntimeProviderRegistry.of({
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -217,7 +241,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     });
   });
 
-  test("reports a live legacy Unix-socket worker as reachable", async () => {
+  test("reports a live protocol-v1 legacy Unix-socket worker as reachable", async () => {
     // Given
     const root = await tempRoot();
     const appId = "legacy-demo";
@@ -235,7 +259,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           appId,
           sessionId: "legacy-session",
           transport: "unix-socket",
-          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          protocolVersion: 1,
           pid: process.pid,
         }),
       );
@@ -251,7 +275,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
         transport: "unix-socket",
         socketPath,
         shimPath: join(runDir, "lando"),
-        protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+        protocolVersion: 1,
         startedAt: "2026-07-15T00:00:00.000Z",
         pid: process.pid,
         controlToken,
@@ -1025,6 +1049,9 @@ describe("meta:doctor host-proxy transport reachability", () => {
         appId: "demo",
         appRoot,
         providerId: "different-provider",
+        sessionId: "doctor-session",
+        token: "doctor-bearer",
+        configDigest: "doctor-config",
         transport: "tcp-host-gateway",
         url: "http://127.0.0.1:1",
         containerUrl: "http://host.containers.internal:32123",

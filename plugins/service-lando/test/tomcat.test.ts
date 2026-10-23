@@ -223,18 +223,22 @@ describe("tomcat ServiceType", () => {
     // Given: a webroot requiring app code on a service that disables it.
     const definition = { type: "tomcat", appMount: false, ...(webroot === undefined ? {} : { webroot }) };
     // When / Then: planning rejects the contradictory settings with remediation.
-    await expect(planTomcatService(tomcatServiceType, definition)).rejects.toThrow(
-      `tomcat webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false. Set webroot to an absolute container path, or remove appMount: false.`,
-    );
+    await expect(planTomcatService(tomcatServiceType, definition)).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["webroot"],
+          message: `tomcat webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false.`,
+          suggestion: "Set webroot to an absolute container path, or remove appMount: false.",
+        },
+      ],
+    });
   });
 
   test("rejects a relative webroot outside the app mount", async () => {
     // Given / When / Then: an escaping document root fails type resolution.
     await expect(
       resolveTomcatService(tomcatServiceType, { type: "tomcat", webroot: "../x" }),
-    ).rejects.toThrow(
-      "tomcat webroot ../x leaves the app mount (/app); use an absolute container path instead.",
-    );
+    ).rejects.toThrow("tomcat webroot ../x leaves the app mount (/app).");
   });
 
   test("configures ROOT when the catalog image is explicitly authored", async () => {

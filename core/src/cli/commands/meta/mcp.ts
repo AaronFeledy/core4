@@ -185,7 +185,7 @@ export const mcpFlagsFromParsed = (flags: Record<string, unknown>): McpCommandFl
 export const mcpRegistryFromBuiltIns = (
   entries: ReadonlyArray<{ readonly spec: McpCommandSpec }>,
 ): McpCommandRegistry => ({
-  commandEntries: entries.flatMap(({ spec }) => {
+  commandEntries: entries.flatMap<{ readonly spec: McpCommandSpec }>(({ spec }) => {
     assertMcpAllowlistSafe(spec);
     if (isAppConfigMcpUnsafeId(spec.id) && spec.id !== "app:config") return [];
     if (spec.id === "app:config") return appConfigMcpSpecs.map((projection) => ({ spec: projection }));
@@ -230,7 +230,7 @@ const resolveRegistryForCommand = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
   runtimeLayer: Layer.Layer<unknown>,
-): Effect.fn.Return<McpCommandRegistry, ConfigError | McpToolInputError, ConfigService> {
+): Effect.fn.Return<McpCommandRegistry, McpToolInputError, ConfigService> {
   const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
   const options = resolveMcpOptions(flags, config);
   return yield* resolveRegistryForEffectiveOptions(registry, options, runtimeLayer);
@@ -286,7 +286,7 @@ export const validateMcpAllowlistIds = (
 const resolveOptions = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
-): Effect.fn.Return<ResolvedMcpOptions, ConfigError | McpToolInputError, ConfigService> {
+): Effect.fn.Return<ResolvedMcpOptions, McpToolInputError, ConfigService> {
   const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
   const options = resolveMcpOptions(flags, config);
   yield* validateMcpAllowlistIds(options, knownIdsOf(registry));
@@ -307,7 +307,7 @@ export const buildMcpRuntimeConfig = (
 export const mcpListResult = Effect.fn("Mcp.list")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
-): Effect.fn.Return<McpListResult, ConfigError | McpToolInputError, ConfigService> {
+): Effect.fn.Return<McpListResult, McpToolInputError, ConfigService> {
   const options = yield* resolveOptions(registry, flags);
   return buildMcpListResult({
     defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
@@ -329,11 +329,7 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
   runtimeLayer: Layer.Layer<unknown>,
-): Effect.fn.Return<
-  void,
-  ConfigError | McpToolInputError | McpTransportError,
-  ConfigService | RedactionService
-> {
+): Effect.fn.Return<void, McpToolInputError | McpTransportError, ConfigService | RedactionService> {
   const options = yield* resolveOptions(registry, flags);
   const runtimeConfig = buildMcpRuntimeConfig(registry, runtimeLayer);
   const catalogOptions = {
@@ -362,7 +358,7 @@ export const dispatchMcpCommand = async (params: {
   readonly flags: McpCommandFlags;
   readonly commandRuntime: Layer.Layer<
     ConfigService | RedactionService | BuiltInCommandCatalog,
-    LandoRuntimeBootstrapError
+    ConfigError | LandoRuntimeBootstrapError
   >;
   readonly retainedRuntime: Layer.Layer<unknown>;
   readonly rendererMode: RendererMode;
@@ -403,14 +399,19 @@ export const dispatchMcpCommand = async (params: {
   const serveEffect =
     startupError === undefined
       ? Effect.gen(function* () {
+          const retainedScope = yield* Effect.scope;
+          const retainedContext = yield* Effect.cached(
+            Layer.buildWithScope(params.retainedRuntime, retainedScope),
+          );
+          const retainedRuntime = Layer.unwrap(Effect.map(retainedContext, Layer.succeedContext));
           const catalog = yield* BuiltInCommandCatalog;
           const registry = yield* resolveRegistryForCommand(
             mcpRegistryFromBuiltIns(catalog.entries),
             params.flags,
-            params.retainedRuntime,
+            retainedRuntime,
           );
-          yield* serveMcp(registry, params.flags, params.retainedRuntime);
-        })
+          yield* serveMcp(registry, params.flags, retainedRuntime);
+        }).pipe(Effect.scoped)
       : Effect.fail(startupError);
   return runWithRendererHandling(serveEffect, {
     runtime: params.commandRuntime,

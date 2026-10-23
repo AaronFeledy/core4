@@ -85,7 +85,7 @@ lando db:seed --from-app shop
 lando psql -tAc 'SELECT count(*) FROM products;'
 ```
 
-`--from-app` names a running app by its id, the `name` in its Landofile. Lando streams a logical dump out of that app's database container, through a checked temp file in its own scratch space, and into this one. Nothing lands in either checkout, and credentials never hit the command line. `--from-path ../shop` picks the source by folder instead, and `--from-service` picks the database service when the source has more than one. Both apps need the same database type.
+`--from-app` names a running app by its id, the `name` in its Landofile. Lando streams a logical dump out of that app's database container, through a checked temp file in its own scratch space, and into this one. Nothing lands in either checkout, and credentials never hit the command line. `--from-path ../shop` picks the source by folder instead, and `--from-service` picks the database service when the source has more than one. Both apps need the same database type and must be on the selected provider.
 
 `db:seed` only loads into a database Lando freshly created that nothing has written to yet. No prompt, no `--yes`. Seed once. A second `db:seed` fails with `SqlSeedStateError`. Snapshot the seeded database so you can get back to it without the main checkout:
 
@@ -111,19 +111,19 @@ lando db:snapshots
 lando db:restore before-migration --yes
 ```
 
-`db:restore` takes a label or the id `db:snapshots` prints first in each entry. Reused a label? Restore fails with `SnapshotAmbiguousError` and lists the matching ids, newest first. Pass one of those.
+`db:restore` takes a label or the id `db:snapshots` prints first in each entry. Both resolve only within this app, owner, and database store. Reused a label in that scope? Restore fails with `SnapshotAmbiguousError` and lists the matching ids, newest first. Pass one of those.
 
-Snapshots belong to the checkout that took them. To see what the main checkout has saved, list its snapshots from the worktree:
+Snapshots belong to the source volume's verified owner root, not its app name. Each checkout has its own owner-keyed catalog, and `db:snapshots` shows that owner. To see what the main checkout has saved, list its snapshots from the worktree:
 
 ```sh
 lando db:snapshots --from-app shop
 ```
 
-For snapshots, `--from-app` only matches checkouts of the same Git repository, and `--from-path ../shop` selects the main checkout by folder instead. Listing is as far as it goes: passing one of those ids to `db:restore` or `db:seed --snapshot` in the worktree fails with `SqlRecoveryUnavailableError`, because a snapshot is a physical copy of another checkout's database. Move data between checkouts with `db:seed --from-app`, or with `db:export` and `db:seed <file>` when the source isn't running.
+For snapshots, `--from-app` only matches checkouts of the same Git repository. That grouping is a listing hint, not shared ownership. `--from-path ../shop` resolves the folder's canonical path and selects its owner and database service instead. Listing does not grant restore access: an id outside the current scope fails with `SnapshotNotFoundError`; an incompatible snapshot within it fails with `SqlRecoveryUnavailableError`. Move data between owners on the selected provider with logical `db:seed --from-app`. Across providers, export a dump from the source and use `db:import` or `db:seed <file>` at the destination. Native snapshot restore cannot cross providers.
 
 ## Remove the worktree
 
-Destroy the app before you delete its folder. `--volumes` deletes the worktree's database; drop it to keep the data. The worktree's snapshots outlive both; use `--purge` instead of `--volumes` to delete them too. The main checkout's snapshots stay either way:
+Destroy the app before you delete its folder. `--volumes` deletes the worktree's database; drop it to keep the data. The worktree's snapshots outlive both. **Use `--purge` instead of `--volumes` to delete its catalogued snapshots too**, through each snapshot's recording provider. This also works after an earlier destroy left only ownership inventory. The main checkout's snapshots stay either way:
 
 ```sh
 lando destroy -y --volumes

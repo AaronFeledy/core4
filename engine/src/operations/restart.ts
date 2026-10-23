@@ -40,20 +40,19 @@ import {
 import type { RedactionService } from "@lando/redaction/service";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
-import { isReadinessFailure, withReadinessRetention } from "../lifecycle/readiness-failure.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
-import { isPostStartStepError } from "../tooling/event-errors.ts";
-import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
+import { ensureAppPlacement } from "../providers/app-placement.ts";
+import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
 import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 import { startFileSyncSessions } from "./start-file-sync.ts";
+import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import { StartAppResultSchema, type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
@@ -95,7 +94,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
   const registry = yield* RuntimeProviderRegistry;
   const proxy = yield* RouterService;
   const provider = yield* registry.select(target.plan);
-  const appliedPlan = yield* registry.resolveAppliedPlan?.(target.plan.root) ?? Effect.succeed(undefined);
+  const appliedPlan = yield* registry.resolveAppliedPlan(target.plan.root);
   if (
     appliedPlan === undefined ||
     appliedPlan.root !== target.plan.root ||
@@ -153,6 +152,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
     services: [...selected],
   });
   yield* publishAndRunAppEvent(target.plan, "pre-restart", preRestart);
+  yield* markStartMutation(target.plan);
 
   yield* Effect.forEach(
     [...services].reverse(),
@@ -235,6 +235,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
   ): Effect.fn.Return<RestartAppResult, RestartAppError, RestartAppServices> {
     if (options.signal?.aborted === true) return yield* Effect.interrupt;
     const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
+    yield* ensureAppPlacement(resolvedTarget.app, resolvedTarget.plan.provider);
     const registry = yield* RuntimeProviderRegistry;
     const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
     const plan = mysqlResolvedTarget.plan;
@@ -250,18 +251,24 @@ export const restartApp = Effect.fn("AppOperation.restart")(
         provider,
         stateStore,
         body: Effect.fnUntraced(function* () {
-          yield* requireNoPendingAcceleratedStart(mysqlResolvedTarget.app, plan);
+          const pending = yield* readPendingAcceleratedStart(mysqlResolvedTarget.app, plan);
+          if (pending !== null)
+            yield* startApp(
+              options.signal === undefined ? {} : { signal: options.signal },
+              mysqlResolvedTarget,
+              managed?.resume ?? managed,
+              { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
+            );
           const stopPreflight = yield* preflightStopApp(mysqlResolvedTarget);
           yield* preflightStartAppDrain(mysqlResolvedTarget, stopPreflight);
           yield* ensureStartTransactionConsistent(mysqlResolvedTarget);
-          yield* runAppInitEvents(plan);
+          if (pending === null) yield* runAppInitEvents(plan);
           if (scoped) {
             return {
               app: plan.name,
               servicesStarted: yield* restartSelectedServices(selectedPlan, mysqlResolvedTarget, options),
             };
           }
-          const proxy = yield* RouterService;
           const preRestart = PreRestartEvent.make({
             _tag: "pre-restart",
             scope: "app",
@@ -271,20 +278,17 @@ export const restartApp = Effect.fn("AppOperation.restart")(
             timestamp: DateTime.nowUnsafe(),
           });
           yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
+          yield* markStartMutation(plan);
           yield* stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true });
           yield* managed?.onStopped ?? Effect.void;
-          const result = yield* compensateFailureUnless(
-            startApp(
-              {
-                reconcile: options.reconcile ?? false,
-                ...(options.signal === undefined ? {} : { signal: options.signal }),
-              },
-              mysqlResolvedTarget,
-              managed,
-              { skipInitEvents: true, transactionPreflightDone: true },
-            ),
-            proxy.removeRoutes(plan.id),
-            (error) => isPostStartStepError(error) || isReadinessFailure(error),
+          const result = yield* startApp(
+            {
+              reconcile: options.reconcile ?? false,
+              ...(options.signal === undefined ? {} : { signal: options.signal }),
+            },
+            mysqlResolvedTarget,
+            managed,
+            { skipInitEvents: true, transactionPreflightDone: true },
           );
           const postRestart = PostRestartEvent.make({
             _tag: "post-restart",
@@ -301,20 +305,18 @@ export const restartApp = Effect.fn("AppOperation.restart")(
   },
   (effect, options: RestartAppOptions = {}, _target?: ResolvedAppTarget, _managed?: StartManagedScope) => {
     const signal = options.signal;
-    if (signal === undefined) return withReadinessRetention(effect);
-    return withReadinessRetention(
-      Effect.raceFirst(
-        effect,
-        Effect.callback<never>((resume) => {
-          const abort = () => resume(Effect.interrupt);
-          if (signal.aborted) {
-            abort();
-            return;
-          }
-          signal.addEventListener("abort", abort, { once: true });
-          return Effect.sync(() => signal.removeEventListener("abort", abort));
-        }),
-      ),
+    if (signal === undefined) return effect;
+    return Effect.raceFirst(
+      effect,
+      Effect.callback<never>((resume) => {
+        const abort = () => resume(Effect.interrupt);
+        if (signal.aborted) {
+          abort();
+          return;
+        }
+        signal.addEventListener("abort", abort, { once: true });
+        return Effect.sync(() => signal.removeEventListener("abort", abort));
+      }),
     );
   },
 );

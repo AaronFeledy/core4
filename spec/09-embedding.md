@@ -48,11 +48,11 @@ The removed `@lando/core/oclif` adapter is not public. Anything not listed above
 
 ### 16.3 The `LandoRuntime` factory
 
-`makeLandoRuntime(options)` returns one scoped Layer satisfying the requested runtime services. Its options name `bootstrap`, `cwd`, `plugins`, `config`, `overrides`, `logger`, `renderer`, `interaction`, `telemetry`, `cacheRoot`, `installSignalHandlers`, and optional `scratch` acquisition (§21).
+`makeLandoRuntime(options)` returns one scoped Layer satisfying the requested runtime services. Its options name `bootstrap`, `cwd`, `plugins`, `config`, `configSources`, `overrides`, `logger`, `renderer`, `interaction`, `telemetry`, `cacheRoot`, `installSignalHandlers`, and optional `scratch` acquisition (§21).
 
 Required behavior:
 
-- Options MUST be schema-validated, and bootstrap failures MUST remain tagged by stage.
+- Options MUST be schema-validated, and bootstrap failures MUST remain tagged by stage. A global-config `ConfigError` (§7.5) raised while the `ConfigService` layer builds keeps its own tag and is never wrapped in `LandoRuntimeBootstrapError`.
 - Each call MUST create an independent cache, plugin registry, and event bus.
 - Construction MUST NOT mutate environment variables, current working directory, or signal handlers unless `installSignalHandlers` is true.
 - Bootstrap MUST follow §3.2 through the selected level and emit the same lifecycle events as the CLI.
@@ -95,9 +95,9 @@ Library runtimes discover no plugins by default. Hosts explicitly contribute dir
 
 ### 16.5 Configuration in library mode
 
-Configuration precedence is built-in defaults, optional user configuration, optional environment overrides, host `config`, then the Landofile at app bootstrap. Host configuration is schema-validated and invalid values fail with `ConfigError`.
+Configuration precedence is the §7.5 stack: built-in defaults, optional user configuration (`config.yml`, `config.d/*.yml`), optional environment overrides, host `config`, then the Landofile at app bootstrap. Host `config` accepts any `GlobalConfig` field. The merged stack is decoded once per `makeLandoRuntime` build; an invalid value in any layer, including the host layer, fails the layer with `ConfigError` whose issues carry `source: { layer: "host", path }` for host-authored values. The resulting snapshot is fixed for the runtime's lifetime, `ConfigService.load`/`get` are infallible, and a host MUST build a new runtime to observe changed files or environment.
 
-Hosts MAY skip user configuration and environment input for hermetic operation. Multiple runtimes in one process MUST use distinct environment prefixes and SHOULD use isolated cache, configuration, data, and plugin roots.
+Hosts MAY skip user configuration and environment input for hermetic operation through `configSources: { user?: boolean, env?: boolean }`; `user: false` reads no config files and `env: false` reads no configuration overrides, root variables, `LANDO_PROVIDER` selection, or proxy/CA variables, while platform identity (`HOME`, XDG, `APPDATA`) MAY still establish defaults. The decoded config and resolved roots are fixed for the runtime lifetime and feed that runtime's `StateStore`, plugin trust, and HTTP egress. Isolated runtimes MUST NOT inherit another runtime's snapshot. Multiple runtimes in one process MUST use distinct environment prefixes and SHOULD use isolated cache, configuration, data, and plugin roots.
 
 ### 16.6 Lifecycle and scopes
 
@@ -105,8 +105,8 @@ Bootstrap, event order, payload schemas, subscriber priorities, and subscriber f
 
 - `makeLandoRuntime` returns a scoped Layer and MUST run under a scope-bearing context.
 - Provider connections, watchers, streams, listeners, and plugin handles belong to that scope and finalize in LIFO order.
-- Interruption MUST propagate through provider operations and finalize the runtime.
-- An `App` handle owns a child scope for managed start-state resources. `stop`, `restart`, `destroy`, or outer runtime closure ends it. Repeated managed starts are idempotent unless options request plan-changing reconciliation.
+- Interruption MUST propagate through provider operations and finalize acquisition-local work. Interrupting an individual `App` operation MUST NOT close its owning runtime or current managed scope; closing the outer runtime scope finalizes the resources it owns.
+- An `App` handle owns a child scope for managed start-state resources. `stop`, `restart`, `destroy`, or outer runtime closure ends it. Repeated managed starts converge resources, but init and lifecycle hooks run on every invocation (§6.15). A failed or interrupted managed start keeps the current managed scope and the resources it established (§6.7); the handle retries by converging on them. Only unused staged scopes are discarded before ownership transfer; acquisition-local incomplete resources finalize without releasing app-owned resources.
 - Configured scratch apps are materialized in runtime scope and destroyed when it closes (§21). Imperatively acquired scratches retain their returned scope contract.
 
 Hosts MAY register programmatic event subscribers, but manifest-declared subscribers are the recommended extension path. `EventService` itself is not replaceable.

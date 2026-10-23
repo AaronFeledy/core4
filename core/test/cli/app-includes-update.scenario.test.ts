@@ -312,7 +312,7 @@ describe("lando app:includes:update (source dispatch)", () => {
           cloneUrls.push(url);
           await mkdir(stagingDir, { recursive: true });
           await writeFile(join(stagingDir, "fragment.yml"), "services: {}\n", "utf8");
-          return { commitSha: url.includes("/base.git") ? "base123" : "canonical456" };
+          return { commitSha: (url.includes("/base.git") ? "a" : "b").repeat(40) };
         },
       };
       await withUserCacheRoot(join(dir, ".cache"), async () => {
@@ -344,7 +344,7 @@ describe("lando app:includes:update (source dispatch)", () => {
           cloneUrls.push(url);
           await mkdir(stagingDir, { recursive: true });
           await writeFile(join(stagingDir, "fragment.yml"), "services: {}\n", "utf8");
-          return { commitSha: "compose123" };
+          return { commitSha: "c".repeat(40) };
         },
       };
 
@@ -355,6 +355,40 @@ describe("lando app:includes:update (source dispatch)", () => {
 
         expect(report.entries.map((entry) => entry.source)).toEqual(["github:acme/compose/fragment.yml"]);
         expect(cloneUrls).toEqual(["https://github.com/acme/compose.git"]);
+      });
+    });
+  });
+
+  test("rejects conflicting selectors for the same fragment across root layers", async () => {
+    await withTempCwd(async (dir) => {
+      // Given
+      await writeFile(
+        join(dir, ".lando.base.yml"),
+        "includes:\n  - source: github:acme/shared@v1\n    path: fragment.yml\n",
+      );
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "includes:\n  - source: github:acme/shared@v2\n    path: fragment.yml\n",
+      );
+      const refs: Array<string | undefined> = [];
+      const gitCloner: GitIncludeCloner = {
+        clone: async ({ dest, ref }) => {
+          refs.push(ref);
+          await writeFile(join(dest, "fragment.yml"), "services: {}\n");
+          return { commitSha: "a".repeat(40) };
+        },
+      };
+      await withUserCacheRoot(join(dir, ".cache"), async () => {
+        // When
+        const error = await Effect.runPromise(
+          Effect.flip(
+            appIncludesUpdate({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(testStateStoreLayer)),
+          ),
+        );
+        // Then
+        expect(error).toMatchObject({ _tag: "LandofileIncludeError", kind: "source-unresolved" });
+        expect(refs).toEqual(["v1"]);
+        expect(await Bun.file(join(dir, ".lando.lock.yml")).exists()).toBe(false);
       });
     });
   });

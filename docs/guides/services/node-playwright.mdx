@@ -7,9 +7,15 @@ tags: [beta, docs, node, playwright, testing, tooling, service]
 
 # Run Playwright end-to-end tests against your app
 
-Put Playwright in its own `e2e` service with the browsers already installed, point it at your app by service name, and run `lando playwright test`.
+Run your browser tests in an `e2e` service, with Playwright's browsers and system dependencies already installed. The browser reaches your app by service name, and you run the suite with `lando playwright test`.
 
-You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman). Save this as `.lando.yml` in your app directory:
+You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman). Use a new app directory for this demo; in an existing project, merge the examples instead of replacing your files.
+
+This setup is for testing your own trusted app. The Playwright image runs as root, which disables Chromium's sandbox. Don't use this configuration to browse untrusted sites. See [Playwright's container guidance](https://playwright.dev/docs/docker) for that case.
+
+## Configure the app and test service
+
+Save this as `.lando.yml` in your app directory:
 
 ```yaml
 name: playwright-demo
@@ -31,17 +37,11 @@ tooling:
     cmd: [npx, playwright]
 ```
 
-`web` serves the app on `3000`. `e2e` keeps the Node service wiring (app mounted at `/app`, an idle default command) but swaps in the official Playwright image, which ships the browsers Playwright drives plus their system libraries. Each other line has a job:
-
-- `home: false` skips home persistence. Lando can't infer the home directory of a Landofile-supplied image, so planning stops with `HomePathCapabilityError` without it.
-- `ports: []` gives `e2e` no endpoints. Nothing listens in that container, so there is nothing for `lando info` or the proxy to route.
-- `cmd: [npx, playwright]` runs the project's own Playwright from `/app`, with your arguments appended.
-
-Keep the image tag and the `@playwright/test` version in `package.json` on the same release. Playwright looks for browser builds that match its own version, and the image only carries the builds for its tag.
+The image includes the browsers, not your project's `@playwright/test` package. Keep the package version below and the image tag on the same release.
 
 ## Add the app and one test
 
-Save this as `server.mjs`:
+Save this as `server.mjs` next to the Landofile:
 
 ```js
 import { createServer } from "node:http";
@@ -81,12 +81,13 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: process.env.BASE_URL ?? "http://web:3000",
+    trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });
 ```
 
-Save this as `e2e/home.spec.ts`:
+Create an `e2e` directory and save this as `e2e/home.spec.ts`:
 
 ```ts
 import { expect, test } from "@playwright/test";
@@ -98,42 +99,79 @@ test("home page greets lando", async ({ page }) => {
 });
 ```
 
-`baseURL` is `http://web:3000` because the browser runs inside `e2e`, and other services in the app reach `web` by its service key. The `lando info` URL is for your host browser, not for the test runner.
-
 ## Start the app and run the suite
+
+Run these commands from the app directory on your host. Lando runs npm, curl, and Playwright inside `e2e`. On Linux with Docker, files it creates on the host can be root-owned; the cleanup steps below account for this:
 
 ```sh
 lando start
 lando exec e2e -- npm install
 lando playwright --version
+lando exec e2e -- curl -fsS http://web:3000
 lando playwright test
 ```
 
-No browser download on first run. The image already sat through it for you.
+Check that the version is `1.64.1`, curl returns the demo HTML containing `hello lando`, and the test runner reports one passing Chromium test. That confirms the browser reached `web` over the app network. To check access from your host as well, run `lando info` and open the app URL it prints.
 
-`lando start` waits until both containers are running, not until `web` answers on `3000`. If the first test run beats your server, run it again, or give `web` a [healthcheck](../subsystems/healthcheck-runner.mdx) so start waits for it. Install from `e2e`. Each service gets its own empty `node_modules`, so packages installed in `web` aren't visible to the test runner. Check that `lando playwright --version` prints the same release as the image tag, then check that `lando playwright test` reports the test as passed. A failing assertion, or a `--grep` that matches no tests, exits non-zero through `lando playwright`, so the command works as a gate in scripts. Passing proves Chromium in `e2e` loaded `web` over the app network. It doesn't prove the proxy URL works; open the `lando info` URL in your browser for that.
+If curl cannot connect, the app may still be starting. Run `lando logs -s web`, fix any server error, and repeat the curl check before running the tests. `lando start` waits for containers to run; without a healthcheck, it doesn't wait for this Node server to answer HTTP requests.
 
-The npm script runs the same suite without the tooling entry:
+Install dependencies in `e2e`, not `web`: each service has its own `node_modules` volume. Keep the generated `package-lock.json` with your project and use `lando exec e2e -- npm ci` for later installs from that lockfile. The matching image already contains the required browser builds, so this path doesn't need `playwright install` or `install-deps`.
+
+## Run a file or project
+
+The tooling entry appends your arguments to the project's Playwright command in `/app`:
 
 ```sh
+lando playwright test e2e/home.spec.ts
+lando playwright test --project=chromium
 lando exec e2e -- npm run test:e2e
 ```
 
-Arguments pass straight through, so `lando playwright test e2e/home.spec.ts` runs one file and `lando playwright test --project=chromium` runs one project.
-
-The image ships its own Node release, so `lando exec e2e -- node -v` reports the image's Node rather than 22. Keep `web` on the Node your app targets.
+A failing assertion exits non-zero through `lando playwright`. A filter that finds no tests also fails unless you explicitly use Playwright's `--pass-with-no-tests` flag. Use the command as a script gate, but check that it actually ran the tests you intended. See the [Playwright CLI reference](https://playwright.dev/docs/test-cli) for other test filters.
 
 ## Read the report
 
-Tests run headless in the container. To look at a run, open `playwright-report/index.html` from your host, or load a trace from `test-results/` in the trace viewer. Headed mode needs a display the container doesn't have.
+Tests run headless. The HTML reporter writes `playwright-report/` in your app directory, and failed tests keep traces under `test-results/`. Add both directories to `.gitignore`; reports and traces can contain page content and other test data.
 
-The HTML reporter writes `playwright-report/` in your app directory on the host. Add `playwright-report/` and `test-results/` to `.gitignore`.
-
-Both directories, and the `package-lock.json` that `lando exec e2e -- npm install` writes, are written by the container user. `e2e` runs as root, the image's default user, so on the Docker provider these files are owned by root on Linux hosts. When your host user can't delete them, clear them from inside the service:
+To serve the report on your host, you need Node.js 20 or newer and npm on the host. From the app directory, run:
 
 ```sh
-lando exec e2e -- sh -c 'rm -rf playwright-report test-results'
+npx --yes playwright@1.64.1 show-report playwright-report --host 127.0.0.1
 ```
+
+Open the local URL the command prints, then stop the server with Ctrl+C when you're done. This is a host command, not `lando playwright show-report`: `e2e` has no published ports. Serving the folder with [Playwright's report viewer](https://playwright.dev/docs/test-reporters#html-reporter) also supports the report's attachments and trace links.
+
+To record a trace even for a passing run:
+
+```sh
+lando playwright test --trace on
+```
+
+Open [Playwright Trace Viewer](https://trace.playwright.dev/) in your host browser and select a `trace.zip` from `test-results/`. The viewer reads the file in your browser without uploading it. See [recording and viewing traces](https://playwright.dev/docs/trace-viewer) for more options.
+
+Headed tests and the interactive test generator need a display. They aren't part of this headless setup.
+
+## Keep the image and package together
+
+When updating Playwright, change both the image tag in `.lando.yml` and the exact `@playwright/test` version in `package.json`. Rebuild `e2e`, install the updated package there, and check `lando playwright --version` before testing. A version mismatch can produce a missing-browser-executable error even though the image contains browsers.
+
+If you deliberately use a different, supported Linux image that doesn't include Playwright's browsers, install them and their operating-system libraries in that service:
+
+```sh
+lando playwright install --with-deps chromium
+```
+
+`install chromium` alone downloads the browser; `install-deps chromium` installs only its system dependencies. Don't add these commands to the matching official-image path above. For a custom image, put the installation in its build so rebuilding the service doesn't lose it. Check [Playwright's browser requirements](https://playwright.dev/docs/browsers) before choosing a base image.
+
+`e2e` uses the Node release inside the Playwright image, not the `22` in its Lando service type. Check it with `lando exec e2e -- node -v`. Keep `web` on the Node version your app targets.
+
+## Understand the service settings
+
+`baseURL` is `http://web:3000` because the browser runs inside `e2e`. There, `localhost` means `e2e`, not `web`. The URL from `lando info` is for your host browser.
+
+The Node service type mounts the app at `/app` and keeps `e2e` running with an idle command. `home: false` skips home persistence because Lando cannot infer a home directory for a custom image. Without it or an explicit `home.path`, planning stops with `HomePathCapabilityError`.
+
+`ports: []` prevents the test service from getting an endpoint. Browser tests make outgoing requests; they don't need a listening port on `e2e`.
 
 ## Check the config
 
@@ -159,13 +197,21 @@ lando exec e2e -- sh -c 'rm -rf playwright-report test-results'
 
 ## Tear down
 
-`lando destroy -y` removes the app containers and app-owned networks. Your source files and reports stay on the host. `e2e` keeps its own `node_modules` in a Lando volume, which stays until you run `lando destroy -y --volumes`.
+The container user writes reports and `package-lock.json`. With this root-run image, these files may be root-owned on Linux hosts using Docker. If your host user can't remove the reports, the following command deletes both generated result directories from inside `e2e`. Save anything you want to keep first:
+
+```sh
+lando exec e2e -- sh -c 'rm -rf /app/playwright-report /app/test-results'
+```
+
+`lando destroy -y` removes the app containers and app-owned networks, but keeps source files and reports on the host. It also keeps the service's `node_modules` volume:
 
 ```sh
 lando destroy -y
 ```
 
-## Next
+Only add `--volumes` when you want to delete the app's persistent volumes too. You'll need to reinstall dependencies after starting again.
+
+## Keep developing with Node
 
 - [Run TypeScript on a Node service](./node-typescript.mdx) for typecheck and unit tests on `web`
 - [Reach services by name](../subsystems/service-dns.mdx) for which hostname to use where

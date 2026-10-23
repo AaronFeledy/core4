@@ -70,6 +70,13 @@ export const mailpitServiceType: ServiceType = {
         () =>
           new ServiceTypeError({
             serviceType: "mailpit",
+            issues: [
+              {
+                path: [],
+                message:
+                  "Mailpit service names must start with a letter, digit, or underscore and contain only letters, digits, underscores, dots, or hyphens.",
+              },
+            ],
             message:
               "Mailpit service names must start with a letter, digit, or underscore and contain only letters, digits, underscores, dots, or hyphens.",
           }),

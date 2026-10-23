@@ -30,6 +30,7 @@ const withGlobalFiles = async <A>(
   };
   const globalApp = GlobalAppService.of({
     id: "global",
+    providerId: Effect.succeed(ProviderId.make("lando")),
     root: Effect.succeed(paths.root),
     paths: Effect.succeed(paths),
     ensureRoot: Effect.void,
@@ -43,10 +44,13 @@ const withGlobalFiles = async <A>(
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: (plan) => {
-          expect(plan).toMatchObject({ provider: "lando" });
+          expect(typeof plan === "string" ? plan : plan?.provider).toBe(ProviderId.make("lando"));
           return Effect.succeed(TestRuntimeProvider);
         },
       }),
@@ -260,15 +264,19 @@ for (const name of [
   ".lando.local.yml",
   ".lando.user.yml",
 ]) {
-  test(`strictly validates ${name} before merging later valid overrides`, async () => {
+  test(`validates the effective value after composing ${name}`, async () => {
     // Given an invalid service value and a later valid override where available.
     await withGlobalFiles(async ({ root, load }) => {
       await writeFile(join(root, ".lando.user.yml"), "services:\n  mailpit:\n    home: false\n");
       const file = join(root, name);
       await writeFile(file, "services:\n  mailpit:\n    home: wrong\n");
-      // When the global app loads, then the invalid layer cannot be hidden by merging.
+      // When the global app loads, then only the effective value is runtime-validated.
       const result = await load().catch((error: unknown) => error);
-      expect(result).toMatchObject({ _tag: "LandofileValidationError", file });
+      expect(result).toMatchObject(
+        name === ".lando.user.yml"
+          ? { _tag: "LandofileValidationError", file }
+          : { materialized: true, landofile: { services: { mailpit: { home: false } } } },
+      );
     });
   });
 }

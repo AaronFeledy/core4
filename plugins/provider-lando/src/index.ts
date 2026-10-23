@@ -1,7 +1,7 @@
 import { Semaphore } from "effect";
 import { type Context, Effect, Layer, Schema, Stream } from "effect";
 
-import { VOLUME_WITNESS_IMAGE } from "@lando/container-runtime/data-plane";
+import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineHttpRequest,
@@ -17,10 +17,9 @@ import {
   pullImage as runtimePullImage,
 } from "@lando/container-runtime/image-pull";
 import {
-  type LogFileHelperPayloads,
-  logFileHelperPayloadForTargets,
-} from "@lando/container-runtime/log-file-helper-payloads";
-import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
+  type ResolveContainerHelper,
+  makeProviderLogSourceBinding,
+} from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import {
@@ -34,7 +33,7 @@ import {
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
 import { presentLogicalCreateConfig } from "@lando/container-runtime/podman/bring-up-recreate";
-import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import {
   type ContainerDiedEventsOptions,
   parseContainerEventPayloads,
@@ -82,6 +81,7 @@ import {
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -248,7 +248,7 @@ export {
   buildVolumePruneRequest,
   isManagedNftMissingMessage,
   parseVolumePruneResult,
-  podmanComposeKnobs,
+  composeKnobsForDialect,
   scratchLabelsForPlan,
   startFailureRemediation,
   volumeMatchesFilters,
@@ -535,7 +535,7 @@ export interface ProviderLayerOptions {
   readonly smokeRetryPolicy?: RetryPolicy;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
-  readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly resolveContainerHelper?: ResolveContainerHelper;
   readonly runtimeLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
   readonly runtimeGenerationStore?: RuntimeGenerationStore;
   readonly sanitizeAppliedPlan: (plan: AppPlan) => AppPlan;
@@ -746,10 +746,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         const logSourceBinding = makeProviderLogSourceBinding({
           providerId: LANDO_CTX.providerId,
           logFileAccess: options.logFileAccess,
-          helperPayload: logFileHelperPayloadForTargets(
-            options.logFileHelperPayloads,
-            resolved.hostProxy?.containerTargets,
-          ),
+          helperTarget: resolved.hostProxy?.containerTargets[0],
+          resolveHelper: options.resolveContainerHelper,
         });
         return {
           capabilities: {
@@ -768,10 +766,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         ? {}
         : {
             api: podmanApi,
-            prepareWitnessImage: runtimePullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
-              ctx: LANDO_CTX,
-              dialect: libpodPullDialect,
-            }),
+            pullHelperImage: (ref) =>
+              runtimePullImage(podmanApi, ref, {
+                ctx: LANDO_CTX,
+                dialect: libpodPullDialect,
+                policy: "missing",
+              }),
           }),
       ...(socketPath === undefined
         ? {}
@@ -918,6 +918,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       target: Parameters<typeof runtimePostServiceLifecycle>[1],
     ) => Effect.Effect<void, ProviderError> = () => Effect.void;
     const resolvedOps = bindResolvedProviderOps(planState, {
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: podmanApi, ctx: LANDO_CTX }),
       ctx: LANDO_CTX,
       noPlanError: makeNoPlanError,
       before: ensureEffect,
@@ -1016,7 +1018,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           if (runtime.networkNames === undefined) return logicalRuntime;
           const logicalNames = new Map<string, string>();
           if (physical.networking !== undefined && plan.networking !== undefined) {
-            logicalNames.set(physical.networking.perAppBridge.name, plan.networking.perAppBridge.name);
+            if (physical.networking.perAppBridge !== null && plan.networking.perAppBridge !== null) {
+              logicalNames.set(physical.networking.perAppBridge.name, plan.networking.perAppBridge.name);
+            }
             const shared = physical.networking.sharedNetworkMembership;
             const logicalShared = plan.networking.sharedNetworkMembership;
             if (shared !== undefined && logicalShared !== undefined) {
@@ -1121,7 +1125,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         if (onlyService !== undefined && service.name !== onlyService) continue;
         if (
           !supportsWindowsPublishedRecovery({
-            appId: physicalPlan.id,
+            networking: physicalPlan.networking,
             networks:
               typeof service.extensions.compose === "object" &&
               service.extensions.compose !== null &&
@@ -1218,8 +1222,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             )
         : undefined;
     const appliedPlanState = options.appliedPlanState;
-    const windowsSyncImage =
-      "docker.io/oven/bun@sha256:07235578f79ef8c6f97d94aee7938e76f5cdba5f21ae5dbfdd3d3d38058437eb";
+    const windowsSyncImage = volumeWitnessImage.ref;
     const windowsSyncTargets =
       shouldManageRuntime && family === "win32" && appliedPlanState !== undefined && podmanApi !== undefined
         ? makeWindowsSyncTargetOperations(podmanApi, appliedPlanState, (image) =>
@@ -1815,7 +1818,7 @@ export const plugin = definePlugin({
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
-          const { paths, platform, logFileHelperPayloads, sanitizeAppliedPlan, eventService } =
+          const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan, eventService } =
             yield* providerHostInputs;
           const downloader = yield* Downloader;
           const runtimeState = yield* makePluginRuntimeState(ctx);
@@ -1833,7 +1836,7 @@ export const plugin = definePlugin({
             artifactDownload: makePluginArtifactDownload(downloader),
             ...(eventService === undefined ? {} : { eventService }),
             nftCacheDir: paths.toolDownloadsDir("nft"),
-            logFileHelperPayloads,
+            resolveContainerHelper,
             sanitizeAppliedPlan,
             ...runtimeState,
           });

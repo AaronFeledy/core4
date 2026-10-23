@@ -221,6 +221,7 @@ const makeInfoLayer = (
   state: "running" | "stopped",
   options?: {
     readonly landofile?: { readonly agentEnv?: boolean };
+    readonly onDiscover?: () => void;
     readonly config?: Layer.Layer<ConfigService>;
     readonly plannedApp?: AppPlan;
     readonly providerCapabilities?: ProviderCapabilities;
@@ -269,6 +270,7 @@ const makeInfoLayer = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -288,6 +290,7 @@ const makeInfoLayer = (
       }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
+    removeVolumeSnapshot: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
     locateVolume: () => Effect.die("not used"),
     listVolumes: () => Effect.succeed([]),
@@ -302,13 +305,19 @@ const makeInfoLayer = (
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({ name: "test-info", services: {}, ...options?.landofile }),
+        discover: Effect.sync(() => {
+          options?.onDiscover?.();
+          return { name: "test-info", services: {}, ...options?.landofile };
+        }),
       }),
     ),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(providerCapabilities),
         select: () => Effect.succeed(provider),
@@ -580,7 +589,8 @@ describe("lando info --deep — agent-context env audit", () => {
     expect(renderInfoAppResult(result)).toContain("agent-env\tdisabled");
   });
 
-  test("deep resolved app targets re-read agentEnv instead of using a cached Landofile snapshot", async () => {
+  test.each([false, true])("deep resolved app targets retain captured policy enabled=%s", async (enabled) => {
+    let discoveries = 0;
     const result = await withAgentEnvOff(undefined, () =>
       Effect.runPromise(
         infoApp(
@@ -589,14 +599,24 @@ describe("lando info --deep — agent-context env audit", () => {
             plan,
             root: AbsolutePath.make(process.cwd()),
             app: { kind: "user", id: plan.id, root: plan.root },
-            landofile: { name: "test-info" },
+            landofile: { name: "test-info", ...(enabled ? {} : { agentEnv: false }) },
           },
-        ).pipe(Effect.provide(makeInfoLayer("running", { landofile: { agentEnv: false } }))),
+        ).pipe(
+          Effect.provide(
+            makeInfoLayer("running", {
+              landofile: { agentEnv: !enabled },
+              onDiscover: () => {
+                discoveries++;
+              },
+            }),
+          ),
+        ),
       ),
     );
 
-    expect(result.agentEnv?.enabled).toBe(false);
-    expect(result.agentEnv?.forwarded).toEqual([]);
+    expect(result.agentEnv?.enabled).toBe(enabled);
+    if (!enabled) expect(result.agentEnv?.forwarded).toEqual([]);
+    expect(discoveries).toBe(0);
   });
 
   test("reports disabled when LANDO_AGENT_ENV=0", async () => {
@@ -640,6 +660,7 @@ describe("lando info — resolved log sources", () => {
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
       destroy: () => Effect.succeed({ kind: "destroyed" as const }),
       removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+      readAppEnvironment: () => Effect.succeed([]),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
       run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -656,6 +677,7 @@ describe("lando info — resolved log sources", () => {
         }),
       list: () => Effect.succeed([]),
       snapshotVolume: () => Effect.die("not used"),
+      removeVolumeSnapshot: () => Effect.die("not used"),
       restoreVolume: () => Effect.die("not used"),
       locateVolume: () => Effect.die("not used"),
       listVolumes: () => Effect.succeed([]),
@@ -674,6 +696,9 @@ describe("lando info — resolved log sources", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(caps),
           select: () => Effect.succeed(provider),

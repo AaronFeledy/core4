@@ -42,6 +42,7 @@ import {
   createStandaloneRedactor,
   registerRedactionValues,
 } from "@lando/redaction/service";
+import { ContainerHelperAssets } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
@@ -219,6 +220,10 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 };
 
 const requiredStartServicesLayer = Layer.mergeAll(
+  Layer.succeed(
+    ContainerHelperAssets,
+    ContainerHelperAssets.of({ resolve: () => Effect.die("unused container helper") }),
+  ),
   PrivateFileAccessService.layer,
   TestLandofileLayers.layerTransactionGuard,
   LandoConfigService.layer,
@@ -335,6 +340,14 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: (root) => Effect.succeed(root === plannedApp.root ? plannedApp : undefined),
+        resolveTeardownEvidence: (root) =>
+          Effect.succeed(
+            root === plannedApp.root
+              ? { kind: "applied" as const, plan: plannedApp }
+              : { kind: "absent" as const },
+          ),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
@@ -382,6 +395,9 @@ const makeCachedBuildLayer = () => {
   const registry = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),

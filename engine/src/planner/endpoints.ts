@@ -4,7 +4,6 @@ import { type Context, Effect, Predicate, Schema } from "effect";
 
 import {
   type CapabilityError,
-  type ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   HomePathCapabilityError,
   LandofileValidationError,
@@ -23,10 +22,6 @@ import {
 } from "@lando/sdk/schema";
 
 import { validationIssue } from "@lando/sdk/schema";
-import {
-  promoteRoutableEndpointsForHostProxy,
-  usesManagedProxyNetwork,
-} from "../lifecycle/cross-engine-routes.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
@@ -42,7 +37,6 @@ import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
 import { applyServiceHome } from "./home.ts";
-import { evaluateRouteHostname } from "./route-hostname.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
 import { type ShadowHostCheck, checkShadowHosts } from "./shadow-host-checks.ts";
@@ -55,6 +49,7 @@ const duplicateEndpointNameError = (
 ): LandofileValidationError =>
   new LandofileValidationError({
     message: `Service ${serviceName} declares duplicate endpoint name ${endpointName}.`,
+    remediation: `Give each endpoint of service ${serviceName} a unique name.`,
     file: `${appRoot}/.lando.yml`,
     issues: [
       validationIssue(
@@ -77,21 +72,8 @@ export const resolveRoute = Effect.fnUntraced(function* (
   serviceName: string,
   endpoints: ServicePlan["endpoints"],
   route: NormalizedRoute,
-  expression: {
-    readonly routeIndex: number;
-    readonly appName: string;
-    readonly appSlug: string;
-    readonly defaultDomain: string;
-  },
-): Effect.fn.Return<RoutePlan, LandofileValidationError | ConfigExpressionError> {
-  const hostname = yield* evaluateRouteHostname(route.hostname, {
-    appRoot,
-    serviceName,
-    routeIndex: expression.routeIndex,
-    appName: expression.appName,
-    appSlug: expression.appSlug,
-    defaultDomain: expression.defaultDomain,
-  });
+): Effect.fn.Return<RoutePlan, LandofileValidationError> {
+  const hostname = route.hostname;
   const candidates = endpoints.filter(isRoutableEndpoint);
   const endpoint =
     route.endpoint === undefined
@@ -104,6 +86,7 @@ export const resolveRoute = Effect.fnUntraced(function* (
     return yield* Effect.fail(
       new LandofileValidationError({
         message: `Route ${hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`,
+        remediation: `Select an HTTP endpoint of service ${serviceName} for route ${hostname}.`,
         file: `${appRoot}/.lando.yml`,
         issues: [
           validationIssue(
@@ -149,7 +132,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly plannedServiceDrafts: ReadonlyArray<PlannedServiceDraft>;
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
-  readonly appName: string;
   readonly appSlug: string;
   readonly defaultDomain: string;
   readonly provider: ProviderId;
@@ -164,7 +146,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
-  | ConfigExpressionError
   | RouteInputError
 > {
   const services: Record<string, unknown> = {};
@@ -364,12 +345,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       for (const [routeIndex, route] of authoredRoutes.entries()) {
         routeRefs.push(
           ...(yield* routeAccumulator.add(
-            yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, route, {
-              routeIndex,
-              appName: input.appName,
-              appSlug: input.appSlug,
-              defaultDomain: input.defaultDomain,
-            }),
+            yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, route),
             route.source ?? { key: `services.${name}.routes[${routeIndex}]` },
           )),
         );
@@ -401,9 +377,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       routes: routeRefs.filter(
         (ref, index) => routeRefs.findIndex((other) => other.index === ref.index) === index,
       ),
-      endpoints: usesManagedProxyNetwork(input.provider)
-        ? servicePlanWithHome.endpoints
-        : promoteRoutableEndpointsForHostProxy(servicePlanWithHome.endpoints),
     };
 
     if (

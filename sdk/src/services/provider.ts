@@ -1,4 +1,4 @@
-import { Context, type Effect, type Scope, type Stream } from "effect";
+import { Context, type Effect, type Redacted, type Scope, type Stream } from "effect";
 import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
 
 import type {
@@ -318,6 +318,14 @@ export class RuntimeProviderRegistry extends Context.Service<
   {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
     readonly capabilities: Effect.Effect<ProviderCapabilities, ProviderSelectionError>;
+    /**
+     * Applied plans, across every installed provider contribution, whose `identity.appRoot` exactly
+     * equals `root`. Callers pass a canonical root. Filesystem-only: never constructs, initializes,
+     * or contacts a runtime.
+     */
+    readonly appliedPlansFor: (
+      root: AbsolutePath,
+    ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
     readonly select: (
       target?: AppPlan | ProviderId,
     ) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
@@ -325,10 +333,10 @@ export class RuntimeProviderRegistry extends Context.Service<
       providerId: ProviderId,
       root: AbsolutePath,
     ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
-    readonly resolveAppliedPlan?: (
+    readonly resolveAppliedPlan: (
       root: AbsolutePath,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
-    readonly resolveTeardownEvidence?: (
+    readonly resolveTeardownEvidence: (
       root: AbsolutePath,
     ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
     readonly observeRuntime?: Effect.Effect<
@@ -400,11 +408,10 @@ export class RuntimeProvider extends Context.Service<
     readonly inspectAppliedFileSync?: (
       plan: AppPlan,
     ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
-    /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. Rollback is available only when the provider can safely reverse preparation; otherwise startup retains its recovery journal on failure. */
+    /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. Targets outlive a failed start; the next start resumes them. */
     readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
       {
         readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
-        readonly rollback?: Effect.Effect<void, ProviderError>;
       },
       ProviderError
     >;
@@ -449,6 +456,15 @@ export class RuntimeProvider extends Context.Service<
     /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
     readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
 
+    /**
+     * Read only requested environment names from existing service containers. Absent containers,
+     * missing names and empty values contribute nothing. Never start a runtime or mutate resources.
+     * Failures must be typed, sanitized ProviderErrors without response bodies.
+     */
+    readonly readAppEnvironment: (
+      target: AppSelector,
+      names: Readonly<Record<string, ReadonlyArray<string>>>,
+    ) => Effect.Effect<ReadonlyArray<Redacted.Redacted<string>>, ProviderError>;
     readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
     readonly execStream: (
       target: ExecTarget,
@@ -463,9 +479,10 @@ export class RuntimeProvider extends Context.Service<
     readonly snapshotVolume: (
       spec: VolumeSnapshotSpec,
     ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
-    /** Idempotently remove this provider's snapshot, dispatching on its stored format. */
-    readonly removeVolumeSnapshot?: (
+    /** Idempotently remove a snapshot. GC disables runtime startup/repair; purge allows it by default. */
+    readonly removeVolumeSnapshot: (
       snapshot: VolumeSnapshotRef,
+      options?: { readonly startRuntime?: boolean },
     ) => Effect.Effect<void, ProviderError, Scope.Scope>;
     /** List native snapshot images without consulting a host snapshot index. */
     readonly listVolumeSnapshots?: () => Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>, ProviderError>;
@@ -504,6 +521,8 @@ export class RuntimeProvider extends Context.Service<
 
 export interface DestroyOptions {
   readonly volumes: boolean;
+  /** Restrict ownership-inventory cleanup to these app identities at a shared root. */
+  readonly appIds?: ReadonlyArray<AppId>;
   readonly purgeCaches?: boolean;
   readonly removeState?: boolean;
 }

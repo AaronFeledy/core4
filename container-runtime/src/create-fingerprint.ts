@@ -16,7 +16,7 @@ import {
   normalizeCommand,
   normalizeEntrypoint,
 } from "./create-values.ts";
-import { AGENT_SESSION_LABEL } from "./labels.ts";
+import { AGENT_SESSION_LABEL, HOST_PROXY_SESSION_LABEL } from "./labels.ts";
 import { realizePodmanComposeKnobs } from "./podman/compose-knobs.ts";
 import { podmanNetworkNames } from "./podman/networks.ts";
 
@@ -50,8 +50,9 @@ export const createConfigFingerprint = (
   }
   if (service.environment.LANDO_HOST_PROXY_SESSION !== undefined) {
     sessionMountTargets.add("/run/lando/host-proxy.sock");
-    sessionMountTargets.add("/usr/local/lib/lando/host-proxy-client");
     sessionMountTargets.add("/usr/local/bin/lando");
+    sessionMountTargets.add("/usr/local/bin/xdg-open");
+    sessionMountTargets.add("/usr/local/bin/open");
   }
   const projection = {
     artifact: artifact?.kind === "ref" ? { ref: artifact.ref, digest: artifact.digest } : undefined,
@@ -80,7 +81,10 @@ export const createConfigFingerprint = (
     storage: service.storage,
     configs: composeConfigMounts(plan, service),
     labels: Object.fromEntries(
-      Object.entries(labels).filter(([key]) => key !== CREATE_CONFIG_LABEL && key !== AGENT_SESSION_LABEL),
+      Object.entries(labels).filter(
+        ([key]) =>
+          key !== CREATE_CONFIG_LABEL && key !== AGENT_SESSION_LABEL && key !== HOST_PROXY_SESSION_LABEL,
+      ),
     ),
     healthcheck: containerHealthcheck(service.healthcheck),
     endpoints: service.endpoints.map((endpoint) => {

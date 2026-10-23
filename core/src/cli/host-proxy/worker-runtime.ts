@@ -35,6 +35,7 @@ const WorkerInput = Schema.Struct({
     platform: Schema.optional(Schema.String),
   }),
   shimArtifactPath: Schema.String,
+  configDigest: Schema.String,
   shimTarget: Schema.optional(
     Schema.Union([
       Schema.Struct({ os: Schema.Literal("linux"), arch: Schema.Literal("x64") }),
@@ -73,15 +74,26 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
         const runtimeContext = yield* Effect.context<
           ShellRunner | EventService | RedactionService | RouterService
         >();
+        let currentPlan = input.plan;
         const session = yield* scopedHostProxyRunLandoSession({
           app,
-          mountInfo: hostProxyMountInfoFromPlan(input.plan),
+          get mountInfo() {
+            return hostProxyMountInfoFromPlan(currentPlan);
+          },
           allowlist: HOST_PROXY_RUNLANDO_ALLOWLIST,
           callerService: "lando",
           executor: (request) =>
-            runOpenForHostProxy(input.plan, request).pipe(Effect.provide(runtimeContext)),
+            runOpenForHostProxy(currentPlan, request).pipe(Effect.provide(runtimeContext)),
+          providerId: input.plan.provider,
+          configure: async (body) => {
+            const next = Schema.decodeUnknownSync(AppPlan)(body);
+            if (next.id !== app.id || next.root !== app.root || next.provider !== input.plan.provider)
+              throw new TypeError("Host-proxy plan identity does not match the worker.");
+            currentPlan = next;
+          },
           paths: rootOverridesFromWorkerInput(input.paths),
           shimArtifactPath: input.shimArtifactPath,
+          configDigest: input.configDigest,
           ...(input.shimTarget === undefined ? {} : { shimTarget: input.shimTarget }),
           ...(input.hostGatewayName === undefined ? {} : { hostGatewayName: input.hostGatewayName }),
         });

@@ -22,6 +22,7 @@ import {
   BuildOrchestrator,
   EventService,
   FileSyncEngine,
+  GlobalAppService,
   LandofileService,
   PathsService,
   PluginRegistry,
@@ -124,10 +125,12 @@ export const startOwnedParentIds = (events: ReadonlyArray<LandoEvent>): Readonly
 export const makeHarness = (
   options: {
     readonly plannedApp?: AppPlan;
+    readonly appliedPlans?: ReadonlyArray<AppPlan>;
     readonly providerOverrides?: Partial<RuntimeProviderShape>;
     readonly selectProvider?: (target?: AppPlan | ProviderId) => Effect.Effect<RuntimeProviderShape>;
     readonly resolveAppliedPlan?: typeof RuntimeProviderRegistry.Service.resolveAppliedPlan;
     readonly resolveTeardownEvidence?: typeof RuntimeProviderRegistry.Service.resolveTeardownEvidence;
+    readonly resourceOwnership?: typeof RuntimeProviderRegistry.Service.resourceOwnership;
     readonly stateStore?: ReturnType<typeof makeTestStateStore>;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
     readonly apply?: RuntimeProviderShape["apply"];
@@ -138,14 +141,12 @@ export const makeHarness = (
     readonly preparedFileSyncTargets?: (
       plan: AppPlan,
     ) => ReadonlyArray<import("@lando/sdk/schema").PreparedFileSyncTarget>;
-    readonly fileSyncRollbackEffect?: Effect.Effect<void, ProviderUnavailableError>;
-    readonly providerHasFileSyncRollback?: boolean;
     readonly onBuildApp?: (plan: AppPlan) => void;
-    readonly onFileSyncRollback?: () => void;
     readonly onPublish?: (event: LandoEvent) => Effect.Effect<void, EventError>;
     readonly providerCanPrepareFileSync?: boolean;
     readonly providerCanInspectFileSync?: boolean;
     readonly appliedFileSyncState?: "missing" | "ordinary" | "accelerated" | "unknown";
+    readonly persistAppliedFileSync?: boolean;
     readonly appliedFileSyncSessions?: ReadonlyArray<import("@lando/sdk/schema").FileSyncSessionSpec>;
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly secretStore?: SecretStoreShape;
@@ -169,11 +170,17 @@ export const makeHarness = (
   const applyTreeStarted = new Promise<void>((resolve) => {
     signalApplyTreeStart = resolve;
   });
-  const appliedFileSyncState =
+  let appliedFileSyncState =
     options.providerCanInspectFileSync === false
       ? undefined
       : (options.appliedFileSyncState ??
         (options.providerCanPrepareFileSync === false ? undefined : "missing"));
+  const apply =
+    options.apply ??
+    ((appliedPlan: AppPlan, applyOptions: ApplyOptions) =>
+      Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
+        Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
+      ));
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     ...options.providerOverrides,
@@ -192,7 +199,7 @@ export const makeHarness = (
                     sessions:
                       options.appliedFileSyncSessions ?? plannedApp.fileSync.map(({ session }) => session),
                   }
-                : { status: appliedFileSyncState },
+                : { status: appliedFileSyncState ?? "missing" },
             ),
         }),
     ...(options.providerCanPrepareFileSync === false
@@ -214,13 +221,6 @@ export const makeHarness = (
                         session.target._tag === "volume" ? session.target.name : "unsupported-target",
                     },
                   })),
-                ...(options.providerHasFileSyncRollback === false
-                  ? {}
-                  : {
-                      rollback: Effect.sync(() => {
-                        options.onFileSyncRollback?.();
-                      }).pipe(Effect.andThen(options.fileSyncRollbackEffect ?? Effect.void)),
-                    }),
               };
             }),
         }),
@@ -231,12 +231,15 @@ export const makeHarness = (
     ...(options.disposeFileSyncTargets === undefined
       ? {}
       : { disposeFileSyncTargets: options.disposeFileSyncTargets }),
-    apply:
-      options.apply ??
-      ((appliedPlan, applyOptions) =>
-        Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
-          Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
-        )),
+    apply: (appliedPlan, applyOptions) =>
+      apply(appliedPlan, applyOptions).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            if (options.persistAppliedFileSync === true)
+              appliedFileSyncState = appliedPlan.fileSync.length > 0 ? "accelerated" : "ordinary";
+          }),
+        ),
+      ),
     inspect:
       options.inspect ??
       ((target) =>
@@ -278,13 +281,21 @@ export const makeHarness = (
     logs: options.logs ?? (() => Stream.empty),
   };
   const runtimeProviderRegistry = {
+    appliedPlansFor: (root: AbsolutePath) =>
+      Effect.succeed((options.appliedPlans ?? []).filter((plan) => plan.identity?.appRoot === root)),
+    ...(options.resourceOwnership === undefined ? {} : { resourceOwnership: options.resourceOwnership }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
     select: options.selectProvider ?? (() => Effect.succeed(provider)),
     resolveAppliedPlan: options.resolveAppliedPlan ?? (() => Effect.succeed(plannedApp)),
-    ...(options.resolveTeardownEvidence === undefined
-      ? {}
-      : { resolveTeardownEvidence: options.resolveTeardownEvidence }),
+    resolveTeardownEvidence:
+      options.resolveTeardownEvidence ??
+      ((root: AbsolutePath) =>
+        (options.resolveAppliedPlan ?? (() => Effect.succeed(plannedApp)))(root).pipe(
+          Effect.map((plan) =>
+            plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
+          ),
+        )),
   };
   const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
@@ -305,7 +316,6 @@ export const makeHarness = (
       LandofileService,
       LandofileService.of({ discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
     ),
-    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
     Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistry),
     Layer.succeed(
@@ -351,8 +361,15 @@ export const makeHarness = (
     ),
     LandoConfigService.layer,
     BunFileSystem.layer,
-    GlobalAppServiceLayer.layer.pipe(
-      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    Layer.effect(
+      GlobalAppService,
+      Effect.map(GlobalAppService, (service) => ({ ...service, providerId: Effect.succeed(providerId) })),
+    ).pipe(
+      Layer.provide(
+        GlobalAppServiceLayer.layer.pipe(
+          Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+        ),
+      ),
     ),
     Layer.succeed(
       RouterService,
@@ -383,6 +400,8 @@ export const makeHarness = (
     ),
     ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
+    // After LandoConfigService.layer: that snapshot also provides PathsService, and the later layer wins.
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
   );
   return { layer, events, applyTreeStarted, stateStore, runtimeProviderRegistry, userDataRoot };
 };

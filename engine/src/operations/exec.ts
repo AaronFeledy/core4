@@ -21,10 +21,7 @@ import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
-import {
-  collectAppPlanRedactionTokens,
-  registerAppPlanRedactionTokens,
-} from "../services/app-plan-redaction.ts";
+import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { collectExecStream } from "./exec-stream.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
@@ -160,7 +157,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
   let landofile: LandofileShape;
   if (appTarget?.plan !== undefined) {
     plan = appTarget.plan;
-    landofile = yield* loadUserLandofileAt(landofileService, appTarget.root);
+    landofile = appTarget.landofile ?? (yield* loadUserLandofileAt(landofileService, appTarget.root));
   } else {
     ({ plan, landofile } = yield* planDesiredApp);
   }
@@ -193,7 +190,6 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     allowlist,
     lowerThanEnv: service.environment,
   });
-  yield* registerAppPlanRedactionTokens(plan);
   const sink = yield* Effect.serviceOption(StreamFrameSink);
   const result = yield* execServiceCommand(
     {

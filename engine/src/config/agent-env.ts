@@ -3,7 +3,7 @@ import { type HostEnv, copyPresentHostEnv } from "./host-env-copy.ts";
 
 export type { HostEnv };
 
-// Must stay import-light (no Effect): the compiled host-proxy shim bundle imports this module.
+// Must stay import-light (no Effect): the container-helper build reads these tables.
 
 // Presence markers for agent detectors; no tokens, no session/path dumps.
 // Deliberate exclusions (not a parity chase): path-valued names
@@ -40,7 +40,8 @@ export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
 
 export const AGENT_ENV_DISABLE_ENV_VAR = "LANDO_AGENT_ENV";
 
-const AGENT_ENV_VALUE_MUST_BE_ONE: ReadonlySet<string> = new Set(["GROK_AGENT"]);
+/** Names forwarded only when their value is exactly "1". */
+export const AGENT_ENV_VALUE_MUST_BE_ONE: ReadonlySet<string> = new Set(["GROK_AGENT"]);
 
 const EXACT_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Schema, type Scope, Stream } from "effect";
+import { Effect, Redacted, Schema, type Scope, Stream } from "effect";
 
 import { CapabilityError, DataEndpointUnsupportedError, ProviderCapabilityError } from "../errors/index.ts";
 import { followLogSources, logFollowLineChunks, makeMemoryLogFileAccess } from "../log-follow/index.ts";
@@ -24,6 +24,8 @@ import {
 } from "../schema/index.ts";
 import type { AppSelector, ExecChunk, LogChunk, RuntimeProviderShape } from "../services/index.ts";
 import {
+  CONTRACT_LONG_LINE,
+  CONTRACT_SPLIT_LINE,
   type ContractFailure,
   TEST_APP_ID,
   TEST_PROVIDER_ID,
@@ -40,6 +42,7 @@ import {
   mapProviderFailure,
   mapProviderOrContractFailure,
   requireContract,
+  runsContractServiceScript,
   sampleBytes,
   streamBytes,
   testCapabilities,
@@ -273,8 +276,8 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
       return yield* contractFailure("native snapshot providers implement removeVolumeSnapshot", provider.id);
     }
     yield* provider
-      .removeVolumeSnapshot(snapshot)
-      .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot succeeds")));
+      .removeVolumeSnapshot(snapshot, { startRuntime: false })
+      .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot succeeds without runtime startup")));
     yield* provider
       .removeVolumeSnapshot(snapshot)
       .pipe(Effect.mapError(mapProviderFailure("removeVolumeSnapshot is idempotent")));
@@ -418,6 +421,7 @@ const runTestEphemeral = Effect.fnUntraced(function* (spec: Parameters<RuntimePr
  */
 /** Observed containers this double has already removed, so a second removal is honestly absent. */
 const testRemovedObservations = new Set<string>();
+const testAppliedEnvironments = new Map<string, ReadonlyMap<string, Readonly<Record<string, string>>>>();
 
 export const TestRuntimeProvider: RuntimeProviderShape = {
   id: TEST_PROVIDER_ID,
@@ -433,14 +437,30 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test" }),
 
   buildArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: `${spec.service}:test` }),
-  pullArtifact: (spec) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: spec.ref }),
+  pullArtifact: (spec) => {
+    const digest = spec.ref.includes("@") ? spec.ref.slice(spec.ref.lastIndexOf("@") + 1) : undefined;
+    return Effect.succeed({
+      providerId: TEST_PROVIDER_ID,
+      ref: spec.ref,
+      ...(digest === undefined ? {} : { digest }),
+    });
+  },
   removeArtifact: (_ref) => Effect.void,
 
-  apply: (plan) =>
+  apply: (plan, options) =>
     Effect.sync(() => {
       if (plan == null || plan.extensions == null || plan.services == null) {
         return { changed: false };
       }
+      testAppliedEnvironments.set(
+        plan.id,
+        new Map(
+          Object.values(plan.services).map((service) => [
+            service.name,
+            { ...service.environment, ...options.serviceEnvironment?.[service.name] },
+          ]),
+        ),
+      );
       let changed = false;
       const projectConfigs = Reflect.get(plan.extensions.compose ?? {}, "configs");
       const definitions =
@@ -483,9 +503,12 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   restart: (_target) => Effect.void,
   waitForExit: (_target) => Effect.succeed({ exitCode: 0 }),
   destroy: (target, _options) =>
-    Effect.succeed(
-      target.plan === undefined ? { kind: "no-op", reason: "no-applied-plan" } : { kind: "destroyed" },
-    ),
+    Effect.sync(() => {
+      const removed = testAppliedEnvironments.delete(target.app);
+      return removed || target.plan !== undefined
+        ? { kind: "destroyed" }
+        : { kind: "no-op", reason: "no-applied-plan" };
+    }),
   removeObservedService: (observed) =>
     Effect.sync(() => {
       if (observed.containerId === undefined) return { kind: "absent" };
@@ -495,6 +518,19 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
       return { kind: "removed" };
     }),
 
+  readAppEnvironment: (target, names) =>
+    Effect.sync(() => {
+      const applied = testAppliedEnvironments.get(target.app);
+      const values = new Set<string>();
+      for (const [service, keys] of Object.entries(names)) {
+        const environment = applied?.get(service);
+        for (const key of keys) {
+          const value = environment?.[key];
+          if (value !== undefined && value.length > 0) values.add(value);
+        }
+      }
+      return [...values].map((value) => Redacted.make(value));
+    }),
   exec: (_target, command) =>
     Effect.succeed({
       exitCode: 0,
@@ -539,15 +575,18 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
     );
   },
   logs: (target, options) => {
-    const consoleChunk: LogChunk = {
+    const lines = runsContractServiceScript(target.plan?.services[target.service])
+      ? ["ready", CONTRACT_SPLIT_LINE, CONTRACT_LONG_LINE]
+      : ["ready"];
+    const consoleChunks: LogChunk[] = lines.map((line) => ({
       service: target.service,
       stream: "stdout",
-      line: "ready",
-    };
+      line,
+    }));
 
     const sources = options.sources ?? [];
     const followSources = sources.filter((source) => source.strategy === "follow");
-    if (followSources.length === 0) return Stream.make(consoleChunk);
+    if (followSources.length === 0) return Stream.fromIterable(consoleChunks);
 
     const fs = makeMemoryLogFileAccess();
     for (const source of followSources) {
@@ -565,7 +604,7 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
       }),
     );
 
-    return Stream.concat(Stream.make(consoleChunk), followers);
+    return Stream.concat(Stream.fromIterable(consoleChunks), followers);
   },
   inspect: Effect.fn("RuntimeProvider.inspect")(function* (target) {
     return yield* Effect.succeed({

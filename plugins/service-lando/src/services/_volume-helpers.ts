@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { isAbsolute, posix, resolve as resolvePath, win32 } from "node:path";
+import { Schema, SchemaIssue } from "effect";
 
 import {
   type ComposeVolumeEntry,
@@ -9,6 +10,7 @@ import {
   parseShortVolume,
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext } from "@lando/sdk/services";
+import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
 const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
 
@@ -81,9 +83,24 @@ export const addServerConfigMount = (
   return true;
 };
 
+const parseShortMount = (entry: string, index: number): ComposeVolumeEntry => {
+  try {
+    return parseShortVolume(entry);
+  } catch (cause) {
+    if (!(cause instanceof SchemaIssue.InvalidValue)) throw cause;
+    const message = new Schema.SchemaError(cause).message;
+    throw new ServiceConfigIssue(
+      ["mounts", index],
+      message.endsWith(".") ? message : `${message}.`,
+      "Use source:target[:mode] mount syntax.",
+    );
+  }
+};
+
 export const parseServiceMount = (
   entry: MountInput,
   appRoot: string,
+  index = 0,
 ): {
   readonly type: "bind" | "volume" | "tmpfs";
   readonly source?: string;
@@ -91,7 +108,7 @@ export const parseServiceMount = (
   readonly readOnly: boolean;
 } => {
   if (typeof entry === "string") {
-    const parsed = parseShortVolume(entry);
+    const parsed = parseShortMount(entry, index);
     const source =
       parsed.type === "bind" && parsed.source !== undefined
         ? resolveBindSource(parsed.source, appRoot)
@@ -105,7 +122,11 @@ export const parseServiceMount = (
   }
   const type = entry.type ?? "bind";
   if (type === "bind" && entry.source === undefined) {
-    throw new Error(`Bind mount at "${entry.target}" requires a source.`);
+    throw new ServiceConfigIssue(
+      ["mounts", index],
+      `Bind mount at "${entry.target}" requires a source.`,
+      "Set source to a host path.",
+    );
   }
   const source =
     type === "bind" && entry.source !== undefined ? resolveBindSource(entry.source, appRoot) : entry.source;
@@ -128,8 +149,10 @@ export const occupiedTargets = (service: ServiceConfig): ReadonlySet<string> => 
   if (service.appMount !== false) {
     targets.add(appMountTarget(service.appMount));
   }
-  for (const mount of service.mounts ?? []) {
-    targets.add(canonicalTarget(typeof mount === "string" ? parseShortVolume(mount).target : mount.target));
+  for (const [index, mount] of (service.mounts ?? []).entries()) {
+    targets.add(
+      canonicalTarget(typeof mount === "string" ? parseShortMount(mount, index).target : mount.target),
+    );
   }
   for (const storage of service.storage ?? []) {
     targets.add(canonicalTarget(typeof storage === "string" ? storage : storage.target));
@@ -140,11 +163,16 @@ export const occupiedTargets = (service: ServiceConfig): ReadonlySet<string> => 
 export const classifyComposeVolume = (
   entry: ComposeVolumeEntry,
   context: { readonly appRoot: string; readonly appName: string; readonly serviceName: string },
+  index = 0,
 ): ClassifiedComposeVolume => {
   switch (entry.type) {
     case "bind": {
       if (entry.source === undefined)
-        throw new Error(`Compose bind mount at "${entry.target}" requires a source.`);
+        throw new ServiceConfigIssue(
+          ["volumes", index],
+          `Compose bind mount at "${entry.target}" requires a source.`,
+          "Set source to a host path.",
+        );
       const source = resolveBindSource(entry.source, context.appRoot);
       return {
         _tag: "mount",

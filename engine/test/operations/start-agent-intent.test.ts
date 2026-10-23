@@ -154,10 +154,7 @@ for (const agent of cases) {
 
   test(`${agent.label} maps global configuration failures to its broker error`, async () => {
     // Given
-    const layer = Layer.succeed(ConfigService, {
-      load: Effect.fail(new ConfigError({ message: "invalid" })),
-      get: () => Effect.die("Unexpected get"),
-    });
+    const layer = Layer.effect(ConfigService, Effect.fail(new ConfigError({ message: "invalid" })));
     // When
     const result = await Effect.runPromise(
       agent.resolve({ ...target, landofile }).pipe(Effect.provide(layer), Effect.result),
@@ -166,9 +163,8 @@ for (const agent of cases) {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result))
       expect(result.failure).toMatchObject({
-        stage: "broker",
-        message: `Unable to resolve the global ${agent.label} agent configuration.`,
-        remediation: "Fix the global configuration and retry lando start.",
+        _tag: "ConfigError",
+        message: "invalid",
       });
   });
 

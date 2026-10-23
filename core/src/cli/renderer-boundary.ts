@@ -1,10 +1,24 @@
-import { Cause, Clock, Effect, ErrorReporter, Exit, Layer, References, Schema, Scope, Tracer } from "effect";
+import {
+  Cause,
+  Clock,
+  DateTime,
+  Effect,
+  ErrorReporter,
+  Exit,
+  Layer,
+  Option,
+  References,
+  Schema,
+  Scope,
+  Tracer,
+} from "effect";
 
+import { GlobalConfigSnapshot } from "@lando/engine/services/config";
 import { failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { JqExpressionError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
-import type { EventService, Renderer } from "@lando/sdk/services";
+import { EventService, Renderer } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { EventPublicationObserver } from "@lando/engine/services/event-service";
@@ -310,6 +324,8 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         return;
       }
       let message = options.formatError({ error, additionalErrors });
+      // Failure notices (for example what an incomplete start left in place) follow the error.
+      let notices = yield* commandWarnings.failureNotices;
       const redaction = yield* Effect.serviceOption(RedactionService);
       if (redaction._tag === "Some") {
         const redactor = yield* redaction.value.forProfile("secrets", {
@@ -317,9 +333,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           redactionTokens: extraTokens,
         });
         message = redactor.redactString(message);
+        notices = notices.map((notice) => redactor.redactString(notice));
       }
       if (options.rendererMode === "lando" && io.isTTY === true) message = dimBugReportDetails(message);
       yield* writeDiagnosticLine(message);
+      const renderer = yield* Renderer;
+      for (const notice of notices) yield* renderer.message.warn(notice);
       yield* setFailureExitCode(cause);
     });
     const executeCommand = Effect.gen(function* () {
@@ -402,9 +421,22 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     }
     // Construct the sink inside the command runtime so it captures that runtime's
     // SecretStore-backed redaction service, not the diagnostic fallback.
-    const executeWithLiveSink = attachLiveSink
-      ? Effect.provide(executeCommand, RendererOutput.layerStreamFrameSink(renderContext.format))
-      : executeCommand;
+    const flushConfigWarnings = Effect.gen(function* () {
+      const snapshot = yield* Effect.serviceOption(GlobalConfigSnapshot);
+      const events = yield* Effect.serviceOption(EventService);
+      if (Option.isNone(snapshot) || Option.isNone(events)) return;
+      for (const body of yield* snapshot.value.takeWarnings) {
+        yield* events.value
+          .publish(MessageWarnEvent.make({ body, timestamp: DateTime.nowUnsafe() }))
+          .pipe(Effect.ignore);
+      }
+    });
+    const executeWithLiveSink = Effect.andThen(
+      flushConfigWarnings,
+      attachLiveSink
+        ? Effect.provide(executeCommand, RendererOutput.layerStreamFrameSink(renderContext.format))
+        : executeCommand,
+    );
     const executeWithEventConsumer = Effect.scoped(
       Effect.gen(function* () {
         if (eventConsumerLayer === undefined) return yield* executeWithLiveSink;

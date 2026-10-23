@@ -3,6 +3,7 @@ import { Effect, Predicate } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
+import type { NetworkingPlan } from "@lando/sdk/schema";
 
 import {
   type PublishedContainerReceipt,
@@ -37,7 +38,7 @@ export const compatNetworkIds = (value: unknown): ReadonlyArray<string> => {
 export const WINDOWS_COMPAT_NETWORK_LIST_PATH = "/networks" as const;
 
 export const supportsWindowsPublishedRecovery = (input: {
-  readonly appId: string;
+  readonly networking: NetworkingPlan | undefined;
   readonly networks?: unknown;
   readonly endpoints: ReadonlyArray<{
     readonly _tag: string;
@@ -47,7 +48,8 @@ export const supportsWindowsPublishedRecovery = (input: {
 }): boolean => {
   const published = input.endpoints.filter((endpoint) => endpoint._tag === "published");
   return (
-    input.appId === "global" &&
+    input.networking?.perAppBridge === null &&
+    input.networking.sharedNetworkMembership !== undefined &&
     published.length > 0 &&
     published.length === input.endpoints.length &&
     published.every(

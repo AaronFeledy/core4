@@ -55,6 +55,8 @@ describe("@lando/sdk package exports", () => {
     expect(typeof landofile.resolveLayerMergeRule).toBe("function");
     expect(typeof landofile.routeMatchKey).toBe("function");
     expect(typeof landofile.parseRouteShorthand).toBe("function");
+    expect(typeof landofile.parseRouteHostname).toBe("function");
+    expect(typeof landofile.parseRoutePathPrefix).toBe("function");
     expect(typeof landofile.landofileLayerRank).toBe("function");
     expect(landofile.composeServiceDispositions).toBeDefined();
     expect(typeof landofile.compareKeyPaths).toBe("function");
@@ -289,6 +291,7 @@ describe("@lando/sdk package exports", () => {
       "ServiceConfig",
       "RouteInput",
       "HealthcheckInput",
+      "AppMountInput",
       "ToolingTaskShape",
       "ExpressionTemplate",
       "ExpressionNode",
@@ -437,6 +440,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.AppLockTimeoutError).toBeDefined();
     expect(errors.AppResolveError).toBeDefined();
     expect(errors.GlobalAppError).toBeDefined();
+    expect(errors.AppPlacementError).toBeDefined();
     expect(errors.GlobalDestroyConfirmationError).toBeDefined();
     expect(errors.GlobalServiceCollisionError).toBeDefined();
     expect(errors.GlobalServiceMissingError).toBeDefined();
@@ -644,6 +648,9 @@ describe("@lando/sdk package exports", () => {
     expect(databaseCreds.databaseEnvCreds).toBeDefined();
     expect(databaseCreds.firstEnv).toBeDefined();
     expect(databaseCreds.DATABASE_FAMILY_ENV_KEYS).toBeDefined();
+    expect(databaseCreds.DATABASE_PORT_ENV_KEY).toBe("LANDO_DB_PORT");
+    expect(databaseCreds.DATABASE_FAMILY_DEFAULT_PORTS).toBeDefined();
+    expect(databaseCreds.databaseEnvPort("mysql", { LANDO_DB_PORT: "13306" })).toBe(13306);
   });
 
   test("digest entry point exports the hashing and canonical JSON helpers", async () => {
@@ -679,6 +686,8 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.runProviderContract).toBeDefined();
     expect(sdkTest.runProviderContractMatrix).toBeDefined();
     expect(sdkTest.runProviderDataPlaneContract).toBeDefined();
+    expect(sdkTest.runProviderVolumeCreationContract).toBeDefined();
+    expect(sdkTest.runProviderStartRetentionContract).toBeDefined();
     expect(sdkTest.TestRuntimeProvider).toBeDefined();
   });
 

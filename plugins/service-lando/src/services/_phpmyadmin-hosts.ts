@@ -2,6 +2,25 @@ import { PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { AppFeatureServiceView } from "@lando/sdk/services";
+import { plannedPort } from "./_port-helpers.ts";
+import { MARIADB_LISTENER } from "./mariadb.ts";
+import { MYSQL_LISTENER } from "./mysql.ts";
+
+export const portsForHosts = (
+  hosts: readonly string[],
+  siblings: readonly AppFeatureServiceView[],
+): readonly number[] => {
+  const byName = new Map(siblings.map((sibling) => [sibling.serviceName, sibling]));
+  return hosts.map((host) => {
+    const sibling = byName.get(host);
+    return sibling === undefined
+      ? MYSQL_LISTENER.port
+      : plannedPort(
+          sibling.normalizedConfig,
+          sibling.serviceType.startsWith("mysql") ? MYSQL_LISTENER : MARIADB_LISTENER,
+        );
+  });
+};
 
 export type PmaCreds = {
   readonly user: string;

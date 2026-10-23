@@ -20,17 +20,15 @@ import {
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import { VOLUME_WITNESS_IMAGE } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import {
-  type LogFileHelperPayloads,
-  logFileHelperPayloadForTargets,
-} from "@lando/container-runtime/log-file-helper-payloads";
-import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
+  type ResolveContainerHelper,
+  makeProviderLogSourceBinding,
+} from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
@@ -40,7 +38,7 @@ import {
   podmanVolumeCreationLabels,
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
-import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { getContainerDiedEvents as getRuntimeContainerDiedEvents } from "@lando/container-runtime/podman/container-events";
 import {
   discoverLabeledContainers,
@@ -64,6 +62,7 @@ import {
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, redactString } from "@lando/container-runtime/redact";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -339,7 +338,7 @@ export const podmanCapabilitiesForPlatform = (
     tlsCertificates: "none",
     rootless: true,
     composeSpec: "native",
-    composeKnobs: { supported: podmanComposeKnobs() },
+    composeKnobs: { supported: composeKnobsForDialect("libpod") },
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
@@ -507,7 +506,7 @@ export interface ProviderLayerOptions {
   ) => Effect.Effect<void, ProviderLandoConflictError | ProviderLandoStateError>;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
-  readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly resolveContainerHelper?: ResolveContainerHelper;
   readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
 }
 
@@ -639,10 +638,8 @@ const assembleRuntimeProvider = (
           const logSourceBinding = makeProviderLogSourceBinding({
             providerId: PROVIDER_ID,
             logFileAccess: options.logFileAccess,
-            helperPayload: logFileHelperPayloadForTargets(
-              options.logFileHelperPayloads,
-              capabilities.hostProxy?.containerTargets,
-            ),
+            helperTarget: capabilities.hostProxy?.containerTargets[0],
+            resolveHelper: options.resolveContainerHelper,
           });
           return {
             serverVersion,
@@ -682,10 +679,12 @@ const assembleRuntimeProvider = (
       ctx: PODMAN_CTX,
       providerId: providerIdBranded,
       endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
-      prepareWitnessImage: pullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
-        ctx: PODMAN_CTX,
-        dialect: libpodPullDialect,
-      }),
+      pullHelperImage: (ref) =>
+        pullImage(podmanApi, ref, {
+          ctx: PODMAN_CTX,
+          dialect: libpodPullDialect,
+          policy: "missing",
+        }),
       api: podmanApi,
       capabilities: resolvedCapabilities,
       redactDetails,
@@ -704,6 +703,8 @@ const assembleRuntimeProvider = (
     const resolvePlan = appliedPlans.resolvePlan;
 
     const resolvedOps = bindResolvedProviderOps(planState, {
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: podmanApi, ctx: PODMAN_CTX }),
       ctx: PODMAN_CTX,
       noPlanError: makeNoPlanError,
       service: {
@@ -937,12 +938,12 @@ export const plugin = definePlugin({
           makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
         appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
-          const { paths, platform, logFileHelperPayloads, sanitizeAppliedPlan } = yield* providerHostInputs;
+          const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan } = yield* providerHostInputs;
           return yield* makeRuntimeProvider({
             platform,
             stateDir: `${paths.roots.userDataRoot}/providers`,
             appliedPlanState: ctx.stateStore,
-            logFileHelperPayloads,
+            resolveContainerHelper,
             sanitizeAppliedPlan,
           });
         }),
