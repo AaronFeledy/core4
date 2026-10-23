@@ -240,7 +240,7 @@ live in [`AGENTS.md`](./AGENTS.md) and the per-package `AGENTS.md` files.
 
 ### Alpha completion criteria
 
-For contributors, Alpha 1 is complete only when every compile target passes live `lando setup`, live `lando doctor`, and the canonical Drupal and Rails journeys. Compilation alone is not enough, and a roadmap rewrite does not meet these criteria. The public Rails recipe uses an executable `README.mdx`; its existing builtin implementation is upgraded rather than duplicated.
+For contributors, Alpha 1 is complete only when every compile target passes live `lando setup`, live `lando doctor`, and live canonical Drupal and Rails journeys. Compilation alone is not enough, and a roadmap rewrite does not meet these criteria. The public Rails recipe uses an executable `README.mdx`; its existing builtin implementation is upgraded rather than duplicated.
 
 ## Known limitations
 
