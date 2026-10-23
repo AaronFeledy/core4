@@ -156,7 +156,7 @@ lando app:cache:refresh
 
 Two limits. A service cannot read its own `services.<name>.creds`, and two services cannot each read the other's; both fail the plan as a cycle, because credentials exist only after the service resolves. And values that arrive through `env_file:` are never interpolated, so put the expression in `environment:`.
 
-The password still redacts in `lando info` and in logs, because the database service carries the same value under `POSTGRES_PASSWORD` / `LANDO_DB_PASSWORD`. The exception is a password that matches its own user or database name. `lando info` prints that name anyway, so Lando stops masking the word itself in command output. A `PASSWORD=...` assignment in a log line is still masked.
+Lando recognizes the password through the database service's `POSTGRES_PASSWORD` or `LANDO_DB_PASSWORD` value and masks it in command output. Automatic collection excludes public defaults and passwords that exactly match their own database user or database name, so those names remain readable in other text. Password fields in `lando info` and `PASSWORD=` assignments in `lando logs` are still masked. Values explicitly registered as secrets or resolved from a [secret store](../config/secret-stores.mdx) remain masked even when they match one of these exceptions.
 
 ## Find a bad expression
 
