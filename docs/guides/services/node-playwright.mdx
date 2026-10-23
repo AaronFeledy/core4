@@ -144,8 +144,10 @@ Open the local URL the command prints, then stop the server with Ctrl+C when you
 To record a trace even for a passing run:
 
 ```sh
-lando playwright test --trace on
+lando exec e2e -- npx playwright test --trace on
 ```
+
+The `--` separator passes `--trace` to Playwright instead of enabling Lando's own tracing.
 
 Open [Playwright Trace Viewer](https://trace.playwright.dev/) in your host browser and select a `trace.zip` from `test-results/`. The viewer reads the file in your browser without uploading it. See [recording and viewing traces](https://playwright.dev/docs/trace-viewer) for more options.
 
