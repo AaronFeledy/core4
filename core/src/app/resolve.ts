@@ -83,7 +83,7 @@ const planFromShape = Effect.fnUntraced(function* (
     appRoot,
     file: sourcePath,
   });
-  yield* assertUserAppIdNotReserved(landofile);
+  yield* assertUserAppIdNotReserved(landofile.document);
   yield* assertLandoVersionConstraint(landofile.document, { sourcePath });
   return yield* planResolvedLandofile(landofile, appRoot);
 }, Effect.mapError(toAppResolveError));
