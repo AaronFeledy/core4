@@ -261,8 +261,8 @@ directory through the app mount. Set tooling `dir:` explicitly instead.
 
 Lando reads `.nvmrc` first and checks it against `package.json` `engines.node`
 when present. An exact `.nvmrc` value of `22.11.0` with `engines.node: ">=22"`
-selects `node:22.11.0`. Without `.nvmrc`, that engine range selects the current
-table LTS channel (`node:24`), not the newest matching Node major.
+selects `node:22.11.0`. Without `.nvmrc`, that engine range selects `node:24`,
+Lando's preferred LTS major, rather than the newest matching Node major.
 
   <Scenario id="infer-from-theme" render>
     <Step name="scaffold-infer">
