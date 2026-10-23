@@ -10,7 +10,11 @@ import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const plan = (input: unknown, hostProvider: string) =>
   Effect.flatMap(AppPlanner, (planner) =>
-    planner.plan(Schema.decodeUnknownSync(LandofileShape)(input), TestRuntimeProvider.capabilities),
+    planTestLandofile(
+      planner,
+      Schema.decodeUnknownSync(LandofileShape)(input),
+      TestRuntimeProvider.capabilities,
+    ),
   ).pipe(
     Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))),
     Effect.provideService(HostProviderOverride, ProviderId.make(hostProvider)),
@@ -88,3 +92,4 @@ describe("route provider placement", () => {
     );
   });
 });
+import { planTestLandofile } from "../compiled-landofile.ts";

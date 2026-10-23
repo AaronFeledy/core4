@@ -12,8 +12,8 @@ import {
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
-  type LandofileShape,
+  type CurrentExecutableAppPlan,
+  type LoadScopedLandofile,
   type NetworkPlan,
   type NetworkingPlan,
   type ProviderCapabilities,
@@ -72,12 +72,13 @@ import {
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
 import { loadComposeConfigFiles } from "./config-files.ts";
-import { attachEffectiveEvents, compileEffectiveEvents } from "./effective-events.ts";
+import { validateConnectionValues } from "./connection-values.ts";
+import { compileEffectiveEvents } from "./effective-events.ts";
 import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { resolveKnownEventSet } from "./event-set.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
-import { attachServiceCredsScope } from "./landofile-scopes.ts";
+import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
 import { appNetworkName } from "./naming.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
@@ -99,16 +100,17 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   fileSystem: Context.Service.Shape<typeof FileSystem> | undefined,
   pathsService: Context.Service.Shape<typeof PathsService> | undefined,
   certificateAuthorityResolver: Context.Service.Shape<typeof CertificateAuthorityResolver> | undefined,
-  authoredLandofile: LandofileShape,
+  authoredLandofile: LoadScopedLandofile,
   providerCapabilities: ProviderCapabilities,
   knownAppRoot?: string,
-): Effect.fn.Return<AppPlan, AppPlannerError> {
+): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError> {
   const {
     landofile,
     appSlug,
     defaultDomain,
     services: seeds,
     effectiveTooling,
+    invocationSites,
     appRoot,
     appName,
     landofilePath,
@@ -120,7 +122,6 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     hostProvider,
     manifests,
     topLevelEnvFiles,
-    serviceCredsScope,
     routes: resolvedRoutes,
   } = yield* resolveKnownEventSet({
     pluginRegistry,
@@ -330,6 +331,11 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...(hostEvents === undefined ? {} : { hostEvents }),
     skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
   };
+  const executableSites = yield* compilePlanInvocationSites({
+    sites: invocationSites,
+    hostEvents,
+    env: authoredLandofile.context.env,
+  });
   const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
     compileEffectiveEvents({ ...hostEventCompileBase, services });
   const planServices = (services: Readonly<Record<string, unknown>>) =>
@@ -340,7 +346,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       ]),
     );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
-  const appFeatureEnv = snapshotAppFeatureEnv(appFeatures);
+  const appFeatureEnv = snapshotAppFeatureEnv(appFeatures, authoredLandofile.context.env);
   const cacheKey = deriveAppPlanCacheKey({
     hostProvider,
     appRoot,
@@ -357,6 +363,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
     versionConstraints,
     serviceInputs: {
+      pendingSites: authoredLandofile.pendingSites,
+      environment: authoredLandofile.context.env,
       landofile: landofile.services ?? {},
       composition: {
         topLevelEnvFileInputs: topLevelEnvFiles.inputs,
@@ -390,12 +398,10 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
-      return attachServiceCredsScope(
-        attachEffectiveEvents(
-          attachEffectiveTooling(cached, effectiveTooling),
-          effectiveEventsFor(planServices(cached.services)),
-        ),
-        serviceCredsScope,
+      return attachCompiledInvocationPlan(
+        attachEffectiveTooling(cached, effectiveTooling),
+        executableSites,
+        effectiveEventsFor(planServices(cached.services)),
       );
     }
   }
@@ -485,10 +491,11 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...(finalized.routes.length > 0 && routerEnabled ? ["traefik"] : []),
     ...appFeatureResult.requires.globalServices,
   ];
-  const plan = attachEffectiveEvents(
+  const plan = attachCompiledInvocationPlan(
     attachEffectiveTooling(
       yield* decodeAppPlan(appRoot, {
         id: appId,
+        valueModel: 1,
         name: appName,
         slug: appSlug,
         root: AbsolutePath.make(appRoot),
@@ -512,12 +519,15 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         ...(requiredGlobalServices.length === 0
           ? {}
           : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
-      }).pipe(Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices))),
+      }).pipe(
+        Effect.tap((decoded) => validateConnectionValues(appRoot, decoded.services)),
+        Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices)),
+      ),
       effectiveTooling,
     ),
+    executableSites,
     effectiveEventsFor(planServices(finalized.services)),
   );
-  attachServiceCredsScope(plan, serviceCredsScope);
   yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);

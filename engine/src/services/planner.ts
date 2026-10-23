@@ -1,6 +1,5 @@
 import { type Context, Effect, Layer, Option } from "effect";
 
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import {
   AppPlanner,
   CacheService,
@@ -49,7 +48,7 @@ export const layer = Layer.effect(
     return AppPlanner.of({
       plan: Effect.fn("AppPlanner.plan")(function* (landofile, providerCapabilities) {
         const identity = yield* resolveAppIdentity(
-          getLandofileAppRoot(landofile) ?? process.cwd(),
+          landofile.context.appRoot,
           Option.getOrUndefined(processRunner),
         );
         const plan = yield* planApp(

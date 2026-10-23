@@ -3,7 +3,8 @@ import { Clock, Effect, Option } from "effect";
 import type { ToolingResult } from "@lando/sdk/app";
 import type { ShellExecError, ShellScriptOutsideRootError } from "@lando/sdk/errors";
 import { NotImplementedError, ToolingExecError } from "@lando/sdk/errors";
-import { EventService } from "@lando/sdk/services";
+import type { Environment } from "@lando/sdk/schema";
+import { EnvironmentValueResolver, EventService } from "@lando/sdk/services";
 
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { readBunShellScript } from "@lando/landofile/bun-sh-script";
@@ -29,14 +30,19 @@ export const runBunShellScript = Effect.fnUntraced(function* (
   options: {
     readonly args?: ReadonlyArray<string>;
     readonly cwd?: string;
-    readonly env?: Readonly<Record<string, string>>;
+    readonly env?: Environment;
     readonly hostIo?: "stdin" | "terminal";
     readonly signal?: AbortSignal;
   },
 ): Effect.fn.Return<
   ToolingResult,
-  NotImplementedError | ShellExecError | ShellScriptOutsideRootError | ToolingExecError,
-  PrivateFileAccessService
+  | NotImplementedError
+  | ShellExecError
+  | ShellScriptOutsideRootError
+  | ToolingExecError
+  | import("@lando/sdk/errors").SecretStoreError
+  | import("@lando/sdk/errors").EnvironmentValueResolutionError,
+  PrivateFileAccessService | EnvironmentValueResolver | import("effect").Scope.Scope
 > {
   if (script.service !== HOST_SERVICE) {
     return yield* Effect.fail(
@@ -49,7 +55,8 @@ export const runBunShellScript = Effect.fnUntraced(function* (
     );
   }
   const cwd = options.cwd ?? appRoot;
-  const env = options.env;
+  const session = yield* (yield* EnvironmentValueResolver).openSession();
+  const env = options.env === undefined ? undefined : yield* session.resolveEnvironment(options.env);
   const result = yield* runHostScript(script.path, [appRoot], {
     cwd,
     ...(options.args === undefined ? {} : { argv: options.args }),
@@ -82,14 +89,14 @@ export const runBunShellScript = Effect.fnUntraced(function* (
     stdout: result.stdout,
     stderr: result.stderr,
   } satisfies ToolingResult;
-});
+}, Effect.scoped);
 
 export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(function* (
   options: {
     readonly name: string;
     readonly args?: ReadonlyArray<string>;
     readonly cwd?: string;
-    readonly env?: Readonly<Record<string, string>>;
+    readonly env?: Environment;
     readonly hostIo?: "stdin" | "terminal";
     readonly signal?: AbortSignal;
     readonly relativePath?: string;

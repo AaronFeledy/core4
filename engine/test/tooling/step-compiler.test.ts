@@ -3,12 +3,9 @@ import { Cause, Effect, Exit, Option, Ref } from "effect";
 
 import { ToolingCompileError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import type { EventStep } from "@lando/sdk/schema";
+import { compileAuthoredEventStepProgram as compileEventStepProgram } from "../../src/tooling/authored-step-compiler.ts";
 
-import {
-  EventStepCompileError,
-  compileEventStepProgram,
-  compileSimpleToolingTaskProgram,
-} from "../../src/tooling/step-compiler.ts";
+import { EventStepCompileError, compileSimpleToolingTaskProgram } from "../../src/tooling/step-compiler.ts";
 import type { ToolingCommandStepLeaf } from "../../src/tooling/step-program.ts";
 
 describe("compileEventStepProgram", () => {

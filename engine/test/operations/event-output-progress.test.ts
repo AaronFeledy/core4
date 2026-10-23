@@ -1,9 +1,5 @@
-import { afterEach, expect, test } from "bun:test";
-import {
-  RedactionService,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { expect, test } from "bun:test";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { EventService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -16,15 +12,13 @@ import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as EventRuntime from "../../src/services/event-service.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
-afterEach(resetRegisteredRedactionValuesForTesting);
-
 for (const kind of ["cmd", "task"] as const) {
   for (const live of [false, true]) {
     test(`${kind} hook output narrates only outside a live sink: live=${live}`, async () => {
       // Given
       const secret = "hook-progress-canary";
       const task = { service: "web", cmd: "hook", env: { API_TOKEN: secret } };
-      const plan: AppPlan = {
+      const basePlan: AppPlan = {
         id: AppId.make("event-output"),
         name: "event-output",
         slug: "event-output",
@@ -38,20 +32,13 @@ for (const kind of ["cmd", "task"] as const) {
         extensions: {},
         metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-01T00:00:00Z"), source: "test", runtime: 4 },
       };
-      attachEffectiveTooling(plan, { named: task });
+      const plan = attachEffectiveTooling(basePlan, { named: task });
       attachEffectiveEvents(plan, { "post-start": [kind === "cmd" ? task : { task: "named" }] });
       const payload = createCollectingStreamFrameSink();
       const layer = Layer.mergeAll(
+        testEnvironmentResolverLayer,
         EventRuntime.layer,
-        Layer.succeed(
-          RedactionService,
-          makeRedactionService({
-            id: "empty",
-            list: Effect.succeed([]),
-            get: () => Effect.succeed(""),
-            has: () => Effect.succeed(false),
-          }),
-        ),
+        Layer.succeed(RedactionService, makeRedactionService()),
         Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
         Layer.succeed(RuntimeProviderRegistry, {
           appliedPlansFor: () => Effect.succeed([]),
@@ -92,3 +79,4 @@ for (const kind of ["cmd", "task"] as const) {
     });
   }
 }
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

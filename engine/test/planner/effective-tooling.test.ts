@@ -49,21 +49,21 @@ describe("compileEffectiveTooling", () => {
     const plan = toolingForPlan.attachEffectiveTooling(eventPlan(), tooling);
     const attached = toolingForPlan.effectiveToolingForPlan(plan);
     // Then
-    expect(attached).toBe(tooling);
+    expect(attached).toEqual(tooling);
     if (attached === undefined) throw new Error("missing attached tooling");
     expect(validEventNames(attached)).toEqual(validEventNames(tooling));
     expect(validEventNames(attached)).not.toContain("pre-ops:migrate");
   });
   test("returns attached effective tasks when tooling is attached to a plan", () => {
     // Given
-    const plan = eventPlan();
+    const basePlan = eventPlan();
     const tooling = compileEffectiveTooling({
       landofile: { toolingDefaults: { env: { COUNT: "2" } } },
       services: [
         { name: "web", tooling: { inspect: { cmd: "inspect", flags: { loud: { boolean: true } } } } },
       ],
     });
-    toolingForPlan.attachEffectiveTooling(plan, tooling);
+    const plan = toolingForPlan.attachEffectiveTooling(basePlan, tooling);
     // When
     const attached = toolingForPlan.effectiveToolingForPlan(plan);
     // Then

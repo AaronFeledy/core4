@@ -39,6 +39,5 @@ export const withTeardownAuthoredEvents = Effect.fn("AppOperation.teardownAuthor
   )
     return yield* skip("desired app identity differs from applied state");
 
-  carryPlanAttachments(target.plan, applied.plan);
-  return applied;
+  return { ...applied, plan: carryPlanAttachments(target.plan, applied.plan) };
 });

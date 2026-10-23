@@ -1,257 +1,185 @@
-import { Effect, Result } from "effect";
-
+import { compiledValueError, consumeSites } from "@lando/landofile/compiled-sites";
 import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import {
   PLAN_IDENTITY_EXPRESSION_SCOPES,
   PLAN_SERVICE_EXPRESSION_SCOPES,
-  hostExpressionEnvironment,
-  materializeExpressionScopes,
   recipeOptionScope,
 } from "@lando/landofile/recipe-expressions";
 import { ConfigExpressionError } from "@lando/sdk/errors";
+import { type ExpressionContext, expressionScopeMembers } from "@lando/sdk/expressions";
 import {
-  type ExpressionContext,
-  expressionScopeMembers,
-  parseExpressionEither,
-} from "@lando/sdk/expressions";
-import type {
-  AppPlan,
-  GlobalConfig,
+  type AppPlan,
+  type CompilationContext,
+  type GlobalConfig,
+  IdentityScopedLandofile,
   LandofileShape,
-  ServiceCreds,
-  ValidationIssuePath,
+  type LoadScopedLandofile,
+  type ParsedPendingSite,
+  type ServiceConnection,
+  ServiceScopedLandofile,
+  type ValidationIssuePath,
 } from "@lando/sdk/schema";
-
+import { Effect, Result, Schema } from "effect";
 import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { normalizeAppSlug } from "./naming.ts";
 
 export interface MaterializeLandofileScopesInput {
-  readonly landofile: LandofileShape;
+  readonly landofile: LoadScopedLandofile;
   readonly appRoot: string;
   readonly landofilePath: string;
   readonly globalConfig: Readonly<{ readonly proxy?: GlobalConfig["proxy"] }> | undefined;
 }
 
-/**
- * Expressions and paths of the value sites a pass left for a later one.
- *
- * A later pass evaluates only these sites, so a value an earlier pass produced
- * (an `env.*` read that happened to yield `{{ ... }}` text, say) is data, not
- * an expression.
- */
-export type DeferredExpressionSites = ReturnType<typeof materializeExpressionScopes>["deferred"];
-
-export interface MaterializedLandofileScopes {
-  /** The Landofile with every identity-scope expression replaced by its value. */
-  readonly landofile: LandofileShape;
-  readonly appSlug: string;
-  readonly defaultDomain: string;
-  /** Sites that read `services.<name>.*` and wait for service resolution. */
-  readonly deferredSites: DeferredExpressionSites;
-}
-
-const ARRAY_INDEX_SEGMENT = /^(?:0|[1-9][0-9]*)$/;
-
-export const deferredSiteKey = (path: ReadonlyArray<string | number>): string => path.join(".");
-
-/**
- * Recover the structured issue path from a {@link ConfigExpressionError}
- * raised by one of the planner materialization passes.
- *
- * The error carries the path as dotted text; array positions were written as
- * decimal indexes, so they come back as numbers the way `ValidationIssuePath`
- * documents them.
- */
+export type DeferredExpressionSites = readonly ParsedPendingSite[];
+export type ServiceCredsScope = Readonly<Record<string, Pick<ServiceConnection, "creds" | "port">>>;
+export const deferredSiteKey = (path: ValidationIssuePath): string => path.join(".");
 export const configExpressionIssuePath = (error: ConfigExpressionError): ValidationIssuePath =>
   error.path.length === 0
     ? []
-    : error.path.split(".").map((segment) => (ARRAY_INDEX_SEGMENT.test(segment) ? Number(segment) : segment));
+    : error.path.split(".").map((part) => (/^(?:0|[1-9][0-9]*)$/.test(part) ? Number(part) : part));
 
-const unresolvedExpressionError = (
-  unresolved: { readonly path: ValidationIssuePath; readonly expression: string; readonly reason: string },
-  landofilePath: string,
-  remediation: string,
-): ConfigExpressionError =>
-  new ConfigExpressionError({
-    message: unresolved.reason,
-    expression: unresolved.expression,
-    path: deferredSiteKey(unresolved.path),
-    filePath: landofilePath,
-    remediation,
-  });
+const decodeDocument = (document: unknown, filePath: string, pendingSites: readonly ParsedPendingSite[]) =>
+  Schema.decodeUnknownEffect(Schema.toType(LandofileShape))(document, { onExcessProperty: "error" }).pipe(
+    Effect.mapError((cause) => compiledValueError(cause, { filePath, pendingSites })),
+  );
 
-/**
- * Resolve the expression scopes the loader deferred to the planner that do
- * not depend on any service: `app`, `proxy`, `recipe`, and `env`.
- *
- * The loader leaves `app` and `proxy` sites (and any site mixing them with
- * `recipe`/`env`) untouched because only the planner knows the app slug and
- * the proxy default domain. This pass evaluates those sites across the whole
- * document so service configuration, environment, and tooling see the same
- * values route hostnames do. `app.name` is the normalized slug. A document
- * with no deferred sites is returned as-is so object identity and provenance
- * are untouched on the common path.
- *
- * Sites that read `services.<name>.creds.*` are reported as deferred: those
- * values exist only once a service type has resolved, so
- * {@link materializeServiceScopeSites} evaluates them later, service by
- * service and then across the rest of the document.
- */
-export const materializeLandofileScopes = (
+export const materializeLandofileScopes = Effect.fn("Landofile.identityScope")(function* (
   input: MaterializeLandofileScopesInput,
-): Effect.Effect<MaterializedLandofileScopes, ConfigExpressionError> => {
-  const appSlug = normalizeAppSlug(input.landofile.name ?? "app", input.appRoot);
+) {
+  const compiled = input.landofile;
+  const appSlug = normalizeAppSlug(compiled.document.name ?? "app", compiled.context.appRoot);
   const defaultDomain = readProxyDefaultDomain(input.globalConfig ?? {});
-  const materialized = materializeExpressionScopes(input.landofile, input.landofilePath, {
-    textOnly: true,
-    scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
-    context: {
-      app: { name: appSlug, slug: appSlug },
-      proxy: { defaultDomain },
-      env: hostExpressionEnvironment(),
-      recipe: recipeOptionScope(input.landofile),
-    },
+  const result = yield* Effect.fromResult(
+    consumeSites({
+      document: compiled.document,
+      pendingSites: compiled.pendingSites,
+      scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
+      context: {
+        app: { name: appSlug, slug: appSlug },
+        proxy: { defaultDomain },
+        env: compiled.context.env,
+        recipe: recipeOptionScope(compiled.document),
+      },
+    }),
+  );
+  const document = copyLandofileProvenance(
+    compiled.document,
+    yield* decodeDocument(result.document, input.landofilePath, compiled.pendingSites),
+  );
+  const carrier = IdentityScopedLandofile.make({
+    ...result,
+    document,
+    stage: "identity-scoped",
+    context: compiled.context,
   });
-  const unresolved = materialized.unresolved[0];
-  if (unresolved !== undefined) {
-    return Effect.fail(
-      unresolvedExpressionError(
-        unresolved,
-        input.landofilePath,
-        "Fix the Landofile expression or provide the referenced app, proxy, recipe, or environment value.",
-      ),
-    );
-  }
-  if (materialized.value !== input.landofile) {
-    copyLandofileProvenance(input.landofile, materialized.value);
-  }
-  return Effect.succeed({
-    landofile: materialized.value,
+  copyLandofileProvenance(document, carrier.document);
+  return {
+    landofile: document,
+    compiled: carrier,
+    context: carrier.context,
+    pendingSites: carrier.pendingSites,
+    deferredSites: carrier.pendingSites,
     appSlug,
     defaultDomain,
-    deferredSites: materialized.deferred,
-  });
-};
+  };
+});
 
-/**
- * What `services.<name>` exposes to expressions: the credentials a service
- * type published while resolving, or nothing for a type that publishes none.
- * Only `creds` is exposed; it is the one value a service type publishes that
- * another service legitimately needs at plan time.
- */
-export type ServiceCredsScope = Readonly<Record<string, { readonly creds?: ServiceCreds }>>;
-
-const SERVICE_SCOPE_REMEDIATION =
-  "Reference a service declared in this Landofile whose type publishes credentials, using services.<name>.creds.user, .password, .database, or .rootPassword.";
-
-export interface ServiceScopeContextInput {
+export const serviceScopeContext = (input: {
   readonly landofile: LandofileShape;
+  readonly context: CompilationContext;
   readonly appSlug: string;
   readonly defaultDomain: string;
   readonly services: ServiceCredsScope;
-}
-
-export const serviceScopeContext = (input: ServiceScopeContextInput): ExpressionContext => ({
+}): ExpressionContext => ({
   app: { name: input.appSlug, slug: input.appSlug },
   proxy: { defaultDomain: input.defaultDomain },
-  env: hostExpressionEnvironment(),
+  env: input.context.env,
   recipe: recipeOptionScope(input.landofile),
   services: input.services,
 });
 
-export interface MaterializeServiceScopeSitesInput<T extends object> {
-  readonly value: T;
+export const materializeServiceScopeSites = Effect.fn("Landofile.serviceSites")(function* (input: {
+  readonly value: unknown;
   readonly landofilePath: string;
-  /** Where `value` sits in the Landofile, so deferred-site keys and error paths line up. */
-  readonly pathPrefix: ReadonlyArray<string | number>;
+  readonly pathPrefix: ValidationIssuePath;
   readonly deferredSites: DeferredExpressionSites;
   readonly context: ExpressionContext;
-}
+}) {
+  const sites = input.deferredSites.filter((site) =>
+    input.pathPrefix.every((key, index) => site.path[index] === key),
+  );
+  const result = yield* Effect.fromResult(
+    consumeSites({
+      document: input.value,
+      pendingSites: sites,
+      context: input.context,
+      scopes: PLAN_SERVICE_EXPRESSION_SCOPES,
+      pathPrefix: input.pathPrefix,
+    }),
+  );
+  return result;
+});
 
-/**
- * Evaluate the deferred `services.<name>.creds.*` sites under one value.
- *
- * Only sites the identity pass deferred are touched, so a string that pass
- * produced is never re-read as an expression. A reference to a service that
- * does not exist, or to one whose type published no credentials, fails at the
- * value site. The value keeps its identity when nothing under it changes.
- */
-export const materializeServiceScopeSites = <T extends object>(
-  input: MaterializeServiceScopeSitesInput<T>,
-): Effect.Effect<T, ConfigExpressionError> => {
-  const eligibleSites = new Set(input.deferredSites.map((site) => deferredSiteKey(site.path)));
-  const materialized = materializeExpressionScopes(input.value, input.landofilePath, {
-    textOnly: true,
-    scopes: PLAN_SERVICE_EXPRESSION_SCOPES,
-    context: input.context,
-    eligible: (_value, path) => eligibleSites.has(deferredSiteKey([...input.pathPrefix, ...path])),
+export const serviceCredsScopeForPlan = (plan: AppPlan): ServiceCredsScope =>
+  Object.fromEntries(
+    Object.values(plan.services).flatMap((service) =>
+      service.connection === undefined
+        ? []
+        : [[service.name, { creds: service.connection.creds, port: service.connection.port }]],
+    ),
+  );
+
+export const materializeLandofileScopesForPlan = Effect.fn("Landofile.planScopes")(function* (
+  input: MaterializeLandofileScopesInput,
+  plan: AppPlan,
+) {
+  const identity = yield* materializeLandofileScopes(input);
+  const result = yield* materializeServiceScopeSites({
+    value: identity.landofile,
+    landofilePath: input.landofilePath,
+    pathPrefix: [],
+    deferredSites: identity.pendingSites,
+    context: serviceScopeContext({ ...identity, services: serviceCredsScopeForPlan(plan) }),
   });
-  const unresolved = materialized.unresolved[0];
-  if (unresolved !== undefined) {
-    return Effect.fail(
-      unresolvedExpressionError(
-        { ...unresolved, path: [...input.pathPrefix, ...unresolved.path] },
-        input.landofilePath,
-        SERVICE_SCOPE_REMEDIATION,
-      ),
-    );
-  }
-  return Effect.succeed(materialized.value);
-};
+  const document = yield* decodeDocument(result.document, input.landofilePath, identity.pendingSites);
+  return ServiceScopedLandofile.make({
+    ...result,
+    document,
+    stage: "service-scoped",
+    context: identity.context,
+  });
+});
 
-/**
- * The services whose credentials the deferred sites under `services.<name>`
- * read. A computed member (`services[app.name]`) cannot be ordered ahead of
- * time, so it fails at the first such site.
- */
 export const referencedServices = (
   pathPrefix: ValidationIssuePath,
-  deferredSites: DeferredExpressionSites,
-  landofilePath: string,
+  sites: DeferredExpressionSites,
+  filePath: string,
 ): Result.Result<ReadonlySet<string>, ConfigExpressionError> => {
-  const prefix = pathPrefix.length === 0 ? "" : `${deferredSiteKey(pathPrefix)}.`;
   const references = new Set<string>();
-  for (const { path, expression } of deferredSites) {
-    const key = deferredSiteKey(path);
-    if (!key.startsWith(prefix)) continue;
-    const parsed = parseExpressionEither(expression, {
-      filePath: landofilePath,
-      bareShellParameters: "preserve",
-    });
-    if (Result.isFailure(parsed)) continue;
-    const members = expressionScopeMembers(parsed.success, "services");
-    if (!members.analyzable) {
+  for (const site of sites) {
+    if (!pathPrefix.every((key, index) => site.path[index] === key)) continue;
+    const members = expressionScopeMembers(site.template, "services");
+    if (!members.analyzable)
       return Result.fail(
         new ConfigExpressionError({
           message: "A services.<name> reference must name the service literally.",
-          expression,
-          path: key,
-          filePath: landofilePath,
+          path: deferredSiteKey(site.path),
+          expression: JSON.stringify(site.template),
+          filePath,
           remediation: "Write the service name directly, for example services.database.creds.user.",
         }),
       );
-    }
     for (const member of members.members) references.add(member);
   }
   return Result.succeed(references);
 };
 
-/**
- * Order services so every one resolves after the services whose credentials
- * it reads, keeping declaration order wherever the references allow it.
- *
- * A service that reads its own `services.<name>.creds.*`, or a pair that read
- * each other's, can never be satisfied: credentials exist only after the type
- * resolves, so that is reported as a cycle at the first service involved.
- * References to undeclared services do not participate; those fail at the
- * value site when the scope is evaluated.
- */
 export const orderServicesByCredsReferences = (input: {
   readonly landofile: LandofileShape;
   readonly deferredSites: DeferredExpressionSites;
   readonly landofilePath: string;
 }): Result.Result<
-  { readonly order: ReadonlyArray<string>; readonly references: ReadonlyMap<string, ReadonlySet<string>> },
+  { readonly order: readonly string[]; readonly references: ReadonlyMap<string, ReadonlySet<string>> },
   ConfigExpressionError
 > => {
   const names = Object.keys(input.landofile.services ?? {});
@@ -262,65 +190,27 @@ export const orderServicesByCredsReferences = (input: {
     if (Result.isFailure(references)) return Result.fail(references.failure);
     pending.set(name, new Set([...references.success].filter((reference) => declared.has(reference))));
   }
-  const ordered: string[] = [];
+  const order: string[] = [];
   const resolved = new Set<string>();
-  while (ordered.length < names.length) {
-    const next = names.find((name) => {
-      const references = pending.get(name);
-      return !resolved.has(name) && references !== undefined && [...references].every((r) => resolved.has(r));
-    });
+  while (order.length < names.length) {
+    const next = names.find(
+      (name) =>
+        !resolved.has(name) && [...(pending.get(name) ?? [])].every((reference) => resolved.has(reference)),
+    );
     if (next === undefined) {
-      const stuck = names.find((name) => !resolved.has(name)) ?? names[0] ?? "";
-      const blockers = [...(pending.get(stuck) ?? [])].filter((reference) => !resolved.has(reference));
+      const stuck = names.find((name) => !resolved.has(name)) ?? "";
       return Result.fail(
         new ConfigExpressionError({
-          message:
-            blockers.length === 1 && blockers[0] === stuck
-              ? `Service ${stuck} reads its own credentials through services.${stuck}.creds, which exist only after it resolves.`
-              : `Services ${[stuck, ...blockers.filter((b) => b !== stuck)].join(" and ")} reference each other's credentials, so neither can resolve first.`,
-          expression: `services.${blockers[0] ?? stuck}.creds`,
-          path: deferredSiteKey(["services", stuck]),
+          message: `Service connection reference cycle involving ${stuck}.`,
+          path: `services.${stuck}`,
+          expression: "services",
           filePath: input.landofilePath,
-          remediation:
-            "Break the cycle: a service's own credentials are not available to its configuration, and two services cannot each derive credentials from the other.",
+          remediation: "Break the service connection reference cycle.",
         }),
       );
     }
-    ordered.push(next);
+    order.push(next);
     resolved.add(next);
   }
-  return Result.succeed({ order: ordered, references: pending });
+  return Result.succeed({ order, references: pending });
 };
-
-const serviceCredsScopeByPlan = new WeakMap<AppPlan, ServiceCredsScope>();
-
-/**
- * Remember the `services` scope a plan was resolved with, so a consumer that
- * re-reads Landofile declarations against an existing plan (tooling) can
- * evaluate `services.<name>.creds.*` the same way the planner did.
- */
-export const attachServiceCredsScope = (plan: AppPlan, scope: ServiceCredsScope): AppPlan => {
-  serviceCredsScopeByPlan.set(plan, scope);
-  return plan;
-};
-
-export const serviceCredsScopeForPlan = (plan: AppPlan): ServiceCredsScope | undefined =>
-  serviceCredsScopeByPlan.get(plan);
-
-export const materializeLandofileScopesForPlan = Effect.fnUntraced(function* (
-  input: MaterializeLandofileScopesInput,
-  plan: AppPlan,
-) {
-  const identityScoped = yield* materializeLandofileScopes(input);
-  if (identityScoped.deferredSites.length === 0) return identityScoped.landofile;
-  return yield* materializeServiceScopeSites({
-    value: identityScoped.landofile,
-    landofilePath: input.landofilePath,
-    pathPrefix: [],
-    deferredSites: identityScoped.deferredSites,
-    context: serviceScopeContext({
-      ...identityScoped,
-      services: serviceCredsScopeForPlan(plan) ?? {},
-    }),
-  });
-});

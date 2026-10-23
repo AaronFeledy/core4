@@ -1,5 +1,4 @@
 import { join } from "node:path";
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { Clock, Effect, Option, Result } from "effect";
 
@@ -11,12 +10,13 @@ import {
   type ToolingDisabledError,
   type ToolingInputError,
 } from "@lando/sdk/errors";
-import type { HostTerminal, LandofileShape } from "@lando/sdk/schema";
+import type { Environment, HostTerminal, LoadScopedLandofile } from "@lando/sdk/schema";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import {
   AppPlanner,
   ConfigService,
+  type EnvironmentValueResolver,
   EventService,
   LandofileService,
   RuntimeProviderRegistry,
@@ -25,14 +25,16 @@ import {
 } from "@lando/sdk/services";
 
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
+import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import {
   type ResolvedAppTarget,
   loadUserLandofile,
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
-import { compileEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
+import { invocationToolingForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { reservedToolingNameConflict } from "./reserved-aliases.ts";
 
 import { LANDOFILE_NAME, findAppRoot } from "@lando/landofile/discovery";
@@ -49,7 +51,7 @@ export interface RunToolingOptions {
   readonly args?: ReadonlyArray<string>;
   readonly user?: string;
   readonly cwd?: string;
-  readonly env?: Readonly<Record<string, string>>;
+  readonly env?: Environment;
   readonly cacheRoot?: string;
   readonly tty?: boolean;
   readonly hostTerminal?: HostTerminal;
@@ -74,6 +76,7 @@ type RunToolingError =
   | ToolingInputError;
 
 type RunToolingServices =
+  | EnvironmentValueResolver
   | AppPlanner
   | ConfigService
   | LandofileService
@@ -104,7 +107,7 @@ const withProcessCwd = <A, E, R>(
   );
 
 const resolveToolingPlan = Effect.fnUntraced(function* (input: {
-  readonly landofile: LandofileShape;
+  readonly landofile: LoadScopedLandofile;
   readonly appRoot: string | undefined;
 }) {
   const planner = yield* AppPlanner;
@@ -127,8 +130,8 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
       : (target.landofile ?? (yield* loadUserLandofileAt(landofileService, target.root)));
   const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
   const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
-  const authoredTaskNames = new Set(Object.keys(loadedLandofile.tooling ?? {}));
-  const servicesCanContributeTooling = Object.keys(loadedLandofile.services ?? {}).length > 0;
+  const authoredTaskNames = new Set(Object.keys(loadedLandofile.document.tooling ?? {}));
+  const servicesCanContributeTooling = Object.keys(loadedLandofile.document.services ?? {}).length > 0;
 
   if (
     target === undefined &&
@@ -158,8 +161,8 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   // once a plan exists so the script fallback above keeps its old inputs.
   const config = yield* ConfigService;
   const globalConfig = yield* config.load;
-  const landofileRoot = getLandofileAppRoot(loadedLandofile) ?? appRoot ?? target?.root ?? process.cwd();
-  const landofile = yield* materializeLandofileScopesForPlan(
+  const landofileRoot = loadedLandofile.context.appRoot;
+  const serviceScoped = yield* materializeLandofileScopesForPlan(
     {
       landofile: loadedLandofile,
       appRoot: landofileRoot,
@@ -168,8 +171,12 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     },
     plan,
   );
-  const authoredTooling = compileEffectiveTooling({ landofile, services: [] });
-  const tooling = { ...effectiveToolingForPlan(plan), ...authoredTooling };
+  const landofile = serviceScoped.document;
+  const { tooling, sites } = yield* invocationToolingForPlan(
+    serviceScoped,
+    plan,
+    readProxyDefaultDomain(globalConfig),
+  );
   const task = tooling[toolingLookupKey];
   const reservedConflict = reservedToolingNameConflict(toolingLookupKey);
 
@@ -197,10 +204,15 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     task: toolingLookupKey,
   };
   const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+  const resolvedTask = yield* resolveToolingTaskShape(
+    task,
+    {},
+    sitesUnder(sites, ["tooling", toolingLookupKey]),
+  );
   const compiled = yield* compileToolingInvocations({
     ...options,
     lookupKey: toolingLookupKey,
-    task,
+    task: resolvedTask,
     source,
     agentEnvAllowlist,
   });
@@ -208,7 +220,15 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   const redactionTokens = [
     ...new Set([
       ...collectAppPlanRedactionTokens(plan),
-      ...invocations.flatMap((invocation) => collectSecretEnvValues(invocation.env)),
+      ...invocations.flatMap((invocation) =>
+        collectSecretEnvValues(
+          Object.fromEntries(
+            Object.entries(invocation.env ?? {}).filter(
+              (entry): entry is [string, string] => typeof entry[1] === "string",
+            ),
+          ),
+        ),
+      ),
     ]),
   ];
   const redaction = yield* Effect.serviceOption(RedactionService);

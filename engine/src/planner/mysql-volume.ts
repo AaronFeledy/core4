@@ -8,10 +8,10 @@ import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { carryPlanAttachments } from "./plan-attachments.ts";
 
 /** Select an unambiguous existing identity; never mutate provider storage. */
-export const resolveMysqlVolume = (
-  plan: AppPlan,
+export const resolveMysqlVolume = <Plan extends AppPlan>(
+  plan: Plan,
   registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
-): Effect.Effect<AppPlan, LandofileValidationError | ProviderUnavailableError> => {
+): Effect.Effect<Plan, LandofileValidationError | ProviderUnavailableError> => {
   const mysqlServices = Object.values(plan.services).filter(
     (service) => service.type === "mysql" || service.type.startsWith("mysql:"),
   );
@@ -32,7 +32,7 @@ export const resolveMysqlVolume = (
       if (scopedVolumes.length > 0) return plan;
       const legacyVolumes = yield* provider.listVolumes({ app: plan.id, store: legacy });
       if (legacyVolumes.length === 0) return plan;
-      const legacyPlan: AppPlan = {
+      const legacyPlan = {
         ...plan,
         services: {
           ...plan.services,
@@ -66,10 +66,10 @@ export const resolveMysqlVolume = (
 };
 
 /** Keep configuration planning available while the selected runtime is offline. */
-export const adoptMysqlVolume = (
-  plan: AppPlan,
+export const adoptMysqlVolume = <Plan extends AppPlan>(
+  plan: Plan,
   registry: Context.Service.Shape<typeof RuntimeProviderRegistry> | undefined,
-): Effect.Effect<AppPlan, LandofileValidationError> =>
+): Effect.Effect<Plan, LandofileValidationError> =>
   registry === undefined
     ? Effect.succeed(plan)
     : resolveMysqlVolume(plan, registry).pipe(

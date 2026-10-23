@@ -2,11 +2,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -101,6 +97,7 @@ export const authoredTeardownHarness = (input: {
   readonly desired?: AppPlan;
   readonly plannerFailure?: LandofileValidationError;
 }) => {
+  const redaction = makeRedactionService();
   const order: string[] = [];
   const events: LandoEvent[] = [];
   const destroyed: AppPlan[] = [];
@@ -117,6 +114,7 @@ export const authoredTeardownHarness = (input: {
       }),
   };
   const layer = Layer.mergeAll(
+    testEnvironmentResolverLayerFor(redaction),
     Layer.succeed(
       ToolingEngine,
       ToolingEngine.of({
@@ -152,7 +150,9 @@ export const authoredTeardownHarness = (input: {
           order.push("load");
           return input.desired === undefined
             ? Effect.fail(invalidLandofile)
-            : Effect.succeed({ name: input.desired.name, services: {} } satisfies LandofileShape);
+            : Effect.succeed(
+                literalTestLandofile({ name: input.desired.name, services: {} } satisfies LandofileShape),
+              );
         }),
       }),
     ),
@@ -166,7 +166,7 @@ export const authoredTeardownHarness = (input: {
               ? Effect.fail(input.plannerFailure)
               : input.desired === undefined
                 ? Effect.fail(invalidLandofile)
-                : Effect.succeed(input.desired);
+                : Effect.succeed(currentTestPlan(input.desired));
           }),
       }),
     ),
@@ -203,9 +203,7 @@ export const authoredTeardownHarness = (input: {
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+        ...redaction,
       }),
     ),
     Layer.succeed(
@@ -222,3 +220,6 @@ export const authoredTeardownHarness = (input: {
   );
   return { layer, order, events, destroyed, stepPlans, toolInvocations };
 };
+import { literalTestLandofile } from "../compiled-landofile.ts";
+import { currentTestPlan } from "../current-plan.ts";
+import { testEnvironmentResolverLayerFor } from "../environment-values.ts";

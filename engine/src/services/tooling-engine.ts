@@ -4,6 +4,7 @@ import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type CommandSpec,
+  EnvironmentValueResolver,
   type RuntimeProviderShape,
   ToolingEngine,
   type ToolingEngineResult,
@@ -142,10 +143,12 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
   }
   const service = yield* resolveService(invocation, plan);
   const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
-  const env = withAgentContextEnv(invocation.env, process.env, {
+  const session = yield* (yield* EnvironmentValueResolver).openSession();
+  const typedEnv = withAgentContextEnv(invocation.env, process.env, {
     lowerThanEnv: service.environment,
     ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
   });
+  const env = typedEnv === undefined ? undefined : yield* session.resolveEnvironment(typedEnv);
   const sink = yield* Effect.serviceOption(StreamFrameSink);
   const tty = invocation.tty === true;
   let exitCode = 0;
@@ -188,12 +191,18 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     stderr,
   };
   return out;
-});
+}, Effect.scoped);
 
-export const layer = Layer.succeed(
+export const layer = Layer.effect(
   ToolingEngine,
-  ToolingEngine.of({
-    id: "providerExec",
-    run: providerExecRun,
+  Effect.gen(function* () {
+    const resolver = yield* EnvironmentValueResolver;
+    return ToolingEngine.of({
+      id: "providerExec",
+      run: (invocation, plan, provider) =>
+        providerExecRun(invocation, plan, provider).pipe(
+          Effect.provideService(EnvironmentValueResolver, resolver),
+        ),
+    });
   }),
 );

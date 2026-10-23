@@ -2,10 +2,12 @@ import { expect, test } from "bun:test";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   GlobalConfig,
+  PortNumber,
   PortablePath,
   ProviderId,
+  type ServiceConnection,
   ServiceName,
   type ToolingTaskShape,
 } from "@lando/sdk/schema";
@@ -23,10 +25,9 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import { type RunToolingOptions, runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
-import { attachServiceCredsScope } from "../../src/planner/landofile-scopes.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
 
-const fixture = (task: ToolingTaskShape, failureCode = 0) => {
+const fixture = (task: ToolingTaskShape, failureCode = 0, database?: ServiceConnection) => {
   const calls: {
     readonly service: string;
     readonly command: readonly string[];
@@ -55,13 +56,26 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
     metadata,
     extensions: {},
   };
-  const plan: AppPlan = {
+  let plan: CurrentExecutableAppPlan = {
+    valueModel: 1,
     id: AppId.make("tooling-test"),
     name: "tooling-test",
     slug: "tooling-test",
     root: AbsolutePath.make(process.cwd()),
     provider: service.provider,
-    services: { [service.name]: service },
+    services: {
+      [service.name]: service,
+      ...(database === undefined
+        ? {}
+        : {
+            [ServiceName.make("database")]: {
+              ...service,
+              name: ServiceName.make("database"),
+              primary: false,
+              connection: database,
+            },
+          }),
+    },
     routes: [],
     networks: [],
     fileSync: [],
@@ -84,12 +98,13 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
+    testEnvironmentResolverLayer,
     PrivateFileAccessService.layer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provide(testEnvironmentResolverLayer)),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({ name: "tooling-test", tooling: { custom: task } }),
+        discover: compileTestLandofile({ name: "tooling-test", tooling: { custom: task } }),
       }),
     ),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
@@ -135,6 +150,9 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
     calls,
     selections,
     plan,
+    setTooling: (tooling: Readonly<Record<string, ToolingTaskShape>>) => {
+      plan = attachEffectiveTooling(plan, tooling);
+    },
     run: (options: Omit<RunToolingOptions, "name"> = {}) =>
       Effect.runPromise(
         runTooling({ name: "custom", ...options }).pipe(Effect.provide(layer), Effect.result),
@@ -145,7 +163,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
 test("rejects a freshly disabled task even when the plan carries an enabled task", async () => {
   // Given an enabled cached plan and a freshly loaded disabled declaration
   const f = fixture({ cmd: "echo ok", disabled: true });
-  attachEffectiveTooling(f.plan, { custom: { cmd: "echo stale" } });
+  f.setTooling({ custom: { cmd: "echo stale" } });
   // When invoked
   const result = await f.run();
   // Then the fresh declaration is authoritative
@@ -174,14 +192,18 @@ test("resolves app and proxy expressions in a freshly authored task", async () =
 
 test("resolves services.<name>.creds.* in a freshly authored task from the plan's service scope", async () => {
   // Given a fresh declaration reading another service's credentials, and a plan resolved with them
-  const f = fixture({
-    cmd: "psql -U {{ services.database.creds.user }} -d {{ services.database.creds.database }}@{{ app.name }}",
-    service: "worker",
-  });
-  attachServiceCredsScope(f.plan, {
-    worker: {},
-    database: { creds: { user: "lando", password: "pw", database: "appdb" } },
-  });
+  const f = fixture(
+    {
+      cmd: "psql -U {{ services.database.creds.user }} -d {{ services.database.creds.database }}@{{ app.name }}",
+      service: "worker",
+    },
+    0,
+    {
+      family: "postgres",
+      port: PortNumber.make(5432),
+      creds: { user: "lando", password: "pw", database: "appdb" },
+    },
+  );
   // When invoked
   const result = await f.run();
   // Then the container sees the credentials the planner published, never the literal template
@@ -374,3 +396,5 @@ test("accepts declared flags when arguments is false", async () => {
   expect(result).toMatchObject({ _tag: "Success" });
   expect(f.selections).toHaveLength(0);
 });
+import { compileTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

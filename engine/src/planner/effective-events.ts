@@ -7,6 +7,7 @@ import {
   resolveLifecycleCommandId,
 } from "@lando/sdk/schema";
 import { Predicate } from "effect";
+import { invocationAuthorityForPlan } from "./invocation-authority.ts";
 
 export type EventStepSource = "host" | "project";
 export type CompiledEventStepStatus = "active" | "skipped" | "deduped";
@@ -200,16 +201,19 @@ const normalizeAttached = (events: LandofileEvents | CompiledEvents): CompiledEv
     : landofileToCompiled(events as LandofileEvents);
 };
 
-export const attachEffectiveEvents = (plan: AppPlan, events: LandofileEvents | CompiledEvents): AppPlan => {
+export const attachEffectiveEvents = <Plan extends AppPlan>(
+  plan: Plan,
+  events: LandofileEvents | CompiledEvents,
+): Plan => {
   compiledEventsByPlan.set(plan, sortedCompiled(normalizeAttached(events)));
   return plan;
 };
 
 export const compiledEventsForPlan = (plan: AppPlan): CompiledEvents | undefined =>
-  compiledEventsByPlan.get(plan);
+  compiledEventsByPlan.get(plan) ?? invocationAuthorityForPlan(plan)?.events;
 
 export const effectiveEventsForPlan = (plan: AppPlan): LandofileEvents | undefined => {
-  const compiled = compiledEventsByPlan.get(plan);
+  const compiled = compiledEventsForPlan(plan);
   return compiled === undefined ? undefined : eventStepsFromCompiled(compiled);
 };
 

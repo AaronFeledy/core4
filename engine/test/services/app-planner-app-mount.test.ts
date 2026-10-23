@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { mergeLandofiles } from "@lando/sdk/landofile";
 import {
@@ -12,6 +11,7 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
@@ -25,7 +25,7 @@ const planExit = (service: typeof ServiceConfig.Encoded, capabilities = TestRunt
   });
   return Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (planner) =>
-      planner.plan(rememberLandofileAppRoot(landofile, APP_ROOT), capabilities),
+      planner.plan(literalTestLandofile(landofile, APP_ROOT), capabilities),
     ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
 };

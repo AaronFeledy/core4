@@ -1,3 +1,4 @@
+import { EnvironmentValueResolver } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
@@ -12,6 +13,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { type CompiledEventStep, compiledEventsForPlan } from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
+import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
@@ -262,9 +264,18 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
       const program = yield* compileEventStepProgram(
         runnable.map((entry) => entry.step),
         validateCommand,
-        runnable.map((entry) => ({ authoredIndex: entry.sourceIndex, source: entry.source })),
+        runnable.map((entry) => ({
+          authoredIndex: entry.sourceIndex,
+          source: entry.source,
+          invocationSites: sitesUnder(invocationAuthorityForPlan(plan)?.sites ?? [], [
+            entry.source === "host" ? "hostEvents" : "events",
+            event,
+            entry.sourceIndex,
+          ]),
+        })),
       ).pipe(mapFailureErrors((error) => eventError(error, event, first.step, redactor, first.source)));
       const context: ExpressionContext = payload === undefined ? {} : { event: payload };
+      const environmentResolver = yield* Effect.serviceOption(EnvironmentValueResolver);
       yield* runToolingStepProgram(
         program,
         context,
@@ -273,6 +284,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           event,
           events: eventsOption.value,
           privateFileAccess: privateFileAccess.value,
+          environmentResolver,
           ...(Option.isSome(shellRunner) ? { hostRunner: shellRunner.value } : {}),
           redactor,
           redactorFor,

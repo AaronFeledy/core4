@@ -6,7 +6,7 @@ import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppAtRoot } from "../../src/operations/destroy.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { attachEffectiveEvents, compiledEventsForPlan } from "../../src/planner/effective-events.ts";
-import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
+import { attachEffectiveTooling, effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import {
   authoredPlan,
   authoredTeardownHarness,
@@ -58,9 +58,9 @@ test.each(["stop", "destroy"] as const)(
     await withTeardownRoot(async (root) => {
       // Given a recorded plan without attachments and current task-backed teardown steps.
       const applied = recordedPlan(root);
-      const desired = attachEffectiveTooling(
-        attachEffectiveEvents(recordedPlan(root), { [`pre-${operation}`]: [{ task: "cleanup" }] }),
-        { cleanup: { cmd: "echo teardown" } },
+      const desired = attachEffectiveEvents(
+        attachEffectiveTooling(recordedPlan(root), { cleanup: { cmd: "echo teardown" } }),
+        { [`pre-${operation}`]: [{ task: "cleanup" }] },
       );
       const harness = authoredTeardownHarness({ applied, desired });
       // When
@@ -74,10 +74,19 @@ test.each(["stop", "destroy"] as const)(
       expect(harness.toolInvocations.map(({ commands }) => commands)).toEqual([
         [["sh", "-c", 'echo teardown "$@"', "lando-tooling"]],
       ]);
-      expect(harness.stepPlans).toEqual([applied]);
-      expect(harness.stepPlans[0]).toBe(applied);
+      expect(harness.stepPlans).toHaveLength(1);
+      const annotated = harness.stepPlans[0];
+      expect(annotated).toBeDefined();
+      if (annotated === undefined) throw new Error("Missing annotated teardown plan");
+      const { extensions, ...appliedFields } = annotated;
+      expect(appliedFields).toEqual((({ extensions: _extensions, ...fields }) => fields)(applied));
+      expect(annotated.services).toBe(applied.services);
+      expect(annotated.identity).toBe(applied.identity);
+      expect(extensions).toMatchObject(applied.extensions);
+      expect(effectiveToolingForPlan(annotated)).toEqual({ cleanup: { cmd: "echo teardown" } });
+      expect(applied.extensions).toEqual({});
       expect(harness.order.indexOf("tool:cleanup")).toBeLessThan(harness.order.indexOf("provider"));
-      expect(harness.destroyed[0]).toBe(applied);
+      expect(harness.destroyed[0]).toBe(annotated);
     });
   },
 );
@@ -147,9 +156,10 @@ test("explicit desired destroy reuses compiled events without loading again", as
     const harness = authoredTeardownHarness({ applied });
     // When
     await Effect.runPromise(
-      destroyApp({}, { ...targetFor(desired), landofile: { name: desired.name, services: {} } }).pipe(
-        Effect.provide(harness.layer),
-      ),
+      destroyApp(
+        {},
+        { ...targetFor(desired), landofile: literalTestLandofile({ name: desired.name, services: {} }) },
+      ).pipe(Effect.provide(harness.layer)),
     );
     // Then
     expect(harness.order.filter((item) => item.startsWith("step:"))).toEqual([
@@ -163,3 +173,4 @@ test("explicit desired destroy reuses compiled events without loading again", as
     expect(harness.destroyed[0]).toBe(applied);
   });
 });
+import { literalTestLandofile } from "../compiled-landofile.ts";

@@ -136,11 +136,11 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
   try {
     await writeFile(
       join(appRoot, ".lando.yml"),
-      "name: effective-tooling-cache\nservices:\n  web:\n    type: effective-tooling-test\n    home: false\n",
+      "name: effective-tooling-cache\nservices:\n  web:\n    type: effective-tooling-test\n    home: false\nevents:\n  pre-start:\n    - echo event\n",
     );
     const runPlan = () =>
       Effect.runPromise(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) => planTestLandofile(planner, landofile, capabilities)).pipe(
           Effect.provide(plannerLayer),
         ),
       );
@@ -162,8 +162,9 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
 
     let invocation: ToolingInvocation | undefined;
     const toolingLayer = Layer.mergeAll(
+      testEnvironmentResolverLayer,
       Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(changed) })),
-      Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+      Layer.succeed(LandofileService, LandofileService.of({ discover: compileTestLandofile(landofile) })),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -283,7 +284,9 @@ const withTempPlannerApp = async (yaml: string, run: () => Promise<void>): Promi
 };
 
 const planPhp = (landofile: LandofileShape, layer: ReturnType<typeof phpPlannerLayer>) =>
-  Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(Effect.provide(layer));
+  Effect.flatMap(AppPlanner, (planner) => planTestLandofile(planner, landofile, capabilities)).pipe(
+    Effect.provide(layer),
+  );
 
 const expectAliasConflict = (
   exit: Exit.Exit<unknown, unknown>,
@@ -371,8 +374,9 @@ test("fails runTooling reserved when a stale plan predates authored run", async 
         planPhp(phpLandofile("reserved-tooling-authored-run"), plannerLayer),
       );
       const toolingLayer = Layer.mergeAll(
+        testEnvironmentResolverLayer,
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
-        Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+        Layer.succeed(LandofileService, LandofileService.of({ discover: compileTestLandofile(landofile) })),
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
@@ -469,3 +473,5 @@ test("plans when the first service contributor disables a reserved name claimed 
     expect(effectiveToolingForPlan(plan)?.run).toMatchObject({ service: "a", disabled: true });
   });
 });
+import { compileTestLandofile, planTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

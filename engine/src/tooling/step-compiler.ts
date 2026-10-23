@@ -1,7 +1,7 @@
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
+import type { InvocationProgram } from "@lando/landofile/compiled-sites";
 import { ToolingCompileError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
-import { parseExpressionEither } from "@lando/sdk/expressions";
 import type { EventForSelector, EventStep, ToolingVarLiteral } from "@lando/sdk/schema";
 
 import type {
@@ -117,7 +117,7 @@ const unavailableSelector = (selector: "sources" | "generates") =>
 const isLiteralSelector = (selector: EventForSelector): selector is ReadonlyArray<ToolingVarLiteral> =>
   Array.isArray(selector);
 
-const compileSelector = (
+export const compileSelector = (
   selector: EventForSelector,
 ): Effect.Effect<ToolingStepSelector, ToolingStepSelectorUnavailableError> => {
   if (isLiteralSelector(selector)) return Effect.succeed({ kind: "list", values: selector });
@@ -149,54 +149,10 @@ const compileNode = (
   return Effect.succeed(leafNode(compileLeaf(step, authoredIndex, source)));
 };
 
-/** Scalars and array entries are dynamic when any parsed string segment is not literal. */
-const commandInputHasDynamicExpression = (
-  value: unknown,
-  tool: string,
-): Effect.Effect<boolean, ToolingCompileError> => {
-  if (Array.isArray(value)) {
-    return Effect.reduce(
-      value,
-      () => false,
-      (found, entry) =>
-        commandInputHasDynamicExpression(entry, tool).pipe(Effect.map((dynamic) => found || dynamic)),
-    );
-  }
-  if (typeof value !== "string") return Effect.succeed(false);
-  const parsed = parseExpressionEither(value, { filePath: "<event-step-command>" });
-  if (Result.isFailure(parsed)) {
-    return Effect.fail(
-      new ToolingCompileError({
-        message: parsed.failure.message,
-        tool,
-        remediation: parsed.failure.remediation,
-        cause: parsed.failure,
-      }),
-    );
-  }
-  return Effect.succeed(parsed.success.segments.some((segment) => segment.kind !== "LiteralSegment"));
-};
-
-const commandLeafHasDynamicInput = (
-  leaf: ToolingCommandStepLeaf,
-): Effect.Effect<boolean, ToolingCompileError> => {
-  const values: ReadonlyArray<unknown> = [
-    leaf.command,
-    ...Object.values(leaf.flags),
-    ...Object.values(leaf.args),
-    ...leaf.raw,
-  ];
-  return Effect.reduce(
-    values,
-    () => false,
-    (found, value) =>
-      commandInputHasDynamicExpression(value, leaf.command).pipe(Effect.map((dynamic) => found || dynamic)),
-  );
-};
-
 export interface EventStepIdentity {
   readonly authoredIndex: number;
   readonly source?: "host" | "project";
+  readonly invocationSites?: InvocationProgram;
 }
 
 export const compileEventStepProgram = (
@@ -206,13 +162,78 @@ export const compileEventStepProgram = (
 ): Effect.Effect<ToolingStepProgram, EventStepCompileError> =>
   Effect.forEach(steps, (step, index) => {
     const identity = identities?.[index] ?? { authoredIndex: index };
-    return compileNode(step, identity.authoredIndex, identity.source).pipe(
+    const node = Effect.succeed(identity.invocationSites ?? []).pipe(
+      Effect.flatMap(
+        (
+          sites,
+        ): Effect.Effect<ToolingStepNode, ToolingCompileError | ToolingStepSelectorUnavailableError> => {
+          const predicate = sites.find(
+            (site) =>
+              site.path.length === 1 &&
+              site.path[0] === "if" &&
+              site.template.segments.some((segment) => segment.kind === "InterpolationSegment"),
+          );
+          if (typeof step !== "string" && typeof step.if === "string" && predicate === undefined)
+            return Effect.fail(
+              new ToolingCompileError({
+                message: "Compiled event step condition must be a boolean.",
+                tool: "event",
+              }),
+            );
+          return compileNode(step, identity.authoredIndex, identity.source).pipe(
+            Effect.map((node): ToolingStepNode => {
+              const leaf = node.kind === "for" ? node.body.leaf : node.leaf;
+              const invocationSites = sites
+                .filter((site) => site.path[0] !== "if" && site.path[0] !== "for")
+                .map((site) => {
+                  const [field, ...rest] = site.path;
+                  return {
+                    ...site,
+                    path:
+                      field === undefined
+                        ? ["command"]
+                        : [field === "cmd" || field === "defer" ? "command" : field, ...rest],
+                  };
+                });
+              const annotated = {
+                ...leaf,
+                invocationSites,
+                ...(predicate === undefined ? {} : { condition: predicate }),
+              };
+              if (node.kind === "for")
+                return {
+                  ...node,
+                  body: { ...node.body, leaf: annotated },
+                  ...(typeof step !== "string" && "for" in step && step.for !== undefined
+                    ? {
+                        selectorInvocation: {
+                          value: step.for,
+                          sites: sites
+                            .filter((site) => site.path[0] === "for")
+                            .map((site) => ({ ...site, path: site.path.slice(1) })),
+                        },
+                      }
+                    : {}),
+                };
+              return { ...node, leaf: annotated };
+            }),
+          );
+        },
+      ),
+    );
+    return node.pipe(
       Effect.tap((node) => {
         const leaf = node.kind === "for" ? node.body.leaf : node.leaf;
         if (leaf.kind !== "command" || validateCommand === undefined) return Effect.void;
-        return commandLeafHasDynamicInput(leaf).pipe(
-          Effect.flatMap((dynamic) => (dynamic ? Effect.void : validateCommand(leaf))),
-        );
+        return leaf.invocationSites?.some(
+          (site) =>
+            ["command", "flags", "args", "raw"].includes(String(site.path[0])) &&
+            site.template.segments.some(
+              (segment) => segment.kind !== "LiteralSegment" && segment.kind !== "CommentSegment",
+            ),
+        )
+          ? Effect.void
+          : validateCommand(leaf);
       }),
       Effect.mapError(
         (cause) =>

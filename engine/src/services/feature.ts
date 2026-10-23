@@ -98,6 +98,7 @@ const makeContext = (
   appRoot: input.appRoot,
   host: input.host,
   normalizedConfig: input.normalizedConfig,
+  connection: draft.connection,
   config,
   addEnv: (name, value) => {
     draft.environment[name] = value;
@@ -218,6 +219,7 @@ const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFeatureErr
     ...(draft.command === undefined ? {} : { command: draft.command }),
     ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
     environment: sortRecord(draft.environment),
+    ...(draft.connection === undefined ? {} : { connection: draft.connection }),
     ...(draft.user === undefined ? {} : { user: draft.user }),
     ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
     ...(appMount === undefined ? {} : { appMount }),
