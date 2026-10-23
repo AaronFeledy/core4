@@ -81,11 +81,14 @@ every accepted, preserved, and rejected key. If a key is rejected, the
 remediation is to move unsupported provider-specific config under
 `providers.<id>`, or open an issue to grow the subset.
 
-Compose `hostname` is rejected. Lando sets the container hostname to
-`<app slug>-<service>`. Engines register that name as DNS on the app and
-shared networks (`DNSNames` on Docker, `Aliases` on Podman). Do not rely
-on resolving it. Use the service key or `hostnames:`. Existing containers
-pick the default up on their next recreate.
+Compose `hostname` is rejected. Lando derives each container's hostname from
+`<app slug>-<service>`, replacing unsupported characters and shortening long
+names. Existing containers get that hostname the next time they are recreated.
+
+The provider also registers this hostname on the app and shared networks, but
+different app and service names can produce the same hostname. For connections,
+use the service key or an explicit `hostnames:` alias instead. See
+[Reach services by name](../subsystems/service-dns.mdx).
 
 ## Know what Lando adds
 

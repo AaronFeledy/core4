@@ -58,12 +58,21 @@ port. Sign in with `lando` and `lando`.
 
 RabbitMQ stores its data in `/var/lib/rabbitmq`. The service mounts persistent
 storage there by default, which keeps queues and messages across ordinary
-restarts. Destroying the app removes that app-owned data.
+restarts. Plain `lando destroy` keeps the data volume. Adding `--volumes` or
+`--purge` removes it and the queues and messages it contains.
 
-The on-disk node name is `rabbit@<hostname>`. Lando now sets a stable
-container hostname (`<app slug>-<service>`), so that directory no longer
-moves when the container id changes. Renaming the app moves it. Existing
-containers keep the old short-id hostname until their next recreate.
+RabbitMQ's default node name is `rabbit@<hostname>`, and its data directory
+depends on that name. Lando derives a stable hostname from
+`<app slug>-<service>`, so recreating the container keeps the same node name
+as long as the app slug and service name stay the same.
+
+Existing containers keep their old hostname until they are recreated. That
+first recreation changes the node name; renaming the app or service can also
+change it. RabbitMQ may then start with a new, empty data directory even though
+the old data is still on the volume. If you need to keep existing messages,
+plan the migration before recreating the container. Follow RabbitMQ's
+[backup and restore guidance](https://www.rabbitmq.com/docs/backup), which
+requires the same node name when restoring a data directory.
 
 ## Manage the broker
 

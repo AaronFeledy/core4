@@ -29,9 +29,9 @@ The default provider is `lando` (managed Podman). `LANDO_PROVIDER` does not pers
 
 Use the service key inside the app. Use `<service>.<app>.internal` across apps and for Traefik backends. Use `LANDO_MAIL_HOST` for Mailpit. Use `*.lndo.site` only in the host browser.
 
-Each service container also gets hostname `<app slug>-<service>`. Engines register that name as DNS on the app network and the shared cross-app network (`DNSNames` on Docker, `Aliases` on Podman). Do not rely on resolving it. Keep using the service key, `<service>.<app>.internal`, or `hostnames:`.
+Lando also derives a container hostname from `<app slug>-<service>`, replacing unsupported characters and shortening long names. Existing containers get it the next time they are recreated. The provider registers this hostname on the app and shared networks, but it is not a reliable connection address.
 
-Those defaults can collide. App `foo` plus service `bar-web` and app `foo-bar` plus service `web` both become `foo-bar-web`. `web_1` and `web-1` sanitize the same. A collision is resolvable on the shared network. Existing containers keep the old short-id hostname until their next recreate.
+Different app and service names can produce the same hostname. App `foo` with service `bar-web` and app `foo-bar` with service `web` both produce `foo-bar-web`. Service names `web_1` and `web-1` also produce the same result. On the shared network, a colliding name may resolve to either container. Keep using the service key, `<service>.<app>.internal`, or an explicit `hostnames:` alias.
 
 ## Connect with the service key
 
