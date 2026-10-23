@@ -54,7 +54,6 @@ describe("router route-file ownership", () => {
     const harness = makeHarness();
     const oldApp = AppId.make("old-name");
     const newApp = AppId.make("new-name");
-    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
     await Effect.runPromise(harness.service.applyRoutes(routeFor("old-name"), oldApp));
 
     // When: the same app starts again after a Landofile name/slug change.
@@ -72,7 +71,6 @@ describe("router route-file ownership", () => {
     const ownerKey = "owner-same-root";
     const oldApp = AppId.make("old-name");
     const newApp = AppId.make("new-name");
-    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
     await Effect.runPromise(harness.service.applyRoutes(routeFor("old-name"), oldApp, { ownerKey }));
 
     const applied = await Effect.runPromise(
@@ -90,7 +88,6 @@ describe("router route-file ownership", () => {
     const harness = makeHarness();
     const renamed = AppId.make("my-app");
     const neighbor = AppId.make("my-app-2");
-    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
     await Effect.runPromise(
       harness.service.applyRoutes(routeFor("my-app"), renamed, { ownerKey: "owner-a" }),
     );
@@ -112,7 +109,6 @@ describe("router route-file ownership", () => {
     const harness = makeHarness();
     const first = AppId.make("shop");
     const second = AppId.make("shop-extra");
-    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
     await Effect.runPromise(harness.service.applyRoutes(routeFor("shop"), first));
     await Effect.runPromise(harness.service.applyRoutes(routeFor("shop-extra"), second));
 
