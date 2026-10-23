@@ -15,7 +15,15 @@ Grab the database name and user from `lando info` first. It redacts the password
 lando info
 ```
 
-Use `lando db:import dump.sql.gz --yes` when you want the bundled helper. Pipe a dump into it with `lando db:import - --yes`. You must pass `--yes`; `-` uses stdin for the dump, so Lando will not prompt.
+Run the bundled helper from your app directory with the database service running. Back up any data you need before importing; the dump can change or delete existing data. For a file, use `lando db:import dump.sql.gz --yes`.
+
+To read the dump from stdin in a POSIX shell, run:
+
+```sh
+lando db:import - --yes < dump.sql
+```
+
+`--yes` is required because Lando cannot prompt while stdin carries the dump. Stdin imports need temporary disk space for the uncompressed dump; see [streaming imports](./db-import-export.mdx#stream-a-dump-through-stdout-or-stdin).
 
 ## Import into MySQL or MariaDB
 

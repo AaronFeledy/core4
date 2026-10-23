@@ -9,7 +9,9 @@ tags: [beta, docs, tooling, database]
 
 Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed` to fill a database Lando freshly created from a dump, a snapshot, or another running app.
 
-A single database service needs no `--service` flag. Two or more database services require `--service <name>`.
+Run dump commands from your app directory with the database service running. A single database service needs no `--service` flag. With two or more, pass `--service <name>` to select the target.
+
+Back up any existing data before importing. An import can change or delete data, and `--yes` skips confirmation. The commands below show gzip and zstd alternatives; choose one format.
 
 ```sh
 lando db:export dump.sql.gz
@@ -35,25 +37,30 @@ MySQL, MariaDB, Postgres, and MongoDB stream through the client. SQL Server uses
 
 ## Stream a dump through stdout or stdin
 
-Pass `-` as the dump path. `db:export -` writes the dump on stdout and the checksum on stderr. `db:import - --yes` reads stdin. `-` does not skip confirmation: stdin is the dump, so you still pass `--yes`. Empty stdin (`</dev/null`) fails.
+Pass `-` as the export path to write an uncompressed dump to stdout. Lando writes the checksum to stderr, keeping it out of the dump. In a POSIX shell on the host, redirect the dump to a file or pipe it through a compressor:
 
 ```sh
 lando db:export - > dump.sql
 lando db:export - | gzip > dump.sql.gz
+```
+
+These are alternatives. The second command requires `gzip` on the host; use `zstd` instead if you want zstd compression. There is no `--compression` flag. Exporting to `/dev/stdout` also writes an uncompressed dump.
+
+Lando refuses to write a dump directly to a terminal. Redirect stdout rather than displaying database contents in your terminal. `--force-tty` overrides that protection.
+
+To import from stdin, pass `-` and `--yes`. Lando cannot prompt because stdin carries the dump. Before running this command, back up the target database and check that the host temp directory has room for the uncompressed dump. Lando stages stdin imports there without a size limit or free-space check.
+
+```sh
 lando db:import - --yes < dump.sql
 ```
 
-Export to stdout is uncompressed. There is no `--compression` flag, and `/dev/stdout` has no suffix, so pipe through `gzip` or `zstd` when you want a compressed file. Named pipes and process substitution stay pipes for an uncompressed dump: Lando writes in place instead of renaming a temp file onto them.
+An empty input, such as `</dev/null`, fails instead of importing.
 
-A compressed export to a named pipe such as `dump.sql.gz` still stages the uncompressed dump in the host temp directory, then compresses onto the pipe. Imports from stdin or a named pipe always stage in that temp directory so retries can reread the dump and SQL Server restore can seek. Staging has no size cap and no free-space check.
+### Use a named pipe
 
-```sh
-lando db:export /dev/stdout | gzip > dump.sql.gz
-mkfifo dump.fifo
-lando db:export dump.fifo
-```
+For an uncompressed export, Lando writes directly to a named pipe or process-substitution path instead of replacing it with a temporary file. A named pipe needs a reader; the export waits until another process opens the pipe for reading.
 
-`db:export -` refuses a terminal so a binary dump does not land in your shell. Redirect stdout, or pass `--force-tty` if you really want the dump in this terminal.
+If a named pipe's path ends in `.gz` or `.zst`, Lando first stages the uncompressed dump in the host temp directory, then compresses it into the pipe. Imports from named pipes are also staged so retries can reread the dump and SQL Server restore can seek. As with stdin imports, make room for the uncompressed dump before starting; staging has no size limit or free-space check.
 
 ## Snapshots
 
