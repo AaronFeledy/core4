@@ -8,13 +8,15 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
 
 # Run lando doctor
 
+After `lando setup`, run `lando doctor` on the host to check the provider, proxy,
+certificates, and related setup state. Read the suggested action for each failing
+section; a failure does not prevent the remaining checks from running.
+
 ```sh
 lando doctor
 ```
 
-Doctor reports whether setup, the provider, the proxy, certs, and related checks are healthy. A failing section does not abort the rest of the report.
-
-Run it after `lando setup`. Doctor checks the provider setup persisted, or the one `LANDO_PROVIDER` names for this command. See [Pick a container provider](../setup/provider-selection.mdx#what-persists).
+Doctor checks the provider setup persisted, or the one `LANDO_PROVIDER` names for this command. See [Pick a container provider](../setup/provider-selection.mdx#what-persists).
 
 ## Read the report
 

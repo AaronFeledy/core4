@@ -1,12 +1,19 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { rejects } from "node:assert/strict";
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { LinkResult } from "linkinator";
+import { assertBunRuntime } from "./assert-bun-runtime";
 
 const script = pathToFileURL(join(import.meta.dir, "../scripts/build.mjs")).href;
 const linkinator = import.meta.resolve("linkinator");
+const bunExecutable = process.env.DOCS_TEST_BUN_EXECUTABLE ?? process.execPath;
+const runtimeCheck = `import {assertBunRuntime} from ${JSON.stringify(
+  pathToFileURL(join(import.meta.dir, "assert-bun-runtime.ts")).href,
+)};
+await assertBunRuntime({version:${JSON.stringify(process.versions.bun)},executable:${JSON.stringify(bunExecutable)}});`;
 let root: string;
 let externalRequests = 0;
 const external = createServer((_request, response) => {
@@ -81,6 +88,7 @@ async function runBuild(
   await writeFile(
     runner,
     `import {buildAndCheck} from ${JSON.stringify(script)};
+       ${runtimeCheck}
        import {LinkChecker} from ${JSON.stringify(linkinator)};
        const check = LinkChecker.prototype.check;
        LinkChecker.prototype.check = async function(options) {
@@ -91,7 +99,7 @@ async function runBuild(
        };
        await buildAndCheck(${JSON.stringify(config)});`,
   );
-  const child = Bun.spawn(["node", runner], {
+  const child = Bun.spawn([process.execPath, runner], {
     cwd: root,
     stdout: "pipe",
     stderr: "pipe",
@@ -112,6 +120,25 @@ async function runBuild(
 }
 
 describe("build-time internal links", () => {
+  test("rejects an unexpected fixture runtime", async () => {
+    await rejects(
+      assertBunRuntime({ version: "unexpected", executable: bunExecutable }),
+      /Unexpected Bun runtime/,
+    );
+  });
+
+  test("rejects an unverified Node alias", async () => {
+    await rejects(
+      assertBunRuntime({
+        version: process.versions.bun ?? "",
+        executable: bunExecutable,
+        requireNodeFree: true,
+        resolveExecutable: () => join(import.meta.dir, "../package.json"),
+      }),
+      /Unverified Node alias/,
+    );
+  });
+
   test("builds all pages and checks local assets, CSS, Unicode and named anchors without external requests", async () => {
     const result = await runBuild();
     expect(result.output).toContain("4 built pages");
@@ -263,11 +290,12 @@ describe("build-time internal links", () => {
     await copyFile(join(root, "public/pixel.svg"), join(cliRoot, "public/pixel.svg"));
     await writeFile(
       join(cliRoot, "package.json"),
-      JSON.stringify({ type: "module", scripts: { build: "node scripts/build.mjs" } }),
+      JSON.stringify({ type: "module", scripts: { build: "bun scripts/build.mjs" } }),
     );
     await writeFile(
       join(cliRoot, "astro.config.mjs"),
-      'export default { base: "/configured/", site: "https://configured.invalid", outDir: "./configured-dist", logLevel: "error" };',
+      `${runtimeCheck}
+       export default { base: "/configured/", site: "https://configured.invalid", outDir: "./configured-dist", logLevel: "error" };`,
     );
     const page = `---
 const base = import.meta.env.BASE_URL;
@@ -276,7 +304,7 @@ const base = import.meta.env.BASE_URL;
     const source = join(cliRoot, "src/pages/index.astro");
     await writeFile(source, page);
     const run = async (args: string[]) => {
-      const child = Bun.spawn(["bun", "run", "--cwd", cliRoot, "build", ...args], {
+      const child = Bun.spawn([process.execPath, "run", "--cwd", cliRoot, "build", ...args], {
         stdout: "pipe",
         stderr: "pipe",
         env: { ...process.env, ASTRO_TELEMETRY_DISABLED: "1" },
@@ -290,6 +318,7 @@ const base = import.meta.env.BASE_URL;
     };
     const args = ["--base", "/preview/", "--site=https://preview.example.test", "--outDir", "./publish"];
     const valid = await run(args);
+    expect(valid.output).toContain("Internal link check passed");
     expect(valid.exitCode).toBe(0);
     expect(valid.output).toContain("1 built pages");
     const published = join(cliRoot, "publish/index.html");

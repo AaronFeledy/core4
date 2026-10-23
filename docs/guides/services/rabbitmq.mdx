@@ -7,7 +7,7 @@ tags: [beta, docs, rabbitmq, service]
 
 # Add RabbitMQ
 
-Put `type: rabbitmq` in your services block. That shorthand is an alias for the RabbitMQ 4 image line:
+Add `type: rabbitmq` under `services` in `.lando.yml`. That shorthand is an alias for the RabbitMQ 4 image line:
 
 ```yaml
 name: rabbitmq-demo
@@ -80,8 +80,7 @@ lando rabbitmqctl eval 'rabbit_networking:active_listeners().'
 ## Keep queue data
 
 RabbitMQ stores its data in `/var/lib/rabbitmq`. The service mounts persistent
-storage there by default, which keeps queues and messages across ordinary
-restarts. Destroying the app removes that app-owned data.
+storage there by default. The data volume survives ordinary restarts and a plain `lando destroy`; `--volumes` or `--purge` deletes it. A persistent volume does not make every queue or message durable: RabbitMQ's queue and message durability settings still determine what survives a broker restart.
 
 ## Manage the broker
 

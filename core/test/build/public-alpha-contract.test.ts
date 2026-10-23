@@ -12,6 +12,11 @@ const readText = async (path: string): Promise<string> => Bun.file(path).text();
 const statusSection = (readme: string): string =>
   readme.match(/^## Status & roadmap\n[\s\S]*?(?=^## )/m)?.[0] ?? "";
 
+const alphaCompletionCriteria = (readme: string): string => {
+  const contributing = readme.match(/^## Contributing\n[\s\S]*?(?=^## |(?![\s\S]))/m)?.[0] ?? "";
+  return contributing.match(/^### Alpha completion criteria\n[\s\S]*?(?=^#{1,3} |(?![\s\S]))/m)?.[0] ?? "";
+};
+
 const alphaPlatformScope = (ci: string): string =>
   ci.match(/^## Alpha platform scope\n[\s\S]*?(?=^## )/m)?.[0] ?? "";
 
@@ -64,17 +69,20 @@ describe("public alpha contract", () => {
 
   test("names rails as a bundled Alpha 1 recipe when Status is read", async () => {
     const status = statusSection(await readText(readmePath));
-    expect(status).toContain("bundled for Alpha 1");
-    expect(status).toContain("id `rails`");
+    expect(status).toContain("Rails is bundled for Alpha 1 as `rails`");
     expect(status).toContain("`recipes/rails/`");
-    expect(status).toContain("upgraded rather than duplicated");
     expect(status).toContain("Ruby/Rails");
     expect(status).toContain("PostgreSQL");
     expect(status).toContain("Redis");
-    expect(status).toContain("Tooling is `rails` and `bundle`");
+    expect(status).toContain("`rails` and `bundle` tooling");
     expect(status).toContain("non-interactive default");
-    expect(status).toContain("README.mdx");
     expect(status).not.toContain("already ships as a public recipe at `recipes/rails`");
+  });
+
+  test("requires an executable public Rails README and upgrades the builtin in Alpha completion criteria", async () => {
+    const criteria = alphaCompletionCriteria(await readText(readmePath));
+    expect(criteria).toContain("public Rails recipe uses an executable `README.mdx`");
+    expect(criteria).toContain("existing builtin implementation is upgraded rather than duplicated");
   });
 
   test("finds the rails builtin stub when the stub manifest is checked", async () => {
@@ -124,23 +132,22 @@ describe("public alpha contract", () => {
     expect(ciDocs).not.toContain("4.0.0-alpha.N");
   });
 
-  test("requires live setup doctor Drupal and Rails on every compile target when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
-    expect(status).toContain("live `lando setup`");
-    expect(status).toContain("live `lando doctor`");
-    expect(status).toContain("live Drupal canonical journey");
-    expect(status).toContain("live Rails canonical journey");
-    expect(status).toContain("every compile target");
+  test("requires live setup doctor Drupal and Rails on every compile target in Alpha completion criteria", async () => {
+    const criteria = alphaCompletionCriteria(await readText(readmePath));
+    expect(criteria).toContain("Alpha 1 is complete only when every compile target passes");
+    expect(criteria).toContain("live `lando setup`");
+    expect(criteria).toContain("live `lando doctor`");
+    expect(criteria).toContain("live canonical Drupal and Rails journeys");
   });
 
-  test("says compile smoke is not an exit when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
-    expect(status).toContain("Compile smoke is not an exit");
+  test("says compilation alone is not an exit in Alpha completion criteria", async () => {
+    const criteria = alphaCompletionCriteria(await readText(readmePath));
+    expect(criteria).toContain("Compilation alone is not enough");
   });
 
-  test("says a long-term roadmap rewrite is not an Alpha 1 exit when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
-    expect(status).toContain("A long-term roadmap rewrite is not an Alpha 1 exit");
+  test("says a roadmap rewrite is not an Alpha 1 exit in Alpha completion criteria", async () => {
+    const criteria = alphaCompletionCriteria(await readText(readmePath));
+    expect(criteria).toContain("a roadmap rewrite does not meet these criteria");
   });
 
   test("omits signed GA public artifact claims when Status is read", async () => {

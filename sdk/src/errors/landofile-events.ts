@@ -36,3 +36,16 @@ export class LandofileEventInvocationDepthError extends Schema.TaggedError<Lando
     remediation: Schema.String,
   },
 ) {}
+
+/**
+ * `destroy` would remove data, but the Landofile at the applied root cannot source its
+ * `pre-destroy` steps, so a backup hook it may declare would not run.
+ */
+export class LandofileEventsSkippedError extends Schema.TaggedError<LandofileEventsSkippedError>()(
+  "LandofileEventsSkippedError",
+  {
+    message: Schema.String,
+    reason: Schema.String,
+    remediation: Schema.String,
+  },
+) {}

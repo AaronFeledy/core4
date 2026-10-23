@@ -7,12 +7,18 @@ import {
   type Redactor,
   type TranscriptRedactionEnv,
   createRedactor,
-  isPublicDefaultCredential,
   isUsableExactRedactionValue,
 } from "@lando/sdk/secrets";
 import { SecretStore } from "@lando/sdk/services";
 
 import { expandRedactionValues } from "./exact-values.ts";
+import { collectSecretEnvValues, nonEmpty } from "./heuristic-values.ts";
+
+export {
+  collectPublicCredentialValues,
+  collectSecretEnvValues,
+  collectSecretStructuralValues,
+} from "./heuristic-values.ts";
 
 export interface RedactionForProfileOptions {
   readonly redactionTokens?: Iterable<string> | undefined;
@@ -82,31 +88,6 @@ export class RedactionValues extends Inspectable.Class implements Redactable.Red
   }
 }
 
-const nonEmpty = (value: string | undefined): value is string =>
-  value !== undefined && value.trim().length > 0;
-
-const SECRET_ENV_KEY_PARTS = new Set([
-  "apikey",
-  "apikeys",
-  "authkey",
-  "authkeys",
-  "authtoken",
-  "authtokens",
-  "credential",
-  "credentials",
-  "key",
-  "keys",
-  "pass",
-  "passwd",
-  "passwds",
-  "password",
-  "passwords",
-  "secret",
-  "secrets",
-  "token",
-  "tokens",
-]);
-
 const collectSecretStoreValues = Effect.fnUntraced(function* (
   secretStore: Context.Service.Shape<typeof SecretStore>,
 ) {
@@ -118,30 +99,6 @@ const collectSecretStoreValues = Effect.fnUntraced(function* (
     values.filter((value): value is string => value !== undefined && value.length > 0),
   );
 });
-
-export const collectSecretEnvValues = (
-  sourceEnv: Record<string, string | undefined> | undefined,
-): string[] => {
-  if (sourceEnv === undefined) return [];
-  const values: string[] = [];
-  for (const [key, value] of Object.entries(sourceEnv)) {
-    const normalizedParts = key
-      .toLowerCase()
-      .split(/[._-]+/u)
-      .filter(nonEmpty);
-    const carriesSecret =
-      key.toUpperCase() === "REDISCLI_AUTH" || normalizedParts.some((part) => SECRET_ENV_KEY_PARTS.has(part));
-    if (
-      carriesSecret &&
-      nonEmpty(value) &&
-      !isPublicDefaultCredential(value) &&
-      isUsableExactRedactionValue(value)
-    ) {
-      values.push(value);
-    }
-  }
-  return values;
-};
 
 const collectProxyValues = (proxyUrls: Iterable<string | undefined> | undefined): string[] => {
   if (proxyUrls === undefined) return [];

@@ -28,9 +28,9 @@ lando version --debug
 
 Set the mode three ways. First match wins:
 
-1. `--renderer=verbose`
-2. `LANDO_RENDERER=verbose`
-3. `renderer: verbose` in global config
+- `--renderer=verbose`
+- `LANDO_RENDERER=verbose`
+- `renderer: verbose` in global config
 
 The default is `lando`.
 
@@ -51,9 +51,9 @@ An unknown mode fails with `RendererSelectionError`.
 
 Set the log level three ways. First match wins:
 
-1. `--log-level=debug` or `--debug`
-2. `LANDO_LOG_LEVEL=debug`
-3. `logLevel: debug` in global config
+- `--log-level=debug` or `--debug`
+- `LANDO_LOG_LEVEL=debug`
+- `logLevel: debug` in global config
 
 The default log level is `none`. The CLI stays quiet until you ask. `LANDO_DEBUG` is not a host CLI switch. Lando only forwards `LANDO_DEBUG=1` into `lando shell`.
 

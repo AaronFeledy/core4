@@ -11,6 +11,13 @@ const APPLIED_PLAN_NAMESPACE = "applied-plans";
 const APPLIED_PLANS_KEY = "applied-plans.json";
 const AppliedPlans = Schema.Record(AppId, AppPlan);
 
+/**
+ * Applied state records what the provider realized. Landofile events are not
+ * provider state: lifecycle operations resolve them from the current Landofile,
+ * so a record never carries hooks that could run stale.
+ */
+const appliedPlanRecord = ({ events: _events, ...plan }: AppPlanShape): AppPlanShape => plan;
+
 export const appliedPlansDir = (stateDir: string): string =>
   `${stateDir.replace(/\/+$/u, "")}/${APPLIED_PLAN_NAMESPACE}`;
 
@@ -92,7 +99,7 @@ export function makeAppliedPlanStore(
     return {
       persistAppliedPlan: (stateStore, plan) =>
         open(stateStore, plan.id).pipe(
-          Effect.flatMap((bucket) => bucket.set(plan).pipe(Effect.as(bucket.path))),
+          Effect.flatMap((bucket) => bucket.set(appliedPlanRecord(plan)).pipe(Effect.as(bucket.path))),
           Effect.mapError((cause) => error("persist", cause)),
         ),
       loadAppliedPlan: (stateStore, appId) =>
@@ -144,7 +151,10 @@ export function makeAppliedPlanStore(
     persistAppliedPlan: (stateStore, plan) =>
       open(stateStore).pipe(
         Effect.flatMap((bucket) =>
-          bucket.modify((current) => [bucket.path, { ...(current ?? {}), [plan.id]: plan }]),
+          bucket.modify((current) => [
+            bucket.path,
+            { ...(current ?? {}), [plan.id]: appliedPlanRecord(plan) },
+          ]),
         ),
         Effect.mapError((cause) => error("persist", cause)),
       ),

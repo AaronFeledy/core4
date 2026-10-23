@@ -8,7 +8,7 @@ tags: [beta, docs, recipes, git]
 
 # Init from a remote recipe source
 
-Pass a git URL with the source and url flags. `--yes` is consent for remaining prompts.
+The git source supports cloning and parsing a recipe, but this alpha path does not yet write its application files. Use a bundled recipe when you need a working initialization path. To inspect remote-source behavior, replace `<git-url>` below with the recipe repository URL; `--yes` accepts the remaining prompts.
 
 ```sh
 lando init --source=git --url=<git-url> --yes
@@ -16,7 +16,7 @@ lando init --source=git --url=<git-url> --yes
 
 Alpha still cannot write files for that recipe. After the clone and parse, init throws that file rendering is not implemented yet and that only bundled built-in recipes are supported. Use a bundled recipe id when you need a Landofile on disk.
 
-The flags are real. The app files are not. Do not pretend a git URL is a second `lamp`.
+Use the commands below to understand source validation and caching, not as a complete app-creation walkthrough.
 
 ## Fail fast before a clone
 

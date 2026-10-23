@@ -8,7 +8,16 @@ tags: [beta, docs, subsystems, networking, ports, lan]
 
 # Reach an app from another device
 
-Bind a published port to `0.0.0.0` when you want LAN or external reachability. By default, host-exposed ports bind to `127.0.0.1` and stay on this machine.
+Bind a published port to `0.0.0.0` when you intend other devices to reach it.
+By default, host-exposed ports bind to `127.0.0.1` and stay on this machine.
+A wide bind exposes the service to other devices wherever the host firewall
+allows access. Do not use it for services with real credentials or unreviewed
+development tools; prefer a specific interface IP when possible.
+
+Save this example as `.lando.yml` in an app directory, then run `lando start`
+there. From a second device, open `http://<host-lan-ip>:8080`, replacing
+`<host-lan-ip>` with the app host's LAN address. The response confirms direct
+port access; it does not test proxy hostname resolution.
 
 ```yaml
 name: external-access-demo
@@ -16,6 +25,7 @@ services:
   web:
     type: compose
     image: traefik/whoami:v1.10
+    home: false
     primary: true
     ports:
       - 0.0.0.0:8080:80

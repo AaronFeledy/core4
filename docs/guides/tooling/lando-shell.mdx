@@ -8,6 +8,8 @@ tags: [beta, docs, tooling, shell]
 
 # Open a Lando shell
 
+From your app directory in an interactive terminal, open a shell on the host with the app’s Lando environment. This command does not enter a container:
+
 ```sh
 lando shell
 ```
@@ -15,6 +17,8 @@ lando shell
 With no `--service` flag, that opens a host shell scoped to the app root. The host shell gets the app-scoped Lando environment (`LANDO_APP_NAME`, `LANDO_APP_ROOT`). `--host` is deprecated. Host mode is already the default, so `lando shell --host` is redundant.
 
 ## Open a shell in a service
+
+Start the app first, then select the service explicitly. Replace `appserver` with your service name:
 
 ```sh
 lando shell --service appserver

@@ -13,12 +13,11 @@
   "type": "module",
   "private": true,
   "engines": {
-    "bun": ">=1.4.2",
-    "node": "22.23.0"
+    "bun": ">=1.4.2"
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "node scripts/build.mjs",
+    "build": "bun scripts/build.mjs",
     "preview": "astro preview",
     "check": "astro check"
   },
@@ -32,8 +31,11 @@
     "astro": "7.3.3",
     "astro-auto-import": "0.5.2",
     "effect": "catalog:",
+    "github-slugger": "2.0.0",
     "htmlparser2": "12.0.0",
     "linkinator": "8.1.0",
-    "typescript": "^5.9.0"
+    "tinyglobby": "0.2.17",
+    "typescript": "^5.9.0",
+    "yaml": "2.9.0"
   }
 }

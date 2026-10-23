@@ -1,4 +1,9 @@
-import { DATABASE_PORT_ENV_KEY, type DatabaseFamily, databaseEnvCreds } from "@lando/sdk/database-creds";
+import {
+  DATABASE_PORT_ENV_KEY,
+  type DatabaseFamily,
+  LANDO_DB_ENV_KEYS,
+  databaseEnvCreds,
+} from "@lando/sdk/database-creds";
 import type { ServiceCreds } from "@lando/sdk/schema";
 
 export type CredsFamily = DatabaseFamily;
@@ -72,8 +77,8 @@ export const familyEnvFor = (family: CredsFamily, creds: ServiceCreds): Readonly
 
 export const landoDbEnvFor = (creds: ServiceCreds, port: number): Readonly<Record<string, string>> => ({
   [DATABASE_PORT_ENV_KEY]: String(port),
-  LANDO_DB_USER: creds.user,
-  LANDO_DB_PASSWORD: creds.password,
-  LANDO_DB_NAME: creds.database,
-  ...optionalRoot("LANDO_DB_ROOT_PASSWORD", creds.rootPassword),
+  [LANDO_DB_ENV_KEYS.user]: creds.user,
+  [LANDO_DB_ENV_KEYS.password]: creds.password,
+  [LANDO_DB_ENV_KEYS.database]: creds.database,
+  ...optionalRoot(LANDO_DB_ENV_KEYS.rootPassword, creds.rootPassword),
 });

@@ -1,12 +1,23 @@
 # symfony
 
-Symfony scaffold with PHP 8.1-8.6, Composer, PostgreSQL or MariaDB, and Redis.
+Use this recipe for Symfony with PHP 8.1-8.6, Composer, PostgreSQL or MariaDB,
+and Redis. The recipe configures the services; create the Symfony application
+through Composer after starting the stack.
+
+## Host prerequisites
+
+- Lando v4 install with `provider-lando` or `provider-docker`.
+
+## Bootstrapping the codebase
+
+The recipe writes a Landofile only. After `lando start`, create the Symfony
+project with the generated Composer tooling if the app root is empty.
 
 ## Generated services
 
 - `appserver`: `php:<8.1-8.6>`, `framework: symfony`, app-relative webroot `public`.
-- `database` — `postgres:16` or `mariadb:11.4` (prompt: `database`).
-- `cache` — `redis`.
+- `database`: `postgres:16` or `mariadb:11.4` (prompt: `database`).
+- `cache`: `redis`.
 
 The `appserver` service receives `DATABASE_URL` for the selected PostgreSQL or
 MariaDB version and `REDIS_URL` for Redis. Database credentials resolve from
@@ -14,14 +25,5 @@ the database service at plan time.
 
 ## Generated tooling
 
-- `lando console …` — Symfony console.
-- `lando composer …` — Composer.
-
-## Bootstrapping the codebase
-
-The recipe writes a Landofile only. After `lando start`, create the Symfony
-project with the generated Composer tooling if the app root is empty.
-
-## Host prerequisites
-
-- Lando v4 install with `provider-lando` or `provider-docker`.
+- `lando console …`: Symfony console.
+- `lando composer …`: Composer.

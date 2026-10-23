@@ -17,7 +17,7 @@ import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import { emptySnapshots } from "./data-mover-support.ts";
 
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import {
   acceleratedPlan,
@@ -76,7 +76,7 @@ describe("destroy progress topology", () => {
     "retained disposal publishes its bus pre-event before quiescence (veto=%s)",
     async (veto) => {
       const order: string[] = [];
-      const desired = attachEffectiveEvents(
+      const desired = withProjectEvents(
         { ...acceleratedPlan },
         {
           "pre-init": [{ service: ":host", cmd: "exit 91" }],
@@ -166,13 +166,15 @@ describe("destroy progress topology", () => {
 
     // Then: a destroy tree opens after pre-destroy and closes before post-destroy.
     const parentId = destroyTreeId(String(plan.id));
-    const tags = harness.events.map((event) => event._tag);
+    // The target root holds no Landofile, so the skip notice precedes the lifecycle; order the rest.
+    const lifecycle = harness.events.filter((event) => !event._tag.startsWith("message."));
+    const tags = lifecycle.map((event) => event._tag);
     const pre = tags.indexOf("pre-destroy");
     const post = tags.indexOf("post-destroy");
-    const treeStart = harness.events.findIndex(
+    const treeStart = lifecycle.findIndex(
       (event) => event._tag === "task.tree.start" && event.parentId === parentId,
     );
-    const treeComplete = harness.events.findIndex(
+    const treeComplete = lifecycle.findIndex(
       (event) => event._tag === "task.tree.complete" && event.parentId === parentId,
     );
     expect(pre).toBeGreaterThan(-1);

@@ -5,13 +5,15 @@ description: Run and verify the manual signed release pipeline.
 
 # Release runbook
 
-Beta posture: the full signed release is run **manually**, not from CI, until RC. See the "Release-automation posture" entry in `decisions.md` for the decision and rationale. The generated `release` workflow (`.github/workflows/release.yml`) publishes unsigned `v4.0.0-dev.N` GitHub prerelease assets for all six platforms (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`). It does not publish npm, sign, notarize, or cut a stable release. Manual `scripts/release.ts` remains the 14-stage signed Beta pipeline.
+Use this runbook to build, publish, and verify a signed `4.0.0-beta.N` release from the repository root. The full signed release runs **manually**, not from CI, until RC. See the [release-automation decision](./decisions.md#release-automation-posture-decision) for the rationale.
 
-Use this runbook to drive the 14-stage orchestrator (`scripts/release.ts`) by hand when cutting `4.0.0-beta.N`.
+The generated `release` workflow (`.github/workflows/release.yml`) publishes unsigned `v4.0.0-dev.N` GitHub prerelease assets for all six platforms (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`). It does not publish npm, sign, notarize, or cut a stable release. Manual `scripts/release.ts` remains the 14-stage signed Beta pipeline.
+
+Before a full release, prepare the [required credentials](#required-credentials) and a working Lando provider for the container-helper build. The full invocation reaches `14-publish`, which publishes packages and creates a GitHub release. To test stage ordering without signing credentials, use [local rehearsal](#rehearsal-without-credentials) instead.
 
 ## Invocation
 
-The orchestrator is `bun run release` (`scripts/release.ts`). Pass the artifact target and, optionally, a stage prefix.
+From the repository root, run `bun run release` (`scripts/release.ts`) with an artifact target. Add `--through-stage` if you want to stop before later stages. Choose one invocation below; they are alternatives, not a sequence.
 
 ```bash
 # Full release, all artifact families (binary + library), every stage in order.
@@ -78,7 +80,7 @@ Credential ownership (Apple notarization, Windows certificate, cosign/OIDC ident
 
 ## Verification
 
-A release is only complete when its artifacts verify. Confirm, per stage output and on disk:
+A successful orchestrator exit is not enough: verify the published artifacts as well. In the checks below, replace `<platform>` with the CI/release platform id, such as `linux-x64`, and use a host that can run that binary. Confirm, per stage output and on disk:
 
 1. Checksums: `dist/SHA256SUMS` and `dist/SHA512SUMS` exist and match the built binaries (`sha256sum -c dist/SHA256SUMS`).
 2. Binary smoke: each compiled binary runs and reports the expected version (`./dist/lando-<platform> --version`).

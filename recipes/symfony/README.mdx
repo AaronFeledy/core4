@@ -7,7 +7,14 @@ tags: [recipe, symfony, php]
 
 # Symfony
 
-`lando init --recipe symfony` scaffolds PHP, Composer, PostgreSQL or MariaDB, Redis, and the Symfony console.
+Create the Lando services for Symfony with PHP, Composer, PostgreSQL or
+MariaDB, and Redis. The recipe adds Symfony console tooling, but does not
+create the Symfony application.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe symfony --name=my-symfony-app --yes
@@ -17,6 +24,9 @@ lando info
 ```
 
 The named init creates `my-symfony-app/`. Change into it before app commands. `--yes` uses PHP 8.4, PostgreSQL 16, Composer 2, and webroot `public`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+
+To choose a different stack, use this initialization command instead of the
+default one above. Run it from the parent directory, not inside the app:
 
 ```sh
 lando init --recipe symfony --name=my-symfony-app --yes \

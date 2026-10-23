@@ -7,7 +7,13 @@ tags: [beta, docs, proxy, landofile, routes]
 
 # Write routes as shorthand strings and add filters
 
-A route is a string in the form `hostname[:port][/path]`. Put one under `routes:` on a service and Lando's proxy sends that hostname to the service. Reach for the object form only when you need a scheme, a named endpoint, or filters.
+Put a `hostname[:port][/path]` string under a service's `routes:` to send matching
+requests to that service through Lando's proxy. Use an object when you need to
+specify a scheme, a named endpoint, or filters.
+
+The following `.lando.yml` shows several route patterns. The optional port selects
+a backend endpoint, not a public listener port; the service must provide that
+endpoint. Quote wildcard strings so YAML does not interpret `*` as an alias.
 
 ```yaml
 name: route-shorthand-demo
@@ -23,7 +29,9 @@ services:
       - "lets.combine.*.lndo.site:8080/everything/for-real"
 ```
 
-Lint it before you start anything:
+Save the Landofile in your app directory, then lint it before starting containers.
+A successful lint checks the route syntax; it does not prove that the service is
+listening or serving HTTP:
 
 ```sh
 lando app:config:lint
@@ -236,7 +244,7 @@ A `pathPrefix` route matches the path and forwards it unchanged. Your service se
 - Named and unnamed filters never match each other.
 - Filters that match nothing are appended.
 
-So this base:
+For a service's `routes:` list, this base fragment:
 
 ```yaml
 # .lando.yml
@@ -252,7 +260,7 @@ routes:
         value: base
 ```
 
-with this overlay:
+combined with this overlay fragment under the same service:
 
 ```yaml
 # .lando.local.yml

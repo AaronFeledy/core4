@@ -14,6 +14,8 @@ Without `--yes`, Lando refuses destructive execution and tells you to rerun afte
 
 ## Keep data vs purge
 
+Choose one mode after reviewing the dry run. `--keep-data` removes the managed CLI while leaving runtime state available. `--purge` removes Lando-owned runtime resources and the data, cache, and config roots; back up any application data you need before using it. Purge can also remove Lando 3 leftovers identified by their ownership labels.
+
 ```sh
 # Removes the managed CLI while preserving app data, the managed VM,
 # runtime services, file-sync tools, global state, and caches
@@ -39,7 +41,9 @@ When that cleanup succeeds, `--purge` removes the Lando-owned managed VM, runtim
 
 On Windows, Podman keeps network definitions in the Windows host config outside its managed VM. Removing the VM does not remove those definitions. Current definitions have no Lando ownership label, so the purge plan reports them for manual review. Check `$env:APPDATA\containers\networks` after purge, and leave any entry whose ownership you cannot verify. Lando does not delete those files.
 
-**If Lando cannot query a container runtime** (neither Docker nor Podman is available, or a query fails) `--purge` fails closed: it exits non-zero and deletes no data. Uninstall never orphans running containers by deleting state while they are still up.
+**If Lando cannot verify recorded user apps or safely complete runtime cleanup**, `--purge` fails and preserves the data roots rather than deleting their state. Fresh roots or setup-only state do not require an installed runtime when no user apps are recorded.
+
+On Windows, purge also refuses when accelerated file-sync state is active, unreadable, or still has helpers or sync volumes. Run `lando stop` for the affected app to flush pending file changes, then `lando destroy --volumes` only after backing up any database or other volume data you need. That destroy deletes the app’s data volumes as well as verified sync resources. Resolve any reported sync errors before retrying purge.
 
 You can still stop or destroy apps yourself first. Purge no longer depends on it:
 

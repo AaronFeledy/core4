@@ -35,7 +35,7 @@ describe("docs workspace", () => {
       private: true,
       type: "module",
       scripts: {
-        build: "node scripts/build.mjs",
+        build: "bun scripts/build.mjs",
         dev: "astro dev",
         preview: "astro preview",
       },
@@ -57,7 +57,8 @@ describe("docs workspace", () => {
     const astroConfig = await Bun.file(resolve(repoRoot, "docs/astro.config.mjs")).text();
 
     expect(astroConfig).toContain('site: "https://aaronfeledy.github.io"');
-    expect(astroConfig).toContain('base: "/core4/"');
+    expect(astroConfig).toMatch(/^const base = "\/core4\/";$/m);
+    expect(astroConfig).toMatch(/export default defineConfig\(\{\s*site:\s*"[^"]+",\s*base,/);
   });
 
   test("keeps splash-page links relative so GitHub Pages base works", async () => {

@@ -8,7 +8,10 @@ tags: [beta, docs, plugins, authoring]
 
 # Scaffold a plugin
 
-`lando meta:plugin:new` writes a plugin tree from a template baked into the CLI. The binary never reads template files from disk.
+Run `lando meta:plugin:new` to create a plugin checkout. From the directory that
+will contain it, use the example below to create `./demo` with the package name
+`@acme/lando-plugin-demo` and contribution namespace `acme`. Choose an empty or
+new destination; Lando rejects a non-empty directory and does not overwrite it.
 
 ```sh
 lando meta:plugin:new @acme/lando-plugin-demo ./demo \
@@ -16,15 +19,16 @@ lando meta:plugin:new @acme/lando-plugin-demo ./demo \
   --description Demo-plugin --no-interactive
 ```
 
-No TTY? Pass every value. `--no-interactive` will not invent a name for you.
+For a non-interactive run, supply every required value as shown above.
+`--no-interactive` does not choose a package name for you. After the command
+succeeds, check `demo/package.json` and `demo/src/index.ts` before adapting the
+plugin. The template is built into the CLI, not read from files on disk.
 
 ## Pick a template
 
 `--template` is one of: `service-type`, `provider`, `tooling-engine`, `template-engine`, `route-filter`, `config-translator`, `recipe`, `bare`.
 
 `service-type`, `provider`, and `template-engine` seed `contributes` with a `<cspace>-example` id. The rest stay bare.
-
-A non-empty destination is rejected. Overwrite is not supported in this Beta.
 
 ## What lands
 

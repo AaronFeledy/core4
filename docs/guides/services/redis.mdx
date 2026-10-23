@@ -7,7 +7,7 @@ tags: [beta, docs, redis, service, cache]
 
 # Add Redis
 
-Put `type: redis` in your services block. Lando pulls `redis:7` and listens on `6379`. The default command enables append-only persistence (`redis-server --appendonly yes`) so cached data survives a restart:
+Add `type: redis` under `services` in `.lando.yml`. Lando pulls `redis:7` and listens on `6379`. The default command enables append-only persistence (`redis-server --appendonly yes`) so cached data survives a restart:
 
 ```yaml
 name: redis-demo
@@ -49,7 +49,7 @@ The `redis` type ships the `redis-cli` client task. After start:
 lando redis-cli ping
 ```
 
-Store and read keys from the host with the same command:
+Store a key by invoking the client from your host terminal:
 
 ```sh
 lando redis-cli set hello world
@@ -112,6 +112,8 @@ lando redis-cli ping
 ```
 
 ## Pin a version
+
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Set `image:` when `redis:7` isn't the version you want:
 
