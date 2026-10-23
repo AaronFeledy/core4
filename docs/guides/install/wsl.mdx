@@ -78,13 +78,7 @@ If the managed runtime still cannot install and you have working system Docker:
 lando setup --provider=docker
 ```
 
-After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker. You do not need to repeat the flag.
-
-`LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
-
-`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
-
-Do not pass `--provider=podman` unless you already have system Podman and want that opt-in. Setup does not install Docker or Podman for you.
+Later commands stay on Docker without repeating the flag. `--yes` consents to host changes; it does not switch providers. Do not pass `--provider=podman` unless you already have system Podman and want that opt-in. Setup does not install Docker or Podman for you. See [Pick a container provider](../setup/provider-selection.mdx#what-persists) for what persists and how to switch back.
 
 Lando starts Traefik when you start an app. You do not start Traefik by hand.
 
@@ -117,4 +111,4 @@ lando doctor
 lando --version
 ```
 
-Doctor should name the `lando` provider, or Docker if that is the last-used provider you set with `lando setup --provider=docker`.
+Doctor should name the `lando` provider, or Docker if you ran `lando setup --provider=docker`.

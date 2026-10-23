@@ -164,7 +164,7 @@ export const renderProvider = (): string =>
     "    runtimeProviderLayer,",
     "    certificateAuthorityResolverLayer,",
     "    urlScannerLayer,",
-    "    BunDataMover.layer.pipe(Layer.provide(Layer.mergeAll(runtimeProviderLayer, pluginsRuntimeLayer))),",
+    "    BunDataMover.layer.pipe(Layer.provide(Layer.mergeAll(runtimeProviderLayer, providerRegistryLayer, pluginsRuntimeLayer))),",
     "    providerRegistryLayer,",
     "    globalAppServiceLayer,",
     "  );",

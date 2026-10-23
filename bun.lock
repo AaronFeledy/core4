@@ -219,7 +219,9 @@
         "effect": "catalog:",
       },
       "devDependencies": {
+        "@lando/data-mover": "workspace:*",
         "@lando/engine": "workspace:*",
+        "@lando/redaction": "workspace:*",
       },
       "peerDependencies": {
         "@lando/sdk": "workspace:*",

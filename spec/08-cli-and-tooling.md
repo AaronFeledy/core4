@@ -64,7 +64,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:config:explain` | none | `plugins` | Report recipe provenance; `--format json` |
 | `app:config:migrate` | none | `plugins` | Commit recipe migrations; `--yes`, `--dry-run`, `--format json` |
 | `app:config:translate` | none | `plugins` | Convert with `--from`, `--to`, `--file`, `--write`; or materialize declared entries with `--refresh [<id>]`, optionally `--check` for local read-only drift (§7.4.2). Never plans or contacts a runtime provider. |
-| `app:destroy` | `destroy` | `app` | Destroy resources; confirmation unless `--yes`; `--volumes` adds data volumes, `--purge` adds data volumes and this root's snapshots (§10.11.2), `--purge-caches` adds cache volumes |
+| `app:destroy` | `destroy` | `app` | Destroy resources; confirmation unless `--yes`; `--provider=<id>` targets only that provider's applied state and owned resources; `--volumes` adds data volumes, `--purge` adds data volumes and this root's snapshots (§10.11.2), `--purge-caches` adds cache volumes |
 | `app:exec` | `exec` | `app` | Execute in a service |
 | `app:includes:update` | none | `minimal` | Refresh selected or all `.lando.lock.yml` entries; `--no-network`, `--check` |
 | `app:includes:verify` | none | `minimal` | Verify cached includes; `--format json\|table` |
@@ -104,10 +104,10 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:bun` | `bun` | `minimal` | Embedded Bun proxy through `BunSelfRunner` |
 | `meta:config` | `config` | `none` | Read, validate, or repair `<userConfRoot>/config.yml` |
 | `meta:doctor` | `doctor` | `none` | Self-resilient diagnostics (§10.9.1) |
-| `meta:snapshots:gc` | `snapshots:gc` | `provider` | Reports orphaned native snapshot images; `--prune` rechecks the index and removes them. Stopped providers are reported unavailable, never started (§10.11.2). |
+| `meta:snapshots:gc` | `snapshots:gc` | `provider` | Reports orphaned native snapshot images; `--prune` rechecks catalog references and eligibility before no-start removal. Stopped providers are reported unavailable during discovery; a runtime stopping after recheck causes failed removal, never startup or repair (§10.11.2). |
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
 | `meta:global:config` | `global:config` | `minimal` | Edit `<userDataRoot>/global/.lando.yml` and plugin enablement |
-| `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--purge` includes service/app volumes |
+| `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--provider=<id>` restricts applied evidence and cleanup to that provider; `--purge` includes service/app data volumes |
 | `meta:global:info` | `global:info` | `global` | Global info; `--service`, `--format` |
 | `meta:global:install` | `global:install` | `global` | Enable `globalServices:`, write `global.config.yml`, regenerate `dist`; does not start |
 | `meta:global:list` | `global:list` | `minimal` | List global services, enablement, source, status |
@@ -206,7 +206,7 @@ Its `set` and `unset` writes follow the comment/format-preserving and fail-close
 
 #### 8.2.3 The `app:shell` command
 
-`app:shell` requires a TTY and otherwise returns `ShellRequiresTtyError`. Host mode uses `ShellRunner` at the app root with resolved `LANDO_*` values and host resolution. Its line evaluator runs on the embedded Bun and removes `BUN_BE_BUN` and `BUN_FEATURE_FLAG_NO_ORPHANS` before a line runs, so `lando` in a line runs as Lando and keeps its detached workers. `--service` uses provider exec with TTY and §6.9.1 agent context. Secrets resolve only when explicitly referenced and MUST NOT be preloaded. History persists at `<userCacheRoot>/shell/<app-id>/history` unless `--no-history`; resolved secrets MUST be redacted before history writes.
+`app:shell` requires a TTY and otherwise returns `ShellRequiresTtyError`. Host mode uses `ShellRunner` at the app root with resolved `LANDO_*` values and host resolution. Its line evaluator runs on the embedded Bun and removes `BUN_BE_BUN` and `BUN_FEATURE_FLAG_NO_ORPHANS` before a line runs, so `lando` in a line runs as Lando and keeps its detached workers. `--service` uses provider exec with TTY and §6.9.1 agent context. Execution resolves secret references only when explicitly referenced and MUST NOT preload them into shell execution state; redaction MAY snapshot store values under §3.7. History persists at `<userCacheRoot>/shell/<app-id>/history` unless `--no-history`; resolved secrets MUST be redacted before history writes.
 
 The command publishes `cli-app:shell-init`, `cli-app:shell-run`, and `cli-app:shell-error`; inner commands publish `pre-shell-exec`/`post-shell-exec` or `pre-provider-exec`/`post-provider-exec` with redacted shapes.
 
@@ -379,6 +379,8 @@ Landofile `events:` accepts the same step types as `cmds` and adds decoded `.eve
 A tooling-derived event name MUST NOT collide with a reserved app or remote hook. A collision is a `landofile.tooling` issue at the tooling declaration, reported by lint and failing planning with `LandofileValidationError`, naming the task, reserved event, and rename remediation; it MUST NOT bind one step list to two triggers. Command alias disabling or remapping MUST NOT release an event-name reservation. The four remote hooks are triggered only by the corresponding core remote operation, never by a similarly named tooling task.
 
 Each `events.<name>` step list replaces its inherited list wholesale across layers; a step's `service` is an execution target, not a merge identity (§7.2).
+
+`stop` and `destroy` tear down the recorded applied plan, which carries no authored steps of its own. Their steps, including the `pre-init`/`post-init` pair that precedes them, are compiled from the current Landofile and `hostEvents` when that Landofile resolves to the recorded app (same kind, id, and canonical root), then run against the applied plan. When the Landofile cannot be loaded or planned, or resolves to a different app, teardown publishes one info notice, skips authored steps, and continues; it MUST NOT fail because of the Landofile. `destroy --root` has no Landofile and skips them silently.
 
 Host-wide steps live in `<userConfRoot>/config.yml` under `hostEvents`, never in `GlobalConfig.events` (delivery policy) and never in the global-app Landofile. Env overlays MUST drop any path whose first segment is `hostEvents`. The ten supported names are pre/post `start`, `stop`, `restart`, `rebuild`, and `destroy`. Restart and rebuild nest the same stop/start (or destroy/start) trees as project events. v1 steps are a string, `{cmd, service?}` (`:host` allowed), or `{command}`; `task`, `defer`, `for`, `env`, `flags`, `args`, `dir`, `user`, and unknown fields fail at load. Container (non-`:host`) steps in `pre-start`, `post-stop`, and `post-destroy` fail at load and MUST name `config.yml hostEvents.<event>[i]`. A `command:` step that resolves to a lifecycle command id also fails at load.
 
@@ -889,6 +891,8 @@ Validation failures carry the collected `issues` (`ValidationIssue`: `path` as a
 #### 8.11.2 The single serialization seam
 
 `encodeCommandResult` is the only JSON result serializer. It schema-encodes success or tagged failure, preserves exit status, wraps the envelope, and passes it through `RedactionService` before output. Per-command render helpers produce only human formats. §13.4 MUST reject any other command-result `JSON.stringify` path.
+
+Outside the command-result boundary, an unrecoverable entrypoint failure MAY emit only a stderr diagnostic, redacted as §10.10.2 describes, and exit non-zero; it MUST NOT emit a partial stdout envelope.
 
 `yaml` is boundary-owned: `--format=yaml` MUST emit the same envelope `--format=json` emits for that command, serialized through the `@lando/sdk/yaml` scalar and mapping-key policy, and parsing that YAML MUST yield the same model the JSON parses to. Redaction, `--json` projection, `--jq`, warning capture, and the closed-pipe policy apply to `yaml` exactly as to `json`; they share the command-result boundary. Every YAML projection MUST round-trip its input model, including strings YAML could reinterpret: the `[redacted]` sentinel, `yes`/`no`/`on`/`off`, numeric-looking strings, `null`/`~`, values containing `: `, and leading `*`, `&`, `%`, `@`. `@lando/sdk/yaml` is the one quoting policy; the CLI emitter and the shared Compose serializer owned by `@lando/container-runtime` consume it rather than re-implementing it.
 

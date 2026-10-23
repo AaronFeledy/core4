@@ -54,6 +54,9 @@ for (const kind of ["cmd", "task"] as const) {
         ),
         Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
         Layer.succeed(RuntimeProviderRegistry, {
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([plan.provider]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(TestRuntimeProvider),

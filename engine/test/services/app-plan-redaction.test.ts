@@ -1,9 +1,64 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import {
+  RedactionService,
+  makeRedactionService,
+  resetRegisteredRedactionValuesForTesting,
+} from "@lando/redaction/service";
+import { AppPlan, ServiceName } from "@lando/sdk/schema";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Redacted, Schema } from "effect";
+import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
 
 import {
   collectAppPlanRedactionTokens,
   collectLandofileRedactionTokens,
 } from "../../src/services/app-plan-redaction.ts";
+
+afterEach(resetRegisteredRedactionValuesForTesting);
+
+test("retained invocations read current containers again instead of caching registration", async () => {
+  resetRegisteredRedactionValuesForTesting();
+  const plan = Schema.decodeUnknownSync(AppPlan)({
+    id: "retained-output",
+    name: "retained-output",
+    slug: "retained-output",
+    root: "/tmp/retained-output",
+    provider: "test",
+    services: {},
+    routes: [],
+    networks: [],
+    stores: [],
+    fileSync: [],
+    metadata: { resolvedAt: "2026-10-21T00:00:00Z", source: "test", runtime: 4 },
+    extensions: {},
+  });
+  const redaction = makeRedactionService({
+    id: "empty",
+    list: Effect.succeed([]),
+    get: () => Effect.die("No store resolution expected"),
+    has: () => Effect.succeed(false),
+  });
+  let reads = 0;
+  const provider = {
+    ...TestRuntimeProvider,
+    readAppEnvironment: () =>
+      Effect.sync(() => {
+        reads += 1;
+        return [Redacted.make(reads === 1 ? "old-container-private" : "new-container-private")];
+      }),
+  };
+  const output = await Effect.runPromise(
+    Effect.gen(function* () {
+      const rendererRedactor = yield* redaction.forProfile("secrets");
+      const selected = outputRegisteredTestProvider(provider, plan);
+      yield* selected.exec({ app: plan.id, service: ServiceName.make("web") }, { command: ["true"] });
+      yield* selected.exec({ app: plan.id, service: ServiceName.make("web") }, { command: ["true"] });
+      return rendererRedactor.redactString("new-container-private");
+    }).pipe(Effect.provideService(RedactionService, redaction)),
+  );
+  expect(reads).toBe(2);
+  expect(output).toBe("[redacted]");
+});
 
 describe("app-plan redaction tokens", () => {
   test("excludes published default credentials while collecting custom plan passwords", () => {

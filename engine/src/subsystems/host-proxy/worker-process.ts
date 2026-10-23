@@ -25,7 +25,9 @@ export const WorkerReady = Schema.TaggedStruct("ready", {
 export type WorkerReady = typeof WorkerReady.Type;
 export type HostProxyWorkerProcess = DetachedWorkerProcess<WorkerReady>;
 export type HostProxyWorkerSpawnSpec = DetachedWorkerSpawnSpec;
-export type HostProxyWorkerSpawner = (spec: HostProxyWorkerSpawnSpec) => HostProxyWorkerProcess;
+export type HostProxyWorkerSpawner = (
+  spec: HostProxyWorkerSpawnSpec,
+) => HostProxyWorkerProcess | Promise<HostProxyWorkerProcess>;
 
 export class HostProxyWorkerExitedBeforeReadyError extends DetachedWorkerExitedBeforeReadyError {
   constructor(input: WorkerExitDetails) {
@@ -60,8 +62,8 @@ export const hostProxyWorkerArgv = (
 
 export const defaultSpawnWorker = (
   spec: HostProxyWorkerSpawnSpec,
-  options: { readonly payloadTimeoutMs?: number } = {},
-): HostProxyWorkerProcess =>
+  options: { readonly payloadTimeoutMs?: number; readonly readyTimeoutMs?: number } = {},
+): Promise<HostProxyWorkerProcess> =>
   spawnDetachedWorker(
     { ...spec, env: hostProxyWorkerEnv() },
     {

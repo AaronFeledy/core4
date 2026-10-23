@@ -4,6 +4,8 @@
  * it; every job that compiles `lando` downloads it before embedding.
  */
 
+import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
+
 export const CONTAINER_HELPER_JOB_ID = "container-helper";
 export const CONTAINER_HELPER_ARM64_JOB_ID = "container-helper-arm64";
 export const CONTAINER_HELPER_ARTIFACT = "container-helper";
@@ -13,6 +15,8 @@ export const renderContainerHelperJob = (): string => `  ${CONTAINER_HELPER_JOB_
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
+
+${isolateLandoRootsStep}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -59,6 +63,8 @@ export const renderContainerHelperArm64Job = (): string => `  ${CONTAINER_HELPER
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+
+${isolateLandoRootsStep}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

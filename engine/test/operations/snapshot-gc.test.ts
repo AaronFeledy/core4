@@ -15,6 +15,9 @@ const orphan: VolumeSnapshotArtifact = {
 
 test("reports providers unavailable when registry construction cannot reach their runtime", async () => {
   const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([ProviderId.make("offline")]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () =>
@@ -46,6 +49,9 @@ test("reports a stopped native provider as unavailable without invoking data-pla
   };
   const mover = { ...emptySnapshots, findOrphanedSnapshots: Effect.die("must not inspect stopped runtime") };
   const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([ProviderId.make("test")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -81,6 +87,9 @@ test.each([false, true])("reports orphan details and prunes only when requested 
       }),
   };
   const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([ProviderId.make("test")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -110,6 +119,9 @@ test("does not issue a successful removal report when the orphan recheck refuses
     remediation: "Review the current orphan report.",
   });
   const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([ProviderId.make("test")]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(TestRuntimeProvider),
@@ -153,6 +165,9 @@ test("reports a failing provider without hiding another provider's orphans", asy
     }),
   };
   const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([ProviderId.make("broken"), ProviderId.make("healthy")]),
     capabilities: Effect.succeed(healthy.capabilities),
     select: (target) => Effect.succeed(String(target) === "broken" ? broken : healthy),
@@ -168,4 +183,43 @@ test("reports a failing provider without hiding another provider's orphans", asy
     { provider: "healthy", status: "checked", orphans: [{ id: "orphan" }] },
   ]);
   expect(report.totalCount).toBe(1);
+});
+
+test("reports failed removal without counting it when the runtime stops after recheck", async () => {
+  // Given a successful discovery followed by a data-plane failure after the removal recheck.
+  const failure = new DataTransferError({
+    operation: "orphanedSnapshots",
+    message: "Provider snapshot reconciliation failed.",
+    remediation: "Check provider health with lando doctor and retry.",
+    cause: new ProviderUnavailableError({
+      providerId: "test",
+      operation: "removeVolumeSnapshot",
+      message: "Runtime stopped after recheck.",
+    }),
+  });
+  const mover = {
+    ...emptySnapshots,
+    findOrphanedSnapshots: Effect.succeed([orphan]),
+    removeOrphanedSnapshot: () => Effect.fail(failure),
+  };
+  const registry = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    list: Effect.succeed([ProviderId.make("test")]),
+    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+    select: () => Effect.succeed(TestRuntimeProvider),
+  });
+  // When the engine prunes through its DataMover boundary.
+  const report = await Effect.runPromise(
+    snapshotGc({ prune: true }).pipe(
+      Effect.provideService(RuntimeProviderRegistry, registry),
+      Effect.provideService(DataMover, mover),
+    ),
+  );
+  // Then the failed deletion remains in the report without a successful removal receipt.
+  expect(report).toMatchObject({
+    removedCount: 0,
+    providers: [{ provider: "test", status: "failed", error: failure.message, orphans: [{ id: "orphan" }] }],
+  });
 });

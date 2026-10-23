@@ -11,11 +11,13 @@ import {
   LandofileShape,
   PluginManifest,
   type ProviderCapabilities,
+  ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import { validateGlobalServiceContributions } from "../../src/services/global-services.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 
@@ -79,6 +81,7 @@ const planApp = (
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
+      Effect.provideService(HostProviderOverride, ProviderId.make("lando")),
     ),
   );
 };
@@ -290,24 +293,16 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
     expect(canReachSharedAlias(shop, [blog], "web.blog.internal")).toBe(true);
   });
 
-  test("publishes docker-app HTTP backends so managed Traefik can reach them on the host", async () => {
+  test("rejects Docker app routes when the host router uses Lando", async () => {
     const capabilities = dockerCapabilitiesForPlatform("linux");
-    const dockerApp = await planApp(
+    const dockerApp = planApp(
       { name: "shop", provider: "docker", services: { web: { image: "nginx:1.27", port: 80, home: false } } },
       capabilities,
     );
-    const web = dockerApp.services[ServiceName.make("web")];
-    if (web === undefined) throw new Error("expected web service");
-    const published = web.endpoints.filter((endpoint) => endpoint._tag === "published");
-    expect(published).toEqual([
-      {
-        _tag: "published",
-        name: "web",
-        protocol: "http",
-        port: 80,
-        publication: { bindAddress: "0.0.0.0" },
-      },
-    ]);
-    expect(String(dockerApp.provider)).toBe("docker");
+    await expect(dockerApp).rejects.toMatchObject({
+      _tag: "RouteProviderMismatchError",
+      providerId: "docker",
+      hostProviderId: "lando",
+    });
   });
 });

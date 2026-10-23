@@ -574,6 +574,9 @@ const makeStartLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(providerCapabilities),
         select: () => Effect.succeed(provider),
@@ -880,6 +883,9 @@ const makeAutoStartLayer = async (options: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -2054,7 +2060,7 @@ describe("lando start", () => {
     });
   });
 
-  test.skipIf(resolveLiveProviderSocket()?.source !== "env")(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "scaffolds an app and starts it against the live Podman socket",
     async () => {
       await withTempCwd(async (dir) => {
@@ -2194,6 +2200,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2342,6 +2351,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2481,6 +2493,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2627,6 +2642,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2784,6 +2802,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2973,6 +2994,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -3140,6 +3164,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),

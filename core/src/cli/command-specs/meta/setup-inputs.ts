@@ -10,6 +10,10 @@ import { fileURLToPath } from "node:url";
 
 import { Schema } from "effect";
 
+import {
+  type SetupProviderSwitchResult,
+  SetupProviderSwitchResultSchema,
+} from "@lando/engine/operations/setup-provider-switch";
 import { ProviderId } from "@lando/sdk/schema";
 
 import type { SetupNetworkTrustProbe } from "../../commands/setup-network-trust";
@@ -21,9 +25,11 @@ export interface SetupResult {
   readonly installDir: string;
   readonly fileSyncStatus: FileSyncStatus;
   readonly networkCaInjectionConfigured: boolean;
+  readonly providerSwitch?: SetupProviderSwitchResult;
 }
 
 export const SetupResultSchema = Schema.Struct({
+  providerSwitch: Schema.optionalKey(SetupProviderSwitchResultSchema),
   providerId: Schema.String,
   installDir: Schema.String,
   fileSyncStatus: Schema.Literals(["deferred", "installed", "satisfied", "unavailable"]),

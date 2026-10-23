@@ -87,7 +87,7 @@ Lando warns once per command about an unknown key, with the closest match when i
 
 Double-quoted YAML treats `\t` and `\n` as escapes, so `"C:\temp\new"` becomes a tab and a newline. Use single quotes (`'C:\temp\new'`) or doubled backslashes (`"C:\\temp\\new"`) for Windows paths. Lando warns at load when a path-like root value decodes with control characters.
 
-`LANDO_PROVIDER` does not persist as last-used. After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker.
+`defaultProviderId` is the provider `lando setup` persisted. `LANDO_PROVIDER` overrides it per command and never writes it. See [What persists](../setup/provider-selection.mdx#what-persists).
 
 ## Get, set, unset, validate, or edit a key
 
@@ -137,7 +137,7 @@ Invalid config file /home/user/.config/lando/config.yml: router.httpPort: Expect
   ↳ Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`. Run `lando config validate`, then use `lando config set <key> <value>` / `lando config unset <key>`, or `lando config edit` to repair config.yml.
 code: ConfigError
 commandId: meta:config
-issues: 
+issues:
 /home/user/.config/lando/config.yml: router.httpPort: Expected a value between 1 and 65535. Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`.
 path: /home/user/.config/lando/config.yml
 logsDir: /home/user/.cache/lando/logs
@@ -347,7 +347,7 @@ Lando merges the six standard Landofile layers from `<userDataRoot>/global/`. A 
 | 5 | `.lando.local.yml` | You, optional |
 | 6 | `.lando.user.yml` | You, optional |
 
-The generated file sits below your canonical Landofile, so your overrides beat plugin defaults. The merged app is always named `global` and always runs on the `lando` provider, whatever the layers say.
+The generated file sits below your canonical Landofile, so your overrides beat plugin defaults. The merged app is always named `global` and runs on the host provider, whatever the layers say. A `provider:` key in these layers does not move it. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs).
 
 ## Change the global app
 

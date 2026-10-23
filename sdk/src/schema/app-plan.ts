@@ -180,6 +180,10 @@ export type FileSyncPlan = typeof FileSyncPlan.Type;
 export const appIdentityKey = (kind: "owner" | "repository", canonicalPath: string): string =>
   sha256Hex(`${kind}\0${canonicalPath}`);
 
+/** Resolve ownership from a planned identity or an older plan's canonical root. */
+export const planAppIdentity = (plan: Pick<AppPlan, "root" | "identity">): AppIdentity =>
+  plan.identity ?? { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) };
+
 export const AppIdentity = Schema.Struct({
   appRoot: AbsolutePath.annotate({ description: "Canonical root that owns this app instance." }),
   ownerKey: Schema.String.annotate({

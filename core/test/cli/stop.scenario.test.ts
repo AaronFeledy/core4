@@ -267,6 +267,14 @@ const makeStopLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: (root) =>
+          Effect.succeed(
+            root === plannedApp.root
+              ? { kind: "applied" as const, plan: plannedApp }
+              : { kind: "absent" as const },
+          ),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
@@ -359,6 +367,9 @@ describe("lando stop", () => {
       process.env.LANDO_USER_DATA_ROOT = join(root, "leaked-default-data");
       const pathsService = makeLandoPaths({
         userDataRoot: join(root, "service-data"),
+        userCacheRoot: join(root, "service-cache"),
+        userConfRoot: join(root, "service-conf"),
+        systemPluginRoot: join(root, "service-sys"),
         env: {},
         platform: "linux",
       });
@@ -512,6 +523,12 @@ describe("lando stop", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: (root) =>
+            Effect.succeed(
+              root === plan.root ? { kind: "applied" as const, plan } : { kind: "absent" as const },
+            ),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(fakeProvider),
@@ -776,6 +793,12 @@ describe("lando stop", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: (root) =>
+            Effect.succeed(
+              root === plan.root ? { kind: "applied" as const, plan } : { kind: "absent" as const },
+            ),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(fakeProvider),

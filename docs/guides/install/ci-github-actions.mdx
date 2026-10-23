@@ -26,7 +26,7 @@ lando poweroff -y
 lando setup --provider=docker --yes --no-interactive
 ```
 
-`--no-interactive` fails closed instead of waiting for a TTY. `-y` on `poweroff` is the same idea: a job has no one to type yes.
+`--no-interactive` fails closed instead of waiting for a TTY. `-y` on `poweroff` is the same idea: a job has no one to type yes. Provider rules live in [Pick a container provider](../setup/provider-selection.mdx).
 
 Do not scrape human text. Assert on JSON (`ok: true`) from `--format=json`.
 

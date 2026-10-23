@@ -52,7 +52,7 @@ test("orders defaults, main file, lexical yml drop-ins, env and host", () => {
     [1, 2, 3, 4, 5, 6].map(
       (length) => mergeGlobalConfigSources(stack.slice(0, length)).tree.defaultProviderId,
     ),
-  ).toEqual(["lando", "file", "first", "last", "env", "host"]);
+  ).toEqual([undefined, "file", "first", "last", "env", "host"]);
 });
 
 test("captures syntax errors independently without discarding the remaining layers", () => {

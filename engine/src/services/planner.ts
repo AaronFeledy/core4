@@ -19,11 +19,10 @@ import {
   applyAuthoredHealthcheck,
   validateAuthoredAppMount,
 } from "../planner/authored.ts";
-import { attachEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { DEFAULT_APP_MOUNT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
-import { attachServiceCredsScope, serviceCredsScopeForPlan } from "../planner/landofile-scopes.ts";
 import { adoptMysqlVolume } from "../planner/mysql-volume.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
+import { carryPlanAttachments } from "../planner/plan-attachments.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
@@ -64,13 +63,8 @@ export const layer = Layer.effect(
           providerCapabilities,
           identity.appRoot,
         );
-        const identified = { ...plan, root: identity.appRoot, identity };
-        const tooling = effectiveToolingForPlan(plan);
-        const credsScope = serviceCredsScopeForPlan(plan);
-        const adopted = yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
-        if (tooling !== undefined) attachEffectiveTooling(adopted, tooling);
-        if (credsScope !== undefined) attachServiceCredsScope(adopted, credsScope);
-        return adopted;
+        const identified = carryPlanAttachments(plan, { ...plan, root: identity.appRoot, identity });
+        return yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
       }),
     } satisfies Context.Service.Shape<typeof AppPlanner>);
   }),

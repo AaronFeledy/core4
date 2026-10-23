@@ -169,6 +169,29 @@ const applyFailure = async (plan: AppPlan, api: DockerApiClient) => {
 };
 
 describe("provider-docker pullArtifact", () => {
+  test.each(["always", "missing", "never"] as const)(
+    "reports the observed pinned digest for %s",
+    async (policy) => {
+      // Given
+      const ref = `team/helper@sha256:${"a".repeat(64)}`;
+      const fake = makeFakeApi({
+        images: new Set([ref]),
+        inspectBody: { RepoDigests: ["team/helper@sha256:other", ref] },
+      });
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }),
+      );
+      // When
+      const artifact = await Effect.runPromise(provider.pullArtifact({ ref, policy }));
+      // Then
+      expect(artifact).toEqual({ providerId, ref, digest: `sha256:${"a".repeat(64)}` });
+      expect(fake.requests).toEqual([
+        ...(policy === "always" ? [`POST ${buildImagePullRequest(ref, dockerPullDialect).path}`] : []),
+        `GET /images/${encodeURIComponent(ref)}/json`,
+      ]);
+    },
+  );
+
   test("apply forwards secret-only overrides without dropping planned environment", async () => {
     // Given
     const service = {

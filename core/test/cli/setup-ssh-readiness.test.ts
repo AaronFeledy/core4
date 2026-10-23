@@ -3,12 +3,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
+import { GlobalConfigSources } from "@lando/engine/services/config";
 import * as LandoHttpClient from "@lando/http-client";
-import { AppId, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   ConfigService,
   Downloader,
   EventService,
+  GlobalAppService,
   InteractionService,
   RuntimeProviderRegistry,
   SshService,
@@ -20,6 +22,7 @@ import { runShellServiceSetupStep } from "../../src/cli/command-specs/meta/setup
 import { makeSetupReadinessRecorder } from "../../src/cli/command-specs/meta/setup-steps.ts";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 import { type SetupReadinessStep, readSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";
+import { globalAppForProvider } from "../_support/global-provider.ts";
 
 test.each([
   { state: "running", exitCode: 0, status: "satisfied", probes: 1 },
@@ -87,11 +90,15 @@ test.each([
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
+              Layer.succeed(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
               Layer.succeed(ConfigService, {
                 load: Effect.succeed(config),
                 get: (key) => Effect.succeed(config[key]),
               }),
               Layer.succeed(RuntimeProviderRegistry, {
+                resolveAppliedPlan: () => Effect.succeed(undefined),
+                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                appliedPlansFor: () => Effect.succeed([]),
                 list: Effect.succeed([ProviderId.make("lando")]),
                 capabilities: Effect.succeed(provider.capabilities),
                 select: (plan) =>
@@ -101,6 +108,15 @@ test.each([
                   }),
               }),
               Layer.succeed(SshService, { ...ssh, id: "sidecar" }),
+              Layer.succeed(GlobalAppService, {
+                ...globalAppForProvider(ProviderId.make("lando")),
+                root: Effect.succeed(AbsolutePath.make(join(userDataRoot, "global"))),
+                paths: Effect.succeed({
+                  root: AbsolutePath.make(join(userDataRoot, "global")),
+                  distLandofile: AbsolutePath.make(join(userDataRoot, "global", ".lando.dist.yml")),
+                  userLandofile: AbsolutePath.make(join(userDataRoot, "global", ".lando.yml")),
+                }),
+              }),
               Layer.succeed(EventService, events),
               Layer.succeed(Downloader, downloader.service),
               Layer.succeed(InteractionService, interaction.service),
