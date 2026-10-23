@@ -541,6 +541,10 @@
       "digest": "d4ca26563b33f554f10a29552e6b81f010f86a5d92365d7bfa70fd275734709a"
     },
     {
+      "fixture": "docs/guides/ollama/fixtures/ollama-demo",
+      "digest": "9191a0b49df33e43ab8e9de2cc600a19888178d59c1598f147fbdd2a5444ff56"
+    },
+    {
       "fixture": "docs/guides/opensearch/fixtures/opensearch-demo",
       "digest": "d3c56e3f0c881c2f6f158d600bad70287b305c66739cac7753024ea1d03892b3"
     },
