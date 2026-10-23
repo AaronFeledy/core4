@@ -161,10 +161,10 @@ const makeInfoLayer = () => {
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({ name: "test-info-secret", services: {} }),
+        discover: Effect.succeed(literalLandofile({ name: "test-info-secret", services: {} }, plan.root)),
       }),
     ).pipe(Layer.provide(emptyConfigServiceLayer)),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })).pipe(
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })).pipe(
       Layer.provide(emptyConfigServiceLayer),
     ),
     Layer.succeed(
@@ -264,3 +264,4 @@ describe("lando info text does not double-wrap the redaction sentinel", () => {
     expect(json).not.toContain(SECRET_VALUE);
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

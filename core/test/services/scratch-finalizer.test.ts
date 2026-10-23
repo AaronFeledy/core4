@@ -31,10 +31,9 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererRuntime from "@lando/renderer/runtime";
-import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
@@ -69,14 +68,7 @@ const landofileRuntimeInputs = {
 const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
 const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
-const redactionLive = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createRedactor("secrets")),
-  }),
-);
+const redactionLive = RedactionService.layer;
 
 const scratchInitAppPortLive = Layer.succeed(
   ScratchInitAppPort,
@@ -258,6 +250,7 @@ const makeRecordingLayer = (
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    environmentResolverLayer(),
     Layer.effect(
       EventService,
       Effect.map(EventService, (events) =>
@@ -646,3 +639,4 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
     });
   });
 });
+import { environmentResolverLayer } from "../_support/value-contracts.ts";

@@ -4,8 +4,8 @@ import { Effect, Schema, Scope } from "effect";
 
 import type { App, AppSelector } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
-import { type AppPlan, LandofileShape } from "@lando/sdk/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
+import { type AppPlan, LandofileShape, type LoadScopedLandofile } from "@lando/sdk/schema";
+import { AppPlanner, LandofileService, RuntimeProviderRegistry, type StateStore } from "@lando/sdk/services";
 
 import { type AppHandleRuntimeServices, makeAppHandle } from "@lando/engine/app/handle";
 import { makeAppLifecycle } from "@lando/engine/app/lifecycle";
@@ -22,15 +22,13 @@ import {
 import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { runtimeServiceContext } from "@lando/engine/runtime/observability";
-import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
-import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
-import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
 
 interface ResolvedLandofilePlan {
   readonly plan: AppPlan;
-  readonly landofile: LandofileShape;
+  readonly landofile: LoadScopedLandofile;
 }
 
 const toAppResolveError = (cause: unknown): AppResolveError => {
@@ -52,7 +50,7 @@ const toAppResolveError = (cause: unknown): AppResolveError => {
 };
 
 const planResolvedLandofile = Effect.fnUntraced(function* (
-  landofile: LandofileShape,
+  landofile: LoadScopedLandofile,
   root: string,
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const registry = yield* RuntimeProviderRegistry;
@@ -80,21 +78,13 @@ const planFromShape = Effect.fnUntraced(function* (
   appRoot: string,
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const sourcePath = join(appRoot, ".lando.yml");
-  const stateStore = yield* StateStore;
-  const authored = copyLandofileProvenance(
-    shape,
-    yield* Schema.encodeEffect(LandofileShape)(shape, { onExcessProperty: "error" }),
-  );
-  const loadScope = yield* buildLandofileLoadScope([{ file: sourcePath, value: authored }]);
-  const landofile = yield* resolveLandofileIncludes({
-    landofile: authored,
+  const authored = yield* Schema.encodeEffect(LandofileShape)(shape, { onExcessProperty: "error" });
+  const landofile = yield* loadAuthoredDocuments([{ file: sourcePath, value: authored }], {
     appRoot,
-    sourcePath,
-    stateStore,
-    loadScope,
+    file: sourcePath,
   });
   yield* assertUserAppIdNotReserved(landofile);
-  yield* assertLandoVersionConstraint(landofile, { sourcePath });
+  yield* assertLandoVersionConstraint(landofile.document, { sourcePath });
   return yield* planResolvedLandofile(landofile, appRoot);
 }, Effect.mapError(toAppResolveError));
 

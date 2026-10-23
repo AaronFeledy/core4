@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
+import { RedactionService } from "@lando/redaction/service";
 import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
 import { GlobalServiceMissingError } from "@lando/core/errors";
@@ -46,6 +48,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 
 interface ApplyCall {
+  readonly environments: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly plan: AppPlan;
   readonly options: ApplyOptions;
 }
@@ -57,6 +60,7 @@ interface InspectCall {
 interface Harness {
   readonly dataRoot: string;
   readonly layer: Layer.Layer<
+    | import("@lando/sdk/services").EnvironmentValueResolver
     | AppPlanner
     | BuildOrchestrator
     | CacheService
@@ -99,14 +103,21 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
 
 const fakeServiceType = makeLegacyServiceTypeFake({
   id: "lando",
-  toServicePlan: ({ name, appRoot, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+  toServicePlan: ({
+    name,
+    service,
+    appRoot,
+    provider = ProviderId.make("lando"),
+    primary = false,
+    metadata,
+  }) =>
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "lando",
       provider,
       primary,
       artifact: { kind: "ref", ref: "lando-global-service:test" },
-      environment: { TOKEN: "${secret:GLOBAL_TOKEN}" },
+      environment: service.environment ?? {},
       workingDirectory: PortablePath.make("/app"),
       appMount: {
         source: AbsolutePath.make(appRoot),
@@ -163,9 +174,20 @@ const makeHarness = async (
     id: String(providerId),
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
     apply: (plan, options) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         operations.push("apply");
-        applyCalls.push({ plan, options });
+        const resolve = options.resolveServiceEnvironment;
+        const environments = Object.fromEntries(
+          yield* Effect.forEach(Object.values(plan.services), (service) =>
+            (resolve === undefined
+              ? Effect.sync(() =>
+                  Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String))(service.environment),
+                )
+              : resolve(service)
+            ).pipe(Effect.map((env) => [service.name, env] as const)),
+          ),
+        );
+        applyCalls.push({ plan, options, environments });
         return { changed: true };
       }),
     inspect: (target) => {
@@ -260,7 +282,13 @@ const makeHarness = async (
       ),
     ),
   );
-  return { dataRoot, layer, applyCalls, inspectCalls, events, operations, selectedProviders };
+  const resolvedLayer = Layer.mergeAll(
+    layer,
+    EnvironmentValueResolverLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(layer, RedactionService.layer.pipe(Layer.provide(layer)))),
+    ),
+  );
+  return { dataRoot, layer: resolvedLayer, applyCalls, inspectCalls, events, operations, selectedProviders };
 };
 
 const withHarness = async <T>(
@@ -314,6 +342,11 @@ describe("ensureGlobalServicesRunning", () => {
 
   test("cold ensure publishes pre/post-global-start and applies the selected global service", async () => {
     await withHarness(async (harness) => {
+      await mkdir(join(harness.dataRoot, "global"), { recursive: true });
+      await writeFile(
+        join(harness.dataRoot, "global", ".lando.local.yml"),
+        'services:\n  traefik:\n    environment:\n      TOKEN: "${secret:GLOBAL_TOKEN}"\n',
+      );
       const result = await Effect.runPromise(
         ensureGlobalServicesRunning({ services: ["traefik"] }).pipe(Effect.provide(harness.layer)),
       );
@@ -324,12 +357,12 @@ describe("ensureGlobalServicesRunning", () => {
       expect(String(harness.applyCalls[0]?.plan.id)).toBe("global");
       expect(Object.keys(harness.applyCalls[0]?.plan.services ?? {})).toEqual(["traefik"]);
       expect(harness.applyCalls[0]?.options.reconcile).toBe(false);
-      expect(harness.applyCalls[0]?.options.serviceEnvironment?.[ServiceName.make("traefik")]).toEqual({
+      expect(harness.applyCalls[0]?.environments[ServiceName.make("traefik")]).toMatchObject({
         TOKEN: "resolved-global-token",
       });
       expect(harness.applyCalls[0]?.plan.services[ServiceName.make("traefik")]?.environment).toEqual({
         LANDO_HOST_IP: "host.lando.internal",
-        TOKEN: "${secret:GLOBAL_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "GLOBAL_TOKEN" },
       });
       expect(harness.operations).toEqual(["build", "apply"]);
       expect([...new Set(harness.inspectCalls.map((call) => String(call.target.service)))]).toEqual([

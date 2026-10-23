@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Context, DateTime, Effect, Layer, Stream } from "effect";
 
 import { TestRuntimeProvider, makeTestRuntime } from "@lando/core/testing";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, type RuntimeProviderShape } from "@lando/sdk/services";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
@@ -12,7 +12,9 @@ import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.t
 const providerId = ProviderId.make("test");
 const serviceName = ServiceName.make("appserver");
 const runtimeTag = Context.Service<unknown>("exec-command-spec/runtime");
-const plan: AppPlan = {
+import type { CurrentExecutableAppPlan } from "@lando/sdk/schema";
+const plan: CurrentExecutableAppPlan = {
+  valueModel: 1,
   id: AppId.make("exec-command-spec"),
   name: "exec-command-spec",
   slug: "exec-command-spec",

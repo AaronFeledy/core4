@@ -77,6 +77,7 @@ export type ScratchRunError =
   | LandofileVersionConstraintError;
 
 export type ScratchRunServices =
+  | import("@lando/sdk/services").EnvironmentValueResolver
   | ScratchAppService
   | ConfigService
   | FileSystem

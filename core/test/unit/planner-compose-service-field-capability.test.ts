@@ -25,12 +25,13 @@ const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
   }
 };
 
+import { literalLandofile } from "../_support/value-contracts.ts";
+
 const planExit = (landofile: typeof LandofileShape.Type, capabilities: ProviderCapabilities) =>
   Effect.runPromiseExit(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
-      Effect.provide(PluginRegistryLayer.layer),
-    ),
+    Effect.flatMap(AppPlanner, (planner) =>
+      planner.plan(literalLandofile(landofile, process.cwd()), capabilities),
+    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {

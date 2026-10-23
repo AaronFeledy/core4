@@ -12,6 +12,7 @@ import {
   type AppPlan,
   LogSource,
   type LogSource as LogSourceShape,
+  PortNumber,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
@@ -105,6 +106,15 @@ const servicePlan = (name: "node" | "postgres" | "memcached" | "valkey"): Servic
           : ["valkey-server"],
   environment:
     name === "postgres" ? { POSTGRES_USER: "lando", POSTGRES_DB: "appdb", POSTGRES_PASSWORD: "secret" } : {},
+  ...(name === "postgres"
+    ? {
+        connection: {
+          family: "postgres",
+          port: PortNumber.make(5432),
+          creds: { user: "lando", database: "appdb", password: { _tag: "SecretRef", reference: "POSTGRES" } },
+        },
+      }
+    : {}),
   mounts: [],
   storage:
     name === "postgres"
@@ -307,11 +317,14 @@ const makeInfoLayer = (
       LandofileService.of({
         discover: Effect.sync(() => {
           options?.onDiscover?.();
-          return { name: "test-info", services: {}, ...options?.landofile };
+          return literalLandofile(
+            { name: "test-info", services: {}, ...options?.landofile },
+            plannedApp.root,
+          );
         }),
       }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plannedApp)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -599,7 +612,10 @@ describe("lando info --deep — agent-context env audit", () => {
             plan,
             root: AbsolutePath.make(process.cwd()),
             app: { kind: "user", id: plan.id, root: plan.root },
-            landofile: { name: "test-info", ...(enabled ? {} : { agentEnv: false }) },
+            landofile: literalLandofile(
+              { name: "test-info", ...(enabled ? {} : { agentEnv: false }) },
+              plan.root,
+            ),
           },
         ).pipe(
           Effect.provide(
@@ -690,9 +706,11 @@ describe("lando info — resolved log sources", () => {
     return Layer.mergeAll(
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-info", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(literalLandofile({ name: "test-info", services: {} }, logPlan.root)),
+        }),
       ),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(logPlan) })),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(logPlan)) })),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -757,3 +775,4 @@ describe("lando info — resolved log sources", () => {
     expect(svc?.logSources?.[0]?.availability).toBe("redirected-to-console");
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

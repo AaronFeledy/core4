@@ -3,7 +3,9 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as ConfigLayer from "@lando/engine/services/config";
+import { ServiceName } from "@lando/sdk/schema";
 import { Effect, Exit, Layer, Schema } from "effect";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 import {
   type AppConfigResult,
@@ -71,10 +73,12 @@ describe("lando app:config", () => {
       },
       [{ id: "user:corp.yml", sha256: "a".repeat(64) }],
     );
+    const compiled = literalLandofile(landofile, process.cwd());
+    rememberLandofileIncludeSources(compiled.document, [{ id: "user:corp.yml", sha256: "a".repeat(64) }]);
     const layer = Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed(landofile),
+        discover: Effect.succeed(compiled),
       }),
     );
 
@@ -127,7 +131,7 @@ describe("lando app:config", () => {
       const layer = Layer.succeed(
         LandofileService,
         LandofileService.of({
-          discover: Effect.succeed(landofile),
+          discover: Effect.succeed(literalLandofile(landofile, dir)),
         }),
       );
       try {
@@ -181,7 +185,7 @@ describe("lando app:config", () => {
       const layer = Layer.succeed(
         LandofileService,
         LandofileService.of({
-          discover: Effect.succeed(landofile),
+          discover: Effect.succeed(literalLandofile(landofile, process.cwd())),
         }),
       );
       try {
@@ -218,11 +222,16 @@ describe("lando app:config", () => {
     const layer = Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({
-          name: "test-app-config-get",
-          recipe: "node",
-          services: { web: { type: "node" } },
-        }),
+        discover: Effect.succeed(
+          literalLandofile(
+            {
+              name: "test-app-config-get",
+              recipe: "node",
+              services: { [ServiceName.make("web")]: { type: "node" } },
+            },
+            process.cwd(),
+          ),
+        ),
       }),
     );
 
@@ -272,7 +281,9 @@ describe("lando app:config", () => {
     const layer = Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({ name: "test-app-config", recipe: "node", services: {} }),
+        discover: Effect.succeed(
+          literalLandofile({ name: "test-app-config", recipe: "node", services: {} }, process.cwd()),
+        ),
       }),
     );
 
