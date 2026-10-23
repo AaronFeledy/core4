@@ -39,7 +39,7 @@ services:
     type: mariadb
     creds:
       user: magento
-      password: magento-dev
+      password: magento
       database: magento
   search:
     type: opensearch
@@ -144,7 +144,7 @@ lando magento setup:install \
   --base-url='<appserver-url>/' \
   --base-url-secure='<appserver-url>/' \
   --use-secure=1 --use-secure-admin=1 \
-  --db-host=database --db-name=magento --db-user=magento --db-password=magento-dev \
+  --db-host=database --db-name=magento --db-user=magento --db-password=magento \
   --search-engine=opensearch --opensearch-host=search --opensearch-port=9200 \
   --opensearch-enable-auth=0 --opensearch-index-prefix=magento2 \
   --admin-firstname=Admin --admin-lastname=User --admin-email=admin@example.com \
