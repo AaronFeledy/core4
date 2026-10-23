@@ -28,7 +28,9 @@ import {
 import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
+import { observedAppPlan } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
+import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./authority-url.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
@@ -224,16 +226,18 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
 
   let plan: AppPlan;
   let landofile: LandofileShape | undefined;
-  if (target?.plan !== undefined) {
-    plan = target.plan;
+  const observedTarget = target ?? (yield* resolveAppliedStateTarget);
+  if (observedTarget !== undefined) {
+    plan = observedTarget.plan;
     if (options?.deep === true) {
-      landofile = yield* loadUserLandofileAt(landofileService, target.root);
+      landofile =
+        observedTarget.landofile ?? (yield* loadUserLandofileAt(landofileService, observedTarget.root));
     }
   } else {
     ({ plan, landofile } = yield* planDesiredApp);
   }
 
-  const selectedPlan = yield* selectInfoPlan(plan, options?.services);
+  const selectedPlan = yield* selectInfoPlan(yield* observedAppPlan(plan), options?.services);
   const result = yield* infoForPlan(selectedPlan);
   if (options?.deep !== true) return result;
   const agentEnv = yield* resolveAgentEnvAudit(landofile?.agentEnv, process.env);

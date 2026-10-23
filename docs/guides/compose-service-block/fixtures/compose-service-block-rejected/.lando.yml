@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid deliberate rejected Compose key for the compose-service-block guide
 name: compose-service-block-rejected
 services:
   cache:

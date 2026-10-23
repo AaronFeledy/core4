@@ -5,9 +5,9 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "homepage": "https://github.com/lando-community/core4",
-  "repository": "lando-community/core4",
-  "bugs": "https://github.com/lando-community/core4/issues",
+  "homepage": "https://github.com/AaronFeledy/core4",
+  "repository": "AaronFeledy/core4",
+  "bugs": "https://github.com/AaronFeledy/core4/issues",
   "workspaces": {
     "packages": [
       "core",
@@ -49,6 +49,7 @@
     "test:unit:update-timings": "bun run scripts/update-test-timings.ts",
     "test:changed": "bun test --changed",
     "bench:tooling-hot-path": "bun run scripts/bench-tooling-hot-path.ts",
+    "bench:landofile-load": "bun run scripts/bench-landofile-load.ts",
     "bench:opentui-startup": "bun run scripts/bench-opentui-startup.ts",
     "typecheck": "bun run scripts/typecheck.ts",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json",
@@ -74,6 +75,8 @@
     "check:boundaries": "bun run scripts/check-boundaries.ts --all",
     "check:codegen-drift": "bun run scripts/check-codegen-drift.ts",
     "check:runtime-bundle-manifest": "bun run scripts/check-runtime-bundle-manifest.ts",
+    "check:runtime-bundle-licenses": "bun run scripts/check-runtime-bundle-licenses.ts",
+    "check:compiled-binary-notices": "bun run scripts/check-compiled-binary-notices.ts",
     "check:telemetry-inventory": "bun run scripts/check-telemetry-inventory.ts",
     "check:deprecations": "bun run scripts/check-deprecations.ts",
     "check:guide-coverage": "bun run scripts/check-guide-coverage.ts",
@@ -101,6 +104,7 @@
     "codegen:tomcat-bump-workflow": "bun run scripts/build-tomcat-bump-workflow.ts",
     "update:tomcat": "bun run scripts/update-tomcat.ts",
     "codegen:provider-images": "bun run scripts/build-provider-images.ts",
+    "codegen:provider-matrix-workflow": "bun run scripts/build-provider-matrix-workflow.ts",
     "codegen:compose-vendor": "bun run scripts/build-compose-vendor.ts",
     "codegen:compose-fixtures": "bun run scripts/build-compose-fixtures.ts",
     "codegen:compose-fixture-manifest": "bun run scripts/build-compose-fixture-manifest.ts",
@@ -121,6 +125,7 @@
     "sharp": "^0.35.5",
     "smol-toml": "^1.9.0",
     "source-map-js": "^1.2.2",
-    "undici": "^8.10.2"
+    "undici": "^8.10.2",
+    "vite": "~8.2.4"
   }
 }

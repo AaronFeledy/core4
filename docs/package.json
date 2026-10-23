@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
-  "homepage": "https://github.com/lando-community/core4",
+  "homepage": "https://github.com/AaronFeledy/core4",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lando-community/core4.git",
+    "url": "git+https://github.com/AaronFeledy/core4.git",
     "directory": "docs"
   },
   "type": "module",
@@ -28,7 +28,7 @@
     "@astrojs/starlight": "0.41.7",
     "@lando/core": "workspace:*",
     "@lando/sdk": "workspace:*",
-    "astro": "7.2.8",
+    "astro": "7.3.3",
     "astro-auto-import": "0.5.2",
     "effect": "catalog:",
     "typescript": "^5.9.0"

@@ -25,8 +25,8 @@ Use `appEnv` for environment defaults and `appLabels` for container-label defaul
 These commands replace each whole map. Keep any existing entries you want before running them.
 
 ```sh
-lando config set appEnv '{"TEAM":"platform"}' --type=json
-lando config set appLabels '{"team":"platform"}' --type=json
+lando config set appEnv '{"TEAM":"platform"}'
+lando config set appLabels '{"team":"platform"}'
 lando config get appEnv --format=json
 lando config get appLabels --format=json
 lando config --format=json
@@ -67,32 +67,220 @@ The view exposes public settings, not internal bookkeeping. Secret-bearing envir
 
 ## Choose the effective value
 
-`ConfigService` merges the global config in a deterministic order. A later source wins: defaults, then `config.yml`, then `LANDO_CONFIG__*` env vars, then inline flags. A `LANDO_CONFIG__*` env var maps its SCREAMING_SNAKE_CASE path to the matching camelCase config key and overrides the file for that key, for example `LANDO_CONFIG__DEFAULT_PROVIDER_ID=podman`.
+Lando reads global config from ordered layers. A later layer wins:
 
-The installation config lives at `config.yml` under the resolved user config root, for example `/home/user/.local/share/lando/config.yml` on Linux.
+| Order | Layer | Notes |
+| --- | --- | --- |
+| 1 | Built-in defaults | Platform roots, `defaultProviderId: lando` |
+| 2 | `<userConfRoot>/config.yml` | The file `lando config set` writes |
+| 3 | `<userConfRoot>/config.d/*.yml` | Drop-ins, lexical filename order, `.yml` only |
+| 4 | Environment | `LANDO_CONFIG__*`, aliases such as `LANDO_ROUTER_HTTP_PORT`, root vars such as `LANDO_USER_DATA_ROOT` |
+| 5 | Host `config` option | Embedding hosts only, see [Embed the runtime](../library/embedding-runtime.mdx) |
+
+Maps deep-merge across layers. Arrays and scalars replace. `appEnv` and `appLabels` replace as whole maps. A `LANDO_CONFIG__*` env var maps its SCREAMING_SNAKE_CASE path to the matching camelCase key, for example `LANDO_CONFIG__DEFAULT_PROVIDER_ID=podman` or `LANDO_CONFIG__ROUTER__HTTP_PORT=8080`.
+
+The installation config lives at `config.yml` under the resolved user config root, for example `/home/user/.config/lando/config.yml` on Linux. That root is fixed before any file is read, so a `userConfRoot` key inside `config.yml` or a drop-in is ignored. The other roots resolve as runtime option, then root env var, then config files, then the platform default.
+
+Each command resolves config once, at startup, and keeps that snapshot. Long-lived runtimes such as `lando mcp serve` or an embedding host keep the config they started with until you restart them.
+
+Lando warns once per command about an unknown key, with the closest match when it has one: `Unknown config.yml key "routerr". Did you mean "router"?`. Text mode prints it as a `⚠` line before the result, including from `lando config get`, `lando config`, and `lando doctor`. `--format=json` carries the same text under `warnings` with code `LANDO_MESSAGE_WARN`.
 
 Double-quoted YAML treats `\t` and `\n` as escapes, so `"C:\temp\new"` becomes a tab and a newline. Use single quotes (`'C:\temp\new'`) or doubled backslashes (`"C:\\temp\\new"`) for Windows paths. Lando warns at load when a path-like root value decodes with control characters.
 
-`LANDO_PROVIDER` does not persist as last-used. After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker.
+`defaultProviderId` is the provider `lando setup` persisted. `LANDO_PROVIDER` overrides it per command and never writes it. See [What persists](../setup/provider-selection.mdx#what-persists).
 
 ## Get, set, unset, validate, or edit a key
+
+Lando picks the value type from the config schema: text first, then number, boolean, null, or JSON. Use `--type` to force a type, for example `--type=json` to write a JSON array into a field that also accepts text.
+
+`set` and `unset` keep comments and formatting outside the value or entry you change. If Lando can't edit safely, it refuses without changing the file. Use `lando config edit` or edit by hand instead. The same rule applies to `lando app:config` and `lando global:config`; use their `edit` verb when an edit is refused.
 
 ```sh
 # Read a single dot-path key
 lando config get defaultProviderId
 
-# Write a single dot-path key to config.yml; --type controls how the value is parsed
-lando config set defaultProviderId podman --type string
+# Write a single dot-path key to config.yml
+lando config set defaultProviderId podman
 
 # Remove a key from config.yml
 lando config unset defaultProviderId
 
-# Decode config.yml against the GlobalConfig schema without changing anything
+# Decode every layer (file, config.d, env) against the GlobalConfig schema without changing anything
 lando config validate
 
 # Open config.yml in $VISUAL or $EDITOR, or pass --editor
 lando config edit
 ```
+
+`--source raw` shows the parsed `config.yml` by itself, before drop-ins, env, and defaults. It works even when that file fails validation, which makes it the quickest way to see what you actually wrote:
+
+```sh
+lando config --source raw --format=json
+lando config get router --source raw --format=json
+```
+
+  <Scenario id="raw-file-view" render>
+    <Step name="raw-shape">
+      <Run command="lando config --source raw --format=json" />
+      <Verify command="lando config --source raw --format=json" expect={{ stdout: { regex: "\"raw\":\\s*\\{" } }} />
+    </Step>
+  </Scenario>
+
+## Repair an invalid global config
+
+Every command that needs global config fails the same way when any layer doesn't decode: one `ConfigError` at exit `1`, raised before the command runs. That covers `lando info`, `lando start`, `lando app:config:lint`, and the resolved `lando config` views. Nothing deletes or rewrites a file for you.
+
+Each issue names where the bad value came from and the exact fix. With `httpPort: 99999` in `config.yml`, `lando config` prints:
+
+```
+Invalid config file /home/user/.config/lando/config.yml: router.httpPort: Expected a value between 1 and 65535. Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`.
+  ↳ Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`. Run `lando config validate`, then use `lando config set <key> <value>` / `lando config unset <key>`, or `lando config edit` to repair config.yml.
+code: ConfigError
+commandId: meta:config
+issues:
+/home/user/.config/lando/config.yml: router.httpPort: Expected a value between 1 and 65535. Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`.
+path: /home/user/.config/lando/config.yml
+logsDir: /home/user/.cache/lando/logs
+cacheDir: /home/user/.cache/lando
+```
+
+Messages say what the schema expected (`Expected string | null`, `Expected a value between 1 and 65535`, `Expected one of lando, json, plain, verbose.`) and never echo the value you wrote, so a secret pasted into the wrong key doesn't land in a log.
+
+`--format=json` carries the same facts under `error.path`, `error.remediation`, and `error.issues`. Each issue is `{ path, message, suggestion, source }`: `path` is an array of keys, `suggestion` is the fix, and `source` says which layer supplied the value:
+
+| Layer | `source` | `suggestion` |
+| --- | --- | --- |
+| `config.yml` | `{ layer: "config-file", file, path }` | `` Run `lando config unset <key>` or `lando config set <key> <value>`. `` |
+| Drop-in | `{ layer: "config-drop-in", file, path }` | `Edit <file>.` |
+| Environment | `{ layer: "env", variable, path }` | `Unset <variable> or set it to a valid value.` |
+| Host option | `{ layer: "host", path }` | `` Fix the `<key>` host config option. `` |
+
+The message starts with `Invalid config file <path>` when every issue comes from `config.yml`, and `Invalid global configuration (<sources>)` otherwise, for example `(environment override LANDO_ROUTER_HTTP_PORT)` or `(config file /home/user/.config/lando/config.d/10-team.yml and environment override LANDO_ROUTER_HTTP_PORT)`. When several layers are wrong, it names each.
+
+`lando config` itself doesn't need a valid config, so the repair verbs keep working:
+
+```sh
+# List every issue across config.yml, config.d, and env; exits 1 with the same ConfigError
+lando config validate
+
+# See the file you wrote, even when it fails validation
+lando config --source raw --format=json
+
+# Replace the bad value, or drop the key to fall back to the default
+lando config set router.httpPort 8080
+lando config unset router.httpPort
+
+# Fix it by hand; the editor flow validates before it saves
+lando config edit
+```
+
+`set` and `unset` let you repair one key at a time. A write fails with `LandofileWriteValidationError` only when it introduces a problem or leaves the written key (or anything beneath it) invalid. The file stays unchanged on rejection. Problems already present elsewhere in `config.yml` don't block the write: the command succeeds and reports each remaining issue and its fix once, as a text warning or a `LANDO_CONFIG_PREEXISTING_ISSUES` warning in `--format=json`. Issue identity is its path plus its message. `telemetry off` follows the same rule for `telemetry.enabled`; `edit` still requires the whole edited file to be valid.
+
+For example, if `router.httpPort`, `defaultProvidreId`, and `tracing.otlp.headers` are all invalid, unset or fix one of them, then use the warnings to repair the others. Comments in the file stay put. `lando app:config set` / `unset` and `lando global:config set` / `unset` use the same write rule for their Landofiles.
+
+Problems in another config layer never block the write: fixing `config.yml` while `LANDO_ROUTER_HTTP_PORT=99999` is still exported succeeds. Once the candidate file is valid, the command reports the other source and its fix with `LANDO_CONFIG_OTHER_SOURCE_INVALID`. Unset the variable or edit the drop-in it names, then rerun `lando config validate`.
+
+  <Scenario id="repair-one-of-several-issues" render={false} reason="Repair one invalid key without blocking on unrelated pre-existing issues">
+    <Step name="repair-one-key">
+      <Run runtime="library" code={`const fs = yield* Effect.promise(() => import("node:fs/promises"));
+const { tmpdir } = yield* Effect.promise(() => import("node:os"));
+const { join } = yield* Effect.promise(() => import("node:path"));
+const { config } = yield* Effect.promise(() => import("@lando/engine/operations/config"));
+const { GlobalConfigSources } = yield* Effect.promise(() => import("@lando/engine/services/config"));
+const { CommandWarnings, makeCommandWarnings } = yield* Effect.promise(() => import("@lando/engine/landofile/command-warnings"));
+const root = yield* Effect.promise(() => fs.mkdtemp(join(tmpdir(), "lando-guide-repair-")));
+try {
+  const file = join(root, "config.yml");
+  yield* Effect.promise(() => fs.writeFile(file, "# my comment\nrouter:\n  httpPort: 99999\ndefaultProvidreId: docker\ntracing:\n  otlp:\n    headers: scalar\n"));
+  const warnings = makeCommandWarnings(true);
+  const result = yield* config({ subcommand: "unset", key: "router.httpPort" }).pipe(
+    Effect.provideService(GlobalConfigSources, { env: {}, sources: { user: true, env: false }, rootOverrides: { userConfRoot: root } }),
+    Effect.provideService(CommandWarnings, warnings),
+  );
+  expect(result.changed).toBe(true);
+  const recorded = yield* warnings.list;
+  expect(recorded).toHaveLength(1);
+  expect(recorded[0]?.code).toBe("LANDO_CONFIG_PREEXISTING_ISSUES");
+  expect(recorded[0]?.message).toContain("defaultProvidreId");
+  expect(recorded[0]?.message).toContain("tracing.otlp.headers");
+  expect(recorded[0]?.message).not.toContain("router.httpPort");
+  const text = yield* Effect.promise(() => fs.readFile(file, "utf8"));
+  expect(text.startsWith("# my comment\n")).toBe(true);
+} finally {
+  yield* Effect.promise(() => fs.rm(root, { recursive: true, force: true }));
+}`} displayCode={`import { Effect } from "effect";
+import { config } from "@lando/engine/operations/config";
+import { GlobalConfigSources } from "@lando/engine/services/config";
+
+await Effect.runPromise(config({ subcommand: "unset", key: "router.httpPort" }).pipe(
+  Effect.provideService(GlobalConfigSources, { env: process.env, sources: { user: true, env: true } }),
+));`} />
+    </Step>
+  </Scenario>
+
+Broken YAML syntax is the one case `set` and `unset` cannot repair, since there is no tree to write into. Both `--source raw` and the resolved views fail with the same `Invalid YAML in config file <path>: ...` message, and the error carries no `issues`. The detail is a location, never the rejected text: `Unsupported YAML value at line 2, column 13`, `Malformed YAML at line 1, column 1`, or `Malformed YAML indentation at line N, column M`. Fix the syntax with `lando config edit` or your own editor.
+
+An invalid `renderer` or `logLevel` in `config.yml`, a drop-in, or `LANDO_CONFIG__RENDERER` does not change how the error is printed: Lando falls back to the default renderer and log level, then reports the key as a `ConfigError` issue like any other (`renderer: Expected one of lando, json, plain, verbose.`). An invalid `--renderer` flag or `LANDO_RENDERER` value still fails before the command runs, with `RendererSelectionError`.
+
+`notify.commands` entries are checked against the canonical command ids, including ids that enabled plugins contribute. A typo is a config issue with the closest match: `notify.commands[0]: Unknown canonical command id. Did you mean "app:start"?`.
+
+`lando doctor` still runs with a broken config and exits `1`. Its first section, `global-config`, reports the `ConfigError` and its fix. Sections that need the config (`provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, `mcp`, plus `app-config`, `app-version-constraints`, and `deprecations` when you pass `--app` or `--deprecations`) show as `SKIPPED` instead of failing one by one. Checks that don't depend on config, such as `filesystem-watch`, still run. `lando uninstall` and `lando version` also run without a valid config.
+
+  <Scenario id="env-override-config-error" render={false} reason="Regression for ConfigError with env provenance from an invalid env override">
+    <Step name="build-with-bad-override">
+      <Run
+        runtime="library"
+        code={`const { layerWith } = yield* Effect.promise(() => import("@lando/engine/services/config"));
+const failure = yield* Effect.flip(
+  Effect.flatMap(LandoCore.ConfigService, (config) => config.load).pipe(
+    Effect.provide(
+      layerWith({
+        env: { ...process.env, LANDO_CONFIG__ROUTER__HTTP_PORT: "99999" },
+        sources: { user: false, env: true },
+      }),
+    ),
+  ),
+);
+expect(failure._tag).toBe("ConfigError");
+expect(failure.message).toMatch(/environment override LANDO_CONFIG__ROUTER__HTTP_PORT/);
+expect(failure.message).toMatch(/router\.httpPort/);
+expect(failure.issues).toHaveLength(1);
+const issue = failure.issues?.[0];
+expect(issue?.path).toEqual(["router", "httpPort"]);
+expect(issue?.source).toEqual({
+  layer: "env",
+  variable: "LANDO_CONFIG__ROUTER__HTTP_PORT",
+  path: ["router", "httpPort"],
+});
+expect(issue?.suggestion).toMatch(/Unset LANDO_CONFIG__ROUTER__HTTP_PORT/);
+expect(failure.remediation).toMatch(/environment override for router\.httpPort/);`}
+        displayCode={`import { Effect } from "effect";
+import { ConfigService } from "@lando/core";
+import { layerWith } from "@lando/engine/services/config";
+
+const failure = await Effect.runPromise(
+  Effect.flip(
+    Effect.flatMap(ConfigService, (config) => config.load).pipe(
+      Effect.provide(
+        layerWith({
+          env: { ...process.env, LANDO_CONFIG__ROUTER__HTTP_PORT: "99999" },
+          sources: { user: false, env: true },
+        }),
+      ),
+    ),
+  ),
+);
+console.log(failure._tag, failure.issues?.[0]?.source, failure.remediation);`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="infer-numeric-value" render>
+    <Step name="preview-port">
+      <Run command="lando config set router.httpPort 8080 --dry-run --format=json" />
+      <Verify command="lando config set router.httpPort 8080 --dry-run --format=json" expect={{ stdout: { regex: "\"value\":\\s*8080\\s*[,}]" } }} />
+    </Step>
+  </Scenario>
 
 ## Add host-wide lifecycle steps
 
@@ -159,7 +347,7 @@ Lando merges the six standard Landofile layers from `<userDataRoot>/global/`. A 
 | 5 | `.lando.local.yml` | You, optional |
 | 6 | `.lando.user.yml` | You, optional |
 
-The generated file sits below your canonical Landofile, so your overrides beat plugin defaults. The merged app is always named `global` and always runs on the `lando` provider, whatever the layers say.
+The generated file sits below your canonical Landofile, so your overrides beat plugin defaults. The merged app is always named `global` and runs on the host provider, whatever the layers say. A `provider:` key in these layers does not move it. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs).
 
 ## Change the global app
 

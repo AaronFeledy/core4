@@ -32,7 +32,7 @@ services:
 
 Lando 3's `!vendor` spelling is not accepted; `includes` is the one way to keep a path. The Lando 3 translator rewrites it for you.
 
-An authored `appMount` block needs `target`, the container path of the app mount. `/app` keeps the default. A different path moves the mount, and on Lando service types the working directory, `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, and a relative `webroot` follow it.
+An authored `appMount` block needs `target`, the container path of the app mount. `/app` keeps the default. A different path moves the mount, and on Lando service types the working directory, `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, and a relative `webroot` follow it. When you only move the mount, write `appMount: /site`; it means the same as a block with just `target: /site`. Use the block form when you need `excludes`, `includes`, or `readOnly`. The path must be absolute.
 
 Set `appMount: false` when a service does not use your app's code. Lando mounts no app source and sets no `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, or `LANDO_WEBROOT`. The container starts in the image's own working directory unless you set `workingDirectory`. On webroot-serving types (`php`, `nginx`, `apache`, `static`, `tomcat`), a relative or omitted `webroot` fails planning: set an absolute container path or remove `appMount: false`. An absolute `webroot` such as `/var/www/html` serves content the image provides. Data stores already skip the app mount. An authored `mounts:` entry whose target is the app mount path replaces Lando's app mount instead.
 

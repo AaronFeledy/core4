@@ -59,6 +59,7 @@ const layerFor = (root: string) => {
     userDataRoot: join(root, "data"),
     userCacheRoot: join(root, "cache"),
     userConfRoot: join(root, "conf"),
+    systemPluginRoot: join(root, "sys"),
     platform: "linux",
     env: {},
   });
@@ -85,6 +86,7 @@ const layerFor = (root: string) => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(provider),

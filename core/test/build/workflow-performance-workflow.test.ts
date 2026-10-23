@@ -63,10 +63,11 @@ describe("enabled workflow performance rendering", () => {
     const workflow = await renderWorkflow("enabled");
     expect(workflow).toContain("Assemble current-commit linux-x64 runtime bundle");
     expect(workflow).toContain("Assemble current-commit linux-arm64 runtime bundle");
-    expect(workflow).toContain("build:host-proxy-shim");
-    expect(workflow).toContain("build:log-file-helper");
-    expect(workflow).toContain("core/dist/host-proxy");
-    expect(workflow).toContain("core/dist/log-file-access");
+    expect(workflow).not.toContain("build:host-proxy-shim");
+    expect(workflow).not.toContain("build:log-file-helper");
+    expect(workflow).not.toContain("core/dist/host-proxy");
+    expect(workflow).not.toContain("core/dist/log-file-access");
+    expect(workflow).toContain("scripts/build-compiled-binary.ts");
     expect(workflow).toContain('--start-samples "$START_SAMPLES"');
     expect(workflow).toContain('--heavy-samples "$HEAVY_SAMPLES"');
     expect(workflow).not.toContain("podman system prune");

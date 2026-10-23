@@ -1,6 +1,6 @@
 import { LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { expressionInterpolationsTouchOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
-import { isPlainRecord } from "@lando/sdk/landofile";
+import { isPlainRecord, valueOriginAt } from "@lando/sdk/landofile";
 import {
   LandofileShape,
   ServiceConfig,
@@ -10,6 +10,7 @@ import {
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema, SchemaIssue } from "effect";
+import { getOrigins } from "./pipeline/origins.ts";
 import { isValidSemverRange } from "./version-constraint.ts";
 
 export type SchemaIssueLeaf = {
@@ -53,6 +54,10 @@ export const schemaIssueLeaves = (
 };
 
 const SERVICE_KEYS = [...Object.keys(ServiceConfig.fields), "working_dir", "env_file", "depends_on"];
+export const getLandofileValueSource = (value: object, path: ValidationIssuePath) => {
+  const origins = getOrigins(value);
+  return origins === undefined ? undefined : valueOriginAt(origins, path).source;
+};
 const COMPOSE_REMEDIATION =
   "Compose compatibility is limited to the supported subset; move provider-native keys under providers.<provider-id> or use config translation.";
 
@@ -85,9 +90,11 @@ export const landofileValidationError = (
   },
 ): LandofileValidationError => {
   const lines = issues.map((issue) => formatValidationIssueLine(issue).replace(/\.$/, "")).join("; ");
+  const source = issues[0]?.source;
   return new LandofileValidationError({
-    file,
+    file: source !== undefined && "file" in source ? source.file : file,
     issues,
+    remediation: framing.remediation,
     message: `${framing.headline}: ${lines}${/[.?!]$/.test(lines) ? "" : "."} ${framing.remediation}`,
   });
 };
@@ -106,7 +113,12 @@ export const validationErrorFromCause = (file: string, parsed: unknown, cause: u
     const suggestion =
       (valuePaths.has(JSON.stringify(issue.path)) ? plannerScopeSuggestion(parsed, issue.path) : undefined) ??
       issue.suggestion;
-    return suggestion === undefined ? issue : { ...issue, suggestion };
+    const origins = isPlainRecord(parsed) ? getOrigins(parsed) : undefined;
+    return {
+      ...issue,
+      ...(suggestion === undefined ? {} : { suggestion }),
+      ...(origins === undefined ? {} : { source: valueOriginAt(origins, issue.path).source }),
+    };
   });
   const hasValues = leaves.length === 0 || leaves.some((issue) => issue._tag !== "Unexpected");
   const compose = unknown.filter(

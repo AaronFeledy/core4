@@ -74,10 +74,32 @@ describe("rabbitmq ServiceType", () => {
   ] as const)("rejects invalid distribution configuration %j", async (definition, message) => {
     await expect(
       planRabbitMQService(rabbitmqServiceType, { type: "rabbitmq", ...definition }),
-    ).rejects.toThrow(message);
+    ).rejects.toMatchObject({
+      issues: [
+        {
+          path:
+            "port" in definition && !("environment" in definition)
+              ? ["port"]
+              : ["environment", "RABBITMQ_DIST_PORT"],
+          message: expect.stringContaining(message),
+          suggestion: expect.any(String),
+        },
+      ],
+    });
     await expect(
       resolveRabbitMQService(rabbitmqServiceType, { type: "rabbitmq", ...definition }),
-    ).rejects.toThrow(message);
+    ).rejects.toMatchObject({
+      issues: [
+        {
+          path:
+            "port" in definition && !("environment" in definition)
+              ? ["port"]
+              : ["environment", "RABBITMQ_DIST_PORT"],
+          message: expect.stringContaining(message),
+          suggestion: expect.any(String),
+        },
+      ],
+    });
   });
 
   test("accepts an explicit distribution port when AMQP leaves no default room", async () => {

@@ -64,6 +64,7 @@ export const relayHarness = async (
       let input: AgentRelayWorkerInput;
       return {
         pid: 987654,
+        logPath: join(root, "worker.log"),
         argv: spec.argv,
         writeStdin: async (text: string) => {
           input = Schema.decodeUnknownSync(AgentRelayWorkerInput)(JSON.parse(text));

@@ -6,16 +6,17 @@ import { AppPlan, type AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths } from "@lando/paths";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { hostProxyWorkerEntry } from "../../composition.ts";
+import { DetachedWorkerLogError } from "../detached-worker/log.ts";
+import {
+  DetachedWorkerExitedBeforeReadyError,
+  DetachedWorkerStartupError,
+} from "../detached-worker/process.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 import type { HostProxyRunLandoSession, HostProxyTransportKind } from "./transport.ts";
-import {
-  HostProxyWorkerExitedBeforeReadyError,
-  type HostProxyWorkerSpawner,
-  defaultSpawnWorker,
-  hostProxyWorkerArgv,
-} from "./worker-process.ts";
+import { type HostProxyWorkerSpawner, defaultSpawnWorker, hostProxyWorkerArgv } from "./worker-process.ts";
 import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
 import { registerHostProxyCredentials, reuseHostProxyWorker } from "./worker-reuse.ts";
 import { hostProxyEligibleServices } from "./worker-service-plan.ts";
@@ -32,6 +33,8 @@ export interface DetachedHostProxyWorkerOptions {
   readonly plan: AppPlan;
   readonly paths?: RootOverrides;
   readonly shimArtifactPath: string;
+  /** Content digest of the helper, so a rebuilt helper at the same path replaces the worker. */
+  readonly shimDigest?: string;
   readonly shimTarget?: HostProxyShimTarget;
   readonly hostGatewayName?: string;
   readonly spawnWorker?: HostProxyWorkerSpawner;
@@ -68,6 +71,7 @@ export const startDetachedHostProxyWorker = (
       const configDigest = sha256Hex(
         canonicalJson({
           ...configuration,
+          ...(options.shimDigest === undefined ? {} : { shimDigest: options.shimDigest }),
           providerId: options.plan.provider,
           workerEntry: hostProxyWorkerEntry(),
         }),
@@ -83,9 +87,14 @@ export const startDetachedHostProxyWorker = (
             privateFileAccess: options.privateFileAccess,
           });
           const spawnWorker = options.spawnWorker ?? defaultSpawnWorker;
-          return spawnWorker({
-            argv: hostProxyWorkerArgv({ ...hostProxyWorkerEntry(), appId: options.app.id }),
-            logsDir: makeLandoPaths(options.paths).logsDir,
+          return yield* Effect.tryPromise({
+            try: async () =>
+              spawnWorker({
+                argv: hostProxyWorkerArgv({ ...hostProxyWorkerEntry(), appId: options.app.id }),
+                logsDir: makeLandoPaths(options.paths).logsDir,
+                privateFileAccess: options.privateFileAccess,
+              }),
+            catch: (cause) => cause,
           });
         }),
         (worker) =>
@@ -94,7 +103,14 @@ export const startDetachedHostProxyWorker = (
               await worker.writeStdin(`${JSON.stringify({ ...input, configDigest })}\n`);
               return await worker.readReady();
             },
-            catch: (cause) => cause,
+            catch: (cause) =>
+              cause instanceof DetachedWorkerExitedBeforeReadyError ||
+              cause instanceof DetachedWorkerStartupError
+                ? cause
+                : new DetachedWorkerStartupError(
+                    worker.logPath,
+                    "Detached host-proxy worker startup failed.",
+                  ),
           }).pipe(
             Effect.flatMap(
               Effect.fnUntraced(function* (ready) {
@@ -158,6 +174,15 @@ export const startDetachedHostProxyWorker = (
                 );
               }),
             ),
+            Effect.mapError((cause) =>
+              cause instanceof HostProxyTransportUnavailableError
+                ? cause
+                : new HostProxyTransportUnavailableError({
+                    message: createStandaloneRedactor("secrets").redactString(causeMessage(cause)),
+                    socketPath: workerStatePath(options.app, options.paths),
+                    remediation: `Inspect ${worker.logPath} for the worker crash.`,
+                  }),
+            ),
           ),
         (worker) =>
           Ref.get(keepWorker).pipe(
@@ -175,7 +200,9 @@ export const startDetachedHostProxyWorker = (
               message: causeMessage(cause),
               socketPath: workerStatePath(options.app, options.paths),
               remediation:
-                cause instanceof HostProxyWorkerExitedBeforeReadyError
+                cause instanceof DetachedWorkerExitedBeforeReadyError ||
+                cause instanceof DetachedWorkerStartupError ||
+                cause instanceof DetachedWorkerLogError
                   ? `Inspect ${cause.logPath} for the worker crash.`
                   : "Inspect the detached host-proxy worker startup failure.",
             }),

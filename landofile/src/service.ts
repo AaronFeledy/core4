@@ -2,15 +2,22 @@ import { dirname, join } from "node:path";
 import { LandofileFormConflictError, LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
 import { LandofileService, ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
 import { Cause, Effect, Layer } from "effect";
-import type { LandofileLoadScope } from "./compile.ts";
 import { LANDOFILE_NAME } from "./discovery.ts";
 import { compileLandofileFile } from "./file-compile.ts";
 import { landofileLayerPaths, presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
 import { type LandofileLoadContext, ensureConsistentRoot } from "./load-context.ts";
 import { mergeLandofileRootLayers } from "./merge-validate.ts";
+import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 
 export { LandofileService } from "@lando/sdk/services";
+export { validateLandofileReplacement } from "./replacement.ts";
+export {
+  acquireLandofileRootLayers,
+  composeLandofileRootLayers,
+  prepareLandofileRootLayers,
+} from "./root-compile.ts";
+export { prepareLandofileSource, resolveLandofileSourceExpressions } from "./source.ts";
 
 export const findDiscoveredLandofilePath = async (
   cwd: string,

@@ -4,13 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { Effect, Schema } from "effect";
 
-import type {
-  AppLockTimeoutError,
-  CacheError,
-  ConfigError,
-  LandoCommandError,
-  StateStoreError,
-} from "@lando/sdk/errors";
+import type { AppLockTimeoutError, CacheError, LandoCommandError, StateStoreError } from "@lando/sdk/errors";
 import type { FileSystem, LandoPaths, StateStoreShape } from "@lando/sdk/services";
 import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
 
@@ -140,7 +134,7 @@ type PruneCandidate<E, R> = (input: PruneCandidateInput) => Effect.Effect<boolea
 const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   options: ListServicesOptions,
   pruneCandidate?: PruneCandidate<E, R>,
-): Effect.fn.Return<ListServicesResult, CacheError | ConfigError | E | LandoCommandError, ConfigService | R> {
+): Effect.fn.Return<ListServicesResult, CacheError | E | LandoCommandError, ConfigService | R> {
   const configService = yield* ConfigService;
   const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
   if (userDataRoot === undefined) return { apps: [] };
@@ -249,7 +243,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
 export const listServices = Effect.fn("AppsList.listServices")(
   (
     options: ListServicesOptions = {},
-  ): Effect.Effect<ListServicesResult, CacheError | ConfigError | LandoCommandError, ConfigService> =>
+  ): Effect.Effect<ListServicesResult, CacheError | LandoCommandError, ConfigService> =>
     listServicesInternal<never, never>(options),
 );
 
@@ -257,7 +251,7 @@ export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")
   options: ListServicesOptions = {},
 ): Effect.fn.Return<
   ListServicesResult,
-  AppLockTimeoutError | CacheError | ConfigError | LandoCommandError | StateStoreError,
+  AppLockTimeoutError | CacheError | LandoCommandError | StateStoreError,
   ConfigService | FileSystem | PathsService | PrivateFileAccessService | StateStore
 > {
   const paths = yield* PathsService;

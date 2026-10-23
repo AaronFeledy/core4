@@ -1,3 +1,4 @@
+import { configRedactionTokens } from "../../../commands/config-redaction";
 import { Args } from "../../../spec/metadata";
 
 import {
@@ -29,6 +30,7 @@ export const globalConfigOptionsFromInput = (input: unknown): GlobalConfigOption
 
 export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
+  redactionTokens: configRedactionTokens,
   id: "meta:global:config",
   resultFormats: ["table"],
   summary: "Read or write the host-level global Lando app Landofile stack.",

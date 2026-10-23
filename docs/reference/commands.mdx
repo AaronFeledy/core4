@@ -79,7 +79,8 @@ Flags:
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--source` | Inspect raw layers, authored composition, or resolved config. (one of `raw`, `merged`, `resolved`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando app:config:edit`
 
@@ -135,7 +136,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--dry-run` | Report the change without writing. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando app:config:translate`
 
@@ -185,6 +186,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--provider` | Destroy only this provider's applied app and owned resources. |
 | `--purge` | Also remove app/service-scoped storage volumes and this folder's snapshots, including provider-stored data. |
 | `--purge-caches` | Remove cache storage volumes. |
 | `--root` | Clean up an app whose folder no longer exists, using the path lando doctor prints. |
@@ -755,7 +757,8 @@ Flags:
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--source` | Inspect raw config.yml or resolved config. (one of `raw`, `resolved`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando meta:doctor`
 
@@ -800,7 +803,7 @@ Flags:
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando meta:global:config:edit`
 
@@ -832,7 +835,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--dry-run` | Report the change without writing. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando meta:global:config:unset`
 
@@ -868,6 +871,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--provider` | Destroy the global app only on this provider. |
 | `--purge` | Also remove global service data volumes. |
 | `--yes, -y` | Confirm destruction of global app provider resources. |
 

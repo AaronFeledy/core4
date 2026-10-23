@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
+import { globalAppForProvider } from "../_support/global-provider.ts";
 
 test.each(["running", "exited"])(
   "doctor observes %s sidecar in the managed runtime without a host probe",
@@ -39,9 +40,13 @@ test.each(["running", "exited"])(
           return { identities: 0 };
         },
       }).pipe(
+        Effect.provideService(GlobalAppService, globalAppForProvider(ProviderId.make("lando"))),
         Effect.provideService(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([provider.id]),
             capabilities: Effect.succeed(provider.capabilities),
             select: () => Effect.succeed(provider),

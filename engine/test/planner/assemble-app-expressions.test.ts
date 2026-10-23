@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { loadLandofileFile } from "@lando/landofile/service";
 import {
   getInternalToolingTasks,

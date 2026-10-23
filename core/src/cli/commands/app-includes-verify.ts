@@ -17,20 +17,19 @@ import {
   type LandofileValidationError,
   type ManagedFileTransactionError,
   type NotImplementedError,
-  type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import type { StateStore } from "@lando/sdk/services";
 
 import { scopedLandofileRuntimeInputs, verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { findLandofilePath } from "@lando/landofile/discovery";
+import { includeAcquisitionView } from "@lando/landofile/include-layer-overlays";
 import type {
   IncludeVerifyReport,
   IncludeVerifyStatus,
   LandofileIncludeDeps,
 } from "@lando/landofile/includes";
-import { compileLandofileRootLayers } from "@lando/landofile/root-compile";
-import { validateLandofile } from "@lando/landofile/validation";
-import { mergeLandofiles } from "@lando/sdk/landofile";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
+import { prepareLandofileRootLayers, validatePreparedAuthoringLayers } from "@lando/landofile/root-compile";
 
 export type {
   IncludeVerifyEntry,
@@ -90,7 +89,6 @@ export type AppIncludesVerifyError =
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | ComposeKeyRejectedError
   | LandofileLoadExpressionError;
 
@@ -127,11 +125,16 @@ export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function*
   }
   const appRoot = dirname(filePath);
   const inputs = yield* scopedLandofileRuntimeInputs;
-  const { compiled, scope: loadScope } = yield* compileLandofileRootLayers(appRoot, filePath, inputs);
+  const { prepared } = yield* prepareLandofileRootLayers(appRoot, inputs).pipe(
+    Effect.flatMap(validatePreparedAuthoringLayers),
+  );
+  const loadScope = yield* buildLandofileLoadScope(
+    prepared.map(({ layer, landofile }) => ({ file: layer.filePath, value: landofile })),
+  );
   const includes = [];
   const composeIncludes: string[] = [];
-  for (const { layer, landofile: overlay } of compiled) {
-    const landofile = yield* validateLandofile(layer.filePath, mergeLandofiles([overlay]));
+  for (const { landofile: overlay } of prepared) {
+    const landofile = includeAcquisitionView(overlay);
     includes.push(...(landofile.includes ?? []));
     composeIncludes.push(...(landofile.include ?? []));
   }

@@ -20,6 +20,7 @@ export const validateAuthoredWebroot = Effect.fnUntraced(function* (
     new LandofileValidationError({
       file: landofilePath,
       message,
+      remediation,
       issues: [validationIssue(["services", service.name, "webroot"], message)],
     }),
   );

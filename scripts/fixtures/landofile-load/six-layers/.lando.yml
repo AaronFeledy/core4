@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=../../../../dist/schemas/landofile-shape.json
+name: bench-six-layers
+services:
+  web:
+    environment:
+      NODE_ENV: development
+    routes:
+      - http://six.lndo.site
+    healthcheck:
+      interval: 5s
+    appMount:
+      target: /app
+tooling:
+  node:
+    service: web
+    cmd: node

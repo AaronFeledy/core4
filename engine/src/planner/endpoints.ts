@@ -22,10 +22,6 @@ import {
 } from "@lando/sdk/schema";
 
 import { validationIssue } from "@lando/sdk/schema";
-import {
-  promoteRoutableEndpointsForHostProxy,
-  usesManagedProxyNetwork,
-} from "../lifecycle/cross-engine-routes.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
@@ -53,6 +49,7 @@ const duplicateEndpointNameError = (
 ): LandofileValidationError =>
   new LandofileValidationError({
     message: `Service ${serviceName} declares duplicate endpoint name ${endpointName}.`,
+    remediation: `Give each endpoint of service ${serviceName} a unique name.`,
     file: `${appRoot}/.lando.yml`,
     issues: [
       validationIssue(
@@ -89,6 +86,7 @@ export const resolveRoute = Effect.fnUntraced(function* (
     return yield* Effect.fail(
       new LandofileValidationError({
         message: `Route ${hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`,
+        remediation: `Select an HTTP endpoint of service ${serviceName} for route ${hostname}.`,
         file: `${appRoot}/.lando.yml`,
         issues: [
           validationIssue(
@@ -379,9 +377,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       routes: routeRefs.filter(
         (ref, index) => routeRefs.findIndex((other) => other.index === ref.index) === index,
       ),
-      endpoints: usesManagedProxyNetwork(input.provider)
-        ? servicePlanWithHome.endpoints
-        : promoteRoutableEndpointsForHostProxy(servicePlanWithHome.endpoints),
     };
 
     if (

@@ -31,6 +31,7 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import * as composition from "@lando/engine/composition";
 import { beginOrResumeAcceleratedStart } from "@lando/engine/operations/accelerated-start-journal";
 import * as hostProxyWorker from "@lando/engine/subsystems/host-proxy/worker";
+import { stubContainerHelper } from "@lando/engine/testing/container-helper";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
@@ -182,6 +183,7 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
   let appliedPlan: AppPlan | undefined;
   return RuntimeProvider.of({
     ...provider,
+    appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
     prepareFileSyncTargets: (syncPlan: AppPlan) =>
       Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
     inspectAppliedFileSync: () =>
@@ -287,6 +289,20 @@ const appLayer = (
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: (root) =>
+              (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
+                Effect.map((plans) => plans.find((candidate) => candidate.root === root)),
+              ),
+            resolveTeardownEvidence: (root) =>
+              (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
+                Effect.map((plans) => {
+                  const applied = plans.find((candidate) => candidate.root === root);
+                  return applied === undefined
+                    ? { kind: "absent" as const }
+                    : { kind: "applied" as const, plan: applied };
+                }),
+              ),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
             capabilities: Effect.succeed(fixtureProvider.capabilities),
             select: () => Effect.succeed(fixtureProvider),
@@ -345,8 +361,8 @@ describe("App handle managed lifecycle scopes", () => {
             hostProxy: { containerTargets: targets },
           },
         };
-        const prepare = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(
-          Effect.succeed("/shim"),
+        const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+          Effect.succeed(stubContainerHelper("/shim")),
         );
         const spawn = spyOn(hostProxyWorker, "startDetachedHostProxyWorker").mockImplementation((options) => {
           const session = {
@@ -1323,6 +1339,9 @@ describe("App handle managed lifecycle scopes", () => {
                   Layer.succeed(
                     RuntimeProviderRegistry,
                     RuntimeProviderRegistry.of({
+                      resolveAppliedPlan: () => Effect.succeed(undefined),
+                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                      appliedPlansFor: () => Effect.succeed([]),
                       list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
                       capabilities: Effect.succeed(fixtureProvider.capabilities),
                       select: () => Effect.succeed(fixtureProvider),

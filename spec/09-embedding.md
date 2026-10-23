@@ -48,11 +48,11 @@ The removed `@lando/core/oclif` adapter is not public. Anything not listed above
 
 ### 16.3 The `LandoRuntime` factory
 
-`makeLandoRuntime(options)` returns one scoped Layer satisfying the requested runtime services. Its options name `bootstrap`, `cwd`, `plugins`, `config`, `overrides`, `logger`, `renderer`, `interaction`, `telemetry`, `cacheRoot`, `installSignalHandlers`, and optional `scratch` acquisition (§21).
+`makeLandoRuntime(options)` returns one scoped Layer satisfying the requested runtime services. Its options name `bootstrap`, `cwd`, `plugins`, `config`, `configSources`, `overrides`, `logger`, `renderer`, `interaction`, `telemetry`, `cacheRoot`, `installSignalHandlers`, and optional `scratch` acquisition (§21).
 
 Required behavior:
 
-- Options MUST be schema-validated, and bootstrap failures MUST remain tagged by stage.
+- Options MUST be schema-validated, and bootstrap failures MUST remain tagged by stage. A global-config `ConfigError` (§7.5) raised while the `ConfigService` layer builds keeps its own tag and is never wrapped in `LandoRuntimeBootstrapError`.
 - Each call MUST create an independent cache, plugin registry, and event bus.
 - Construction MUST NOT mutate environment variables, current working directory, or signal handlers unless `installSignalHandlers` is true.
 - Bootstrap MUST follow §3.2 through the selected level and emit the same lifecycle events as the CLI.
@@ -95,9 +95,9 @@ Library runtimes discover no plugins by default. Hosts explicitly contribute dir
 
 ### 16.5 Configuration in library mode
 
-Configuration precedence is built-in defaults, optional user configuration, optional environment overrides, host `config`, then the Landofile at app bootstrap. Host configuration is schema-validated and invalid values fail with `ConfigError`.
+Configuration precedence is the §7.5 stack: built-in defaults, optional user configuration (`config.yml`, `config.d/*.yml`), optional environment overrides, host `config`, then the Landofile at app bootstrap. Host `config` accepts any `GlobalConfig` field. The merged stack is decoded once per `makeLandoRuntime` build; an invalid value in any layer, including the host layer, fails the layer with `ConfigError` whose issues carry `source: { layer: "host", path }` for host-authored values. The resulting snapshot is fixed for the runtime's lifetime, `ConfigService.load`/`get` are infallible, and a host MUST build a new runtime to observe changed files or environment.
 
-Hosts MAY skip user configuration and environment input for hermetic operation. Multiple runtimes in one process MUST use distinct environment prefixes and SHOULD use isolated cache, configuration, data, and plugin roots.
+Hosts MAY skip user configuration and environment input for hermetic operation through `configSources: { user?: boolean, env?: boolean }`; `user: false` reads no config files and `env: false` reads no configuration overrides, root variables, `LANDO_PROVIDER` selection, or proxy/CA variables, while platform identity (`HOME`, XDG, `APPDATA`) MAY still establish defaults. The decoded config and resolved roots are fixed for the runtime lifetime and feed that runtime's `StateStore`, plugin trust, and HTTP egress. Isolated runtimes MUST NOT inherit another runtime's snapshot. Multiple runtimes in one process MUST use distinct environment prefixes and SHOULD use isolated cache, configuration, data, and plugin roots.
 
 ### 16.6 Lifecycle and scopes
 

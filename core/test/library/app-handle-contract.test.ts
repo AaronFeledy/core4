@@ -33,21 +33,17 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { ComposeKeyRejectedError, LandofileLoadOutsideRootError } from "@lando/sdk/errors";
+import { AppResolveError, ComposeKeyRejectedError, LandofileLoadOutsideRootError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
+import { makeScenarioProvider } from "../../src/testing/scenario-provider.ts";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
+const testProvider = makeScenarioProvider();
 const testProviderLayers = [
-  Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
-  Layer.succeed(
-    RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
-  ),
+  Layer.succeed(RuntimeProvider, testProvider.provider),
+  testProvider.layer,
   Layer.succeed(RouterService, RouterService.of(TestRouterService)),
 ];
 
@@ -254,65 +250,90 @@ describe("@lando/core App-handle library contract", () => {
     });
   });
 
-  test("deep info exposes an outside-root load failure through the bound handle", async () => {
+  test("deep info stays captured when fresh resolution rejects an outside-root load", async () => {
     await withTempApp(async (dir) => {
-      // Given: a valid resolved handle whose Landofile is replaced by an invalid outside-root load.
+      // Given: a captured Landofile with omitted agentEnv, isolated state, and no app.start().
       const outsidePath = join(dir, "..", `${basename(dir)}-outside.pem`);
       try {
-        const failure = await Effect.runPromise(
-          Effect.scoped(
-            openLandoRuntime({ plugins: { policy: "bundled-only", layers: testProviderLayers } }).pipe(
-              Effect.flatMap((runtime) => runtime.app()),
-              Effect.flatMap((app) =>
-                Effect.promise(() => Bun.write(outsidePath, "certificate")).pipe(
-                  Effect.flatMap(() =>
-                    Effect.promise(() =>
-                      Bun.write(
-                        join(dir, ".lando.yml"),
-                        `name: embedded-app\nruntime: 4\nservices:\n  cache:\n    type: redis\n    security:\n      ca:\n        - "{{ load('../${basename(outsidePath)}') }}"\n`,
-                      ),
-                    ),
-                  ),
-                  // When: deep info reloads the captured app root.
-                  Effect.flatMap(() => Effect.flip(app.info({ deep: true }))),
+        const { info, failure } = await withEnvVar("LANDO_AGENT_ENV", "1", () =>
+          Effect.runPromise(
+            Effect.gen(function* () {
+              const runtime = yield* openLandoRuntime({
+                config: {
+                  userDataRoot: AbsolutePath.make(join(dir, "data")),
+                  userCacheRoot: AbsolutePath.make(join(dir, "cache")),
+                  userConfRoot: AbsolutePath.make(join(dir, "conf")),
+                },
+                plugins: { policy: "bundled-only", layers: testProviderLayers },
+              });
+              const selector = { landofile: AbsolutePath.make(join(dir, ".lando.yml")) };
+              const app = yield* runtime.app(selector);
+              yield* Effect.promise(() => Bun.write(outsidePath, "certificate"));
+              yield* Effect.promise(() =>
+                Bun.write(
+                  selector.landofile,
+                  `name: changed-app\nruntime: 4\nagentEnv: false\nservices:\n  cache:\n    type: redis\n    security:\n      ca:\n        - "{{ load('../${basename(outsidePath)}') }}"\n`,
                 ),
-              ),
-            ),
+              );
+              // When: the old handle reads deep info, then the host explicitly resolves the file again.
+              const info = yield* app.info({ deep: true });
+              const failure = yield* Effect.flip(runtime.app(selector));
+              return { info, failure };
+            }).pipe(Effect.scoped),
           ),
         );
 
-        // Then: the reachable typed Landofile error is preserved by the public handle.
-        expect(failure).toBeInstanceOf(LandofileLoadOutsideRootError);
+        // Then: only fresh resolution sees invalid disk input; the handle retains the omitted policy.
+        expect(info.app).toBe("embedded-app");
+        expect(info.agentEnv?.enabled).toBe(true);
+        expect(failure).toBeInstanceOf(AppResolveError);
+        expect(failure.cause).toBeInstanceOf(LandofileLoadOutsideRootError);
+        expect(failure.cause).toMatchObject({
+          appRoot: dir,
+          authoredPath: `../${basename(outsidePath)}`,
+        });
       } finally {
         await rm(outsidePath, { force: true });
       }
     });
   });
 
-  test("deep info exposes a rejected Compose key through the bound handle", async () => {
+  test("deep info stays captured when fresh resolution rejects a Compose key", async () => {
     await withTempApp(async (dir) => {
-      // Given: a valid resolved handle whose Landofile is replaced with a rejected Compose key.
-      const failure = await Effect.runPromise(
-        Effect.scoped(
-          openLandoRuntime({ plugins: { policy: "bundled-only", layers: testProviderLayers } }).pipe(
-            Effect.flatMap((runtime) => runtime.app()),
-            Effect.flatMap((app) =>
-              Effect.promise(() =>
-                Bun.write(
-                  join(dir, ".lando.yml"),
-                  "name: embedded-app\nruntime: 4\nservices:\n  cache:\n    type: redis\n    container_name: fixed-cache\n",
-                ),
-              ).pipe(
-                // When: deep info reloads the captured app root.
-                Effect.flatMap(() => Effect.flip(app.info({ deep: true }))),
+      // Given: a captured Landofile with omitted agentEnv, isolated state, and no app.start().
+      const { info, failure } = await withEnvVar("LANDO_AGENT_ENV", "1", () =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const runtime = yield* openLandoRuntime({
+              config: {
+                userDataRoot: AbsolutePath.make(join(dir, "data")),
+                userCacheRoot: AbsolutePath.make(join(dir, "cache")),
+                userConfRoot: AbsolutePath.make(join(dir, "conf")),
+              },
+              plugins: { policy: "bundled-only", layers: testProviderLayers },
+            });
+            const selector = { landofile: AbsolutePath.make(join(dir, ".lando.yml")) };
+            const app = yield* runtime.app(selector);
+            yield* Effect.promise(() =>
+              Bun.write(
+                selector.landofile,
+                "name: changed-app\nruntime: 4\nagentEnv: false\nservices:\n  cache:\n    type: redis\n    container_name: fixed-cache\n",
               ),
-            ),
-          ),
+            );
+            // When: the old handle reads deep info, then the host explicitly resolves the file again.
+            const info = yield* app.info({ deep: true });
+            const failure = yield* Effect.flip(runtime.app(selector));
+            return { info, failure };
+          }).pipe(Effect.scoped),
         ),
       );
 
-      // Then: the reachable Compose rejection remains tagged through the public handle.
-      expect(failure).toBeInstanceOf(ComposeKeyRejectedError);
+      // Then: only fresh resolution sees the rejected key; the handle retains the omitted policy.
+      expect(info.app).toBe("embedded-app");
+      expect(info.agentEnv?.enabled).toBe(true);
+      expect(failure).toBeInstanceOf(AppResolveError);
+      expect(failure.cause).toBeInstanceOf(ComposeKeyRejectedError);
+      expect(failure.cause).toMatchObject({ service: "cache", keyPath: "container_name" });
     });
   });
 
@@ -383,6 +404,9 @@ describe("@lando/core App-handle library contract", () => {
                 Layer.succeed(
                   RuntimeProviderRegistry,
                   RuntimeProviderRegistry.of({
+                    resolveAppliedPlan: () => Effect.succeed(undefined),
+                    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                    appliedPlansFor: () => Effect.succeed([]),
                     list: Effect.succeed([ProviderId.make(acceleratedProvider.id)]),
                     capabilities: Effect.succeed(acceleratedProvider.capabilities),
                     select: () => Effect.succeed(acceleratedProvider),

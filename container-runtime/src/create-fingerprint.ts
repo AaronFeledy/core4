@@ -50,8 +50,9 @@ export const createConfigFingerprint = (
   }
   if (service.environment.LANDO_HOST_PROXY_SESSION !== undefined) {
     sessionMountTargets.add("/run/lando/host-proxy.sock");
-    sessionMountTargets.add("/usr/local/lib/lando/host-proxy-client");
     sessionMountTargets.add("/usr/local/bin/lando");
+    sessionMountTargets.add("/usr/local/bin/xdg-open");
+    sessionMountTargets.add("/usr/local/bin/open");
   }
   const projection = {
     artifact: artifact?.kind === "ref" ? { ref: artifact.ref, digest: artifact.digest } : undefined,

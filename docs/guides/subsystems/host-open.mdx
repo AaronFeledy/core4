@@ -1,0 +1,55 @@
+---
+id: host-open
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, subsystems, host-proxy]
+---
+
+# Open host URLs and reveal app files from a container
+
+Run `xdg-open` or `open` inside a host-proxy-enabled service to open a URL on your host or reveal an app path in its file manager. You need a running app and a working desktop opener on the host.
+
+## Start the app and open a URL
+
+```sh
+lando start
+lando exec web -- xdg-open https://example.com/x
+lando exec web -- open https://example.com/x
+```
+
+Replace `web` with your service name. Both commands take exactly one URL or path. Flags, including macOS `open -a`, `--help`, and `--`, are unsupported and fail without launching anything. Use `./-filename` for a filename beginning with a dash.
+
+Lando mounts the same static client read-only as `/usr/local/bin/lando`, `/usr/local/bin/xdg-open`, and `/usr/local/bin/open`. The two opener names intentionally shadow image-provided openers when `/usr/local/bin` precedes `/usr/bin` on `PATH`. They do not install a browser inside the container. A client without host-proxy connection settings fails with an error rather than trying a container opener.
+
+## Reveal an app file on the host
+
+From the app mount inside your service:
+
+```sh
+xdg-open ./README
+open .
+```
+
+`xdg-open ./README` shows README's folder on Linux and selects README in the file manager on macOS and Windows. `open .` shows the app folder in the host file manager. Paths are revealed, never launched: a container can write files in your app mount, so opening a script, executable, or application bundle directly could run container-supplied code on your host.
+
+On Linux, files reveal their parent folder and directories open in the file manager. On macOS, both files and directories are selected with `open -R`, including application bundles such as `Foo.app`. Windows uses Explorer's selection mode. Only URL arguments go to the URL opener.
+
+Relative paths resolve against the container's current directory. Lando remaps the resulting absolute path through the app mount to the host. The file or directory must exist. Paths outside that mount, sibling prefixes such as `/application` for `/app`, and `..` paths that leave the mount are rejected. Symlinks are resolved on the host and must stay inside the app mount's canonical host root. Container-only files and unrelated bind mounts cannot be revealed through this callback.
+
+An argument beginning with a URI scheme, such as `https:`, `mailto:`, or `vscode:`, is a URL, not a path. Prefix an ambiguous filename with `./`.
+
+## Use an allowed URL scheme
+
+The host proxy accepts `http`, `https`, `mailto`, `tel`, `vscode`, `vscode-insiders`, `cursor`, `phpstorm`, `idea`, `webstorm`, `goland`, `pycharm`, `rubymine`, `clion`, `fleet`, and `zed`.
+
+`file:` URLs are always forbidden, including mixed-case spellings. Reveal an app file by path instead. Other schemes fail with `scheme-not-allowed`. There is no global `hostProxy.allowedSchemes` config key yet; embedding hosts can extend schemes through the host-proxy opener implementation, but cannot enable `file:` through its allowlist.
+
+## Verify the host callback
+
+```sh
+lando exec web -- lando open --print
+lando exec web -- xdg-open https://example.com/x
+```
+
+The first command prints the app URL through the existing `runLando` channel without opening a browser. The second launches the exact URL on your host. On Linux, the host needs a working `xdg-open` and desktop session. Stopping or destroying the app closes its host-proxy session.

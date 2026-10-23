@@ -52,6 +52,7 @@ import {
   createStandaloneRedactor,
   registerRedactionValues,
 } from "@lando/redaction/service";
+import { ContainerHelperAssets } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 const testStateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
 import "../../src/runtime/engine-composition.ts";
@@ -175,6 +176,10 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
   Layer.mergeAll(
+    Layer.succeed(
+      ContainerHelperAssets,
+      ContainerHelperAssets.of({ resolve: () => Effect.die("unused container helper") }),
+    ),
     PrivateFileAccessService.layer,
     TestLandofileLayers.layerTransactionGuard,
     LandoConfigService.layer,
@@ -301,6 +306,8 @@ const makeRestartLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),

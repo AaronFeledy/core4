@@ -85,7 +85,7 @@ services:
 
 Shorthand and object routes live in the same list. `app.lndo.site:8080/admin` and `{hostname: app.lndo.site, endpoint: 8080, pathPrefix: /admin}` mean the same thing.
 
-Routes may use expressions such as `{{ app.name }}.{{ proxy.defaultDomain }}`; lint checks them after the expression resolves.
+Routes may use expressions such as `{{ app.name }}.{{ proxy.defaultDomain }}`. Lint, `lando start`, and `lando app:cache:refresh` all check `hostname`, `pathPrefix`, and shorthand once, after the expression resolves, under rule `landofile.route`. Every bad field is reported together: lint lists them as violations, and start or refresh fails with one `LandofileValidationError` carrying the same issues.
 
 Layer merging matches routes by the same scheme, case-insensitive hostname, and path-prefix identity used for conflict detection, regardless of spelling. Omitted scheme means HTTPS and omitted path prefix means `/`. Backend ports do not change that identity. `both` participates in both schemes; overlaying only HTTPS keeps the inherited HTTP entry.
 
@@ -284,6 +284,8 @@ lando app:config:lint --format=json
 A route like `api..lndo.site:99999` fails lint with `valid: false`, a `path` of `["services", "app", "routes", 0]`, and a `suggestion` that repeats the grammar. Fix the entry, lint again, then `lando start`.
 
 An object route with `hostname: app.lndo.site:8080/api` fails lint with a `path` of `["services", "app", "routes", 0, "hostname"]` and a suggestion to move the port to `endpoint` and the path to `pathPrefix`.
+
+Skip lint and `lando start` reports the same entries, at the same paths, in one `LandofileValidationError`. `RouteInputError` is reserved for a conflict between two routes that planning can only see once endpoints resolve.
 
 <Guide>
   <Scenario id="catalog-endpoints" render>

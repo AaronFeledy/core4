@@ -74,10 +74,14 @@ git clone https://github.com/AaronFeledy/core4.git
 cd core4
 bun install
 bun run codegen
+bun run core/bin/lando.ts setup
+bun run --filter='@lando/core' build:container-helper
 bun run build
 # Use the source CLI directly:
 bun run core/bin/lando.ts --version
 ```
+
+The in-container helper is built with Lando itself, so run setup first. You don't need Go installed.
 
 ## Run lando setup
 
@@ -89,7 +93,7 @@ You need the Alpha binary from the steps above. Follow [Put lando on PATH and ru
 lando setup
 ```
 
-`lando setup --yes` consents to automatic prerequisite install (uidmap on Ubuntu and Debian). It does not switch providers. Leftover `defaultProviderId` in user config does not pick Docker on setup.
+`lando setup --yes` consents to automatic prerequisite install (uidmap on Ubuntu and Debian). It does not switch providers on its own. See [What persists](./guides/setup/provider-selection.mdx#what-persists).
 
 Default setup may fail on Alpha. Host prerequisites (uidmap, subuid/subgid ranges, cgroups) can block the managed runtime, and the runtime may not come up. Do not treat this path as guaranteed.
 
@@ -134,9 +138,7 @@ LANDO_PROVIDER=docker lando setup
 
 On Linux, if the managed runtime still cannot install and you have working system Docker, use the same commands as the supported fallback.
 
-`--provider=docker` requires Docker to already be installed. Setup will not install Docker for you. After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` use that last-used provider. You do not need to repeat the flag.
-
-`LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
+`--provider=docker` requires Docker to already be installed. Setup will not install Docker for you. The flag persists; the env var does not. See [What persists](./guides/setup/provider-selection.mdx#what-persists).
 
 Docker is the live path on Intel Mac. On Linux it is a fallback, not the default. The default provider stays `lando` on every other target. See [Pick a container provider](./guides/setup/provider-selection.mdx).
 

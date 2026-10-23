@@ -144,6 +144,7 @@ const makeProvider = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: (target, spec) => {
       const record = {
         service: String(target.service),
@@ -197,6 +198,7 @@ const makeProvider = (
       Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
+    removeVolumeSnapshot: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
     locateVolume: () => Effect.die("not used"),
     listVolumes: () => Effect.succeed([]),
@@ -213,11 +215,17 @@ const makeLayer = (options: {
   readonly landofile: LandofileShape;
   readonly plan: AppPlan;
   readonly provider: RuntimeProviderShape;
+  readonly onDiscover?: () => void;
 }) =>
   Layer.mergeAll(
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed(options.landofile) }),
+      LandofileService.of({
+        discover: Effect.sync(() => {
+          options.onDiscover?.();
+          return options.landofile;
+        }),
+      }),
     ).pipe(Layer.provide(emptyConfigServiceLayer)),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(options.plan) })).pipe(
       Layer.provide(emptyConfigServiceLayer),
@@ -225,6 +233,9 @@ const makeLayer = (options: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(options.provider),
@@ -600,6 +611,9 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     const failingRegistry = Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () =>
@@ -759,28 +773,42 @@ describe("execApp — host agent-context env forwarding", () => {
     expect(calls[0]?.env).toBeUndefined();
   });
 
-  test("resolved app targets re-read agentEnv instead of using a cached Landofile snapshot", async () => {
-    const plan = makePlan([makeService("appserver", true)]);
-    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+  test.each([false, true])(
+    "resolved app targets use captured policy enabled=%s without discovery",
+    async (enabled) => {
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+      let discoveries = 0;
 
-    await withHostEnv({ CLAUDECODE: "1", CI: "true", AGENT: undefined }, () =>
-      Effect.runPromise(
-        execApp(
-          { service: "appserver", command: ["env"] },
-          {
-            plan,
-            root: AbsolutePath.make(process.cwd()),
-            app: { kind: "user", id: plan.id, root: plan.root },
-            landofile: { name: "scenario" },
-          },
-        ).pipe(
-          Effect.provide(makeLayer({ landofile: { name: "scenario", agentEnv: false }, plan, provider })),
+      await withHostEnv({ CLAUDECODE: "1", CI: "true", AGENT: undefined }, () =>
+        Effect.runPromise(
+          execApp(
+            { service: "appserver", command: ["env"] },
+            {
+              plan,
+              root: AbsolutePath.make(process.cwd()),
+              app: { kind: "user", id: plan.id, root: plan.root },
+              landofile: { name: "scenario", ...(enabled ? {} : { agentEnv: false }) },
+            },
+          ).pipe(
+            Effect.provide(
+              makeLayer({
+                landofile: { name: "scenario", agentEnv: !enabled },
+                plan,
+                provider,
+                onDiscover: () => {
+                  discoveries++;
+                },
+              }),
+            ),
+          ),
         ),
-      ),
-    );
+      );
 
-    expect(calls[0]?.env).toBeUndefined();
-  });
+      expect(calls[0]?.env).toEqual(enabled ? { CLAUDECODE: "1", CI: "true" } : undefined);
+      expect(discoveries).toBe(0);
+    },
+  );
 
   test("LANDO_AGENT_ENV=0 disables forwarding for a single invocation", async () => {
     const plan = makePlan([makeService("appserver", true)]);

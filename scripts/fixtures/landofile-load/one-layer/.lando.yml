@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../../dist/schemas/landofile-shape.json
+name: bench-one-layer
+services:
+  web:
+    type: node:22
+    port: 3000
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: info
+    routes:
+      - http://one.lndo.site
+    healthcheck:
+      command: node --version
+      interval: 5s
+    appMount:
+      target: /app
+      excludes:
+        - node_modules
+tooling:
+  node:
+    service: web
+    cmd: node

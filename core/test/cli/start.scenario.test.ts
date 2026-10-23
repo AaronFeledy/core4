@@ -1,10 +1,11 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 
+import { CONTAINER_HELPER_ARCHES, CONTAINER_HELPER_FILE } from "@lando/container-runtime/container-helper";
 import { renderStartAppResult, startApp } from "@lando/core/cli/operations";
 import {
   BuildPhaseFailedError,
@@ -194,6 +195,24 @@ const plan: AppPlan = {
   extensions: {},
 };
 
+const routedPlan: AppPlan = {
+  ...plan,
+  services: {
+    ...plan.services,
+    [web.name]: { ...web, endpoints: [{ _tag: "internal", port: 3000, protocol: "http", name: "http" }] },
+  },
+  routes: [
+    {
+      hostname: "web.test-start.lndo.site",
+      priority: 2,
+      scheme: "https",
+      service: web.name,
+      endpoint: 3000,
+      backend: { service: web.name, protocol: "http", port: 3000 },
+    },
+  ],
+};
+
 const fileSyncWeb: ServicePlan = {
   ...web,
   appMount: {
@@ -225,20 +244,20 @@ const fileSyncWebWithExtra: ServicePlan = {
   ],
 };
 
-const hostProxyArtifactRoots: string[] = [];
-let previousHostProxyArtifact: string | undefined;
+const containerHelperRoots: string[] = [];
+let previousContainerHelperDir: string | undefined;
 
 beforeEach(async () => {
-  previousHostProxyArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
-  process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = await fakeHostProxyArtifact();
+  previousContainerHelperDir = process.env.LANDO_CONTAINER_HELPER_DIR;
+  process.env.LANDO_CONTAINER_HELPER_DIR = await fakeContainerHelperDir();
 });
 
 afterEach(async () => {
-  if (previousHostProxyArtifact === undefined)
-    Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-  else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousHostProxyArtifact;
-  previousHostProxyArtifact = undefined;
-  for (const root of hostProxyArtifactRoots.splice(0)) await rm(root, { recursive: true, force: true });
+  if (previousContainerHelperDir === undefined)
+    Reflect.deleteProperty(process.env, "LANDO_CONTAINER_HELPER_DIR");
+  else process.env.LANDO_CONTAINER_HELPER_DIR = previousContainerHelperDir;
+  previousContainerHelperDir = undefined;
+  for (const root of containerHelperRoots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -254,15 +273,11 @@ const withHostProxyArtifact = async <T>(
   run: (roots: { readonly cacheRoot: string; readonly dataRoot: string }) => Promise<T>,
 ): Promise<T> => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-host-proxy-")));
-  const artifactPath = join(root, "dist", "host-proxy", "lando-shim");
-  const previousArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
+  const previousHelperDir = process.env.LANDO_CONTAINER_HELPER_DIR;
   const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
   const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
   try {
-    await mkdir(join(root, "dist", "host-proxy"), { recursive: true });
-    await writeFile(artifactPath, "#!/usr/bin/env sh\nexit 0\n");
-    await chmod(artifactPath, 0o755);
-    process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = artifactPath;
+    process.env.LANDO_CONTAINER_HELPER_DIR = await fakeContainerHelperDir();
     process.env.LANDO_USER_CACHE_ROOT = join(root, "cache");
     process.env.LANDO_USER_DATA_ROOT = join(root, "data");
     return await run({
@@ -270,8 +285,8 @@ const withHostProxyArtifact = async <T>(
       dataRoot: process.env.LANDO_USER_DATA_ROOT,
     });
   } finally {
-    if (previousArtifact === undefined) Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-    else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
+    if (previousHelperDir === undefined) Reflect.deleteProperty(process.env, "LANDO_CONTAINER_HELPER_DIR");
+    else process.env.LANDO_CONTAINER_HELPER_DIR = previousHelperDir;
     if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
     else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
     if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -377,13 +392,16 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
   ),
 );
 
-const fakeHostProxyArtifact = async (): Promise<string> => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-host-proxy-artifact-")));
-  hostProxyArtifactRoots.push(root);
-  const artifactPath = join(root, "lando-shim");
-  await writeFile(artifactPath, "#!/usr/bin/env sh\nexit 0\n");
-  await chmod(artifactPath, 0o755);
-  return artifactPath;
+const fakeContainerHelperDir = async (): Promise<string> => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-container-helper-")));
+  containerHelperRoots.push(root);
+  for (const arch of CONTAINER_HELPER_ARCHES) {
+    await mkdir(join(root, `linux-${arch}`), { recursive: true });
+    await writeFile(join(root, `linux-${arch}`, CONTAINER_HELPER_FILE), "#!/usr/bin/env sh\nexit 0\n", {
+      mode: 0o755,
+    });
+  }
+  return root;
 };
 
 const makeStartLayer = (
@@ -552,11 +570,13 @@ const makeStartLayer = (
       }),
     ),
     makeTestStateStore().layer,
-    Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(providerCapabilities),
         select: () => Effect.succeed(provider),
@@ -639,6 +659,8 @@ const makeStartLayer = (
           ),
       }),
     ),
+    // After unusedGlobalServicesLayer: its config snapshot also provides PathsService, and the later layer wins.
+    Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
   );
 
   return { layer, events, applyPlans, buildOrder, destroyCalls, taskEvents };
@@ -861,6 +883,9 @@ const makeAutoStartLayer = async (options: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1078,7 +1103,7 @@ describe("lando start", () => {
   test("a post-start event step failure warns without destroying the app or removing routes", async () => {
     // Given
     const failedPlan = {
-      ...plan,
+      ...routedPlan,
       services: { ...plan.services, [web.name]: { ...web, environment: { EVENT_SECRET: "secret-token" } } },
     };
     attachEffectiveEvents(failedPlan, { "post-start": ["fail post"] });
@@ -1125,8 +1150,7 @@ describe("lando start", () => {
       "apply",
       "tree:test-start applied",
       "app",
-      "proxy-setup",
-      "proxy-apply",
+      "proxy-remove",
     ]);
     expect(harness.applyPlans).toHaveLength(1);
     expect(plan.services[ServiceName.make("web")]?.environment).toEqual({});
@@ -1157,23 +1181,6 @@ describe("lando start", () => {
 
   test("applies routes after provider readiness and renders proxy authorities", async () => {
     // Given
-    const routedPlan: AppPlan = {
-      ...plan,
-      services: {
-        ...plan.services,
-        [web.name]: { ...web, endpoints: [{ _tag: "internal", port: 3000, protocol: "http", name: "http" }] },
-      },
-      routes: [
-        {
-          hostname: "web.test-start.lndo.site",
-          priority: 2,
-          scheme: "https",
-          service: web.name,
-          endpoint: 3000,
-          backend: { service: web.name, protocol: "http", port: 3000 },
-        },
-      ],
-    };
     const harness = makeStartLayer({ plannedApp: routedPlan, recordReadiness: true });
 
     // When
@@ -1212,6 +1219,7 @@ describe("lando start", () => {
       message: "provider cleanup failed",
     });
     const harness = makeStartLayer({
+      plannedApp: routedPlan,
       postStartFailure: postFailure,
       proxyRemoveEffect: Effect.fail(cleanupFailure),
       destroyEffect: Effect.fail(providerCleanupFailure),
@@ -1232,6 +1240,7 @@ describe("lando start", () => {
       "app",
       "proxy-setup",
       "proxy-apply",
+      "tree:test-start routes applied",
     ]);
     expect(harness.events).toContain("post-app-start");
     expect(harness.events).not.toContain("post-start");
@@ -1269,7 +1278,7 @@ describe("lando start", () => {
       proxyId: "recording",
       remediation: "Retry setup.",
     });
-    const harness = makeStartLayer({ proxySetupEffect: Effect.fail(failure) });
+    const harness = makeStartLayer({ plannedApp: routedPlan, proxySetupEffect: Effect.fail(failure) });
 
     const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
 
@@ -1283,6 +1292,7 @@ describe("lando start", () => {
       "tree:test-start applied",
       "app",
       "proxy-setup",
+      "tree:test-start routes failed",
     ]);
   });
 
@@ -1293,7 +1303,7 @@ describe("lando start", () => {
       app: String(plan.id),
       remediation: "Retry route application.",
     });
-    const harness = makeStartLayer({ proxyApplyEffect: Effect.fail(failure) });
+    const harness = makeStartLayer({ plannedApp: routedPlan, proxyApplyEffect: Effect.fail(failure) });
 
     const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
 
@@ -1308,6 +1318,7 @@ describe("lando start", () => {
       "app",
       "proxy-setup",
       "proxy-apply",
+      "tree:test-start routes failed",
     ]);
   });
 
@@ -1350,8 +1361,8 @@ describe("lando start", () => {
       expect(appliedWeb?.mounts).toContainEqual(
         expect.objectContaining({ target: "/run/lando/host-proxy.sock", readOnly: true }),
       );
-      expect(appliedWeb?.mounts).toContainEqual(
-        expect.objectContaining({ target: "/usr/local/lib/lando/host-proxy-client", readOnly: true }),
+      expect(appliedWeb?.mounts).not.toContainEqual(
+        expect.objectContaining({ target: "/usr/local/lib/lando/host-proxy-client" }),
       );
       expect(appliedWeb?.mounts).toContainEqual(
         expect.objectContaining({ target: "/usr/local/bin/lando", readOnly: true }),
@@ -1406,14 +1417,10 @@ describe("lando start", () => {
 
   test("creates host-proxy session under the resolved PathsService roots", async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-host-proxy-paths-")));
-    const previousArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
+    const previousHelperDir = process.env.LANDO_CONTAINER_HELPER_DIR;
     const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
     try {
-      const artifactPath = join(root, "dist", "host-proxy", "lando-shim");
-      await mkdir(dirname(artifactPath), { recursive: true });
-      await writeFile(artifactPath, "#!/usr/bin/env sh\nexit 0\n");
-      await chmod(artifactPath, 0o755);
-      process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = artifactPath;
+      process.env.LANDO_CONTAINER_HELPER_DIR = await fakeContainerHelperDir();
       process.env.LANDO_USER_DATA_ROOT = join(root, "leaked-default-data");
       const dataRoot = join(root, "service-data");
       const eligiblePlan = {
@@ -1444,9 +1451,8 @@ describe("lando start", () => {
         }).hostProxyRunDir(plan.id, plan.root),
       );
     } finally {
-      if (previousArtifact === undefined)
-        Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-      else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
+      if (previousHelperDir === undefined) Reflect.deleteProperty(process.env, "LANDO_CONTAINER_HELPER_DIR");
+      else process.env.LANDO_CONTAINER_HELPER_DIR = previousHelperDir;
       if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
       else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
       await Effect.runPromise(
@@ -1460,19 +1466,16 @@ describe("lando start", () => {
 
   test("selects the provider-declared linux-arm64 shim for an eligible service on an x64 host", async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-cross-arch-shim-")));
-    const previousArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
-    const previousDistRoot = process.env.LANDO_HOST_PROXY_SHIM_DIST_ROOT;
+    const previousHelperDir = process.env.LANDO_CONTAINER_HELPER_DIR;
     const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
     const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
     try {
-      Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-      process.env.LANDO_HOST_PROXY_SHIM_DIST_ROOT = join(root, "dist");
+      const helperDir = await fakeContainerHelperDir();
+      process.env.LANDO_CONTAINER_HELPER_DIR = helperDir;
       process.env.LANDO_USER_CACHE_ROOT = join(root, "cache");
       process.env.LANDO_USER_DATA_ROOT = join(root, "data");
-      const shimArtifact = join(root, "dist", "host-proxy", "linux-arm64", "lando-shim");
-      await mkdir(dirname(shimArtifact), { recursive: true });
+      const shimArtifact = join(helperDir, "linux-arm64", CONTAINER_HELPER_FILE);
       await writeFile(shimArtifact, "#!/usr/bin/env sh\n# linux-arm64-selected\nexit 0\n");
-      await chmod(shimArtifact, 0o755);
       const dataRoot = join(root, "data");
       const eligiblePlan = {
         ...plan,
@@ -1498,12 +1501,8 @@ describe("lando start", () => {
       );
       expect(await readFile(join(hostProxyDir, "lando"), "utf8")).toContain("linux-arm64-selected");
     } finally {
-      if (previousArtifact === undefined)
-        Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-      else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
-      if (previousDistRoot === undefined)
-        Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_DIST_ROOT");
-      else process.env.LANDO_HOST_PROXY_SHIM_DIST_ROOT = previousDistRoot;
+      if (previousHelperDir === undefined) Reflect.deleteProperty(process.env, "LANDO_CONTAINER_HELPER_DIR");
+      else process.env.LANDO_CONTAINER_HELPER_DIR = previousHelperDir;
       if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
       else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
       if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -2057,7 +2056,7 @@ describe("lando start", () => {
     });
   });
 
-  test.skipIf(resolveLiveProviderSocket()?.source !== "env")(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "scaffolds an app and starts it against the live Podman socket",
     async () => {
       await withTempCwd(async (dir) => {
@@ -2197,6 +2196,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2345,6 +2347,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2484,6 +2489,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2630,6 +2638,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2787,6 +2798,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2849,12 +2863,9 @@ describe("lando start", () => {
 
   test("retains already-created valid file-sync sessions and the host-proxy worker when a later session fails", async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-file-sync-host-proxy-")));
-    const previousArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
+    const previousHelperDir = process.env.LANDO_CONTAINER_HELPER_DIR;
     const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
-    const artifactPath = join(root, "lando-shim");
-    await writeFile(artifactPath, "#!/usr/bin/env sh\nexit 0\n");
-    await chmod(artifactPath, 0o755);
-    process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = artifactPath;
+    process.env.LANDO_CONTAINER_HELPER_DIR = await fakeContainerHelperDir();
     process.env.LANDO_USER_DATA_ROOT = join(root, "data");
     const planWithFileSync: AppPlan = {
       ...plan,
@@ -2979,6 +2990,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -3010,9 +3024,8 @@ describe("lando start", () => {
         makeLandoPaths({ userDataRoot: join(root, "data") }).hostProxyRunDir(plan.id, plan.root),
       );
     } finally {
-      if (previousArtifact === undefined)
-        Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
-      else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
+      if (previousHelperDir === undefined) Reflect.deleteProperty(process.env, "LANDO_CONTAINER_HELPER_DIR");
+      else process.env.LANDO_CONTAINER_HELPER_DIR = previousHelperDir;
       if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
       else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
       await Effect.runPromise(
@@ -3147,6 +3160,9 @@ describe("lando start", () => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),

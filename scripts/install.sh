@@ -372,7 +372,7 @@ verify_checksums_signature() {
       download "$certificate_url" "$certificate"
       cosign=${LANDO_INSTALL_COSIGN:-cosign}
       "$cosign" verify-blob \
-        --certificate-identity-regexp "${LANDO_INSTALL_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$}" \
+        --certificate-identity-regexp "${LANDO_INSTALL_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$}" \
         --certificate-oidc-issuer "${LANDO_INSTALL_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}" \
         --signature "$signature" \
         --certificate "$certificate" \

@@ -21,6 +21,7 @@ import {
 } from "../../src/cli/commands/doctor-report.ts";
 import { isolateDoctorSection } from "../../src/cli/commands/doctor-self.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { withEnvVar } from "../_support/temp-cwd";
 
 const SHORT_BUDGET_ENV = { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } as const;
 const runtimeLayerFactoryLive = Layer.succeed(
@@ -34,6 +35,39 @@ const restoreEnv = (key: string, value: string | undefined): void => {
 };
 
 describe("doctor safe mode", () => {
+  test("preserves environment repair advice when provider bootstrap reads a valid file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-doctor-env-"));
+    await writeFile(join(root, "config.yml"), "router:\n  httpPort: 8080\n");
+    try {
+      await withEnvVar("LANDO_USER_CONF_ROOT", root, () =>
+        withEnvVar("LANDO_USER_DATA_ROOT", join(root, "data"), () =>
+          withEnvVar("LANDO_USER_CACHE_ROOT", join(root, "cache"), () =>
+            withEnvVar("LANDO_ROUTER_HTTP_PORT", "99999", async () => {
+              const report = await Effect.runPromise(
+                resilientDoctorReport({ env: SHORT_BUDGET_ENV }).pipe(
+                  Effect.provide(runtimeLayerFactoryLive),
+                ),
+              );
+              const bootstrap = report.self?.checks.find((check) => check.section === "global-config");
+              expect(bootstrap?.context.failure).toBe("ConfigError");
+              expect(
+                bootstrap?.solutions.some((solution) =>
+                  solution.description.includes("Unset or fix the environment override for router.httpPort"),
+                ),
+              ).toBe(true);
+              expect(report.globalConfig?.error?.issues?.[0]?.source?.layer).toBe("env");
+              expect(bootstrap?.context.message).not.toContain("Invalid config file");
+              expect(
+                bootstrap?.solutions.some((solution) => solution.description.includes("github.com")),
+              ).toBe(false);
+            }),
+          ),
+        ),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   test("keeps AbortSignal cancellation on the resilient path", async () => {
     // Given an already-cancelled doctor run
     const controller = new AbortController();
@@ -49,18 +83,23 @@ describe("doctor safe mode", () => {
     if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true);
   });
 
-  test("reports a bootstrap failure as a self check and still returns a report", async () => {
-    // Given a config file the YAML reader cannot parse, which fails the
-    // provider runtime build itself
+  test.each([
+    { content: "this: [is: not\n", detail: "Unsupported YAML" },
+    { content: "router:\n  httpPort: 99999\n", detail: "router.httpPort:" },
+  ])("reports a bootstrap failure for $detail and still returns a report", async ({ content, detail }) => {
+    // Given invalid global configuration that fails the provider runtime build.
     const home = await mkdtemp(join(tmpdir(), "lando-doctor-safe-"));
     await mkdir(join(home, ".config", "lando"), { recursive: true });
-    await writeFile(join(home, ".config", "lando", "config.yml"), "this: [is: not\n", "utf8");
+    await writeFile(join(home, ".config", "lando", "config.yml"), content, "utf8");
     const priorHome = process.env.HOME;
     const priorXdgConfig = process.env.XDG_CONFIG_HOME;
+    // The test preload pins the conf root, which outranks HOME/XDG; point it at the broken config.
+    const priorConfRoot = process.env.LANDO_USER_CONF_ROOT;
 
     try {
       process.env.HOME = home;
       process.env.XDG_CONFIG_HOME = join(home, ".config");
+      process.env.LANDO_USER_CONF_ROOT = join(home, ".config", "lando");
 
       // When
       const report = await Effect.runPromise(
@@ -68,21 +107,36 @@ describe("doctor safe mode", () => {
       );
 
       // Then the provider section degrades but the report is intact
-      const bootstrapSelf = (report.self?.checks ?? []).find(
-        (check) => check.section === "provider-bootstrap",
-      );
+      const bootstrapSelf = (report.self?.checks ?? []).find((check) => check.section === "global-config");
       expect(bootstrapSelf).toMatchObject({ status: "fail", severity: "error" });
-      expect(bootstrapSelf?.solutions.some((solution) => solution.command === "lando config view")).toBe(
+      expect(bootstrapSelf?.context.failure).toBe("ConfigError");
+      expect(bootstrapSelf?.context.message).toContain(detail);
+      expect(bootstrapSelf?.solutions.some((solution) => solution.command === "lando config validate")).toBe(
         true,
       );
       expect(report.provider.checks).toEqual([]);
-      const certs = report.subsystems.checks.find((check) => check.name === "certs");
-      expect(certs?.context).toMatchObject({ subsystemId: "unavailable", ready: "false" });
-      expect(certs?.context.certsReason).toBeUndefined();
+      expect(report.subsystems.checks.some((check) => check.name === "filesystem-watch")).toBe(true);
+      expect(report.globalConfig?.status).toBe("fail");
+      expect(report.globalConfig?.error?._tag).toBe("ConfigError");
+      expect(report.skipped?.map((entry) => entry.section)).toEqual([
+        "provider",
+        "subsystems",
+        "network-trust",
+        "certificate-authority",
+        "global-app",
+        "mcp",
+      ]);
+      expect(
+        report.skipped?.every(
+          (entry) => entry.status === "skipped" && entry.reason.includes("global-config"),
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(report)).not.toContain("--fix");
       expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
     } finally {
       restoreEnv("HOME", priorHome);
       restoreEnv("XDG_CONFIG_HOME", priorXdgConfig);
+      restoreEnv("LANDO_USER_CONF_ROOT", priorConfRoot);
       await rm(home, { recursive: true, force: true });
     }
   });

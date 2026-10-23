@@ -16,7 +16,7 @@ import {
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import { VOLUME_WITNESS_IMAGE, volumeCreationLabels } from "@lando/container-runtime/data-plane";
+import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
 import {
   dockerLifecycleDialect,
   dockerPullDialect,
@@ -27,10 +27,9 @@ import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import {
-  type LogFileHelperPayloads,
-  logFileHelperPayloadForTargets,
-} from "@lando/container-runtime/log-file-helper-payloads";
-import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
+  type ResolveContainerHelper,
+  makeProviderLogSourceBinding,
+} from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
@@ -43,6 +42,7 @@ import type {
   EmitComposeResult,
   EmitComposeOptions as RuntimeEmitComposeOptions,
 } from "@lando/container-runtime/podman/compose";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect, publishedEndpointsFromInspect } from "@lando/container-runtime/podman/inspect";
 import { containerConsoleLogs, logs } from "@lando/container-runtime/podman/logs";
@@ -57,6 +57,7 @@ import {
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, redactString, withApiReason } from "@lando/container-runtime/redact";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -131,7 +132,7 @@ export interface ProviderLayerOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
-  readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly resolveContainerHelper?: ResolveContainerHelper;
   readonly appliedPlanState?: PluginStateStore;
   readonly appliedPlanStateDir?: string;
   readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
@@ -233,7 +234,7 @@ export const dockerCapabilitiesForHost = (
     rootless: false,
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
-    composeKnobs: { supported: ["restart", "extra_hosts"] },
+    composeKnobs: { supported: composeKnobsForDialect("docker") },
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
@@ -425,10 +426,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       const logSourceBinding = makeProviderLogSourceBinding({
         providerId: PROVIDER_ID,
         logFileAccess: options.logFileAccess,
-        helperPayload: logFileHelperPayloadForTargets(
-          options.logFileHelperPayloads,
-          resolved.hostProxy?.containerTargets,
-        ),
+        helperTarget: resolved.hostProxy?.containerTargets[0],
+        resolveHelper: options.resolveContainerHelper,
       });
       return {
         capabilities: {
@@ -445,10 +444,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       ctx: DOCKER_CTX,
       providerId: ProviderId.make(PROVIDER_ID),
       endpointNamespace: resolvedDockerHost,
-      prepareWitnessImage: pullImage(dockerApi, VOLUME_WITNESS_IMAGE, {
-        ctx: DOCKER_CTX,
-        dialect: dockerPullDialect,
-      }),
+      pullHelperImage: (ref) =>
+        pullImage(dockerApi, ref, {
+          ctx: DOCKER_CTX,
+          dialect: dockerPullDialect,
+          policy: "missing",
+        }),
       api: dockerApi,
       capabilities: resolvedCapabilities,
       redactDetails,
@@ -471,6 +472,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
     const resolvedOps = bindResolvedProviderOps(planState, {
       ctx: DOCKER_CTX,
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: dockerApi, ctx: DOCKER_CTX }),
       noPlanError: (_app, operation) => makeUnavailable(operation),
       service: {
         lifecycle: (plan, target, action) =>
@@ -743,12 +746,12 @@ export const plugin = definePlugin({
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
-          const { paths, platform, logFileHelperPayloads, sanitizeAppliedPlan, eventService } =
+          const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan, eventService } =
             yield* providerHostInputs;
           return yield* makeRuntimeProvider({
             platform,
             ...(eventService === undefined ? {} : { eventService }),
-            logFileHelperPayloads,
+            resolveContainerHelper,
             appliedPlanState: ctx.stateStore,
             appliedPlanStateDir: paths.pluginStateDir(PLUGIN_NAME),
             sanitizeAppliedPlan,

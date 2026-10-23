@@ -159,6 +159,7 @@ const makeLayer = (
     inspect: () => die("inspect"),
     list: () => Effect.succeed([]),
     snapshotVolume: () => die("snapshotVolume"),
+    removeVolumeSnapshot: () => die("removeVolumeSnapshot"),
     restoreVolume: () => die("restoreVolume"),
     listVolumes: () => Effect.succeed([]),
     removeVolume: () => die("removeVolume"),
@@ -175,6 +176,9 @@ const makeLayer = (
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),
@@ -185,6 +189,11 @@ const makeLayer = (
     ScratchResourceScanner.of({
       listScratchIds: Effect.succeed(labelIds),
       pruneScratch: pruneScratch ?? ((id: string) => Effect.sync(() => pruned.push(id))),
+      prepareScratch: (id) =>
+        Effect.succeed({
+          stop: Effect.succeed(false),
+          destroy: (pruneScratch?.(id) ?? Effect.sync(() => pruned.push(id))).pipe(Effect.as(true)),
+        }),
     }),
   );
   const scratchDeps = Layer.mergeAll(
@@ -198,6 +207,7 @@ const makeLayer = (
     scannerLive,
     scratchInitAppPortLive,
     BunDataMover.layer.pipe(
+      Layer.provide(registryLive),
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,

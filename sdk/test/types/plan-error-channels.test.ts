@@ -20,7 +20,6 @@ import type {
   CapabilityError,
   CommandAliasConflictError,
   ComposeKeyRejectedError,
-  ConfigError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
@@ -50,7 +49,6 @@ import type {
   LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileTransactionError,
@@ -63,6 +61,7 @@ import type {
   ProxySetupError,
   PublicationUnsupportedError,
   RouteInputError,
+  RouteProviderMismatchError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
   RouterWatcherError,
@@ -79,7 +78,6 @@ import type {
   ToolingCompileError,
   ToolingDisabledError,
   ToolingExecError,
-  ToolingIncludeCycleError,
   ToolingInputError,
   VolumeOperationError,
 } from "@lando/sdk/errors";
@@ -107,16 +105,15 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 // allow: SIZE_OK — independent verbatim union fixtures must stay in the requested single SDK test file.
 // Given: these member lists are frozen from the pre-refactor contracts, not derived from them.
 type LegacyAppPlannerChannel =
+  | RouteProviderMismatchError
   | LandofileValidationError
   | RouteInputError
   | CapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
-  | CommandAliasConflictError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
-  | ConfigExpressionError
-  | LandofileUnknownEventError;
+  | ConfigExpressionError;
 
 type LegacyBuildChannel =
   | EventError
@@ -148,13 +145,13 @@ type LegacyDiscoverChannel =
   | LandofileImportRefMisuseError
   | LandofileLoadLimitError
   | LandofileLoadOutsideRootError
-  | ToolingIncludeCycleError
   | NotImplementedError
   | ComposeKeyRejectedError
   | ManagedFileTransactionError;
 
 // The app contract's local LandofileNotFoundError alias includes LandofileFormConflictError.
 type LegacyStartAppError =
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -176,15 +173,12 @@ type LegacyStartAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
@@ -215,6 +209,7 @@ type LegacyStartAppError =
   | VolumeOperationError;
 
 type LegacyStopAppError =
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -235,14 +230,11 @@ type LegacyStopAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
@@ -257,12 +249,12 @@ type LegacyStopAppError =
   | VolumeOperationError;
 
 type LegacyInfoAppError =
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
   | AppIdReservedError
   | ComposeKeyRejectedError
-  | ConfigError
   | LandofileNotFoundError
   | LandofileFormConflictError
   | LandofileParseError
@@ -270,15 +262,12 @@ type LegacyInfoAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
@@ -291,6 +280,7 @@ type LegacyInfoAppError =
   | ProviderUnavailableError;
 
 type LegacyExecAppError =
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -300,7 +290,6 @@ type LegacyExecAppError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
-  | ConfigError
   | LandofileNotFoundError
   | LandofileFormConflictError
   | LandofileParseError
@@ -308,22 +297,21 @@ type LegacyExecAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | ToolingExecError;
 
 type LegacyToolingError =
+  | CommandAliasConflictError
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -337,7 +325,6 @@ type LegacyToolingError =
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
-  | ConfigError
   | ComposeKeyRejectedError
   | LandofileNotFoundError
   | LandofileFormConflictError
@@ -346,11 +333,9 @@ type LegacyToolingError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NoProviderInstalledError
   | NotImplementedError
@@ -359,7 +344,6 @@ type LegacyToolingError =
   | ProviderUnavailableError
   | ShellExecError
   | ShellScriptOutsideRootError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | ToolingCompileError
   | ToolingDisabledError
@@ -367,6 +351,7 @@ type LegacyToolingError =
   | ToolingExecError;
 
 type LegacyLogsAppError =
+  | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -378,14 +363,11 @@ type LegacyLogsAppError =
   | LandofileTimeoutError
   | LandofileValidationError
   | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
-  | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
@@ -444,7 +426,15 @@ describe("SDK plan-carrying error channels", () => {
   });
 
   test("StartAppError retains its pre-refactor members", () => {
-    assertType<Equal<StartAppError, LegacyStartAppError | ServiceNotReadyError>>(true);
+    assertType<
+      Equal<
+        StartAppError,
+        | LegacyStartAppError
+        | ServiceNotReadyError
+        | import("@lando/sdk/errors").AppPlacementError
+        | import("@lando/sdk/errors").AppResolveError
+      >
+    >(true);
     expect(true).toBe(true);
   });
 
@@ -454,7 +444,14 @@ describe("SDK plan-carrying error channels", () => {
   });
 
   test("InfoAppError retains its pre-refactor members", () => {
-    assertType<Equal<InfoAppError, LegacyInfoAppError>>(true);
+    assertType<
+      Equal<
+        InfoAppError,
+        | LegacyInfoAppError
+        | import("@lando/sdk/errors").AppResolveError
+        | import("@lando/sdk/errors").StateStoreError
+      >
+    >(true);
     expect(true).toBe(true);
   });
 
@@ -469,7 +466,14 @@ describe("SDK plan-carrying error channels", () => {
   });
 
   test("LogsAppError retains its pre-refactor members", () => {
-    assertType<Equal<LogsAppError, LegacyLogsAppError>>(true);
+    assertType<
+      Equal<
+        LogsAppError,
+        | LegacyLogsAppError
+        | import("@lando/sdk/errors").AppResolveError
+        | import("@lando/sdk/errors").StateStoreError
+      >
+    >(true);
     expect(true).toBe(true);
   });
 });

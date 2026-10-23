@@ -169,6 +169,7 @@ const main = async (): Promise<void> => {
 main().catch(async (error: unknown) => {
   const { BROKEN_PIPE_EXIT_CODE, isBrokenPipeError } = await import("@lando/renderer/native-stdio");
   if (isBrokenPipeError(error)) process.exit(BROKEN_PIPE_EXIT_CODE);
-  await writeLine("stderr", String(error));
+  const { safeOuterFailure } = await import("../src/cli/outer-failure.ts");
+  await writeLine("stderr", await safeOuterFailure(error));
   process.exit(1);
 });

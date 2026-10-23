@@ -111,10 +111,11 @@ test("generic detached worker decodes its own readiness schema", async () => {
   const { spawnDetachedWorker } = await import("../../../src/subsystems/detached-worker/process.ts");
   // Given
   const root = await mkdtemp(join(tmpdir(), "generic-worker-"));
-  const worker = spawnDetachedWorker(
+  const worker = await spawnDetachedWorker(
     {
       argv: [process.execPath, "-e", 'process.stdout.write(JSON.stringify({answer:42}) + "\\n")'],
       logsDir: root,
+      privateFileAccess: { enforce: async (path) => chmod(path, 0o600), verify: async () => undefined },
     },
     { readySchema: Schema.Struct({ answer: Schema.Number }), logLabel: "agent-relay" },
   );

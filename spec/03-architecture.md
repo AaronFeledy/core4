@@ -30,7 +30,7 @@ Levels form a chain `none` → `minimal` → `plugins` → `commands`; `tooling`
 
 | Level | Meaning | Service membership |
 |---|---|---|
-| `none` | Command-base depth with no prebuilt runtime; the fast-path subset skips dispatcher and Effect entirely | none |
+| `none` | Command-base depth with no prebuilt runtime; dispatcher-routed commands receive the internal runtime-factory and captured-config-source ports but no decoded configuration or minimal runtime; the static fast-path subset skips dispatcher and Effect entirely and constructs no services | none |
 | `minimal` | Host configuration and safe local primitives | eager: `PathsService`, `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `StateStore`, `EventService`, `DeprecationService`, `RedactionService`, `TemplateEngineRegistry`, `TemplateRenderer`, `HttpClient`, `Downloader`; lazy: `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `BunSelfRunner`, `InteractionService`, `ManagedFileService` |
 | `plugins` | Plugin discovery, manifest validation, and contribution graph | `minimal` + eager `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`, `FileSyncEngineRegistry`; lazy `PrivilegeService`; plugin implementations register here |
 | `commands` | Complete native command registry and command-cache refresh | `plugins` + `CommandRegistry` |
@@ -100,6 +100,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `DataMover` | Canonical local/volume byte movement and snapshots (§10.11); not plugin-replaceable |
 | `PrivilegeService` | Platform elevation boundary |
 | `EmbeddedAssetService` | Unified compiled-binary and library asset access; host/test-overridable, never plugin-contributed |
+| `ContainerHelperAssets` | Resolves the static in-container helper executable for a Linux target (§17.3), extracting it under `PathsService` roots; host/test-overridable, never plugin-contributed |
 | `PathsService` | Authoritative Lando roots and derived paths (§7.5.1) |
 | `Logger` | Structured Effect logging |
 | `Renderer` | User-facing output strategy (§8.9) |
@@ -113,6 +114,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `ScratchAppService` | Scoped scratch app acquisition, lifecycle, registry, and reap (§21) |
 | `Telemetry` | Non-blocking usage telemetry (§2.4) |
 | `RedactionService` | Canonical secret and PII masking (§3.7); never plugin-replaceable |
+| `AppOutputRedaction` | Plugin-facing app-output preparation backed by the engine's shared registration step; reads current provider and trusted worker credentials, never resolves or persists secret-store values (§3.7) |
 
 The replaceability and default Layers for all pluggable tags remain canonical in §4.2. Hosts enumerating runtime services SHOULD combine §3.4 and §4.2.
 
@@ -147,6 +149,8 @@ Events are typed, schema-validated, and drawn from a closed registry. Plugin sub
 | Init source | `pre-init-source-auth`, `post-init-source-auth`, `pre-init-source-acquire`, `post-init-source-acquire` |
 | Cross-cutting | `deprecation-used` |
 
+`pre-destroy` and `post-destroy` bracket one user-app destroy invocation. Each recorded app identity the teardown addresses (applied plan, orphan groups, ownership inventory, purged snapshots) gets one pair, and a teardown that finds nothing publishes neither. `evidence` names the primary resolution basis: `applied` (recorded applied plan), `retained` (an unfinished accelerated start, §10.6.3), `orphans`, `inventory` (ownership hints alone), or `snapshots` (`--purge` with only catalogued snapshots). Read-only resolution and validation run before the bracket. `pre-destroy` fires before any destructive step, including retained-writer quiescence. `post-destroy` fires only after every step succeeds, including inventory cleanup, journal completion, cache cleanup, and the `--root` follow-up orphan sweep, and carries the invocation's aggregate `outcome` (`destroyed` or `unchanged`). A failure after `pre-destroy` publishes no `post-destroy`. Authored Landofile and `hostEvents` destroy steps run only for `evidence: applied` (§8.5.7); a resumed file-sync disposal skips the `pre-destroy` steps. Other evidence publishes the bus events without authored steps, because only a recorded applied plan gives them a trustworthy execution topology; retained attempts and orphans may still have running containers.
+
 Remote lifecycle publishers MUST be core orchestration wrappers, including dataset, tunnel, setup, and operation wrappers (§10.12); plugin contributions do not gain arbitrary publish authority. Payloads MUST retain nonsecret target identity, partial-completion and cleanup outcomes, and tether status where applicable, but MUST NOT carry secret values, authorization codes, or live credential-bearing endpoints. Required post-processing failures MUST remain failed outcomes with applied-data receipts, not synthetic rollback events.
 
 `LandoEvent` is the closed union of these events and generated CLI lifecycle events. Plugins MUST NOT add schemas, arbitrary names, or wider publish authority; their only publish seam is the closed `RenderEvent` subset (§9.8). For a resolved command, `-init` fires after bootstrap and before the body; exactly one of `-run` or `-error` follows before scope finalization. Unknown commands do not emit `-init`.
@@ -168,7 +172,7 @@ Both shells MUST provide the generated layer for the resolved level, run with sc
 
 Redaction is one non-replaceable security invariant shared by logs, events, runners, network and data movement, managed files, build and doctor output, telemetry, config translation, caches, and executable-guide transcripts.
 
-1. The value layer masks known resolved secrets, registry tokens, proxy credentials, and caller-supplied tokens by literal longest-first match. Before a log line's truncation marker, the string layer also masks a trailing proper prefix of a known value (§6.14.5). The string and payload layers MUST draw on the same values and skip values rejected by `isUsableExactRedactionValue`.
+1. The value layer masks known resolved secrets, registry tokens, proxy credentials, and caller-supplied tokens by literal longest-first match, including URL-encoded, JSON-escaped, and UTF-8 base64 forms (standard and base64url, with and without padding) of each known value. Before a log line's truncation marker, the string layer also masks a trailing proper prefix of a known value (§6.14.5). The string and payload layers MUST draw on the same values and skip values rejected by `isUsableExactRedactionValue`; rejected encoded variants are dropped, never treated as authoritative suppressors.
 2. The pattern layer then masks the canonical secret classes (`secretAssignment`, `urlUserinfo`, `bearerToken`, `signedQueryParam`, `secretKeyedField`) and, where the selected profile requires it, the normalization classes `url`, `email`, `uuid`, `hostname`, `posixPath`, `windowsPath`, `uncPath`, `homeAlias`, `port`, `containerId`, `digest`, `highEntropyToken`, `user`, `host`, and `root`.
 
 | Profile | Contract |

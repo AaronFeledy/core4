@@ -148,10 +148,13 @@ const normalizeNpmSubpath = (subpath: string | undefined, source: string): strin
 const encodePackageName = (name: string): string =>
   name.startsWith("@") ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name);
 
-export const defaultNpmRegistryClient = (registryUrl: string): NpmRegistryClient => ({
+export const defaultNpmRegistryClient = (
+  registryUrl: string,
+  fetchJson: typeof httpJsonFetch = httpJsonFetch,
+): NpmRegistryClient => ({
   fetchPackument: async (packageName) => {
     const base = registryUrl.replace(/\/+$/u, "");
-    const response = await httpJsonFetch(`${base}/${encodePackageName(packageName)}`, {
+    const response = await fetchJson(`${base}/${encodePackageName(packageName)}`, {
       headers: [{ name: "accept", value: "application/json" }],
       redirect: "follow",
     });

@@ -2,12 +2,14 @@ import { join } from "node:path";
 
 import { LANDOFILE_NAME } from "@lando/landofile/discovery";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
+import { RedactionService, createPayloadValues } from "@lando/redaction/service";
 import { Clock, type Context, Effect, Option } from "effect";
 
 import { LandofileEventStepFailedError, ToolingCompileError, causeMessage } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/schema";
+import { createPayloadRedactor } from "@lando/sdk/secrets";
 import {
   type EventService,
   RuntimeProviderRegistry,
@@ -307,20 +309,26 @@ const withStreamedTail = Effect.fnUntraced(function* (
 ): Effect.fn.Return<EventLeafResult, unknown> {
   const live = yield* Effect.serviceOption(StreamFrameSink);
   if (Option.isNone(live)) return yield* effect;
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  const values = Option.isSome(redaction) ? yield* redaction.value.payloadValues() : createPayloadValues([]);
   const tail = { stdout: "", stderr: "" };
+  const payloads = { stdout: createPayloadRedactor(values), stderr: createPayloadRedactor(values) };
+  const encoder = new TextEncoder();
   const decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
   const tee: StreamFrameSinkShape = {
     emit: (frame) =>
       Effect.sync(() => {
-        const text =
-          typeof frame.chunk === "string"
-            ? frame.chunk
-            : decoders[frame._tag].decode(frame.chunk, { stream: true });
+        const bytes = typeof frame.chunk === "string" ? encoder.encode(frame.chunk) : frame.chunk;
+        const text = decoders[frame._tag].decode(payloads[frame._tag].write(bytes), { stream: true });
         tail[frame._tag] = (tail[frame._tag] + text).slice(-OUTPUT_TAIL_LENGTH);
       }).pipe(Effect.andThen(live.value.emit(frame))),
     ...(live.value.flush === undefined ? {} : { flush: live.value.flush }),
   };
   const execution = yield* effect.pipe(Effect.provideService(StreamFrameSink, tee));
+  for (const kind of ["stdout", "stderr"] as const) {
+    const text = decoders[kind].decode(payloads[kind].flush());
+    tail[kind] = (tail[kind] + text).slice(-OUTPUT_TAIL_LENGTH);
+  }
   return { ...execution, streamedTail: tail };
 });
 

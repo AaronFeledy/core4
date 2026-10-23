@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
+import {
+  CONTAINER_HELPER_JOB_ID,
+  containerHelperDownloadStep,
+  renderContainerHelperJob,
+} from "./_container-helper-workflow.ts";
 
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import { LOGIN_ACTION } from "./build-php-base-workflow.ts";
@@ -44,6 +49,7 @@ const renderJob = (cell: PlatformReadinessCell): string => {
   const platform = ciPlatformFor(cell.id);
   const binary = `dist/${platform.binaryName}`;
   return `  workflow-performance-${cell.id}:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ${cell.runsOn}
     timeout-minutes: 360
     steps:
@@ -60,15 +66,14 @@ const renderJob = (cell: PlatformReadinessCell): string => {
       - name: Regenerate derived sources
         run: bun run codegen
 
+${containerHelperDownloadStep}
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build ${cell.id} binary
         run: |
           mkdir -p dist
-          bun run --filter='@lando/core' build:host-proxy-shim
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./${binary} --version "$VERSION" --minify --sourcemap=external
 
@@ -198,7 +203,7 @@ const renderBlockedNoticeJob = (): string => `  workflow-performance-blocked:
 export const renderWorkflowPerformanceWorkflow = (
   execution: WorkflowPerformanceExecution = WORKFLOW_PERFORMANCE_EXECUTION,
 ): string => {
-  const nativeJobs = WORKFLOW_PERFORMANCE_CELLS.map(renderJob).join("\n");
+  const nativeJobs = [renderContainerHelperJob(), ...WORKFLOW_PERFORMANCE_CELLS.map(renderJob)].join("\n");
   const jobs =
     execution === "enabled"
       ? nativeJobs

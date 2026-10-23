@@ -344,6 +344,7 @@ describe("AppCacheService.layer", () => {
 
   test("derives app-plan cache keys from Landofile, plugin, provider, and app-root inputs", () => {
     const base: AppPlanCacheKeyInput = {
+      hostProvider: "lando",
       appRoot: "/workspace/cache-plan",
       landofile: { name: "cache-plan", services: { [ServiceName.make("web")]: { type: "node" } } },
       providerCapabilities,
@@ -451,6 +452,7 @@ describe("AppCacheService.layer", () => {
     // Given — deriveAppPlanCacheKey already fingerprints the whole Landofile
     const base = {
       appRoot: "/workspace/cache-plan-defaults",
+      hostProvider: "lando",
       landofile: {
         name: "cache-plan-defaults",
         services: { [ServiceName.make("web")]: { type: "node" } },
@@ -486,6 +488,7 @@ describe("AppCacheService.layer", () => {
     };
     const base = {
       appRoot: "/workspace/load-cache",
+      hostProvider: "lando",
       landofile: { name: "load-cache", runtime: 4 as const },
       pluginManifests: [],
       sourceFingerprint: {

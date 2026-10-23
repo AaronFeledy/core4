@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
@@ -65,7 +65,8 @@ interface Harness {
     | FileSystem
     | GlobalAppService
     | PluginRegistry
-    | RuntimeProviderRegistry
+    | RuntimeProviderRegistry,
+    import("@lando/sdk/errors").ConfigError
   >;
   readonly applyCalls: Array<ApplyCall>;
   readonly inspectCalls: Array<InspectCall>;
@@ -74,7 +75,7 @@ interface Harness {
   readonly selectedProviders: string[];
 }
 
-const providerId = ProviderId.make("lando");
+const providerId = ProviderId.make("docker");
 
 const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<T> => {
   const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-ensure-global-data-")));
@@ -84,6 +85,7 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
   try {
     process.env.LANDO_USER_DATA_ROOT = dataRoot;
     process.env.LANDO_USER_CONF_ROOT = confRoot;
+    await writeFile(join(confRoot, "config.yml"), "defaultProviderId: docker\n");
     return await run(dataRoot);
   } finally {
     if (previousData === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -216,6 +218,9 @@ const makeHarness = async (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),
         select: (plan) =>
@@ -330,7 +335,7 @@ describe("ensureGlobalServicesRunning", () => {
       expect([...new Set(harness.inspectCalls.map((call) => String(call.target.service)))]).toEqual([
         "traefik",
       ]);
-      expect(harness.selectedProviders.at(-1)).toBe("lando");
+      expect(harness.selectedProviders.at(-1)).toBe("docker");
 
       const lifecycle = harness.events.filter(
         (event) => event._tag === "pre-global-start" || event._tag === "post-global-start",

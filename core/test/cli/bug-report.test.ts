@@ -31,6 +31,32 @@ const ctx = (overrides: Partial<{ commandId: string; appId: string; providerId: 
 });
 
 describe("buildBugReport: envelope extraction", () => {
+  test("renders attributed issue paths and separate remediation", () => {
+    const report = buildBugReport({
+      error: {
+        _tag: "LandofileValidationError",
+        file: "/app/.lando.local.yml",
+        message: "Invalid value.",
+        remediation: "Set a portable path.",
+        issues: [
+          {
+            path: ["services", "web", "workingDirectory"],
+            message: "Expected string.",
+            source: {
+              file: "/app/.lando.local.yml",
+              layer: "local",
+              path: ["services", "web", "working_dir"],
+            },
+          },
+        ],
+      },
+      context: ctx(),
+    });
+    const plain = renderPlainBugReport(report);
+    expect(plain).toContain("/app/.lando.local.yml: services.web.workingDirectory: Expected string.");
+    expect(plain).toContain("authored services.web.working_dir");
+    expect(report.remediation).toBe("Set a portable path.");
+  });
   test("escapes generic terminal controls when an arbitrary tagged error renders", () => {
     const error = {
       _tag: "ArbitraryError",

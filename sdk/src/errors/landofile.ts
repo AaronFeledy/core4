@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
-import { ValidationIssue } from "../schema/validation-issue.ts";
+import { LandofileLayer } from "../schema/landofile-reference.ts";
+import { ValidationIssue, ValidationIssuePath } from "../schema/validation-issue.ts";
 
 export class RouteInputError extends Schema.TaggedError<RouteInputError>()("RouteInputError", {
   message: Schema.String.annotate({ description: "Human-readable route input failure." }),
@@ -162,6 +163,9 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
     message: Schema.String,
     file: Schema.String,
     issues: Schema.Array(ValidationIssue),
+    remediation: Schema.String.annotate({
+      description: "Action required to correct the authored configuration.",
+    }),
   },
 ) {}
 
@@ -288,5 +292,14 @@ export class LandofileIncludeError extends Schema.TaggedError<LandofileIncludeEr
       "subpath-invalid",
     ]),
     remediation: Schema.String,
+    path: Schema.optional(ValidationIssuePath).annotate({
+      description: "The failing include entry, as a path into the document that declares it.",
+    }),
+    file: Schema.optional(Schema.String).annotate({
+      description: "The document that declares the failing include entry.",
+    }),
+    layer: Schema.optional(LandofileLayer).annotate({
+      description: "The Landofile layer whose include resolution reached the failing entry.",
+    }),
   },
 ) {}

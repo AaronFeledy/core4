@@ -1,18 +1,39 @@
 import { describe, expect, test } from "bun:test";
 import { ServiceStartError } from "@lando/sdk/errors";
-import { type AppPlan, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import type { ApplyOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, DateTime, Effect, Exit } from "effect";
 import {
   applyGlobalServiceGroups,
   globalServiceGroupError,
 } from "../../src/operations/global-service-groups.ts";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../../src/providers/managed.ts";
+
+const globalPlan: AppPlan = {
+  id: AppId.make("global"),
+  name: "global",
+  slug: "global",
+  root: AbsolutePath.make("/"),
+  provider: ProviderId.make("lando"),
+  services: {},
+  routes: [],
+  networks: [],
+  stores: [],
+  fileSync: [],
+  metadata: { resolvedAt: DateTime.makeUnsafe("1970-01-01T00:00:00Z"), source: "test", runtime: 4 },
+  extensions: {},
+};
 
 const service = (name: string, dependencies: ReadonlyArray<string> = []): ServicePlan => ({
   type: "test",
-  provider: MANAGED_PROVIDER_SELECT_PLAN.provider,
+  provider: globalPlan.provider,
   primary: true,
   environment: {},
   mounts: [],
@@ -20,7 +41,7 @@ const service = (name: string, dependencies: ReadonlyArray<string> = []): Servic
   endpoints: [],
   routes: [],
   hostAliases: [],
-  metadata: MANAGED_PROVIDER_SELECT_PLAN.metadata,
+  metadata: globalPlan.metadata,
   extensions: {},
   name: ServiceName.make(name),
   artifact: { kind: "ref", ref: `unbuilt:${name}` },
@@ -31,7 +52,7 @@ const service = (name: string, dependencies: ReadonlyArray<string> = []): Servic
   })),
 });
 const planWith = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
-  ...MANAGED_PROVIDER_SELECT_PLAN,
+  ...globalPlan,
   services: Object.fromEntries(services.map((service) => [service.name, service])),
 });
 const build = (plan: AppPlan) =>

@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid deliberate out-of-range scanner.retries for router-and-scanner guide
 name: router-and-scanner-invalid
 services:
   app:

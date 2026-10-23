@@ -8,7 +8,7 @@ import {
   ServiceNotReadyError,
   ServiceStartError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, FileSyncSessionRef } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, FileSyncSessionRef } from "@lando/sdk/schema";
 import {
   BuildOrchestrator,
   ProcessRunner,
@@ -29,9 +29,24 @@ import * as worker from "../../src/subsystems/host-proxy/worker.ts";
 import * as relayWorker from "../../src/subsystems/ssh-agent/detached-worker.ts";
 import * as sshDiscovery from "../../src/subsystems/ssh-agent/host-agent-discovery.ts";
 import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
+import { stubContainerHelper } from "../../src/testing/container-helper.ts";
 import { failureOf } from "../subsystems/healthcheck/support.ts";
 import { acceleratedPlan } from "./accelerated-start-recovery-support.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
+
+const routedPlan: AppPlan = {
+  ...plan,
+  routes: [
+    {
+      hostname: "web.test-start.lndo.site",
+      priority: 2,
+      scheme: "https",
+      service: web.name,
+      endpoint: 3000,
+      backend: { service: web.name, protocol: "http", port: 3000 },
+    },
+  ],
+};
 
 const phases = ["apply", "dependency-gate", "app-build", "routes", "gpg-home", "readiness"] as const;
 for (const phase of phases) {
@@ -48,6 +63,7 @@ for (const phase of phases) {
       };
       const planned = {
         ...acceleratedPlan,
+        routes: routedPlan.routes,
         extensions,
         services: Object.fromEntries(
           Object.entries(acceleratedPlan.services).map(([name, service]) => [
@@ -160,8 +176,8 @@ for (const phase of phases) {
       const gpgSource = spyOn(gpgDiscovery, "discoverHostGpgAgent").mockReturnValue(
         Effect.succeed({ _tag: "unix", path: "/gpg.sock", source: "explicit" }),
       );
-      const shim = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(
-        Effect.succeed("/shim"),
+      const shim = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+        Effect.succeed(stubContainerHelper("/shim")),
       );
       const hostStart = spyOn(worker, "startDetachedHostProxyWorker").mockImplementation((options) => {
         const session: HostProxyRunLandoSession = {
@@ -279,6 +295,7 @@ test.each(["restart", "rebuild"] as const)(
     let applied = false;
     let cleanupAfterApply = 0;
     const harness = makeHarness({
+      plannedApp: routedPlan,
       onApply: () => {
         applied = true;
       },
@@ -300,7 +317,11 @@ test.each(["restart", "rebuild"] as const)(
           exitCode: 17,
         }),
     });
-    const target = { plan, root: plan.root, app: { kind: "user", id: plan.id, root: plan.root } as const };
+    const target = {
+      plan: routedPlan,
+      root: plan.root,
+      app: { kind: "user", id: plan.id, root: plan.root } as const,
+    };
     const effect = operation === "restart" ? restartApp({}, target) : rebuildApp({}, target);
     const exit = await Effect.runPromiseExit(effect.pipe(Effect.provide(harness.layer)));
     expect(failureOf(exit)).toMatchObject({ _tag: "ServiceNotReadyError", service: String(web.name) });

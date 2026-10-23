@@ -12,6 +12,7 @@ import { startDetachedHostProxyWorker } from "../../src/subsystems/host-proxy/de
 import type { HostProxyWorkerSpawner } from "../../src/subsystems/host-proxy/worker-process.ts";
 import { readWorkerRecord, workerStatePath } from "../../src/subsystems/host-proxy/worker-state.ts";
 import * as worker from "../../src/subsystems/host-proxy/worker.ts";
+import { stubContainerHelper } from "../../src/testing/container-helper.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 const ensureWorker = startDetachedHostProxyWorker;
 
@@ -34,7 +35,9 @@ test("selected rebuild overlays the running host-proxy session and requests adop
       applied.push(value);
     },
   });
-  const prepare = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(Effect.succeed("/shim"));
+  const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+    Effect.succeed(stubContainerHelper("/shim")),
+  );
   const ensure = spyOn(worker, "startDetachedHostProxyWorker").mockReturnValue(
     Effect.succeed({
       appId: selected.id,
@@ -171,6 +174,7 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
       servers.push(server);
       return {
         pid,
+        logPath: join(paths.logsDir, "host-proxy-worker.log"),
         argv: spec.argv,
         writeStdin: async (value) => {
           configDigest = Schema.decodeUnknownSync(Schema.Struct({ configDigest: Schema.String }))(
@@ -205,7 +209,9 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
       entryPath: undefined,
       bunSourceEntryPath: "/fixture/worker.ts",
     });
-    const prepare = spyOn(composition, "prepareHostProxyShimArtifact").mockReturnValue(Effect.succeed(shim));
+    const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+      Effect.succeed(stubContainerHelper(shim)),
+    );
     const ensure = spyOn(worker, "startDetachedHostProxyWorker").mockImplementation((options) =>
       ensureWorker({ ...options, spawnWorker }),
     );
@@ -256,6 +262,7 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
             plan: selected,
             paths: { ...paths.roots, platform: paths.platform },
             shimArtifactPath: shim,
+            shimDigest: stubContainerHelper(shim).digest,
             shimTarget: { os: "linux", arch: "x64" },
             privateFileAccess: access,
             spawnWorker,

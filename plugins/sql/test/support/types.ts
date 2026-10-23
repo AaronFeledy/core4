@@ -1,6 +1,8 @@
 import type {
+  AppIdentity,
   DataTransferSpec,
   SnapshotFilter,
+  SnapshotHandle,
   SnapshotMetadata,
   SnapshotRestoreOptions,
   VolumeRef,
@@ -38,9 +40,11 @@ export type RecordedExec = {
   readonly env?: Readonly<Record<string, string>>;
 };
 export type RecordedSnapshot = {
+  readonly owner: AppIdentity;
   readonly store: string;
   readonly format?: string;
   readonly label?: string;
+  readonly repoGroupKey?: string;
   readonly metadata?: SnapshotMetadata;
 };
 export type SqlLifecycleStep = "lock" | "snapshot" | "stop" | "restore" | "start" | "resume" | "suspend";
@@ -51,6 +55,7 @@ export type SqlTestHarness = {
   readonly snapshots: () => ReadonlyArray<RecordedSnapshot>;
   readonly restores: () => ReadonlyArray<{
     readonly id: string;
+    readonly handle: SnapshotHandle;
     readonly store: VolumeRef;
     readonly opts?: SnapshotRestoreOptions;
   }>;

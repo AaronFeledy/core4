@@ -33,6 +33,7 @@ import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
+import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
@@ -179,6 +180,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
   managed?: StartManagedScope,
 ): Effect.fn.Return<RebuildAppResult, RebuildAppError, RebuildAppServices> {
   const plannedTarget = target ?? (yield* resolveDesiredAppTarget);
+  yield* ensureAppPlacement(plannedTarget.app, plannedTarget.plan.provider);
   const registry = yield* RuntimeProviderRegistry;
   const resolvedTarget = yield* resolveMysqlVolumeTarget(plannedTarget, registry);
   const plan = resolvedTarget.plan;
