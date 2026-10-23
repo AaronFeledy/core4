@@ -24,11 +24,17 @@ lando shell --service appserver
 
 ## Keep shell and client history across rebuilds
 
-Interactive `lando shell --service` and TTY `lando exec` sessions write history into one app-scoped volume mounted at `/run/lando/history`. Files are flat per service and user: `appserver.default.bash_history` when the service has no planned user, `db.mysql.mysql_history`, plus `psql`, `redis`, `sqlite`, `node`, and `python` client files named the same way. Python honors `PYTHON_HISTORY` only on 3.13 and newer.
+Lando provides a shared history volume for interactive sessions in mysql, mariadb, postgres, redis, php, node, and python services by default.
 
-History needs a shell that writes `HISTFILE` (for example bash). `sh`-only images still start `sh -l`. Dash on Debian does not write `HISTFILE`.
+Treat container history as sensitive data: shells and database clients can save passwords in it. Concurrent sessions for the same service, user, and client share a file and can overwrite one another's history.
 
-This is on by default for mysql, mariadb, postgres, redis, php, node, and python services. Opt one service out, opt a non-default type in, or turn the whole app off:
+Rebuild an existing app to add the mount, then use `lando info` to check the history volume and each service's enabled state. `lando doctor` checks whether the volume exists.
+
+The shell or client must support its history-file variable. Bash uses `HISTFILE`, but Dash on Debian does not write it. The default service shell is `sh -l`; enabling the history volume does not change that shell. Python uses `PYTHON_HISTORY` only in version 3.13 and newer.
+
+### Choose which services keep history
+
+Set `history: false` on a service to opt out, or `history: true` to opt in a service type that is not enabled by default. For example, in your Landofile:
 
 ```yaml
 services:
@@ -40,17 +46,24 @@ services:
     history: true
 ```
 
+To disable Lando's container-history volume globally, add this to `~/.lando/config.yml`:
+
 ```yaml
-# ~/.lando/config.yml
 history:
   enabled: false
 ```
 
-Plain `lando destroy` keeps the history volume. `lando destroy --volumes` or `--purge` removes it.
+Rebuild after changing service or global history settings so the running containers use the updated mount configuration.
 
-Treat those files as secrets. `psql` and bash history can record passwords. Concurrent sessions are last-writer-wins; two shells on the same service can clobber each other.
+For one service-shell session, use `lando shell --service appserver --no-history`, replacing `appserver` with your service name. This skips Lando's history-variable injection. It does not unset variables you configured or disable the shell's own history behavior.
 
-History env is injected at exec time, and only when the running container already has the `/run/lando/history` mount. Existing apps pick it up on the next rebuild. Non-TTY `lando exec` does not write history. `lando shell --service --no-history` skips injection. A service `environment` (or env_file) value for a histfile variable wins over Lando's default. `lando info` shows the history volume and per-service enabled/disabled state. `lando doctor` reports whether that volume is present.
+### Find and retain history files
+
+The volume mounts at `/run/lando/history`. Files are named `<service>.<user>.<client>_history`, such as `appserver.default.bash_history` or `db.mysql.mysql_history`. The user token is `default` when no exec user or planned service user is set. The same pattern applies to psql, Redis, SQLite, Node, and Python clients.
+
+Lando sets the history-file variables only for TTY sessions whose running container already has this mount. Non-TTY `lando exec` sessions receive no history variables from Lando. Values from service `environment`, `env_file`, or explicit command environment take precedence over Lando's defaults.
+
+Plain `lando destroy` keeps the history volume. **`lando destroy --volumes` and `lando destroy --purge` delete it.** Lando excludes this volume from snapshots and data exports.
 
 ## Forward agent-context env
 
