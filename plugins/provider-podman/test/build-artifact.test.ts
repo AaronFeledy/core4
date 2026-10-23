@@ -143,5 +143,5 @@ test("provider-podman pullArtifact failures report providerId podman", async () 
   );
 
   expect(error).toBeInstanceOf(ProviderUnavailableError);
-  expect(error.providerId).toBe("podman");
+  expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
 });

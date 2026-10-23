@@ -55,6 +55,7 @@ const service: ServicePlan = {
 };
 
 const basePlan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Overlay App",
   slug: "overlay-app",
@@ -79,7 +80,7 @@ const overlaidPlan = (): AppPlan => {
     ...ssh,
     services: Object.fromEntries(
       Object.values(ssh.services).map((planned) => {
-        const environment: Record<string, string> = { ...planned.environment };
+        const environment: Record<string, ServicePlan["environment"][string]> = { ...planned.environment };
         const mounts = [...planned.mounts];
         const extensions = { ...planned.extensions };
         hostProxyRunLandoFeature({
