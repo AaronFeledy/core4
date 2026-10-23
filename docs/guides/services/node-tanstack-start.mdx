@@ -11,6 +11,8 @@ Run a local TanStack Start app that reads Postgres rows through a server functio
 
 You need Lando 4 with a ready provider and network access to download packages. The default provider is `lando` (managed Podman). You don't need Node or Postgres installed on your host.
 
+If you use Docker with a WSL 2 backend, keep this project in the WSL distribution's Linux filesystem, such as `~/projects/tanstack-start-demo`, rather than `/mnt/c/...`. Run Lando from WSL and edit through a WSL-connected editor. Windows-side edits can miss Vite's file-change notifications, leaving the page unchanged even when its connection works. See [Vite's WSL file-watching guidance](https://vite.dev/config/server-options.html#server-watch).
+
 Use a new directory and a disposable database. The scaffold command overwrites matching files, and the schema commands change the database. This is a local development setup, not a production deployment.
 
 ## Start Node and Postgres
