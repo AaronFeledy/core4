@@ -29,9 +29,10 @@
     "@astrojs/starlight": "0.41.7",
     "@lando/core": "workspace:*",
     "@lando/sdk": "workspace:*",
-    "astro": "7.2.8",
+    "astro": "7.3.3",
     "astro-auto-import": "0.5.2",
     "effect": "catalog:",
+    "htmlparser2": "12.0.0",
     "linkinator": "8.1.0",
     "typescript": "^5.9.0"
   }
