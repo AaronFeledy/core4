@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { ScratchAppError, ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
 import type {
+  AppPlacementError,
   LandofileVersionConstraintError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -153,6 +154,7 @@ export const ScratchLogsResultSchema = Schema.Struct({
 export type ScratchListFormat = "json" | "table";
 
 type ScratchStartError =
+  | AppPlacementError
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | ScratchAppError

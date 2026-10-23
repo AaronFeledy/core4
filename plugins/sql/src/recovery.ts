@@ -69,6 +69,9 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
             input.deps.snapshot(context.volume, {
               format: input.format ?? "tar.gz",
               ...(input.label === undefined ? {} : { label: input.label }),
+              ...(context.owner.repoGroupKey === undefined
+                ? {}
+                : { repoGroupKey: context.owner.repoGroupKey }),
               metadata: { ...context.metadata, recoveryReason: input.reason },
             }),
           ).pipe(Effect.exit);
@@ -100,9 +103,8 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
             filter: {
               app: context.volume.app,
               store: context.volume.store,
-              sourceRoot: context.metadata.sourceRoot,
+              ownerKey: context.owner.ownerKey,
               service: context.metadata.service,
-              ...(context.metadata.ownerKey === undefined ? {} : { ownerKey: context.metadata.ownerKey }),
             },
             recovery: true,
             keepLatest: DEFAULT_SNAPSHOT_KEEP_LATEST,

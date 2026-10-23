@@ -1,9 +1,13 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { type AppPlan, LANDO_SHARED_CROSS_APP_NETWORK, landoSharedNetworkName } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  LANDO_SHARED_CROSS_APP_NETWORK,
+  landoSharedNetworkName,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "./labels.ts";
-import { planVolumeOwnership } from "./volume-ownership.ts";
 
 const Labels = Schema.Record(Schema.String, Schema.String);
 const Observation = Schema.Struct({
@@ -32,12 +36,12 @@ export const privateNetworkLabels = (resource: {
 
 export const containerOwnershipLabels = (plan: AppPlan, service: string) => ({
   [APP_LABEL]: plan.id,
-  [APP_ROOT_LABEL]: planVolumeOwnership(plan).appRoot,
+  [APP_ROOT_LABEL]: planAppIdentity(plan).appRoot,
   [SERVICE_LABEL]: service,
 });
 
 export const networkOwnershipLabels = (plan: AppPlan) =>
-  privateNetworkLabels({ ...planVolumeOwnership(plan), appId: plan.id, providerId: plan.provider });
+  privateNetworkLabels({ ...planAppIdentity(plan), appId: plan.id, providerId: plan.provider });
 
 /** Legacy labels require separate exact-name proof because native lookup also accepts ID prefixes. */
 export const networkLabelsDecision = (

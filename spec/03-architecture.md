@@ -114,6 +114,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `ScratchAppService` | Scoped scratch app acquisition, lifecycle, registry, and reap (§21) |
 | `Telemetry` | Non-blocking usage telemetry (§2.4) |
 | `RedactionService` | Canonical secret and PII masking (§3.7); never plugin-replaceable |
+| `AppOutputRedaction` | Plugin-facing app-output preparation backed by the engine's shared registration step; reads current provider and trusted worker credentials, never resolves or persists secret-store values (§3.7) |
 
 The replaceability and default Layers for all pluggable tags remain canonical in §4.2. Hosts enumerating runtime services SHOULD combine §3.4 and §4.2.
 
@@ -129,7 +130,7 @@ Events are typed, schema-validated, and drawn from a closed registry. Plugin sub
 |---|---|
 | Lando | `pre-bootstrap-<level>`, `post-bootstrap-<level>`, `post-bootstrap`, `ready`, `pre-setup`, `post-setup`, `before-exit` |
 | App | `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
-| Provider | `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `pre-provider-logs`, `post-provider-logs` |
+| Provider | `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `pre-provider-logs`, `post-provider-logs`, `image-pull-progress` |
 | Process / shell / network | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec`, `pre-bun-self-exec`, `post-bun-self-exec`, `pre-http-call`, `post-http-call`, `pre-download`, `download-progress`, `post-download` |
 | File sync | `pre-file-sync-create`, `post-file-sync-create`, `pre-file-sync-pause`, `post-file-sync-pause`, `pre-file-sync-resume`, `post-file-sync-resume`, `pre-file-sync-terminate`, `post-file-sync-terminate`, `file-sync-conflict-detected`, `file-sync-progress` |
 | Host proxy | `pre-host-proxy-call`, `post-host-proxy-call` |
@@ -147,6 +148,8 @@ Events are typed, schema-validated, and drawn from a closed registry. Plugin sub
 | Config refresh | `pre-config-refresh`, `post-config-refresh`, `config-source-drift` |
 | Init source | `pre-init-source-auth`, `post-init-source-auth`, `pre-init-source-acquire`, `post-init-source-acquire` |
 | Cross-cutting | `deprecation-used` |
+
+`pre-destroy` and `post-destroy` bracket one user-app destroy invocation. Each recorded app identity the teardown addresses (applied plan, orphan groups, ownership inventory, purged snapshots) gets one pair, and a teardown that finds nothing publishes neither. `evidence` names the primary resolution basis: `applied` (recorded applied plan), `retained` (an unfinished accelerated start, §10.6.3), `orphans`, `inventory` (ownership hints alone), or `snapshots` (`--purge` with only catalogued snapshots). Read-only resolution and validation run before the bracket. `pre-destroy` fires before any destructive step, including retained-writer quiescence. `post-destroy` fires only after every step succeeds, including inventory cleanup, journal completion, cache cleanup, and the `--root` follow-up orphan sweep, and carries the invocation's aggregate `outcome` (`destroyed` or `unchanged`). A failure after `pre-destroy` publishes no `post-destroy`. Authored Landofile and `hostEvents` destroy steps run only for `evidence: applied` (§8.5.7); a resumed file-sync disposal skips the `pre-destroy` steps. Other evidence publishes the bus events without authored steps, because only a recorded applied plan gives them a trustworthy execution topology; retained attempts and orphans may still have running containers.
 
 Remote lifecycle publishers MUST be core orchestration wrappers, including dataset, tunnel, setup, and operation wrappers (§10.12); plugin contributions do not gain arbitrary publish authority. Payloads MUST retain nonsecret target identity, partial-completion and cleanup outcomes, and tether status where applicable, but MUST NOT carry secret values, authorization codes, or live credential-bearing endpoints. Required post-processing failures MUST remain failed outcomes with applied-data receipts, not synthetic rollback events.
 
@@ -169,7 +172,7 @@ Both shells MUST provide the generated layer for the resolved level, run with sc
 
 Redaction is one non-replaceable security invariant shared by logs, events, runners, network and data movement, managed files, build and doctor output, telemetry, config translation, caches, and executable-guide transcripts.
 
-1. The value layer masks known resolved secrets, registry tokens, proxy credentials, and caller-supplied tokens by literal longest-first match. Before a log line's truncation marker, the string layer also masks a trailing proper prefix of a known value (§6.14.5). The string and payload layers MUST draw on the same values and skip values rejected by `isUsableExactRedactionValue`.
+1. The value layer masks known resolved secrets, registry tokens, proxy credentials, and caller-supplied tokens by literal longest-first match, including URL-encoded, JSON-escaped, and UTF-8 base64 forms (standard and base64url, with and without padding) of each known value. Before a log line's truncation marker, the string layer also masks a trailing proper prefix of a known value (§6.14.5). The string and payload layers MUST draw on the same values and skip values rejected by `isUsableExactRedactionValue`; rejected encoded variants are dropped, never treated as authoritative suppressors.
 2. The pattern layer then masks the canonical secret classes (`secretAssignment`, `urlUserinfo`, `bearerToken`, `signedQueryParam`, `secretKeyedField`) and, where the selected profile requires it, the normalization classes `url`, `email`, `uuid`, `hostname`, `posixPath`, `windowsPath`, `uncPath`, `homeAlias`, `port`, `containerId`, `digest`, `highEntropyToken`, `user`, `host`, and `root`.
 
 | Profile | Contract |
@@ -244,7 +247,7 @@ A cold `app:start` follows this canonical order; optional global and build detai
 7. `cli-app:start-init`
 8. `pre-init`, `post-init`
 9. `pre-start`, whose body nests, in order: the global bracket `pre-global-start` … `post-global-start` (with an optional nested global `pre-build` … `post-build`) whenever `AppFeature.requires.globalServices` yields a non-empty set, then, in SSH sidecar mode and only when the sidecar's agent does not answer, the best-effort sidecar global bracket (§20.6.3), then the user-app build bracket `pre-build`, ordered artifact then app `pre-build-phase`/step events/`post-build-phase`, `post-build`
-10. Readiness barrier (running-state check and healthchecks; §6.7), then `post-start` subscribers and app checks (§10.5.2), `ready-app`
+10. Readiness barrier (running-state check and healthchecks; §6.7), then `post-start` subscribers and app checks (§10.5.2). `post-start` after the barrier is the whole-app-ready hook; there is no separate `ready-app` event
 11. exactly one of `cli-app:start-run` or `cli-app:start-error`
 12. `before-exit`
 

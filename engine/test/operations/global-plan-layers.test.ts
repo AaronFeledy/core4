@@ -30,6 +30,7 @@ const withGlobalFiles = async <A>(
   };
   const globalApp = GlobalAppService.of({
     id: "global",
+    providerId: Effect.succeed(ProviderId.make("lando")),
     root: Effect.succeed(paths.root),
     paths: Effect.succeed(paths),
     ensureRoot: Effect.void,
@@ -43,10 +44,13 @@ const withGlobalFiles = async <A>(
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: (plan) => {
-          expect(plan).toMatchObject({ provider: "lando" });
+          expect(typeof plan === "string" ? plan : plan?.provider).toBe(ProviderId.make("lando"));
           return Effect.succeed(TestRuntimeProvider);
         },
       }),

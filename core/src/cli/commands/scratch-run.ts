@@ -1,6 +1,7 @@
 import { Effect, Option, Schema } from "effect";
 
 import {
+  type AppPlacementError,
   type LandofileVersionConstraintError,
   ScratchAppError,
   type ScratchAppNotFoundError,
@@ -12,6 +13,7 @@ import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type ConfigService,
   type FileSystem,
+  type ProviderError,
   RuntimeProviderRegistry,
   type ScratchAppService,
 } from "@lando/sdk/services";
@@ -65,6 +67,8 @@ export const ScratchRunResultSchema = Schema.Struct({
 });
 
 export type ScratchRunError =
+  | ProviderError
+  | AppPlacementError
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | ScratchAppError

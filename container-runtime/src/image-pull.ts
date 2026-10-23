@@ -247,7 +247,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
         message: "Container engine API returned malformed JSON.",
         details: redactResponseDetails(response),
       });
-      const digest = inspect.decodeDigest(decoded);
+      const digest = inspect.decodeDigest(decoded, reference);
       return { ref: reference, ...(digest === undefined ? {} : { digest }) };
     }
     if (response.status !== 404) {
@@ -369,6 +369,6 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
     message: "Container engine API returned malformed JSON.",
     details: redactResponseDetails(response),
   });
-  const digest = inspect.decodeDigest(decoded);
+  const digest = inspect.decodeDigest(decoded, reference);
   return { ref: reference, ...(digest === undefined ? {} : { digest }) };
 });

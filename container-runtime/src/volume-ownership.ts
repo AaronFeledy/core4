@@ -19,7 +19,7 @@
  * root the owner label records, `appIdentityKey("owner", appRoot)` — the
  * derivation the planner uses to stamp `AppPlan.identity`. Both labels are
  * emitted together by {@link volumeOwnershipLabels} and every reader resolves
- * ownership through {@link planVolumeOwnership}, so the pair cannot drift.
+ * ownership through {@link planAppIdentity}, so the pair cannot drift.
  *
  * A plan that carries no `identity` is migrated here, at read time, from
  * `plan.root`: the planner assigns `root` from `identity.appRoot`, so the
@@ -34,7 +34,7 @@
  * either form. The labels are not collapsed into one, so nothing here needs a
  * migration path for volumes an earlier build created.
  */
-import { type AppIdentity, type AppPlan, appIdentityKey } from "@lando/sdk/schema";
+import { type AppPlan, planAppIdentity } from "@lando/sdk/schema";
 
 import {
   type VolumeFilterMap,
@@ -50,20 +50,12 @@ export const VOLUME_OWNER_LABEL = "dev.lando.volume-owner";
 /** Ownership-complete selection value; the only label a prune filter may select on. */
 export const VOLUME_SELECTOR_LABEL = "dev.lando.volume-selector";
 
-/**
- * The ownership identity behind both labels. A planned plan answers with the
- * identity the planner stamped; a plan that lost it is migrated from its root
- * through the same derivation.
- */
-export const planVolumeOwnership = (plan: Pick<AppPlan, "root" | "identity">): AppIdentity =>
-  plan.identity ?? { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) };
-
 /** The ownership label pair for one store; neither label is ever written without the other. */
 export const volumeOwnershipLabels = (
   plan: Pick<AppPlan, "id" | "provider" | "root" | "identity">,
   store: AppPlan["stores"][number],
 ): Readonly<Record<string, string>> => {
-  const ownership = planVolumeOwnership(plan);
+  const ownership = planAppIdentity(plan);
   return {
     [VOLUME_OWNER_LABEL]: ownership.appRoot,
     [VOLUME_SELECTOR_LABEL]: volumeSelectorValue({
@@ -82,6 +74,6 @@ export const planVolumeFilters = (
 ): VolumeFilterMap =>
   buildLandoVolumeFilters(plan.id, {
     providerId: plan.provider,
-    ownerKey: planVolumeOwnership(plan).ownerKey,
+    ownerKey: planAppIdentity(plan).ownerKey,
     volumeClasses,
   });

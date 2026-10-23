@@ -1,13 +1,17 @@
 import { type RootOverrides, makeLandoPaths } from "@lando/paths";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
-import { SshAgentTransportError } from "@lando/sdk/errors";
+import { SshAgentTransportError, causeMessage } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Ref, Schema } from "effect";
 import { hostProxyWorkerEntry } from "../../composition.ts";
+import { DetachedWorkerLogError } from "../detached-worker/log.ts";
 import {
+  DetachedWorkerExitedBeforeReadyError,
   type DetachedWorkerProcess,
   type DetachedWorkerSpawnSpec,
+  DetachedWorkerStartupError,
   spawnDetachedWorker,
 } from "../detached-worker/process.ts";
 import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
@@ -43,7 +47,9 @@ export interface DetachedAgentRelayWorkerOptions extends TerminateAgentRelayWork
   readonly socketName: string;
   readonly paths?: RootOverrides;
   readonly privateFileAccess: PrivateFileAccess;
-  readonly spawnWorker?: (spec: DetachedWorkerSpawnSpec) => DetachedWorkerProcess<AgentRelayWorkerReady>;
+  readonly spawnWorker?: (
+    spec: DetachedWorkerSpawnSpec,
+  ) => DetachedWorkerProcess<AgentRelayWorkerReady> | Promise<DetachedWorkerProcess<AgentRelayWorkerReady>>;
   /** Takes ownership in the same uninterruptible step that keeps the worker. */
   readonly publish?: (session: AgentRelaySession) => Effect.Effect<void>;
 }
@@ -52,9 +58,18 @@ const workerError = (cause: unknown) =>
   cause instanceof SshAgentTransportError
     ? cause
     : new SshAgentTransportError({
-        message: "Unable to start the SSH agent relay worker.",
+        ...(cause instanceof DetachedWorkerExitedBeforeReadyError ||
+        cause instanceof DetachedWorkerStartupError ||
+        cause instanceof DetachedWorkerLogError
+          ? {
+              message: causeMessage(cause),
+              remediation: `Inspect ${cause.logPath} for the worker crash.`,
+            }
+          : {
+              message: "Unable to start the SSH agent relay worker.",
+              remediation: "Inspect the agent-relay worker log and run lando doctor before retrying.",
+            }),
         stage: "worker",
-        remediation: "Inspect the agent-relay worker log and run lando doctor before retrying.",
       });
 
 export const startDetachedAgentRelayWorker = (
@@ -86,16 +101,19 @@ export const startDetachedAgentRelayWorker = (
       const keep = yield* Ref.make(false);
       yield* replaceExistingAgentRelayWorker(options.app, options);
       return yield* Effect.acquireUseRelease(
-        Effect.try({
-          try: () => {
+        Effect.tryPromise({
+          try: async () => {
             const argv = hostProxyWorkerArgv({ ...entry, appId: options.app.id }).map((arg) =>
               arg === HOST_PROXY_WORKER_COMMAND ? AGENT_RELAY_WORKER_COMMAND : arg,
             );
-            const spec = { argv, logsDir: makeLandoPaths(options.paths).logsDir, env: hostProxyWorkerEnv() };
-            return (
-              options.spawnWorker?.(spec) ??
-              spawnDetachedWorker(spec, { readySchema: AgentRelayWorkerReady, logLabel: "agent-relay" })
-            );
+            const spec = {
+              argv,
+              logsDir: makeLandoPaths(options.paths).logsDir,
+              env: hostProxyWorkerEnv(),
+              privateFileAccess: options.privateFileAccess,
+            };
+            return await (options.spawnWorker?.(spec) ??
+              spawnDetachedWorker(spec, { readySchema: AgentRelayWorkerReady, logLabel: "agent-relay" }));
           },
           catch: workerError,
         }),
@@ -108,7 +126,16 @@ export const startDetachedAgentRelayWorker = (
                 );
                 return await worker.readReady();
               },
-              catch: workerError,
+              catch: (cause) =>
+                workerError(
+                  cause instanceof DetachedWorkerExitedBeforeReadyError ||
+                    cause instanceof DetachedWorkerStartupError
+                    ? cause
+                    : new DetachedWorkerStartupError(
+                        worker.logPath,
+                        "Detached agent-relay worker startup failed.",
+                      ),
+                ),
             });
             yield* registerAgentRelayControlToken(ready.controlToken);
             if (
@@ -121,7 +148,12 @@ export const startDetachedAgentRelayWorker = (
               ready.configDigest !== input.configDigest
             ) {
               return yield* Effect.fail(
-                workerError("Worker readiness does not match the requested app session."),
+                workerError(
+                  new DetachedWorkerStartupError(
+                    worker.logPath,
+                    "Worker readiness does not match the requested app session.",
+                  ),
+                ),
               );
             }
             let closePromise: Promise<void> | undefined;
@@ -166,7 +198,17 @@ export const startDetachedAgentRelayWorker = (
               ),
             );
             return session;
-          }),
+          }).pipe(
+            Effect.mapError((cause) =>
+              cause instanceof SshAgentTransportError
+                ? cause
+                : new SshAgentTransportError({
+                    message: createStandaloneRedactor("secrets").redactString(causeMessage(cause)),
+                    stage: "worker",
+                    remediation: `Inspect ${worker.logPath} for the worker crash.`,
+                  }),
+            ),
+          ),
         (worker) =>
           Ref.get(keep).pipe(
             Effect.flatMap((retained) => (retained ? Effect.void : Effect.promise(() => worker.terminate()))),

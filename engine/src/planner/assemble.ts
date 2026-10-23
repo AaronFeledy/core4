@@ -3,7 +3,12 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
-import { CapabilityError, LandofileValidationError, causeMessage } from "@lando/sdk/errors";
+import {
+  CapabilityError,
+  LandofileValidationError,
+  RouteProviderMismatchError,
+  causeMessage,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -67,7 +72,7 @@ import {
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
 import { loadComposeConfigFiles } from "./config-files.ts";
-import { attachEffectiveEvents, compileEffectiveEvents } from "./effective-events.ts";
+import { compileEffectiveEvents, withEventsPlan } from "./effective-events.ts";
 import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { resolveKnownEventSet } from "./event-set.ts";
@@ -112,6 +117,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     globalConfig,
     appDefaults,
     provider,
+    hostProvider,
     manifests,
     topLevelEnvFiles,
     serviceCredsScope,
@@ -336,6 +342,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
   const appFeatureEnv = snapshotAppFeatureEnv(appFeatures);
   const cacheKey = deriveAppPlanCacheKey({
+    hostProvider,
     appRoot,
     landofile: { ...cacheLandofile, provider },
     providerCapabilities,
@@ -383,13 +390,10 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
-      return attachServiceCredsScope(
-        attachEffectiveEvents(
-          attachEffectiveTooling(cached, effectiveTooling),
-          effectiveEventsFor(planServices(cached.services)),
-        ),
-        serviceCredsScope,
-      );
+      // The side tables below key on object identity, so they attach to the final plan value.
+      const cachedPlan = withEventsPlan(cached, effectiveEventsFor(planServices(cached.services)));
+      attachEffectiveTooling(cachedPlan, effectiveTooling);
+      return attachServiceCredsScope(cachedPlan, serviceCredsScope);
     }
   }
 
@@ -431,6 +435,16 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     fileSyncEngineId,
     fileSystem,
   });
+  if (routerEnabled && finalized.routes.length > 0 && provider !== hostProvider) {
+    return yield* Effect.fail(
+      new RouteProviderMismatchError({
+        message: `App provider ${provider} differs from host router provider ${hostProvider}.`,
+        providerId: provider,
+        hostProviderId: hostProvider,
+        remediation: `Run lando setup --provider=${provider} to move the global app and router there; remove provider: from the Landofile so the app follows the host provider; or set router.enabled: false and use published host ports.`,
+      }),
+    );
+  }
   if (routerEnabled && finalized.routes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
     yield* Effect.fail(
       new CapabilityError({
@@ -468,38 +482,35 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...(finalized.routes.length > 0 && routerEnabled ? ["traefik"] : []),
     ...appFeatureResult.requires.globalServices,
   ];
-  const plan = attachEffectiveEvents(
-    attachEffectiveTooling(
-      yield* decodeAppPlan(appRoot, {
-        id: appId,
-        name: appName,
-        slug: appSlug,
-        root: AbsolutePath.make(appRoot),
-        provider,
-        router: { enabled: routerEnabled },
-        services: finalized.services,
-        routes: finalized.routes,
-        networks,
-        ...(networking !== undefined ? { networking } : {}),
-        stores: finalized.stores,
-        fileSync: finalized.fileSync,
-        metadata: encodedMetadata,
-        extensions: {
-          [SSH_AGENT_PLAN_EXTENSION_KEY]: sshAgentExtension,
-          [GPG_AGENT_PLAN_EXTENSION_KEY]: { forward: gpgAgentIntent.forward },
-          ...(hostProxyExtension === undefined
-            ? {}
-            : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),
-          ...(hasComposeProjectExtension ? { compose: composeProjectExtension } : {}),
-        },
-        ...(requiredGlobalServices.length === 0
-          ? {}
-          : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
-      }).pipe(Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices))),
-      effectiveTooling,
-    ),
+  const plan = withEventsPlan(
+    yield* decodeAppPlan(appRoot, {
+      id: appId,
+      name: appName,
+      slug: appSlug,
+      root: AbsolutePath.make(appRoot),
+      provider,
+      router: { enabled: routerEnabled },
+      services: finalized.services,
+      routes: finalized.routes,
+      networks,
+      ...(networking !== undefined ? { networking } : {}),
+      stores: finalized.stores,
+      fileSync: finalized.fileSync,
+      metadata: encodedMetadata,
+      extensions: {
+        [SSH_AGENT_PLAN_EXTENSION_KEY]: sshAgentExtension,
+        [GPG_AGENT_PLAN_EXTENSION_KEY]: { forward: gpgAgentIntent.forward },
+        ...(hostProxyExtension === undefined ? {} : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),
+        ...(hasComposeProjectExtension ? { compose: composeProjectExtension } : {}),
+      },
+      ...(requiredGlobalServices.length === 0
+        ? {}
+        : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
+    }).pipe(Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices))),
     effectiveEventsFor(planServices(finalized.services)),
   );
+  // The side tables below key on object identity, so they attach to the final plan value.
+  attachEffectiveTooling(plan, effectiveTooling);
   attachServiceCredsScope(plan, serviceCredsScope);
   yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);

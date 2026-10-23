@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { AppIdentity } from "./app-plan.ts";
 import { StorageScope } from "./mounts.ts";
 import { AbsolutePath, AppId, CommandSpec, PortablePath, ServiceName } from "./primitives.ts";
 import { VolumeIdentity } from "./volume-identity.ts";
@@ -230,13 +231,6 @@ export const DataTransferProgress = Schema.Struct({
 export type DataTransferProgress = typeof DataTransferProgress.Type;
 
 export const SnapshotMetadata = Schema.Struct({
-  sourceRoot: AbsolutePath.annotate({ description: "Canonical app root that owns the snapshot." }),
-  ownerKey: Schema.optionalKey(Schema.String).annotate({
-    description: "Stable owner identity derived from the canonical app root.",
-  }),
-  repoGroupKey: Schema.optionalKey(Schema.String).annotate({
-    description: "Stable identity shared by snapshots from sibling Git worktrees.",
-  }),
   service: ServiceName.annotate({ description: "Database service captured by the snapshot." }),
   volumeInstanceId: Schema.String.annotate({
     description: "Physical source volume creation identity.",
@@ -258,8 +252,11 @@ export const SnapshotOptions = Schema.Struct({
   volumeSnapshot: Schema.optionalKey(Schema.Literals(["copy", "native"])),
   label: Schema.optionalKey(Schema.String),
   labels: Schema.optionalKey(LabelMap),
+  repoGroupKey: Schema.optionalKey(Schema.String).annotate({
+    description: "Repository grouping hint for snapshot listings; never ownership proof.",
+  }),
   metadata: Schema.optionalKey(SnapshotMetadata).annotate({
-    description: "Physical ownership and database compatibility metadata supplied by the caller.",
+    description: "Database compatibility and recovery metadata supplied by the caller.",
   }),
 });
 export type SnapshotOptions = typeof SnapshotOptions.Type;
@@ -279,6 +276,7 @@ export type SnapshotRestoreOptions = typeof SnapshotRestoreOptions.Type;
  * Handle returned by `snapshot`, enough to locate the snapshot sidecar.
  */
 export const SnapshotHandle = Schema.Struct({
+  ownerKey: Schema.String.annotate({ description: "Owner catalog containing this snapshot." }),
   id: SnapshotId,
   store: VolumeRef,
 });
@@ -288,6 +286,7 @@ export type SnapshotHandle = typeof SnapshotHandle.Type;
  * Persisted snapshot sidecar record.
  */
 export const SnapshotInfo = Schema.Struct({
+  owner: AppIdentity.annotate({ description: "Canonical snapshot owner and optional repository group." }),
   id: SnapshotId,
   store: VolumeRef,
   digest: Schema.String,
@@ -298,10 +297,16 @@ export const SnapshotInfo = Schema.Struct({
   labels: Schema.optionalKey(LabelMap),
   native: Schema.optionalKey(VolumeSnapshotRef),
   metadata: Schema.optionalKey(SnapshotMetadata).annotate({
-    description: "Physical ownership and database compatibility metadata recorded at creation.",
+    description: "Database compatibility and recovery metadata recorded at creation.",
   }),
 });
 export type SnapshotInfo = typeof SnapshotInfo.Type;
+
+export const snapshotHandle = (info: SnapshotInfo): SnapshotHandle => ({
+  ownerKey: info.owner.ownerKey,
+  id: info.id,
+  store: info.store,
+});
 
 /**
  * Match criteria for listing snapshots.
@@ -310,10 +315,9 @@ export const SnapshotFilter = Schema.Struct({
   id: Schema.optionalKey(SnapshotId),
   app: Schema.optionalKey(AppId),
   store: Schema.optionalKey(Schema.String),
-  sourceRoot: Schema.optionalKey(AbsolutePath).annotate({ description: "Canonical source app root." }),
-  ownerKey: Schema.optionalKey(Schema.String).annotate({ description: "Canonical source owner identity." }),
+  ownerKey: Schema.optionalKey(Schema.String).annotate({ description: "Match the snapshot owner's key." }),
   repoGroupKey: Schema.optionalKey(Schema.String).annotate({
-    description: "Git worktree group identity shared by eligible sources.",
+    description: "Match the snapshot owner's repository group.",
   }),
   service: Schema.optionalKey(ServiceName).annotate({
     description: "Database service captured by the snapshot.",

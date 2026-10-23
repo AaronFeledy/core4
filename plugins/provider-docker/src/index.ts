@@ -16,7 +16,7 @@ import {
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import { VOLUME_WITNESS_IMAGE, volumeCreationLabels } from "@lando/container-runtime/data-plane";
+import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
 import {
   dockerLifecycleDialect,
   dockerPullDialect,
@@ -57,6 +57,7 @@ import {
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, redactString, withApiReason } from "@lando/container-runtime/redact";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -443,10 +444,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       ctx: DOCKER_CTX,
       providerId: ProviderId.make(PROVIDER_ID),
       endpointNamespace: resolvedDockerHost,
-      prepareWitnessImage: pullImage(dockerApi, VOLUME_WITNESS_IMAGE, {
-        ctx: DOCKER_CTX,
-        dialect: dockerPullDialect,
-      }),
+      pullHelperImage: (ref) =>
+        pullImage(dockerApi, ref, {
+          ctx: DOCKER_CTX,
+          dialect: dockerPullDialect,
+          policy: "missing",
+        }),
       api: dockerApi,
       capabilities: resolvedCapabilities,
       redactDetails,
@@ -469,6 +472,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
     const resolvedOps = bindResolvedProviderOps(planState, {
       ctx: DOCKER_CTX,
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: dockerApi, ctx: DOCKER_CTX }),
       noPlanError: (_app, operation) => makeUnavailable(operation),
       service: {
         lifecycle: (plan, target, action) =>

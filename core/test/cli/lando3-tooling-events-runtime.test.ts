@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { runTooling } from "@lando/engine/operations/tooling";
-import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
+import { withProjectEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { configTranslators } from "@lando/lando3";
@@ -110,7 +110,7 @@ const run = (landofile: LandofileShape, failOn?: string) => {
     executed.push(label);
     return label === failOn ? 7 : 0;
   };
-  const plan: AppPlan = {
+  const basePlan: AppPlan = {
     id: AppId.make("brackets"),
     name: "brackets",
     slug: "brackets",
@@ -127,8 +127,8 @@ const run = (landofile: LandofileShape, failOn?: string) => {
     metadata,
     extensions: {},
   };
+  const plan = withProjectEvents(basePlan, landofile.events ?? {});
   attachEffectiveTooling(plan, landofile.tooling ?? {});
-  attachEffectiveEvents(plan, landofile.events ?? {});
   const provider = {
     ...TestRuntimeProvider,
     execStream: (target: ExecTarget, spec: CommandSpec) =>
@@ -172,6 +172,9 @@ const run = (landofile: LandofileShape, failOn?: string) => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

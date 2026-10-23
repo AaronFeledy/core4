@@ -52,6 +52,7 @@ Orphans include:
 - a cache directory with no registry entry
 - a provider resource tagged with a scratch id that is gone from the registry
 - a foreground registry entry whose owner process is gone
+- a scratch whose destroy failed partway, even if its owner is still running or it was detached
 
 Destroy a known id instead of sweeping:
 

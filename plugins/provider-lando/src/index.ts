@@ -1,7 +1,7 @@
 import { Semaphore } from "effect";
 import { type Context, Effect, Layer, Schema, Stream } from "effect";
 
-import { VOLUME_WITNESS_IMAGE } from "@lando/container-runtime/data-plane";
+import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineHttpRequest,
@@ -81,6 +81,7 @@ import {
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
 import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -765,10 +766,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         ? {}
         : {
             api: podmanApi,
-            prepareWitnessImage: runtimePullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
-              ctx: LANDO_CTX,
-              dialect: libpodPullDialect,
-            }),
+            pullHelperImage: (ref) =>
+              runtimePullImage(podmanApi, ref, {
+                ctx: LANDO_CTX,
+                dialect: libpodPullDialect,
+                policy: "missing",
+              }),
           }),
       ...(socketPath === undefined
         ? {}
@@ -915,6 +918,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       target: Parameters<typeof runtimePostServiceLifecycle>[1],
     ) => Effect.Effect<void, ProviderError> = () => Effect.void;
     const resolvedOps = bindResolvedProviderOps(planState, {
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: podmanApi, ctx: LANDO_CTX }),
       ctx: LANDO_CTX,
       noPlanError: makeNoPlanError,
       before: ensureEffect,
@@ -1217,8 +1222,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             )
         : undefined;
     const appliedPlanState = options.appliedPlanState;
-    const windowsSyncImage =
-      "docker.io/oven/bun@sha256:07235578f79ef8c6f97d94aee7938e76f5cdba5f21ae5dbfdd3d3d38058437eb";
+    const windowsSyncImage = volumeWitnessImage.ref;
     const windowsSyncTargets =
       shouldManageRuntime && family === "win32" && appliedPlanState !== undefined && podmanApi !== undefined
         ? makeWindowsSyncTargetOperations(podmanApi, appliedPlanState, (image) =>

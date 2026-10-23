@@ -107,6 +107,26 @@ const runStreamPull = async (
 };
 
 describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
+  test.each(["missing", "never", "always"] as const)(
+    "reports the requested digest among multiple RepoDigests for %s",
+    async (policy) => {
+      // Given
+      const reference = "team/helper@sha256:pinned";
+      const api: EngineHttpApi = {
+        request: () =>
+          Effect.succeed({
+            status: 200,
+            body: JSON.stringify({ RepoDigests: ["team/helper@sha256:other", reference] }),
+          }),
+        stream: () => Stream.empty,
+      };
+      // When
+      const result = await Effect.runPromise(pullImage(api, reference, { ctx: dockerCtx, dialect, policy }));
+      // Then
+      expect(result).toEqual({ ref: reference, digest: "sha256:pinned" });
+    },
+  );
+
   test.each(["missing", "never"] as const)("reuses local images for %s", async (policy) => {
     // Given
     const reference = "docker.io/library/alpine:3.20";
@@ -143,9 +163,7 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
         path: `${dialect === dockerPullDialect ? "" : "/libpod"}/images/${encodeURIComponent(reference)}/json`,
       },
     ]);
-    expect(result).toEqual(
-      dialect === dockerPullDialect ? { ref: reference, digest: "sha256:test" } : { ref: reference },
-    );
+    expect(result).toEqual({ ref: reference, digest: "sha256:test" });
     expect(events).toEqual([]);
   });
 
@@ -204,11 +222,12 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
     );
 
     // Then
-    expect(requests[0]?.method).toBe("GET");
-    expect(requests[1]).toEqual(dialect.request(reference));
-    expect(result).toEqual(
-      dialect === dockerPullDialect ? { ref: reference, digest: "sha256:test" } : { ref: reference },
-    );
+    const inspectRequest: EngineHttpRequest = {
+      method: "GET",
+      path: `${dialect === dockerPullDialect ? "" : "/libpod"}/images/${encodeURIComponent(reference)}/json`,
+    };
+    expect(requests).toEqual([inspectRequest, dialect.request(reference), inspectRequest]);
+    expect(result).toEqual({ ref: reference, digest: "sha256:test" });
   });
 
   test.each(["always", undefined] as const)("pulls before any inspect when policy is %s", async (policy) => {
@@ -232,8 +251,13 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
     );
 
     // Then
-    expect(requests[0]).toEqual(dialect.request(reference));
-    expect(requests).toHaveLength(dialect === dockerPullDialect ? 2 : 1);
+    expect(requests).toEqual([
+      dialect.request(reference),
+      {
+        method: "GET",
+        path: `${dialect === dockerPullDialect ? "" : "/libpod"}/images/${encodeURIComponent(reference)}/json`,
+      },
+    ]);
   });
 
   test("fails without pulling when local inspect returns 500", async () => {
@@ -791,10 +815,17 @@ describe("pull failure handling", () => {
     try {
       // When
       await Effect.runPromise(
-        pullImage({ stream: () => Stream.fromIterable([bytes('{"stream":"pulling"}\n')]) }, "alpine:3.20", {
-          ctx: landoCtx,
-          dialect: libpodPullDialect,
-        }),
+        pullImage(
+          {
+            stream: () => Stream.fromIterable([bytes('{"stream":"pulling"}\n')]),
+            request: () => Effect.succeed(inspectSuccess("alpine:3.20")),
+          },
+          "alpine:3.20",
+          {
+            ctx: landoCtx,
+            dialect: libpodPullDialect,
+          },
+        ),
       );
 
       // Then

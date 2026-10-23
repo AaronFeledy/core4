@@ -3,12 +3,7 @@ import { Effect } from "effect";
 
 import { AppResolveError, type NoProviderInstalledError } from "@lando/sdk/errors";
 import { type AbsolutePath, type AppPlan, type ResourceOwnership, appIdentityKey } from "@lando/sdk/schema";
-import {
-  type AppliedOrphanGroup,
-  type AppliedTeardownEvidence,
-  type ProviderError,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
+import { type AppliedOrphanGroup, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
 import { type ResolvedAppTarget, resolveDesiredAppTarget, userAppRef } from "../landofile/app-resolution.ts";
@@ -77,18 +72,7 @@ export const missingRootAppliedTarget = Effect.fnUntraced(function* (plan: AppPl
 export const resolveAppliedStateTarget = Effect.gen(function* () {
   const registry = yield* RuntimeProviderRegistry;
   const cwdIdentity = yield* resolveAppIdentity(process.cwd());
-  const resolveAppliedPlan = registry.resolveAppliedPlan;
-  if (resolveAppliedPlan === undefined) {
-    return yield* Effect.fail(
-      new AppResolveError({
-        message: "The runtime provider registry cannot inspect applied app state.",
-        reason: "not-found",
-        detail: "applied-state-capability",
-        remediation: "Use a runtime provider registry that supports applied-state recovery.",
-      }),
-    );
-  }
-  const plan = yield* resolveAppliedPlan(cwdIdentity.appRoot);
+  const plan = yield* registry.resolveAppliedPlan(cwdIdentity.appRoot);
   if (plan === undefined) return undefined;
   return yield* appliedStateTarget(plan);
 });
@@ -125,18 +109,7 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
   R | RuntimeProviderRegistry
 > {
   const registry = yield* RuntimeProviderRegistry;
-  const resolveEvidence = registry.resolveTeardownEvidence;
-  const resolveAppliedPlan = registry.resolveAppliedPlan;
-  const evidence: AppliedTeardownEvidence =
-    resolveEvidence !== undefined
-      ? yield* resolveEvidence(root)
-      : resolveAppliedPlan !== undefined
-        ? yield* resolveAppliedPlan(root).pipe(
-            Effect.map((plan) =>
-              plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
-            ),
-          )
-        : { kind: "absent" as const };
+  const evidence = yield* registry.resolveTeardownEvidence(root);
   switch (evidence.kind) {
     case "applied":
       return {

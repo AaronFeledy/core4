@@ -14,6 +14,7 @@ import type { Effect, Scope, Stream } from "effect";
 import type {
   AppIdReservedError,
   AppLockTimeoutError,
+  AppPlacementError,
   AppResolveError,
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
@@ -34,6 +35,7 @@ import type {
   LandofileEventInvocationDepthError,
   LandofileEventLifecycleReentryError,
   LandofileEventStepFailedError,
+  LandofileEventsSkippedError,
   LandofileFormConflictError,
   LandofileIncludeError,
   LandofileLockMismatchError,
@@ -87,6 +89,7 @@ import type {
   ConfigLintResult,
   DatasetKind,
   LandofileShape,
+  ProviderId,
   RemoteConfig,
   RemoteEnvironment,
   RemoteTestResult,
@@ -210,6 +213,8 @@ export interface StartAppResult {
 export type AppPlanResolutionError = UserLandofileError | ProviderSelectionError | AppPlannerError;
 
 export type StartAppError =
+  | AppPlacementError
+  | AppResolveError
   | ServiceNotReadyError
   | UserLandofileError
   | AppPlannerError
@@ -246,10 +251,21 @@ export type StartAppError =
 // biome-ignore lint/complexity/noBannedTypes: stop has no extra options beyond start today.
 export type StopAppOptions = {};
 
+/**
+ * Whether a lifecycle operation ran the Landofile's `events:` and `hostEvents` steps. `skipped`
+ * names why it could not source them: no Landofile at the applied root, a Landofile that
+ * failed to load, or one that describes another app or provider.
+ */
+export type LandofileEventsOutcome =
+  | { readonly status: "ran" }
+  | { readonly status: "skipped"; readonly reason: string };
+
 export interface StopAppResult {
   readonly app: string;
   readonly outcome?: "stopped" | "unchanged";
   readonly servicesStopped: ReadonlyArray<string>;
+  /** Present when the operation tore down an app whose Landofile steps could have run. */
+  readonly landofileEvents?: LandofileEventsOutcome;
 }
 
 export type StopAppError =
@@ -313,6 +329,7 @@ export interface RebuildAppResult {
 export type RebuildAppError = StartAppError | AppResolveError;
 
 export interface DestroyAppOptions {
+  readonly providerId?: ProviderId;
   readonly volumes?: boolean;
   readonly purgeCaches?: boolean;
   readonly purgeSnapshots?: boolean;
@@ -325,10 +342,13 @@ export interface DestroyAppResult {
   readonly servicesDestroyed: ReadonlyArray<string>;
   readonly volumesRemoved: boolean;
   readonly snapshotsRemoved: number;
+  /** Present when the operation tore down an app whose Landofile steps could have run. */
+  readonly landofileEvents?: LandofileEventsOutcome;
 }
 
 export type DestroyAppError =
   | StopAppError
+  | LandofileEventsSkippedError
   | ProxyError
   | StateStoreError
   | CacheError
@@ -386,6 +406,8 @@ export interface InfoAppResult {
 }
 
 export type InfoAppError =
+  | StateStoreError
+  | AppResolveError
   | UserLandofileError
   | AppPlannerError
   | ProviderSelectionError
@@ -469,6 +491,8 @@ export interface LogsAppOptions {
 }
 
 export type LogsAppError =
+  | StateStoreError
+  | AppResolveError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | AppPlannerError
@@ -662,6 +686,7 @@ export interface App {
 /** Resolution union for `runtime.scratch`. */
 export type ScratchAcquireError =
   | ScratchAppError
+  | AppPlacementError
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | LandofileVersionConstraintError;
