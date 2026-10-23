@@ -432,7 +432,7 @@
     },
     {
       "fixture": "docs/guides/meilisearch/fixtures/meilisearch-demo",
-      "digest": "bcc1c9b80cbdbb4548afa41e05380dce69a9095ecf92a9f691c42ee1f7242723"
+      "digest": "8d53de362d1d5a37948315af12d944a5b4f4a7956ffdfc36a1220f3a5d937924"
     },
     {
       "fixture": "docs/guides/memcached/fixtures/memcached-demo",
