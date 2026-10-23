@@ -8,7 +8,7 @@ tags: [beta, docs, service, lando, boot]
 
 # See what lando.boot adds
 
-Every `type: lando` service includes `lando.boot`. At priority 100 it adds a provider-neutral, artifact-phase scaffold to the build plan. That is an idempotent `mkdir -p` step, not a mount:
+Every `type: lando` service includes `lando.boot`, which creates the directories that Lando's environment and certificate features use. It runs `mkdir -p` during the image build at priority 100. This creates directories without mounting over files already in the image:
 
 ```text
 /etc/lando
@@ -38,4 +38,3 @@ distro exports. See [Certificates with mkcert](../subsystems/certificates-mkcert
 separate leaf certificate paths and environment contract.
 
 Raw Compose services (`type: compose`) use the l337 base and do not include `lando.boot`.
-

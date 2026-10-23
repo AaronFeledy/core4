@@ -8,13 +8,17 @@ tags: [beta, docs, plugins, authoring]
 
 # Publish a plugin
 
-Dry-run from the plugin root. That rebuilds a stale `dist/`, runs tests, lists the artifact, and does not talk to a registry.
+Use a publish dry run to check the package before release. Run it from the
+plugin root: it rebuilds a stale `dist/`, runs tests, and lists the artifact
+without contacting a registry. A live registry publish is not a supported
+how-to in this Beta.
 
 ```sh
 lando meta:plugin:publish --dry-run
 ```
 
-Dress rehearsal first. A live registry publish is not a supported how-to in this Beta.
+Confirm that the command exits successfully and lists the artifact you intend
+to release. This verifies the dry run, not a registry publication.
 
 ## Flags that work
 

@@ -1,9 +1,16 @@
 # Node + Postgres
 
-`lando init --recipe node-postgres` scaffolds a minimal Node.js server next to a Postgres database. There are no options beyond the app name.
+Create and run a minimal Node.js HTTP server with PostgreSQL. This recipe
+includes the server files and has no options beyond the app name.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe node-postgres --name=my-node-pg --yes
+cd my-node-pg
 lando start
 lando info
 ```

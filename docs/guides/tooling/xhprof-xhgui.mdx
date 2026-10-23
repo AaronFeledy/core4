@@ -7,9 +7,11 @@ tags: [beta, docs, php, tooling, profiling, xhprof, xhgui, postgres]
 
 # Profile PHP requests with XHProf and XHGui
 
-A slow page tells you something is slow, not which function. Install the XHProf extension in your PHP service, send each web request's profile to an XHGui service, and read the call graph in your browser.
+Install the XHProf extension in your PHP service, send each web request's profile to an XHGui service, and read the call graph in your browser.
 
 You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman). Run the host commands from a new app directory for this demo. In an existing app, merge the services, mount, and tooling into your Landofile rather than replacing it.
+
+Use this only for local development. Profiles can contain query parameters, selected server fields, and PHP environment values. This example uses demo database credentials and leaves XHGui's UI and upload endpoint unauthenticated. Don't expose it through a public tunnel or profile requests carrying real credentials or customer data.
 
 ## Configure PHP, XHGui, and Postgres
 
@@ -61,7 +63,7 @@ tooling:
 ```
 
 - `app` runs PHP 8.3 under Apache. The two `build.artifact` steps compile and enable XHProf when Lando builds the image, and the mount drops a PHP ini file into the image's `conf.d` directory.
-- `xhgui` runs the upstream XHGui image, which serves its UI on port 80. `appMount: false` keeps your source out of it, and `home: false` skips home persistence, which a Compose image needs unless you set `home.path`. The `ui` endpoint gives Lando an HTTP port to proxy, so the UI gets its own `*.lndo.site` URL.
+- `xhgui` runs the upstream XHGui image, which serves its UI on port 80. `appMount: false` keeps your source out of it. Set `home: false` to skip home persistence because Lando doesn't know this image's home path; otherwise, you must set `home.path`. Keep the explicit HTTP `ui` endpoint so Lando can proxy port 80 and give the UI its own `*.lndo.site` URL.
 - `profiles` is the Postgres store. XHGui creates its `results` and `watches` tables on first use. `dependsOn` holds XHGui until the Postgres healthcheck passes.
 - `composer` runs Composer inside `app`. The PHP service ships Composer, so there is nothing else to install.
 
@@ -114,7 +116,7 @@ lando exec app -- php -m
 lando composer require perftools/php-profiler
 ```
 
-Check that `xhprof` appears in the module list. Composer writes `composer.json` and `composer.lock` to your app directory; commit both so the next `lando composer install` gets the same profiler release. The `vendor` directory stays inside the `app` service, not on your host.
+Check that `xhprof` and `curl` appear in the module list. The profiler uses PHP's cURL extension to upload runs. Composer writes `composer.json` and `composer.lock` to your app directory; commit both so the next `lando composer install` gets the same profiler release. The `vendor` directory stays inside the `app` service, not on your host.
 
 ## Profile a request
 
@@ -122,11 +124,9 @@ Run `lando info` and open the `app` URL in your browser. The page prints `fib(25
 
 Open the `xhgui` URL from `lando info`. Check that the run list shows a run for `/`, then open it and check that its function table lists `fib`. Every page load adds a run, so reload a few times to compare.
 
-If no run appears, check that `xhprof` is in `lando exec app -- php -m`, that `lando exec app -- ls /app/vendor/perftools/php-profiler` lists the package, and that `lando logs -s app` shows no `xhgui:` errors.
+If no run appears, check that `xhprof` and `curl` are in `lando exec app -- php -m` and that `lando exec app -- ls /app/vendor/perftools/php-profiler` lists the package. Check `lando logs -s app` for `xhgui:` setup errors.
 
-## Keep profiles local
-
-Each profile stores the request's query string, server variables (including request headers and cookies), and the PHP environment. This XHGui has no login and accepts uploads without a token. Keep it on your machine, and don't profile requests that carry real credentials or customer data.
+The profiler suppresses upload exceptions during shutdown, so an empty app log doesn't prove that a profile was saved. Check `lando logs -s xhgui` and `lando logs -s profiles` for import or database errors. After correcting an error, reload the app page and look for a new run containing `fib`.
 
 ## Check the Lando configuration
 

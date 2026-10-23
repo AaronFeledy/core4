@@ -8,14 +8,18 @@ tags: [beta, docs, subsystems, proxy, traefik]
 
 # Use the Traefik proxy
 
-Start an app. Lando starts Traefik for you. You do not start Traefik by hand.
+From an app directory, start an app with routes and read its published URLs.
+For HTTPS, run `lando setup` first so the local certificate authority is ready.
+Lando starts Traefik when the app needs routing; do not start it by hand.
 
 ```sh
 lando start
 lando info
 ```
 
-Open the URL `lando info` prints. Hostnames look like `web.myapp.lndo.site`. Two apps never collide on the same host port because Traefik routes by hostname.
+Open the URL `lando info` prints. Hostnames look like `web.myapp.lndo.site`. Apps share the router's listener ports, and Traefik selects a route by hostname
+and path. Use distinct route identities for different backends; sharing a listener
+does not prevent hostname conflicts.
 
 The Traefik dashboard is at `traefik.lndo.site/dashboard/` over HTTP and HTTPS, and global Mailpit is at `https://mailpit.lndo.site`. Both follow global `proxy.defaultDomain`. Add the selected port when it is not 80 or 443.
 

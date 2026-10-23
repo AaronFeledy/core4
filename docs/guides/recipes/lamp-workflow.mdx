@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, lamp, php, apache, mariadb]
 
 # Run the LAMP recipe
 
+Serve a PHP page with Apache and connect it to MariaDB. Run these commands from your host terminal to create the local environment.
+
 ```sh
 lando init --recipe lamp --name=lamp-demo --yes
 cd lamp-demo
@@ -16,18 +18,6 @@ lando start
 The named init creates `lamp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, and webroot `.`. Apache serves PHP on `appserver`, and MariaDB is up after start. Drop an `index.php` in the project root, then open a URL from `lando info`.
 
 If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it. Once the app is running, `lando open --print` prints that same URL, port included.
-
-## See what the recipe writes
-
-| Piece | What you get |
-| --- | --- |
-| `appserver` | `php:8.4`, `framework: none`, port `80`, webroot `.`, Composer 2, HTTP and HTTPS routes, depends on `database` |
-| `database` | `type: mariadb:11.4` |
-| Tooling | `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
-
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead. Other init answers: `database=mysql:8.0`, `composer=2.7.7` or `composer=false`, and `webroot=public`.
-
-`appserver` is Apache plus PHP in one service. That is the LAMP shape: no separate nginx front. A request that hits PHP reports `sapi=apache2handler`, not `cli`.
 
 ## Serve a simple PHP page
 
@@ -57,6 +47,18 @@ lando mariadb -e 'SELECT 1 AS ok;'
 
 `lando composer` and `lando php` run on `appserver`. `lando mariadb` opens the client on `database` with the app credentials already set. If you init with `--answer=database=mysql:8.0`, use `lando mysql` instead of `lando mariadb`.
 
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.4`, `framework: none`, port `80`, webroot `.`, Composer 2, HTTP and HTTPS routes, depends on `database` |
+| `database` | `type: mariadb:11.4` |
+| Tooling | `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead. Other init answers: `database=mysql:8.0`, `composer=2.7.7` or `composer=false`, and `webroot=public`.
+
+`appserver` is Apache plus PHP in one service. That is the LAMP shape: no separate nginx front. A request that hits PHP reports `sapi=apache2handler`, not `cli`.
+
 ## Connect PHP to MariaDB
 
 | Setting | Value |
@@ -84,7 +86,7 @@ The stock PHP image already has `pdo_mysql` and `mysqli`.
 
 ## Import and export the database
 
-Paths must stay under the app root:
+Keep dump paths under the app root. Import executes the dump's SQL, which can change or replace existing data; export first if you need to keep it. `--yes` skips the import confirmation:
 
 ```sh
 lando db:export dump.sql.gz

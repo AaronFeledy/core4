@@ -27,7 +27,7 @@ services:
           user: root
 ```
 
-Lint it, then start:
+Save this in `.lando.yml` at your project root. The `npm ci` step assumes your project already has a package lockfile. From that directory, lint the configuration, then start:
 
 ```sh
 lando app:config:lint

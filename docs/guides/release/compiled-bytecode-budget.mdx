@@ -8,9 +8,14 @@ tags: [beta, docs, release]
 
 # Release compiled bytecode budget
 
+Release binaries use Bun bytecode, with a ten-minute cold-build budget enforced
+on the reference `linux-x64` target. This page describes the release contract,
+not a command to compile every target locally.
+
 ## Bytecode compile budget
 
-The release-orchestrator tests inject the runner and clock so this guide stays host-safe and does not compile every platform binary during docs tests.
+Release-orchestrator tests inject the runner and clock to check the budget
+without compiling every platform binary during docs tests.
 
 Stage 7 compiles the canonical CLI entry (`./core/bin/lando.ts`).
 
@@ -26,8 +31,7 @@ The reference cold-build budget is enforced on linux-x64.
 
 A linux-x64 compile over 10 minutes fails the release with a tagged budget error (`600000ms`).
 
-Local rehearsal prints compile duration before later credential-gated signing stages warning-skip.
-
-```json
-[release] compile linux-x64 completed in <duration>ms (budget 600000ms)
-```
+Local rehearsal prints the compile duration before later signing stages are
+skipped with warnings when credentials are missing. The log includes the target,
+elapsed milliseconds, and the `600000ms` budget; it is not evidence that signing
+completed.

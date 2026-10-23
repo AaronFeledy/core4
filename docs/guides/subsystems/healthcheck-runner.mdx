@@ -8,7 +8,10 @@ tags: [beta, docs, subsystems, healthcheck, provider-exec]
 
 # Healthcheck runner
 
-This page is a contributor SDK dump for `HealthcheckRunner`. It stays off the user nav.
+`HealthcheckRunner` gates startup readiness by probing a service before its
+post-start subscribers run. This contributor reference describes accepted input,
+probe timing, and failure retention. For app configuration, use
+[Make start wait for your app](../services/wait-for-your-app.mdx).
 
 A service `healthcheck:` accepts four forms. `false` turns the probe off and drops a service type's default probe, such as mysql's `mysqladmin ping`. A non-empty string runs through the shell like `command:`. A non-empty argv list is exec form; Compose `CMD`, `CMD-SHELL`, and `NONE` markers only mean something inside an object's `test` list. The object form accepts `kind` (`command`, `http`, `tcp`, or `none`), plus `command`, `url`, `port`, `intervalSeconds`, `timeoutSeconds`, `retries`, and `startPeriodSeconds`; Compose spellings `test`, `disable`, and duration strings (`interval`, `timeout`, `start_period`) also decode. `start_interval` / `startInterval` decode as a raw duration string and are preserved losslessly for runtime extensions. Do not invent other keys.
 

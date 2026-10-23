@@ -1,12 +1,12 @@
 # @lando/service-lando
 
-The opinionated `lando` service base plus the canonical language-runtime and
-data-store `ServiceType` implementations for the Beta cut of the v4 service
-catalog.
+This package supplies the `lando` service base and the bundled language-runtime
+and data-store `ServiceType` implementations. Use this reference when extending
+the service catalog or checking which defaults a service type contributes.
 
-This package is bundled into the `lando` binary; library consumers opt in via
-`bundled discovery`; they do not receive the canonical catalog by default and
-must explicitly opt in or contribute their own service-type Layers.
+The `lando` binary includes this package. Library consumers do not receive the
+catalog by default: enable bundled discovery or contribute your own service-type
+Layers. See [Embedding Lando](../../docs/embedding.md) for runtime configuration.
 
 ## Framework presets
 
@@ -58,9 +58,9 @@ Add a `mailpit` service and run `lando rebuild` to wire PHP's `mail()` to the ap
 
 ## Beta scope vs. the GA-target catalog
 
-The canonical catalog target for v4.0 GA is fixed: adding or removing a
-canonical `type:` requires a spec amendment, though versions inside an
-existing entry (e.g. adding PHP 8.5) can follow upstream releases without one.
+The canonical catalog target for v4.0 GA distinguishes new service types from
+new versions of existing types. Adding or removing a canonical `type:` changes
+that catalog; versions within an existing entry can follow upstream releases.
 `@lando/service-lando` ships a subset of that target catalog through Beta:
 
 - PHP ships 8.1-8.6. Official Hub currently publishes 8.6 as RC bookworm tags.

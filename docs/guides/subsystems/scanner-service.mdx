@@ -8,9 +8,11 @@ tags: [beta, docs, subsystems, scanner, endpoint-discovery, port-collision]
 
 # Scanner service
 
-This page is a contributor SDK dump for `UrlScanner`. It stays off the user nav.
+`UrlScanner` discovers endpoints from running containers and checks host-port
+collisions across apps. This contributor reference describes the runtime inputs;
+application developers can read the resulting URLs with `lando info`.
 
-The live scanner needs running containers and a provider socket. When it runs, `lando info --json` includes the discovered endpoints. Collision detection compares host ports across apps.
+The live scanner needs running containers and a provider socket. When it runs, `lando info --format=json` includes the discovered endpoints. Collision detection compares host ports across apps.
 
 This is not a user how-to. Print URLs with `lando info`. See [everyday commands](../cli/everyday-commands.mdx).
 

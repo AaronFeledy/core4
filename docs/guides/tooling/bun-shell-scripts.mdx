@@ -9,7 +9,7 @@ tags: [beta, docs, tooling, bun, host]
 
 Drop a `.bun.sh` file into `.lando/scripts/` and it becomes a `lando` command. The script runs on your host through Bun Shell, from the app root, with your normal `PATH`. No Landofile entry, no Makefile, and no Bun install on your side: Lando runs it with the Bun it already ships. Any app with a `.lando.yml` works, even one with no services.
 
-Save this as `.lando/scripts/build.bun.sh`:
+In an app with `.lando.yml`, create `.lando/scripts/` and make sure `src/index.html` exists. This example deletes and recreates `dist/` on your host every time it runs, so use it only when that directory contains disposable build output. Save the script as `.lando/scripts/build.bun.sh`:
 
 ```sh
 # ---
@@ -21,7 +21,7 @@ cp src/index.html dist/index.html
 echo "built dist/ from src/"
 ```
 
-Refresh the app command cache once, then run it:
+From the app directory, refresh the command cache once, then run the script:
 
 ```sh
 lando app:cache:refresh
@@ -367,7 +367,7 @@ lando stamp abc1234
   </Scenario>
 </Guide>
 
-`<Cleanup />` only removes the scratch copy. If you started the app for the smoke test, run `lando destroy -y` when you are done. `dist/` and `.env` stay on your host until you delete them.
+If you started the app for the smoke test, run `lando destroy -y` when you are done to remove its containers and networks. `dist/` and `.env` stay on your host until you delete them.
 
 ## Next
 

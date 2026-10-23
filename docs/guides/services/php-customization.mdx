@@ -7,7 +7,7 @@ tags: [beta, docs, php, service, customization]
 
 # Customize PHP
 
-Start from `type: php:8.3` (or another supported minor). That image ships a fixed set of built-in PHP extensions. Add an extra extension, mount a `php.ini`, or replace the image. Each path costs you something different.
+Start from `type: php:8.3` (or another supported minor). That image ships a fixed set of built-in PHP extensions. Add an extra extension, mount a `php.ini`, or replace the image. Build steps change the image, mounted settings change configuration, and a replacement image takes responsibility for its own tools and extensions.
 
 ## See built-in extensions
 
@@ -73,16 +73,16 @@ services:
 tooling:
   db-query:
     service: app
-    cmd: mysql -h database -u app app -e "SELECT 1"
+    cmd: mysql -h database -u app -p app -e "SELECT 1"
 ```
 
 `lando mysql` / `lando psql` still run in the database service. Point a PHP
 task at those same `services.<db>.creds.*` values when you want the client
-that lives next to your app code. `db-query` above is that pattern.
+that lives next to your app code. `db-query` above is that pattern. It prompts for the database password because `-p` has no inline value; enter the password from `services.database.creds.password`.
 
 ## Install an extra extension
 
-Add a `build.artifact` step to compile or install an extension the built-in set doesn't cover. Lando runs each entry as a build-time shell command against the service's build layer:
+Add a `build.artifact` step to compile or install an extension the built-in set doesn't cover. Lando runs each entry as a build-time shell command against the service's build layer. Imagick also needs ImageMagick development libraries and PHP build tools, which the first step installs. Run these package-install steps as root; add `user: root` to object-form steps if your service uses a non-root user:
 
 ```yaml
 services:
@@ -90,6 +90,7 @@ services:
     type: "php:8.3"
     build:
       artifact:
+        - "apt-get update && apt-get install -y --no-install-recommends $PHPIZE_DEPS libmagickwand-dev && rm -rf /var/lib/apt/lists/*"
         - "pecl install imagick"
         - "docker-php-ext-enable imagick"
 ```
@@ -144,8 +145,7 @@ build key, so the next `lando start` rebuilds that image. Bare `restart` also st
 
 ## Mount a custom php.ini
 
-Bind-mount a `.ini` file into `/usr/local/etc/php/conf.d/` with `mounts:`
-to override settings such as `memory_limit` without rebuilding the image:
+Create `php.ini` in your app root with the settings you want to override, then add this `mounts:` entry to `.lando.yml`. It mounts the file into `/usr/local/etc/php/conf.d/` without rebuilding the image:
 
 ```yaml
 services:
@@ -161,8 +161,7 @@ php.ini drop-ins are read alphabetically after the base `php.ini`. Name your cus
 
 ## Grant a php.ini with Compose configs
 
-`configs:` grants are realized as read-only binds, the same path apply
-uses. Declare the file at the top level, then grant it onto the PHP service:
+Lando mounts `configs:` grants as read-only files. Declare the file at the top level, then grant it onto the PHP service:
 
 ```yaml
 configs:
