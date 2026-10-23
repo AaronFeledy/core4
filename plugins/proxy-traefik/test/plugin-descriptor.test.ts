@@ -6,6 +6,7 @@ import {
   globalServices,
   leftoverProxyPortsCheck,
   manifest,
+  orphanRouteFilesCheck,
   plugin,
   preferredHostPortsCheck,
   proxyTlsDoctorCheck,
@@ -49,7 +50,7 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
     expect(plugin.globalServices).toBe(globalServices);
   });
 
-  test("wires the proxy TLS, leftover loopback-port, preferred-host-port, advertised-port, and router-file-watcher doctor contributions", () => {
+  test("wires the proxy TLS, leftover loopback-port, preferred-host-port, advertised-port, router-file-watcher, and orphan-route-files doctor contributions", () => {
     // Given / When
     const doctorChecks = plugin.doctorChecks ?? [];
 
@@ -60,12 +61,14 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
       "preferred-host-ports",
       "proxy-advertised-ports",
       "router-file-watcher",
+      "orphan-route-files",
     ]);
     expect(doctorChecks.at(0)).toBe(proxyTlsDoctorCheck);
     expect(doctorChecks.at(1)).toBe(leftoverProxyPortsCheck);
     expect(doctorChecks.at(2)).toBe(preferredHostPortsCheck);
     expect(doctorChecks.at(3)).toBe(advertisedProxyPortsCheck);
     expect(doctorChecks.at(4)).toBe(routerFileWatcherCheck);
+    expect(doctorChecks.at(5)).toBe(orphanRouteFilesCheck);
     expect(proxyTlsDoctorCheck.relevant).toBeUndefined();
     expect(leftoverProxyPortsCheck.relevant).toBeUndefined();
     expect(preferredHostPortsCheck.relevant).toBeUndefined();
