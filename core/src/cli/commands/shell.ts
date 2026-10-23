@@ -3,8 +3,9 @@ import { createPayloadRedactor } from "@lando/sdk/secrets";
 /**
  * `lando shell` — host shell at the app root by default, or a service shell with `--service`.
  *
- * Service mode runs `sh -l` in the requested service via provider execStream.
- * Host mode uses `ShellRunner` for an interactive Bun Shell line REPL.
+ * Service mode runs a login shell in the requested service via provider execStream
+ * (bash when present, otherwise sh). Host mode uses `ShellRunner` for an
+ * interactive Bun Shell line REPL.
  */
 import { DateTime, Effect, Option, Queue, Stream } from "effect";
 
@@ -35,6 +36,7 @@ import { availableServiceList, unknownPlanServiceError } from "@lando/engine/ope
 import { makeLandoPaths } from "@lando/paths";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import { loadUserLandofile } from "../app-resolution";
+import { serviceLoginShellCommand } from "../service-login-shell";
 import { cancellableTerminalStdin } from "./terminal-stdin";
 
 export interface ShellAppOptions {
@@ -278,7 +280,7 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       lowerThanEnv: service.environment,
     });
     const spec: CommandSpec = {
-      command: options.args?.length === 0 || options.args === undefined ? ["sh", "-l"] : options.args,
+      command: serviceLoginShellCommand(options.args),
       stdin: "inherit",
       ...(io.stdin === undefined ? {} : { stdinStream: io.stdin }),
       tty: true,
