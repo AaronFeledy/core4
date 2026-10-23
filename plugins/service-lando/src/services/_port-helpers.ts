@@ -84,18 +84,20 @@ export const addServicePortEndpoints = (
   ctx: ServiceFeatureContext,
   fallback: { readonly port: number; readonly protocol: "http" | "https" | "tcp" },
 ): void => {
-  const configured = ctx.normalizedConfig.ports;
-  if (configured === undefined) {
-    ctx.addEndpoint({
-      _tag: "internal",
-      port: Schema.decodeUnknownSync(PortNumber)(fallback.port),
-      protocol: fallback.protocol,
-      name: ctx.serviceName,
-    });
-    return;
-  }
+  const primary: InternalEndpointInput = {
+    _tag: "internal",
+    port: Schema.decodeUnknownSync(PortNumber)(fallback.port),
+    protocol: fallback.protocol,
+    name: ctx.serviceName,
+  };
+  const published = publishedEndpointsFromPorts(ctx.normalizedConfig.ports ?? [], fallback.protocol);
+  const primaryPublication = published.find(
+    (endpoint) => endpoint.port === primary.port && endpoint.protocol !== "udp",
+  );
 
-  for (const endpoint of publishedEndpointsFromPorts(configured, fallback.protocol)) {
-    ctx.addEndpoint(endpoint);
+  // Default routes select the first HTTP endpoint, so the primary listener must lead.
+  ctx.addEndpoint(primaryPublication ?? primary);
+  for (const endpoint of published) {
+    if (endpoint !== primaryPublication) ctx.addEndpoint(endpoint);
   }
 };
