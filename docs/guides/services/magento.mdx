@@ -11,6 +11,8 @@ Run a local Mage-OS store with PHP, MariaDB, and OpenSearch, then use `lando mag
 
 Use a new, empty project directory and Lando 4 with a ready provider. The default provider is `lando` (managed Podman). Run the commands below from that project directory on your host, using a POSIX shell such as Bash.
 
+If you use the Docker provider from WSL 2, create the project in the distribution's Linux filesystem, such as `~/projects/mageos`, not a Windows-mounted path such as `/mnt/c/...`. Run Lando from that WSL shell. Docker recommends [Linux-backed bind mounts](https://docs.docker.com/desktop/features/wsl/best-practices/#optimise-file-system-performance-with-bind-mounts). This setup also needs working Linux file ownership and permissions; [Windows-mounted files use different rules](https://learn.microsoft.com/en-us/windows/wsl/file-permissions).
+
 This is a private development setup, not a production deployment. It uses a sample database password and an unauthenticated search service. Don't expose it through a public tunnel or load customer data into it. Allow at least 4 GB of memory for the provider, with room for PHP, the database, and search to run together. OpenSearch needs the provider's Linux host or VM to have `vm.max_map_count` set to at least `262144`; see [OpenSearch's host settings](https://docs.opensearch.org/latest/install-and-configure/install-opensearch/docker/#configure-important-host-settings).
 
 ## Create and start the services
@@ -99,19 +101,29 @@ lando exec appserver -- test -f /app/bin/magento
 
 The package version should be `3.6.0`, all platform requirements should pass, and `bin/magento` should exist. Don't bypass a missing extension with `--ignore-platform-reqs`. The build steps add `bcmath`, `ftp`, `soap`, `sockets`, and `xsl` to Lando's stock PHP image; Composer checks the installed packages against the complete PHP extension set.
 
-Set permissions for this new development project. The first command assigns files the numeric UID that owns `/app` inside the container and Apache's `www-data` group. On a direct Linux bind mount, that UID normally belongs to your host user. A VM or file-sync provider can use a different container-side owner, so also check host editing below. The remaining commands make Magento's writable paths group-writable:
+Set permissions for this new development project. The first ownership command assigns files the numeric UID that owns `/app` inside the container and Apache's `www-data` group. The next command keeps existing file sessions in `var/session` owned by `www-data`. On a direct Linux bind mount, the source UID normally belongs to your host user. A VM or file-sync provider can use a different container-side owner, so also check host editing below. The `chmod` commands give the group read access and directory traversal across the source, then write access to Magento's writable paths:
 
 ```sh
 lando exec appserver -- sh -eu -c '
   cd /app
   chown -R "$(stat -c %u /app):www-data" /app
+  if [ -d var/session ]; then
+    chown -R www-data:www-data var/session
+  fi
+  chmod -R g+rX /app
   chmod g+ws /app
   find app/etc generated pub/media pub/static var vendor -type d -exec chmod g+ws {} +
   find app/etc generated pub/media pub/static var vendor -type f -exec chmod g+w {} +
 '
 lando exec appserver --user www-data -- sh -eu -c '
   cd /app
-  for path in . app/etc generated pub/media pub/static var vendor; do test -w "$path"; done
+  for path in . app/etc generated pub/media pub/static var vendor; do
+    test -r "$path"
+    test -w "$path"
+    test -x "$path"
+  done
+  test -r bin/magento
+  test -r vendor/autoload.php
 '
 ```
 
@@ -122,6 +134,8 @@ test -w composer.json && test -w app
 ```
 
 Confirm that your editor can save a source file. If the host check fails, fix the ownership or file-sync mapping for your provider before continuing; don't assign the whole project to `www-data` or use world-writable permissions. The application root also needs write access for a [known Mage-OS 3.6.0 regeneration-lock issue](https://mage-os.org/releases/2026-10-14-mage-os-3-6-0-release/). These are development permissions, not production hardening. Repeat the permissions step after Composer changes if a Magento command reports a write-permission error.
+
+Keep Magento commands and cron running as `www-data`, as the tooling task does. Don't reassign existing files in `var/session` to your host UID: PHP checks session ownership, not just write access. If a page reports `Session data file is not created by your uid`, check the session-file owner inside `appserver` and your provider's filesystem mapping before adding permissions. For Docker through WSL, use the Linux-filesystem project location above.
 
 Run the installer. Replace both `<appserver-url>` values with the HTTPS URL from `lando info`, without a trailing slash; the command adds it. Replace `<admin-password>` with a unique password of at least 12 characters, including letters and numbers. Keep the quotes. Use these credentials only for this local store; command-line passwords can appear in shell history and process listings.
 
