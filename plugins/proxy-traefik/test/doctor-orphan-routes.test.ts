@@ -6,14 +6,14 @@ import { Effect } from "effect";
 
 import { globalAppRootPath } from "@lando/paths";
 import type { PluginDoctorCheckInput } from "@lando/sdk/plugins";
-import type { HostPlatform } from "@lando/sdk/schema";
+import { AppId, type HostPlatform } from "@lando/sdk/schema";
 
 import {
   collectAppIdsFromAppliedState,
   makeOrphanRouteFilesCheck,
   orphanRouteFilesCheck,
 } from "../src/doctor-orphan-routes.ts";
-import { dynamicConfigDir } from "../src/proxy-paths.ts";
+import { dynamicConfigDir, routeFile } from "../src/proxy-paths.ts";
 
 const platform: HostPlatform = "linux";
 
@@ -56,8 +56,18 @@ describe("orphan route file doctor check", () => {
       expect(reports[0]?.severity).toBe("warn");
       expect(reports[0]?.context.orphanCount).toBe("1");
       expect(reports[0]?.context.slugs).toBe("gone");
+      expect(reports[0]?.runtime).toBeUndefined();
+      const orphanFile = routeFile(
+        {
+          platform,
+          globalAppRoot: globalAppRootPath(userDataRoot, platform),
+        },
+        AppId.make("gone"),
+      );
+      expect(reports[0]?.context.files).toBe(orphanFile);
       expect(reports[0]?.solutions.every((solution) => solution.kind === "manual")).toBe(true);
-      expect(JSON.stringify(reports[0])).not.toContain(userDataRoot);
+      expect(reports[0]?.solutions[0]?.description).toContain(orphanFile);
+      expect(reports[0]?.solutions[0]?.description).not.toMatch(/stop the (global )?router/i);
     });
   });
 
@@ -99,6 +109,38 @@ describe("orphan route file doctor check", () => {
 
       expect(reports[0]?.context.slugs).toBe("orphan");
       expect(reports[0]?.context.orphanCount).toBe("1");
+      expect(reports[0]?.runtime).toBeUndefined();
+      expect(reports[0]?.solutions[0]?.description).toContain(
+        routeFile(
+          { platform, globalAppRoot: globalAppRootPath(userDataRoot, platform) },
+          AppId.make("orphan"),
+        ),
+      );
+    });
+  });
+
+  test("an unpruned applied-plan for the old slug hides the leftover route file", async () => {
+    // An unpruned applied-plan record for a renamed slug still counts as a known
+    // app, so doctor will not flag that leftover route file. Pruning applied-plans
+    // on rename is a follow-up.
+    await withUserData(async (userDataRoot) => {
+      const directory = dynamicConfigDir({
+        platform,
+        globalAppRoot: globalAppRootPath(userDataRoot, platform),
+      });
+      const appliedDir = join(userDataRoot, "plugins", "@lando", "provider-lando", "applied-plans");
+      await mkdir(directory, { recursive: true });
+      await mkdir(appliedDir, { recursive: true });
+      await writeFile(join(directory, "routes-old-name.yml"), "http:\n  routers: {}\n", "utf8");
+      await writeFile(
+        join(appliedDir, "old-name.json"),
+        JSON.stringify({ version: 1, data: { id: "old-name", name: "old-name" } }),
+        "utf8",
+      );
+
+      const reports = await Effect.runPromise(orphanRouteFilesCheck.run(doctorInput(userDataRoot)));
+
+      expect(reports).toEqual([]);
     });
   });
 

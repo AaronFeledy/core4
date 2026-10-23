@@ -10,7 +10,7 @@ import type {
 } from "@lando/sdk/plugins";
 import { Effect } from "effect";
 
-import { dynamicConfigDir, isRouteFileName, routeFileAppId } from "./proxy-paths.ts";
+import { dynamicConfigDir, isRouteFileName, routeFile, routeFileAppId } from "./proxy-paths.ts";
 import type { ProxyPaths } from "./proxy-types.ts";
 
 const APPLIED_PLANS_NAMESPACE = "applied-plans";
@@ -102,25 +102,35 @@ const readRouteFileNames = (paths: ProxyPaths): Effect.Effect<ReadonlyArray<stri
     Effect.catch(() => Effect.succeed<ReadonlyArray<string>>([])),
   );
 
-const orphanReport = (slugs: ReadonlyArray<string>): PluginDoctorReport => ({
-  name: "orphan-route-files",
-  status: "warn",
-  severity: "warn",
-  runtimeStatus: "orphan-route-files",
-  runtime: { running: true },
-  context: {
-    proxyId: "traefik",
-    orphanCount: String(slugs.length),
-    slugs: clipContext(slugs.join(", ")),
-  },
-  solutions: [
-    {
-      kind: "manual",
-      description:
-        "A router file remains for an app Lando no longer knows. Start that app to republish its routes, or stop the global router if the app is gone.",
+const orphanReport = (
+  orphans: ReadonlyArray<{ readonly slug: string; readonly file: string }>,
+): PluginDoctorReport => {
+  const slugs = orphans.map((orphan) => orphan.slug);
+  const files = orphans.map((orphan) => orphan.file);
+  const listed = files.join(", ");
+  return {
+    name: "orphan-route-files",
+    status: "warn",
+    severity: "warn",
+    runtimeStatus: "orphan-route-files",
+    context: {
+      proxyId: "traefik",
+      orphanCount: String(orphans.length),
+      slugs: clipContext(slugs.join(", ")),
+      files: clipContext(listed),
     },
-  ],
-});
+    solutions: [
+      {
+        kind: "manual",
+        description: clipContext(
+          orphans.length === 1
+            ? `A router file remains for an app Lando no longer knows: ${listed}. Start that app to republish its routes, or delete this file if the app is gone.`
+            : `Router files remain for apps Lando no longer knows: ${listed}. Start those apps to republish their routes, or delete these files if the apps are gone.`,
+        ),
+      },
+    ],
+  };
+};
 
 export type KnownAppIdReader = (input: PluginDoctorCheckInput) => Effect.Effect<ReadonlySet<string>>;
 
@@ -136,16 +146,19 @@ export const makeOrphanRouteFilesCheck = (
     };
     const names = yield* readRouteFileNames(paths);
     if (names.length === 0) return [];
+    // Known ids come from applied-plan state. An unpruned record for a renamed
+    // slug still counts as known, so that leftover route file stays hidden.
+    // Pruning applied-plans on rename is a follow-up.
     const known = yield* listKnownAppIds
       ? listKnownAppIds(input)
       : Effect.promise(() => listKnownAppIdsFromUserData(input.userDataRoot ?? ""));
     const orphans = names.flatMap((name) => {
       const app = routeFileAppId(name);
       if (app === undefined || known.has(String(app))) return [];
-      return [String(app)];
+      return [{ slug: String(app), file: routeFile(paths, app) }];
     });
     if (orphans.length === 0) return [];
-    return [orphanReport([...new Set(orphans)].sort((left, right) => left.localeCompare(right)))];
+    return [orphanReport(orphans.toSorted((left, right) => left.slug.localeCompare(right.slug)))];
   }),
 });
 
