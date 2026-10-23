@@ -1,4 +1,13 @@
-import type { AppPlan, EventStep, HostEvents, LandofileEvents, LandofileShape } from "@lando/sdk/schema";
+import type {
+  AppPlan,
+  EventStep,
+  EventStepPlan,
+  EventStepStatus,
+  EventsPlan,
+  HostEvents,
+  LandofileEvents,
+  LandofileShape,
+} from "@lando/sdk/schema";
 import {
   HOST_EVENT_NAMES,
   type HostEventName,
@@ -6,40 +15,11 @@ import {
   LANDO_HOST_EVENT_ENV,
   resolveLifecycleCommandId,
 } from "@lando/sdk/schema";
-import { Predicate } from "effect";
-
-export type EventStepSource = "host" | "project";
-export type CompiledEventStepStatus = "active" | "skipped" | "deduped";
-
-export interface CompiledEventStep {
-  readonly step: EventStep;
-  readonly source: EventStepSource;
-  readonly sourceIndex: number;
-  readonly status: CompiledEventStepStatus;
-  readonly skipReason?: string;
-}
-
-export type CompiledEvents = {
-  readonly [name: string]: ReadonlyArray<CompiledEventStep> | undefined;
-};
-
-const compiledEventsByPlan = new WeakMap<AppPlan, CompiledEvents>();
 
 const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
-const isCompiledEventStep = (value: unknown): value is CompiledEventStep =>
-  Predicate.isObject(value) &&
-  "step" in value &&
-  (value.source === "host" || value.source === "project") &&
-  typeof value.sourceIndex === "number" &&
-  (value.status === "active" || value.status === "skipped" || value.status === "deduped");
-
-const sortedCompiled = (events: CompiledEvents): CompiledEvents =>
-  Object.fromEntries(
-    Object.entries(events)
-      .flatMap(([name, steps]) => (steps === undefined ? [] : [[name, steps] as const]))
-      .sort(([left], [right]) => compareOrdinal(left, right)),
-  );
+const sortedCompiled = (events: EventsPlan): EventsPlan =>
+  Object.fromEntries(Object.entries(events).sort(([left], [right]) => compareOrdinal(left, right)));
 
 /** Same stamp the planner writes onto each service: explicit primary, else `web`. */
 export const planServicePrimary = (name: string, primary: boolean | undefined): boolean =>
@@ -103,7 +83,7 @@ const compileHostStep = (input: {
   readonly serviceNames: ReadonlySet<string>;
   readonly projectKeys: ReadonlySet<string>;
   readonly skipHostEvents: boolean;
-}): CompiledEventStep => {
+}): EventStepPlan => {
   const step = input.step;
   if (input.skipHostEvents) {
     return {
@@ -128,14 +108,14 @@ const compileHostStep = (input: {
   return { step, source: "host", sourceIndex: input.sourceIndex, status: "active" };
 };
 
-const compileProjectStep = (step: EventStep, sourceIndex: number): CompiledEventStep => ({
+const compileProjectStep = (step: EventStep, sourceIndex: number): EventStepPlan => ({
   step,
   source: "project",
   sourceIndex,
   status: "active",
 });
 
-const landofileToCompiled = (events: LandofileEvents): CompiledEvents =>
+const projectEventsPlan = (events: LandofileEvents): EventsPlan =>
   Object.fromEntries(
     Object.entries(events).flatMap(([name, steps]) =>
       steps === undefined
@@ -149,7 +129,7 @@ export const compileEffectiveEvents = (input: {
   readonly hostEvents?: HostEvents;
   readonly services?: Readonly<Record<string, { readonly primary?: boolean }>>;
   readonly skipHostEvents?: boolean;
-}): CompiledEvents => {
+}): EventsPlan => {
   const primary = primaryServiceName(input.services);
   const serviceNames = new Set(Object.keys(input.services ?? {}));
   const skipHostEvents = input.skipHostEvents === true;
@@ -157,7 +137,7 @@ export const compileEffectiveEvents = (input: {
     ...Object.keys(input.landofile.events ?? {}),
     ...HOST_EVENT_NAMES.filter((name) => (input.hostEvents?.[name] ?? []).length > 0),
   ]);
-  const compiled: Record<string, ReadonlyArray<CompiledEventStep>> = {};
+  const compiled: Record<string, ReadonlyArray<EventStepPlan>> = {};
   for (const name of names) {
     const projectSteps = input.landofile.events?.[name as keyof LandofileEvents] ?? [];
     const projectKeys = new Set(projectSteps.map((step) => canonicalEventStepKey(step, primary)));
@@ -182,10 +162,11 @@ export const compileEffectiveEvents = (input: {
 };
 
 export const runnableCompiledSteps = (
-  steps: ReadonlyArray<CompiledEventStep> | undefined,
-): ReadonlyArray<CompiledEventStep> => (steps ?? []).filter((step) => step.status === "active");
+  steps: ReadonlyArray<EventStepPlan> | undefined,
+): ReadonlyArray<EventStepPlan> => (steps ?? []).filter((step) => step.status === "active");
 
-export const eventStepsFromCompiled = (events: CompiledEvents): LandofileEvents =>
+/** The runnable steps of a compiled plan, in Landofile `events:` shape. */
+export const eventStepsFromCompiled = (events: EventsPlan): LandofileEvents =>
   Object.fromEntries(
     Object.entries(events).flatMap(([name, steps]) => {
       const runnable = runnableCompiledSteps(steps).map((step) => step.step);
@@ -193,33 +174,26 @@ export const eventStepsFromCompiled = (events: CompiledEvents): LandofileEvents 
     }),
   );
 
-const normalizeAttached = (events: LandofileEvents | CompiledEvents): CompiledEvents => {
-  const first = Object.values(events).find((steps) => steps !== undefined && steps.length > 0)?.[0];
-  return first !== undefined && isCompiledEventStep(first)
-    ? (events as CompiledEvents)
-    : landofileToCompiled(events as LandofileEvents);
-};
+export const effectiveEventsForPlan = (plan: AppPlan): LandofileEvents | undefined =>
+  plan.events === undefined ? undefined : eventStepsFromCompiled(plan.events);
 
-export const attachEffectiveEvents = (plan: AppPlan, events: LandofileEvents | CompiledEvents): AppPlan => {
-  compiledEventsByPlan.set(plan, sortedCompiled(normalizeAttached(events)));
-  return plan;
-};
+/** Return the plan carrying `events`; the plan is a value, so later spreads keep them. */
+export const withEventsPlan = (plan: AppPlan, events: EventsPlan): AppPlan => ({
+  ...plan,
+  events: sortedCompiled(events),
+});
 
-export const compiledEventsForPlan = (plan: AppPlan): CompiledEvents | undefined =>
-  compiledEventsByPlan.get(plan);
-
-export const effectiveEventsForPlan = (plan: AppPlan): LandofileEvents | undefined => {
-  const compiled = compiledEventsByPlan.get(plan);
-  return compiled === undefined ? undefined : eventStepsFromCompiled(compiled);
-};
+/** `withEventsPlan` for plans built without host events: tests and hand-built plans. */
+export const withProjectEvents = (plan: AppPlan, events: LandofileEvents): AppPlan =>
+  withEventsPlan(plan, projectEventsPlan(events));
 
 export const hostEventStatusesForApp = (
-  compiled: CompiledEvents,
+  compiled: EventsPlan,
 ): ReadonlyArray<{
   readonly event: string;
   readonly index: number;
   readonly step: EventStep;
-  readonly status: CompiledEventStepStatus;
+  readonly status: EventStepStatus;
   readonly reason?: string;
 }> =>
   HOST_EVENT_NAMES.flatMap((event) =>

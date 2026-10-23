@@ -17,9 +17,11 @@ import {
   type VolumeInfo,
 } from "@lando/sdk/schema";
 import {
+  AppPlanner,
   DataMover,
   EventService,
   FileSyncEngine,
+  LandofileService,
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
@@ -130,6 +132,9 @@ export const makeHarness = (
   const layer = Layer.mergeAll(
     options.dataMover === undefined ? emptySnapshotsLayer : Layer.succeed(DataMover, options.dataMover),
     PrivateFileAccessService.layer,
+    // The app root holds no Landofile, so teardown skips Landofile events before it would plan.
+    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.die("not used") })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.die("not used") })),
     Layer.succeed(StateStore, options.stateStore ?? makeTestStateStore().service),
     Layer.succeed(
       PathsService,
