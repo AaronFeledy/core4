@@ -257,6 +257,10 @@
       "digest": "a7bf0e1d29ba95e31e4cc4b16402bc44eceb83a55c7e3af12cb35d09d384ee70"
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-escaped-literals",
+      "digest": "5b7e08fc5571540bd86652b554c130a67ffe5ac422348c0fa367dac0cdd84220"
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-missing-creds",
       "digest": "35d13d408375ea22d127f106d09db098d80f3d76e1697063f3a86c02d6bf3f35"
     },
@@ -282,6 +286,13 @@
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-typed-values",
       "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-unescaped-shell",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
     },
     {
       "fixture": "docs/guides/external-access/fixtures/external-access-demo",
@@ -857,7 +868,7 @@
       "fixture": "docs/guides/timezone/fixtures/timezone-rejected-interpolation",
       "invalid": {
         "status": "invalid",
-        "tag": "NotImplementedError"
+        "tag": "LandofileValidationError"
       }
     },
     {
@@ -919,6 +930,13 @@
     {
       "fixture": "docs/guides/your-landofile/fixtures/empty-routes-overlay",
       "digest": "097f0e2646abd0984cb33c6aa15193c8018ddeb1883184e708d08ba82e85e98b"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/flow-mapping-rejected",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileParseError"
+      }
     },
     {
       "fixture": "docs/guides/your-landofile/fixtures/merge-directives",

@@ -117,7 +117,9 @@ const acquisitionExclusions = new Map([
   ["docs/guides/compose-service-block/fixtures/compose-service-block-rejected", "ComposeKeyRejectedError"],
   ["docs/guides/includes-and-lockfile/fixtures/user-profile-demo", "LandofileIncludeError"],
   ["docs/guides/migrating-recipes/fixtures/programmatic-app", "LandofileFormConflictError"],
-  ["docs/guides/timezone/fixtures/timezone-rejected-interpolation", "NotImplementedError"],
+  ["docs/guides/timezone/fixtures/timezone-rejected-interpolation", "LandofileValidationError"],
+  ["docs/guides/expressions/fixtures/expressions-unescaped-shell", "LandofileValidationError"],
+  ["docs/guides/your-landofile/fixtures/flow-mapping-rejected", "LandofileParseError"],
 ]);
 
 describe("composed Landofile provenance invariant", () => {
