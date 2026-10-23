@@ -23,7 +23,7 @@ const stringEnv = (env: EnvMap): Record<string, string | undefined> | undefined 
   if (env === undefined) return undefined;
   const collected: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(env)) {
-    collected[key] = value === undefined || value === null ? undefined : String(value);
+    collected[key] = typeof value === "string" ? value : undefined;
   }
   return collected;
 };

@@ -1,5 +1,5 @@
 import { type RootOverrides, makeLandoPaths } from "@lando/paths";
-import { createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { SshAgentTransportError, causeMessage } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
@@ -79,6 +79,11 @@ export const startDetachedAgentRelayWorker = (
     options.app,
     options,
     Effect.gen(function* () {
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      const redactor =
+        redaction._tag === "Some"
+          ? yield* redaction.value.forProfile("secrets")
+          : createStandaloneRedactor("secrets");
       if (options.app.kind === "global")
         return yield* Effect.fail(workerError("Global apps cannot forward an agent."));
       const entry = hostProxyWorkerEntry();
@@ -107,6 +112,7 @@ export const startDetachedAgentRelayWorker = (
               arg === HOST_PROXY_WORKER_COMMAND ? AGENT_RELAY_WORKER_COMMAND : arg,
             );
             const spec = {
+              redactor,
               argv,
               logsDir: makeLandoPaths(options.paths).logsDir,
               env: hostProxyWorkerEnv(),
@@ -203,7 +209,7 @@ export const startDetachedAgentRelayWorker = (
               cause instanceof SshAgentTransportError
                 ? cause
                 : new SshAgentTransportError({
-                    message: createStandaloneRedactor("secrets").redactString(causeMessage(cause)),
+                    message: redactor.redactString(causeMessage(cause)),
                     stage: "worker",
                     remediation: `Inspect ${worker.logPath} for the worker crash.`,
                   }),

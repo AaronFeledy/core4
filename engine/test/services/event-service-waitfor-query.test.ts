@@ -4,10 +4,11 @@ import { TestClock } from "effect/testing";
 import { Cause, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import { DownloadProgressEvent } from "@lando/sdk/events";
-import { EventService, SecretStore } from "@lando/sdk/services";
+import { EventService } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 import * as LandoEventService from "../../src/services/event-service.ts";
+import { testRedactionLayer } from "../redaction.ts";
 
 const canonicalProgress = (bytesDownloaded: number): DownloadProgressEvent =>
   Schema.decodeUnknownSync(DownloadProgressEvent)({
@@ -25,22 +26,6 @@ const secretEvent = (token: string) => ({
   url: `https://user:${token}@example.com/asset`,
   note: `token is ${token}`,
 });
-
-const secretStoreLayer = (values: ReadonlyArray<string>) =>
-  Layer.succeed(
-    SecretStore,
-    SecretStore.of({
-      id: "test-secret-store",
-      list: Effect.succeed([...values.keys()].map((index) => `secret-${index}`)),
-      has: (id: string) =>
-        Effect.succeed(values[Number.parseInt(id.replace("secret-", ""), 10)] !== undefined),
-      get: (id: string) => {
-        const index = Number.parseInt(id.replace("secret-", ""), 10);
-        const value = values[index];
-        return value === undefined ? Effect.fail(new Error("missing") as never) : Effect.succeed(value);
-      },
-    } as never),
-  );
 
 describe("EventService waitFor", () => {
   test("resolves the first matching event from the live stream", async () => {
@@ -174,7 +159,7 @@ describe("EventService history buffer and query", () => {
 
   test("redacts payloads before buffering so query never observes a raw secret", async () => {
     const token = "s3cr3t-token-abc123";
-    const redaction = RedactionService.layer.pipe(Layer.provide(secretStoreLayer([token])));
+    const redaction = testRedactionLayer([token]);
     const eventLayer = LandoEventService.layerWith(8).pipe(Layer.provide(redaction));
 
     const snapshot = await Effect.runPromise(
@@ -191,13 +176,13 @@ describe("EventService history buffer and query", () => {
     expect(serialized).toContain("[redacted]");
   });
 
-  test("refreshes redaction at append time for secrets store and env auth values", async () => {
+  test("refreshes redaction at append time for env auth values", async () => {
     const token = "late-env-auth-token-xyz789";
     const envKey = "BUN_AUTH_TOKEN";
     const previous = process.env[envKey];
     delete process.env[envKey];
     try {
-      const redaction = RedactionService.layer.pipe(Layer.provide(secretStoreLayer([])));
+      const redaction = RedactionService.layer;
       const eventLayer = LandoEventService.layerWith(8).pipe(Layer.provide(redaction));
       process.env[envKey] = token;
 

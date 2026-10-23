@@ -1,18 +1,11 @@
-import { afterEach, expect, test } from "bun:test";
-import {
-  RedactionService,
-  makeRedactionService,
-  registerRedactionValues,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { expect, test } from "bun:test";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { Renderer } from "@lando/sdk/services";
 import { Context, DateTime, Effect } from "effect";
 import { type AppHandleRuntimeServices, makeAppHandle } from "../../src/app/handle.ts";
 import { makeAppLifecycle } from "../../src/app/lifecycle.ts";
 import { type AppOperations, appOperations } from "../../src/app/operations.ts";
-
-afterEach(resetRegisteredRedactionValuesForTesting);
 
 const plan: AppPlan = {
   id: AppId.make("handle-exec-redaction"),
@@ -36,12 +29,7 @@ test("App.exec masks registered values in the stderr it forwards to the renderer
   const renderer = {
     output: { stderr: (chunk: string | Uint8Array) => Effect.sync(() => written.push(chunk)) },
   };
-  const redaction = makeRedactionService({
-    id: "empty",
-    get: (id) => Effect.die(`unexpected secret lookup: ${id}`),
-    has: () => Effect.succeed(false),
-    list: Effect.succeed([]),
-  });
+  const redaction = makeRedactionService();
   const runtime = Context.makeUnsafe<AppHandleRuntimeServices>(
     new Map<string, unknown>([
       [RedactionService.key, redaction],
@@ -51,7 +39,7 @@ test("App.exec masks registered values in the stderr it forwards to the renderer
   const ops: AppOperations = {
     ...appOperations,
     execApp: () =>
-      registerRedactionValues([secret]).pipe(
+      redaction.registerValues([secret]).pipe(
         Effect.as({
           app: plan.name,
           service: "web",
