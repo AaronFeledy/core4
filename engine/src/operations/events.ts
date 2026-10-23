@@ -3,14 +3,19 @@ import { DateTime, Effect, Option } from "effect";
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent, PostInitEvent, PreInitEvent } from "@lando/sdk/events";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import type { AppLifecycleEventName, AppPlan, EventStep, LandofileEventName } from "@lando/sdk/schema";
+import type {
+  AppLifecycleEventName,
+  AppPlan,
+  EventStep,
+  EventStepPlan,
+  LandofileEventName,
+} from "@lando/sdk/schema";
 import { LANDO_HOST_EVENT_ENV, ServiceName } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, RuntimeProviderRegistry, ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
-import { type CompiledEventStep, compiledEventsForPlan } from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
@@ -122,9 +127,9 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (
   event: LandofileEventName,
   redactor: EventRedactor,
 ) {
-  const compiled = compiledEventsForPlan(plan)?.[event] ?? [];
+  const compiled = plan.events?.[event] ?? [];
   const primary = Object.entries(plan.services).find(([, service]) => service.primary === true)?.[0];
-  const resolved: CompiledEventStep[] = [];
+  const resolved: EventStepPlan[] = [];
   for (const entry of compiled) {
     if (entry.status !== "active" || entry.source !== "host") {
       resolved.push(entry);
@@ -283,6 +288,12 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
   );
 });
 
+/** A post-event failure warns instead of failing, so the warning carries the step's redacted output. */
+const postEventWarning = (error: EventRuntimeError): string => {
+  const tail = error instanceof LandofileEventStepFailedError ? error.outputTail.trim() : "";
+  return [error.message, ...(tail.length > 0 ? [tail] : []), error.remediation].join(" ");
+};
+
 export const runPostAppEvent = Effect.fn("AppOperation.runPostEvent")(function* (
   plan: AppPlan,
   event: AppLifecycleEventName,
@@ -294,7 +305,7 @@ export const runPostAppEvent = Effect.fn("AppOperation.runPostEvent")(function* 
         Effect.flatMap((events) =>
           events.publish(
             MessageWarnEvent.make({
-              body: [error.message, error.remediation].join(" "),
+              body: postEventWarning(error),
               timestamp: DateTime.nowUnsafe(),
             }),
           ),

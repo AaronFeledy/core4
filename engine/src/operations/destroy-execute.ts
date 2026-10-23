@@ -17,6 +17,7 @@ import {
 } from "./destroy-provider.ts";
 import { removeSnapshots } from "./destroy-snapshots.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
+import { confirmDestroyWithoutLandofileEvents } from "./landofile-events.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
 import { ownedCleanupChanged, prepareOwnedResourceCleanupFrom } from "./owned-resource-teardown.ts";
 
@@ -46,15 +47,24 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
   const events = yield* EventService;
   const proxy = yield* Effect.serviceOption(RouterService);
   const applied = evidence === "applied" ? plan.applied : undefined;
-  const authored = applied?.plan;
+  const hooks = plan.authored;
+  const authored = hooks?.plan;
+  if (
+    hooks?.skipLevel === "warn" &&
+    (plan.options.volumes === true ||
+      plan.options.purgeCaches === true ||
+      plan.options.purgeSnapshots === true)
+  ) {
+    yield* confirmDestroyWithoutLandofileEvents(hooks.outcome, plan.options.yes === true);
+  }
   if (authored !== undefined && fileSync?.resumed !== true) yield* runAppInitEvents(authored);
   for (const app of plan.refs) {
     const pre = PreDestroyEvent.make({ app, evidence, timestamp: DateTime.nowUnsafe() });
     yield* events.publish(pre);
   }
-  if (applied !== undefined && fileSync?.resumed !== true)
+  if (applied !== undefined && authored !== undefined && fileSync?.resumed !== true)
     yield* runAppEvent(
-      applied.plan,
+      authored,
       "pre-destroy",
       PreDestroyEvent.make({ app: applied.app, evidence, timestamp: DateTime.nowUnsafe() }),
     );
@@ -176,7 +186,7 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
       yield* runAppEvent(authored, "post-destroy", post);
     yield* events.publish(post);
   }
-  return result;
+  return hooks === undefined ? result : { ...result, landofileEvents: hooks.outcome };
 });
 
 export const executeTeardown = Effect.fn("AppOperation.executeTeardown")(function* (plan: TeardownPlan) {

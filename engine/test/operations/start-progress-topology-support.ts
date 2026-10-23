@@ -11,6 +11,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  AppPlan as AppPlanSchema,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -121,6 +122,10 @@ export const startOwnedParentIds = (events: ReadonlyArray<LandoEvent>): Readonly
   byTag(events, "task.tree.start")
     .map((event) => event.parentId)
     .filter((parentId) => parentId.startsWith("start-"));
+
+/** Round-trips a plan through JSON the way provider applied state does, dropping Landofile events. */
+export const appliedPlanRecord = ({ events: _events, ...plan }: AppPlan): AppPlan =>
+  Schema.decodeUnknownSync(AppPlanSchema)(JSON.parse(JSON.stringify(Schema.encodeSync(AppPlanSchema)(plan))));
 
 export const makeHarness = (
   options: {
@@ -287,11 +292,12 @@ export const makeHarness = (
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
     select: options.selectProvider ?? (() => Effect.succeed(provider)),
-    resolveAppliedPlan: options.resolveAppliedPlan ?? (() => Effect.succeed(plannedApp)),
+    // What a provider really hands back: a decoded record, never the planner's object, with no events.
+    resolveAppliedPlan: options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))),
     resolveTeardownEvidence:
       options.resolveTeardownEvidence ??
       ((root: AbsolutePath) =>
-        (options.resolveAppliedPlan ?? (() => Effect.succeed(plannedApp)))(root).pipe(
+        (options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))))(root).pipe(
           Effect.map((plan) =>
             plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
           ),
