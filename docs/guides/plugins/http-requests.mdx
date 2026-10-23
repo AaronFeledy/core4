@@ -27,13 +27,13 @@ const notifyDeploy: SubscriberFactory = (ctx) => (event) =>
 export default notifyDeploy;
 ```
 
-Do not call `fetch` yourself. A bare `fetch` skips the user's proxy, ignores their private CA, and hides the request from Lando's `pre-http-call` and `post-http-call` events.
+Do not call `fetch` yourself. It bypasses Lando's resolved proxy and private-CA settings, along with the `pre-http-call` and `post-http-call` events.
 
 ## What Lando adds to every request
 
-- **Proxy and `NO_PROXY`.** Lando uses explicit `network.proxy` config or resolves `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` (lowercase forms too). Scheme-specific variables win over `ALL_PROXY`; `NO_PROXY` accepts hostnames, `host:port`, bare IPs, and IPv4/IPv6 CIDRs; loopback always bypasses.
+- **Proxy and `NO_PROXY`.** Lando uses `network.proxy` config when it contains explicit values. Otherwise, it reads `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`, including lowercase forms. Scheme-specific variables take precedence over `ALL_PROXY`. Bypass rules support hostnames, `host:port`, literal IP addresses, and CIDR ranges; loopback always connects directly. See [global proxy configuration](../config/corporate-network-trust.mdx#configure-a-global-proxy) for precedence and matching rules.
 - **Private CAs.** Certificates from `network.ca.certs` or `LANDO_NETWORK_CA_CERTS` are trusted for that request. `network.ca.trustHost: false` drops the system roots and trusts only those certificates.
-- **Fresh trust per request.** Lando resolves trust when the request runs, so a config change applies to the next request without a restart.
+- **Per-request trust.** Each request uses an explicit `NetworkTrust` override when provided. Otherwise, it resolves proxy and CA settings through the runtime's configuration service.
 - **Redacted telemetry.** Each request is a span named `HttpClient.request`, with the method and a URL that has credentials and query values stripped. Lifecycle events record the origin and method, not the raw URL.
 - **Interrupts abort.** Interrupting the fiber aborts the connection. Stream the body with `response.stream` when the payload is large; nothing is buffered until you ask for it.
 

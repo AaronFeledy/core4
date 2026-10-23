@@ -9,7 +9,9 @@ tags: [beta, docs, tooling, database]
 
 Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed` to fill a database Lando freshly created from a dump, a snapshot, or another running app.
 
-A single database service needs no `--service` flag. Two or more database services require `--service <name>`.
+Run dump commands from your app directory with the database service running. A single database service needs no `--service` flag. With two or more, pass `--service <name>` to select the target.
+
+Back up any existing data before importing. An import can change or delete data, and `--yes` skips confirmation. The commands below show gzip and zstd alternatives; choose one format.
 
 ```sh
 lando db:export dump.sql.gz
@@ -31,7 +33,9 @@ lando db:import backups/app.sql.gz --service database --yes
 lando db:import backups/app.sql.zst --service database --yes
 ```
 
-The destination suffix picks the format: `.gz` for gzip, `.zst` for zstd. `--compression-level` trades speed for size: gzip takes `0` through `9`, zstd takes `1` through `22`. Omit it to keep the format default. An uncompressed export rejects the flag.
+The destination suffix selects the compression format: `.gz` for gzip or `.zst` for zstd. Use `--compression-level` to choose a balance between compression speed and file size. Gzip accepts integers from `0` through `9`; zstd accepts `1` through `22`. Omit the flag to keep the format's default level. Lando rejects the flag for an uncompressed export.
+
+For example, choose one of these compressed exports:
 
 ```sh
 lando db:export backups/app.sql.gz --compression-level 6

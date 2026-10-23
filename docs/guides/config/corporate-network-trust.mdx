@@ -138,9 +138,10 @@ service out. Read a service's effective trust material from its plan or from
 
 ## Configure a global proxy
 
-Author the corporate proxy under `network.proxy` in the global config. `http` and `https` are each
-a URL string or `null`; `noProxy` is a list of bypass patterns; `injectIntoServices` controls
-whether the resolved proxy env reaches `type: lando` services:
+Set your corporate proxy under `network.proxy` in the global config. Set both
+`http` and `https` if the same proxy handles both kinds of request. Use `noProxy`
+for destinations that should connect directly. `injectIntoServices` controls
+whether Lando also passes the resolved proxy settings to `type: lando` services:
 
 ```yaml
 network:
@@ -153,19 +154,39 @@ network:
     injectIntoServices: false
 ```
 
-`noProxy` accepts hostnames, exact `host:port` entries, bare IPv4/IPv6 addresses, and CIDR ranges
-such as `10.0.0.0/8` or `fd00::/8`. `.example.com` and `*.example.com` match subdomains only;
-`example.com` also matches the apex; `*` matches everything. IP patterns compare against literal IP
-hostnames only and never resolve DNS. Lando always bypasses proxies for `localhost`, IPv4 `127/8`,
-and IPv6 `::1`, whether or not you list them.
+### Choose destinations that bypass the proxy
 
-Proxy precedence is block-level, not field-level. A non-empty proxy URL, an explicit `null`, or a
-non-empty `noProxy` list makes `network.proxy` authoritative, and Lando then ignores the ambient
-proxy variables even for a field you left unset. Otherwise each scheme reads its uppercase then
-lowercase variable (`HTTPS_PROXY`, `https_proxy`) before falling back to `ALL_PROXY`, then
-`all_proxy`; bypass patterns come from `NO_PROXY`, then `no_proxy`. In config mode `null` disables
-that scheme, and an unset scheme never borrows the other scheme's proxy: set both `http` and `https`
-when one proxy serves both.
+`noProxy` accepts these patterns:
+
+| Pattern | Matches |
+| --- | --- |
+| `example.com` | That hostname and its subdomains |
+| `.example.com` or `*.example.com` | Subdomains only, not `example.com` itself |
+| `example.com:8443` | That exact hostname and port |
+| An IPv4 or IPv6 address | A URL whose hostname is that literal IP address |
+| `10.0.0.0/8` or `fd00::/8` | Literal IP addresses in that CIDR range |
+| `*` | Every destination |
+
+IP patterns do not resolve hostnames through DNS. Lando always connects directly
+to `localhost`, IPv4 loopback addresses in `127.0.0.0/8`, and IPv6 `::1`,
+even if they are not listed.
+
+### Choose config or environment variables
+
+Lando selects the whole `network.proxy` block when it contains a non-empty proxy
+URL, an explicit `null`, or a non-empty `noProxy` list. It then ignores proxy
+environment variables, including values for fields you left unset. Within that
+block, `null` disables a scheme; an unset scheme also connects directly rather
+than borrowing the other scheme's proxy.
+
+If the block has none of those values, Lando uses the first non-empty environment
+variable in each row:
+
+| Setting | Precedence, highest first |
+| --- | --- |
+| HTTP proxy | `HTTP_PROXY`, `http_proxy`, `ALL_PROXY`, `all_proxy` |
+| HTTPS proxy | `HTTPS_PROXY`, `https_proxy`, `ALL_PROXY`, `all_proxy` |
+| Bypass patterns | `NO_PROXY`, `no_proxy` |
 
 `network.proxy.injectIntoServices` defaults to `false`, the opposite of
 `network.ca.injectIntoServices`'s default `true`. Proxy URLs can carry embedded credentials

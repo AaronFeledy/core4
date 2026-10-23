@@ -24,9 +24,13 @@ bun run check:compose-coverage
 bun run check:runtime-bundle-manifest
 ```
 
-`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. `bun run check:types` is `bun check`: Bun's built-in type checker follows the root project references like `tsc -b`, emits nothing, and finishes the whole repo in about five seconds, so every platform cell gets a type gate. It reports TypeScript 7 semantics; a construct that only `tsc` 5.x accepts fails here first. `bun run audit` fails the static cell when Bun reports advisories; `bun run audit:fix` is a local recipe only and is never applied in CI. Deprecation checks run through `bun run lint`.
+`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift.
 
-`bun run typecheck` stays a separate gate in the runner jobs. It runs `tsc -b`, which also emits the declaration graph under `*/dist` that `engine` and `core` resolve `@lando/sdk` types against and that `bun run build` publishes. Use `check:types` for the inner loop and `typecheck` before you push:
+`bun run check:types` runs `bun check` in every platform cell. It follows the root project references without emitting files and uses TypeScript 7 semantics. It can therefore report errors that the repository's TypeScript 5.x `tsc` does not.
+
+`bun run audit` fails the static cell when Bun reports advisories. `bun run audit:fix` is for local use only and never runs in CI. Deprecation checks run through `bun run lint`.
+
+`bun run typecheck` remains a separate gate in the runner jobs. Its `tsc -b` build emits declarations under `*/dist`; `engine` and `core` resolve `@lando/sdk` types from those files, and `bun run build` publishes them. Use `check:types` while editing, but also run `typecheck` before pushing:
 
 ```bash
 bun run check:types
@@ -167,7 +171,9 @@ Release-shaped binary jobs install the locked cross-target optional packages wit
 bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/lando-${TARGET} --minify --sourcemap=external
 ```
 
-The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, embeds `--disallow-code-generation-from-strings=strict` through `compile.execArgv`, and attaches the OpenTUI native-root pruning plugin. Bun 1.4.1 fixed cross-platform bytecode and the floor is now 1.4.3; do not disable bytecode to work around an older compiler. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`.
+The wrapper enables the programmatic equivalent of `--bytecode` for every target, including Windows cross-compilation. It also embeds `--disallow-code-generation-from-strings=strict` through `compile.execArgv` and attaches the OpenTUI native-root pruning plugin. Use Bun 1.4.3 or newer; do not disable bytecode to work around an older compiler.
+
+Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`.
 
 ## Local Bun profiling
 
