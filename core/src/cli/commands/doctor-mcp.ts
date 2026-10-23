@@ -21,7 +21,6 @@
  */
 import { Effect, Fiber, Layer, Predicate, Schema } from "effect";
 
-import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { computeMcpDefaultAllowlist } from "@lando/mcp/allowlist";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
@@ -204,13 +203,7 @@ export const mcpDoctor = Effect.fn("McpDoctor.check")(function* (): Effect.fn.Re
   return { checks: [check] };
 });
 
-/**
- * Default layer for {@link mcpDoctor}: provides `RedactionService` from the
- * env-backed `SecretStore`, so the check needs no ambient services beyond it.
- */
-export const DefaultMcpDoctorLayer: Layer.Layer<RedactionService, never, never> = RedactionService.layer.pipe(
-  Layer.provide(EnvSecretStore.layer),
-);
+export const DefaultMcpDoctorLayer: Layer.Layer<RedactionService, never, never> = RedactionService.layer;
 
 export const renderMcpDoctorResult = (result: McpDoctorResult): string =>
   result.checks.flatMap((check) => renderSectionCheck(check)).join("\n");

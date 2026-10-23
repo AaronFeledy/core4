@@ -21,7 +21,7 @@ import {
   RedactionService,
   type RedactionServiceShape,
   createStandaloneRedactor,
-  registerRedactionValues,
+  makeRedactionService,
 } from "@lando/redaction/service";
 import { buildCommandResultEnvelope } from "@lando/sdk/command-result";
 import { type OpenAppOptions, OpenAppResultSchema, openForPlan } from "../../src/cli/commands/open.ts";
@@ -93,11 +93,7 @@ const recordingEventLayer = () => {
   return { events, layer };
 };
 
-const standaloneRedactionService: RedactionServiceShape = {
-  registerValues: registerRedactionValues,
-  payloadValues: () => Effect.succeed(() => []),
-  forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-};
+const standaloneRedactionService: RedactionServiceShape = makeRedactionService();
 
 const redactionLayer = () =>
   Layer.succeed(

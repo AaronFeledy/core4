@@ -9,11 +9,7 @@ import { logFileHelperCleanupArgv, logFileHelperExecArgv } from "@lando/containe
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import type { HostProxyRunLandoExecutorInput } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { createHostProxyRunLandoSession } from "@lando/engine/subsystems/host-proxy/transport";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, type CommandResultEnvelope } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
@@ -240,14 +236,7 @@ describe.skipIf(process.platform !== "linux")("log-file role", () => {
 });
 
 const sessionLayers = Layer.mergeAll(
-  Layer.succeed(
-    RedactionService,
-    RedactionService.of({
-      registerValues: registerRedactionValues,
-      payloadValues: () => Effect.succeed(() => []),
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-    }),
-  ),
+  Layer.succeed(RedactionService, makeRedactionService()),
   Layer.succeed(
     EventService,
     EventService.of({

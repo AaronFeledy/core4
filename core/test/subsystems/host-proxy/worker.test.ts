@@ -4,11 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { encodeCommandResult } from "@lando/sdk/command-result";
 import { DateTime, Effect, Exit, Fiber, Schema } from "effect";
 
@@ -1004,17 +1000,17 @@ console.log(JSON.stringify({
     // Given a live app-wide worker.
     const root = await tempRoot();
     const registered: string[] = [];
+    const service = makeRedactionService();
     const redactor = RedactionService.of({
+      ...service,
       registerValues: (values) =>
-        registerRedactionValues(values).pipe(
+        service.registerValues(values).pipe(
           Effect.tap(() =>
             Effect.sync(() => {
               registered.push(...values);
             }),
           ),
         ),
-      payloadValues: () => Effect.succeed(() => []),
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     });
     const options = { app, plan, paths: { userDataRoot: root }, shimArtifactPath: await fakeShim(root) };
     const first = await Effect.runPromise(

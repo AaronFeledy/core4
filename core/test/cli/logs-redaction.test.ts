@@ -19,7 +19,6 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
-import { resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
@@ -172,10 +171,10 @@ const makeLayer = (rawLine: string) => {
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({ name: "test-logs-redaction", services: {} }),
+        discover: Effect.succeed(literalLandofile({ name: "test-logs-redaction", services: {} }, plan.root)),
       }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -262,28 +261,24 @@ describe("lando logs redaction boundary", () => {
   });
 
   test("fresh-process logs mask a provider value with no secret-store environment", async () => {
-    resetRegisteredRedactionValuesForTesting();
     Reflect.deleteProperty(process.env, "LANDO_SECRET_LOG_PASSWORD");
     const io = createBufferedRendererIO({ isTTY: false });
-    try {
-      await runWithRendererHandling(
-        followLogsApp({ follow: true, service: "database", source: "slow-query" }),
-        {
-          runtime: makeLayer(`value ${SECRET_VALUE}`),
-          io,
-          rendererMode: "plain",
-          resultFormat: "text",
-          command: "app:logs",
-          resultSchema: EmptyResultSchema,
-          streaming: StreamFrame,
-          streamingMode: "live",
-          formatError: ({ error }) => String(error),
-        },
-      );
-      expect(io.stdout()).toContain("value [redacted]");
-      expect(io.stdout() + io.stderr()).not.toContain(SECRET_VALUE);
-    } finally {
-      resetRegisteredRedactionValuesForTesting();
-    }
+    await runWithRendererHandling(
+      followLogsApp({ follow: true, service: "database", source: "slow-query" }),
+      {
+        runtime: makeLayer(`value ${SECRET_VALUE}`),
+        io,
+        rendererMode: "plain",
+        resultFormat: "text",
+        command: "app:logs",
+        resultSchema: EmptyResultSchema,
+        streaming: StreamFrame,
+        streamingMode: "live",
+        formatError: ({ error }) => String(error),
+      },
+    );
+    expect(io.stdout()).toContain("value [redacted]");
+    expect(io.stdout() + io.stderr()).not.toContain(SECRET_VALUE);
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

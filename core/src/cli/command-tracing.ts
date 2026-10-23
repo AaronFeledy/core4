@@ -1,4 +1,3 @@
-import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { CORE_VERSION } from "@lando/engine/version";
 import * as LandoHttpClient from "@lando/http-client";
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
@@ -13,6 +12,7 @@ export const withCommandTracing = async (
   selection: TraceSelection,
   run: (capture: CommandTraceCapture, redactionTokens: ReadonlyArray<string>) => Promise<void>,
   flags: Readonly<Record<string, unknown>> = {},
+  redaction?: RedactionService["Service"],
 ): Promise<void> => {
   const secrets = [
     ...Object.values(selection.headers),
@@ -60,6 +60,7 @@ export const withCommandTracing = async (
             Layer.mergeAll(LandoHttpClient.layer, OtlpSerialization.layerJson, OtlpExporter.layerFlusher),
           ),
         );
-  const redactionLayer = RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer));
+  const redactionLayer =
+    redaction === undefined ? RedactionService.layer : Layer.succeed(RedactionService, redaction);
   await Effect.runPromise(program.pipe(Effect.scoped, Effect.provide(redactionLayer)));
 };

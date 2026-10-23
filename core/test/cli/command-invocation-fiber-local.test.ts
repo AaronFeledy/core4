@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
 import { Deferred, Effect, Exit, Fiber, Layer } from "effect";
 import {
@@ -19,7 +19,7 @@ const invocation = (id: string): CliInvocationSnapshot => ({
 const redaction = Layer.succeed(
   RedactionService,
   RedactionService.of({
-    registerValues: registerRedactionValues,
+    ...makeRedactionService(),
     payloadValues: () => Effect.succeed(() => []),
     forProfile: () => Effect.succeed(identityRedactor),
   }),
