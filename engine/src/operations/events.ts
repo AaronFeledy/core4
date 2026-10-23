@@ -27,7 +27,7 @@ import type { ToolingCommandStepLeaf } from "../tooling/step-program.ts";
 import { runToolingStepProgram } from "../tooling/step-runner.ts";
 import { runCanonicalCommand, withinEventInvocation } from "./event-invocation.ts";
 import { eventStepFile, eventStepLabel } from "./event-step-identity.ts";
-import { makeEventStepRunners } from "./event-step-runtime.ts";
+import { type EventRedactionSources, makeEventStepRunners } from "./event-step-runtime.ts";
 
 interface EventRedactor {
   readonly redactString: (value: string) => string;
@@ -218,21 +218,24 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           ...runnable.flatMap((entry) => redactionValuesForStep(entry.step, tooling, publicValues)),
         ],
       });
-      const redactorFor = (
-        records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>,
-        directTokens: ReadonlyArray<string> = [],
-      ) => {
+      const collectRecords = (
+        records: EventRedactionSources["env"],
+        collect: typeof collectSecretEnvValues,
+      ): string[] =>
+        (records ?? []).flatMap((record) => {
+          if (record === undefined) return [];
+          return Object.entries(record).flatMap(([name, value]) =>
+            (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
+              collect({ [name]: String(occurrence) }, publicValues),
+            ),
+          );
+        });
+      const redactorFor = (sources: EventRedactionSources) => {
         const redactionTokens = [
           ...appPlanRedactionTokens,
-          ...directTokens,
-          ...records.flatMap((record) => {
-            if (record === undefined) return [];
-            return Object.entries(record).flatMap(([name, value]) =>
-              (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
-                collectSecretStructuralValues({ [name]: String(occurrence) }, publicValues),
-              ),
-            );
-          }),
+          ...(sources.directTokens ?? []),
+          ...collectRecords(sources.env, collectSecretEnvValues),
+          ...collectRecords(sources.input, collectSecretStructuralValues),
         ];
         return redactionOption.value
           .forProfile("secrets", {

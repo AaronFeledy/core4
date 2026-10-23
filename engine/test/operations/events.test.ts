@@ -866,6 +866,28 @@ describe("runAppEvent tooling-step kernel", () => {
     expect(invocations).toEqual([]);
   });
 
+  test.each(["MYSQL_PWD", "DB_PASS", "REDISCLI_AUTH", "dbPassword"])(
+    "registers step env %s with the env-name recognizer",
+    async (name) => {
+      // Given
+      const plan = attachEffectiveEvents(eventPlan(), {
+        "pre-start": [{ cmd: "fatal", env: { [name]: "secret-output" }, silent: true }],
+      });
+
+      // When
+      const error = await Effect.runPromise(
+        Effect.flip(
+          runAppEvent(plan, "pre-start").pipe(Effect.provide(eventRuntime([], [], new Set(['fatal "$@"'])))),
+        ),
+      );
+
+      // Then
+      if (error._tag !== "LandofileEventStepFailedError") throw error;
+      expect(error.outputTail).not.toContain("secret-output");
+      expect(error.outputTail).toContain("[redacted]");
+    },
+  );
+
   test("redacts a secret straddling the output-tail cutoff while preserving failure identity", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
