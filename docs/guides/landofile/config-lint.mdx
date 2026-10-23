@@ -8,6 +8,8 @@ tags: [beta, docs, landofile, config, lint]
 
 # Lint a Landofile
 
+From your app directory, validate the Landofile and its declared env files:
+
 ```sh
 lando app:config:lint
 ```
@@ -22,17 +24,29 @@ Lint reports every problem in one run. A Landofile with three independent mistak
 lando app:config:lint --format=json
 ```
 
-JSON output is a stable `ConfigLintResult` for editor integrations:
+JSON output contains a `ConfigLintResult` for editor integrations. Its fields have this shape:
 
+```text
+{
+  app,
+  file,
+  valid,
+  violations: [{ path, message, suggestion?, line?, column? }],
+  warnings?: [{ path, message, suggestion?, line?, column? }]
+}
 ```
-{ app, file, valid, violations: [{ path, message, suggestion?, line?, column? }], warnings?: [{ path, message, suggestion?, line?, column? }] }
-```
 
-Each violation is a `ValidationIssue`, the same shape `LandofileValidationError.issues` and recipe-manifest errors carry. `path` is an array of keys and indexes, `["services", "web", "ports", 0, "target"]`, so a consumer walks it without splitting on dots or guessing whether `0` was a key or an index. `message` says what is wrong. `suggestion`, when present, says how to fix it. `warnings` is the non-blocking tier: `valid` stays `true` when only warnings are present.
+Each violation or warning is a `ValidationIssue`. Its `path` is an array of keys and indexes, such as `["services", "web", "ports", 0, "target"]`, so an editor can locate the field without parsing a dotted string. `message` explains the problem; `suggestion`, when present, explains the fix. `valid` stays `true` when the result contains only warnings.
 
-Lint also reads declared `env_file` paths. A bare `NAME` line is still an error, with remediation `environment: { NAME: "{{ env.NAME }}" }`. It warns when a double-quoted env value decodes differently from its raw text, and when an unquoted or double-quoted value contains `${`.
+`--format` defaults to `text`. Use `--format=json` when another program needs to read the result.
 
-This shape is frozen by the schema artifact-set gate. `--format` defaults to `text`. Pass `--format=json` for machine output.
+## Check env file warnings
+
+Lint reads the files named by `env_file`. A bare `NAME` line is an error because env files require `KEY=VALUE` entries. To copy a host variable, put `NAME: "{{ env.NAME }}"` under the service's `environment:` in the Landofile instead.
+
+Lint warns when escape decoding changes a double-quoted value, or when an unquoted or double-quoted value contains `${`. Env files do not interpolate those references. Use single quotes when you want literal text, or a Landofile `environment:` expression when you want a host value. See [Quote env file values](./env-overrides.mdx#quote-env-file-values) for examples.
+
+Warnings are non-blocking. Review them for unintended values, then fix any separate violations before starting the app.
 
 ## Read schema violations
 

@@ -59,18 +59,36 @@ Lando fails with the resolved path and a fix when a declared file is missing, in
 
 ## Quote env file values
 
-Double-quoted values decode `\a`, `\b`, `\f`, `\n`, `\r`, `\t`, `\v`, `\$`, `\"`, `\\`, and octal `\0NNN`. Any other `\X` keeps the backslash. Quoted values can span lines. Single quotes are literal except `\'`.
+Use single quotes in an env file when backslashes or `${NAME}` should stay literal. For example, add these lines to `shared.env` in your app directory:
 
-`${NAME}` stays as written. Env files do not interpolate. Put the expression in `environment:`, or use single quotes.
-
-A bare `NAME` line is an error. Write the host value in explicitly:
-
-```yaml
-environment:
-  NAME: "{{ env.NAME }}"
+```text
+WINDOWS_PATH='C:\new'
+LITERAL_REFERENCE='${NAME}'
 ```
 
-`lando app:config:lint` stays valid and warns when a double-quoted value changes after decode, for example `"C:\new"`, and when an unquoted or double-quoted value contains `${`. Single-quoted `${` does not warn.
+The service receives `C:\new` and `${NAME}` as written, without the surrounding quotes. Within single quotes, only `\'` changes: it becomes a literal apostrophe.
+
+Double quotes decode `\a`, `\b`, `\f`, `\n`, `\r`, `\t`, `\v`, `\$`, `\"`, `\\`, and `\0NNN` with exactly three octal digits for a byte value (000 through 377). Other escapes keep their backslash. For example, `"C:\new"` contains a newline after decoding because `\n` is an escape. Use single quotes or double each backslash to keep it. Single- and double-quoted values can span lines.
+
+Env files never interpolate values, regardless of quoting. A bare `NAME` line is an error, not a request to copy that variable from the host. To use a host variable, add it under the service's `environment:` in your Landofile:
+
+```yaml
+services:
+  web:
+    type: node:lts
+    environment:
+      NAME: "{{ env.NAME }}"
+```
+
+Replace `NAME` in both places with your host variable's name, and set that variable in the shell where you run Lando.
+
+Check the files from your app directory:
+
+```sh
+lando app:config:lint
+```
+
+Lint warns when decoding changes a double-quoted value or when an unquoted or double-quoted value contains `${`. Single-quoted `${` does not warn. Warnings do not make an otherwise valid configuration invalid; syntax errors, including a bare `NAME` line, still need a fix.
 
 <Guide>
   <Scenario id="top-level-env-file" render>
