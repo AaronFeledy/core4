@@ -314,3 +314,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | host project commands from `.lando/scripts/*.bun.sh` Bun Shell scripts | `docs/guides/tooling/bun-shell-scripts.mdx` | Shipped |
 | - | - | make start wait for your app | `docs/guides/services/wait-for-your-app.mdx` | Shipped |
 | - | - | local LLM with Ollama via Compose passthrough | `docs/guides/services/ollama.mdx` | Shipped |
+| - | - | profile PHP requests with XHProf and XHGui | `docs/guides/tooling/xhprof-xhgui.mdx` | Shipped |
