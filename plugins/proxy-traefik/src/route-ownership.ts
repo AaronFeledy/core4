@@ -1,13 +1,11 @@
 export const ROUTE_OWNER_KEY_PREFIX = "# lando.owner-key: ";
+const ROUTE_OWNER_KEY = /^[0-9a-f]{64}$/;
 
 export const routeOwnerKeyComment = (ownerKey: string): string => `${ROUTE_OWNER_KEY_PREFIX}${ownerKey}\n`;
 
 export const ownerKeyFromRouteConfig = (content: string): string | undefined => {
-  for (const line of content.split("\n").slice(0, 16)) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith(ROUTE_OWNER_KEY_PREFIX)) continue;
-    const value = trimmed.slice(ROUTE_OWNER_KEY_PREFIX.length).trim();
-    if (value.length > 0) return value;
-  }
-  return undefined;
+  const line = content.split("\n", 1)[0] ?? "";
+  if (!line.startsWith(ROUTE_OWNER_KEY_PREFIX)) return undefined;
+  const value = line.slice(ROUTE_OWNER_KEY_PREFIX.length);
+  return ROUTE_OWNER_KEY.test(value) ? value : undefined;
 };

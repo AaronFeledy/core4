@@ -1,4 +1,4 @@
-import { Clock, DateTime, Effect, Layer, Option, Stream } from "effect";
+import { Clock, DateTime, Effect, Layer, Option, Semaphore, Stream } from "effect";
 
 import { redactString } from "@lando/container-runtime/redact";
 import { CaError, ProxyApplyError, ProxyError, ProxySetupError, RouterWatcherError } from "@lando/sdk/errors";
@@ -271,6 +271,7 @@ export const makeTraefikRouterService = (
   });
   let authorityPorts: AuthorityPorts | undefined;
   let defaultDomain: string | undefined;
+  const applyLock = Semaphore.makeUnsafe(1);
   const guardRouterMutation = <A, E>(operation: Effect.Effect<A, E>) =>
     dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
       ? dependencies.stateStore.withLock(routeReloadLockKey(), operation, {
@@ -291,6 +292,8 @@ export const makeTraefikRouterService = (
           const path = joinFor(dependencies.paths)(directory, name);
           const content = yield* readOptional(dependencies, path);
           if (content === undefined || ownerKeyFromRouteConfig(content) !== ownerKey) return;
+          const latest = yield* readOptional(dependencies, path);
+          if (latest === undefined || ownerKeyFromRouteConfig(latest) !== ownerKey) return;
           if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
             yield* invalidateAcknowledgement(dependencies.stateStore, staleApp);
           }
@@ -397,155 +400,159 @@ export const makeTraefikRouterService = (
       )(),
       applyRoutes: Effect.fn("RouterService.applyRoutes")(
         (nextRoutes, app, options) => {
-          const apply = Effect.gen(function* () {
-            const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
-            authorityPorts =
-              state === undefined
-                ? (authorityPorts ?? DEFAULT_AUTHORITY_PORTS)
-                : { http: state.httpPort, https: state.httpsPort };
-            const persistedDomain = yield* dependencies.fileSystem
-              .readText(defaultDomainFile(dependencies.paths))
-              .pipe(Effect.catch(() => Effect.succeed("")));
-            defaultDomain = normalizeDefaultDomain(persistedDomain) || defaultDomain || "lndo.site";
-            yield* ensureDashboardFile(dependencies, defaultDomain);
-            const appKey = String(app);
-            const ownerKey = options?.ownerKey;
-            const stamp = ownerKey === undefined ? "" : routeOwnerKeyComment(ownerKey);
-            const file = routeFile(dependencies.paths, app);
-            const hadRouteFile = yield* dependencies.fileSystem.exists(file);
-            if (nextRoutes.length === 0) {
-              if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
-                yield* invalidateAcknowledgement(dependencies.stateStore, app);
-              }
-              yield* dependencies.fileSystem.remove(file);
-              yield* removeAppCertificates(dependencies, app);
-              routes.delete(appKey);
-              if (hadRouteFile) pendingReload.add(appKey);
-            } else {
-              const hostnames = httpsHostnames(nextRoutes);
-              const expectedTls = hostnames.length === 0 ? undefined : persistedTlsFiles(app);
-              const expectedConfig = `${stamp}${renderTraefikDynamicConfig(nextRoutes, app, expectedTls)}`;
-              if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
-                const snapshot = yield* routeReloadSnapshot(dependencies, app, defaultDomain);
-                const [persistedConfig, certificate, privateKey, defaultCertificate, defaultPrivateKey] =
-                  snapshot;
-                const digest = routeReloadDigest(snapshot);
-                const appCertificateCurrent =
-                  hostnames.length === 0
-                    ? certificate === undefined && privateKey === undefined
-                    : certificate !== undefined &&
-                      privateKey !== undefined &&
+          const apply = applyLock.withPermits(1)(
+            Effect.gen(function* () {
+              const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+              authorityPorts =
+                state === undefined
+                  ? (authorityPorts ?? DEFAULT_AUTHORITY_PORTS)
+                  : { http: state.httpPort, https: state.httpsPort };
+              const persistedDomain = yield* dependencies.fileSystem
+                .readText(defaultDomainFile(dependencies.paths))
+                .pipe(Effect.catch(() => Effect.succeed("")));
+              defaultDomain = normalizeDefaultDomain(persistedDomain) || defaultDomain || "lndo.site";
+              yield* ensureDashboardFile(dependencies, defaultDomain);
+              const appKey = String(app);
+              const ownerKey = options?.ownerKey;
+              const stamp = ownerKey === undefined ? "" : routeOwnerKeyComment(ownerKey);
+              const file = routeFile(dependencies.paths, app);
+              const hadRouteFile = yield* dependencies.fileSystem.exists(file);
+              if (nextRoutes.length === 0) {
+                if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+                  yield* invalidateAcknowledgement(dependencies.stateStore, app);
+                }
+                yield* dependencies.fileSystem.remove(file);
+                yield* removeAppCertificates(dependencies, app);
+                routes.delete(appKey);
+                if (hadRouteFile) pendingReload.add(appKey);
+              } else {
+                const hostnames = httpsHostnames(nextRoutes);
+                const expectedTls = hostnames.length === 0 ? undefined : persistedTlsFiles(app);
+                const expectedConfig = `${stamp}${renderTraefikDynamicConfig(nextRoutes, app, expectedTls)}`;
+                if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+                  const snapshot = yield* routeReloadSnapshot(dependencies, app, defaultDomain);
+                  const [persistedConfig, certificate, privateKey, defaultCertificate, defaultPrivateKey] =
+                    snapshot;
+                  const digest = routeReloadDigest(snapshot);
+                  const appCertificateCurrent =
+                    hostnames.length === 0
+                      ? certificate === undefined && privateKey === undefined
+                      : certificate !== undefined &&
+                        privateKey !== undefined &&
+                        certificatePairIsCurrent(
+                          certificate,
+                          privateKey,
+                          hostnames,
+                          yield* Clock.currentTimeMillis,
+                        );
+                  const defaultCertificateCurrent =
+                    hostnames.length === 0 ||
+                    (defaultCertificate !== undefined &&
+                      defaultPrivateKey !== undefined &&
                       certificatePairIsCurrent(
-                        certificate,
-                        privateKey,
-                        hostnames,
+                        defaultCertificate,
+                        defaultPrivateKey,
+                        [`test.${defaultDomain}`, defaultDomain, `traefik.${defaultDomain}`],
                         yield* Clock.currentTimeMillis,
-                      );
+                      ));
+                  if (
+                    persistedConfig === expectedConfig &&
+                    appCertificateCurrent &&
+                    defaultCertificateCurrent &&
+                    (yield* isAcknowledged(dependencies.stateStore, app, digest))
+                  ) {
+                    routes.set(appKey, nextRoutes);
+                    if (ownerKey !== undefined) yield* withdrawSameOwnerRouteFiles(ownerKey, app);
+                    return {
+                      app,
+                      appliedRoutes: nextRoutes,
+                      authorities: authoritiesFor(nextRoutes, authorityPorts),
+                    } satisfies ProxyApplyResult;
+                  }
+                }
+
+                if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+                  yield* invalidateAcknowledgement(dependencies.stateStore, app);
+                }
+                if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+                  pendingReload.add(appKey);
+                }
+                const previousHostnames = httpsHostnames(routes.get(appKey) ?? []);
+                const appCertificate = appCertificateFiles(dependencies.paths, app);
+                const defaultCertificate = defaultCertificateFiles(dependencies.paths, defaultDomain);
+                const appCertificatePem = yield* readOptional(dependencies, appCertificate.cert);
+                const appPrivateKeyPem = yield* readOptional(dependencies, appCertificate.key);
+                const defaultCertificatePem = yield* readOptional(dependencies, defaultCertificate.cert);
+                const defaultPrivateKeyPem = yield* readOptional(dependencies, defaultCertificate.key);
+                const appCertificateCurrent =
+                  hostnames.length === 0 ||
+                  (appCertificatePem !== undefined &&
+                    appPrivateKeyPem !== undefined &&
+                    certificatePairIsCurrent(
+                      appCertificatePem,
+                      appPrivateKeyPem,
+                      hostnames,
+                      yield* Clock.currentTimeMillis,
+                    ));
                 const defaultCertificateCurrent =
                   hostnames.length === 0 ||
-                  (defaultCertificate !== undefined &&
-                    defaultPrivateKey !== undefined &&
+                  (defaultCertificatePem !== undefined &&
+                    defaultPrivateKeyPem !== undefined &&
                     certificatePairIsCurrent(
-                      defaultCertificate,
-                      defaultPrivateKey,
+                      defaultCertificatePem,
+                      defaultPrivateKeyPem,
                       [`test.${defaultDomain}`, defaultDomain, `traefik.${defaultDomain}`],
                       yield* Clock.currentTimeMillis,
                     ));
-                if (
-                  persistedConfig === expectedConfig &&
-                  appCertificateCurrent &&
-                  defaultCertificateCurrent &&
-                  (yield* isAcknowledged(dependencies.stateStore, app, digest))
-                ) {
-                  routes.set(appKey, nextRoutes);
-                  if (ownerKey !== undefined) yield* withdrawSameOwnerRouteFiles(ownerKey, app);
-                  return {
-                    app,
-                    appliedRoutes: nextRoutes,
-                    authorities: authoritiesFor(nextRoutes, authorityPorts),
-                  } satisfies ProxyApplyResult;
+                const refreshAppCertificate =
+                  hostnames.join("\n") !== previousHostnames.join("\n") || !appCertificateCurrent;
+                const refreshDefaultCertificate = !defaultCertificateCurrent;
+                const missingCertificate = !appCertificateCurrent || !defaultCertificateCurrent;
+                if (hostnames.length === 0) yield* removeAppCertificates(dependencies, app);
+                const tlsFiles =
+                  hostnames.length === 0
+                    ? undefined
+                    : yield* ensureTlsFiles(dependencies, {
+                        app,
+                        defaultDomain,
+                        hostnames,
+                        refreshAppCertificate,
+                        refreshDefaultCertificate,
+                      });
+                const nextConfig = `${stamp}${renderTraefikDynamicConfig(nextRoutes, app, tlsFiles)}`;
+                const previousConfig = hadRouteFile
+                  ? yield* dependencies.fileSystem.readText(file)
+                  : undefined;
+                if (previousConfig !== nextConfig || refreshAppCertificate || missingCertificate) {
+                  yield* dependencies.fileSystem.writeAtomic(file, nextConfig);
+                  pendingReload.add(appKey);
+                }
+                routes.set(appKey, nextRoutes);
+              }
+              if (ownerKey !== undefined) yield* withdrawSameOwnerRouteFiles(ownerKey, app);
+              if (pendingReload.has(appKey)) {
+                if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+                  const before = yield* routeReloadSnapshot(dependencies, app, defaultDomain);
+                  const digest = routeReloadDigest(before);
+                  yield* reloadWindowsRouter(appKey);
+                  const after = yield* routeReloadSnapshot(dependencies, app, defaultDomain);
+                  if (routeReloadDigest(after) !== digest) {
+                    return yield* Effect.fail(
+                      new Error("Traefik route files changed while the Windows router reloaded."),
+                    );
+                  }
+                  yield* acknowledge(dependencies.stateStore, app, digest);
+                } else {
+                  yield* reloadWindowsRouter(appKey);
                 }
               }
-
-              if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
-                yield* invalidateAcknowledgement(dependencies.stateStore, app);
-              }
-              if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
-                pendingReload.add(appKey);
-              }
-              const previousHostnames = httpsHostnames(routes.get(appKey) ?? []);
-              const appCertificate = appCertificateFiles(dependencies.paths, app);
-              const defaultCertificate = defaultCertificateFiles(dependencies.paths, defaultDomain);
-              const appCertificatePem = yield* readOptional(dependencies, appCertificate.cert);
-              const appPrivateKeyPem = yield* readOptional(dependencies, appCertificate.key);
-              const defaultCertificatePem = yield* readOptional(dependencies, defaultCertificate.cert);
-              const defaultPrivateKeyPem = yield* readOptional(dependencies, defaultCertificate.key);
-              const appCertificateCurrent =
-                hostnames.length === 0 ||
-                (appCertificatePem !== undefined &&
-                  appPrivateKeyPem !== undefined &&
-                  certificatePairIsCurrent(
-                    appCertificatePem,
-                    appPrivateKeyPem,
-                    hostnames,
-                    yield* Clock.currentTimeMillis,
-                  ));
-              const defaultCertificateCurrent =
-                hostnames.length === 0 ||
-                (defaultCertificatePem !== undefined &&
-                  defaultPrivateKeyPem !== undefined &&
-                  certificatePairIsCurrent(
-                    defaultCertificatePem,
-                    defaultPrivateKeyPem,
-                    [`test.${defaultDomain}`, defaultDomain, `traefik.${defaultDomain}`],
-                    yield* Clock.currentTimeMillis,
-                  ));
-              const refreshAppCertificate =
-                hostnames.join("\n") !== previousHostnames.join("\n") || !appCertificateCurrent;
-              const refreshDefaultCertificate = !defaultCertificateCurrent;
-              const missingCertificate = !appCertificateCurrent || !defaultCertificateCurrent;
-              if (hostnames.length === 0) yield* removeAppCertificates(dependencies, app);
-              const tlsFiles =
-                hostnames.length === 0
-                  ? undefined
-                  : yield* ensureTlsFiles(dependencies, {
-                      app,
-                      defaultDomain,
-                      hostnames,
-                      refreshAppCertificate,
-                      refreshDefaultCertificate,
-                    });
-              const nextConfig = `${stamp}${renderTraefikDynamicConfig(nextRoutes, app, tlsFiles)}`;
-              const previousConfig = hadRouteFile ? yield* dependencies.fileSystem.readText(file) : undefined;
-              if (previousConfig !== nextConfig || refreshAppCertificate || missingCertificate) {
-                yield* dependencies.fileSystem.writeAtomic(file, nextConfig);
-                pendingReload.add(appKey);
-              }
-              routes.set(appKey, nextRoutes);
-            }
-            if (ownerKey !== undefined) yield* withdrawSameOwnerRouteFiles(ownerKey, app);
-            if (pendingReload.has(appKey)) {
-              if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
-                const before = yield* routeReloadSnapshot(dependencies, app, defaultDomain);
-                const digest = routeReloadDigest(before);
-                yield* reloadWindowsRouter(appKey);
-                const after = yield* routeReloadSnapshot(dependencies, app, defaultDomain);
-                if (routeReloadDigest(after) !== digest) {
-                  return yield* Effect.fail(
-                    new Error("Traefik route files changed while the Windows router reloaded."),
-                  );
-                }
-                yield* acknowledge(dependencies.stateStore, app, digest);
-              } else {
-                yield* reloadWindowsRouter(appKey);
-              }
-            }
-            return {
-              app,
-              appliedRoutes: nextRoutes,
-              authorities: authoritiesFor(nextRoutes, authorityPorts),
-            } satisfies ProxyApplyResult;
-          });
+              return {
+                app,
+                appliedRoutes: nextRoutes,
+                authorities: authoritiesFor(nextRoutes, authorityPorts),
+              } satisfies ProxyApplyResult;
+            }),
+          );
           const guarded =
             dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
               ? dependencies.stateStore.withLock(routeReloadLockKey(), apply, {
