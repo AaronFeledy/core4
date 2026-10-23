@@ -51,11 +51,8 @@ test.each([
   "dbPassword",
   "stripeSecretKey",
   "APIToken",
-  "PGPASSWORD",
-  "DBPASSWORD",
   "AUTHTOKEN",
   "REDISCLI_AUTH",
-  "MYSQL_PWD",
   "AUTHKEY",
   "AUTHKEYS",
   "APIKEYS",
@@ -66,15 +63,22 @@ test.each([
   "pass",
   "keys",
 ])("recognizes secret env name %s", (name) => expect(isSecretEnvName(name)).toBe(true));
-test.each(["TOKENIZERS_PARALLELISM", "MONKEY", "KEYBOARD", "COMPASS", "TEAM", "API_ENDPOINT"])(
-  "rejects ordinary env name %s",
-  (name) => expect(isSecretEnvName(name)).toBe(false),
-);
+// Concatenated names are not guessed: GitHub's Windows images export PGPASSWORD=root, which would mask "root" everywhere.
+test.each([
+  "TOKENIZERS_PARALLELISM",
+  "MONKEY",
+  "KEYBOARD",
+  "COMPASS",
+  "TEAM",
+  "API_ENDPOINT",
+  "PGPASSWORD",
+  "DBPASSWORD",
+  "MYSQL_PWD",
+])("rejects ordinary env name %s", (name) => expect(isSecretEnvName(name)).toBe(false));
 test.each([
   "rootPassword",
   "apiToken",
   "clientSecret",
-  "PGPASSWORD",
   "credentials",
   "authToken",
   "apiKey",
@@ -96,6 +100,7 @@ test.each([
   "TOKENIZERS_PARALLELISM",
   "sshKey",
   "storageKeys",
+  "PGPASSWORD",
 ])("rejects structural metadata %s", (name) => expect(isSecretStructuralName(name)).toBe(false));
 
 test("field recognition preserves the broad original pattern", () => {

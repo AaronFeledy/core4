@@ -23,13 +23,14 @@ test("authored collection separates env maps, sensitive leaves and non-secret me
     appEnv: { stripeSecretKey: "app-env-private" },
     appLabels: { cacheKey: "app-label-private" },
     tooling: { task: { env: { stripeSecretKey: "tool-private" } } },
-    toolingDefaults: { env: override({ MYSQL_PWD: "default-private" }) },
+    toolingDefaults: { env: override({ DB_PASS: "default-private" }) },
     services: {
       app: {
         environment: override([
           "stripeSecretKey=list-private",
           "stripeSecretKey=list-private",
-          "PGPASSWORD=pg-private",
+          "dbPassword=pg-private",
+          "PGPASSWORD=not-guessed",
           "TOKENIZERS_PARALLELISM=false",
         ]),
         labels: { buildKey: "label-private" },
@@ -70,7 +71,7 @@ test("authored collection separates env maps, sensitive leaves and non-secret me
 });
 
 test.each([collectLandofileRedactionTokens, collectAppPlanRedactionTokens])(
-  "%p recognizes camelCase and suffix names in projected env and compose labels",
+  "%p recognizes camelCase names in projected env and compose labels, not concatenated ones",
   (collect) => {
     expect(
       collect({
@@ -86,7 +87,7 @@ test.each([collectLandofileRedactionTokens, collectAppPlanRedactionTokens])(
           },
         },
       }),
-    ).toEqual(["sk_test_canary", "pg-private", "mysql-private", "label-private"]);
+    ).toEqual(["sk_test_canary", "label-private"]);
   },
 );
 

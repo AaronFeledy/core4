@@ -57,8 +57,6 @@ test("config collection distinguishes env maps from structural metadata and scal
   };
   expect(configRedactionTokens({ config })).toEqual([
     "sk_test_canary",
-    "pg-private",
-    "mysql-private",
     "label-private",
     "client-private",
     "root-private",

@@ -866,7 +866,7 @@ describe("runAppEvent tooling-step kernel", () => {
     expect(invocations).toEqual([]);
   });
 
-  test.each(["MYSQL_PWD", "DB_PASS", "REDISCLI_AUTH", "dbPassword"])(
+  test.each(["API_TOKENS", "DB_PASS", "REDISCLI_AUTH", "dbPassword"])(
     "registers step env %s with the env-name recognizer",
     async (name) => {
       // Given
