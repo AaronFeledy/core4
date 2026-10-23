@@ -1,5 +1,5 @@
 import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
-import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginContext, RuntimeProviderContribution } from "@lando/sdk/plugins";
 import type { AppPlan } from "@lando/sdk/schema";
@@ -78,10 +78,7 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
               );
             }),
             apply: Effect.fnUntraced(function* (plan, options) {
-              const tokens = [
-                ...collectAppPlanRedactionTokens(plan),
-                ...Object.values(options?.serviceEnvironment ?? {}).flatMap(collectSecretEnvValues),
-              ];
+              const tokens = [...collectAppPlanRedactionTokens(plan)];
               const redactor =
                 redaction._tag === "Some"
                   ? yield* redaction.value

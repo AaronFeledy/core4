@@ -223,7 +223,7 @@ describe("waitForExit failures", () => {
     );
 
     // Then
-    expect(failure.providerId).toBe("podman");
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
     expect(failure.remediation).toBe(podmanCtx.remediation);
   });
 });

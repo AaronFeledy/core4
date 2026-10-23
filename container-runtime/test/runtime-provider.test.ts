@@ -541,7 +541,7 @@ describe("resolved provider operations", () => {
       if (!Exit.isFailure(exit)) throw new Error("Expected unavailable failure");
       const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ProviderUnavailableError);
-      expect(error.providerId).toBe(ctx.providerId);
+      expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: ctx.providerId });
     }
   });
 });

@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 import { DateTime, Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
@@ -56,8 +56,10 @@ const plan: AppPlan = {
 };
 const target = { app: appId, service: serviceName };
 
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
+let fixtureRedaction = makeRedactionService();
+beforeEach(() => {
+  fixtureRedaction = makeRedactionService();
+});
 
 describe.each(["docker", "lando", "podman"] as const)("%s service lifecycle", (providerName) => {
   const ctx = { providerId: providerName, remediation: `Repair ${providerName} and retry.` } as const;
@@ -106,18 +108,24 @@ describe.each(["docker", "lando", "podman"] as const)("%s service lifecycle", (p
 
       // Then
       expect(failure).toBeInstanceOf(ServiceNotFoundError);
-      expect(failure.providerId).toBe(providerName);
+      expect(failure).toMatchObject({ _tag: "ServiceNotFoundError", providerId: providerName });
     });
   }
 });
 
 describe("service lifecycle failures", () => {
-  const ctx = { providerId: "podman", remediation: "Repair Podman and retry." } as const;
+  const ctx = {
+    providerId: "podman",
+    remediation: "Repair Podman and retry.",
+    get redactor() {
+      return Effect.runSync(fixtureRedaction.forProfile("secrets"));
+    },
+  } as const;
 
   test("redacts runtime-registered values in a failed stop response", async () => {
     // Given
     const canary = "opaque-lifecycle-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
+    Effect.runSync(fixtureRedaction.registerValues([canary]));
     const api: EngineHttpApi = {
       request: () =>
         Effect.succeed({ status: 500, body: JSON.stringify({ message: `engine said ${canary}` }) }),
@@ -157,7 +165,7 @@ describe("service lifecycle failures", () => {
 
     // Then
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
-    expect(failure.providerId).toBe("podman");
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
     expect(failure.remediation).toBe(ctx.remediation);
   });
 
@@ -178,7 +186,7 @@ describe("service lifecycle failures", () => {
     // Then
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
     expect(failure.cause).toBe(requestFailure);
-    expect(failure.providerId).toBe("podman");
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
   });
 
   test("adds a redacted API reason to non-success status messages", async () => {

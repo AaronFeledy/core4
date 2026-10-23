@@ -42,7 +42,7 @@ const unavailableStatus = (
     providerId: ctx.providerId,
     operation,
     message,
-    details: redactResponseDetails(response),
+    details: redactResponseDetails(response, ctx.redactor),
     remediation: ctx.remediation,
   });
 
@@ -95,7 +95,7 @@ export const makePodmanApiClient = (endpoint: string, ctx: ProviderErrorContext)
               message: "Podman API returned malformed JSON — could not parse info response.",
               capability: "podman-info",
               requiredValue: "valid JSON Podman API info response",
-              actualValue: redactString(body),
+              actualValue: redactString(body, ctx.redactor),
               remediation: ctx.remediation,
               cause,
             }),

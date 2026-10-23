@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 
 import { Effect } from "effect";
 
@@ -14,16 +14,24 @@ import {
 } from "../src/engine-errors.ts";
 import { ContainerTransportError } from "../src/transport.ts";
 
-const ctx = { providerId: "test-provider", remediation: "Run the provider doctor." } as const;
+const ctx = {
+  providerId: "test-provider",
+  remediation: "Run the provider doctor.",
+  get redactor() {
+    return Effect.runSync(fixtureRedaction.forProfile("secrets"));
+  },
+} as const;
 
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
+let fixtureRedaction = makeRedactionService();
+beforeEach(() => {
+  fixtureRedaction = makeRedactionService();
+});
 
 describe("container engine error mapping", () => {
   test("redacts runtime-registered values in API failure messages and details", () => {
     // Given
     const canary = "opaque-api-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
+    Effect.runSync(fixtureRedaction.registerValues([canary]));
     const response = { status: 500, body: JSON.stringify({ message: `engine said ${canary}` }) };
     // When
     const error = apiResponseFailure(ctx, "start", response, "Start failed.");
@@ -37,7 +45,7 @@ describe("container engine error mapping", () => {
   test("redacts runtime-registered values in transport failure messages and details", () => {
     // Given
     const canary = "opaque-transport-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
+    Effect.runSync(fixtureRedaction.registerValues([canary]));
     const cause = new ContainerTransportError({
       kind: "connect",
       operation: "transport",

@@ -159,10 +159,14 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       new ProviderUnavailableError({
         providerId: ctx.providerId,
         operation: "inspect",
-        message: withApiReason(`provider-${ctx.providerId} inspect failed with HTTP ${response.status}.`, {
-          body: response.body,
-        }),
-        details: redactDetails({ service: service.name, body: response.body }),
+        message: withApiReason(
+          `provider-${ctx.providerId} inspect failed with HTTP ${response.status}.`,
+          {
+            body: response.body,
+          },
+          ctx.redactor,
+        ),
+        details: redactDetails({ service: service.name, body: response.body }, ctx.redactor),
         remediation: ctx.remediation,
       }),
     );
