@@ -411,6 +411,10 @@
       "digest": "0259f2d81b5170c7da88d33f880c1ce1280f79531320126f20daa2360d2394a3"
     },
     {
+      "fixture": "docs/guides/magento/fixtures/mageos",
+      "digest": "38f33cdb00154f4eb689bb0165048fb525d2ca5c946fb11b18e4f5d492179db6"
+    },
+    {
       "fixture": "docs/guides/mailpit/fixtures/invalid-target",
       "digest": "1a813e0ee00435605c4d9dce72db846f0e6ce9f86b7674510df1547ec4a4baf6"
     },
