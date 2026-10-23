@@ -16,7 +16,7 @@ services:
     type: postgres
 ```
 
-Set `creds:` when you want explicit values. Omit `password` and Lando generates one. Do not assume it is `lando`.
+Without a `creds:` block, Lando generates the password. Do not assume it is `lando`. To choose explicit credentials, provide `user`, `database`, and `password` together:
 
 ```yaml
 services:
@@ -25,7 +25,10 @@ services:
     creds:
       user: lando
       database: postgres-demo
+      password: local-development-only
 ```
+
+For a private password, use `password: '${secret:DB_PASSWORD}'` and set its [secret store](../config/secret-stores.mdx) value before starting the app. The server, the `psql` task, and `lando db:*` all receive that same resolved value.
 
 Start it. Lando puts the database on the app network:
 
@@ -53,19 +56,19 @@ Other services use the service name as the hostname. Here that's `db`. Defaults:
 | User | `lando` |
 | Password | generated when omitted; read it with `{{ services.db.creds.password }}` |
 
-Hand the consuming service a URL built from `db`'s resolved credentials:
+Hand the consuming service a URL built from `db`'s resolved credentials and port:
 
 ```yaml
 services:
   web:
     type: "node:22"
     environment:
-      DATABASE_URL: "postgresql://{{ services.db.creds.user }}:{{ services.db.creds.password }}@db:5432/{{ services.db.creds.database }}"
+      DATABASE_URL: "postgresql://{{ services.db.creds.user }}:{{ url.encodeComponent(services.db.creds.password) }}@db:{{ services.db.port }}/{{ services.db.creds.database }}"
   db:
     type: postgres
 ```
 
-`web` gets the real password, and it follows an authored `creds:` block. Don't hardcode it. The URL uses the default port; update it when you author `port:`. `lando info` redacts the password, so it's no place to copy it from. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
+`web` gets the real password, and it follows an authored `creds:` block. Don't hardcode it. `{{ services.db.port }}` is `5432` here and follows `port:` when you set one. `url.encodeComponent()` percent-encodes the password for the URL, which matters once you author one with `@` or `/` in it. `lando info` redacts the password, so it's no place to copy it from. A password authored as a `${secret:...}` reference travels through this URL as a reference and resolves when `web` is created. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
 
 ## Open the client
 
@@ -120,7 +123,7 @@ services:
     port: 5433
 ```
 
-Other services then connect to `db:5433`. Lando sets `PGPORT` from `port:`. An authored `PGPORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.db.environment.PGPORT` with the `port:` value to set. With `config.server`, Lando pins `port:` or the default on its command line.
+Other services then connect to `db:5433`, and a `{{ services.db.port }}` expression in their config follows along. Lando sets `PGPORT` from `port:`. An authored `PGPORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.db.environment.PGPORT` with the `port:` value to set. With `config.server`, Lando pins `port:` or the default on its command line.
 
 The service also exposes `LANDO_DB_PORT=5433`. The `psql` task and `lando db:*` commands pass the planned port explicitly, including for local socket connections. If you author `command:` or `entrypoint:`, you own the daemon's flags; make your launcher honor the planned port, including when you load a config file yourself.
 
@@ -129,6 +132,22 @@ Apply the change with `lando rebuild`, then check the running listener:
 ```sh
 lando psql -c 'SHOW port;'
 ```
+
+  <Scenario id="port-follows-into-url" render>
+    <Step name="scaffold-port-url">
+      <UseFixture name="postgres-port-url" />
+    </Step>
+    <Step name="lint-port-url">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="plan-port-url">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="cleanup-port-url">
+      <Cleanup />
+    </Step>
+  </Scenario>
 
 ## Pin a version
 

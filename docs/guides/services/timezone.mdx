@@ -42,7 +42,11 @@ services:
 ## Don't interpolate host env
 
 A Landofile can't reach into your host shell's environment with
-`${HOST_VAR}` syntax. Lando rejects configuration expressions:
+`${HOST_VAR}` syntax. Lando rejects that form with `LandofileValidationError`
+at the value's path, here `services.app.environment.TZ`. Use
+`{{ env.HOST_VAR }}` to read your host, or `$${HOST_VAR}` when the
+container shell should expand it; see
+[Landofile expressions](../landofile/expressions.mdx#keep-var-and--as-text).
 
   <Scenario id="rejected-host-env-interpolation" render>
     <Step name="scaffold">
@@ -50,7 +54,7 @@ A Landofile can't reach into your host shell's environment with
     </Step>
     <Step name="inspect-rejected-form">
       <Run command="lando app:config --format=json" expectExit={1} />
-      <Verify errorTag="NotImplementedError" expect={{ regex: "Configuration expressions \\(\\$\\{\\.\\.\\.\\}\\) are not supported at" }} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "services\\.app\\.environment\\.TZ" }} />
     </Step>
   </Scenario>
 

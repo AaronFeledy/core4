@@ -53,6 +53,36 @@ services:
 
 Top-level `proxy:` is the other spelling: a map of service name to the same route list. Set `routes: []` to give a service no hostname at all.
 
+## Write maps as block YAML
+
+Indent every map, and put a value that contains `#` in YAML quotes:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    primary: true
+    environment:
+      DEMO: "echo # hi"
+```
+
+Here `#` sits inside the YAML quotes, so it stays part of the value: `DEMO` is `echo # hi`. Outside YAML quotes, a `#` after whitespace starts a comment, and shell-style quotes inside a plain scalar do not change that: `DEMO: echo "# hi"` leaves `DEMO` holding only `echo "`.
+
+A one-line `{key: value}` flow mapping is not accepted anywhere in a Landofile, including when its only `#` is inside quotes:
+
+```yaml nolint
+services:
+  app:
+    environment:
+      DEMO: {key: "echo # hi"}
+```
+
+```sh
+lando app:config --format=json
+```
+
+That fails with `LandofileParseError`, the line number, and a remediation showing the block rewrite. Lando does not read the braces as text and does not cut the value at the `#`. `lando app:config:lint --format=json` reports the same problem as a `valid: false` violation with the line, so you can check a file before you start the app.
+
 ## Override a list in a local layer
 
 Put machine-local changes in `.lando.local.yml`. Layers load from low to high precedence: `.lando.base.yml`, `.lando.dist.yml`, `.lando.upstream.yml`, `.lando.yml`, `.lando.local.yml`, then `.lando.user.yml`.
@@ -227,6 +257,19 @@ lando info
       <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "DEBUG" } } }} />
     </Step>
     <Step name="cleanup-directive-layers">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="flow-mapping-rejected" render>
+    <Step name="scaffold-flow-mapping">
+      <UseFixture name="flow-mapping-rejected" />
+    </Step>
+    <Step name="inspect-flow-mapping">
+      <Run command="lando app:config --format=json" expectExit={1} />
+      <Verify errorTag="LandofileParseError" expect={{ regex: "Inline objects are not supported" }} />
+      <Verify errorTag="LandofileParseError" expect={{ regex: "block mapping" }} />
+    </Step>
+    <Step name="cleanup-flow-mapping">
       <Cleanup />
     </Step>
   </Scenario>

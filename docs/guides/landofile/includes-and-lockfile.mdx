@@ -86,12 +86,15 @@ lando app:config --format=json
 ```
 
 The structured result includes a `sources` inventory of logical source IDs and
-SHA-256 hashes, not profile contents or host paths. Exact service-environment
-secret references remain references in config and plans. A bare id such as
+SHA-256 hashes, not profile contents or host paths. A `${secret:...}` reference
+authored as a whole service `environment` value in a profile is a reference in
+the merged config and in the plan, the same as one written in `.lando.yml`. A bare id such as
 `CORP_API_TOKEN` resolves from `LANDO_SECRET_CORP_API_TOKEN` through the default
 `env` store; an `op://Vault/Item/field` reference resolves through the bundled
-1Password store. The routed SecretStore supplies values only for the provider
-action; don't interpolate secrets into build arguments or scripts. See
+1Password store. Lando reads the store only when it creates the container or
+runs a tooling command that needs the value; `lando app:config` shows the
+reference as a typed descriptor and never reads a store. Don't interpolate
+secrets into build arguments or scripts. See
 [secret stores](../config/secret-stores.mdx).
 
 No profile is loaded automatically. Opting in trusts its build and tooling
@@ -132,8 +135,9 @@ try {
       },
     })),
   );
-  expect(config.services?.[ServiceName.make("web")]?.environment?.REGION).toBe("project");
-  expect(config.services?.[ServiceName.make("web")]?.environment?.VALUE).toBe("\${secret:CORP_API_TOKEN}");
+  const web = config.document.services?.[ServiceName.make("web")];
+  expect(web?.environment?.REGION).toBe("project");
+  expect(web?.environment?.VALUE).toEqual({ _tag: "SecretRef", reference: "CORP_API_TOKEN" });
 } finally {
   process.chdir(previousCwd);
 }`}
