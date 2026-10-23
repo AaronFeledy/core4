@@ -53,7 +53,7 @@ services:
 
 ## Stop PHP in upload directories
 
-Uploaded files should stay files. Set `noScripts:` to webroot-relative URI paths where nginx must not run PHP. Drupal and Drupal CMS already set `sites/*/files` when the recipe fronts PHP with nginx:
+Add `noScripts:` to the nginx service from the PHP example above. List upload directories as URI paths relative to the webroot, not host filesystem paths:
 
 ```yaml
 services:
@@ -63,13 +63,26 @@ services:
     noScripts:
       - sites/*/files
       - uploads
+  app:
+    type: "php:8.3"
+    via: fpm
 ```
 
-`*` matches one path segment, so `sites/*/files` covers `sites/default/files` and `sites/example.com/files`. A `.php` request under those paths, including PATH_INFO extras, returns 403. Front controllers such as `/index.php` and Drupal image-style fallbacks stay reachable.
+With Lando's generated FastCGI configuration, requests for PHP files beneath these paths return 403, including paths such as `/uploads/file.php/extra`. The match is case-insensitive. `*` matches within one path segment, so `sites/*/files` covers both `sites/default/files` and `sites/example.com/files`. Front controllers such as `/index.php` and Drupal image-style fallbacks remain reachable.
 
-Each entry is a webroot-relative path. No leading slash, no trailing slash, no `..`, and no `**`. Letters, digits, `.`, `_`, `/`, `-`, and a single-segment `*` only. `lando app:config:lint` rejects anything else, including characters that would break out of the generated location.
+Use letters, digits, `.`, `_`, `/`, `-`, and `*` in these paths. An entry cannot be empty, consist only of `*`, start or end with `/`, or contain `..`, `**`, an empty segment such as `a//b`, or a `.` segment such as `a/./b`.
 
-Write `noScripts: []` to clear the Drupal default. The key is ignored on every other service type.
+From the app directory, check the path syntax before rebuilding:
+
+```sh
+lando app:config:lint
+```
+
+An invalid entry produces a violation under `services.<name>.noScripts`. Fix it before running `lando rebuild` to apply the configuration.
+
+Drupal and Drupal CMS set `sites/*/files` automatically when you choose nginx. Setting `noScripts: []` on that nginx service removes this protection, so do that only if you intend to allow PHP requests beneath the upload paths.
+
+`noScripts` configures Lando's generated nginx FastCGI launcher. It has no effect on other service types, or when you replace nginx's `command:` or `entrypoint:` and supply your own configuration.
 
   <Scenario id="authored-noscripts" render>
     <Step name="scaffold">
