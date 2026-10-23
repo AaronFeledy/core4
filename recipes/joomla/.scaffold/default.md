@@ -1,14 +1,24 @@
 # Joomla
 
-`lando init --recipe joomla` scaffolds PHP, Composer, and MariaDB or MySQL.
+Create the Lando services for Joomla with PHP, Composer, and MariaDB or MySQL.
+The recipe writes the Landofile; install Joomla separately in the app root.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe joomla --name=my-joomla-app --yes
+cd my-joomla-app
 lando start
 lando info
 ```
 
 `--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, and webroot `.`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+
+To choose a different stack, use this initialization command instead of the
+default one above. Run it from the parent directory, not inside the app:
 
 ```sh
 lando init --recipe joomla --name=my-joomla-mysql --yes \

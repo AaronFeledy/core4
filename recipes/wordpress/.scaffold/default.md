@@ -1,6 +1,14 @@
 # WordPress
 
-`lando init --recipe wordpress` writes PHP, MariaDB, Composer, and a `lando wp` task. Start builds the stock PHP service with mysqli, checksum-verified WP-CLI, and a 512M PHP memory limit for both `lando wp` and web requests, ready to install WordPress.
+Create the Lando services for WordPress with PHP, MariaDB, Composer, and
+WP-CLI tooling. Starting the stock PHP service builds in mysqli,
+checksum-verified WP-CLI, and a 512M memory limit for CLI and web requests.
+The recipe does not download WordPress; install it after starting the stack.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe wordpress --name=my-wordpress-app --yes
