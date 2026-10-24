@@ -55,7 +55,12 @@ export const resolveConnectionClientTask = Effect.fnUntraced(function* (input: {
     service.provider !== input.plan.provider
   )
     return yield* Effect.fail(refused);
-  const definition = yield* plugins.value.loadServiceType(service.type).pipe(Effect.mapError(() => refused));
+  if (service.serviceTypeId === undefined || service.serviceTypeId.length === 0)
+    return yield* Effect.fail(refused);
+  const definition = yield* plugins.value
+    .loadServiceType(service.serviceTypeId)
+    .pipe(Effect.mapError(() => refused));
+  if (definition.id !== service.serviceTypeId) return yield* Effect.fail(refused);
   const factoryTask = definition.toolingForConnection?.(owner, service.connection)[input.name];
   if (factoryTask === undefined) return yield* Effect.fail(refused);
   const generated = { service: owner, ...factoryTask };

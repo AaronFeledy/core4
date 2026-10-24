@@ -58,3 +58,52 @@ test.each(["missing", "historical", "family", "root", "id", "provider"] as const
     expect(f.calls).toEqual([]);
   },
 );
+
+test.each([null, "", "unavailable-service-type"])(
+  "generated client refuses missing, invalid or unavailable applied declaration %j before provider selection",
+  async (appliedServiceTypeId) => {
+    // Given
+    const f = appliedClientFixture({ appliedServiceTypeId });
+    // When
+    const result = await f.run();
+    // Then
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "PlanReplanRequiredError" } });
+    expect(f.selections).toEqual([]);
+    expect(f.calls).toEqual([]);
+  },
+);
+
+test.each([{ id: "wrong-declaration" }, { toolingForConnection: () => ({}) }])(
+  "generated client refuses incompatible registry definition %j",
+  async (definitionOverride) => {
+    // Given
+    const f = appliedClientFixture({ definitionOverride });
+    // When
+    const result = await f.run();
+    // Then
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "PlanReplanRequiredError" } });
+    expect(f.selections).toEqual([]);
+    expect(f.calls).toEqual([]);
+  },
+);
+
+test("generated client refuses an applied declaration without a factory before provider selection", async () => {
+  // Given
+  const f = appliedClientFixture({ missingFactory: true });
+  // When
+  const result = await f.run();
+  // Then
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "PlanReplanRequiredError" } });
+  expect(f.selections).toEqual([]);
+  expect(f.calls).toEqual([]);
+});
+
+test("applied declaration wins when the desired declaration changes", async () => {
+  // Given
+  const f = appliedClientFixture({ desiredServiceTypeId: "unavailable-desired-declaration" });
+  // When
+  const result = await f.run();
+  // Then
+  expect(result._tag).toBe("Success");
+  expect(f.calls[0]?.command).toEqual(["psql", "-p", "5433", "-U", "APPLIED-user", "-d", "APPLIED-db"]);
+});

@@ -59,6 +59,10 @@ export const appliedClientFixture = (
     readonly authored?: ToolingTaskShape;
     readonly applied?: "missing" | "historical" | "family" | "root" | "id" | "provider";
     readonly missingDesired?: boolean;
+    readonly appliedServiceTypeId?: string | null;
+    readonly desiredServiceTypeId?: string;
+    readonly definitionOverride?: Partial<Pick<ServiceType, "id" | "toolingForConnection">>;
+    readonly missingFactory?: boolean;
     readonly inherited?: { readonly plan: CurrentExecutableAppPlan; readonly serviceType: ServiceType };
   } = {},
 ) => {
@@ -77,10 +81,14 @@ export const appliedClientFixture = (
     source: "test",
     runtime: 4 as const,
   };
-  const service = {
+  const plannedService = input.inherited?.plan.services[ServiceName.make("database")];
+  if (input.inherited !== undefined && plannedService === undefined)
+    throw new TypeError("Inherited client fixture requires its actual planned database service.");
+  const service = plannedService ?? {
     name: ServiceName.make("database"),
-    type: input.inherited?.serviceType.id ?? "postgres",
-    provider: input.inherited?.plan.provider ?? ProviderId.make("test"),
+    type: "postgres",
+    serviceTypeId: "postgres",
+    provider: ProviderId.make("test"),
     primary: true,
     environment: {},
     connection: desired,
@@ -93,6 +101,8 @@ export const appliedClientFixture = (
     extensions: {},
     metadata,
   };
+  if (service.connection === undefined)
+    throw new TypeError("Inherited client fixture requires a canonical database connection.");
   const base: CurrentExecutableAppPlan = input.inherited?.plan ?? {
     valueModel: 1,
     id: AppId.make("applied-client"),
@@ -109,12 +119,25 @@ export const appliedClientFixture = (
     metadata,
   };
   const generated = clientFactory(service.name, desired);
-  const plan =
+  const desiredPlan =
     input.inherited?.plan ??
     attachEffectiveTooling(withProjectEvents(base, { "pre-start": [{ task: "psql" }] }), generated, {
       psql: service.name,
     });
-  const { connection: _connection, ...historical } = service;
+  const plan =
+    input.desiredServiceTypeId === undefined
+      ? desiredPlan
+      : {
+          ...desiredPlan,
+          services: {
+            ...desiredPlan.services,
+            [service.name]: { ...service, serviceTypeId: input.desiredServiceTypeId },
+          },
+        };
+  const { connection: _connection, serviceTypeId: _serviceTypeId, ...historical } = service;
+  const appliedServiceTypeId =
+    input.appliedServiceTypeId === null ? undefined : (input.appliedServiceTypeId ?? service.serviceTypeId);
+  const { serviceTypeId: _declaration, ...serviceWithoutDeclaration } = service;
   const applied: AppPlan = {
     ...base,
     id: input.applied === "id" ? AppId.make("other") : base.id,
@@ -125,7 +148,8 @@ export const appliedClientFixture = (
         input.applied === "historical"
           ? historical
           : {
-              ...service,
+              ...serviceWithoutDeclaration,
+              ...(appliedServiceTypeId === undefined ? {} : { serviceTypeId: appliedServiceTypeId }),
               connection: { ...appliedConnection, family: input.applied === "family" ? "mysql" : "postgres" },
             },
     },
@@ -147,20 +171,35 @@ export const appliedClientFixture = (
     Effect.map(PluginRegistry, (registry) =>
       PluginRegistry.of({
         ...registry,
-        loadServiceType: () =>
-          Effect.succeed(
-            input.inherited?.serviceType ?? {
-              id: "postgres",
-              name: "postgres",
-              base: "lando",
-              schema: Schema.Unknown,
-              toolingForConnection: clientFactory,
-              resolve: () => Effect.die("not used"),
-            },
-          ),
+        loadServiceType: (id) => {
+          const declaration: ServiceType = input.inherited?.serviceType ?? {
+            id: "postgres",
+            name: "postgres",
+            base: "lando",
+            schema: Schema.Unknown,
+            toolingForConnection: clientFactory,
+            resolve: () => Effect.die("not used"),
+          };
+          const loaded =
+            id === declaration.id
+              ? Effect.succeed({ ...declaration, ...input.definitionOverride })
+              : registry.loadServiceType(id);
+          return loaded.pipe(
+            Effect.map((definition) => {
+              const { toolingForConnection: _factory, ...withoutFactory } = definition;
+              return input.missingFactory ? withoutFactory : definition;
+            }),
+          );
+        },
       }),
     ),
-  ).pipe(Layer.provide(Registry.layerWith({ bundled: false }, [])));
+  ).pipe(
+    Layer.provide(
+      input.inherited === undefined
+        ? Registry.layerWith({ bundled: false }, [])
+        : Registry.layerWith({ user: false, app: false }),
+    ),
+  );
   const layer = Layer.mergeAll(
     resolver,
     plugin,
