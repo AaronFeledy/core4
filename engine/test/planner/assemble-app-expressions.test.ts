@@ -232,9 +232,7 @@ test("fails the plan with a ConfigExpressionError at the deferred value path", a
     expect(result.failure).toBeInstanceOf(ConfigExpressionError);
     expect(result.failure).toMatchObject({
       _tag: "ConfigExpressionError",
-      expression: JSON.stringify(
-        (await Effect.runPromise(compileTestLandofile(landofile, root))).pendingSites[0]?.template,
-      ),
+      expression: "{{ app.nope }}",
       path: "services.database.database",
       filePath: `${root}/.lando.yml`,
     });

@@ -75,7 +75,12 @@ test("fails closed when an env expression names an unset variable", async () => 
     const failure = await discoverFailure();
 
     // Then
-    expect(String((failure as { message?: unknown }).message ?? "")).toContain("name");
+    expect(failure).toMatchObject({
+      _tag: "ConfigExpressionError",
+      filePath: join(appRoot, ".lando.yml"),
+      path: "name",
+      expression: "{{ env.LANDO_UNSET_FIXTURE }}",
+    });
   });
 });
 
