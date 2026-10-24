@@ -38,7 +38,7 @@ command -v lando &&
 lando --version
 ```
 
-Then run setup once. On an Intel Mac (`darwin-x64`), install and start Docker Desktop, then run `lando setup --provider=docker` instead of the default setup command below. Setup does not install Docker for you. The default provider is `lando` (managed Podman), so on supported managed-runtime hosts Lando 4 does not borrow the Docker daemon Lando 3 uses:
+Then run setup in your terminal and follow the prompts. Choose the recommended Lando-managed runtime on supported hosts. It does not require Docker or borrow the Docker daemon Lando 3 uses. On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks. Setup does not install Docker for you:
 
 ```sh
 lando setup
