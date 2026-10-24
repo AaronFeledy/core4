@@ -150,6 +150,7 @@ const expectedCatalogRows = [
   ["php-base-images", "derived", "build-php-base-images.ts", "repo"],
   ["ci-workflow", "committed-workflow", "build-ci-workflow.ts", "repo"],
   ["nightly-workflow", "committed-workflow", "build-nightly-workflow.ts", "repo"],
+  ["dependency-audit-workflow", "committed-workflow", "build-dependency-audit-workflow.ts", "repo"],
   ["release-workflow", "committed-workflow", "build-release-workflow.ts", "repo"],
   ["provider-matrix-workflow", "committed-workflow", "build-provider-matrix-workflow.ts", "repo"],
   ["runtime-bundle-workflow", "committed-workflow", "build-runtime-bundle-workflow.ts", "repo"],
@@ -310,6 +311,7 @@ describe("codegen catalog", () => {
     const expectedCommittedWorkflows = [
       "ci-workflow",
       "nightly-workflow",
+      "dependency-audit-workflow",
       "release-workflow",
       "provider-matrix-workflow",
       "runtime-bundle-workflow",
@@ -331,12 +333,12 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(36);
+    expect(catalog).toHaveLength(37);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(3);
-    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(12);
+    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(13);
     expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(21);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
