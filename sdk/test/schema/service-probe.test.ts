@@ -113,6 +113,18 @@ test.each([
     service: { ...service, hostAliases: [{ hostname: "db", ip: "127.0.0.1" }] },
     networking: { perAppBridge: { name: "private" } },
   },
+  {
+    name: "Compose loopback host alias",
+    endpoint: target,
+    service: { ...service, extensions: { compose: { extra_hosts: { DB: "127.0.0.1" } } } },
+    networking: { perAppBridge: { name: "private" } },
+  },
+  {
+    name: "Compose override of the canonical shared alias",
+    endpoint: target,
+    service: { ...service, extensions: { compose: { extra_hosts: { "DB.DEMO.INTERNAL": "127.0.0.1" } } } },
+    networking: { perAppBridge: null, sharedNetworkMembership: { name: "shared", aliases: {} } },
+  },
 ])("refuses $name before realization", (input) => {
   const result = serviceListenerTarget(
     { slug: "demo", networking: input.networking },
@@ -121,4 +133,15 @@ test.each([
   );
   expect(Result.isFailure(result)).toBe(true);
   if (Result.isFailure(result)) expect(result.failure._tag).toBe("LandofileValidationError");
+});
+
+test("retains managed listener DNS beside an unrelated Compose host alias", () => {
+  const result = serviceListenerTarget(
+    { slug: "demo", networking: { perAppBridge: { name: "private" } } },
+    { ...service, extensions: { compose: { extra_hosts: { cache: "127.0.0.1" } } } },
+    target,
+  );
+
+  expect(Result.isSuccess(result)).toBe(true);
+  if (Result.isSuccess(result)) expect(result.success.host).toBe("db");
 });
