@@ -7,7 +7,7 @@ tags: [beta, docs, minio, service]
 
 # Add MinIO
 
-Put `type: minio` in your services block. Set `database` to name the bucket Lando creates for you:
+Add `type: minio` under `services` in `.lando.yml`. Set `database` to name the bucket Lando creates for you:
 
 ```yaml
 name: minio-demo
@@ -69,8 +69,7 @@ services:
 Two things to know:
 
 - It only applies to a **new** volume. A volume created by an earlier start
-  keeps the ownership it already has. Remove the volume (`lando destroy` with
-  volume purge) to get a fresh one that is seeded again.
+  keeps the ownership it already has. Purging that volume deletes its objects. Back up anything you need before using `lando destroy` with volume purge to create a fresh volume with the new ownership.
 - Lando has to know your user exists in the image. A numeric uid always works,
   because a uid can always be given ownership, even when you supply your own
   `image:` or `build:`. Any user name other than `root` is refused. A named

@@ -8,8 +8,8 @@ tags: [beta, docs, library, embedding]
 
 # Embedding the Lando runtime
 
-Embedding hosts have two complementary surfaces. The **App handle** is the preferred
-app lifecycle path: `openLandoRuntime()` retains one scoped runtime, `runtime.app()`
+Use the **App handle** to start, inspect, and stop an app from an Effect host.
+`openLandoRuntime()` retains one scoped runtime, `runtime.app()`
 resolves a root-bound `App` handle, and `app.start()`, `app.info()`, and `app.stop()`
 drive the app while Effect scopes clean everything up when the host scope closes.
 Layer-native hosts that compose their own Effect program keep using
@@ -20,18 +20,8 @@ construction.
 
 ## App lifecycle with `openLandoRuntime`
 
-Reach for the App handle whenever you want to start, inspect, and stop a project the
-way the CLI does. `openLandoRuntime()` acquires the runtime once in the caller's
-`Scope`; `runtime.app(selector?)` resolves a branded `App` handle whose one-shot
-methods (`info`, `exec`, `tooling`, `config.lint`) need no further services and whose
-live-resource methods (`start`, `logs`, `events.subscribe`) stay bound to the
-retained runtime scope. A no-selector `runtime.app()` resolves the project at the
-runtime's construction working directory, and the handle stays bound to that root
-even if the host later changes its process working directory.
-
-The handle retains its resolved plan and captured Landofile. `exec`, deep `info`, and handle-bound tooling reuse that object, including when `agentEnv` is omitted. A later file edit does not refresh the handle. Re-resolve with `runtime.app(originalSelector)` or layer-native `resolveApp(originalSelector)` to capture edits; supply an updated object when the selector contains a Landofile shape. Ordinary CLI invocations still discover fresh configuration.
-
-That is a privacy boundary: an existing handle does not observe a later app `agentEnv: false` edit. Invocation-time `ConfigService.get("agentEnv")` and the current `LANDO_AGENT_ENV=0` emergency veto still disable automatic forwarding. Global config is a snapshot taken when the runtime was built, so a later `config.yml` edit is not seen until you build a new runtime. Vetoes do not remove explicit service or command env and do not revoke commands already running. Provider status remains live, including shallow `info`, which does not load a Landofile for a supplied target.
+Run the following program from a project directory, with a provider already set
+up for that app. It starts the app, reads its information, then stops it.
 
 ```ts
 import { Effect } from "effect";
@@ -50,6 +40,14 @@ const program = Effect.gen(function* () {
 const info = await Effect.runPromise(Effect.scoped(program));
 ```
 
+`openLandoRuntime()` acquires the runtime once in the caller's
+`Scope`; `runtime.app(selector?)` resolves a branded `App` handle whose one-shot
+methods (`info`, `exec`, `tooling`, `config.lint`) need no further services and whose
+live-resource methods (`start`, `logs`, `events.subscribe`) stay bound to the
+retained runtime scope. A no-selector `runtime.app()` resolves the project at the
+runtime's construction working directory, and the handle stays bound to that root
+even if the host later changes its process working directory.
+
 `app.start()` keeps start-state resources (such as file-sync sessions) alive on a
 managed scope between calls; `app.stop()`, `app.restart()`, `app.destroy()`, and
 runtime-scope close each tear that scope down exactly once. A failed or
@@ -65,6 +63,10 @@ waits for the dependency to start, `service_healthy` waits for its healthcheck, 
 `service_completed_successfully` waits for a zero exit code. An optional dependency
 declared with `required: false` does not block the remaining services when it is absent
 or fails.
+
+The handle retains its resolved plan and captured Landofile. `exec`, deep `info`, and handle-bound tooling reuse that object, including when `agentEnv` is omitted. A later file edit does not refresh the handle. Re-resolve with `runtime.app(originalSelector)` or layer-native `resolveApp(originalSelector)` to capture edits; supply an updated object when the selector contains a Landofile shape. Ordinary CLI invocations still discover fresh configuration.
+
+That is a privacy boundary: an existing handle does not observe a later app `agentEnv: false` edit. Invocation-time `ConfigService.get("agentEnv")` and the current `LANDO_AGENT_ENV=0` emergency veto still disable automatic forwarding. Global config is a snapshot taken when the runtime was built, so a later `config.yml` edit is not seen until you build a new runtime. Vetoes do not remove explicit service or command env and do not revoke commands already running. Provider status remains live, including shallow `info`, which does not load a Landofile for a supplied target.
 
 ## Layer-native hosts with `makeLandoRuntime`
 

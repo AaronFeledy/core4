@@ -5,7 +5,9 @@ description: Reproduce CI checks locally and inspect their failure artifacts.
 
 # CI runbook
 
-Use these commands to reproduce the CI jobs locally.
+Use this runbook to reproduce a failing CI job and find its diagnostics. Run commands from the repository root with the Bun version pinned in `.bun-version`. A clean checkout needs `bun install` and `bun run codegen`; tests that compile or run the container helper also need the [helper build](#in-container-helper).
+
+For a pre-PR check, use `bun run gate:pr` as described in the root repository instructions. To investigate a specific failure, go directly to [static checks](#static-checks), [generated schema checks](#generated-schema-and-bundled-codegen-gates), [guide scenarios](#guide-e2e-smoke-subset), or the [docs build](#docs-build). Live provider sections have additional host prerequisites; do not run their setup commands as part of a static-only check.
 
 ## Choose the CI tier
 
@@ -25,7 +27,9 @@ General Linux tests run on Ubuntu 26.04. Portable Linux x64 binaries still build
 
 ## Static checks
 
-CI pins Bun via `.bun-version` at 1.4.2; the Beta 1 floor is `>=1.4.2`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version. Pull requests run portable static checks once on Linux x64. Broad runs retain the six-platform static matrix. The stable `static-checks` summary feeds the required `ci` check.
+CI pins Bun via `.bun-version` at 1.4.2; the Beta 1 floor is `>=1.4.2`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version.
+
+Pull requests run portable static checks once on Linux x64. Broad runs retain the six-platform static matrix. The stable `static-checks` summary feeds the required `ci` check.
 
 Every platform cell runs the fork-safe portable static gates:
 
@@ -46,9 +50,13 @@ Run typecheck separately:
 bun run typecheck
 ```
 
-`bun run check:boundaries` runs every boundary rule with one file walk and one TypeScript parse per file shared across rules; module edges come from that same parse, while rules may run their own AST visitors. Rule definitions remain in `scripts/boundary/rules/`. Debug one rule with `bun run scripts/check-boundaries.ts <rule-id>`. The per-rule `scripts/check-*.ts` shims remain programmatic test APIs, not package scripts.
+`bun run check:boundaries` runs every boundary rule with one file walk and one TypeScript parse per file shared across rules; module edges come from that same parse, while rules may run their own AST visitors. Rule definitions remain in `scripts/boundary/rules/`. Debug one rule with `bun run scripts/check-boundaries.ts <rule-id>`. The per-rule `scripts/check-*.ts` shims remain programmatic test APIs, not package scripts. Replace `<rule-id>` with a rule from the [boundary inventory](../../scripts/boundary/README.md).
 
-The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix on `ubuntu-26.04`. The selected profile controls whether those shards run; each selected suite still runs in full. Library, recipe, Linux guide, and provider test jobs also use Ubuntu 26.04 rather than running twice on different Ubuntu releases. Builds stay on `ubuntu-24.04` for the older glibc reference. `scripts/test-shards.ts` collects the unit file set and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json` because native `--shard` does not know the exclusions: `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). Shard balance comes from the committed timings file, not a hand-maintained weight table. Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected because compiled-binary tests race on a shared outfile. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
+The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix on `ubuntu-26.04`. The selected profile controls whether those shards run; each selected suite still runs in full. Library, recipe, Linux guide, and provider test jobs also use Ubuntu 26.04 rather than running twice on different Ubuntu releases. Builds stay on `ubuntu-24.04` for the older glibc reference.
+
+`scripts/test-shards.ts` collects the unit file set and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json` because native `--shard` does not know the exclusions: `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). Shard balance comes from the committed timings file, not a hand-maintained weight table.
+
+Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected because compiled-binary tests race on a shared outfile. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
 
 `bun run test` prints the exact shard commands CI runs:
 
@@ -106,7 +114,11 @@ CI fails if the generated schema artifact set or bundled plugin/recipe tables dr
 bun run codegen
 ```
 
-For focused local checks, CI regenerates the HEAD schemas with `bun run codegen:schema-snapshot`, checks only the committed bundled-plugin manifest fixture at `sdk/test/fixtures/bundled-plugin-manifests.json` with path-scoped `git status --porcelain`, then runs `bun run check:schema-compatibility` against `origin/main`. The checkout needs full git history (`fetch-depth: 0`) because the checker resolves the base ref. It creates a detached temporary worktree at that commit, installs its dependencies from `bun.lock` with `bun install --frozen-lockfile`, runs its `codegen:schema-snapshot` to materialize the base schemas, then removes the worktree and underlying OS temp directory. Set `LANDO_SCHEMA_COMPATIBILITY_BASE_REF=<ref>` to compare against another base locally. There is no fallback to committed artifacts, so any failure materializing the base schemas fails the gate closed. The checker fails on unaccepted `breaking` or `unknown` findings, with exact reviewed exceptions recorded in `sdk/compatibility-exceptions.json`. The only accepted skip is a base commit that predates `scripts/build-schema-snapshot.ts` and therefore has no generator; the summary reports the exact per-family counts skipped for that reason instead of comparing against a nonexistent generator.
+For focused local checks, CI regenerates the HEAD schemas with `bun run codegen:schema-snapshot`, checks only the committed bundled-plugin manifest fixture at `sdk/test/fixtures/bundled-plugin-manifests.json` with path-scoped `git status --porcelain`, then runs `bun run check:schema-compatibility` against `origin/main`. The checkout needs full git history (`fetch-depth: 0`) because the checker resolves the base ref.
+
+The checker creates a detached temporary worktree at that commit, installs its dependencies from `bun.lock` with `bun install --frozen-lockfile`, runs its `codegen:schema-snapshot` to materialize the base schemas, then removes the worktree and underlying OS temp directory.
+
+Set `LANDO_SCHEMA_COMPATIBILITY_BASE_REF=<ref>` to compare against another base locally. There is no fallback to committed artifacts, so any failure materializing the base schemas fails the gate closed. The checker fails on unaccepted `breaking` or `unknown` findings, with exact reviewed exceptions recorded in `sdk/compatibility-exceptions.json`. The only accepted skip is a base commit that predates `scripts/build-schema-snapshot.ts` and therefore has no generator; the summary reports the exact per-family counts skipped for that reason instead of comparing against a nonexistent generator.
 
 That fixture is the job's only porcelain path; modifying, deleting, or regenerating it as untracked fails the gate. The SDK schema and command-result schema trees, including both indexes, are ignored derived outputs validated by regeneration and semantic comparison rather than by git status. The job regenerates the command reference (`bun run codegen:command-registry-manifest` then `bun run codegen:command-reference`) and verifies `docs/reference/commands.mdx` with `git diff --exit-code`. It then regenerates the Compose key matrix (`bun run codegen:compose-key-matrix`) and applies the same check to `docs/reference/compose-key-matrix.mdx`. Other focused codegen checks run `bun run codegen:bundled-plugins`, `bun run codegen:bundled-recipes`, and `bun run codegen:mutagen-versions`.
 
@@ -131,7 +143,7 @@ bun test plugins/service-lando/test/tomcat.test.ts plugins/service-lando/test/to
 LANDO_TEST_PODMAN_SOCKET=/path/to/podman.sock bun test plugins/service-lando/test/tomcat-config.integration.test.ts
 ```
 
-The live test builds and starts each major at the default and nondefault ports, checks ROOT content and authored startup, and verifies the old port is closed. It needs a running Podman-compatible provider socket. A skipped live test is not compatibility evidence.
+Replace `/path/to/podman.sock` with a running Podman-compatible provider socket. The live test builds and starts each major at the default and nondefault ports, checks ROOT content and authored startup, and verifies the old port is closed. A skipped live test is not compatibility evidence.
 
 Normal codegen is offline: it checks local hashes and template invariants and derives the ignored embedded TypeScript catalog. Commit only paired inputs and the generated workflow, not the derived catalog. The daily/dispatch `tomcat-bump` workflow merges `main` into its rolling branch, prepares candidates, runs focused unit checks before proposing, then explicitly dispatches `ci.yml` on the proposal branch. That CI run includes service-lando live integration tests; the workflow does not auto-merge.
 
@@ -168,11 +180,13 @@ bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 
 Every compiled `lando` embeds a static Go helper for `linux-x64` and `linux-arm64`. Inside a container it is the host-proxy `lando` client and the reader behind `lando logs --source`. You don't need Go installed: the helper builds with Lando itself, in the pinned `golang` image from `core/container-helper/.lando.yml`.
 
+Before building, run `bun install` and `bun run codegen` on a clean checkout and configure a working provider with `lando setup`. If default setup fails on Linux, use `lando setup --provider=docker` with a working system Docker. No host Go installation is needed.
+
+Build the helper before `bun test` on Linux or compiling `lando` on any host:
+
 ```bash
 bun run --filter='@lando/core' build:container-helper
 ```
-
-Run this after `bun install` and `bun run codegen` on a clean checkout, before `bun test` on Linux or compiling `lando` on any host. It needs a working provider configured by `lando setup`; no host Go installation is needed. If default setup fails on Linux, use `lando setup --provider=docker` with a working system Docker.
 
 That starts the `lando-container-helper` builder app with the source-mode CLI, writes `core/container-helper/dist/linux-{x64,arm64}/lando-container-helper` plus the source digest they were built from, and destroys the builder. Every checkout shares that app name, so builds in several git worktrees work one after another, not at the same time. Pass `--test` (`bun run scripts/build-container-helper.ts --test`) to run `go vet` and `go test` first. `bun run build` doesn't run it: compiling embeds the helper already in `dist/` and refuses a missing or stale one, so rerun the helper build after editing `core/container-helper/` sources or `core/container-helper/.lando.yml`. To embed prebuilt binaries instead, set `LANDO_CONTAINER_HELPER_DIR` to a directory laid out the same way.
 
@@ -265,7 +279,15 @@ Before publishing, the orchestrator runs dry-runs for every release package with
 
 Provider integration tests intentionally stay serial because they share Docker/Podman sockets, images, ports, and app names. Use `--parallel` and `--isolate` only for focused local experiments.
 
-`provider-integration-linux-x64` prepares the default Lando provider through `lando setup`, never a manually started `podman system service`. Linux Podman-backed jobs install the Podman 6 toolchain from the Homebrew `podman` formula (Podman >= 6.0.0 with Netavark v2 and Aardvark-dns v2 in its helper directory and `passt`/pasta, `crun`, `conmon` as dependencies) because Ubuntu 24.04 apt ships Podman 4.9.x and the OBS Kubic xUbuntu_24.04 repository does not publish Podman 6 packages yet; the shared install/assert steps live in `scripts/ci-podman-install.ts`, and every Podman-backed job asserts `podman --version` satisfies the >= 6.0.0 floor (numeric major.minor.patch, suffixes ignored) with remediation before any Podman-backed step runs. The managed runtime resolves its OCI runtime from the default system search list (`/usr/bin/crun` first) rather than the bundle or `helper_binaries_dir`, so the install step overwrites `/usr/bin/crun` with the Podman 6 toolchain `crun` — a runner's preinstalled pre-Podman-6 `crun` otherwise fails container start with `crun: unknown version specified`. The job additionally provisions the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, `fuse-overlayfs` for rootless overlay storage on AppArmor-constrained Linux runners, cgroups v2 delegation, and unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, sets `CONTAINERS_STORAGE_CONF` so Podman uses the staged `fuse-overlayfs` helper instead of kernel overlay, and runs `dist/lando setup --yes --provider=lando`. Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`; the integration and contract suites resolve that managed socket from Paths/setup state instead of an exported env var, and teardown is `dist/lando poweroff`.
+`provider-integration-linux-x64` prepares the default Lando provider through `lando setup`, never a manually started `podman system service`.
+
+Linux Podman-backed jobs install the Podman 6 toolchain from the Homebrew `podman` formula (Podman >= 6.0.0 with Netavark v2 and Aardvark-dns v2 in its helper directory and `passt`/pasta, `crun`, `conmon` as dependencies) because Ubuntu 24.04 apt ships Podman 4.9.x and the OBS Kubic xUbuntu_24.04 repository does not publish Podman 6 packages yet; the shared install/assert steps live in `scripts/ci-podman-install.ts`, and every Podman-backed job asserts `podman --version` satisfies the >= 6.0.0 floor (numeric major.minor.patch, suffixes ignored) with remediation before any Podman-backed step runs.
+
+The managed runtime resolves its OCI runtime from the default system search list (`/usr/bin/crun` first) rather than the bundle or `helper_binaries_dir`, so the install step overwrites `/usr/bin/crun` with the Podman 6 toolchain `crun`. A runner's preinstalled pre-Podman-6 `crun` otherwise fails container start with `crun: unknown version specified`.
+
+The job additionally provisions the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, `fuse-overlayfs` for rootless overlay storage on AppArmor-constrained Linux runners, cgroups v2 delegation, and unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, sets `CONTAINERS_STORAGE_CONF` so Podman uses the staged `fuse-overlayfs` helper instead of kernel overlay, and runs `dist/lando setup --yes --provider=lando`.
+
+Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`; the integration and contract suites resolve that managed socket from Paths/setup state instead of an exported env var, and teardown is `dist/lando poweroff`.
 
 To reproduce the setup-driven provider preparation locally (requires a local Podman >= 6.0.0 on PATH, e.g. `brew install podman`; set `LANDO_CI_PODMAN_HELPER_DIR="$(brew --prefix)/opt/podman/libexec/podman"` so the Homebrew helper directory is staged):
 

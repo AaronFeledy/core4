@@ -8,7 +8,7 @@ tags: [beta, docs, setup, readiness]
 
 # Check first-run readiness
 
-Run `lando doctor` after `lando setup`. Doctor reports whether the managed runtime is up.
+Run `lando setup` in your terminal and follow the prompts, then use `lando doctor` to check the result. Choose the recommended Lando-managed runtime on supported hosts; Docker is not required. On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks. Setup does not install Docker for you.
 
 ```sh
 lando setup
@@ -25,13 +25,7 @@ If doctor or setup names a host prerequisite, fix it and rerun `lando setup`. Th
 
 Setup waits up to about 30 seconds for the SSH sidecar's agent to answer before recording the `shell` step as ready. An empty but reachable agent is ready too. A sidecar that cannot start, stops before answering, or never answers within that wait does not fail setup by itself. Setup prints a warning with the redacted cause and remediation, finishes everything else, and records `shell` as unavailable. Apps start without SSH agent forwarding until the agent answers. Fix the cause, then rerun `lando setup` to refresh the record. Later app starts also bring the sidecar up and wait for its agent, but `lando doctor` keeps showing setup's record until you rerun setup.
 
-On Intel Macs (`darwin-x64`), managed `lando` fail-closes. Docker is the live path. Install Docker Desktop, then:
-
-```sh
-lando setup --provider=docker
-```
-
-On Linux, if the managed runtime still cannot install and you have working system Docker, use the same command as the supported fallback.
+On Linux, if the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker` as the supported fallback.
 
 Later commands stay on Docker without repeating the flag. See [What persists](./provider-selection.mdx#what-persists) and [Switch providers](./provider-selection.mdx#switch-providers).
 

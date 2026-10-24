@@ -44,6 +44,7 @@ const service = {
   service: ServiceName.make("web"),
   providerId,
   status: "running",
+  publications: { status: "unknown" as const },
   containerId: "observed-container",
 };
 const volume = (name: string, labels: Readonly<Record<string, string>> = {}): VolumeInfo => ({
@@ -155,7 +156,9 @@ test.each([
     "scratch-volume": snapshot({ volumes: [volume("data", { "dev.lando.scratch": "TRUE" })] }),
     "unowned-volume": snapshot({ volumes: [{ ref: { app, store: "data" } }] }),
     "unowned-service": snapshot({
-      services: [{ app, service: service.service, providerId, status: "running" }],
+      services: [
+        { app, service: service.service, providerId, status: "running", publications: { status: "unknown" } },
+      ],
     }),
   }[kind];
   expect(await run(evidence === undefined ? [] : [evidence])).toEqual([]);

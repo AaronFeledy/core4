@@ -8,7 +8,7 @@ tags: [beta, docs, landofile, config, env]
 
 # Override config with env
 
-Prefix an env var with `LANDO_CONFIG__` to overlay global config without editing `config.yml`. Double underscore separates path segments:
+Prefix a host environment variable with `LANDO_CONFIG__` to override global config without editing `config.yml`. Export the variable in your shell before running Lando, or prefix a single command with its assignment in a POSIX shell. The examples below show variable names and values, not complete commands. Double underscores separate path segments:
 
 ```sh
 LANDO_CONFIG__telemetry__enabled=true
@@ -44,7 +44,7 @@ A local Landofile overrides the main Landofile during merge.
 
 ## Share env files across services
 
-Top-level `env_file` loads app-root-relative `KEY=VALUE` files into every service. Later files win, then a service's own `env_file` and `environment` values override the shared values.
+Create `shared.env` in your app root with the `KEY=VALUE` entries you want to share, then add the following configuration to `.lando.yml`. Top-level `env_file` loads app-root-relative `KEY=VALUE` files into every service. Later files win, then a service's own `env_file` and `environment` values override the shared values.
 
 ```yaml
 name: env-overrides-shared

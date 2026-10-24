@@ -7,7 +7,7 @@ tags: [beta, docs, compose, service]
 
 # Add a Compose service
 
-Put `type: compose` in your services block to run a third-party image outside the catalog. Compose ports use the short form, which maps to the container port. The app root is mounted at `/app` by default:
+Add `type: compose` under `services` in `.lando.yml` to run a third-party image outside the catalog. Compose ports use the short form, which maps to the container port. The app root is mounted at `/app` by default:
 
 ```yaml
 name: compose-passthrough-demo
@@ -15,17 +15,12 @@ services:
   whoami:
     type: compose
     image: traefik/whoami:v1.10
+    home: false
     ports:
       - 80:80
-tooling:
-  probe:
-    service: whoami
-    cmd:
-      - sh
-      - -c
-      - 'curl -sf http://localhost:80/'
-      - probe
 ```
+
+`home: false` disables home persistence for this custom image. The example publishes host port `80`, which must be free; choose another host-side port in `ports:` if needed and use it in the probe below.
 
 Start it. Lando puts the passthrough service on the app network:
 
@@ -64,14 +59,13 @@ That becomes `["sh", "-c", "printf ready && exec sleep infinity"]`. Malformed qu
 
 ## Probe the service
 
-The fixture above declares `probe` as an app tooling alias. Run it once the
-service is up to curl the HTTP surface:
+From your host terminal, curl the published HTTP port after the service starts:
 
 ```sh
-lando probe
+curl -sf http://localhost:80/
 ```
 
-`traefik/whoami` responds with a body that starts with `Hostname: ...`.
+Use your chosen host port if you changed the mapping. The response includes a `Hostname:` line. The [whoami image](https://github.com/traefik/whoami/blob/v1.10.0/Dockerfile) contains a standalone binary, not a shell or curl, so probe it from the host rather than running those tools inside the service.
 
 ## See which Compose keys work
 

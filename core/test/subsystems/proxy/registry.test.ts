@@ -38,6 +38,7 @@ const service = (id: string): RouterServiceShape =>
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
     setup: () => Effect.void,
     revalidateStartup: Effect.void,
+    observeRoutes: () => Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
     applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
     removeRoutes: () => Effect.void,
     status: Effect.succeed({ state: "running", authorities: [], configuredApps: [] }),

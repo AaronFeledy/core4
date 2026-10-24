@@ -14,6 +14,8 @@ Put a column-0 directive on the first content line of `.lando.yml` to render it 
 template: handlebars
 ```
 
+After saving the file, run `lando app:config --format=json` from the app directory to inspect the configuration Lando reads. If rendering fails, correct the reported location in the authored template.
+
 Template engines receive the pre-planning Landofile render context (`env`, `bootstrapLevel`, `scope`). No directive, or `template: none`, leaves the Landofile as raw YAML.
 
 Whole-file template rendering happens before strict Landofile parsing, in this order: template render, then YAML parse, then includes resolve, then expression evaluate. Syntax and render errors point at the authored template source, not the post-render YAML.

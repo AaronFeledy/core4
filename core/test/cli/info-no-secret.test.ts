@@ -19,6 +19,7 @@ import type { InfoAppResult } from "@lando/sdk/app";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
+import { connections } from "./connection-fixtures";
 
 /**
  * Regression guard: secret values MUST NOT appear in `lando info`
@@ -152,7 +153,7 @@ const makeInfoLayer = () => {
         providerId,
         status: "running",
         state: "running",
-        endpoints: plan.services[target.service]?.endpoints ?? [],
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
   };
@@ -225,7 +226,7 @@ describe("lando info text does not double-wrap the redaction sentinel", () => {
         provider: "lando",
         primary: true,
         status: "running",
-        endpoints: [],
+        connections: connections(["tcp://mysql:3306"], "app"),
         creds: {
           user: "appuser",
           password: REDACTED,

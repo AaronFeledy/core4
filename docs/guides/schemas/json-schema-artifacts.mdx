@@ -8,8 +8,12 @@ tags: [beta, docs, schemas]
 
 # JSON Schema artifacts
 
-Regenerate the published schema artifact set: public SDK schemas, command
-result schemas, metadata indexes, bundled manifests, editor schemas, and
+Use the public draft 2020-12 artifacts for SDK and command-result validation,
+and the draft-07 editor artifacts for authored Landofiles and global config.
+The authoring and resolved-runtime views differ, especially around expressions.
+
+Contributors can regenerate the artifact set from the repository root. This
+includes schemas, metadata indexes, bundled manifests, editor schemas, and
 reference docs:
 
 ```sh
@@ -92,8 +96,9 @@ where they're legal. The runtime view (`landofile-shape.json`,
 `LandofileShape`) checks resolved values. A parity test loads every guide and
 recipe fixture plus curated valid and invalid inputs through each pair and
 requires the same accept-or-reject answer, with the pattern-only gaps above
-listed by name, so your editor, your CI validator, and `lando start` cannot
-disagree about what a Landofile is.
+listed by name. This checks agreement within the tested cases without hiding
+the editor pattern's limits; use lint or Standard Schema when you need expression
+scope and helper-type validation.
 
 <Guide>
   <Scenario id="editor-pattern-matches-whole-values" render={false} reason="Editor pattern rejects surrounding text">

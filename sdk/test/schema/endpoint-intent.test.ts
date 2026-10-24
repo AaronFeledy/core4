@@ -48,7 +48,7 @@ describe("endpoint publication intent", () => {
     }
   });
 
-  test("rejects application protocol metadata on internal endpoints", () => {
+  test("preserves application protocol metadata on internal endpoints", () => {
     // Given / When
     const result = Schema.decodeUnknownResult(EndpointInput)(
       { _tag: "internal", protocol: "tcp", port: 8080, appProtocol: "http/1.1" },
@@ -56,7 +56,7 @@ describe("endpoint publication intent", () => {
     );
 
     // Then
-    expect(Result.isFailure(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
   });
 
   test("accepts internal unix endpoints", () => {

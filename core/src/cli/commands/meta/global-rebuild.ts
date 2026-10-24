@@ -1,5 +1,6 @@
 import { DateTime, Effect, Result, Schema } from "effect";
 
+import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
 import { publishGlobalRoutes } from "@lando/engine/operations/global-routes";
 import {
   applyGlobalServiceGroups,
@@ -21,7 +22,7 @@ import type {
   ServiceNotReadyError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
-import { ServiceName } from "@lando/sdk/schema";
+import { StartedService } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -46,29 +47,12 @@ export interface GlobalRebuildOptions {
   readonly signal?: AbortSignal;
 }
 
-export interface GlobalRebuiltService {
-  readonly name: string;
-  readonly state: string;
-  readonly endpoints: ReadonlyArray<string>;
-}
-
-export interface GlobalRebuildResult {
-  readonly app: string;
-  readonly materialized: boolean;
-  readonly servicesRebuilt: ReadonlyArray<GlobalRebuiltService>;
-}
-
-export const GlobalRebuiltServiceSchema = Schema.Struct({
-  name: Schema.String,
-  state: Schema.String,
-  endpoints: Schema.Array(Schema.String),
-});
-
 export const GlobalRebuildResultSchema = Schema.Struct({
   app: Schema.String,
   materialized: Schema.Boolean,
-  servicesRebuilt: Schema.Array(GlobalRebuiltServiceSchema),
+  servicesRebuilt: Schema.Array(StartedService),
 });
+export type GlobalRebuildResult = typeof GlobalRebuildResultSchema.Type;
 
 export type GlobalRebuildError =
   | ServiceNotReadyError
@@ -171,15 +155,10 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
         yield* Effect.result(router.revalidateStartup);
         return yield* Effect.fail(publication.failure);
       }
-      const routeUrls = publication.success;
-      const servicesRebuilt = outcome.ready.map((row) => ({
-        ...row,
-        endpoints: [...row.endpoints, ...(routeUrls.get(ServiceName.make(row.name)) ?? [])],
-      }));
-
       // Re-observe the router before the post event: a rebuild that leaves the
       // router's startup observation broken has not finished rebuilding.
       yield* router.revalidateStartup;
+      const servicesRebuilt = startedServices(yield* collectObservedConnections(builtPlan, outcome.ready));
 
       return { builtPlan, servicesRebuilt };
     }),

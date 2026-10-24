@@ -13,7 +13,7 @@ import type {
 } from "@lando/sdk/errors";
 import { GlobalServiceMissingError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, StartedService } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -28,6 +28,7 @@ import {
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
+import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import { waitForServiceReadiness } from "./service-readiness.ts";
 
 import { withOrdinaryMounts } from "./file-sync-plan.ts";
@@ -43,11 +44,7 @@ export interface EnsureGlobalServicesOptions {
   readonly signal?: AbortSignal;
 }
 
-export interface EnsureGlobalStartedService {
-  readonly name: string;
-  readonly state: string;
-  readonly endpoints: ReadonlyArray<string>;
-}
+export type EnsureGlobalStartedService = StartedService;
 
 export interface EnsureGlobalServicesResult {
   readonly app: string;
@@ -174,12 +171,14 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(function* (
     }),
   );
 
-  const servicesStarted = yield* waitForServiceReadiness({
+  const finalPlan = { ...plan, services: { ...plan.services, ...builtPlan.services } };
+  const ready = yield* waitForServiceReadiness({
     provider,
-    plan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
+    plan: finalPlan,
     services: selected.map((service) => service.name),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
+  const servicesStarted = startedServices(yield* collectPlanConnections(finalPlan, ready));
 
   yield* events.publish(
     PostGlobalStartEvent.make({

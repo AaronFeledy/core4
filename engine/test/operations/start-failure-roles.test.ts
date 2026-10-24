@@ -151,6 +151,7 @@ test("a provider apply failure records the left-in-place inventory notice", asyn
         service: target.service,
         providerId: plan.provider,
         status: "running",
+        publications: { status: "unknown" },
         containerId: "web-id",
       }),
   });

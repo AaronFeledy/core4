@@ -7,7 +7,7 @@ tags: [beta, docs, memcached, service]
 
 # Add Memcached
 
-Put `type: memcached` in your services block. Lando pulls `memcached:1.6` and listens on `11211`:
+Add `type: memcached` under `services` in `.lando.yml`. Lando pulls `memcached:1.6` and listens on `11211`:
 
 ```yaml
 name: memcached-demo
@@ -41,13 +41,15 @@ tooling:
 
 ## Inspect runtime stats
 
-The fixture above declares `memcached-tool` as an app tooling alias. Run it after start to inspect the live Memcached service:
+The Landofile above declares `memcached-tool` as an app tooling alias. Run it after start to inspect the live Memcached service:
 
 ```sh
 lando memcached-tool stats
 ```
 
 ## Pin a version
+
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Set `image:` when the default image isn't enough. For example, a Debian-based image:
 

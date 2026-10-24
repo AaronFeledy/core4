@@ -63,6 +63,7 @@ const serviceAt = (root: AbsolutePath): ServiceRuntimeInfo => ({
   providerId,
   service: ServiceName.make("orphan"),
   status: "running",
+  publications: { status: "unknown" as const },
   containerId: "observed-container",
 });
 

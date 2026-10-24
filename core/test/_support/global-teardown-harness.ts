@@ -122,6 +122,7 @@ export const globalTeardownHarness = async (
                   providerId: ProviderId.make("lando"),
                   status: "running" as const,
                   containerId: "owned-container",
+                  publications: { status: "unknown" as const },
                 },
               ])
         );

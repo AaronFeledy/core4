@@ -10,7 +10,8 @@ import {
 } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
-import { INFO_STATUS_TONES, endpointText, summaryToneFromTable } from "./service-summary";
+import { connectionFields, scopedConnectionText, unambiguousHostHttpUrls } from "./connection-summary";
+import { INFO_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
 type InfoResultWithHostProxy = InfoAppResult & {
   readonly hostProxy?: {
@@ -58,10 +59,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
     fields: [
       { label: "type", value: service.type },
       { label: "provider", value: service.provider },
-      {
-        label: "endpoints",
-        value: endpointText(service.endpoints),
-      },
+      ...connectionFields(service.connections),
       ...(service.logSources === undefined ? [] : logSourceFields(service.logSources)),
       ...(service.creds === undefined ? [] : [{ label: "creds", value: credsText(service.creds) }]),
     ],
@@ -142,8 +140,9 @@ const hostProxyLines = (result: InfoAppResult): ReadonlyArray<string> => {
   return [`host-proxy\trunLando\t${hostProxy.runLando.availability}${reason}`];
 };
 
+// Links must open from the host, so app-network `internal` addresses are deliberately left out.
 const infoHttpUrls = (result: InfoAppResult): ReadonlyArray<string> =>
-  result.services.flatMap((service) => service.endpoints);
+  unambiguousHostHttpUrls(result.services.flatMap((service) => service.connections));
 
 export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext): string => {
   const rendered = isDecoratedContext(ctx)
@@ -156,8 +155,7 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
   const extra = [...hostProxyLines(result), ...agentEnvLines(result)];
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.flatMap((service) => {
-    const renderedEndpoints = endpointText(service.endpoints);
-    const base = `${service.service}\t${service.status}\t${renderedEndpoints}`;
+    const base = `${service.service}\t${service.status}\t${scopedConnectionText(service.connections, "host") || "not published"}\t${scopedConnectionText(service.connections, "app") || "-"}`;
     const logRows = (service.logSources ?? []).map((source) => {
       const reason = source.reason === undefined ? "" : `\t${source.reason}`;
       return `${service.service}\tlog-source\t${source.id}\t${source.path}\t${source.strategy}\t${source.availability}${reason}`;
@@ -166,5 +164,5 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
       service.creds === undefined ? [] : [`${service.service}\tcreds\t${credsText(service.creds)}`];
     return [base, ...logRows, ...credsRows];
   });
-  return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows, ...extra].join("\n");
+  return [`app\t${result.app}`, "service\tstate\tHost\tApp Network", ...rows, ...extra].join("\n");
 };

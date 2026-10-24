@@ -32,7 +32,10 @@ import {
 } from "../landofile/app-resolution.ts";
 import { compileEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import {
+  collectAppPlanPublicCredentialValues,
+  collectAppPlanRedactionTokens,
+} from "../services/app-plan-redaction.ts";
 import { reservedToolingNameConflict } from "./reserved-aliases.ts";
 
 import { LANDOFILE_NAME, findAppRoot } from "@lando/landofile/discovery";
@@ -205,10 +208,11 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     agentEnvAllowlist,
   });
   const invocations = compiled.invocations;
+  const publicValues = collectAppPlanPublicCredentialValues(plan);
   const redactionTokens = [
     ...new Set([
       ...collectAppPlanRedactionTokens(plan),
-      ...invocations.flatMap((invocation) => collectSecretEnvValues(invocation.env)),
+      ...invocations.flatMap((invocation) => collectSecretEnvValues(invocation.env, publicValues)),
     ]),
   ];
   const redaction = yield* Effect.serviceOption(RedactionService);

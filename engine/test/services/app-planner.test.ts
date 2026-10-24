@@ -2068,7 +2068,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("emits one canonical route when a service has multiple HTTP endpoints", async () => {
+  test("emits one canonical route for the explicit primary among multiple HTTP endpoints", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(
         Schema.decodeUnknownSync(LandofileShape)({
@@ -2081,8 +2081,8 @@ describe("AppPlannerLayer.layer", () => {
               home: false,
               appMount: false,
               endpoints: [
-                { _tag: "internal", name: "primary", protocol: "http", port: 8080 },
                 { _tag: "internal", name: "admin", protocol: "http", port: 8081 },
+                { _tag: "internal", name: "primary", protocol: "http", port: 8080, primary: true },
               ],
             },
           },
@@ -2165,6 +2165,7 @@ describe("AppPlannerLayer.layer", () => {
           [ServiceName.make("worker")]: {
             image: "node:lts",
             ports: [],
+            endpoints: [],
             home: false,
           },
         },
@@ -2643,7 +2644,15 @@ describe("AppPlannerLayer.layer", () => {
       });
       expect(web?.mounts).toEqual([]);
       expect(web?.endpoints).toEqual([
-        { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3000 } },
+        { _tag: "internal", port: 3000, protocol: "http", primary: true, name: "web" },
+        {
+          _tag: "published",
+          port: 3000,
+          protocol: "http",
+          primary: true,
+          name: "web",
+          publication: { hostPort: 3000 },
+        },
       ]);
       expect(web?.dependsOn).toEqual([
         { service: ServiceName.make("db"), condition: "service_started", required: true },
@@ -2655,7 +2664,15 @@ describe("AppPlannerLayer.layer", () => {
       expect(db?.environment.POSTGRES_DB).toBe("myapp");
       expect(db?.environment.POSTGRES_PASSWORD).toBe("lando");
       expect(db?.endpoints).toEqual([
-        { _tag: "published", port: 5432, protocol: "tcp", publication: { hostPort: 5432 } },
+        { _tag: "internal", port: 5432, protocol: "tcp", primary: true, name: "db" },
+        {
+          _tag: "published",
+          port: 5432,
+          protocol: "tcp",
+          primary: true,
+          name: "db",
+          publication: { hostPort: 5432 },
+        },
       ]);
       expect(db?.storage[0]?.target).toBe(PortablePath.make("/var/lib/postgresql/data"));
     });

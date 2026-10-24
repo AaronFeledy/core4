@@ -90,6 +90,7 @@ const withSwitch = async (
             providerId: user.provider,
             service: ServiceName.make("web"),
             status: "running",
+            publications: { status: "unknown" as const },
             containerId: "user-container",
           },
         ]

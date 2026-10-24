@@ -15,7 +15,7 @@ A whole-file template, includes, and env overlays still exist for the jobs expre
 template: handlebars
 ```
 
-If you came here for `${VARS}` magic in volumes or tooling, that path is still not up.
+Use the documented `{{ ... }}` expressions rather than shell-style `${VARS}` interpolation in volumes or tooling; Lando rejects the latter.
 
 ## Load-time recipe and env
 
@@ -30,6 +30,8 @@ The `recipe:` block itself is provenance. Lando does not rewrite expressions ins
 ### Whole-value expressions keep their type
 
 A value that is one `{{ ... }}` and nothing else resolves to whatever the expression returns. `{{-` and `-}}` inside the braces are still that one expression. Spaces or any other text around it are not: `"  {{ recipe.flag }}  "` stays a string and fails at a boolean, number, list, or object field. Recipe option `primary: false` makes `primary: "{{ recipe.primary }}"` a real boolean `false`, not the string `"false"`. Numbers, lists, and objects work the same way at fields of those types. Validation then runs on the resolved value, so a wrong type is still a schema violation at that path.
+
+To inspect whole-value types, save this example as `.lando.yml` in a separate app directory, then run `lando app:config --format=json` there:
 
 ```yaml
 name: Typed Values Demo
@@ -156,7 +158,7 @@ lando app:cache:refresh
 
 Two limits. A service cannot read its own `services.<name>.creds`, and two services cannot each read the other's; both fail the plan as a cycle, because credentials exist only after the service resolves. And values that arrive through `env_file:` are never interpolated, so put the expression in `environment:`.
 
-The password still redacts in `lando info` and in logs, because the database service carries the same value under `POSTGRES_PASSWORD` / `LANDO_DB_PASSWORD`.
+Lando recognizes the password through the database service's `POSTGRES_PASSWORD` or `LANDO_DB_PASSWORD` value and masks it in command output. Automatic collection excludes public defaults and passwords that exactly match their own database user or database name, so those names remain readable in other text. Password fields in `lando info` and `PASSWORD=` assignments in `lando logs` are still masked. Values explicitly registered as secrets or resolved from a [secret store](../config/secret-stores.mdx) remain masked even when they match one of these exceptions.
 
 ## Find a bad expression
 
@@ -288,4 +290,4 @@ Share fragments across apps with `includes:`. See [Includes and the lockfile](./
 
 Override config from the environment with `LANDO_CONFIG__` or `env_file:`. See [Env overrides](./env-overrides.mdx).
 
-`${VARS}` in volumes or tooling is still not up. Lando rejects it with `NotImplementedError` naming the file. `load()` and `import()` stay on their own file-IO path.
+`${VARS}` interpolation in volumes or tooling is not supported. Lando rejects it with `NotImplementedError` naming the file. `load()` and `import()` stay on their own file-IO path.

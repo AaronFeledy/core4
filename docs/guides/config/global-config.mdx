@@ -77,7 +77,7 @@ Lando reads global config from ordered layers. A later layer wins:
 | 4 | Environment | `LANDO_CONFIG__*`, aliases such as `LANDO_ROUTER_HTTP_PORT`, root vars such as `LANDO_USER_DATA_ROOT` |
 | 5 | Host `config` option | Embedding hosts only, see [Embed the runtime](../library/embedding-runtime.mdx) |
 
-Maps deep-merge across layers. Arrays and scalars replace. `appEnv` and `appLabels` replace as whole maps. A `LANDO_CONFIG__*` env var maps its SCREAMING_SNAKE_CASE path to the matching camelCase key, for example `LANDO_CONFIG__DEFAULT_PROVIDER_ID=podman` or `LANDO_CONFIG__ROUTER__HTTP_PORT=8080`.
+Maps deep-merge across layers. Arrays and scalars replace. `appEnv` and `appLabels` replace as whole maps. A `LANDO_CONFIG__*` env var maps its SCREAMING_SNAKE_CASE path to the matching camelCase key, for example `LANDO_CONFIG__LOG_LEVEL=debug` or `LANDO_CONFIG__ROUTER__HTTP_PORT=8080`.
 
 The installation config lives at `config.yml` under the resolved user config root, for example `/home/user/.config/lando/config.yml` on Linux. That root is fixed before any file is read, so a `userConfRoot` key inside `config.yml` or a drop-in is ignored. The other roots resolve as runtime option, then root env var, then config files, then the platform default.
 
@@ -95,22 +95,34 @@ Lando picks the value type from the config schema: text first, then number, bool
 
 `set` and `unset` keep comments and formatting outside the value or entry you change. If Lando can't edit safely, it refuses without changing the file. Use `lando config edit` or edit by hand instead. The same rule applies to `lando app:config` and `lando global:config`; use their `edit` verb when an edit is refused.
 
+Use diagnostic logging to try these commands without changing your provider. First read the effective value and the value stored in `config.yml`. Record the stored value, or note that the key is absent, before changing it:
+
 ```sh
-# Read a single dot-path key
-lando config get defaultProviderId
+lando config get logLevel
+lando config get logLevel --source raw
+```
 
-# Write a single dot-path key to config.yml
-lando config set defaultProviderId podman
+Enable debug logging and read the effective value again:
 
-# Remove a key from config.yml
-lando config unset defaultProviderId
+```sh
+lando config set logLevel debug
+lando config get logLevel
+```
 
-# Decode every layer (file, config.d, env) against the GlobalConfig schema without changing anything
+The last command should report `debug` unless a higher-precedence layer overrides it. When finished, restore a previously stored value with `lando config set logLevel <previous-value>`, replacing `<previous-value>` with the value you recorded. Only if `config.yml` had no `logLevel` key before this example, remove the added key:
+
+```sh
+lando config unset logLevel
+```
+
+Read `lando config get logLevel` again to check the restored effective value. Validate every config layer without changing it, or open `config.yml` in your editor:
+
+```sh
 lando config validate
-
-# Open config.yml in $VISUAL or $EDITOR, or pass --editor
 lando config edit
 ```
+
+`edit` uses `$VISUAL` or `$EDITOR`; pass `--editor` to choose another editor.
 
 `--source raw` shows the parsed `config.yml` by itself, before drop-ins, env, and defaults. It works even when that file fails validation, which makes it the quickest way to see what you actually wrote:
 

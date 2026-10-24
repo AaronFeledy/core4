@@ -8,19 +8,26 @@ tags: [beta, docs, providers, setup, selection]
 
 # Pick a container provider
 
-Run `lando setup`, then `lando doctor`. The default provider is `lando` (Lando-managed Podman). It does not need system Docker or Podman.
+Run `lando setup` in your terminal and follow the prompts. On first interactive setup, choose the recommended Lando-managed runtime (`lando`) on supported hosts. It uses managed Podman and does not require Docker or a system Podman installation.
 
-On Intel Macs (`darwin-x64`), managed `lando` fail-closes. Run setup with Docker Desktop. That is the live path on that host, not a Linux-only fallback.
+On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks. The managed `lando` provider is not supported on that host; setup does not choose Docker automatically or install it for you.
 
-On Linux, if default setup fails, switch to system Docker. That is the supported fallback, not an advanced preference.
+```sh
+lando setup
+lando doctor
+```
 
-This page owns the provider rules. Other pages link here instead of restating them.
+Doctor should name the provider you selected and report its health. Setup saves your interactive choice for later commands.
+
+If a saved provider or environment override already selects a runtime, setup keeps it instead of showing the provider menu. See [Switch providers](#switch-providers) to change an existing setup. On Linux, working system Docker is the supported fallback if managed setup fails.
 
 ## Run setup with Docker or Podman
 
-You need working Docker Desktop on Intel Mac, or working system Docker on Linux. System Podman is also opt-in and needs an existing rootless Podman install.
+For first interactive setup, choose the runtime in the menu above. Docker and system Podman need an existing, working installation; setup does not install them for you.
 
-1. Run setup with the provider you have:
+For a scripted run or a deliberate override, `--provider` selects the runtime explicitly. If you already have apps on another provider, follow [Switch providers](#switch-providers) before using these commands.
+
+1. Run setup with the runtime you need:
 
 ```sh
 lando setup --provider=docker
@@ -52,7 +59,7 @@ Setup prompts for a provider only when nothing else chose one. `--yes` consents 
 
 ## What persists
 
-After a successful `lando setup --provider=docker`, setup writes `defaultProviderId: docker` to your config when it differs from what is already there. Later `lando doctor`, `lando start`, and bare `lando setup` stay on Docker. You do not need to repeat the flag. An interactive provider choice persists the same way. A failed config write fails setup.
+After successful setup, Lando saves a provider selected in the interactive menu or with `--provider` as `defaultProviderId` in your config when the value changes. Later `lando doctor`, `lando start`, and bare `lando setup` use that saved choice unless another override takes precedence. You do not need to repeat the selection. A failed config write fails setup.
 
 `lando setup` and `lando setup --yes` with no `--provider` keep the `defaultProviderId` already in your config. Setup never changes it on its own.
 
@@ -109,7 +116,7 @@ Pick one:
 
 ## Switch providers
 
-Use setup for a deliberate switch. Nothing else moves global services.
+Use setup for a deliberate switch. Nothing else moves global services. Export any data you need on the new provider before switching: setup does not copy data volumes, and they remain on the old provider. The poweroff command below also removes scratch apps and their disposable data unless you pass `--keep-scratch`.
 
 1. Stop apps before switching:
 
@@ -144,7 +151,7 @@ lando setup --provider=lando
 
 ## Recover an app left on another provider
 
-Changing the default never moves an applied app. When `lando start` fails with `AppPlacementError`, retire the old copy from the app directory, then start on the current provider:
+Changing the default never moves an applied app or copies its data. Export any data you need before retiring the old copy. When `lando start` fails with `AppPlacementError`, run the following from the app directory, replacing `lando` in `--provider=lando` with the old provider named by the error:
 
 ```sh
 lando destroy --provider=lando --yes

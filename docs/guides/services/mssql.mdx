@@ -7,7 +7,9 @@ tags: [beta, docs, mssql, service, database]
 
 # Add SQL Server
 
-Put `type: mssql` in your services block. That shorthand is the 2022 image. It listens on `1433`, keeps data in `/var/opt/mssql`, and ships `sqlcmd` tooling:
+Use an amd64 host or a provider with architecture emulation; otherwise planning fails before the container starts. This service uses the Developer edition and sets `ACCEPT_EULA=Y`, so review the upstream license terms before starting it.
+
+Add `type: mssql` under `services` in `.lando.yml`. That shorthand is the 2022 image. It listens on `1433`, keeps data in `/var/opt/mssql`, and ships `sqlcmd` tooling:
 
 ```yaml
 name: mssql-demo
@@ -43,7 +45,9 @@ services:
 
 ## Set credentials
 
-Set `creds:` when you need explicit values. `rootPassword` becomes `SA_PASSWORD` inside the container. The login is `sa`. The image also gets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. Omit `rootPassword` and Lando generates one per app and service, so don't guess it. `lando info` redacts it too.
+Set `creds:` when you need explicit values. `rootPassword` becomes `SA_PASSWORD` inside the container. The login is `sa`. Lando sets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer` on the image. Omit `rootPassword` and Lando generates one per app and service, so don't guess it. `lando info` redacts it too.
+
+Replace `ReplaceMe!2026` with a private password before using this example. SQL Server requires at least eight characters and characters from at least three categories: uppercase letters, lowercase letters, digits, and symbols. See [Microsoft's container password requirements](https://learn.microsoft.com/sql/linux/install-upgrade/quickstart-install-docker). Alternatively, omit `rootPassword` and use Lando's generated value.
 
 ```yaml
 services:
@@ -51,7 +55,7 @@ services:
     type: mssql
     creds:
       user: sa
-      rootPassword: secret
+      rootPassword: "ReplaceMe!2026"
       database: LANDO_DB
 ```
 

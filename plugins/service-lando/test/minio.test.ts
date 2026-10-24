@@ -59,7 +59,7 @@ describe("minio ServiceType", () => {
       "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :9001",
     ]);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 9000, protocol: "tcp", name: "storage" },
+      { _tag: "internal", port: 9000, protocol: "http", name: "storage", primary: true },
       { _tag: "internal", port: 9001, protocol: "http", name: "console" },
     ]);
     expect(plan.storage).toHaveLength(1);
@@ -106,7 +106,7 @@ describe("minio ServiceType", () => {
       "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :19000 --console-address :9001",
     ]);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 19000, protocol: "tcp", name: "storage" },
+      { _tag: "internal", port: 19000, protocol: "http", name: "storage", primary: true },
       { _tag: "internal", port: 9001, protocol: "http", name: "console" },
     ]);
     expect(plan.environment?.MC_HOST_local).toBe(`http://lando:${MINIO_DEFAULT_PASSWORD}@127.0.0.1:19000`);

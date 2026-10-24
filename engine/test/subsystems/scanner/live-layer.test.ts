@@ -2,12 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
-import { ProviderId, ServiceName } from "@lando/sdk/schema";
-import { RuntimeProvider, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { RouterService, RuntimeProvider, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
+import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import * as HttpClient from "effect/http/HttpClient";
 
 import * as ProviderUrlScanner from "../../../src/subsystems/scanner/live.ts";
+import { plan, web as webPlan } from "../../operations/start-progress-topology-support.ts";
 import { appId, asHttpClient, drive, driveExit, failureOf, httpStatus, requestSequence } from "./support.ts";
 
 const web = ServiceName.make("web");
@@ -26,39 +27,103 @@ const provideScanner = Effect.fnUntraced(
 );
 
 describe("ProviderUrlScanner.layer", () => {
+  test("scans shared router ingress without claiming it as an app port collision", async () => {
+    // Given two routed apps with no direct host publications.
+    const plans: readonly AppPlan[] = ["one", "two"].map((name) => ({
+      ...plan,
+      id: AppId.make(name),
+      services: {
+        [web]: { ...webPlan, endpoints: [{ _tag: "internal", protocol: "http", port: 80 }] },
+      },
+      routes: [
+        {
+          hostname: `${name}.test`,
+          scheme: "https",
+          priority: 1,
+          service: web,
+          backend: { service: web, protocol: "http", port: 80 },
+        },
+      ],
+    }));
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      appliedPlans: Effect.succeed(plans),
+      inspect: ({ app, service }) =>
+        Effect.succeed({
+          app,
+          service,
+          providerId: ProviderId.make("test"),
+          status: "running",
+          publications: { status: "present", bindings: [] },
+        }),
+    };
+    const router = RouterService.of({
+      ...makeTestRouterService(),
+      observeRoutes: (_app, routes) =>
+        Effect.succeed({
+          configuredAuthorities: [],
+          observation: {
+            status: "present",
+            publications: routes.map((route) => ({
+              route,
+              authority: { hostname: route.hostname, scheme: "https", port: 38443 },
+            })),
+          },
+        }),
+    });
+    const http = requestSequence([httpStatus(200)]);
+    // When the production layer discovers connections for collision checks and scans.
+    const result = await drive(
+      Effect.gen(function* () {
+        const scanner = yield* UrlScanner;
+        return {
+          collisions: yield* scanner.detectCollisions(plans.map((entry) => entry.id)),
+          scan: yield* scanner.scan(AppId.make("one")),
+        };
+      }).pipe(
+        Effect.provide(ProviderUrlScanner.layer),
+        Effect.provideService(RuntimeProvider, provider),
+        Effect.provideService(HttpClient.HttpClient, asHttpClient(http)),
+        Effect.provideService(RouterService, router),
+      ),
+    );
+    // Then shared ingress is not a direct-publication collision, but remains scannable.
+    expect(result.collisions).toEqual([]);
+    expect(result.scan.endpoints.map((endpoint) => endpoint.url)).toEqual(["https://one.test:38443/"]);
+  });
+
   test("wires the probe scanner from RuntimeProvider endpoints and HttpClient", async () => {
     const http = requestSequence([httpStatus(200)]);
     const provider = {
       ...TestRuntimeProvider,
-      list: () =>
-        Effect.succeed([
-          {
-            app: appId,
-            service: web,
-            providerId: ProviderId.make(TestRuntimeProvider.id),
-            status: "running",
-            endpoints: [
-              {
-                _tag: "published" as const,
-                protocol: "http" as const,
-                port: 8080,
-                publication: {},
-                materialization: { bindAddress: "127.0.0.1", hostPort: 8080 },
-              },
-              { _tag: "internal" as const, protocol: "http" as const, port: 8181 },
-            ],
+      appliedPlans: Effect.succeed([
+        {
+          ...plan,
+          id: appId,
+          services: {
+            [web]: {
+              ...webPlan,
+              endpoints: [
+                { _tag: "published", protocol: "http", port: 8080, publication: { hostPort: 8080 } },
+                { _tag: "internal", protocol: "http", port: 8181 },
+              ],
+            },
+            [worker]: { ...webPlan, name: worker },
           },
-          {
-            app: appId,
-            service: worker,
-            providerId: ProviderId.make(TestRuntimeProvider.id),
-            status: "running",
-            state: "stopped",
-            endpoints: [
-              { _tag: "published" as const, protocol: "http" as const, port: 9090, publication: {} },
-            ],
+        },
+      ]),
+      inspect: ({ service }) =>
+        Effect.succeed({
+          app: appId,
+          service,
+          providerId: ProviderId.make(TestRuntimeProvider.id),
+          status: "running",
+          state: service === worker ? "stopped" : "running",
+          publications: {
+            status: "present",
+            bindings: [{ port: 8080, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 8080 }],
           },
-        ]),
+        }),
     } satisfies RuntimeProviderShape;
 
     const result = await drive(

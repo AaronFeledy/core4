@@ -25,6 +25,7 @@ const observed = (
     service: ServiceName.make("database"),
     providerId: ProviderId.make("podman"),
     status: "running",
+    publications: { status: "unknown" },
     ...(withoutContainer === true ? {} : { containerId: "abc123" }),
     ...rest,
   };

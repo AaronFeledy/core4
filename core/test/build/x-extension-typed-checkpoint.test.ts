@@ -8,14 +8,17 @@ import {
 } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
+import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { typedBytes, typedCapture, typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import { TYPED_EXPRESSION_PATTERN, wireObject } from "./x-extension-wire-proof.ts";
 
-const expected = evolveHistoricalTimestamps(
-  evolveHistoricalShorthand(normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services)))),
-  "authoring",
+const expected = evolveHistoricalEndpointMetadata(
+  evolveHistoricalTimestamps(
+    evolveHistoricalShorthand(normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services)))),
+    "authoring",
+  ),
 );
 
 const mutateFirst = (value: JsonValue, change: (schema: JsonSchema) => JsonSchema | undefined): JsonValue => {

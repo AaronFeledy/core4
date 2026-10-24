@@ -1,4 +1,5 @@
 import { Clock, DateTime, Effect, Layer, Option, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { redactString } from "@lando/container-runtime/redact";
 import { CaError, ProxyApplyError, ProxyError, ProxySetupError, RouterWatcherError } from "@lando/sdk/errors";
@@ -27,6 +28,7 @@ import {
 import { ensureDashboardFile } from "./dashboard.ts";
 import { TRAEFIK_DIAGNOSTICS_ID, renderTraefikFallbackConfig } from "./diagnostics.ts";
 import { prepareTraefikDiagnostics } from "./global-services/diagnostics.ts";
+import { makeRouteObserver } from "./observe-routes.ts";
 import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
 import {
   ROUTE_FILE_PREFIX,
@@ -54,6 +56,7 @@ import {
   publishFallbackWarn,
 } from "./proxy-setup.ts";
 import type { TraefikProxyDependencies, TraefikRouterLists, TraefikRouterPin } from "./proxy-types.ts";
+import { readOptional, routeReloadSnapshot } from "./route-reload-snapshot.ts";
 import {
   acknowledge,
   certificatePairIsCurrent,
@@ -213,28 +216,6 @@ const persistedTlsFiles = (app: AppId) => {
   };
 };
 
-const readOptional = (dependencies: TraefikProxyDependencies, path: string) =>
-  dependencies.fileSystem
-    .exists(path)
-    .pipe(
-      Effect.flatMap((exists) =>
-        exists ? dependencies.fileSystem.readText(path) : Effect.succeed(undefined),
-      ),
-    );
-
-const routeReloadSnapshot = (dependencies: TraefikProxyDependencies, app: AppId, defaultDomain: string) => {
-  const certificates = appCertificateFiles(dependencies.paths, app);
-  const defaults = defaultCertificateFiles(dependencies.paths, defaultDomain);
-  return Effect.all([
-    readOptional(dependencies, routeFile(dependencies.paths, app)),
-    readOptional(dependencies, certificates.cert),
-    readOptional(dependencies, certificates.key),
-    readOptional(dependencies, defaults.cert),
-    readOptional(dependencies, defaults.key),
-    readOptional(dependencies, defaultTlsFile(dependencies.paths)),
-    readOptional(dependencies, dashboardConfigFile(dependencies.paths)),
-  ]);
-};
 const routerListsFromConfig = (router: NonNullable<ProxyConfig["router"]>): TraefikRouterLists => ({
   ...(router.bindAddress === undefined ? {} : { bindAddress: router.bindAddress }),
   ...(router.httpPort === undefined ? {} : { httpPort: router.httpPort }),
@@ -291,6 +272,7 @@ export const makeTraefikRouterService = (
     ...RouterService.of({
       id: TRAEFIK_PROXY_ID,
       capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+      observeRoutes: makeRouteObserver(dependencies, pendingReload),
       prepare: Effect.fn("RouterService.prepare")(
         (config) =>
           guardRouterMutation(
@@ -618,7 +600,9 @@ export const layer = (stateStore: PluginStateStore) =>
       const events = yield* Effect.serviceOption(EventService);
       const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
       const socketProxy = yield* resolveLiveSocketProxy;
+      const httpClient = yield* HttpClient.HttpClient;
       return makeTraefikRouterService({
+        httpClient,
         certificateAuthority,
         fileSystem: {
           ...fileSystem,

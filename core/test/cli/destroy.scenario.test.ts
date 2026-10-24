@@ -244,6 +244,7 @@ const makeDestroyLayer = (
         service: ServiceName.make("orphan"),
         status: "stopped" as const,
         containerId: "orphan-container",
+        publications: { status: "unknown" as const },
       },
     ],
   };
@@ -330,7 +331,7 @@ const makeDestroyLayer = (
         providerId,
         status: "stopped",
         state: "stopped",
-        endpoints: [],
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
     cleanupOwnedResources: () =>
@@ -347,6 +348,7 @@ const makeDestroyLayer = (
       capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
       setup: () => Effect.void,
       revalidateStartup: Effect.void,
+      observeRoutes: () => Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
       applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
       removeRoutes: (app) =>
         Effect.sync(() => void routeRemovals.push(String(app))).pipe(
@@ -424,6 +426,7 @@ const makeDestroyLayer = (
                           service: ServiceName.make("orphan"),
                           status: "stopped" as const,
                           containerId: "orphan-container",
+                          publications: { status: "unknown" as const },
                         },
                       ],
                     },

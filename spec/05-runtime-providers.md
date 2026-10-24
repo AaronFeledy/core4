@@ -57,7 +57,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `run` | Runs a scoped ephemeral workload, including declared mounts and input. |
 | `runStream` | Streaming sibling of `run`, used by generic data movement. |
 | `logs` | Streams raw, source-tagged service logs; redaction occurs at output boundaries. |
-| `inspect` | Returns `ServiceRuntimeInfo` for a selected service. |
+| `inspect` | Returns `ServiceRuntimeInfo` for a selected service. Its required `publications` field is a `PublicationObservation`: `unknown` when evidence could not be established or is malformed, `missing` when the container is proven absent, or `present` with the actual `bindings` (container `port`, `transport`, real `bindAddress`, assigned `hostPort`), where an empty list proves there are none. Inspect MUST NOT merge planned endpoints into the observation or fall back to plan values, and missing or malformed evidence is never reported as known-empty. |
 | `list` | Lists provider instances matching a `ListFilter`. |
 | `snapshotVolume`, `restoreVolume`, `removeVolumeSnapshot` | Required for every provider, including removal. Creates, restores, and removes snapshots only when the provider declares native snapshot support; non-native providers MUST fail with the typed capability error. The shared container data plane accepts only native-format references, rejects another provider's reference before mutation, and removes artifacts idempotently. Its helper containers (snapshot commit, volume witness) run only from pinned digest refs, acquired through the provider's `pullArtifact` path with the `missing` policy and verified against the pin before the container is created; failure to acquire or verify fails the operation with a tagged error. Plugin providers may implement other reference formats. |
 | `listVolumeSnapshots` (optional) | Lists provider snapshot artifacts with immutable reference, creation time, and labels, independently of the host catalog. Non-native providers return an empty list. Listing MUST NOT start a stopped runtime. |
@@ -78,7 +78,7 @@ All app kinds use one placement rule. Desired placement is the selected provider
 `stop` and `destroy` callers resolve the app **root** from Landofile discovery, which succeeds on an invalid Landofile, and consult applied state and runtime evidence against that root before planning desired config:
 
 1. No applied plan, no owned runtime resources, no nonempty cleanup inventory, and no unfinished accelerated-start journal at the root: the operation reports `outcome: "unchanged"`, takes no provider action, and exits successfully whatever the Landofile says. A nonempty inventory requires provider verification even when every recorded resource returns absent. The one exception is `destroy --purge`, which still removes the root's snapshots (§10.11.2), takes only the provider actions that removal needs, and reports `destroyed` when it removed any.
-2. An applied plan exists: tear down from the applied plan.
+2. An applied plan exists: tear down from the applied plan. Landofile `events:` and `hostEvents` steps for that teardown come from the Landofile at the applied root at command time (§8.5.7); a Landofile that is missing, fails to load, or names another app or provider skips those steps with a notice. That tolerance is for hook sourcing only; the ownership and unfinished-accelerated-start checks below still fail closed.
 3. No applied plan but owned runtime resources exist: tear them down as orphans of that root. Both operations remove orphan containers through `removeObservedService` by observed identity, never through provider state looked up by app id. When destroy's volume policy selects orphan volumes for removal, it uses `removeVolume` by observed identity. The desired plan is loaded only if teardown needs it; a desired-config failure at that point is reported as the tagged planner/landofile error.
 
 Destroy plans before it executes. Identity, inventory, capability, journal, and file-sync checks are read-only and run before the `pre-destroy` bracket (§3.5); every mutation, and any validation that depends on quiescing retained writers, runs inside it.
@@ -183,7 +183,7 @@ The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, 
 | `providerExtensions` | Extension namespaces the provider accepts. |
 | `agentSocket` | Agent-socket delivery for §10.4 SSH and gpg relays: `{ delivery: "bind-directory" \| "guest-bridge" \| "volume-relay" }`. Omitted means no delivery; §10.4 sidecar mode then warns and starts without the socket overlay, while host mode and gpg forwarding fail planning with `CapabilityError`. |
 
-Missing required capabilities fail before provider action with `CapabilityError` naming the provider, feature, service when applicable, and remediation. Published endpoints require `hostPortPublish`; internal endpoints do not. Providers return assigned host ports as materialization results and MUST NOT mutate desired publication state.
+Missing required capabilities fail before provider action with `CapabilityError` naming the provider, feature, service when applicable, and remediation. Published endpoints require `hostPortPublish`; internal endpoints do not. Providers report assigned host ports only as `PublicationObservation` bindings from real inspection and MUST NOT mutate desired publication state or substitute plan values for observed ones.
 
 `composeSpec: native` is necessary but not sufficient for preserved Compose semantics. `composeKnobs`, `composeServiceFields`, `composeProjectFields`, and `composePreservedPaths` are fail-closed exact declarations; omission means no support, non-empty declarations below `native` are invalid, and support MUST NOT be inferred from a parent field or tier. Declaring a field claims complete realization of its accepted forms. Service and project `x-*` fields remain inert preserved metadata unless a specific namespace later gains an explicit capability or provider extension.
 
@@ -228,6 +228,7 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `routes` | Planner-resolved routes with explicit backend service, protocol, and port. |
 | `networks`, `stores` | Provider-neutral network and storage intent. |
 | `networking` | Explicit per-app bridge (or `null`) and optional shared-network membership with service aliases. |
+| `events` | Compiled Landofile `events:` and `hostEvents` steps with provenance and plan-time status (§8.5.7). Omitted from provider applied-state records. |
 | `metadata` | App planning metadata. |
 | `extensions` | Namespaced preserved provider intent. |
 

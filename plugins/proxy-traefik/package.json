@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
+    "@lando/http-client": "workspace:*",
     "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@lando/state-store": "workspace:*",

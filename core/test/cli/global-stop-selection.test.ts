@@ -53,6 +53,7 @@ for (const stopFailure of [false, true]) {
             service: ServiceName.make("ssh-agent"),
             containerId: "ssh-container",
             status: "running",
+            publications: { status: "unknown" },
           },
         ],
       });

@@ -39,9 +39,9 @@ import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { makeTestStateStore } from "@lando/core/testing";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import {
-  attachEffectiveEvents,
   compileEffectiveEvents,
   effectiveEventsForPlan,
+  withEventsPlan,
 } from "@lando/engine/planner/effective-events";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -269,11 +269,21 @@ const makeRestartLayer = (
         status: "running",
         state: "running",
         containerId: `cid-${String(target.service)}`,
-        endpoints: (plannedApp.services[target.service]?.endpoints ?? []).map((endpoint) =>
-          endpoint._tag === "published" && endpoint.publication.hostPort === undefined
-            ? { ...endpoint, materialization: { bindAddress: "127.0.0.1", hostPort: 34567 } }
-            : endpoint,
-        ),
+        publications: {
+          status: "present",
+          bindings: (plannedApp.services[target.service]?.endpoints ?? []).flatMap((endpoint) =>
+            endpoint._tag === "published"
+              ? [
+                  {
+                    port: endpoint.port,
+                    transport: endpoint.protocol === "udp" ? ("udp" as const) : ("tcp" as const),
+                    bindAddress: endpoint.publication.bindAddress ?? "127.0.0.1",
+                    hostPort: endpoint.publication.hostPort ?? 34567,
+                  },
+                ]
+              : [],
+          ),
+        },
       }),
   };
 
@@ -359,7 +369,7 @@ describe("lando restart", () => {
         },
       },
     });
-    const eventPlan = attachEffectiveEvents({ ...plan }, effective);
+    const eventPlan = withEventsPlan({ ...plan }, effective);
     const harness = makeRestartLayer({ plannedApp: eventPlan });
 
     // When
@@ -408,7 +418,7 @@ describe("lando restart", () => {
       ["web", "running"],
     ]);
     expect(renderRestartAppResult(result)).toBe(
-      "restarted: test-restart - web (running) http://localhost:3000",
+      "restarted: test-restart - web (running) Host: http://localhost:3000 App Network: http://web:3000",
     );
   });
 

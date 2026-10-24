@@ -8,13 +8,18 @@ tags: [beta, docs, plugins, npm]
 
 # Install a plugin from npm
 
-`lando plugin:add` installs one npm registry package into your user plugin root, validates the plugin manifest, then asks you to trust it as host code.
+`lando plugin:add` installs an npm registry package into your user plugin root
+and validates its manifest. Trust allows plugin code to run on your host. Use
+`--trust` in the example below only if you have decided to trust that package;
+it skips the trust prompt and saves the package name.
 
 ```sh
 lando plugin:add @lando/plugin-php --trust
 ```
 
-npm specs only. Git URLs, tarball URLs, and `file:` paths fail with `NotImplementedError` in this Beta. If it is not on the registry desk, it does not get a wristband.
+Only npm registry specifications are supported in this Beta. Git URLs, tarball
+URLs, and `file:` paths fail with `NotImplementedError`. To develop a checkout,
+use [Link a local plugin](./link-local-plugin.mdx).
 
 ## Add the package
 
@@ -25,7 +30,12 @@ lando plugin:add @lando/plugin-php
 lando plugin:add @lando/plugin-php@1.2.3 --trust
 ```
 
-`--trust` and `-y` skip the trust prompt and persist that name. Non-interactive installs without `--trust` fail unless the name is already trusted.
+`--trust` and `-y` skip the trust prompt and persist that name. Without prior
+trust or `--trust`, behavior depends on the package: a package with a non-empty
+`postinstall` script is unpacked as untrusted and its script is skipped. A package
+without that script takes the trust-prompt path and fails with
+`InteractionRequiredError` when no interaction is available. See
+[Trust plugin postinstall](./trust-postinstall.mdx).
 
 Packages land at `<userDataRoot>/plugins/<name>/<version>/`. A directory that already exists is left in place.
 
@@ -33,7 +43,7 @@ Packages land at `<userDataRoot>/plugins/<name>/<version>/`. A directory that al
 
 ## Trust the name
 
-Trust is one package name. Org globs are not up.
+Trust applies to an exact package name, not an organization wildcard.
 
 ```sh
 lando plugin:trust @lando/plugin-php

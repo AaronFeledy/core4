@@ -271,6 +271,7 @@ describe("RuntimeProvider contract", () => {
           service: TEST_SERVICE_NAME,
           providerId: TEST_PROVIDER_ID,
           status: "running",
+          publications: { status: "unknown" },
         }),
       ),
     ).toBe(true);

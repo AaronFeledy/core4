@@ -55,7 +55,7 @@ lando start
 lando psql -c 'SELECT version();'
 ```
 
-The `pg18` tag tracks Postgres 18; patch and extension versions can change. `db` has an internal TCP endpoint, not a published host endpoint, so `lando info` lists no endpoint URL for it. `app` reaches it at `db:5432`, which is what `DATABASE_URL` points at. `lando info` redacts the password, so build the URL from the resolved credential expressions above instead of copying it.
+The `pg18` tag tracks Postgres 18; patch and extension versions can change. `db` has an internal TCP listener and no published host port, so `lando info` lists no Host connection for it. Its App Network connection is a Postgres URI with the user and database but no password, `postgresql://lando@db:5432/pgvector-demo`. `app` reaches it at `db:5432`, which is what `DATABASE_URL` points at. `lando info` never prints the password, so build the full URL from the resolved credential expressions above instead of copying it.
 
 ## Enable the extension
 
@@ -184,7 +184,7 @@ lando destroy -y --volumes
 
 ## Check the Landofile config
 
-`lando app:config --format=json` shows the Landofile's type, image, and `home` before anything boots. It does not show the planned `PGDATA`, inspect the image, or prove database readiness:
+`lando app:config --format=json` shows the Landofile's type, image, and `home` before anything boots. It does not show the planned `PGDATA`, inspect the image, or prove database readiness. After `lando start`, `lando app:info --format=json` lists the `db` App Network connection with its passwordless Postgres URI:
 
 <Guide>
   <Scenario id="reader-path" render>
@@ -198,6 +198,14 @@ lando destroy -y --volumes
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"home\":\\s*false" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uv\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
     </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="db-connection">
+      <Run command="lando app:info --format=json" />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"url\":\\s*\"postgresql://lando@db:5432/pgvector-demo\"" } }} />
+    </Step>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
@@ -209,3 +217,4 @@ lando destroy -y --volumes
 
 - [Add PostgreSQL](./postgres.mdx) for creds, `config.server`, and the `psql` task
 - [Add Python](./python.mdx) for frameworks, `uv`, and serving an API
+- [Run a local LLM with Ollama](./ollama.mdx) for a model server next to your database

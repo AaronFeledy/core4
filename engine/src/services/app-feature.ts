@@ -373,6 +373,7 @@ const makeMutators = (
     draft.storage.push({ ...storage });
   },
   addEndpoint: (endpoint) => {
+    // These are original contributions; finalization normalizes after all app features.
     draft.endpoints.push({ ...endpoint });
   },
   addDependency: (dependency) => {
