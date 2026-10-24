@@ -22,7 +22,7 @@ export const assertConnectionProjections = (
     ...familyEnvFor(connection.family, connection.creds),
     ...landoDbEnvFor(connection.creds, connection.port),
     ...(connection.family === "mysql" || connection.family === "mariadb"
-      ? { MYSQL_PWD: connection.creds.password, MYSQL_TCP_PORT: String(connection.port) }
+      ? { MYSQL_TCP_PORT: String(connection.port) }
       : connection.family === "postgres"
         ? { PGPORT: String(connection.port) }
         : connection.family === "mssql"
