@@ -100,7 +100,7 @@ test("loads v4 catalog types even when a legacy recipe filename exists", async (
   try {
     const result = await Effect.runPromise(load());
     // Then
-    expect(result.services).toMatchObject({ web: { type: "php:8.3" } });
+    expect(result.document.services).toMatchObject({ web: { type: "php:8.3" } });
     expect(check).not.toHaveBeenCalled();
   } finally {
     check.mockRestore();

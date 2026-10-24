@@ -1,44 +1,56 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 import { Effect } from "effect";
 
 import { redactDetails, redactString, withApiReason } from "../src/redact.ts";
 
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
+let fixtureRedaction = makeRedactionService();
+beforeEach(() => {
+  fixtureRedaction = makeRedactionService();
+});
 
 describe("runtime-registered redaction", () => {
   test("redactString observes exact values registered after first use", () => {
     // Given
-    redactString("initial provider check");
-    Effect.runSync(registerRedactionValues(["opaque-runtime-canary-1261"]));
+    const redactor = Effect.runSync(fixtureRedaction.forProfile("secrets"));
+    redactString("initial provider check", redactor);
+    Effect.runSync(fixtureRedaction.registerValues(["opaque-runtime-canary-1261"]));
     // When
-    const out = redactString("engine said opaque-runtime-canary-1261; retry start");
+    const out = redactString("engine said opaque-runtime-canary-1261; retry start", redactor);
     // Then
     expect(out).toBe("engine said [redacted]; retry start");
   });
 
   test("redactDetails observes exact values registered after first use", () => {
     // Given
-    redactDetails({ evidence: ["initial provider check"] });
-    Effect.runSync(registerRedactionValues(["opaque-runtime-canary-1261"]));
+    const redactor = Effect.runSync(fixtureRedaction.forProfile("secrets"));
+    redactDetails({ evidence: ["initial provider check"] }, redactor);
+    Effect.runSync(fixtureRedaction.registerValues(["opaque-runtime-canary-1261"]));
     // When
-    const out = redactDetails({
-      evidence: ["engine said opaque-runtime-canary-1261", { detail: "opaque-runtime-canary-1261" }],
-      status: 500,
-    });
+    const out = redactDetails(
+      {
+        evidence: ["engine said opaque-runtime-canary-1261", { detail: "opaque-runtime-canary-1261" }],
+        status: 500,
+      },
+      redactor,
+    );
     // Then
     expect(out).toEqual({ evidence: ["engine said [redacted]", { detail: "[redacted]" }], status: 500 });
   });
 
   test("withApiReason observes exact values registered after first use", () => {
     // Given
-    withApiReason("Start failed.", { body: '{"message":"initial provider check"}' });
-    Effect.runSync(registerRedactionValues(["opaque-runtime-canary-1261"]));
+    const redactor = Effect.runSync(fixtureRedaction.forProfile("secrets"));
+    withApiReason("Start failed.", { body: '{"message":"initial provider check"}' }, redactor);
+    Effect.runSync(fixtureRedaction.registerValues(["opaque-runtime-canary-1261"]));
     // When
-    const out = withApiReason("Start failed.", {
-      body: JSON.stringify({ message: "engine said opaque-runtime-canary-1261" }),
-    });
+    const out = withApiReason(
+      "Start failed.",
+      {
+        body: JSON.stringify({ message: "engine said opaque-runtime-canary-1261" }),
+      },
+      redactor,
+    );
     // Then
     expect(out).toBe("Start failed. engine said [redacted]");
   });

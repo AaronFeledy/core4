@@ -57,6 +57,7 @@ const discoverFrom = async (cwd: string) => {
     process.chdir(cwd);
     return await Effect.runPromise(
       Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
+        Effect.map((compiled) => compiled.document),
         Effect.provide(TestLandofileServiceLayer.layer),
       ),
     );

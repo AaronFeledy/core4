@@ -54,6 +54,7 @@ const servicePlan = (
 });
 
 const standalonePlan = (): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "Bring Up Log Tail App",
   slug,
@@ -83,6 +84,7 @@ const dependentPlan = (): AppPlan => {
   });
   return {
     id: appId,
+    valueModel: 1,
     name: "Bring Up Log Tail App",
     slug,
     root: AbsolutePath.make("/tmp/bring-up-log-tail-app"),

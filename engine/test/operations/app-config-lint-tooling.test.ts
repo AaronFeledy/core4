@@ -144,7 +144,7 @@ test.each([true, false])("reserved scratch include task with internal=%s", async
       lintLandofileSnapshot({ cwd: root }).pipe(Effect.provide(layers)),
     );
     // Then
-    expect(snapshot.resolved?.tooling).toHaveProperty(["scratch:check"]);
+    expect(snapshot.resolved?.document.tooling).toHaveProperty(["scratch:check"]);
     expect(getInternalToolingTasks(snapshot.resolved ?? {}).includes("scratch:check")).toBe(internal);
     expect(result.valid).toBe(internal);
     expect(result.violations.map(({ rule, path }) => ({ rule, path }))).toEqual(

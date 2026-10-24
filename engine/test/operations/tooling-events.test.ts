@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   GlobalConfig,
   type LandofileEvents,
   ProviderId,
@@ -13,6 +13,7 @@ import {
   AppPlanner,
   type CommandSpec,
   ConfigService,
+  EnvironmentValueResolver,
   type ExecTarget,
   LandofileService,
   RuntimeProviderRegistry,
@@ -21,13 +22,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import {
-  RedactionService,
-  createPayloadValues,
-  createStandaloneRedactor,
-  registerRedactionValues,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Option, Redacted, Schema, Stream } from "effect";
 
@@ -37,6 +32,8 @@ import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
+import { compileTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const metadata = {
@@ -80,7 +77,10 @@ const harness = (input: {
   const executed: string[] = [];
   const frames: StreamFrameSinkFrame[] = [];
   const selections: string[] = [];
-  const basePlan: AppPlan = {
+  const redaction = makeRedactionService();
+  const resolverLayer = testEnvironmentResolverLayerFor(redaction);
+  const basePlan: CurrentExecutableAppPlan = {
+    valueModel: 1,
     id: AppId.make("tooling-events"),
     name: "tooling-events",
     slug: "tooling-events",
@@ -94,8 +94,10 @@ const harness = (input: {
     metadata,
     extensions: {},
   };
-  const plan = input.events === undefined ? basePlan : withProjectEvents(basePlan, input.events);
-  attachEffectiveTooling(plan, input.tooling);
+  const plan = attachEffectiveTooling(
+    input.events === undefined ? basePlan : withProjectEvents(basePlan, input.events),
+    input.tooling,
+  );
 
   const record = (label: string) => {
     executed.push(label);
@@ -118,17 +120,11 @@ const harness = (input: {
     input.omitEventRuntime === true
       ? Layer.empty
       : Layer.mergeAll(
-          LandoEventService.layer,
-          Layer.succeed(
-            RedactionService,
-            RedactionService.of({
-              registerValues: registerRedactionValues,
-              payloadValues: () => Effect.succeed(createPayloadValues([])),
-              forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-            }),
-          ),
+          LandoEventService.layer.pipe(Layer.provide(Layer.succeed(RedactionService, redaction))),
+          Layer.succeed(RedactionService, redaction),
         );
   const layer = Layer.mergeAll(
+    resolverLayer,
     eventRuntime,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
@@ -137,11 +133,17 @@ const harness = (input: {
         id: "recording",
         run: (invocation, _plan, selected) =>
           Effect.gen(function* () {
+            const env = yield* Effect.scoped(
+              Effect.gen(function* () {
+                const session = yield* (yield* EnvironmentValueResolver).openSession();
+                return yield* session.resolveEnvironment(invocation.env ?? {});
+              }).pipe(Effect.provide(resolverLayer)),
+            );
             const { exitCode, stdout: output } = yield* selected.exec(
               { app: plan.id, service: service.name, plan },
               {
                 command: invocation.commands[0] ?? [invocation.tool],
-                ...(invocation.env === undefined ? {} : { env: invocation.env }),
+                env,
               },
             );
             // A live sink receives provider output directly, so the result carries none of it.
@@ -164,7 +166,7 @@ const harness = (input: {
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({
+        discover: compileTestLandofile({
           name: "tooling-events",
           tooling: input.tooling,
           ...(input.events === undefined ? {} : { events: input.events }),
@@ -211,6 +213,7 @@ const harness = (input: {
       ? Layer.succeed(StreamFrameSink, { emit: (frame) => Effect.sync(() => frames.push(frame)) })
       : Layer.empty;
   return {
+    redaction,
     executed,
     frames,
     selections,
@@ -339,23 +342,19 @@ test("redacts a split registered secret before clipping a live failure tail", as
     live: true,
     failureOutput: [new TextEncoder().encode(secret.slice(0, 8)), `${secret.slice(8)}${padding}`],
   });
-  await Effect.runPromise(registerRedactionValues([secret]));
-  try {
-    // When: the post bracket streams its output and fails.
-    const result = await h.run("build");
-    // Then: clipping retains the mask, not an unmatched raw secret suffix.
-    if (result._tag !== "Failure" || result.failure._tag !== "LandofileEventStepFailedError") {
-      throw new Error("expected LandofileEventStepFailedError");
-    }
-    expect(result.failure.outputTail).toBe(`[redacted]${padding}`);
-    expect(result.failure.outputTail).not.toContain(secret.slice(1));
-    expect(h.frames.map((frame) => frame.chunk)).toEqual([
-      new TextEncoder().encode(secret.slice(0, 8)),
-      `${secret.slice(8)}${padding}`,
-    ]);
-  } finally {
-    resetRegisteredRedactionValuesForTesting();
+  await Effect.runPromise(h.redaction.registerValues([secret]));
+  // When: the post bracket streams its output and fails.
+  const result = await h.run("build");
+  // Then: clipping retains the mask, not an unmatched raw secret suffix.
+  if (result._tag !== "Failure" || result.failure._tag !== "LandofileEventStepFailedError") {
+    throw new Error("expected LandofileEventStepFailedError");
   }
+  expect(result.failure.outputTail).toBe(`[redacted]${padding}`);
+  expect(result.failure.outputTail).not.toContain(secret.slice(1));
+  expect(h.frames.map((frame) => frame.chunk)).toEqual([
+    new TextEncoder().encode(secret.slice(0, 8)),
+    `${secret.slice(8)}${padding}`,
+  ]);
 });
 
 test("registers container secrets for the task body after its pre bracket runs", async () => {
@@ -366,14 +365,14 @@ test("registers container secrets for the task body after its pre bracket runs",
     events: { "pre-build": [{ cmd: "echo before", service: "web" }] },
     appSecrets: (executed) => (executed.includes("echo before") ? [rotated] : ["stale-before-pre-private"]),
   });
-  try {
+  {
     // When: the task runs.
     const result = await h.run("build");
     // Then: the body's read happened after the pre bracket, so the rotated value is masked.
     expect(result._tag).toBe("Success");
-    expect(createStandaloneRedactor("secrets").redactString(rotated)).toBe("[redacted]");
-  } finally {
-    resetRegisteredRedactionValuesForTesting();
+    expect((await Effect.runPromise(h.redaction.forProfile("secrets"))).redactString(rotated)).toBe(
+      "[redacted]",
+    );
   }
 });
 

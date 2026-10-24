@@ -39,13 +39,14 @@ import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
 import { readScratchLandofile } from "@lando/engine/scratch-app/service";
 import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
 import * as LandoConfigService from "@lando/engine/services/config";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
@@ -152,6 +153,7 @@ interface Recorded {
 }
 
 interface HarnessOptions {
+  readonly creationEnvironments?: Readonly<Record<string, string>>[];
   readonly stopCalls?: DestroyCall[];
   readonly applyOptions?: ApplyOptions[];
   readonly buildCalls?: string[];
@@ -200,10 +202,16 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       }),
     removeArtifact: () => Effect.void,
     apply: (plan, applyOptions) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         recorded.appliedPlans.push(plan);
         options.onApply?.();
         options.applyOptions?.push(applyOptions);
+        if (applyOptions.resolveServiceEnvironment !== undefined) {
+          for (const service of Object.values(plan.services)) {
+            const environment = yield* applyOptions.resolveServiceEnvironment(service);
+            options.creationEnvironments?.push(environment);
+          }
+        }
         return { changed: true };
       }),
     start: () => die("start"),
@@ -296,6 +304,9 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     eventLive,
     pathsLive,
     redactionLive,
+    EnvironmentValueResolverLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(EnvSecretStore.layer, redactionLive)),
+    ),
     ScratchRegistryLayer.ScratchRegistry.layer,
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     ScratchInitAppPortLayer.layer,
@@ -527,6 +538,7 @@ describe("scratchRun", () => {
         );
         const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
         const applyOptions: ApplyOptions[] = [];
+        const creationEnvironments: Readonly<Record<string, string>>[] = [];
 
         await Effect.runPromise(
           Effect.scoped(
@@ -534,17 +546,17 @@ describe("scratchRun", () => {
               scratch.acquire({ source: { kind: "fork" }, detached: false, isolate: "cwd" }),
             ),
           ).pipe(
-            Effect.provide(makeHarnessLayer(recorded, { applyOptions })),
+            Effect.provide(makeHarnessLayer(recorded, { applyOptions, creationEnvironments })),
             Effect.provide(testSupportLayer()),
           ),
         );
 
-        expect(applyOptions[0]?.serviceEnvironment?.[ServiceName.make("web")]).toEqual({
+        expect(creationEnvironments[0]).toMatchObject({
           TOKEN: "resolved-scratch-token",
         });
         expect(recorded.appliedPlans[0]?.services[ServiceName.make("web")]?.environment).toEqual({
           LANDO_HOST_IP: "host.lando.internal",
-          TOKEN: "${secret:SCRATCH_TOKEN}",
+          TOKEN: { _tag: "SecretRef", reference: "SCRATCH_TOKEN" },
         });
       } finally {
         if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_SECRET_SCRATCH_TOKEN");
@@ -1285,20 +1297,16 @@ describe("scratch run agent env forwarding", () => {
       const secret = "opencode-forwarded-secret";
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
       const io = createBufferedRendererIO();
-      try {
-        await withHostEnv({ OPENCODE: secret }, () =>
-          Effect.runPromise(
-            scratchRun(baseOptions).pipe(
-              Effect.provide(makeHarnessLayer(recorded, { execStdout: `OPENCODE=${secret}\n` })),
-              Effect.provide(RendererOutput.layerStreamFrameSink("text")),
-              Effect.provide(testSupportLayer()),
-              Effect.provide(RendererRuntime.layerPlainService(io)),
-            ),
+      await withHostEnv({ OPENCODE: secret }, () =>
+        Effect.runPromise(
+          scratchRun(baseOptions).pipe(
+            Effect.provide(makeHarnessLayer(recorded, { execStdout: `OPENCODE=${secret}\n` })),
+            Effect.provide(RendererOutput.layerStreamFrameSink("text")),
+            Effect.provide(testSupportLayer()),
+            Effect.provide(RendererRuntime.layerPlainService(io)),
           ),
-        );
-      } finally {
-        resetRegisteredRedactionValuesForTesting();
-      }
+        ),
+      );
       expect(recorded.execCalls[0]?.env).toEqual({ OPENCODE: secret });
       expect(io.stdout()).not.toContain(secret);
       expect(io.stdout()).toContain("OPENCODE=[redacted]");

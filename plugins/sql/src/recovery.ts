@@ -4,6 +4,7 @@ import { DataTransferError, SqlCommandFailedError, SqlRecoveryOperationError } f
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { SnapshotId, type SnapshotMetadata } from "@lando/sdk/schema";
 
+import { SqlEnvironmentSession } from "./environment.ts";
 import type { SqlPublisher } from "./progress.ts";
 import { resolveLockedPhysicalTarget } from "./recovery-adoption.ts";
 import {
@@ -25,26 +26,30 @@ type SqlPhysicalOperation<A, E> = SqlPhysicalContextInput & {
   readonly body: (context: SqlRecoveryContext, recoveryId: string) => Effect.Effect<A, E>;
 };
 
-export const withPhysicalVolumeLock = <A, E>(
+export const withPhysicalVolumeLock = Effect.fnUntraced(function* <A, E>(
   input: SqlPhysicalContextInput & {
     readonly body: (context: SqlRecoveryContext) => Effect.Effect<A, E>;
   },
-) =>
-  resolvePhysicalTarget(input).pipe(
+) {
+  const session = yield* SqlEnvironmentSession;
+  return yield* resolvePhysicalTarget(input).pipe(
     Effect.flatMap((target) =>
       input.deps.withVolumeLock(
         target.coordinationKey,
-        resolvePhysicalTarget(input).pipe(
-          Effect.flatMap((lockedTarget) => resolveLockedPhysicalTarget(input, target, lockedTarget)),
-          Effect.flatMap((identifiedTarget) =>
-            resolvePhysicalContext(input, identifiedTarget).pipe(
-              Effect.flatMap((context) => Effect.suspend(() => input.body(context))),
+        resolvePhysicalTarget(input)
+          .pipe(
+            Effect.flatMap((lockedTarget) => resolveLockedPhysicalTarget(input, target, lockedTarget)),
+            Effect.flatMap((identifiedTarget) =>
+              resolvePhysicalContext(input, identifiedTarget).pipe(
+                Effect.flatMap((context) => Effect.suspend(() => input.body(context))),
+              ),
             ),
-          ),
-        ),
+          )
+          .pipe(Effect.provideService(SqlEnvironmentSession, session)),
       ),
     ),
   );
+});
 
 export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
   withPhysicalVolumeLock({

@@ -77,6 +77,7 @@ export interface AppIncludesVerifyOptions {
 }
 
 export type AppIncludesVerifyError =
+  | import("@lando/sdk/errors").ConfigExpressionError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | LandofileFormConflictError

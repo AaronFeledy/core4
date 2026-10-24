@@ -1,6 +1,7 @@
 import { APP_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { HostPlatform } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 
 import type { DoctorCheck, DoctorProviderKind, DoctorSolution } from "./doctor";
 
@@ -133,7 +134,6 @@ export interface OomDoctorContext {
 export const OOM_CHECK_NAME = "runtime-oom";
 
 const secretsRedactor = createStandaloneRedactor("secrets");
-const redact = (value: string): string => secretsRedactor.redactString(value);
 
 const baseSolution = (): DoctorSolution => ({
   kind: "manual",
@@ -158,9 +158,11 @@ const podmanDesktopSolution = (): DoctorSolution => ({
 export const buildOomDoctorCheck = (
   classification: DiedEventClassification,
   { provider, providerKind, platform }: OomDoctorContext,
+  redactor: Redactor = secretsRedactor,
 ): DoctorCheck | undefined => {
   if (classification.kind !== "oom") return undefined;
   const { correlation } = classification;
+  const redact = (value: string) => redactor.redactString(value);
   const context: Record<string, string> = {};
   if (correlation.containerName !== undefined) context.containerName = redact(correlation.containerName);
   if (correlation.image !== undefined) context.image = redact(correlation.image);
@@ -196,8 +198,9 @@ export const buildOomDoctorCheck = (
 export const collectOomDoctorChecks = (
   payloads: ReadonlyArray<unknown>,
   context: OomDoctorContext,
+  redactor: Redactor = secretsRedactor,
 ): ReadonlyArray<DoctorCheck> =>
   payloads.flatMap((payload) => {
-    const check = buildOomDoctorCheck(classifyDiedEvent(payload), context);
+    const check = buildOomDoctorCheck(classifyDiedEvent(payload), context, redactor);
     return check === undefined ? [] : [check];
   });

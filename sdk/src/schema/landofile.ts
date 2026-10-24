@@ -9,8 +9,11 @@ import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import { ComposeServiceKnobFields } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
+import { ServiceCreds } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
+import { ComposeEnvironmentInput } from "./environment-input.ts";
+import { EnvironmentValue } from "./environment-value.ts";
 import { LandofileEvents } from "./landofile-events.ts";
 import { StringImportRef } from "./landofile-reference.ts";
 import { type LayerMergeRule, layerMerge } from "./layer-merge.ts";
@@ -190,57 +193,6 @@ const ComposeScalarMapInput = mapInputWithPrecheck(
     ),
   ),
 );
-
-// JSON Schema publishes the encoded side, so each transformed field describes both sides.
-const COMPOSE_ENVIRONMENT_DESCRIPTION =
-  "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry or null map value is rejected because Landofiles do not read host environment variables.";
-
-const ComposeEnvironmentInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)])
-  .annotate({ description: COMPOSE_ENVIRONMENT_DESCRIPTION })
-  .pipe(
-    Schema.decodeTo(
-      StringRecord,
-      SchemaTransformation.transformEffect({
-        decode: (input, _options) => {
-          if (!Array.isArray(input)) {
-            const entries = Object.entries(input);
-            const unresolved = entries.find(([, value]) => value === null);
-            if (unresolved !== undefined) {
-              return Effect.fail(
-                new SchemaIssue.InvalidValue(
-                  {
-                    message: `Landofile service environment entry "${unresolved[0]}" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.`,
-                  },
-                  input,
-                ),
-              );
-            }
-            return Effect.succeed(Object.fromEntries(entries.map(([key, value]) => [key, String(value)])));
-          }
-          const entries: Array<readonly [string, string]> = [];
-          for (const entry of input) {
-            const separator = entry.indexOf("=");
-            if (separator < 0) {
-              return Effect.fail(
-                new SchemaIssue.InvalidValue(
-                  {
-                    message: `Landofile service environment entry "${entry}" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).`,
-                  },
-                  input,
-                ),
-              );
-            }
-            entries.push([entry.slice(0, separator), entry.slice(separator + 1)]);
-          }
-          const record = Object.fromEntries(entries);
-          if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
-          return Effect.succeed(record);
-        },
-        encode: (record) => Effect.succeed(record),
-      }),
-    ),
-  )
-  .annotate({ description: COMPOSE_ENVIRONMENT_DESCRIPTION });
 
 const COMPOSE_LABELS_DESCRIPTION =
   "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.";
@@ -551,25 +503,7 @@ const ServiceSecurityField = ServiceSecurityInput.pipe(
 /**
  * Login credentials a catalog service may author under `services.<name>.creds`.
  */
-export const ServiceCreds = Schema.Struct({
-  user: Schema.String.annotate({
-    description: "Username created or used by the service.",
-  }),
-  password: Schema.String.annotate({
-    description: "Password for the service user.",
-  }),
-  database: Schema.String.annotate({
-    description: "Database name the service user can access.",
-  }),
-  rootPassword: Schema.optionalKey(Schema.String).annotate({
-    description: "Optional administrative password distinct from the service user password.",
-  }),
-}).annotate({
-  identifier: "ServiceCreds",
-  title: "Service Creds",
-  description: "Username, password, and database credentials for a catalog service.",
-});
-export type ServiceCreds = typeof ServiceCreds.Type;
+export { ServiceCreds } from "./database-connection.ts";
 
 /**
  * App-relative file-backed configuration a catalog service may author under
@@ -688,7 +622,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     database: Schema.optionalKey(Schema.String).annotate({
       description: "Default database, bucket, or equivalent data namespace created for the service.",
     }),
-    password: Schema.optionalKey(Schema.String).annotate({
+    password: Schema.optionalKey(EnvironmentValue).annotate({
       description:
         "Redis authentication password, passed through the container environment rather than command arguments.",
     }),

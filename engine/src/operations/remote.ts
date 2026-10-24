@@ -2,7 +2,7 @@ import { dirname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { AppPlanResolutionError, PullAppError, PushAppError, RemoteSyncError } from "@lando/sdk/app";
 import {
   LandofileNotFoundError,
@@ -28,6 +28,7 @@ import {
   type SyncResult as SyncResultType,
   type VolumeRef,
 } from "@lando/sdk/schema";
+import type { RedactionProfile } from "@lando/sdk/secrets";
 import {
   AppPlanner,
   DataMover,
@@ -135,21 +136,24 @@ const unavailable = (requested?: string): RemoteProviderUnavailableError =>
       "Install a RemoteSource plugin for this remote, then rerun the command. Bundled remotes ship in Lando 4.1.",
   });
 
-const secretOutputRedactor = createStandaloneRedactor("secrets");
-const telemetryOutputRedactor = createStandaloneRedactor("telemetry");
-
-const redactConfig = (config: RemoteConfigType): RemoteConfigType =>
-  secretOutputRedactor.redactValue(config) as RemoteConfigType;
-
-const redactEntry = (entry: RemoteEntry): RemoteEntry => ({ ...entry, config: redactConfig(entry.config) });
-
-const redactMutationResult = (result: RemoteMutationResult): RemoteMutationResult => ({
-  ...result,
-  config: redactConfig(result.config),
+const outputRedactor = Effect.fnUntraced(function* (profile: RedactionProfile) {
+  const service = yield* Effect.serviceOption(RedactionService);
+  return service._tag === "Some"
+    ? yield* service.value.forProfile(profile)
+    : createStandaloneRedactor(profile);
 });
 
-const redactSyncResult = (result: SyncResultType): SyncResultType =>
-  telemetryOutputRedactor.redactValue(result) as SyncResultType;
+const redactConfig = (config: RemoteConfigType) =>
+  outputRedactor("secrets").pipe(Effect.map((redactor) => redactor.redactValue(config) as RemoteConfigType));
+
+const redactEntry = (entry: RemoteEntry) =>
+  redactConfig(entry.config).pipe(Effect.map((config) => ({ ...entry, config })));
+
+const redactMutationResult = (result: RemoteMutationResult) =>
+  redactConfig(result.config).pipe(Effect.map((config) => ({ ...result, config })));
+
+const redactSyncResult = (result: SyncResultType) =>
+  outputRedactor("telemetry").pipe(Effect.map((redactor) => redactor.redactValue(result) as SyncResultType));
 
 const loadRemoteLandofile = Effect.fnUntraced(function* (
   cwd = process.cwd(),
@@ -352,11 +356,12 @@ export const appRemoteList = Effect.fn("AppOperation.remoteList")(function* (
   options: RemoteListOptions = {},
 ): Effect.fn.Return<ReadonlyArray<RemoteEntry>, LandofileNotFoundError | LandofileParseError> {
   return yield* loadRemoteLandofile(options.cwd).pipe(
-    Effect.map(({ landofile }) => {
+    Effect.flatMap(({ landofile }) => {
       const entries = remoteEntries(landofile);
-      return (
-        options.remote === undefined ? entries : entries.filter((entry) => entry.name === options.remote)
-      ).map(redactEntry);
+      return Effect.forEach(
+        options.remote === undefined ? entries : entries.filter((entry) => entry.name === options.remote),
+        redactEntry,
+      );
     }),
   );
 });
@@ -368,7 +373,7 @@ export const appRemoteAdd = Effect.fn("AppOperation.remoteAdd")(function* (
   const remotes = { ...(loaded.landofile.remotes ?? {}), [options.name]: options.config };
   const next = { ...loaded.landofile, remotes };
   yield* writeLandofile(loaded.file, next);
-  return redactMutationResult({
+  return yield* redactMutationResult({
     app: next.name ?? "app",
     remote: options.name,
     file: loaded.file,
@@ -392,7 +397,7 @@ export const appRemoteRemove = Effect.fn("AppOperation.remoteRemove")(function* 
   const { [options.name]: _removed, ...remotes } = loaded.landofile.remotes ?? {};
   const next = { ...loaded.landofile, remotes };
   yield* writeLandofile(loaded.file, next);
-  return redactMutationResult({
+  return yield* redactMutationResult({
     app: next.name ?? "app",
     remote: options.name,
     file: loaded.file,
@@ -469,7 +474,7 @@ const appPullWithPlan = Effect.fnUntraced(function* <E, R>(
     );
     changed = changed || applied.changed;
   }
-  return redactSyncResult({
+  return yield* redactSyncResult({
     direction: "pull",
     remote: entry.name,
     env,
@@ -552,7 +557,7 @@ const appPushWithPlan = Effect.fnUntraced(function* <E, R>(
       }),
     );
   }
-  return redactSyncResult({
+  return yield* redactSyncResult({
     direction: "push",
     remote: entry.name,
     env,

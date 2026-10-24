@@ -150,6 +150,7 @@ lando db:reset --yes
   <Scenario id="ambiguous-service" render={false} reason="Regression for multi-database --service">
     <Step name="import-ambiguous">
       <UseFixture name="two-db" />
+      <Run command="lando start" />
       <Run command="lando db:import dump.sql --format=json" expectExit={1} />
       <Verify errorTag="SqlServiceAmbiguousError" expect={{ regex: "Pass --service" }} />
     </Step>
@@ -161,6 +162,7 @@ lando db:reset --yes
   <Scenario id="restore-unknown-snapshot" render={false} reason="Regression for an unknown snapshot id or label">
     <Step name="restore-unknown">
       <UseFixture name="one-db" />
+      <Run command="lando start" />
       <Run command="lando db:restore no-such-snapshot --yes --format=json" expectExit={1} />
       <Verify errorTag="SnapshotNotFoundError" expect={{ regex: "lando db:snapshots" }} />
     </Step>
@@ -172,6 +174,7 @@ lando db:reset --yes
   <Scenario id="reset-requires-yes" render={false} reason="Regression for reset confirmation">
     <Step name="reset">
       <UseFixture name="one-db" />
+      <Run command="lando start" />
       <Run command="lando db:reset --format=json" expectExit={1} />
       <Verify errorTag="SqlConfirmRequiredError" expect={{ regex: "Reset will destroy" }} />
     </Step>

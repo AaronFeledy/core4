@@ -7,8 +7,8 @@ import { Cause, type Context, Effect, Exit, Layer, Option, Queue, Stream } from 
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
-import { FileSyncStartError, SecretNotFoundError, ShellExecError } from "@lando/sdk/errors";
-import { EventService, type LandoEvent, SecretStore, ShellRunner } from "@lando/sdk/services";
+import { FileSyncStartError, ShellExecError } from "@lando/sdk/errors";
+import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
 import { SECRET_SOUP_FIXTURE } from "@lando/sdk/test";
 
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
@@ -39,23 +39,14 @@ const PATTERN_SOUP = `${SECRET_SOUP_FIXTURE.text.replace("superSecretTokenLonger
 const CANONICAL_SENTINEL = "[redacted]";
 const LEGACY_SENTINEL = "[REDACTED]";
 
-const secretStoreLayer = Layer.succeed(
-  SecretStore,
-  SecretStore.of({
-    id: "redaction-proof-secrets",
-    get: (secret: string) => {
-      const index = Number(secret.replace("SECRET_", ""));
-      const value = SECRET_SOUP_FIXTURE.registeredSecrets[index];
-      return value === undefined
-        ? Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` }))
-        : Effect.succeed(value);
-    },
-    has: (secret: string) => Effect.succeed(/^SECRET_\d+$/u.test(secret)),
-    list: Effect.succeed(SECRET_SOUP_FIXTURE.registeredSecrets.map((_value, index) => `SECRET_${index}`)),
-  } satisfies Context.Service.Shape<typeof SecretStore>),
-);
-
-const realRedactionLayer = RedactionService.layer.pipe(Layer.provide(secretStoreLayer));
+const realRedactionLayer = Layer.effect(
+  RedactionService,
+  Effect.gen(function* () {
+    const service = yield* RedactionService;
+    yield* service.registerValues(SECRET_SOUP_FIXTURE.registeredSecrets);
+    return service;
+  }),
+).pipe(Layer.provide(RedactionService.layer));
 const shellRunnerLive = BunShellRunner.layer(() => {
   throw new TypeError("Interactive shell IO is not used by redaction service tests.");
 });

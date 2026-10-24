@@ -34,7 +34,8 @@ const serviceType: ServiceType = {
         )
       : Effect.succeed({
           base: "l337",
-          normalizedConfig: { ...service, creds: { user: "valid", password: "secret", database: "test" } },
+          normalizedConfig: { ...service },
+          nonSqlCreds: { user: "valid", password: "secret", database: "test" },
           features: [],
         }),
 };

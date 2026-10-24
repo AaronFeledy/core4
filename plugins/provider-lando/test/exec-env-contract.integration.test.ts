@@ -55,6 +55,7 @@ const planNodeService = (): Promise<ServicePlan> => {
 };
 
 const buildPlan = (servicePlan: ServicePlan): AppPlan => ({
+  valueModel: 1,
   id: AppId.make("envapp"),
   name: "envapp",
   slug: "envapp",
@@ -186,7 +187,7 @@ describe("provider-lando exec env contract", () => {
 
     const commandEnv: Record<string, string> = {
       LANDO_PLUGIN_TOOLING_VAR: "ok",
-      LANDO_APP_NAME: servicePlan.environment.LANDO_APP_NAME ?? "envapp",
+      LANDO_APP_NAME: "envapp",
     };
 
     await Effect.runPromise(

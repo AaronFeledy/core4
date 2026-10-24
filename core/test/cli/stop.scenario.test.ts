@@ -190,6 +190,7 @@ const makeStopLayer = (
     readonly appliedFileSync?: AppliedFileSyncInspection;
   } = {},
 ) => {
+  const currentPlan = currentTestPlan(plannedApp);
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
@@ -259,11 +260,13 @@ const makeStopLayer = (
     testStateStoreLayer,
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      LandofileService.of({
+        discover: Effect.succeed(literalLandofile({ name: "test-stop", services: {} }, plannedApp.root)),
+      }),
     ),
     makeTestStateStore().layer,
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentPlan) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -297,7 +300,7 @@ const makeStopLayer = (
     ),
   );
 
-  return { layer, events, publishedEvents, destroyCalls, volumes };
+  return { layer, currentPlan, events, publishedEvents, destroyCalls, volumes };
 };
 
 const expectMissingPath = async (path: string): Promise<void> => {
@@ -328,7 +331,7 @@ describe("lando stop", () => {
       "post-stop",
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
-    expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan });
+    expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan: harness.currentPlan });
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: false });
     expect(harness.volumes.has("test_stop_database_data")).toBe(true);
     expect(result.servicesStopped).toEqual(["database", "web"]);
@@ -408,7 +411,7 @@ describe("lando stop", () => {
     ).toBe(false);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(String(harness.destroyCalls[0]?.target.app)).toBe("test-stop");
-    expect(harness.destroyCalls[0]?.target.plan).toEqual(planWithGlobalRequirement);
+    expect(harness.destroyCalls[0]?.target.plan).toEqual(harness.currentPlan);
   });
 
   test("preserves the missing Landofile error outside an app directory", async () => {
@@ -515,11 +518,13 @@ describe("lando stop", () => {
       PrivateFileAccessService.layer,
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(literalLandofile({ name: "test-stop", services: {} }, plan.root)),
+        }),
       ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -785,11 +790,13 @@ describe("lando stop", () => {
       PrivateFileAccessService.layer,
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(literalLandofile({ name: "test-stop", services: {} }, plan.root)),
+        }),
       ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -834,3 +841,4 @@ describe("lando stop", () => {
     expect(callLog.lastIndexOf("listSessions")).toBeLessThan(flushIndex);
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

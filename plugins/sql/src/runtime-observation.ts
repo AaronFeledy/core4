@@ -94,7 +94,7 @@ export const observeDatabaseVersion = (input: {
   readonly service: string;
   readonly family: SqlFamily;
   readonly creds: SqlCreds;
-  readonly env: Readonly<Record<string, string>>;
+  readonly env: import("@lando/sdk/schema").Environment;
   readonly runtime: ObservedSqlRuntime;
 }) => {
   const query = versionCommand(input.family, input.creds);

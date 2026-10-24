@@ -3,6 +3,7 @@ import type { Effect, Scope } from "effect";
 import type { ContainerHelperUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import type { ContainerHelperArtifact, ContainerHelperTarget } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError } from "@lando/sdk/services";
 
 import type { DataPlaneApiClient } from "./data-plane.ts";
@@ -13,6 +14,7 @@ export type ResolveContainerHelper = (
 ) => Effect.Effect<ContainerHelperArtifact, ContainerHelperUnavailableError>;
 
 interface ProviderLogSourceOptions {
+  readonly redactor?: Redactor;
   readonly providerId: string;
   readonly logFileAccess: LogFileAccess | undefined;
   /** The container platform; with `resolveHelper` it enables file sources without reading helper bytes. */
@@ -47,6 +49,7 @@ export const makeProviderLogSourceBinding = (options: ProviderLogSourceOptions) 
         api,
         container,
         resolveHelper: resolveHelper(helperTarget),
+        ...(options.redactor === undefined ? {} : { redactor: options.redactor }),
       }),
     };
   },

@@ -10,6 +10,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import {
+  RedactionService,
+  type RedactionServiceShape,
+  createStandaloneRedactor,
+} from "@lando/redaction/service";
 import { Effect, Layer, Option, Schema } from "effect";
 
 import { Downloader, FileSyncEngine, type FileSyncError, PathsService } from "@lando/sdk/services";
@@ -99,15 +104,31 @@ export interface AccumulatingSetupReadinessRecorder extends SetupReadinessRecord
 export const makeSetupReadinessRecorder = (
   userDataRoot: string | undefined,
   selectedProviderId: string,
+  redaction?: RedactionServiceShape,
 ): AccumulatingSetupReadinessRecorder => {
   const readinessSteps: SetupReadinessStep[] = [];
   let runtimeServiceReadiness: SetupReadinessRuntimeService | null | undefined;
-  const record = (step: SetupReadinessStep): Effect.Effect<void, never> => {
+  const record = Effect.fnUntraced(function* (step: SetupReadinessStep): Effect.fn.Return<void> {
+    const inherited = yield* Effect.serviceOption(RedactionService);
+    const service = redaction ?? Option.getOrUndefined(inherited);
+    const redactor =
+      service === undefined ? createStandaloneRedactor("secrets") : yield* service.forProfile("secrets");
+    const safeStep = {
+      ...step,
+      evidence: redactor.redactString(step.evidence),
+      ...(step.remediation === undefined ? {} : { remediation: redactor.redactString(step.remediation) }),
+    };
     const existingIndex = readinessSteps.findIndex((candidate) => candidate.id === step.id);
-    if (existingIndex === -1) readinessSteps.push(step);
-    else readinessSteps[existingIndex] = step;
-    return writeSetupReadiness(userDataRoot, selectedProviderId, readinessSteps, runtimeServiceReadiness);
-  };
+    if (existingIndex === -1) readinessSteps.push(safeStep);
+    else readinessSteps[existingIndex] = safeStep;
+    const write = writeSetupReadiness(
+      userDataRoot,
+      selectedProviderId,
+      readinessSteps,
+      runtimeServiceReadiness,
+    );
+    yield* service === undefined ? write : write.pipe(Effect.provideService(RedactionService, service));
+  });
   const recordFailure = (id: string, cause: unknown): Effect.Effect<void, never> =>
     record({
       id,

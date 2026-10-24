@@ -21,8 +21,10 @@ import type {
   CertificatePlan,
   CommandSpec,
   DataStoreMountPlan,
+  DatabaseConnection,
   DependencyPlan,
   EndpointPlan,
+  EnvironmentValue,
   HealthcheckPlan,
   HostAliasPlan,
   MountPlan,
@@ -128,11 +130,12 @@ export interface ServiceFeatureContext {
   readonly host?: ServiceTypeHostFacts | undefined;
   /** The service type's normalized config for this service. */
   readonly normalizedConfig: ServiceConfig;
+  readonly connection?: DatabaseConnection | undefined;
   /** This feature's decoded config (from its `FeatureRef.config`, via `schema`). */
   readonly config: Readonly<Record<string, unknown>>;
 
   /** Add or overwrite an environment variable on the draft. */
-  addEnv(name: string, value: string): void;
+  addEnv(name: string, value: EnvironmentValue): void;
   /** Add a mount (without a realization decision). */
   addMount(mount: ServiceMountIntent): void;
   /** Set the app-source mount (without a realization decision). */

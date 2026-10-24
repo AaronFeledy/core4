@@ -139,13 +139,17 @@ describe("opensearch ServiceType", () => {
     });
   }
 
-  test("opensearch:2 and opensearch alias resolve to the same canonical service plan", async () => {
+  test("opensearch aliases preserve declaration identity with otherwise identical canonical plans", async () => {
     const primary = await planOpenSearchService(opensearch2ServiceType, { type: "opensearch:2" });
     const alias = await planOpenSearchService(opensearchServiceType, { type: "opensearch" });
 
     expect(primary.type).toBe("opensearch");
     expect(alias.type).toBe("opensearch");
-    expect(alias).toEqual(primary);
+    const { serviceTypeId: primaryId, ...primaryFacts } = primary;
+    const { serviceTypeId: aliasId, ...aliasFacts } = alias;
+    expect(primaryId).toBe("opensearch:2");
+    expect(aliasId).toBe("opensearch");
+    expect(aliasFacts).toEqual(primaryFacts);
   });
 
   test("uses the authored service name for the endpoint", async () => {

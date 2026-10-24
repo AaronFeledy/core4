@@ -60,7 +60,7 @@ test("loads repaired layers when the guard changes the file set before enumerati
     );
 
     // Then: the new local layer participates, and the partial YAML was not parsed.
-    expect(result.name).toBe("repaired-local");
+    expect(result.document.name).toBe("repaired-local");
     expect(roots[0]).toBe(root);
     expect(new Set(roots)).toEqual(new Set([root]));
   });
@@ -145,7 +145,7 @@ test("allows direct unit callers to omit the guard", async () => {
     const result = await Effect.runPromise(loadLandofileLayers(root, canonical));
 
     // Then
-    expect(result.name).toBe("unit-caller");
+    expect(result.document.name).toBe("unit-caller");
   });
 });
 
@@ -243,7 +243,7 @@ test("recovers the cwd file set before walking to a parent Landofile", async () 
     const result = await Effect.runPromise(withResolvedCwd(child, service.discover));
 
     // Then: recovery at cwd is consulted first and the parent file is not consumed.
-    expect(result.name).toBe("child");
+    expect(result.document.name).toBe("child");
     expect(roots[0]).toBe(child);
   });
 });

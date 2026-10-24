@@ -1,17 +1,20 @@
 import { makeDiagnosticTail } from "@lando/redaction";
 import { SqlCommandFailedError } from "@lando/sdk/errors";
+import type { Environment } from "@lando/sdk/schema";
 import type { ExecResult } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { resolveSqlEnvironment } from "./environment.ts";
 
 export const checkedSqlExecution = Effect.fnUntraced(function* <E, R>(
   execution: Effect.Effect<ExecResult, E, R>,
   context: {
     readonly service: string;
     readonly command: ReadonlyArray<string>;
-    readonly env?: Readonly<Record<string, string>>;
+    readonly env?: Environment;
   },
 ) {
-  const tail = yield* makeDiagnosticTail(context.env);
+  const env = context.env === undefined ? undefined : yield* resolveSqlEnvironment(context.env);
+  const tail = yield* makeDiagnosticTail(env);
   const failure = (exitCode?: number) =>
     new SqlCommandFailedError({
       message: `Database command failed in ${context.service}.`,

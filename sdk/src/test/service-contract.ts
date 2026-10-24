@@ -1,6 +1,10 @@
 import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
+import { canonicalJson } from "../digest/index.ts";
 
 import {
+  type DatabaseConnection,
+  type Environment,
+  type EnvironmentValue,
   LandofileShape,
   LogSource,
   type ProviderId,
@@ -294,12 +298,13 @@ export interface ServiceFeatureContractHarness {
   readonly appName?: string;
   readonly appRoot?: string;
   readonly normalizedConfig?: ServiceConfig;
+  readonly connection?: DatabaseConnection;
   readonly config?: Readonly<Record<string, unknown>>;
 }
 
 const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness) => {
   const recorded = {
-    env: new Map<string, string>(),
+    env: new Map<string, EnvironmentValue>(),
     mounts: [] as ServiceMountIntent[],
     appMounts: [] as ServiceAppMountIntent[],
     buildSteps: [] as ServiceBuildStepIntent[],
@@ -320,6 +325,7 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     ...(input.appName === undefined ? {} : { appName: input.appName }),
     appRoot: input.appRoot ?? "/srv/apps/myapp",
     normalizedConfig: input.normalizedConfig ?? { type: "test" },
+    ...(input.connection === undefined ? {} : { connection: input.connection }),
     config: input.config ?? {},
     addEnv(name, value) {
       recorded.env.set(name, value);
@@ -505,7 +511,8 @@ export interface AppFeatureContractService {
   readonly framework?: string;
   readonly primary?: boolean;
   readonly featureIds?: ReadonlyArray<string>;
-  readonly environment?: Readonly<Record<string, string>>;
+  readonly environment?: Environment;
+  readonly connection?: DatabaseConnection;
 }
 
 /** Input the app-feature contract uses to execute a single app feature. */
@@ -520,7 +527,7 @@ export interface AppFeatureContractHarness {
 
 interface RecordedAppFeatureService {
   readonly view: AppFeatureServiceView;
-  readonly env: Map<string, string>;
+  readonly env: Map<string, EnvironmentValue>;
   mutated: boolean;
 }
 
@@ -565,6 +572,7 @@ const makeRecordingAppFeatureContext = (
       primary: service.primary ?? false,
       featureIds: service.featureIds ?? [],
       normalizedConfig: { type: service.serviceType },
+      ...(service.connection === undefined ? {} : { connection: service.connection }),
     };
     records.set(service.serviceName, {
       view,
@@ -573,7 +581,7 @@ const makeRecordingAppFeatureContext = (
     });
   }
 
-  const ledger = new Map<string, string>();
+  const ledger = new Map<string, EnvironmentValue>();
   const conflicts: Array<{ readonly service: string; readonly key: string }> = [];
 
   const mutatorsFor = (serviceName: string): AppFeatureServiceMutators => {
@@ -594,7 +602,8 @@ const makeRecordingAppFeatureContext = (
       addEnv: (name, value) => {
         const ledgerKey = `${serviceName}\u0000${name}`;
         const existing = ledger.get(ledgerKey);
-        if (existing !== undefined && existing !== value) conflicts.push({ service: serviceName, key: name });
+        if (existing !== undefined && canonicalJson(existing) !== canonicalJson(value))
+          conflicts.push({ service: serviceName, key: name });
         ledger.set(ledgerKey, value);
         record?.env.set(name, value);
         recordMutation();

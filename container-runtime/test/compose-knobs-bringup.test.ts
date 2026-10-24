@@ -76,6 +76,7 @@ const planWithCompose = (
   };
   return {
     id: appId,
+    valueModel: 1,
     name: "Compose Knob Bringup",
     slug: "compose-knob-bringup",
     root: AbsolutePath.make("/tmp/lando-compose-knob-bringup"),
@@ -142,7 +143,7 @@ const field = (value: unknown, key: string): unknown =>
 const hostConfig = (request: EngineHttpRequest | undefined): unknown => field(request?.body, "HostConfig");
 
 const BASELINE_CREATE_BODY_JSON =
-  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v1:41c14cba59f1c793facb3c065f5a06459a919ea24bbe7c2c20d8b3ec5235d153"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
+  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v2:6e726238ddbf7f1585b472d01f0d5387409e328280144627198b4168ebc9cbe8"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
 
 describe("Podman Compose knob bring-up realization", () => {
   test("detects a colon target collision through API Mounts", async () => {
@@ -325,8 +326,8 @@ describe("Podman Compose knob bring-up realization", () => {
     if (typeof baselineLabels !== "object" || baselineLabels === null)
       throw new TypeError("Expected baseline labels");
     if (typeof knobLabels !== "object" || knobLabels === null) throw new TypeError("Expected knob labels");
-    expect(field(baselineLabels, CREATE_CONFIG_LABEL)).toMatch(/^v1:[a-f0-9]{64}$/u);
-    expect(field(knobLabels, CREATE_CONFIG_LABEL)).toMatch(/^v1:[a-f0-9]{64}$/u);
+    expect(field(baselineLabels, CREATE_CONFIG_LABEL)).toMatch(/^v2:[a-f0-9]{64}$/u);
+    expect(field(knobLabels, CREATE_CONFIG_LABEL)).toMatch(/^v2:[a-f0-9]{64}$/u);
     expect(field(knobLabels, CREATE_CONFIG_LABEL)).not.toBe(field(baselineLabels, CREATE_CONFIG_LABEL));
     expect({
       Env: field(withKnobs, "Env"),

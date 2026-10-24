@@ -73,7 +73,6 @@ test("a failed BACKUP after preparation never copies a stale backup", async () =
   const harness = makeSqlTestDeps({
     type: "mssql:2022",
     password: "private",
-    environment: { SA_PASSWORD: "lando" },
   });
   const calls: string[] = [];
   const exit = await Effect.runPromiseExit(
@@ -83,7 +82,11 @@ test("a failed BACKUP after preparation never copies a stale backup", async () =
         exec: (service, command, env) => {
           calls.push(command.join(" "));
           return command.some((arg) => arg.startsWith("BACKUP DATABASE"))
-            ? Effect.succeed({ exitCode: 12, stdout: "PRIVATE BACKUP", stderr: "backup failed for lando\n" })
+            ? Effect.succeed({
+                exitCode: 12,
+                stdout: "PRIVATE BACKUP",
+                stderr: "backup failed for private\n",
+              })
             : harness.deps.exec(service, command, env);
         },
       },
@@ -95,7 +98,7 @@ test("a failed BACKUP after preparation never copies a stale backup", async () =
   expect(error).toBeInstanceOf(SqlCommandFailedError);
   expect(error).toMatchObject({ exitCode: 12, stderrTail: expect.stringContaining("backup failed") });
   expect(JSON.stringify(error)).not.toContain("PRIVATE BACKUP");
-  expect(JSON.stringify(error)).not.toContain("for lando");
+  expect(JSON.stringify(error)).not.toContain("for private");
   expect(calls[0]).toContain("mkdir");
   expect(calls[1]).toContain("BACKUP DATABASE");
   expect(harness.transfers()).toEqual([]);
@@ -105,7 +108,6 @@ test("a failed RESTORE keeps its primary tag and safe diagnostics beside recover
   const harness = makeSqlTestDeps({
     type: "mssql:2022",
     password: "private",
-    environment: { SA_PASSWORD: "lando" },
   });
   let uploaded = false;
   const exit = await Effect.runPromiseExit(
@@ -124,7 +126,7 @@ test("a failed RESTORE keeps its primary tag and safe diagnostics beside recover
           command.some((arg) => arg.startsWith("RESTORE DATABASE"))
             ? Effect.sync(() => {
                 expect(uploaded).toBe(true);
-                return { exitCode: 17, stdout: "PRIVATE DATABASE", stderr: "restore failed: lando\n" };
+                return { exitCode: 17, stdout: "PRIVATE DATABASE", stderr: "restore failed: private\n" };
               })
             : harness.deps.exec(service, command, env),
       },
@@ -148,7 +150,7 @@ test("a failed RESTORE keeps its primary tag and safe diagnostics beside recover
     recoverySnapshotId: expect.stringMatching(/^snap-/u),
   });
   expect(encoded).not.toContain("PRIVATE DATABASE");
-  expect(encoded).not.toContain("failed: lando");
+  expect(encoded).not.toContain("failed: private");
   expect(harness.snapshots()).toHaveLength(1);
 });
 

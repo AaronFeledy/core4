@@ -23,6 +23,7 @@ import { quoteYamlScalar, yamlMappingKeyText } from "@lando/sdk/yaml";
 
 import { bindSourceForComposeConfig, composeConfigMounts } from "../compose-configs.ts";
 import type { ProviderErrorContext } from "../engine-api.ts";
+import { previewEnvironmentValue } from "../environment-values.ts";
 import { type HostAliasMap, serviceHostAliases, writeHostAliases } from "../host-aliases.ts";
 import { requiresLongMountSyntax } from "../mount-syntax.ts";
 import { physicalListenerPorts, physicalPublications } from "../physical-publications.ts";
@@ -259,7 +260,9 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
         image: serviceImage(ctx, service),
         ports: servicePorts(service),
         expose: serviceExpose(service),
-        environment: service.environment,
+        environment: Object.fromEntries(
+          Object.entries(service.environment).map(([key, value]) => [key, previewEnvironmentValue(value)]),
+        ),
         extra_hosts: serviceHostAliases(service, (message, details) => {
           throw composeError(ctx, message, details);
         }),

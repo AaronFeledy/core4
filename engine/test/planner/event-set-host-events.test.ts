@@ -43,7 +43,7 @@ describe("event-set global config load failures", () => {
           undefined,
           undefined,
           undefined,
-          landofile,
+          yield* compileTestLandofile(landofile),
           capabilities,
         );
       }).pipe(Effect.provide(configLayer)),
@@ -59,3 +59,4 @@ describe("event-set global config load failures", () => {
     expect(failure.message).toContain("hostEvents.pre-start[0]");
   });
 });
+import { compileTestLandofile } from "../compiled-landofile.ts";

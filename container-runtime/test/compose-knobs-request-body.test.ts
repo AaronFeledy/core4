@@ -49,6 +49,7 @@ const planWithCompose = (
 
   return {
     id: AppId.make("compose-knob-request-body"),
+    valueModel: 1,
     name: "Compose Knob Request Body",
     slug: "compose-knob-request-body",
     root: AbsolutePath.make("/tmp/lando-compose-knob-request-body"),

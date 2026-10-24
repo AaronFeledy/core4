@@ -10,13 +10,7 @@ import { EventCommandExecutor } from "@lando/engine/services/event-command-execu
 import type { EventCommandExecutorInput } from "@lando/engine/services/event-command-executor";
 import { withShellRedactionTokens } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
-import {
-  RedactionService,
-  collectSecretEnvValues,
-  createPayloadValues,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import * as RendererOutput from "@lando/renderer/output";
 import { BuiltInCommandCatalog } from "./built-in-command-catalog-service";
 import { type BuiltInCommandEntry, embeddingExemptErrorForCommand } from "./built-in-command-registry";
@@ -41,39 +35,6 @@ const silentRenderer = Renderer.of({
     stderr: () => Effect.void,
   },
 });
-
-const redactorFor = Effect.fnUntraced(function* (tokens: ReadonlyArray<string>) {
-  const service = yield* Effect.serviceOption(RedactionService);
-  return service._tag === "Some"
-    ? yield* service.value.forProfile("secrets", { sourceEnv: process.env, redactionTokens: tokens })
-    : createStandaloneRedactor("secrets", { sourceEnv: process.env, redactionTokens: tokens });
-});
-
-const redactionServiceFor = (tokens: ReadonlyArray<string>) =>
-  Effect.serviceOption(RedactionService).pipe(
-    Effect.map(
-      (service): Context.Service.Shape<typeof RedactionService> =>
-        RedactionService.of({
-          registerValues: (values) =>
-            service._tag === "Some" ? service.value.registerValues(values) : registerRedactionValues(values),
-          payloadValues: (options) => {
-            const scoped = { ...options, redactionTokens: [...(options?.redactionTokens ?? []), ...tokens] };
-            return service._tag === "Some"
-              ? service.value.payloadValues(scoped)
-              : Effect.succeed(createPayloadValues([], scoped));
-          },
-          forProfile: (profile, options) => {
-            const scoped = {
-              ...options,
-              redactionTokens: [...(options?.redactionTokens ?? []), ...tokens],
-            };
-            return service._tag === "Some"
-              ? service.value.forProfile(profile, scoped)
-              : Effect.succeed(createStandaloneRedactor(profile, scoped));
-          },
-        }),
-    ),
-  );
 
 export const makeEventCommandExecutor = (
   runtimeContext: Context.Context<unknown>,
@@ -131,8 +92,9 @@ export const makeEventCommandExecutor = (
               )
             : [];
         const redactionTokens = [...(resolved.redactionTokens ?? []), ...toolingEnvTokens];
-        const inputRedactor = yield* redactorFor(redactionTokens);
-        const lifecycleRedaction = yield* redactionServiceFor(redactionTokens);
+        const lifecycleRedaction = yield* RedactionService;
+        yield* lifecycleRedaction.registerValues(redactionTokens);
+        const inputRedactor = yield* lifecycleRedaction.forProfile("secrets", { sourceEnv: process.env });
         const baseRenderer = yield* Renderer;
         const renderer = resolved.silent === true ? silentRenderer : baseRenderer;
 
@@ -220,7 +182,10 @@ export const makeEventCommandExecutor = (
         if (Cause.hasInterruptsOnly(exit.cause)) return yield* Effect.interrupt;
         // Nested defects stay typed failures so event-step error mapping still applies.
         return yield* Effect.failCause(commandFailureCause(exit.cause));
-      }).pipe(Effect.provide(Context.add(runtimeContext, EventCommandExecutor, this)));
+      }).pipe(
+        Effect.provide(RedactionService.layer),
+        Effect.provide(Context.add(runtimeContext, EventCommandExecutor, this)),
+      );
     }),
   });
 

@@ -16,6 +16,7 @@ import type {
 import {
   ServiceConfigIssue,
   commandHealthcheck,
+  literalEnvironmentValue,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
@@ -175,7 +176,7 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
       service.image === undefined || service.image === DEFAULT_IMAGE ? listenPort : undefined;
     ctx.setCommand(
       apacheStartCommand(
-        documentRoot,
+        literalEnvironmentValue(documentRoot, ["environment", "APACHE_DOCUMENT_ROOT"]),
         ownedListen,
         service.environment?.APACHE_DOCUMENT_ROOT === undefined
           ? ["webroot"]

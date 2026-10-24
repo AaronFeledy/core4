@@ -1,19 +1,27 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { makeRedactionService } from "@lando/redaction/service";
 import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
 import { LIBPOD_API_PREFIX, isNamedPipeEndpoint, makePodmanApiClient } from "../src/podman/api-client.ts";
 
-const ctx = { providerId: "custom-podman", remediation: "Start the custom Podman machine." } as const;
+const ctx = {
+  providerId: "custom-podman",
+  remediation: "Start the custom Podman machine.",
+  get redactor() {
+    return Effect.runSync(fixtureRedaction.forProfile("secrets"));
+  },
+} as const;
 
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
+let fixtureRedaction = makeRedactionService();
+beforeEach(() => {
+  fixtureRedaction = makeRedactionService();
+});
 
 interface SocketFixture {
   readonly endpoint: string;
@@ -57,7 +65,7 @@ describe("Podman API client", () => {
     async (operation) => {
       // Given
       const canary = "opaque-podman-api-canary-1261";
-      Effect.runSync(registerRedactionValues([canary]));
+      Effect.runSync(fixtureRedaction.registerValues([canary]));
       await withSocketServer(
         () => httpResponse(JSON.stringify({ message: `engine said ${canary}` }), 500),
         async ({ endpoint }) => {
@@ -79,7 +87,7 @@ describe("Podman API client", () => {
   test("redacts runtime-registered values in malformed info actualValue", async () => {
     // Given
     const canary = "opaque-podman-json-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
+    Effect.runSync(fixtureRedaction.registerValues([canary]));
     await withSocketServer(
       () => httpResponse(`engine said ${canary}`),
       async ({ endpoint }) => {

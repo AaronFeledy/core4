@@ -29,7 +29,7 @@ lando bundle
 lando rake
 ```
 
-`web` starts with `DATABASE_URL` pointing at the `database` service and `REDIS_URL` pointing at `cache`. ActiveRecord reads `DATABASE_URL` on its own, so `lando rake db:create db:migrate` connects without a `database.yml` edit. The password comes from the database service's resolved credentials; `lando info` shows the user and database name and redacts the rest.
+`web` starts with `DATABASE_URL` pointing at the `database` service and `REDIS_URL` pointing at `cache`. ActiveRecord reads `DATABASE_URL` on its own, so `lando rake db:create db:migrate` connects without a `database.yml` edit. The URL is built from the database service's resolved credentials and its planned port, with the user, password, and database name each percent-encoded, so it follows an authored `creds:` block or `port:` on `database`. A `creds.password` written as a `${secret:...}` reference resolves when `web` is created, never into the plan. `lando info` shows the user and database name and redacts the rest.
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
@@ -39,7 +39,7 @@ For day-to-day tooling and DB/Redis hosts, see [Run the Rails recipe](/guides/re
 
 Redis keeps data across restarts by default. For disposable caches, set `persist: false` on your Redis service and rebuild. That disables its durable data store, AOF, and RDB snapshots. Don't use it for queues or data you need to keep.
 
-Set `password:` on the same service to require authentication. Configure your Rails Redis client with the matching password; `lando redis-cli` authenticates automatically. Verify the change with `lando redis-cli ping` after `lando rebuild`. See [Add Redis](../../docs/guides/services/redis.mdx) for secret references and restart checks.
+Set `password:` on the same service to require authentication. Configure your Rails Redis client with the matching password; `lando redis-cli` authenticates automatically. Verify the change with `lando redis-cli ping` after `lando rebuild`. See [Add Redis](../../docs/guides/services/redis.mdx) for persistence, port, and restart checks.
 
 ## 1. scaffold
 

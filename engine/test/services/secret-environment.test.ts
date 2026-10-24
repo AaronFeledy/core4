@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Option } from "effect";
 
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { SecretNotFoundError, SecretStoreUnavailableError } from "@lando/sdk/errors";
@@ -12,9 +12,40 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { SecretStore, type SecretStoreShape } from "@lando/sdk/services";
+import { EnvironmentValueResolver, SecretStore, type SecretStoreShape } from "@lando/sdk/services";
 
-import { resolveServiceEnvironmentSecrets } from "../../src/services/secret-environment.ts";
+import * as EnvironmentValueResolverLayer from "../../src/services/environment-value-resolver.ts";
+
+const resolveEnvironment = (plan: AppPlan) =>
+  Effect.gen(function* () {
+    const secrets = yield* SecretStore;
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const session = yield* (yield* EnvironmentValueResolver).openSession();
+        const entries = yield* Effect.forEach(Object.values(plan.services), (service) =>
+          session
+            .resolveEnvironment(service.environment)
+            .pipe(Effect.map((env) => [service.name, env] as const)),
+        );
+        return Object.fromEntries(entries);
+      }),
+    ).pipe(
+      Effect.provide(
+        EnvironmentValueResolverLayer.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(SecretStore, secrets),
+              Layer.succeed(
+                RedactionService,
+                Option.getOrElse(redaction, () => makeRedactionService()),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  });
 
 const serviceName = ServiceName.make("web");
 
@@ -24,7 +55,7 @@ const service: ServicePlan = {
   provider: ProviderId.make("test"),
   primary: true,
   environment: {
-    TOKEN: "${secret:API_TOKEN}",
+    TOKEN: { _tag: "SecretRef", reference: "API_TOKEN" },
     EMBEDDED: "prefix-${secret:API_TOKEN}",
     PLAIN: "visible",
   },
@@ -42,11 +73,20 @@ const service: ServicePlan = {
   extensions: {},
 };
 
-const plan = {
+const plan: AppPlan = {
   id: AppId.make("secret-app"),
   root: AbsolutePath.make("/tmp/secret-app"),
   services: { [serviceName]: service },
-} as AppPlan;
+  name: "secret-app",
+  slug: "secret-app",
+  provider: service.provider,
+  routes: [],
+  networks: [],
+  stores: [],
+  fileSync: [],
+  metadata: service.metadata,
+  extensions: {},
+};
 
 const store = (secrets: Readonly<Record<string, string>>): SecretStoreShape => ({
   id: "test",
@@ -64,15 +104,15 @@ const store = (secrets: Readonly<Record<string, string>>): SecretStoreShape => (
   list: Effect.succeed(Object.keys(secrets)),
 });
 
-describe("resolveServiceEnvironmentSecrets", () => {
+describe("operation environment resolution", () => {
   test("registers resolved values with the redactor before returning", async () => {
     // Given
     const secrets = { ...store({ API_TOKEN: "environment-registration-canary" }), list: Effect.succeed([]) };
-    const redaction = makeRedactionService(secrets);
+    const redaction = makeRedactionService();
     const redactor = await Effect.runPromise(redaction.forProfile("secrets"));
     // When
     const output = await Effect.runPromise(
-      resolveServiceEnvironmentSecrets(plan).pipe(
+      resolveEnvironment(plan).pipe(
         Effect.map((environment) => redactor.redactString(environment[serviceName]?.TOKEN ?? "")),
         Effect.provide(
           Layer.mergeAll(Layer.succeed(SecretStore, secrets), Layer.succeed(RedactionService, redaction)),
@@ -94,7 +134,7 @@ describe("resolveServiceEnvironmentSecrets", () => {
     const secrets = { ...store({}), get: () => Effect.fail(failure) };
     // When
     const error = await Effect.runPromise(
-      resolveServiceEnvironmentSecrets(plan).pipe(Effect.flip, Effect.provideService(SecretStore, secrets)),
+      resolveEnvironment(plan).pipe(Effect.flip, Effect.provideService(SecretStore, secrets)),
     );
     // Then
     expect(error).toBe(failure);
@@ -105,7 +145,7 @@ describe("resolveServiceEnvironmentSecrets", () => {
 
     // When
     const resolved = await Effect.runPromise(
-      resolveServiceEnvironmentSecrets(plan).pipe(
+      resolveEnvironment(plan).pipe(
         Effect.provide(Layer.succeed(SecretStore, store({ API_TOKEN: "resolved-canary" }))),
       ),
     );
@@ -113,31 +153,52 @@ describe("resolveServiceEnvironmentSecrets", () => {
     // Then
     expect(resolved[serviceName]).toEqual({
       TOKEN: "resolved-canary",
+      EMBEDDED: "prefix-${secret:API_TOKEN}",
+      PLAIN: "visible",
     });
     expect(plan.services[serviceName]?.environment).toEqual(original);
     expect(JSON.stringify(plan)).not.toContain("resolved-canary");
   });
 
-  test("returns harmless empty overrides when a service has no exact secret references", async () => {
+  test("returns the complete literal environment without looking up references", async () => {
     // Given
     const plainPlan = {
       ...plan,
       services: { [serviceName]: { ...service, environment: { PLAIN: "visible" } } },
     };
     // When
-    const resolved = await Effect.runPromise(resolveServiceEnvironmentSecrets(plainPlan));
+    const resolved = await Effect.runPromise(
+      resolveEnvironment(plainPlan).pipe(Effect.provideService(SecretStore, store({}))),
+    );
     // Then
-    expect(resolved).toEqual({ [serviceName]: {} });
+    expect(resolved).toEqual({ [serviceName]: { PLAIN: "visible" } });
   });
 
   test("fails with the missing secret identity before provider action", async () => {
     // Given/When
     const exit = await Effect.runPromiseExit(
-      resolveServiceEnvironmentSecrets(plan).pipe(Effect.provide(Layer.succeed(SecretStore, store({})))),
+      resolveEnvironment(plan).pipe(Effect.provide(Layer.succeed(SecretStore, store({})))),
     );
 
     // Then
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") expect(String(exit.cause)).toContain("API_TOKEN");
+  });
+
+  test("grants no lookup authority to legacy plan strings", async () => {
+    const legacyService = { ...service, environment: { TOKEN: "${secret:API_TOKEN}" } };
+    const legacy = { ...plan, services: { [serviceName]: legacyService } };
+    const resolved = await Effect.runPromise(
+      resolveEnvironment(legacy).pipe(Effect.provideService(SecretStore, store({}))),
+    );
+    expect(resolved).toEqual({ [serviceName]: { TOKEN: "${secret:API_TOKEN}" } });
+  });
+
+  test("preserves opener bytes returned by the store", async () => {
+    const value = "$${HOME} {{{{literal ${secret:OTHER}";
+    const resolved = await Effect.runPromise(
+      resolveEnvironment(plan).pipe(Effect.provideService(SecretStore, store({ API_TOKEN: value }))),
+    );
+    expect(resolved[serviceName]?.TOKEN).toBe(value);
   });
 });

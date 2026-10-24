@@ -27,14 +27,15 @@ import {
 import type { RedactionService } from "@lando/redaction/service";
 import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
+import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
@@ -63,6 +64,7 @@ export const RebuildAppResultSchema = Schema.Struct({
 });
 
 type RebuildAppServices =
+  | EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -88,6 +90,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   RebuildAppError,
   | BuildOrchestrator
   | RouterService
+  | EnvironmentValueResolver
   | RuntimeProviderRegistry
   | EventService
   | PathsService
@@ -130,9 +133,8 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
             reusePolicy: "adopt",
             ...(managed === undefined ? {} : { managed }),
             use: Effect.fnUntraced(function* (applyPlan) {
-              const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(applyPlan);
               yield* Effect.scoped(
-                provider.apply(applyPlan, {
+                applyWithResolvedEnvironment(provider, applyPlan, {
                   reconcile: true,
                   completionPlan: readinessPlan,
                   recordedPlan: {
@@ -140,7 +142,6 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
                     services: { ...target.plan.services, ...builtPlan.services },
                   },
                   ...(signal === undefined ? {} : { signal }),
-                  serviceEnvironment,
                   onVolumeCreated: yield* volumeCreationRecorder(provider, applyPlan),
                 }),
               );

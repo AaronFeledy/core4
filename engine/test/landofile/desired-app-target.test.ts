@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test";
 import { NotImplementedError } from "@lando/sdk/errors";
-import type { LandofileShape } from "@lando/sdk/schema";
+import { CurrentExecutableAppPlan } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Result } from "effect";
 import { planDesiredApp, resolveDesiredAppTarget } from "../../src/landofile/app-resolution.ts";
-import { plan } from "../subsystems/gpg-agent/fixture.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
+import { plan as observedPlan } from "../subsystems/gpg-agent/fixture.ts";
 
-const landofile: LandofileShape = { name: "desired", services: {} };
+const plan = CurrentExecutableAppPlan.make({ ...observedPlan, valueModel: 1 });
+const landofile = literalTestLandofile({ name: "desired", services: {} });
 const failure = new NotImplementedError({
   message: "planning failed",
   commandId: "test",

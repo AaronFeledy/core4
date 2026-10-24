@@ -107,7 +107,7 @@ export const layerWith = (
             return toRegisteredCommands(cached.entries);
           }
 
-          const landofile = yield* loadUserLandofile(landofileService);
+          const landofile = (yield* loadUserLandofile(landofileService)).document;
           const scripts = yield* discoverScriptsForCwd(process.cwd());
           const pluginManifests =
             pluginRegistryOption._tag === "Some"

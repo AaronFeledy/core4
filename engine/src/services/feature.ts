@@ -88,6 +88,7 @@ const makeContext = (
   appRoot: input.appRoot,
   host: input.host,
   normalizedConfig: input.normalizedConfig,
+  connection: draft.connection,
   config,
   addEnv: (name, value) => {
     draft.environment[name] = value;
@@ -167,20 +168,6 @@ export const composeServiceWithContributions = Effect.fn("ServiceFeature.compose
     );
 
     const endpointContributions = draft.endpoints;
-    draft.endpoints = normalizeEndpoints(endpointContributions, input.normalizedConfig);
-    const endpointError = endpointValidationError(draft.endpoints, {
-      appRoot: input.appRoot,
-      serviceName: draft.name,
-    });
-    if (endpointError !== undefined) {
-      return yield* Effect.fail(
-        new ServiceFeatureError({
-          message: endpointError.message,
-          feature: "endpoints",
-          cause: endpointError,
-        }),
-      );
-    }
     const finalized = finalizeDraft(draft);
     if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
     return { plan: finalized, endpointContributions };
@@ -190,5 +177,20 @@ export const composeServiceWithContributions = Effect.fn("ServiceFeature.compose
 export const composeService = Effect.fn("ServiceFeature.composeService")(function* (
   input: ComposeServiceInput,
 ): Effect.fn.Return<ServicePlan, ServiceFeatureError> {
-  return (yield* composeServiceWithContributions(input)).plan;
+  const { plan, endpointContributions } = yield* composeServiceWithContributions(input);
+  const endpoints = normalizeEndpoints(endpointContributions, input.normalizedConfig);
+  const endpointError = endpointValidationError(endpoints, {
+    appRoot: input.appRoot,
+    serviceName: plan.name,
+  });
+  if (endpointError !== undefined) {
+    return yield* Effect.fail(
+      new ServiceFeatureError({
+        message: endpointError.message,
+        feature: "endpoints",
+        cause: endpointError,
+      }),
+    );
+  }
+  return { ...plan, endpoints };
 });

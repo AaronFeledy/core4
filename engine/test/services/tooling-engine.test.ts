@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
 
-import {
-  RedactionService,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -29,7 +25,12 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "../../src/config/agent-env.ts";
 import { StreamFrameSink } from "../../src/operations/stream-frame-sink";
-import * as ProviderExecToolingEngine from "../../src/services/tooling-engine";
+import * as ProviderExecToolingEngineSource from "../../src/services/tooling-engine";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";
+
+const ProviderExecToolingEngine = {
+  layer: ProviderExecToolingEngineSource.layer.pipe(Layer.provide(testEnvironmentResolverLayer)),
+};
 
 const providerId = ProviderId.make("lando");
 const metadata = {
@@ -600,7 +601,6 @@ describe("ProviderExecToolingEngine.layer", () => {
     const prior = process.env.OPENCODE_CLIENT;
     // Agent markers identify the client; they are not secrets (CI forwards values like `true`).
     process.env.OPENCODE_CLIENT = "true";
-    resetRegisteredRedactionValuesForTesting();
     const plan = makePlan([baseServicePlan("web", true)]);
     const base = makeFakeProvider([{ exitCode: 0, stdout: '{"ok":true}', stderr: "" }]);
     const provider: RuntimeProviderShape = {
@@ -620,12 +620,7 @@ describe("ProviderExecToolingEngine.layer", () => {
             ),
           ),
     };
-    const service = makeRedactionService({
-      id: "empty",
-      list: Effect.succeed([]),
-      get: () => Effect.succeed(""),
-      has: () => Effect.succeed(false),
-    });
+    const service = makeRedactionService();
     const values = await Effect.runPromise(service.payloadValues());
     const payload = createPayloadRedactor(values);
     let stdout = "";
@@ -659,7 +654,6 @@ describe("ProviderExecToolingEngine.layer", () => {
     } finally {
       if (prior === undefined) Reflect.deleteProperty(process.env, "OPENCODE_CLIENT");
       else process.env.OPENCODE_CLIENT = prior;
-      resetRegisteredRedactionValuesForTesting();
     }
   });
 

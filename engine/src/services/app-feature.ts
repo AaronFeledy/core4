@@ -104,6 +104,7 @@ const viewOf = (draft: AppFeatureServiceDraft): AppFeatureServiceView => ({
   primary: draft.primary,
   featureIds: draft.featureIds,
   normalizedConfig: draft.normalizedConfig,
+  connection: draft.connection,
 });
 
 const triggeredBy = (

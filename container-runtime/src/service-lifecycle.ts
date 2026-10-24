@@ -61,8 +61,12 @@ const lifecycleRequest = (
         new ProviderUnavailableError({
           providerId: ctx.providerId,
           operation: input.operation,
-          message: withApiReason(`${input.failureAction} failed with HTTP ${response.status}.`, response),
-          details: redactDetails({ ...input.details, body: response.body }),
+          message: withApiReason(
+            `${input.failureAction} failed with HTTP ${response.status}.`,
+            response,
+            ctx.redactor,
+          ),
+          details: redactDetails({ ...input.details, body: response.body }, ctx.redactor),
           remediation: ctx.remediation,
         }),
       );

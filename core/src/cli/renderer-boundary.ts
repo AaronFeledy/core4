@@ -22,8 +22,7 @@ import { EventService, Renderer } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { EventPublicationObserver } from "@lando/engine/services/event-service";
-import * as EnvSecretStore from "@lando/engine/services/secret-store";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
 import { shouldEmitHyperlinks } from "@lando/renderer/console-layout";
 import {
   type RendererIO,
@@ -178,23 +177,47 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   effect: Effect.Effect<A, E, R>,
   options: RunWithRendererHandlingOptions<A, R, RE>,
 ): Promise<void> => {
+  const owner = makeRedactionOwner();
+  try {
+    await runWithInvocationRedaction(effect, options, owner.service);
+  } catch (cause) {
+    const redactor = await Effect.runPromise(
+      owner.service.forProfile("secrets", { sourceEnv: options.sourceEnv ?? process.env }),
+    );
+    throw new Error(redactor.redactString(String(cause)));
+  } finally {
+    owner.dispose();
+  }
+};
+
+const runWithInvocationRedaction = async <A, E, R, RE>(
+  effect: Effect.Effect<A, E, R>,
+  options: RunWithRendererHandlingOptions<A, R, RE>,
+  redaction: RedactionService["Service"],
+): Promise<void> => {
   const selection = options.trace ?? activeTrace();
   if (options.tracer === undefined && selection?.enabled === true) {
     return withCommandTracing(
       selection,
       (capture, redactionTokens) =>
-        runWithRendererHandling(effect, {
-          ...options,
-          tracer: capture.tracer,
-          traceCapture: capture,
-          traceDisplay: selection.display,
-          sourceEnv: selection.env,
-          extraRedactionTokens: redactionTokens,
-        }),
+        runWithInvocationRedaction(
+          effect,
+          {
+            ...options,
+            tracer: capture.tracer,
+            traceCapture: capture,
+            traceDisplay: selection.display,
+            sourceEnv: selection.env,
+            extraRedactionTokens: redactionTokens,
+          },
+          redaction,
+        ),
       options.invocation?.flags,
+      redaction,
     );
   }
   const sourceEnv = options.sourceEnv ?? process.env;
+  const redactionLayer = Layer.succeed(RedactionService, redaction);
   const extraTokens = options.extraRedactionTokens ?? [];
   // Installed so command defects reach ErrorReporter. Display stays on formatError,
   // which is the bug-report renderer for pre-command failures.
@@ -231,19 +254,18 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const envelopeFormat = isEnvelopeResultFormat(renderContext.format);
   const commandWarnings = makeCommandWarnings(envelopeFormat);
   const commandWarningsLayer = Layer.succeed(CommandWarnings, commandWarnings);
-  const failureDiagnosticsLayer = Layer.mergeAll(
-    rendererLayer,
-    RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer)),
-  );
+  const failureDiagnosticsLayer = Layer.mergeAll(rendererLayer, redactionLayer);
   // Frame transport is JSON only. A YAML run emits the terminal envelope alone.
   const framedJson = options.streaming !== undefined && renderContext.format === "json";
   const liveStreaming = options.streamingMode === "live";
   // Live sinks are for human formats and JSON data frames only. YAML collects into one envelope.
   const attachLiveSink = liveStreaming && renderContext.format !== "yaml";
-  const commandLayer = Layer.mergeAll(options.runtime, rendererLayer, commandWarningsLayer) as Layer.Layer<
-    R,
-    RE
-  >;
+  const commandLayer = Layer.mergeAll(
+    options.runtime.pipe(Layer.provide(redactionLayer)),
+    rendererLayer,
+    commandWarningsLayer,
+    redactionLayer,
+  ) as Layer.Layer<R, RE>;
   const command = options.command ?? "cli:unknown";
   // Resolve the invocation id once so the root span and lifecycle events agree.
   const invocation =
@@ -419,8 +441,6 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         );
       }
     }
-    // Construct the sink inside the command runtime so it captures that runtime's
-    // SecretStore-backed redaction service, not the diagnostic fallback.
     const flushConfigWarnings = Effect.gen(function* () {
       const snapshot = yield* Effect.serviceOption(GlobalConfigSnapshot);
       const events = yield* Effect.serviceOption(EventService);
@@ -449,9 +469,6 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         );
       }),
     );
-    // Build the command runtime in its own memo map. Effect 4 otherwise reuses the
-    // diagnostic fallback's `RedactionService.layer`, bound to the env-only secret
-    // store, and secrets from the runtime's own store would render unredacted.
     const commandOutcome = yield* Effect.exit(
       withCommandEventService(executeWithEventConsumer).pipe(
         Effect.provide(Layer.provide(commandLayer, Layer.succeed(Tracer.ParentSpan, initSpan)), {
@@ -550,12 +567,17 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           Effect.provideService(References.TracerEnabled, true),
         ),
   );
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
+  if (Exit.isFailure(exit)) {
+    const redactor = await Effect.runPromise(redaction.forProfile("secrets", { sourceEnv }));
+    throw new Error(redactor.redactString(Cause.pretty(exit.cause)));
+  }
   if (options.traceCapture !== undefined && options.traceDisplay === true && !envelopeFormat && !brokenPipe) {
     await Effect.runPromise(
-      writeDiagnosticLine(formatCommandTrace(options.traceCapture.snapshot())).pipe(
-        Effect.provide(rendererLayer),
-      ),
+      writeDiagnosticLine(
+        (await Effect.runPromise(redaction.forProfile("secrets", { sourceEnv }))).redactString(
+          formatCommandTrace(options.traceCapture.snapshot()),
+        ),
+      ).pipe(Effect.provide(rendererLayer)),
     );
   }
 };

@@ -74,15 +74,19 @@ const postgresClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): R
 const quoteShell = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
 
 const mongoTool = (program: string, extra: string): ReadonlyArray<string> => [
-  "sh",
+  "bash",
   "-c",
-  `${program} --uri="$MONGO_URI" ${extra}`,
+  `exec 3< <(mongosh --nodb --quiet --eval 'print(JSON.stringify({uri:process.env.MONGO_URI}))' </dev/null); exec ${program} --config=/dev/fd/3 ${extra}`,
 ];
 
 const mongoShell = (extra: string): ReadonlyArray<string> => [
-  "sh",
-  "-c",
-  `mongosh "$MONGO_URI" --quiet ${extra}`,
+  "mongosh",
+  "--nodb",
+  "--quiet",
+  "--eval",
+  "db=connect(process.env.MONGO_URI)",
+  "--eval",
+  extra,
 ];
 
 export const dumpCommand = (
@@ -157,7 +161,7 @@ export const countCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",
       ]);
     case "mongodb":
-      return mongoShell(`--eval=${quoteShell("db.getCollectionNames().length")}`);
+      return mongoShell("db.getCollectionNames().length");
     case "mssql":
       return mssqlClient(creds.port, [
         "-d",
@@ -180,7 +184,7 @@ export const versionCommand = (family: SqlFamily, creds: SqlCommandCreds): Reado
     case "postgres":
       return postgresClient(creds, ["-tAc", "SHOW server_version"]);
     case "mongodb":
-      return mongoShell(`--eval=${quoteShell("print(db.version())")}`);
+      return mongoShell("print(db.version())");
     case "mssql":
       return mssqlClient(creds.port, [
         "-d",
@@ -236,7 +240,7 @@ export const resetCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
         `DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO ${creds.user};`,
       ]);
     case "mongodb":
-      return mongoShell(`--eval=${quoteShell("db.dropDatabase()")}`);
+      return mongoShell("db.dropDatabase()");
     case "mssql":
       return mssqlResetCommand(creds.database, creds.port);
     default:

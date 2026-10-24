@@ -2,7 +2,6 @@ import { expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
@@ -12,6 +11,7 @@ import * as AppPlanCache from "../../src/cache/app-plan.ts";
 import * as AppCacheService from "../../src/cache/service.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 test.each([{ webroot: "public" }, { appMount: "relative" }])(
   "an old cached plan rejects invalid authored fields before cache lookup: %j",
@@ -27,7 +27,7 @@ test.each([{ webroot: "public" }, { appMount: "relative" }])(
     });
     const runPlan = (input: LandofileShape) =>
       Effect.flatMap(AppPlanner, (planner) =>
-        planner.plan(rememberLandofileAppRoot(input, root), TestRuntimeProvider.capabilities),
+        planner.plan(literalTestLandofile(input, root), TestRuntimeProvider.capabilities),
       ).pipe(
         Effect.provide(AppPlannerLayer.layer),
         Effect.provide(AppCacheService.layer),

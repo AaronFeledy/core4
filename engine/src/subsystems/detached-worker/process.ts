@@ -1,6 +1,7 @@
 import { closeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Redactor } from "@lando/sdk/secrets";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Schema } from "effect";
 import { openWorkerLog, stderrTailFromLog } from "./log.ts";
@@ -15,6 +16,7 @@ export interface DetachedWorkerProcess<Ready> {
 }
 
 export interface DetachedWorkerSpawnSpec {
+  readonly redactor?: Redactor;
   readonly argv: ReadonlyArray<string>;
   readonly logsDir?: string;
   readonly env?: Readonly<Record<string, string>>;
@@ -159,7 +161,11 @@ export const spawnDetachedWorker = async <Ready, Encoded>(
   proc.unref?.();
   const exitedBeforeReady = async (): Promise<Error> => {
     await proc.exited;
-    const details = { exitCode: proc.exitCode, stderrTail: await stderrTailFromLog(logPath), logPath };
+    const details = {
+      exitCode: proc.exitCode,
+      stderrTail: await stderrTailFromLog(logPath, spec.redactor),
+      logPath,
+    };
     return (
       options.exitedBeforeReady?.(details) ??
       new DetachedWorkerExitedBeforeReadyError(details, options.logLabel)

@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { Result } from "effect";
 import type { ExpressionNode } from "../../src/expressions/ast.ts";
 import {
   SNAPSHOT_HELPER_ALLOWLIST,
   collectSnapshotTemplateViolations,
+  renderCompiledRecipeSnapshot,
   renderRecipeSnapshot,
   validateSnapshotTemplate,
 } from "../../src/recipes/snapshot-template.ts";
@@ -21,6 +23,112 @@ const snapshot = (expression: ExpressionNode): RecipeSnapshot => ({
   defaults: { php: "8.2" },
   template: { expression },
   assets: [],
+});
+const compilationContext = { appRoot: AbsolutePath.make("/app"), env: { CAPTURED: "yes" } };
+
+test("locates reserved helper output at its snapshot AST site", () => {
+  const result = renderCompiledRecipeSnapshot(
+    snapshot({
+      kind: "ObjectLiteral",
+      entries: [
+        {
+          key: "x-helper",
+          value: {
+            kind: "Call",
+            callee: "fromJson",
+            args: [{ kind: "Literal", value: '{"_tag":"SecretRef","reference":"DB"}' }],
+          },
+        },
+      ],
+    }),
+    {},
+    compilationContext,
+  );
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) expect(result.failure.path).toBe("template.expression.entries.0.value");
+});
+
+test("compiles authored snapshot literals before options while option and helper strings remain data", () => {
+  const result = renderCompiledRecipeSnapshot(
+    snapshot({
+      kind: "ObjectLiteral",
+      entries: [
+        { key: "x-authored", value: { kind: "Literal", value: "{{ app.name }}" } },
+        {
+          key: "x-option",
+          value: { kind: "Path", head: "options", segments: [{ type: "prop", name: "text" }] },
+        },
+        {
+          key: "x-helper",
+          value: {
+            kind: "Call",
+            callee: "b64decode",
+            args: [{ kind: "Literal", value: btoa("{{ app.name }}") }],
+          },
+        },
+      ],
+    }),
+    { text: "{{ app.name }}" },
+    compilationContext,
+  );
+  expect(Result.isSuccess(result)).toBe(true);
+  if (Result.isSuccess(result)) {
+    expect(result.success.document).toEqual({
+      "x-authored": "{{ app.name }}",
+      "x-option": "{{ app.name }}",
+      "x-helper": "{{ app.name }}",
+    });
+    expect(result.success.pendingSites.map((site) => site.path)).toEqual([["x-authored"]]);
+  }
+});
+
+test("keeps only pending sites from the selected snapshot branch", () => {
+  const result = renderCompiledRecipeSnapshot(
+    snapshot({
+      kind: "Conditional",
+      test: { kind: "Path", head: "options", segments: [{ type: "prop", name: "enabled" }] },
+      consequent: {
+        kind: "ObjectLiteral",
+        entries: [{ key: "x-selected", value: { kind: "Literal", value: "{{ app.name }}" } }],
+      },
+      alternate: {
+        kind: "ObjectLiteral",
+        entries: [{ key: "x-other", value: { kind: "Literal", value: "{{ app.name }}" } }],
+      },
+    }),
+    { enabled: true },
+    compilationContext,
+  );
+  expect(Result.isSuccess(result)).toBe(true);
+  if (Result.isSuccess(result))
+    expect(result.success.pendingSites.map((site) => site.path)).toEqual([["x-selected"]]);
+});
+
+test("rejects malformed literal syntax even in an unselected snapshot branch", () => {
+  const result = renderCompiledRecipeSnapshot(
+    snapshot({
+      kind: "Conditional",
+      test: { kind: "Literal", value: true },
+      consequent: { kind: "Literal", value: "data" },
+      alternate: { kind: "Literal", value: "{{ broken(" },
+    }),
+    {},
+    compilationContext,
+  );
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) expect(result.failure.path).toBe("template.expression.alternate");
+});
+
+test("rejects reserved bindings from recipe option data before evaluating the template", () => {
+  const result: unknown = Reflect.apply(renderCompiledRecipeSnapshot, undefined, [
+    snapshot({ kind: "Path", head: "options", segments: [{ type: "prop", name: "value" }] }),
+    { value: { _tag: "SecretRef", reference: "DB" } },
+    compilationContext,
+  ]);
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "RecipeSnapshotError", path: "options" },
+  });
 });
 test("allowlist has exactly 47 entries and excludes forbidden IO and decoder helpers", () => {
   expect(SNAPSHOT_HELPER_ALLOWLIST.size).toBe(47);

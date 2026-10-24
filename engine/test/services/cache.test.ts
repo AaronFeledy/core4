@@ -60,6 +60,7 @@ const expectExitFailure = <A, E>(exit: Exit.Exit<A, E>) => {
 };
 
 const appPlanFixture: AppPlan = {
+  valueModel: 1,
   id: AppId.make("cache-plan"),
   name: "cache-plan",
   slug: "cache-plan",

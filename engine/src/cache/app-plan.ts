@@ -9,6 +9,7 @@ import { Clock, Effect, Schema } from "effect";
 import { CacheError, isErrnoCode } from "@lando/sdk/errors";
 import {
   AppPlan,
+  CurrentExecutableAppPlan,
   type LandofileShape,
   type PluginManifest,
   type ProviderCapabilities,
@@ -40,7 +41,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 28n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 32n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -212,7 +213,7 @@ const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
   }
 };
 
-const withDerivedRouteRequirements = (plan: AppPlan): AppPlan => {
+const withDerivedRouteRequirements = (plan: CurrentExecutableAppPlan): CurrentExecutableAppPlan => {
   if (plan.routes.length === 0 || !routerEnabled(plan)) return plan;
 
   const current = plan.requires?.globalServices ?? [];
@@ -239,7 +240,7 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
   readonly appName: string;
   readonly appRoot: string;
   readonly key: string;
-}): Effect.fn.Return<AppPlan | null, CacheError> {
+}): Effect.fn.Return<CurrentExecutableAppPlan | null, CacheError> {
   const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
   const bytes = yield* Effect.tryPromise({
     try: () => readFile(path),
@@ -272,7 +273,7 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
     if (!sameGitDirectories(current, check.directories)) return null;
   }
   return yield* Effect.try({
-    try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(AppPlan)(payload.plan)),
+    try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(CurrentExecutableAppPlan)(payload.plan)),
     catch: (cause) =>
       new CacheError({
         message: `Cached app plan at ${path} failed schema decode.`,

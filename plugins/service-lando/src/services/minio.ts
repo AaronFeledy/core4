@@ -1,3 +1,4 @@
+import { concatenateEnvironmentValues, encodeEnvironmentComponent } from "@lando/sdk/expressions";
 import { Effect, Schema } from "effect";
 
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
@@ -38,7 +39,13 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("MINIO_BUCKET", bucket);
   ctx.addEnv(
     "MC_HOST_local",
-    `http://${encodeURIComponent(rootUser)}:${encodeURIComponent(rootPassword)}@127.0.0.1:${apiPort}`,
+    concatenateEnvironmentValues([
+      "http://",
+      encodeEnvironmentComponent(rootUser),
+      ":",
+      encodeEnvironmentComponent(rootPassword),
+      `@127.0.0.1:${apiPort}`,
+    ]),
   );
   ctx.addStorage(
     {

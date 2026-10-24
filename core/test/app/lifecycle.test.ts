@@ -308,7 +308,7 @@ const appLayer = (
             select: () => Effect.succeed(fixtureProvider),
           }),
         ),
-        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
         Layer.succeed(FileSyncEngine, FileSyncEngine.of(engine)),
         Layer.succeed(RouterService, RouterService.of(TestRouterService)),
       ],
@@ -1349,7 +1349,7 @@ describe("App handle managed lifecycle scopes", () => {
                   ),
                   Layer.succeed(
                     AppPlanner,
-                    AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync(dir)) }),
+                    AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync(dir))) }),
                   ),
                   Layer.succeed(FileSyncEngine, FileSyncEngine.of(tracking.engine)),
                   Layer.succeed(RouterService, RouterService.of(TestRouterService)),
@@ -1368,3 +1368,4 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 });
+import { currentTestPlan } from "../_support/value-contracts.ts";

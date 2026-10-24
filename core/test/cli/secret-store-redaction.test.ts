@@ -1,16 +1,23 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { makeTestRuntime } from "@lando/core/testing";
 import { execApp } from "@lando/engine/operations/exec";
 import { StartAppResultSchema, startApp } from "@lando/engine/operations/start";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { AppPlan, CommandResultEnvelope, PluginManifest, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  CommandResultEnvelope,
+  CurrentExecutableAppPlan,
+  PluginManifest,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
 import { StreamFrame } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -26,8 +33,6 @@ import { Effect, Layer, Redacted, Schema, Stream } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
 import * as TestLandofileLayers from "../_support/landofile-layer.ts";
-
-afterEach(resetRegisteredRedactionValuesForTesting);
 
 test.each([
   { failApply: false, providerState: "running", expectedState: "running" },
@@ -79,7 +84,10 @@ test.each([
           { exitCode: 0 },
         ),
       apply: Effect.fnUntraced(function* (_plan, options) {
-        const resolved = options.serviceEnvironment?.[ServiceName.make("web")]?.DISPLAY_VALUE ?? "unresolved";
+        const web = _plan.services[ServiceName.make("web")];
+        if (web === undefined || options.resolveServiceEnvironment === undefined)
+          throw new TypeError("Expected web environment resolver");
+        const resolved = (yield* options.resolveServiceEnvironment(web)).DISPLAY_VALUE ?? "unresolved";
         applied.push(resolved);
         if (failApply)
           return yield* Effect.fail(
@@ -108,7 +116,8 @@ test.each([
     );
     const redaction = RedactionService.layer.pipe(Layer.provide(store));
     const metadata = { resolvedAt: "2026-06-01T00:00:00Z", source: "cli-test", runtime: 4 };
-    const plan = Schema.decodeUnknownSync(AppPlan)({
+    const plan = Schema.decodeUnknownSync(CurrentExecutableAppPlan)({
+      valueModel: 1,
       id: "cli-secrets",
       name: "cli-secrets",
       slug: "cli-secrets",
@@ -120,7 +129,7 @@ test.each([
           type: "test",
           provider: provider.id,
           primary: true,
-          environment: { DISPLAY_VALUE: `\${secret:${reference}}` },
+          environment: { DISPLAY_VALUE: { _tag: "SecretRef", reference } },
           mounts: [],
           storage: [],
           // Keep a secret in the projected result even when the opaque provider state is discarded.
@@ -144,6 +153,7 @@ test.each([
       paths,
       store,
       redaction,
+      EnvironmentValueResolverLayer.layer.pipe(Layer.fresh, Layer.provide(Layer.mergeAll(store, redaction))),
       TestLandofileLayers.layerTransactionGuard,
       Layer.succeed(StateStore, makeTestStateStore().service),
       Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
@@ -177,7 +187,7 @@ test.each([
     });
 
     // Then: resolution reached the provider, but neither output channel exposes the value.
-    expect(reads).toEqual([reference]);
+    expect(reads, io.stdout() + io.stderr()).toEqual([reference]);
     expect(applied).toEqual([value]);
     expect(io.stdout()).not.toContain(value);
     expect(io.stderr()).not.toContain(value);
@@ -213,7 +223,6 @@ test.each([
     );
     expect(exits).toEqual(failApply ? [1] : []);
     if (!failApply) {
-      resetRegisteredRedactionValuesForTesting();
       const execIo = createBufferedRendererIO({ isTTY: false });
       await runWithRendererHandling(execApp({ service: "web", command: ["printenv", "DISPLAY_VALUE"] }), {
         runtime,

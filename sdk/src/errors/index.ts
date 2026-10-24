@@ -47,3 +47,4 @@ export {
 } from "./tooling.ts";
 export * from "./tooling-step.ts";
 export * from "./tunnel.ts";
+export * from "./environment-value.ts";

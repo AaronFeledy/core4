@@ -34,12 +34,16 @@ import { sourcePlan } from "./support/source-plan.ts";
 const SECRET = "s3cret-pass";
 
 const writeCompressed = async (path: string, payload: string, compression: "gzip" | "zstd") => {
-  const bytes = Buffer.from(
-    await new Response(
-      new Blob([payload]).stream().pipeThrough(new CompressionStream(compression)),
-    ).arrayBuffer(),
-  );
-  writeFileSync(path, bytes);
+  switch (compression) {
+    case "gzip":
+      writeFileSync(path, Bun.gzipSync(payload));
+      return;
+    case "zstd":
+      writeFileSync(path, Bun.zstdCompressSync(payload));
+      return;
+    default:
+      return compression satisfies never;
+  }
 };
 
 afterEach(cleanupSqlTestDeps);
@@ -605,7 +609,7 @@ describe("executeDbCommand", () => {
       const command = transfer.from.command;
       expect(Array.isArray(command)).toBe(true);
       if (!Array.isArray(command)) throw new Error("expected argv command");
-      expect(command[0]).toBe("sh");
+      expect(command[0]).toBe("bash");
       expect(command.join(" ")).toContain("mongodump --archive");
       expect(command.join(" ")).not.toContain("| gzip");
       expect(command.join(" ")).not.toContain("zstd");

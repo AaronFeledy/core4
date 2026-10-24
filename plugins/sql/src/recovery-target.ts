@@ -64,7 +64,7 @@ export type SqlPhysicalContextInput = {
   readonly serviceName: string;
   readonly family: SqlFamily;
   readonly creds: SqlCreds;
-  readonly env: Readonly<Record<string, string>>;
+  readonly env: import("@lando/sdk/schema").Environment;
   readonly label?: string;
   readonly format?: "tar" | "tar.gz" | "tar.zst";
   readonly preflight?: (context: SqlRecoveryContext) => Effect.Effect<void, unknown>;

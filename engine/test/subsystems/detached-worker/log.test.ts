@@ -3,7 +3,7 @@ import { closeSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { registerRedactionValues } from "@lando/redaction/service";
+import { makeRedactionService } from "@lando/redaction/service";
 import { Effect } from "effect";
 import { openWorkerLog, stderrTailFromLog } from "../../../src/subsystems/detached-worker/log.ts";
 import { ownerOnlyFileAccess } from "../../private-file-access.ts";
@@ -13,11 +13,13 @@ test.each([33, 70 * 1024])("redacts a %s-character secret before clipping the lo
   const root = await mkdtemp(join(tmpdir(), "worker-redacted-tail-"));
   const logPath = join(root, "worker.log");
   const secret = `registered-worker-${"s".repeat(length)}-credential-unique`;
-  await Effect.runPromise(registerRedactionValues([secret]));
+  const redaction = makeRedactionService();
+  await Effect.runPromise(redaction.registerValues([secret]));
+  const redactor = await Effect.runPromise(redaction.forProfile("secrets"));
   await writeFile(logPath, `${secret}${"x".repeat(4040)}\n${secret}`);
   try {
     // When the complete log is projected into a diagnostic tail.
-    const tail = await stderrTailFromLog(logPath);
+    const tail = await stderrTailFromLog(logPath, redactor);
     // Then neither a whole credential nor a clipped suffix escapes.
     expect(tail).not.toContain(secret);
     expect(tail).not.toContain("credential-unique");

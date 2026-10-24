@@ -10,10 +10,8 @@ export const eventError = (event: string, message: string, cause?: unknown): Eve
 export const timeoutEventError = (event: string): EventError =>
   new EventError({ message: `Timed out waiting for event: ${event}`, event, reason: "timeout" });
 
-export const DeliverableEventSchema = Schema.Union([
-  Schema.toEncoded(LandoEventSchema),
-  Schema.toType(LandoEventSchema),
-]);
+export const DeliverableEventSchema: Schema.Codec<LandoEvent | typeof LandoEventSchema.Encoded> =
+  Schema.Union([Schema.toEncoded(LandoEventSchema), Schema.toType(LandoEventSchema)]);
 
 export const readEventName = (event: LandoEvent): Effect.Effect<string, EventError> =>
   Effect.try({

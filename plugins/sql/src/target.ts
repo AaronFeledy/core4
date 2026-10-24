@@ -1,6 +1,7 @@
 import { Result } from "effect";
 
 import { SqlServiceAmbiguousError, SqlServiceNotFoundError } from "@lando/sdk/errors";
+import type { DatabaseConnection } from "@lando/sdk/schema";
 
 import { type SqlFamily, familyFromServiceType } from "./families.ts";
 
@@ -11,7 +12,9 @@ export type SqlTarget = {
 };
 
 export type SqlTargetPlan = {
-  readonly services: Readonly<Record<string, { readonly name: string; readonly type: string }>>;
+  readonly services: Readonly<
+    Record<string, { readonly name: string; readonly type: string; readonly connection?: DatabaseConnection }>
+  >;
 };
 
 const NOT_FOUND_REMEDIATION = "Add a mysql, mariadb, postgres, mongodb, or mssql service.";
@@ -19,7 +22,7 @@ const NOT_FOUND_REMEDIATION = "Add a mysql, mariadb, postgres, mongodb, or mssql
 export const sqlCandidates = (plan: SqlTargetPlan): ReadonlyArray<SqlTarget> =>
   Object.values(plan.services)
     .flatMap((service) => {
-      const family = familyFromServiceType(service.type);
+      const family = service.connection?.family ?? familyFromServiceType(service.type);
       return family === undefined ? [] : [{ name: service.name, type: service.type, family }];
     })
     .toSorted((left, right) => left.name.localeCompare(right.name));

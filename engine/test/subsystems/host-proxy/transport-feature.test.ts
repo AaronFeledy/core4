@@ -16,11 +16,7 @@ import {
 } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_CONTAINER_SOCKET,
@@ -69,9 +65,7 @@ const fakeExecutable = async (): Promise<string> => {
 const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+    ...makeRedactionService(),
   }),
 );
 const eventLayer = Layer.succeed(

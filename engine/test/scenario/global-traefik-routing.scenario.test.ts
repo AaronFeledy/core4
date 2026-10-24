@@ -78,7 +78,7 @@ const planApp = (
 ): Promise<AppPlan> => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)(landofileInput);
   return Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) => planTestLandofile(planner, landofile, capabilities)).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provideService(HostProviderOverride, ProviderId.make("lando")),
@@ -306,3 +306,4 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
     });
   });
 });
+import { planTestLandofile } from "../compiled-landofile.ts";

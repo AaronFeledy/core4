@@ -68,9 +68,11 @@ services:
 
 Set `creds:` when you need explicit values. `rootPassword` becomes `SA_PASSWORD` inside the container. The login is `sa`. Lando sets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer` on the image. Omit `rootPassword` and Lando generates one per app and service, so don't guess it. `lando info` redacts it too.
 
-Setting `creds.user` or `creds.password` does not provision a separate SQL login.
-Use `sa` with `creds.rootPassword`. The launcher and generated clients read the
-password from the runtime environment, not a password argument.
+Use `sa`; another `creds.user` fails planning rather than creating a separate login.
+`creds.password`, `creds.rootPassword`, and any authored native password aliases
+must agree. Secret references must name the same reference, without reading the
+secret during planning. The launcher and generated clients read the password from
+the runtime environment, not a password argument.
 
 Replace `ReplaceMe!2026` with a private password before using this example. SQL Server requires at least eight characters and characters from at least three categories: uppercase letters, lowercase letters, digits, and symbols. See [Microsoft's container password requirements](https://learn.microsoft.com/sql/linux/install-upgrade/quickstart-install-docker). Alternatively, omit `rootPassword` and use Lando's generated value.
 

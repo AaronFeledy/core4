@@ -5,6 +5,7 @@ import { SqlSeedStateError } from "@lando/sdk/errors";
 import {
   AppId,
   type DataTransferSpec,
+  type Environment,
   ServiceName,
   type SnapshotInfo,
   type VolumeRef,
@@ -14,6 +15,7 @@ import {
 import { type SqlExec, runImport } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
 import { parseCount } from "./command-input.ts";
+import { resolveSqlEnvironment } from "./environment.ts";
 import { countCommand, loadCommand } from "./families.ts";
 import type { SqlRecoveryContext, SqlRecoveryDeps } from "./recovery.ts";
 import { requireSeedCompatibleSnapshot } from "./snapshot-compatibility.ts";
@@ -24,7 +26,9 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
   input: Parameters<typeof runImport>[2] & {
     readonly snapshot?: SnapshotInfo;
     readonly source?: {
-      readonly endpoint: Extract<DataTransferSpec["from"], { readonly _tag: "serviceCmd" }>;
+      readonly endpoint: Omit<Extract<DataTransferSpec["from"], { readonly _tag: "serviceCmd" }>, "env"> & {
+        readonly env: Environment;
+      };
       readonly database: string;
     };
     readonly store: VolumeRef;
@@ -72,13 +76,13 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
         yield* context.verifyVolume;
         if (input.source !== undefined) {
           return yield* deps.transfer({
-            from: input.source.endpoint,
+            from: { ...input.source.endpoint, env: yield* resolveSqlEnvironment(input.source.endpoint.env) },
             to: {
               _tag: "serviceCmd",
               app: AppId.make(input.plan.id),
               service: ServiceName.make(input.service),
               command: loadCommand(input.family, input.creds, input.source.database),
-              env: input.env,
+              env: yield* resolveSqlEnvironment(input.env),
             },
             overwrite: true,
           });

@@ -61,13 +61,14 @@ const withGlobalFiles = async <A>(
         plan: (landofile) =>
           Effect.sync(() => {
             expect(process.cwd()).toBe(root);
-            expect(landofile).toMatchObject({ name: "global", provider: "lando" });
+            expect(landofile.document).toMatchObject({ name: "global", provider: "lando" });
             return {
+              valueModel: 1 as const,
               id: AppId.make("global"),
-              name: landofile.name ?? "global",
+              name: landofile.document.name ?? "global",
               slug: "global",
               root: AbsolutePath.make(process.cwd()),
-              provider: landofile.provider ?? ProviderId.make("docker"),
+              provider: landofile.document.provider ?? ProviderId.make("docker"),
               services: {},
               routes: [],
               networks: [],
@@ -108,7 +109,7 @@ test("preserves nested generated maps when the canonical overlay replaces a comm
     // Then generated siblings survive and scalar arrays replace rather than append.
     expect(loaded.materialized).toBe(true);
     if (!loaded.materialized) throw new Error("expected materialized plan");
-    expect(loaded.landofile.services?.[ServiceName.make("mailpit")]).toMatchObject({
+    expect(loaded.landofile.document.services?.[ServiceName.make("mailpit")]).toMatchObject({
       type: "lando",
       environment: { KEEP: "generated", CHANGE: "authored" },
       command: ["authored"],
@@ -125,10 +126,12 @@ test("global directives are consumed before the managed-provider plan", async ()
     const loaded = await load();
     expect(loaded.materialized).toBe(true);
     if (!loaded.materialized) throw new Error("Expected a global plan.");
-    expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.environment).toEqual({
+    expect(loaded.landofile.document.services?.[ServiceName.make("mailpit")]?.environment).toEqual({
       KEEP: "generated",
     });
-    expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.routes).toEqual(["global.test"]);
+    expect(loaded.landofile.document.services?.[ServiceName.make("mailpit")]?.routes).toEqual([
+      "global.test",
+    ]);
     expect(loaded.plan.provider).toBe(ProviderId.make("lando"));
   });
 });
@@ -161,7 +164,7 @@ test("global loading materializes typed sites before per-layer validation", asyn
     const loaded = await load();
     // Then
     if (!loaded.materialized) throw new Error("Expected global Landofile");
-    expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.primary).toBe(true);
+    expect(loaded.landofile.document.services?.[ServiceName.make("mailpit")]?.primary).toBe(true);
   });
 });
 
@@ -173,7 +176,7 @@ test("global explicit decode compiles typed expressions with the shared validato
     decodeGlobalLandofile({ file: "/global/.lando.yml", cwd: "/global", content }),
   );
   // Then
-  expect(result.services?.[ServiceName.make("web")]?.primary).toBe(false);
+  expect(result.document.services?.[ServiceName.make("web")]?.primary).toBe(false);
 });
 
 test("merges all six global YAML layers in low-to-high precedence", async () => {
@@ -198,7 +201,7 @@ test("merges all six global YAML layers in low-to-high precedence", async () => 
     const loaded = await load();
     // Then each key reflects the highest layer that authored it.
     if (!loaded.materialized) throw new Error("expected materialized plan");
-    expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.environment).toEqual({
+    expect(loaded.landofile.document.services?.[ServiceName.make("mailpit")]?.environment).toEqual({
       L0: "layer0",
       L1: "layer1",
       L2: "layer2",
@@ -218,7 +221,7 @@ for (const content of [undefined, "", "# User overrides for the global Lando app
       const loaded = await load();
       // Then the generated configuration remains available.
       if (!loaded.materialized) throw new Error("expected materialized plan");
-      expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.environment).toEqual({
+      expect(loaded.landofile.document.services?.[ServiceName.make("mailpit")]?.environment).toEqual({
         KEEP: "generated",
         CHANGE: "generated",
       });
@@ -251,7 +254,7 @@ test("pins reserved global identity and provider when an authored layer changes 
     const loaded = await load();
     // Then both the effective Landofile and plan keep their global identity.
     if (!loaded.materialized) throw new Error("expected materialized plan");
-    expect(loaded.landofile).toMatchObject({ name: "global", provider: "lando" });
+    expect(loaded.landofile.document).toMatchObject({ name: "global", provider: "lando" });
     expect(loaded.plan).toMatchObject({ name: "global", provider: "lando", root });
   });
 });
@@ -275,7 +278,7 @@ for (const name of [
       expect(result).toMatchObject(
         name === ".lando.user.yml"
           ? { _tag: "LandofileValidationError", file }
-          : { materialized: true, landofile: { services: { mailpit: { home: false } } } },
+          : { materialized: true, landofile: { document: { services: { mailpit: { home: false } } } } },
       );
     });
   });
@@ -302,6 +305,8 @@ test("reads edited overlay content on repeated global loads", async () => {
     const loaded = await load();
     // Then it sees the new authored content.
     if (!loaded.materialized) throw new Error("expected materialized plan");
-    expect(loaded.landofile.services?.[ServiceName.make("mailpit")]?.environment?.CHANGE).toBe("second");
+    expect(loaded.landofile.document.services?.[ServiceName.make("mailpit")]?.environment?.CHANGE).toBe(
+      "second",
+    );
   });
 });

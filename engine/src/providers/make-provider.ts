@@ -1,5 +1,5 @@
 import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
-import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginContext, RuntimeProviderContribution } from "@lando/sdk/plugins";
 import type { AppPlan } from "@lando/sdk/schema";
@@ -13,10 +13,7 @@ import {
 } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type Context, Effect, type Option } from "effect";
-import {
-  collectAppPlanPublicCredentialValues,
-  collectAppPlanRedactionTokens,
-} from "../services/app-plan-redaction.ts";
+import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { withProviderErrorRedaction } from "./error-policy.ts";
 import { redactProviderError } from "./error-redaction.ts";
 import { withOutputRegistration } from "./output-policy.ts";
@@ -81,13 +78,7 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
               );
             }),
             apply: Effect.fnUntraced(function* (plan, options) {
-              const publicValues = collectAppPlanPublicCredentialValues(plan);
-              const tokens = [
-                ...collectAppPlanRedactionTokens(plan),
-                ...Object.values(options?.serviceEnvironment ?? {}).flatMap((environment) =>
-                  collectSecretEnvValues(environment, publicValues),
-                ),
-              ];
+              const tokens = [...collectAppPlanRedactionTokens(plan)];
               const redactor =
                 redaction._tag === "Some"
                   ? yield* redaction.value

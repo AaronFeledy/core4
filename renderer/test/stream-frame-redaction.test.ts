@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
@@ -14,13 +10,12 @@ import { Effect, Layer } from "effect";
 const secret = "s3cret-exec-pipe-value";
 const payload = new Uint8Array([0x1f, 0x8b, 0x08, 0x00, 0xff, 0x00, 0x80, 0xfe, 0x7f, 0x00]);
 
-const redaction = Layer.succeed(
+const redaction = Layer.effect(
   RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => [secret]),
-    forProfile: () =>
-      Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: { DB_PASSWORD: secret } })),
+  Effect.gen(function* () {
+    const service = makeRedactionService();
+    yield* service.registerValues([secret]);
+    return service;
   }),
 );
 

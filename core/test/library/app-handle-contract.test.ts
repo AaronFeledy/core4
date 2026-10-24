@@ -9,6 +9,7 @@
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { currentTestPlan } from "../_support/value-contracts.ts";
 
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Stream } from "effect";
@@ -415,7 +416,7 @@ describe("@lando/core App-handle library contract", () => {
                 Layer.succeed(RouterService, RouterService.of(TestRouterService)),
                 Layer.succeed(
                   AppPlanner,
-                  AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync(dir)) }),
+                  AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync(dir))) }),
                 ),
                 Layer.succeed(FileSyncEngine, FileSyncEngine.of(tracking.engine)),
               ],

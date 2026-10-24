@@ -62,6 +62,7 @@ const planWithDependency = (dependentName: ServicePlan["name"], required: boolea
 
   return {
     id: appId,
+    valueModel: 1,
     name: "Bring Up Order App",
     slug: "bring-up-order-app",
     root: AbsolutePath.make("/tmp/bring-up-order-app"),
@@ -371,6 +372,7 @@ test("unchanged container ID across failed B then retry", async () => {
   const webSvc = servicePlan(dependentNames.web, true);
   const plan: AppPlan = {
     id: appId,
+    valueModel: 1,
     name: "Bring Up Order App",
     slug: "bring-up-order-app",
     root: AbsolutePath.make("/tmp/bring-up-order-app"),
@@ -415,6 +417,7 @@ test("corrected config recreates ONLY B", async () => {
   const webSvc = servicePlan(dependentNames.web, true);
   const plan: AppPlan = {
     id: appId,
+    valueModel: 1,
     name: "Bring Up Order App",
     slug: "bring-up-order-app",
     root: AbsolutePath.make("/tmp/bring-up-order-app"),
@@ -471,6 +474,7 @@ test("a filtered apply leaves an unselected container's real ID untouched", asyn
   const web = servicePlan(dependentNames.web, true);
   const db = servicePlan(dbName, false);
   const fullPlan: AppPlan = {
+    valueModel: 1,
     id: appId,
     name: "Bring Up Order App",
     slug: "bring-up-order-app",

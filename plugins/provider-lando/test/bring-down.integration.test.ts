@@ -99,6 +99,7 @@ const database = servicePlan("database");
 const node = servicePlan("node");
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "BringDown App",
   slug: "bringdownapp",

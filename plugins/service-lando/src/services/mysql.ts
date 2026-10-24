@@ -12,6 +12,7 @@ import {
   type ServiceConfig,
   type ServiceCreds,
 } from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 import { MysqlServiceConfig } from "@lando/sdk/schema/services/mysql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
@@ -23,6 +24,7 @@ import {
 } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
+import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -99,13 +101,12 @@ const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceCon
 const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  const creds = mysqlCredsFor(appName, ctx.serviceName, service);
-  assertListenerConfig(service, MYSQL_LISTENER);
-  const port = plannedPort(service, MYSQL_LISTENER);
+  const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, familyEnvFor("mysql", creds));
   addEnvRecord(ctx, landoDbEnvFor(creds, port));
+  ctx.addEnv("MYSQL_PWD", creds.password);
   ctx.addEnv("MYSQL_TCP_PORT", String(port));
   ctx.addStorage({
     store: `${appName}-${ctx.serviceName}-mysql-data`,
@@ -115,7 +116,7 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   ctx.setHealthcheck(
     commandHealthcheck(
-      ["sh", "-c", `mysqladmin ping -h 127.0.0.1 -P ${port} -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent`],
+      ["mysqladmin", "ping", "-h", "127.0.0.1", "-P", String(port), "-u", creds.user, "--silent"],
       60,
     ),
   );
@@ -138,6 +139,28 @@ export const mysqlServiceFeature: ServiceFeatureDefinition = {
   apply: serviceFeatureApply(MYSQL_FEATURE_ID, "mysql service feature failed to apply", applyMysqlFeature),
 };
 
+const mysqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]> = (name, connection) =>
+  connection.family !== "mysql"
+    ? {}
+    : {
+        mysql: {
+          description: "Open the MySQL client for this service.",
+          dir: PortablePath.make("/"),
+          service: name,
+          cmd: [
+            "mysql",
+            "-h",
+            "127.0.0.1",
+            "-P",
+            String(connection.port),
+            "-u",
+            connection.creds.user,
+            connection.creds.database,
+          ],
+          env: { MYSQL_PWD: connection.creds.password },
+        },
+      };
+
 const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
   id,
   name: "mysql",
@@ -146,6 +169,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
   artifacts: MYSQL_ARTIFACTS,
   identity: rootIdentity(),
   schema: MysqlServiceConfig,
+  toolingForConnection: mysqlToolingForConnection,
   resolve: (input) => {
     if (id !== "mysql" && input.service.image !== undefined && input.service.image !== image) {
       return Effect.fail(
@@ -162,11 +186,13 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
         }),
       );
     }
-    const creds = mysqlCredsFor(appNameFor(input), input.name, input.service);
     return serviceTypeResolve(id, "mysql service type failed to resolve", () => {
+      const creds = mysqlCredsFor(appNameFor(input), input.name, input.service);
+      const port = plannedPort(input.service, MYSQL_LISTENER);
       assertListenerConfig(input.service, MYSQL_LISTENER);
       return {
         base: "lando",
+        connection: { family: "mysql", creds, port },
         normalizedConfig: {
           ...input.service,
           type: id,
@@ -176,24 +202,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
         },
         logSources: MYSQL_LOG_SOURCES,
         features: [{ id: MYSQL_FEATURE_ID }],
-        tooling: {
-          mysql: {
-            description: "Open the MySQL client for this service.",
-            dir: PortablePath.make("/"),
-            service: input.name,
-            cmd: [
-              "mysql",
-              "-h",
-              "127.0.0.1",
-              "-P",
-              String(plannedPort(input.service, MYSQL_LISTENER)),
-              "-u",
-              creds.user,
-              creds.database,
-            ],
-            env: { MYSQL_PWD: creds.password },
-          },
-        },
+        tooling: mysqlToolingForConnection(ServiceName.make(input.name), { family: "mysql", creds, port }),
       };
     });
   },

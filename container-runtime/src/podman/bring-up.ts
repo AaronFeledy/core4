@@ -2,9 +2,10 @@ import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect"
 import { PROVIDER_LABEL } from "../labels.ts";
 
 import {
+  EnvironmentValueResolutionError,
+  PlanReplanRequiredError,
   ProviderInternalError,
   ProviderUnavailableError,
-  type ServiceRestartWouldRecreateError,
   ServiceStartError,
   type ServiceStartLogTail,
 } from "@lando/sdk/errors";
@@ -32,6 +33,7 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi, parseEngineJson } from "../engine-errors.ts";
+import { literalServiceEnvironment, requireCurrentCreationPlan } from "../environment-values.ts";
 import {
   containerOwnershipLabels,
   inspectOwnedNativeId,
@@ -80,11 +82,7 @@ const sharedNetworkName = landoSharedNetworkName;
 export { scratchLabelsForPlan } from "../labels.ts";
 
 type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
-type BringUpError =
-  | ServiceStartError
-  | ServiceRestartWouldRecreateError
-  | ProviderUnavailableError
-  | ProviderInternalError;
+type BringUpError = ProviderError;
 
 /**
  * Neutral fallback used whenever a host has not installed a provider-specific
@@ -137,7 +135,7 @@ export interface BringUpOptions {
   readonly signal?: AbortSignal;
   readonly reconcile?: boolean;
   readonly startFailureRemediation?: StartFailureRemediation;
-  readonly serviceEnvironment?: ApplyOptions["serviceEnvironment"];
+  readonly resolveServiceEnvironment?: ApplyOptions["resolveServiceEnvironment"];
   readonly onVolumeCreated?: ApplyOptions["onVolumeCreated"];
   readonly platform?: HostPlatform;
   readonly daemonUrl?: string;
@@ -150,7 +148,38 @@ interface BringUpDeps {
   readonly api: EngineHttpApi;
   readonly options: BringUpOptions;
   readonly remediation: string;
+  readonly creationEnvironments: Map<string, Readonly<Record<string, string>>>;
 }
+
+const creationEligibility = (plan: AppPlan) =>
+  Effect.try({
+    try: () => requireCurrentCreationPlan(plan),
+    catch: (error) => {
+      if (error instanceof PlanReplanRequiredError) return error;
+      throw error;
+    },
+  });
+
+const prepareCreationEnvironment = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  service: ServicePlan,
+): Effect.fn.Return<Readonly<Record<string, string>>, ProviderError> {
+  const prepared = deps.creationEnvironments.get(service.name);
+  if (prepared !== undefined) return prepared;
+  yield* creationEligibility(plan);
+  const environment = yield* deps.options.resolveServiceEnvironment === undefined
+    ? Effect.try({
+        try: () => literalServiceEnvironment(service),
+        catch: (error) => {
+          if (error instanceof EnvironmentValueResolutionError) return error;
+          throw error;
+        },
+      })
+    : deps.options.resolveServiceEnvironment(service);
+  deps.creationEnvironments.set(service.name, environment);
+  return environment;
+});
 
 interface StartFailureInput {
   readonly service: ServicePlan;
@@ -353,7 +382,7 @@ const createContainerRequest = (
           details: { artifact },
         });
       },
-      environment: { ...service.environment, ...deps.options.serviceEnvironment?.[service.name] },
+      environment: deps.creationEnvironments.get(service.name) ?? literalServiceEnvironment(service),
     }),
     ...knobs.topLevel,
   };
@@ -366,50 +395,56 @@ const ensureNetwork = (
   deps: BringUpDeps,
   name: string,
   plan: AppPlan,
-): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError> => {
+): Effect.Effect<void, ProviderError> => {
   return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
       if (inspectResponse.status === 200) {
         return Effect.void;
       }
-      return request(deps, {
-        method: "POST",
-        path: "/networks/create",
-        body: {
-          Name: name,
-          Driver: "bridge",
-          ...(isSharedNetwork(plan, name)
-            ? {}
-            : {
-                Labels: networkOwnershipLabels(plan),
-              }),
-        },
-      }).pipe(
-        Effect.flatMap((response) => {
-          if (response.status === 201 || response.status === 200 || response.status === 409) {
-            return Effect.void;
-          }
-          const details = { status: response.status, body: response.body };
-          const message = withApiReason(
-            `provider-${deps.options.ctx.providerId} network create failed with HTTP ${response.status}.`,
-            details,
-          );
-          return Effect.fail(
-            new ProviderUnavailableError({
-              providerId: deps.options.ctx.providerId,
-              operation: "bringUp.network",
-              message,
-              details: redactDetails(details),
-              remediation:
-                deps.options.startFailureRemediation?.({
-                  operation: "bringUp.network",
-                  message,
-                  details,
-                }) ?? deps.remediation,
+      return creationEligibility(plan)
+        .pipe(
+          Effect.andThen(() =>
+            request(deps, {
+              method: "POST",
+              path: "/networks/create",
+              body: {
+                Name: name,
+                Driver: "bridge",
+                ...(isSharedNetwork(plan, name)
+                  ? {}
+                  : {
+                      Labels: networkOwnershipLabels(plan),
+                    }),
+              },
             }),
-          );
-        }),
-      );
+          ),
+        )
+        .pipe(
+          Effect.flatMap((response) => {
+            if (response.status === 201 || response.status === 200 || response.status === 409) {
+              return Effect.void;
+            }
+            const details = { status: response.status, body: response.body };
+            const message = withApiReason(
+              `provider-${deps.options.ctx.providerId} network create failed with HTTP ${response.status}.`,
+              details,
+            );
+            return Effect.fail(
+              new ProviderUnavailableError({
+                providerId: deps.options.ctx.providerId,
+                operation: "bringUp.network",
+                message,
+                details: redactDetails(details),
+                remediation:
+                  deps.options.startFailureRemediation?.({
+                    operation: "bringUp.network",
+                    message,
+                    details,
+                  }) ?? deps.remediation,
+              }),
+            );
+          }),
+        );
     }),
   );
 };
@@ -426,38 +461,47 @@ const ensureVolume = (
   deps: BringUpDeps,
   plan: AppPlan,
   store: AppPlan["stores"][number],
-): Effect.Effect<readonly VolumeCreationFact[], ProviderUnavailableError | ProviderInternalError> => {
-  const labels = podmanVolumeCreationLabels(plan, store);
-  return request(deps, {
-    method: "POST",
-    path: "/volumes/create",
-    body: {
-      Name: store.name,
-      Labels: labels,
-    },
-  }).pipe(
-    Effect.flatMap((response) => {
-      if (response.status === 201 || response.status === 200)
-        return Effect.succeed(volumeCreationFact({ body: response.body, name: store.name, labels }));
-      if (response.status === 409) return Effect.succeed([]);
-      return Effect.fail(
-        new ProviderUnavailableError({
-          providerId: deps.options.ctx.providerId,
-          operation: "bringUp.volume",
-          message: withApiReason(
-            `provider-${deps.options.ctx.providerId} volume create failed with HTTP ${response.status}.`,
-            {
-              status: response.status,
-              body: response.body,
-            },
-          ),
-          details: redactDetails({ name: store.name, status: response.status, body: response.body }),
-          remediation: deps.remediation,
-        }),
-      );
-    }),
-  );
-};
+): Effect.Effect<readonly VolumeCreationFact[], ProviderError> =>
+  Effect.gen(function* () {
+    if (plan.valueModel !== 1) {
+      const observed = yield* request(deps, {
+        method: "GET",
+        path: `/volumes/${encodeURIComponent(store.name)}`,
+      });
+      if (observed.status === 200) return [];
+      yield* creationEligibility(plan);
+    }
+    const labels = podmanVolumeCreationLabels(plan, store);
+    return yield* request(deps, {
+      method: "POST",
+      path: "/volumes/create",
+      body: {
+        Name: store.name,
+        Labels: labels,
+      },
+    }).pipe(
+      Effect.flatMap((response) => {
+        if (response.status === 201 || response.status === 200)
+          return Effect.succeed(volumeCreationFact({ body: response.body, name: store.name, labels }));
+        if (response.status === 409) return Effect.succeed([]);
+        return Effect.fail(
+          new ProviderUnavailableError({
+            providerId: deps.options.ctx.providerId,
+            operation: "bringUp.volume",
+            message: withApiReason(
+              `provider-${deps.options.ctx.providerId} volume create failed with HTTP ${response.status}.`,
+              {
+                status: response.status,
+                body: response.body,
+              },
+            ),
+            details: redactDetails({ name: store.name, status: response.status, body: response.body }),
+            remediation: deps.remediation,
+          }),
+        );
+      }),
+    );
+  });
 
 export const isMissingImageCreateResponse = (response: EngineHttpResponse): boolean =>
   response.status === 404 || /no such image/iu.test(response.body);
@@ -490,6 +534,7 @@ const createContainer = Effect.fnUntraced(function* (
   endpoints: ReadonlyArray<EndpointPlan>,
   reassign: (exclude: ReadonlySet<number>) => Effect.Effect<ReadonlyArray<EndpointPlan>, BringUpError>,
 ): Effect.fn.Return<ReadonlyArray<EndpointPlan>, BringUpError> {
+  yield* prepareCreationEnvironment(deps, plan, service);
   if (service.artifact?.kind === "ref" && deps.options.ensureImage !== undefined) {
     yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: false });
   }
@@ -728,6 +773,7 @@ const startService = Effect.fnUntraced(function* (
         }),
       );
     }
+    yield* prepareCreationEnvironment(deps, plan, service);
     if (existingId !== undefined) {
       yield* stopContainerSilent(deps, existingId);
       yield* removeContainer(deps, service, existingId);
@@ -792,6 +838,7 @@ const startService = Effect.fnUntraced(function* (
             }),
           );
         }
+        yield* prepareCreationEnvironment(deps, plan, service);
         const recoveryId = yield* inspectOwnedNativeId(
           deps.api,
           { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
@@ -998,7 +1045,18 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     api,
     options,
     remediation: plan.id === "global" ? GLOBAL_APPLY_REMEDIATION : APPLY_REMEDIATION,
+    creationEnvironments: new Map(),
   };
+
+  for (const service of Object.values(plan.services)) {
+    const inspected = yield* inspectContainer(deps, containerName(plan, service));
+    const replacing =
+      inspected.exists &&
+      (options.reconcile === true || bringUpRecreateReasons(plan, service, inspected).length > 0);
+    if ((!inspected.exists || replacing) && options.forbidRecreate !== true) {
+      yield* prepareCreationEnvironment(deps, plan, service);
+    }
+  }
 
   for (const name of networkNames(plan)) {
     yield* ensureNetwork(deps, name, plan);

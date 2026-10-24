@@ -83,6 +83,7 @@ If you are looking for a public surface or policy:
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
 | `AppPlan` and `ServicePlan` schema families | 05 | §5.5 |
+| Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
 | Bundled providers and multi-provider non-goal | 05 | §5.8 + §5.9 |
 | Service bases and common service schema | 06 | §6.1 + §6.2 |
@@ -104,6 +105,7 @@ If you are looking for a public surface or policy:
 | Service log-source contracts | 06 | §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
 | Six-layer Landofile merge | 07 | §7.2 |
+| Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
 | Top-level Landofile and Compose-subset keys | 07 | §7.4 |
 | Config translation contracts and diagnostics | 07 | §7.4.1 |

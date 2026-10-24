@@ -13,7 +13,7 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ProviderId } from "@lando/sdk/schema";
-import { ConfigService, EventService, type LandoEvent, SecretStore } from "@lando/sdk/services";
+import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/services";
 
 import { RequestPolicy, type RequestPolicyShape, layer, layerWith } from "../src/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../src/network-trust.ts";
@@ -355,6 +355,7 @@ describe("HttpClient network trust", () => {
           direct: (requestUrl, init) =>
             fetchImpl(requestUrl, {
               ...init,
+              body: init.body ?? null,
               ...(init.ca === undefined ? {} : { tls: { ca: [...init.ca] } }),
             }),
         }),
@@ -835,16 +836,12 @@ describe("HttpClient egress span redaction", () => {
       },
     });
     const serve = (() => Promise.resolve(new Response("ok", { status: 200 }))) as unknown as typeof fetch;
-    const store = SecretStore.of({
-      id: "review-store",
-      list: Effect.succeed(["path-token"]),
-      get: () => Effect.succeed(secret),
-      has: () => Effect.succeed(true),
-    });
+    const redaction = makeRedactionService();
+    await Effect.runPromise(redaction.registerValues([secret]));
     await Effect.runPromise(
       getCollect(url).pipe(
         Effect.provide(layerWith({ fetch: serve })),
-        Effect.provideService(RedactionService, RedactionService.of(makeRedactionService(store))),
+        Effect.provideService(RedactionService, redaction),
         Effect.provideService(Tracer.Tracer, tracer),
       ),
     );
