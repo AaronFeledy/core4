@@ -18,6 +18,7 @@ import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { mssqlHealthcheck, mssqlStartupCommand } from "./mssql-startup.ts";
 
 const MSSQL_LISTENER = {
   port: 1433,
@@ -27,6 +28,7 @@ const MSSQL_LISTENER = {
 } as const;
 const DATA_TARGET = PortablePath.make("/var/opt/mssql");
 const SQLCMD = "/opt/mssql-tools18/bin/sqlcmd";
+const MssqlFeatureConfig = Schema.Struct({ ownsStartup: Schema.Boolean });
 const VERSIONS = ["2019", "2022"] as const;
 const ARTIFACTS = {
   "2019": "mcr.microsoft.com/mssql/server:2019-latest",
@@ -54,19 +56,6 @@ const sqlcmdToolingArgv = (port: number): readonly string[] => [
   "-C",
 ];
 
-const sqlcmdHealthcheckArgv = (rootPassword: string, port: number): readonly string[] => [
-  SQLCMD,
-  "-S",
-  `localhost,${port}`,
-  "-U",
-  "sa",
-  "-P",
-  rootPassword,
-  "-C",
-  "-Q",
-  "SELECT 1",
-];
-
 const hostRunsMssqlWithoutEmulation = (arch: string): boolean => AMD64_HOST_ARCHES.has(arch);
 
 const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
@@ -81,7 +70,7 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
     defaults: defaultCreds(appName, ctx.serviceName),
     ...(service.creds === undefined ? {} : { authored: service.creds }),
   });
-  const rootPassword = creds.rootPassword ?? defaultRootPassword(appName, ctx.serviceName);
+  const { ownsStartup } = Schema.decodeUnknownSync(MssqlFeatureConfig)(ctx.config);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["2022"] });
   ctx.addEnv("ACCEPT_EULA", environment.ACCEPT_EULA ?? "Y");
@@ -97,14 +86,17 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port, protocol: "tcp" });
-  ctx.setHealthcheck(commandHealthcheck([...sqlcmdHealthcheckArgv(rootPassword, port)], 30));
+  ctx.setHealthcheck(commandHealthcheck([...mssqlHealthcheck(creds.database, port)], 30));
+  if (ownsStartup && service.command === undefined && service.entrypoint === undefined) {
+    ctx.setCommand([...mssqlStartupCommand(creds.database, port)]);
+  }
 
   applyAuthoredProcessFields(ctx);
 };
 
 export const mssqlServiceFeature: ServiceFeatureDefinition = {
   id: MSSQL_FEATURE_ID,
-  schema: Schema.Unknown,
+  schema: MssqlFeatureConfig,
   priority: 600,
   apply: serviceFeatureApply(MSSQL_FEATURE_ID, "mssql service feature failed to apply", applyMssqlFeature),
 };
@@ -162,7 +154,16 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
             ...familyEnvFor("mssql", creds),
           },
         },
-        features: [{ id: MSSQL_FEATURE_ID }],
+        features: [
+          {
+            id: MSSQL_FEATURE_ID,
+            config: {
+              ownsStartup:
+                input.service.build === undefined &&
+                (input.service.image === undefined || input.service.image === image),
+            },
+          },
+        ],
         tooling: {
           sqlcmd: {
             service: input.name,
