@@ -5,12 +5,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
+import { AppInfoResultSchema } from "@lando/engine/operations/info";
 import { StartAppResultSchema } from "@lando/engine/operations/start";
 import { makeLandoPaths } from "@lando/paths";
 import { appCertificateFiles } from "@lando/proxy-traefik";
 import { ProxyApplyError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
-import { AppId, CommandResultEnvelope } from "@lando/sdk/schema";
+import { AppId, CommandResultEnvelope, type ServiceConnection } from "@lando/sdk/schema";
 import { Duration, Effect, Schema } from "effect";
 import { liveEnabled, managedProviderSocketPath } from "./scanner-live-fixture";
 
@@ -74,6 +75,45 @@ const lando = async (cwd: string, args: readonly string[]) => {
   return { exitCode, stdout, stderr };
 };
 
+const isHttpsRoute = (connection: ServiceConnection, hostname: string) =>
+  connection.scope === "host" &&
+  connection.source === "route" &&
+  connection.protocol === "https" &&
+  connection.binding === "assigned" &&
+  new URL(connection.url).protocol === "https:" &&
+  new URL(connection.url).hostname === hostname;
+
+const waitForActiveRoute = async (cwd: string, hostname: string) => {
+  let connections: ReadonlyArray<ServiceConnection> = [];
+  const observed = await Effect.runPromise(
+    runProbe(
+      {
+        id: `${hostname}-observed-route`,
+        policy: { maxAttempts: 30, delay: Duration.millis(100), timeout: Duration.seconds(30) },
+        classify: {
+          success: (active) => (active ? "green" : "red"),
+          failure: (cause) => {
+            throw cause;
+          },
+        },
+      },
+      Effect.gen(function* () {
+        const info = yield* Effect.promise(() => lando(cwd, ["info", "--format=json"]));
+        expect(info.exitCode, info.stdout + info.stderr).toBe(0);
+        const envelope = terminalEnvelope(info.stdout);
+        expect(envelope.ok).toBe(true);
+        const result = Schema.decodeUnknownSync(AppInfoResultSchema)(envelope.result);
+        connections = result.services.find((service) => service.service === "web")?.connections ?? [];
+        return connections.some(
+          (connection) => isHttpsRoute(connection, hostname) && connection.state === "active",
+        );
+      }),
+    ),
+  );
+  expect(observed.outcome, JSON.stringify(observed)).toBe("green");
+  return connections;
+};
+
 test.skipIf(!liveEnabled)(
   "start preserves the running container and converges when an app-owned route apply fault is removed",
   async () => {
@@ -113,17 +153,10 @@ test.skipIf(!liveEnabled)(
       expect(
         initialResult.servicesStarted
           .find((service) => service.name === "web")
-          ?.connections.some((connection) => {
-            if (
-              connection.scope !== "host" ||
-              connection.binding !== "assigned" ||
-              connection.state !== "active"
-            )
-              return false;
-            const url = new URL(connection.url);
-            return url.protocol === "https:" && url.hostname === initialHostname;
-          }),
+          ?.connections.some((connection) => isHttpsRoute(connection, initialHostname)),
       ).toBe(true);
+      // File-provider reload is asynchronous. Prove live evidence before injecting the fault.
+      await waitForActiveRoute(appRoot, initialHostname);
       await rm(certificate, { force: true });
       await mkdir(certificate);
       faulted = true;
@@ -190,21 +223,12 @@ test.skipIf(!liveEnabled)(
       expect(
         result.servicesStarted
           .find((service) => service.name === "web")
-          ?.connections.some((connection) => {
-            if (
-              connection.scope !== "host" ||
-              connection.binding !== "assigned" ||
-              connection.state !== "active"
-            )
-              return false;
-            const url = new URL(connection.url);
-            return url.protocol === "https:" && url.hostname === newHostname;
-          }),
+          ?.connections.some((connection) => isHttpsRoute(connection, newHostname)),
       ).toBe(true);
+      const recoveredConnections = await waitForActiveRoute(appRoot, newHostname);
       expect(await inspectWeb(container)).toEqual(initial);
-      const httpEndpoint = result.servicesStarted
-        .find((service) => service.name === "web")
-        ?.connections.flatMap((connection) =>
+      const httpEndpoint = recoveredConnections
+        .flatMap((connection) =>
           connection.scope === "host" && connection.binding === "assigned" && connection.state === "active"
             ? [new URL(connection.url)]
             : [],
@@ -266,6 +290,6 @@ test.skipIf(!liveEnabled)(
       }
     }
   },
-  // Six bounded CLI calls plus observations and teardown must finish before Bun's test timeout.
+  // Bounded CLI mutations, route observations, and teardown must finish before Bun's test timeout.
   900_000,
 );

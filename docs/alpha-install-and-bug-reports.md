@@ -25,7 +25,7 @@ The GitHub prerelease ships unsigned `v4.0.0-dev.N` binaries for every compile t
 
 Targets: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`.
 
-On Intel Macs (`darwin-x64`), install Docker Desktop before setup. Other targets use the managed `lando` provider by default. The setup steps below separate these paths.
+Lando's managed runtime does not require Docker or a system Podman installation. On Intel Macs (`darwin-x64`), the managed runtime is not supported: install and start Docker Desktop before setup, then choose Docker when setup asks.
 
 **To install:**
 
@@ -73,19 +73,13 @@ Put the verified Alpha binary on PATH before continuing. Check that `lando` reso
 
 ### Choose setup for your platform
 
-**Intel Mac (`darwin-x64`):** use Docker instead of the managed `lando` provider. Install Docker Desktop first, then run:
-
-```bash
-lando setup --provider=docker
-```
-
-This command saves Docker as your provider. Setup does not install Docker for you.
-
-**Other supported platforms:** the default is `lando`, which uses Lando-managed Podman and does not need system Docker or Podman:
+Run setup in your terminal and follow the prompts. On supported hosts, choose the recommended Lando-managed runtime; it does not require Docker or system Podman. On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks. Setup does not install Docker for you.
 
 ```bash
 lando setup
 ```
+
+Setup saves your choice for later commands. If you already have a saved provider or an environment override, setup keeps that selection instead of showing the provider menu. See [Switch providers](./guides/setup/provider-selection.mdx#switch-providers) when you need to change it.
 
 `lando setup --yes` consents to automatic prerequisite installation, including uidmap on Ubuntu and Debian. It does not switch providers. Alpha setup can still fail if host prerequisites or the managed runtime cannot start; follow the reported diagnosis rather than assuming setup completed.
 
@@ -130,19 +124,13 @@ lando setup
 
 ### Use Docker as a Linux fallback
 
-If the managed runtime still cannot install and system Docker is already working, run:
+If the managed runtime still cannot install and system Docker is already working, use the fallback below. If you already have apps on another provider, follow [Switch providers](./guides/setup/provider-selection.mdx#switch-providers) first.
 
 ```bash
 lando setup --provider=docker
 ```
 
-To select Docker for this invocation without saving the choice:
-
-```bash
-LANDO_PROVIDER=docker lando setup
-```
-
-The `--provider=docker` flag persists; the environment variable does not. Both require Docker to be installed already. Docker is the supported path on Intel Mac and a fallback on Linux, not the default on other targets. See [Pick a container provider](./guides/setup/provider-selection.mdx) and [What persists](./guides/setup/provider-selection.mdx#what-persists).
+Setup saves Docker as your provider. Run `lando doctor` to verify the result. Docker is the supported path on Intel Mac and a fallback on Linux, not the default on other targets. See [Override the provider for one command](./guides/setup/provider-selection.mdx#override-the-provider-for-one-command) for temporary overrides.
 
 ### Option 2: Build from source
 
