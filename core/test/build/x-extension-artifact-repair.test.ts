@@ -33,6 +33,7 @@ import {
 import { configOutputLandofile } from "./x-extension-config-output.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
+import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
@@ -51,11 +52,13 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalEndpointMetadata(
-    evolveHistoricalServicePort(
-      evolveHistoricalTimestamps(
-        evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
-        "bare",
+  evolveHistoricalEnvironment(
+    evolveHistoricalEndpointMetadata(
+      evolveHistoricalServicePort(
+        evolveHistoricalTimestamps(
+          evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
+          "bare",
+        ),
       ),
     ),
   );
@@ -179,10 +182,25 @@ describe("closed x-* extension artifact repair", () => {
       "output",
     );
     expect(findings.map((finding) => `${finding.changeKind} ${finding.path}`).sort()).toEqual([
+      "unsupported-construct $.landofile.events.post-destroy.items.anyOf",
+      "unsupported-construct $.landofile.events.post-init.items.anyOf",
+      "unsupported-construct $.landofile.events.post-rebuild.items.anyOf",
+      "unsupported-construct $.landofile.events.post-restart.items.anyOf",
+      "unsupported-construct $.landofile.events.post-start.items.anyOf",
+      "unsupported-construct $.landofile.events.post-stop.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-destroy.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-init.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-rebuild.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-restart.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-start.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-stop.items.anyOf",
+      "unsupported-construct $.landofile.toolingDefaults.env.anyOf",
       "unsupported-keyword $.landofile.additionalProperties",
+      "unsupported-keyword $.landofile.events.additionalProperties",
       "unsupported-keyword $.landofile.patternProperties",
       "unsupported-keyword $.landofile.propertyNames",
       "unsupported-keyword $.landofile.services.additionalProperties",
+      "unsupported-keyword $.landofile.tooling.additionalProperties",
     ]);
     expect(findings.every((finding) => finding.accepted === false)).toBe(true);
     const exact: CompatibilityException = {
