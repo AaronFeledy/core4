@@ -20,7 +20,7 @@ const creds = {
 };
 const metadata = { resolvedAt: "2026-10-01T00:00:00Z", source: "client-env", runtime: 4 as const };
 
-test.each(cases)(
+test.each([...cases])(
   "$type.id keeps client-only passwords out of server initialization",
   async ({ type, client }) => {
     const service = Schema.decodeUnknownSync(ServiceConfig)({ type: type.id, port: 13306, creds });
@@ -44,7 +44,7 @@ test.each(cases)(
   },
 );
 
-test.skipIf(process.platform === "win32").each(cases)(
+test.skipIf(process.platform === "win32").each([...cases])(
   "$type.id gives only its probe process the application password",
   async ({ type, admin }) => {
     const root = await mkdtemp(join(tmpdir(), "lando-database-probe-env-"));
