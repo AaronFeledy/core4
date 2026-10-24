@@ -1,0 +1,12 @@
+name: route-missing-http
+services:
+  web:
+    type: compose
+    image: nginx:alpine
+    home: false
+    ports: [80]
+    routes:
+      - web.lndo.site
+proxy:
+  typo:
+    - typo.lndo.site
