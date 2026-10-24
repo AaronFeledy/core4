@@ -29,6 +29,7 @@ import { requiresLongMountSyntax } from "../mount-syntax.ts";
 import { physicalListenerPorts, physicalPublications } from "../physical-publications.ts";
 import { commonContainerLabels, composeConfigBindStrings, mountSuffix } from "../plan.ts";
 import { volumeOwnershipLabels } from "../volume-ownership.ts";
+import { composeHealthcheck } from "./compose-healthcheck.ts";
 import { podmanNetworkNames } from "./networks.ts";
 
 export interface EmitComposeOptions {
@@ -376,6 +377,8 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
 
   for (const [serviceName, service] of Object.entries(document.services)) {
     lines.push(`  ${yamlMappingKeyText(serviceName)}:`, `    image: ${quoteYamlScalar(service.image)}`);
+    const plannedService = Object.values(plan.services).find((candidate) => candidate.name === serviceName);
+    if (plannedService !== undefined) lines.push(...composeHealthcheck(plan, plannedService));
 
     if (service.ports !== undefined) {
       lines.push("    ports:");

@@ -563,7 +563,7 @@ describe("Podman Compose emission", () => {
 
     expect(content).toContain("      custom-app-net:\n");
     expect(content).toContain(
-      '      custom-shared-net:\n        aliases:\n          - "web.custom.internal"',
+      '      custom-shared-net:\n        aliases:\n          - "web.myapp.internal"\n          - "web.custom.internal"',
     );
     expect(content).toContain('  custom-app-net:\n    driver: "bridge"');
     expect(content).toContain('  custom-shared-net:\n    external: true\n    name: "custom-shared-net"');
@@ -741,7 +741,7 @@ describe("Compose mapping-key quoting", () => {
           labels: {
             "dev.lando.app": "myapp",
             "dev.lando.app-root": "/srv/apps/myapp",
-            "dev.lando.create-config": expect.stringMatching(/^v2:[a-f0-9]{64}$/u),
+            "dev.lando.create-config": expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
             "dev.lando.service": "web",
           },
           networks: {
@@ -757,7 +757,7 @@ describe("Compose mapping-key quoting", () => {
           labels: {
             "dev.lando.app": "myapp",
             "dev.lando.app-root": "/srv/apps/myapp",
-            "dev.lando.create-config": expect.stringMatching(/^v2:[a-f0-9]{64}$/u),
+            "dev.lando.create-config": expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
             "dev.lando.service": "database",
           },
           networks: {

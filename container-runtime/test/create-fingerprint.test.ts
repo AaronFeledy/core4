@@ -129,7 +129,7 @@ describe("desired immutable create config", () => {
     const actual = fingerprint(updated);
     // Then drift is visible without putting configuration bytes in labels.
     expect(actual).not.toBe(fingerprint(service));
-    expect(actual).toMatch(/^v2:[a-f0-9]{64}$/u);
+    expect(actual).toMatch(/^v3:[a-f0-9]{64}$/u);
   });
 
   test("normalizes command and entrypoint representations without sorting argv", () => {
@@ -174,7 +174,7 @@ describe("desired immutable create config", () => {
     const after = fingerprint(desired);
     // Then redaction cannot collapse distinct desired values or expose raw values in the label.
     expect(after).toBe(before);
-    expect(after).toMatch(/^v2:[a-f0-9]{64}$/u);
+    expect(after).toMatch(/^v3:[a-f0-9]{64}$/u);
     expect(after).not.toContain("credential-canary");
     expect(after).not.toBe(
       fingerprint({ ...desired, environment: { ...desired.environment, PASSWORD: "${secret:db/other}" } }),
