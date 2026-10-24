@@ -10,7 +10,7 @@ import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-s
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makePodmanApiClient, makeRuntimeProvider } from "@lando/provider-lando";
 import { PluginLoadError } from "@lando/sdk/errors";
-import { AbsolutePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, LoadScopedLandofile, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
@@ -80,12 +80,17 @@ test.skipIf(liveSocket === undefined)(
       const plan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (planner) =>
           planner.plan(
-            {
-              name,
-              runtime: 4,
-              provider: ProviderId.make("lando"),
-              services: { [service]: { type: serviceType.id, home: false, appMount: false } },
-            },
+            LoadScopedLandofile.make({
+              stage: "load-scoped",
+              pendingSites: [],
+              context: { appRoot: AbsolutePath.make(process.cwd()), env: {} },
+              document: {
+                name,
+                runtime: 4,
+                provider: ProviderId.make("lando"),
+                services: { [service]: { type: serviceType.id, home: false, appMount: false } },
+              },
+            }),
             provider.capabilities,
           ),
         ).pipe(Effect.provide(plannerLayer), Effect.provide(registry)),

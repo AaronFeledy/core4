@@ -3,7 +3,7 @@ import { DateTime, Effect, Schema, Stream } from "effect";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   type PlanMetadata,
   PortablePath,
   ProviderCapabilities,
@@ -156,10 +156,11 @@ export const makeTestServicePlan = (providerId: ProviderId): ServicePlan => ({
   extensions: {},
 });
 
-export const makeTestAppPlan = (providerId: ProviderId): AppPlan => {
+export const makeTestAppPlan = (providerId: ProviderId): CurrentExecutableAppPlan => {
   const testServicePlan = makeTestServicePlan(providerId);
 
   return {
+    valueModel: 1,
     id: TEST_APP_ID,
     name: "My App",
     slug: "myapp",

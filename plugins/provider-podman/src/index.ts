@@ -61,6 +61,7 @@ import {
   providerHostInputs,
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
+import { runtimeDiagnosticContext } from "@lando/container-runtime/redact";
 import { redactDetails, redactString } from "@lando/container-runtime/redact";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
@@ -576,7 +577,8 @@ const enforceServerVersionFloor = (
  * `@lando/provider-lando`'s persisted setup-state claims the same socket.
  */
 const assembleRuntimeProvider = (
-  options: ProviderLayerOptions = {},
+  options: ProviderLayerOptions,
+  PODMAN_CTX: ProviderErrorContext,
 ): Effect.Effect<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> => {
   if (options.platform === undefined) {
     return Effect.fail(
@@ -604,7 +606,11 @@ const assembleRuntimeProvider = (
   const unsupportedSocketError =
     options.podmanApi === undefined ? unsupportedSocket(platform, socketPath) : undefined;
   if (unsupportedSocketError !== undefined) return Effect.fail(unsupportedSocketError);
-  const podmanApi = options.podmanApi ?? (options.podmanApiFactory ?? makePodmanApiClient)(socketPath);
+  const podmanApi =
+    options.podmanApi ??
+    (options.podmanApiFactory === undefined
+      ? makeRuntimePodmanApiClient(socketPath, PODMAN_CTX)
+      : options.podmanApiFactory(socketPath));
 
   let desktopMachineName: string | undefined;
   if (family === "darwin" || family === "win32") {
@@ -636,6 +642,7 @@ const assembleRuntimeProvider = (
             hostProxyContainerTargets(containerArch),
           );
           const logSourceBinding = makeProviderLogSourceBinding({
+            ...(PODMAN_CTX.redactor === undefined ? {} : { redactor: PODMAN_CTX.redactor }),
             providerId: PROVIDER_ID,
             logFileAccess: options.logFileAccess,
             helperTarget: capabilities.hostProxy?.containerTargets[0],
@@ -687,7 +694,7 @@ const assembleRuntimeProvider = (
         }),
       api: podmanApi,
       capabilities: resolvedCapabilities,
-      redactDetails,
+      redactDetails: (value) => redactDetails(value, PODMAN_CTX.redactor),
       volumeCreationLabels: podmanVolumeCreationLabels,
       providerName: "provider-podman",
       ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
@@ -784,9 +791,9 @@ const assembleRuntimeProvider = (
           platform,
           daemonUrl: socketPath,
           ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
-          ...(applyOptions.serviceEnvironment === undefined
+          ...(applyOptions.resolveServiceEnvironment === undefined
             ? {}
-            : { serviceEnvironment: applyOptions.serviceEnvironment }),
+            : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
           reconcile: applyOptions.reconcile,
           onVolumeCreated: applyOptions.onVolumeCreated,
           ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
@@ -854,16 +861,18 @@ const assembleRuntimeProvider = (
   });
 };
 
-export const makeRuntimeProvider = (
+export const makeRuntimeProvider = Effect.fnUntraced(function* (
   options: ProviderLayerOptions = {},
-): Effect.Effect<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> =>
-  Effect.flatMap(Effect.serviceOption(AppPlanSanitizer), (found) =>
-    assembleRuntimeProvider(
-      options.sanitizeAppliedPlan !== undefined || found._tag === "None"
-        ? options
-        : { ...options, sanitizeAppliedPlan: found.value.sanitizeForPersistence },
-    ),
+): Effect.fn.Return<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> {
+  const ctx = yield* runtimeDiagnosticContext(PODMAN_CTX);
+  const found = yield* Effect.serviceOption(AppPlanSanitizer);
+  return yield* assembleRuntimeProvider(
+    options.sanitizeAppliedPlan !== undefined || found._tag === "None"
+      ? options
+      : { ...options, sanitizeAppliedPlan: found.value.sanitizeForPersistence },
+    ctx,
   );
+});
 
 export const layer = (options: ProviderLayerOptions = {}) =>
   Layer.effect(RuntimeProvider, makeRuntimeProvider(options));

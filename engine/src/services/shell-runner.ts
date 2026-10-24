@@ -18,7 +18,7 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 
-import { RedactionService, collectSecretEnvValues, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
@@ -111,7 +111,13 @@ const execWithEvents = Effect.fn("ShellRunner.exec")(function* (
   options: ShellCommandOptions | undefined,
   execute: Effect.Effect<ProcessResult, ShellExecError>,
 ) {
-  yield* registerRedactionValues([...(yield* ShellRedactionTokens), ...collectSecretEnvValues(options?.env)]);
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (redaction._tag === "Some") {
+    yield* redaction.value.registerValues([
+      ...(yield* ShellRedactionTokens),
+      ...collectSecretEnvValues(options?.env),
+    ]);
+  }
   yield* publishRedactedShellEvent(options, {
     _tag: "pre-shell-exec",
     ...shellEventShape(command, options),

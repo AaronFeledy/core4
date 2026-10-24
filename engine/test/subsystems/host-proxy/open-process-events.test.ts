@@ -2,11 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { EventService, ProcessRunner } from "@lando/sdk/services";
 import { Effect, Layer, Stream } from "effect";
 import { openHostTarget } from "../../../src/services/host-opener.ts";
@@ -40,9 +36,7 @@ test.skipIf(process.platform === "win32")(
         Layer.succeed(
           RedactionService,
           RedactionService.of({
-            registerValues: registerRedactionValues,
-            payloadValues: () => Effect.succeed(() => []),
-            forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+            ...makeRedactionService(),
           }),
         ),
       );

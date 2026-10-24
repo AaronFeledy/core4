@@ -257,6 +257,14 @@
       "digest": "a7bf0e1d29ba95e31e4cc4b16402bc44eceb83a55c7e3af12cb35d09d384ee70"
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-bound-password-helper",
+      "digest": "9f18bbe623991927e5c0172d07e1320aa9d21bef958c3e8455bad28e49295533"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-escaped-literals",
+      "digest": "5b7e08fc5571540bd86652b554c130a67ffe5ac422348c0fa367dac0cdd84220"
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-missing-creds",
       "digest": "35d13d408375ea22d127f106d09db098d80f3d76e1697063f3a86c02d6bf3f35"
     },
@@ -282,6 +290,13 @@
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-typed-values",
       "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-unescaped-shell",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
     },
     {
       "fixture": "docs/guides/external-access/fixtures/external-access-demo",
@@ -701,6 +716,10 @@
       "digest": "a9c5d23d76c646f8f1c68d0663c3b8f9cb9a649b1d40fdbd2349946f0fde9e4c"
     },
     {
+      "fixture": "docs/guides/postgres/fixtures/postgres-port-url",
+      "digest": "e7289b99f4f952f5c55f8c81608796203cff17a4fb6ad57957080d36f8279f08"
+    },
+    {
       "fixture": "docs/guides/poweroff/fixtures/poweroff-demo",
       "digest": "80e40bcb9df13af80098f3885ab401a93c3c37ce637f585e20a52209d1ff93f9"
     },
@@ -803,6 +822,10 @@
       }
     },
     {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-bound-creds",
+      "digest": "4ca83b9cfe7169e2ff669a2c9ba702f47b64f5566abcf688531369c6b86bb1af"
+    },
+    {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-demo",
       "digest": "129bb83ef1bf4571ca18662ff8789457241433a6931b4d0158f075eda41ccc25"
     },
@@ -881,7 +904,7 @@
       "fixture": "docs/guides/timezone/fixtures/timezone-rejected-interpolation",
       "invalid": {
         "status": "invalid",
-        "tag": "NotImplementedError"
+        "tag": "LandofileValidationError"
       }
     },
     {
@@ -949,6 +972,13 @@
       "digest": "097f0e2646abd0984cb33c6aa15193c8018ddeb1883184e708d08ba82e85e98b"
     },
     {
+      "fixture": "docs/guides/your-landofile/fixtures/flow-mapping-rejected",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileParseError"
+      }
+    },
+    {
       "fixture": "docs/guides/your-landofile/fixtures/merge-directives",
       "digest": "77a782119d0778d6ea2135f6e6d299fe5fb9bd7cda7055a016cfc92d34726d9f"
     },
@@ -966,6 +996,31 @@
     }
   ],
   "intended": {
+    "docs/guides/config-explain/fixtures/bare-recipe": {
+      "before": { "invalid": { "status": "invalid", "tag": "LandofileValidationError" } },
+      "after": { "invalid": { "status": "invalid", "tag": "ConfigExpressionError" } },
+      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. A bare recipe supplies no options, so this fixture remains rejected with a located ConfigExpressionError; no bare-recipe acceptance is introduced."
+    },
+    "docs/guides/migrating-recipes/fixtures/bare-recipe": {
+      "before": { "invalid": { "status": "invalid", "tag": "LandofileValidationError" } },
+      "after": { "invalid": { "status": "invalid", "tag": "ConfigExpressionError" } },
+      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. Missing options on the bare recipe now produce a located ConfigExpressionError while the same invalid fixture remains refused."
+    },
+    "docs/guides/expressions/fixtures/expressions-escaped-literals": {
+      "before": { "digest": "5b7e08fc5571540bd86652b554c130a67ffe5ac422348c0fa367dac0cdd84220" },
+      "after": { "digest": "73a76f1d968a938c8c84d4ee561567d39885c1e3be3e212009ac746e07e9829b" },
+      "reason": "Documented dollar and brace escapes decode exactly once at authored source sites. The encoded load-scoped document now carries the resulting literal text without retaining artificial delimiter escapes or granting later expression authority."
+    },
+    "docs/guides/expressions/fixtures/expressions-service-creds": {
+      "before": { "digest": "096e0c0033fd8b2ddc3fa52d5f415c469c9e733b3adb89712a3c192d37c9b8c9" },
+      "after": { "digest": "cd782ede6ce2a22f5af8be79c7d90b157dab49eece777299bf9eb62d70ccde4b" },
+      "reason": "The authored guide fixture now sets database port 5433, derives the URL port from services.database.port, and explicitly component-encodes its password. This records the deliberate input update, not a refresh of unchanged inputs."
+    },
+    "docs/guides/secret-stores/fixtures/secret-stores-demo": {
+      "before": { "digest": "129bb83ef1bf4571ca18662ff8789457241433a6931b4d0158f075eda41ccc25" },
+      "after": { "digest": "0bb28603bc928f7101b0620ed650b047bc9eac670af78170e7d7b7b3d47fd085" },
+      "reason": "Authored secret references now encode as SecretRef descriptors without store access. The guide also adds the API_URL mixed-reference example, encoded as BoundText with raw reference parts rather than decrypted bytes."
+    },
     "docs/guides/expressions/fixtures/expressions-typed-values": {
       "before": {
         "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470"

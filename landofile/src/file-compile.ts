@@ -27,7 +27,12 @@ export const compileLandofileFile = Effect.fn("Landofile.loadPreparedFile")(func
   };
   const merged = yield* composePreparedLayers([{ layer, landofile: prepared.value }], source.context, inputs);
   const loadScope =
-    scope ?? (yield* buildLandofileLoadScope([{ file, value: merged }], inputs?.templates.context?.env));
+    scope ??
+    (yield* buildLandofileLoadScope(
+      [{ file, value: merged }],
+      source.context.compilationContext?.env,
+      source.context.pendingSites,
+    ));
   const landofile = yield* finalizeLandofile(file, merged, {
     appRoot,
     scope: loadScope,

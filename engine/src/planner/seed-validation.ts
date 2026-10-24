@@ -1,4 +1,5 @@
-import type { LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError } from "@lando/sdk/errors";
+import { validationIssue } from "@lando/sdk/schema";
 import type { ServiceTypeResolution } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { mergeLogSources } from "../services/log-sources.ts";
@@ -20,6 +21,17 @@ export const validateServiceSeed = Effect.fnUntraced(function* (
   landofilePath: string,
 ) {
   const errors: LandofileValidationError[] = [];
+  if (seed.resolution.connection !== undefined && seed.resolution.nonSqlCreds !== undefined) {
+    const message = "A service type must publish either connection or nonSqlCreds, not both.";
+    errors.push(
+      new LandofileValidationError({
+        message,
+        file: landofilePath,
+        remediation: "Update the service type to publish one canonical credential source.",
+        issues: [validationIssue(["services", seed.name], message)],
+      }),
+    );
+  }
   const storage = authoredStorageScopes(appRoot, seed.name, seed.resolution.normalizedConfig);
   if (storage.invalidCacheEntry !== undefined) errors.push(storage.invalidCacheEntry);
   if (storage.globalEntry !== undefined)

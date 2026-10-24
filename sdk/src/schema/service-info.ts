@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { ServiceCreds } from "./landofile.ts";
+import { ServiceCredsDisplay } from "./database-connection.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 
 // ============================================================================
@@ -47,7 +47,7 @@ export const ServiceInfo = Schema.Struct({
   logSources: Schema.optionalKey(Schema.Array(ServiceInfoLogSource)).annotate({
     description: "Declared service log sources and their provider-specific availability.",
   }),
-  creds: Schema.optionalKey(ServiceCreds).annotate({
+  creds: Schema.optionalKey(ServiceCredsDisplay).annotate({
     description: "Service login credentials surfaced by `lando info` when the service publishes them.",
   }),
 });

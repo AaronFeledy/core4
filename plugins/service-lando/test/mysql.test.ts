@@ -165,11 +165,7 @@ describe("mysql ServiceType", () => {
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: [
-        "sh",
-        "-c",
-        'mysqladmin ping -h 127.0.0.1 -P 3306 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
-      ],
+      command: ["mysqladmin", "ping", "-h", "127.0.0.1", "-P", "3306", "-u", "lando", "--silent"],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,

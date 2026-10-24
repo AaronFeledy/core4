@@ -128,17 +128,23 @@ can tab through the public schema registry instead of guessing names.
       <Run
         runtime="library"
         code={`const { Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
-const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
 const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
 const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
 const { LandofileService } = yield* Effect.promise(() => import("@lando/sdk/services"));
+const { AbsolutePath, LoadScopedLandofile } = yield* Effect.promise(() => import("@lando/sdk/schema"));
+const landofile = LoadScopedLandofile.make({
+  stage: "load-scoped",
+  document: { name: "mcp-guide", services: {} },
+  pendingSites: [],
+  context: { appRoot: AbsolutePath.make(context.testDir), env: {} },
+});
 const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
 const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
 const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
-const { RedactionService, registerRedactionValues } = yield* Effect.promise(() => import("@lando/redaction/service"));
+const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
 const runtimeLayer = Layer.succeed(LandofileService, {
-  discover: Effect.succeed({ name: "mcp-guide", services: {} }),
+  discover: Effect.succeed(landofile),
 });
 const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   Layer.succeed(McpRuntimeConfig, {
@@ -146,11 +152,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
     defaultAllowlist: ["app:config:get", "app:config:view"],
     runtimeLayer,
   }),
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
-  }),
+  Layer.succeed(RedactionService, makeRedactionService()),
 )));
 const responses = yield* Effect.gen(function* () {
   const client = yield* makeStdioClient();
@@ -349,14 +351,20 @@ stdout write that does not finish fails after 5 seconds.
       <Run
         runtime="library"
 code={`const { Deferred, Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
-const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
 const { LandofileService } = yield* Effect.promise(() => import("@lando/sdk/services"));
+const { AbsolutePath, LoadScopedLandofile } = yield* Effect.promise(() => import("@lando/sdk/schema"));
+const landofile = LoadScopedLandofile.make({
+  stage: "load-scoped",
+  document: { name: "mcp-guide", services: {} },
+  pendingSites: [],
+  context: { appRoot: AbsolutePath.make(context.testDir), env: {} },
+});
 const { MAX_OUTSTANDING_REQUESTS } = yield* Effect.promise(() => import("../../../../../mcp/src/stdio-limits.ts"));
 const { buildCatalog, computeEffectiveAllowlist } = yield* Effect.promise(() => import("../../../../../mcp/src/catalog.ts"));
 const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
 const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
 const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
-const { RedactionService, registerRedactionValues } = yield* Effect.promise(() => import("@lando/redaction/service"));
+const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
 const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
@@ -381,7 +389,7 @@ expect(catalog.tools.find((tool) => tool.toolId === "app:config:view")?.inputSch
   .toHaveProperty("properties.args.properties", {});
 const release = yield* Deferred.make<void>();
 const runtimeLayer = Layer.succeed(LandofileService, {
-  discover: Deferred.await(release).pipe(Effect.as({ name: "mcp-guide", services: {} })),
+  discover: Deferred.await(release).pipe(Effect.as(landofile)),
 });
 const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   Layer.succeed(McpRuntimeConfig, {
@@ -389,11 +397,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
     defaultAllowlist: ["app:config:get", "app:config:view"],
     runtimeLayer,
   }),
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
-  }),
+  Layer.succeed(RedactionService, makeRedactionService()),
 )));
 const observed = yield* Effect.gen(function* () {
   const client = yield* makeStdioClient();
@@ -452,13 +456,12 @@ console.log(appConfigTools);`}
       <Run
         runtime="library"
 code={`const { Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
-const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
 const { JSON_SCHEMA_NAMES } = yield* Effect.promise(() => import("@lando/sdk/schema"));
 const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
 const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
 const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
 const { resources } = yield* Effect.promise(() => import("../../../../../core/src/mcp-resources.ts"));
-const { RedactionService, registerRedactionValues } = yield* Effect.promise(() => import("@lando/redaction/service"));
+const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   Layer.succeed(McpRuntimeConfig, {
     commandEntries: [],
@@ -466,11 +469,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
     runtimeLayer: Layer.empty,
     resources,
   }),
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
-  }),
+  Layer.succeed(RedactionService, makeRedactionService()),
 )));
 const observed = yield* Effect.gen(function* () {
   const client = yield* makeStdioClient();

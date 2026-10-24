@@ -1,14 +1,16 @@
 import type { HostTerminal } from "@lando/sdk/schema";
 
-interface TerminalEnvOptions {
+interface TerminalEnvOptions<Value> {
   readonly tty: boolean;
   readonly hostTerminal?: HostTerminal;
   readonly hostEnv?: Readonly<Record<string, string | undefined>>;
-  readonly serviceEnv?: Readonly<Record<string, string>>;
-  readonly env?: Readonly<Record<string, string>>;
+  readonly serviceEnv?: Readonly<Record<string, unknown>>;
+  readonly env?: Readonly<Record<string, Value>>;
 }
 
-export const withTerminalEnv = (options: TerminalEnvOptions): Record<string, string> | undefined => {
+export const withTerminalEnv = <Value = string>(
+  options: TerminalEnvOptions<Value>,
+): Record<string, Value | string> | undefined => {
   if (!options.tty) return options.env === undefined ? undefined : { ...options.env };
 
   const terminalEnv: Record<string, string> = {

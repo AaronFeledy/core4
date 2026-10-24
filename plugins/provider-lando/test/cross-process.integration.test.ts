@@ -83,6 +83,7 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
 const web = servicePlan("web");
 const database = servicePlan("database");
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Cross Process App",
   slug: "crossprocessapp",

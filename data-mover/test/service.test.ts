@@ -27,7 +27,7 @@ import { __testOnlyEncodeTarOctal, __testOnlyUnarchivePayloadWithCap } from "@la
 import { makeTestDataMover } from "@lando/data-mover/testing";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   ArchiveFormatError,
   DataChecksumMismatchError,
@@ -224,16 +224,12 @@ const captureEvents = () => {
   return { layer: serviceLayer, events: () => [...captured] };
 };
 
-const redactionLayer = Layer.succeed(
+const redactionLayer = Layer.effect(
   RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => ["secret-token"]),
-    forProfile: () =>
-      Effect.succeed({
-        redactString: (input: string) => input.replaceAll("secret-token", "[redacted]"),
-        redactValue: (input: unknown) => input,
-      }),
+  Effect.gen(function* () {
+    const service = makeRedactionService();
+    yield* service.registerValues(["secret-token"]);
+    return service;
   }),
 );
 

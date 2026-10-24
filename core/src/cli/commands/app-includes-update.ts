@@ -65,6 +65,7 @@ export interface AppIncludesUpdateOptions {
 }
 
 export type AppIncludesUpdateError =
+  | import("@lando/sdk/errors").ConfigExpressionError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError

@@ -5,12 +5,12 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
 import { DataTreeOwnershipCapabilityError } from "@lando/sdk/errors";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import { DATA_TREE_OWNERSHIP_STEP_ID } from "../../src/planner/data-tree.ts";
 import { serviceFeatureBuildSteps } from "../../src/planner/extensions.ts";
@@ -39,7 +39,7 @@ const planEffect = (appRoot: string, landofile: LandofileShape) => {
     ),
   );
   return Effect.flatMap(AppPlanner, (service) =>
-    service.plan(rememberLandofileAppRoot(landofile, appRoot), capabilities),
+    service.plan(literalTestLandofile(landofile, appRoot), capabilities),
   ).pipe(Effect.provide(planner));
 };
 

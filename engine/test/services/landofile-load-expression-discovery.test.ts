@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { LandofileLoadOutsideRootError, NotImplementedError } from "@lando/sdk/errors";
+import { LandofileLoadOutsideRootError, LandofileValidationError } from "@lando/sdk/errors";
 import { GlobalConfig, ServiceName } from "@lando/sdk/schema";
 import { ConfigService, LandofileService, Logger } from "@lando/sdk/services";
 
@@ -75,7 +75,12 @@ test("fails closed when an env expression names an unset variable", async () => 
     const failure = await discoverFailure();
 
     // Then
-    expect(String((failure as { message?: unknown }).message ?? "")).toContain("name");
+    expect(failure).toMatchObject({
+      _tag: "ConfigExpressionError",
+      filePath: join(appRoot, ".lando.yml"),
+      path: "name",
+      expression: "{{ env.LANDO_UNSET_FIXTURE }}",
+    });
   });
 });
 
@@ -88,7 +93,7 @@ test("keeps host-reaching Landofile expressions unsupported", async () => {
     const failure = await discoverFailure();
 
     // Then
-    expect(failure).toBeInstanceOf(NotImplementedError);
+    expect(failure).toBeInstanceOf(LandofileValidationError);
   });
 });
 
@@ -113,7 +118,7 @@ test("keeps context paths deferred when combined with load", async () => {
     const failure = await discoverFailure();
 
     // Then
-    expect(failure).toBeInstanceOf(NotImplementedError);
+    expect(failure).toBeInstanceOf(LandofileValidationError);
   });
 });
 
@@ -264,7 +269,10 @@ test("allows and logs an opted-in outside-root load", async () => {
 
     // When
     const landofile = await Effect.runPromise(
-      Effect.flatMap(LandofileService, (service) => service.discover).pipe(Effect.provide(layer)),
+      Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+        Effect.map((compiled) => compiled.document),
+        Effect.provide(layer),
+      ),
     );
 
     // Then
@@ -331,7 +339,10 @@ test.each(["landofile", "tooling"] as const)(
 
       // When
       const landofile = await Effect.runPromise(
-        Effect.flatMap(LandofileService, (service) => service.discover).pipe(Effect.provide(layer)),
+        Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+          Effect.map((compiled) => compiled.document),
+          Effect.provide(layer),
+        ),
       );
 
       // Then

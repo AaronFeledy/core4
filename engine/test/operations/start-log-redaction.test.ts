@@ -1,11 +1,11 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
-import { resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
@@ -22,8 +22,6 @@ import { startApp } from "../../src/operations/start.ts";
 import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
-
-afterEach(resetRegisteredRedactionValuesForTesting);
 
 const registryLayerFor = (harness: ReturnType<typeof makeHarness>) => {
   const manifest = Schema.decodeUnknownSync(PluginManifest)({
@@ -122,6 +120,7 @@ test("selected provider apply redacts new plan and resolved environment secrets 
 
   await Effect.runPromise(
     Effect.gen(function* () {
+      const redaction = yield* RedactionService;
       const registry = yield* RuntimeProviderRegistry;
       const provider = yield* registry.select(plan);
       return yield* Effect.scoped(
@@ -130,10 +129,14 @@ test("selected provider apply redacts new plan and resolved environment secrets 
             ...plan,
             services: { [web.name]: { ...web, environment: { DATABASE_PASSWORD: password } } },
           },
-          { reconcile: false, serviceEnvironment: { [web.name]: { DATABASE_PASSWORD: resolved } } },
+          {
+            reconcile: false,
+            resolveServiceEnvironment: () =>
+              redaction.registerValues([resolved]).pipe(Effect.as({ DATABASE_PASSWORD: resolved })),
+          },
         ),
       );
-    }).pipe(Effect.provide(registryLayerFor(harness))),
+    }).pipe(Effect.provide(registryLayerFor(harness)), Effect.provide(harness.layer)),
   );
 
   expect(captured).toBe("failed with [redacted] and [redacted]");

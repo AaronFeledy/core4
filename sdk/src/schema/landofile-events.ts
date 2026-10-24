@@ -298,14 +298,16 @@ export const EventStepStatus = Schema.Literals(["active", "skipped", "deduped"])
 export type EventStepStatus = typeof EventStepStatus.Type;
 
 export const EventStepPlan = Schema.Struct({
-  step: EventStep,
-  source: EventStepSource,
+  step: EventStep.annotate({ description: "Authored action to execute at this event site." }),
+  source: EventStepSource.annotate({ description: "Host or project origin of this event step." }),
   sourceIndex: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))).annotate({
     description:
       "Index of the step in its authored list, so errors can point at `events.<name>[i]` or `hostEvents.<name>[i]`.",
   }),
-  status: EventStepStatus,
-  skipReason: Schema.optionalKey(Schema.String),
+  status: EventStepStatus.annotate({ description: "Plan-time execution disposition of the step." }),
+  skipReason: Schema.optionalKey(Schema.String).annotate({
+    description: "Reason this step is skipped or deduplicated, when applicable.",
+  }),
 }).annotate({
   identifier: "EventStepPlan",
   title: "Event Step Plan",

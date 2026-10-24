@@ -1,5 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { encodeCommandResult } from "@lando/sdk/command-result";
@@ -7,15 +6,11 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { requestContainerBuild } from "../src/image-build-http.ts";
 
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
-
 test.each(["error", "errorDetail"] as const)(
-  "redacts runtime-registered values in daemon %s frames",
+  "redacts explicit secret values in daemon %s frames",
   async (field) => {
     // Given
     const canary = "opaque-build-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
     const message = `engine said ${canary}; exit status 1`;
     const frame = field === "error" ? { error: message } : { errorDetail: { message } };
     const request = () => Effect.succeed({ status: 200, body: JSON.stringify(frame) });
@@ -28,7 +23,7 @@ test.each(["error", "errorDetail"] as const)(
           path: "/build",
           tag: "lando-web",
           stdin: (async function* () {})(),
-          secretValues: [],
+          secretValues: [canary],
         }),
       ),
     );
@@ -44,7 +39,6 @@ test.each([
   ["a secret pattern inside it", "opaque password=inner private-suffix", []],
 ] as const)("masks a registered value whole despite %s", async (_case, canary, buildArgs) => {
   // Given
-  Effect.runSync(registerRedactionValues([canary]));
   const request = () =>
     Effect.succeed({ status: 200, body: JSON.stringify({ error: `engine said ${canary}; exit status 1` }) });
   // When
@@ -56,7 +50,7 @@ test.each([
         path: "/build",
         tag: "lando-web",
         stdin: (async function* () {})(),
-        secretValues: buildArgs,
+        secretValues: [...buildArgs, canary],
       }),
     ),
   );

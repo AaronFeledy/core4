@@ -6,6 +6,7 @@ import {
   AppId,
   type DataTransferResult,
   type DataTransferSpec,
+  type Environment,
   PortablePath,
   type PrunePolicy,
   ServiceName,
@@ -21,6 +22,7 @@ import {
 import type { DumpCompression } from "./compression.ts";
 import { withHostDumpCompression } from "./compression.ts";
 import type { SqlCreds } from "./creds.ts";
+import { resolveSqlEnvironment } from "./environment.ts";
 import {
   type SqlFamily,
   dumpCommand,
@@ -37,7 +39,7 @@ import { requireDatabaseMount } from "./volume-target.ts";
 export type SqlExec = (
   service: string,
   command: ReadonlyArray<string>,
-  env?: Readonly<Record<string, string>>,
+  env?: Environment,
 ) => Effect.Effect<{ readonly ok: boolean; readonly stdout: string }, unknown>;
 
 export type SqlMover = {
@@ -89,7 +91,7 @@ export const runExport = Effect.fn("Sql.export")(function* (
     readonly service: string;
     readonly family: SqlFamily;
     readonly creds: SqlCreds;
-    readonly env: Readonly<Record<string, string>>;
+    readonly env: Environment;
     readonly file: string;
     readonly compression: DumpCompression;
   },
@@ -100,12 +102,12 @@ export const runExport = Effect.fn("Sql.export")(function* (
     path: input.file,
     compression: input.compression,
     direction: "export",
-    transfer: (workingPath) => {
+    transfer: Effect.fn("Sql.export.transfer")(function* (workingPath: string) {
       const path = AbsolutePath.make(workingPath);
       if (input.family === "mssql") {
         const bak = mssqlBackupServicePath(input.creds.database);
         const backup = mssqlBackupCommand(input.creds.database, input.creds.port);
-        return Effect.gen(function* () {
+        return yield* Effect.gen(function* () {
           const prepare = mssqlPrepareBackupCommand();
           yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
           yield* requireExecOk(yield* exec(input.service, backup, input.env), input.service, backup);
@@ -121,18 +123,18 @@ export const runExport = Effect.fn("Sql.export")(function* (
           });
         });
       }
-      return mover.transfer({
+      return yield* mover.transfer({
         from: {
           _tag: "serviceCmd",
           app,
           service,
           command: dumpCommand(input.family, input.creds),
-          env: input.env,
+          env: yield* resolveSqlEnvironment(input.env),
         },
         to: { _tag: "hostPath", path },
         overwrite: true,
       });
-    },
+    }),
   });
 });
 
@@ -144,7 +146,7 @@ export const runImport = Effect.fn("Sql.import")(function* (
     readonly service: string;
     readonly family: SqlFamily;
     readonly creds: SqlCreds;
-    readonly env: Readonly<Record<string, string>>;
+    readonly env: Environment;
     readonly file: string;
     readonly compression: DumpCompression;
     readonly expectedDigest?: string;
@@ -157,7 +159,7 @@ export const runImport = Effect.fn("Sql.import")(function* (
     compression: input.compression,
     direction: "import",
     ...(input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest }),
-    transfer: (workingPath, stagedDigest) => {
+    transfer: Effect.fn("Sql.import.transfer")(function* (workingPath: string, stagedDigest?: string) {
       // DataMover checks the file at workingPath. Uncompressed imports keep the
       // original dump digest from ensureReadableDump; compressed imports pass
       // the staged uncompressed digest from the helper.
@@ -165,7 +167,7 @@ export const runImport = Effect.fn("Sql.import")(function* (
       const path = AbsolutePath.make(workingPath);
       if (input.family === "mssql") {
         const bak = mssqlBackupServicePath(input.creds.database);
-        return Effect.gen(function* () {
+        return yield* Effect.gen(function* () {
           const prepare = mssqlPrepareBackupCommand();
           yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
           const transfer = yield* mover.transfer({
@@ -184,19 +186,19 @@ export const runImport = Effect.fn("Sql.import")(function* (
           return transfer;
         });
       }
-      return mover.transfer({
+      return yield* mover.transfer({
         from: { _tag: "hostPath", path, trusted: true },
         to: {
           _tag: "serviceCmd",
           app,
           service,
           command: loadCommand(input.family, input.creds),
-          env: input.env,
+          env: yield* resolveSqlEnvironment(input.env),
         },
         overwrite: true,
         ...(digest === undefined ? {} : { expectedDigest: digest }),
       });
-    },
+    }),
   });
 });
 
@@ -205,7 +207,7 @@ export const runReset = Effect.fn("Sql.reset")(function* (
   service: string,
   family: SqlFamily,
   creds: SqlCreds,
-  env: Readonly<Record<string, string>>,
+  env: Environment,
 ) {
   const usesMysqlRoot = (family === "mysql" || family === "mariadb") && creds.rootPassword !== undefined;
   const command = resetCommand(family, usesMysqlRoot ? { ...creds, user: "root" } : creds);

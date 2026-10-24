@@ -39,8 +39,8 @@ export const apiResponseFailure = (
   new ProviderUnavailableError({
     providerId: ctx.providerId,
     operation,
-    message: redactString(withApiReason(message, { body: response.body })),
-    details: redactResponseDetails(response),
+    message: redactString(withApiReason(message, { body: response.body }, ctx.redactor), ctx.redactor),
+    details: redactResponseDetails(response, ctx.redactor),
     remediation: ctx.remediation,
   });
 
@@ -52,8 +52,8 @@ export const transportFailure = (
   const input = {
     providerId: ctx.providerId,
     operation,
-    message: redactString(withApiReason(cause.message, cause.details)),
-    ...(cause.details === undefined ? {} : { details: redactDetails(cause.details) }),
+    message: redactString(withApiReason(cause.message, cause.details, ctx.redactor), ctx.redactor),
+    ...(cause.details === undefined ? {} : { details: redactDetails(cause.details, ctx.redactor) }),
     remediation: ctx.remediation,
     cause,
   };
@@ -72,7 +72,7 @@ export const engineApiFailure = (
     providerId: ctx.providerId,
     operation,
     message: "Failed to call the container engine API.",
-    details: redactDetails({ method: request.method, path: request.path }),
+    details: redactDetails({ method: request.method, path: request.path }, ctx.redactor),
     remediation: ctx.remediation,
     cause,
   });

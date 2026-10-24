@@ -6,7 +6,7 @@ import { Cause, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { DataTransferError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { DataMover, EventService, PathsService, RuntimeProvider } from "@lando/sdk/services";
@@ -29,18 +29,7 @@ const silentEvents = Layer.succeed(
   }),
 );
 
-const passthroughRedaction = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () =>
-      Effect.succeed({
-        redactString: (input: string) => input,
-        redactValue: (input: unknown) => input,
-      }),
-  }),
-);
+const passthroughRedaction = RedactionService.layer;
 
 describe("byteStreamFromHost missing files", () => {
   test("fails with a host-file-not-found DataTransferError on ENOENT", async () => {

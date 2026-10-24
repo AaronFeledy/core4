@@ -6,7 +6,8 @@ import { RouterService, ToolingEngine, physicalVolumeLockKey } from "@lando/sdk/
 import { TestRouterService } from "@lando/sdk/test";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
-import { effectiveEventsForPlan, withProjectEvents } from "../../src/planner/effective-events.ts";
+import { effectiveEventsForPlan } from "../../src/planner/effective-events.ts";
+import { withAuthoredProjectEvents as withProjectEvents } from "./event-plan.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const recordingEngine = (executed: string[], failure?: string) => ({

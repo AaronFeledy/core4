@@ -217,13 +217,14 @@ describe("mongodb ServiceType", () => {
     expect(resolution.tooling).toEqual({
       mongosh: {
         service: "db",
-        cmd: ["sh", "-c", 'exec mongosh "$MONGO_URI" "$@"', "mongosh"],
+        cmd: expect.any(Array),
         env: {
           MONGO_URI: `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@127.0.0.1:27017/${encodeURIComponent(creds.database)}?authSource=admin`,
         },
       },
     });
     expect(resolution.normalizedConfig.creds).toEqual(creds);
+    expect(resolution.tooling?.mongosh?.cmd).not.toContain(creds.password);
   });
 
   test("mongosh MONGO_URI uses the overridden service port", async () => {

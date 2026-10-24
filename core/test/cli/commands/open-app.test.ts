@@ -25,7 +25,7 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 
 import {
   type OpenAppOptions,
@@ -101,7 +101,7 @@ const layers = (rec: ReturnType<typeof record>) =>
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
+        ...makeRedactionService(),
         payloadValues: () => Effect.succeed(() => []),
         forProfile: () => Effect.succeed({ redactString: (t: string) => `RED(${t})`, redactValue: (v) => v }),
       }),

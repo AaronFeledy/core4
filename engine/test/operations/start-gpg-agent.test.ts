@@ -400,7 +400,11 @@ for (const prepareExit of [0, 1]) {
               plan: selected,
               root: selected.root,
               app: { kind: "user", id: selected.id, root: selected.root },
-              landofile: { name: selected.name, services: {}, gpgAgent: { forward: true } },
+              landofile: literalTestLandofile({
+                name: selected.name,
+                services: {},
+                gpgAgent: { forward: true },
+              }),
             },
           ),
         ).pipe(
@@ -439,3 +443,4 @@ for (const prepareExit of [0, 1]) {
     }
   });
 }
+import { literalTestLandofile } from "../compiled-landofile.ts";

@@ -61,7 +61,10 @@ describe("SSH agent doctor posture", () => {
           return { identities: 0 };
         },
       }).pipe(
-        Effect.provideService(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+        Effect.provideService(
+          LandofileService,
+          LandofileService.of({ discover: Effect.succeed(literalLandofile(landofile, "/app")) }),
+        ),
       ),
     );
     // Then
@@ -434,3 +437,4 @@ describe("SSH agent doctor posture", () => {
     expect(check.context.securityPosture).toBe("host-win32-loopback");
   });
 });
+import { literalLandofile } from "../_support/value-contracts.ts";

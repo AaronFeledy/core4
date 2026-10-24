@@ -1,3 +1,4 @@
+import type { Redactor } from "@lando/sdk/secrets";
 import type { Effect, Stream } from "effect";
 
 import type {
@@ -9,6 +10,7 @@ import type {
 export type ProviderErrorContext = {
   readonly providerId: string;
   readonly remediation: string;
+  readonly redactor?: Redactor;
 };
 
 export interface EngineHttpRequest {

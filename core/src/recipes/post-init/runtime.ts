@@ -55,6 +55,7 @@ export interface RunPostInitOptions {
   readonly runs?: ReadonlyArray<string>;
   readonly commandRunner?: ChoicesCommandRunner;
   readonly recipeRoot?: string;
+  readonly redact?: (text: string) => string;
 }
 
 const secretsRedactor = createStandaloneRedactor("secrets");
@@ -170,7 +171,7 @@ const spawnBun = async (
       actionType: "bun",
       actionVerb: verb,
       kind: "exit",
-      remediation: redactBunOutput(
+      remediation: (options.redact ?? redactBunOutput)(
         `\`bun ${verb}\` exited with code ${result.exitCode} in ${cwd}. ${detail}`,
       ),
       exitCode: result.exitCode,
@@ -420,8 +421,9 @@ const runCommand = async (
   const result = await runner({ command: action.cmd, args: action.args ?? [] });
 
   if (result.exitCode !== 0) {
-    const stderr = redactBunOutput(result.stderr.trim());
-    const stdout = redactBunOutput(result.stdout.trim());
+    const redact = options.redact ?? redactBunOutput;
+    const stderr = redact(result.stderr.trim());
+    const stdout = redact(result.stdout.trim());
     const details = [stderr, stdout].filter((line) => line !== "").join(" ");
     throw new RecipePostInitError({
       message: `postInit[${index}] (command ${action.cmd}) failed with exit code ${result.exitCode}.`,
@@ -429,7 +431,7 @@ const runCommand = async (
       actionIndex: index,
       actionType: "command",
       kind: "exit",
-      remediation: redactBunOutput(
+      remediation: redact(
         `Command \`${action.cmd}\` exited with code ${result.exitCode}.${details === "" ? "" : ` Output: ${details}`} Fix the command or remove it from the recipe postInit action.`,
       ),
       exitCode: result.exitCode,

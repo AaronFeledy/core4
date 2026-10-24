@@ -1,11 +1,11 @@
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
-import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
+import { arr, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const WORDPRESS_RECIPE_VERSION = "0.1.0";
 export const WORDPRESS_CONTENT_DIGEST =
-  "sha256:95475ec1a00e294fc87cdcb0877d535073c69dc66b840f36e93074227756eefd";
+  "sha256:120d0083255dae0e0e22165421746841a17d60f7908400137c516cb1ac0f5cc1";
 export const wordpressProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-wordpress",
@@ -13,6 +13,22 @@ export const wordpressProducer: RecipeProducer = {
   manifestVersion: WORDPRESS_RECIPE_VERSION,
   contentDigest: WORDPRESS_CONTENT_DIGEST,
 };
+const services = (redis: boolean) =>
+  obj([
+    [
+      "appserver",
+      obj([
+        ["type", lit("php:{{ recipe.php }}")],
+        ["primary", lit(true)],
+        ["framework", lit("wordpress")],
+        ["port", lit(80)],
+        ["dependsOn", arr(lit("database"), ...(redis ? [lit("cache")] : []))],
+        ["routes", arr(defaultRoute())],
+      ]),
+    ],
+    ["database", obj([["type", lit("mariadb")]])],
+    ...(redis ? [["cache", obj([["type", lit("redis")]])] as const] : []),
+  ]);
 export const wordpressSnapshot: RecipeSnapshot = {
   identity: wordpressProducer,
   optionTypes: {
@@ -25,34 +41,10 @@ export const wordpressSnapshot: RecipeSnapshot = {
       ["runtime", lit(4)],
       [
         "services",
-        call(
-          "merge",
-          obj([
-            [
-              "appserver",
-              obj([
-                ["type", lit("php:{{ recipe.php }}")],
-                ["primary", lit(true)],
-                ["framework", lit("wordpress")],
-                ["port", lit(80)],
-                [
-                  "dependsOn",
-                  cond(
-                    { kind: "Path", head: "options", segments: [{ type: "prop", name: "redis" }] },
-                    arr(lit("database"), lit("cache")),
-                    arr(lit("database")),
-                  ),
-                ],
-                ["routes", arr(defaultRoute())],
-              ]),
-            ],
-            ["database", obj([["type", lit("mariadb")]])],
-          ]),
-          cond(
-            { kind: "Path", head: "options", segments: [{ type: "prop", name: "redis" }] },
-            obj([["cache", obj([["type", lit("redis")]])]]),
-            obj([]),
-          ),
+        cond(
+          { kind: "Path", head: "options", segments: [{ type: "prop", name: "redis" }] },
+          services(true),
+          services(false),
         ),
       ],
       [

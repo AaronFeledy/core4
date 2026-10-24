@@ -38,8 +38,8 @@ test("resolves an env range before validating and remembering it", async () => {
       // When
       const loaded = await Effect.runPromise(load(root, { RANGE: ">=4 <5" }));
       // Then runtime consumers receive the resolved range after exactly one strict decode.
-      expect(loaded.lando).toBe(">=4 <5");
-      expect(getVersionConstraintEntries(loaded, "unused")).toEqual([
+      expect(loaded.document.lando).toBe(">=4 <5");
+      expect(getVersionConstraintEntries(loaded.document, "unused")).toEqual([
         { range: ">=4 <5", source: join(root, ".lando.yml"), layer: "canonical", order: 3 },
       ]);
       expect(calls).toHaveBeenCalledTimes(1);
@@ -82,9 +82,9 @@ test("resolves every shadowed layer and nested include range against merged reci
       try {
         // When
         const loaded = await Effect.runPromise(load(root, { DIST: "<5", LOCAL: ">=4.3", NESTED: "<4.5" }));
-        const entries = getVersionConstraintEntries(loaded, "unused");
+        const entries = getVersionConstraintEntries(loaded.document, "unused");
         // Then the winning wildcard does not discard any lower constraint or its attribution.
-        expect(loaded.lando).toBe("*");
+        expect(loaded.document.lando).toBe("*");
         expect(entries).toEqual([
           { range: ">=4.2", source: join(root, ".lando.base.yml"), layer: "base", order: 0 },
           { range: "<5", source: join(root, ".lando.dist.yml"), layer: "dist", order: 1 },
@@ -161,14 +161,10 @@ test("attributes an unresolved shadowed range to its original layer and path", a
       const error = await Effect.runPromise(load(root).pipe(Effect.flip));
       // Then
       expect(error).toMatchObject({
-        _tag: "LandofileValidationError",
-        file: join(root, ".lando.base.yml"),
-        issues: [
-          expect.objectContaining({
-            path: ["lando"],
-            source: { file: join(root, ".lando.base.yml"), layer: "base", path: ["lando"] },
-          }),
-        ],
+        _tag: "ConfigExpressionError",
+        filePath: join(root, ".lando.base.yml"),
+        path: "lando",
+        expression: "{{ env.MISSING }}",
       });
     },
   );

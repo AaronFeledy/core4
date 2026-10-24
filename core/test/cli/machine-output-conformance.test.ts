@@ -7,7 +7,7 @@ import { Arbitrary, Effect, Option, Schema } from "effect";
 import { makeTestRuntime } from "@lando/core/testing";
 import type { AppConfigResult } from "@lando/engine/operations/app-config-result";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { RedactionService, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { ScratchRunTargetError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, LandofileShape, StreamFrame, TunnelSession } from "@lando/sdk/schema";
 
@@ -333,8 +333,6 @@ describe("machine-output conformance", () => {
         }
         return value;
       });
-
-    afterEach(resetRegisteredRedactionValuesForTesting);
 
     test("success emits stdout/stderr frames terminated by a result frame with scratch id and exit code", async () => {
       const io = await runScratchRunSpec(streamedResult(successValue(0)));

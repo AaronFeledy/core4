@@ -137,15 +137,21 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     }),
   );
   const dependencies = Layer.mergeAll(
+    testEnvironmentResolverLayer,
     FileSystem.layer,
     providers,
     ScratchResourceScanner.layer.pipe(Layer.provide(providers)),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      AppPlanner,
+      AppPlanner.of({ plan: () => Effect.succeed({ ...plan, valueModel: 1 as const }) }),
+    ),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
         discover: Effect.succeed(
-          Schema.decodeUnknownSync(LandofileShape)({ name: "demo", runtime: 4, services: {} }),
+          literalTestLandofile(
+            Schema.decodeUnknownSync(LandofileShape)({ name: "demo", runtime: 4, services: {} }),
+          ),
         ),
       }),
     ),
@@ -256,7 +262,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     rootObservations,
     removed,
     entries,
-    layer: Scratch.layer.pipe(Layer.provide(dependencies)),
+    layer: Scratch.layer.pipe(Layer.provideMerge(dependencies)),
   };
 };
 
@@ -266,3 +272,5 @@ export const runDestroy = (fixture: Awaited<ReturnType<typeof makeFixture>>, kee
       Effect.provide(fixture.layer),
     ),
   );
+import { literalTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

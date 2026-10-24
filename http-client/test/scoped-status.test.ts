@@ -109,9 +109,11 @@ test.each([false, true])(
           if (consume) yield* Stream.runDrain(response.stream);
         }).pipe(
           Effect.provide(
-            layerWith({ fetch: fetchImpl, systemCaPems: () => [], direct: fetchImpl }).pipe(
-              Layer.provide(eventLayer),
-            ),
+            layerWith({
+              fetch: fetchImpl,
+              systemCaPems: () => [],
+              direct: (url, init) => fetchImpl(url, { ...init, body: init.body ?? null }),
+            }).pipe(Layer.provide(eventLayer)),
           ),
         ),
       ),
@@ -170,9 +172,11 @@ test("aborts and pairs events when a header-only scoped request is interrupted b
           yield* Effect.never;
         }).pipe(
           Effect.provide(
-            layerWith({ fetch: fetchImpl, systemCaPems: () => [], direct: fetchImpl }).pipe(
-              Layer.provide(eventLayer),
-            ),
+            layerWith({
+              fetch: fetchImpl,
+              systemCaPems: () => [],
+              direct: (url, init) => fetchImpl(url, { ...init, body: init.body ?? null }),
+            }).pipe(Layer.provide(eventLayer)),
           ),
         ),
       ).pipe(Effect.forkChild);

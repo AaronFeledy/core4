@@ -16,7 +16,6 @@ import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 const managedFileLayer = ManagedFileLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { RedactionService } from "@lando/redaction/service";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
-import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
@@ -213,8 +212,14 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
     // The owner marker carries a value that is a registered secret; the redactor
     // must mask it out of the emitted event's `owner` field.
     const secret = "owner-token-9f3a-SHHH";
-    const secretStore = makeTestSecretStore({ secrets: { OWNER_TOKEN: secret } });
-    const redactionLive = RedactionService.layer.pipe(Layer.provide(secretStore.layer));
+    const redactionLive = Layer.effect(
+      RedactionService,
+      Effect.gen(function* () {
+        const service = yield* RedactionService;
+        yield* service.registerValues([secret]);
+        return service;
+      }),
+    ).pipe(Layer.provide(RedactionService.layer));
 
     try {
       const layer = Layer.mergeAll(

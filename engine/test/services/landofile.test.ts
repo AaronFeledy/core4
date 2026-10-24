@@ -32,6 +32,7 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const discover = () =>
   Effect.runPromise(
     Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
@@ -39,6 +40,7 @@ const discover = () =>
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
@@ -629,10 +631,16 @@ describe("LandofileService layer — mounts, storage, and excludes (US-014)", ()
 
 describe("LandofileService layer — reserved section rejection (US-014)", () => {
   const assertUnsupportedRejection = (error: unknown): void => {
-    expect(error).toBeInstanceOf(NotImplementedError);
-    if (!(error instanceof NotImplementedError)) return;
-    expect(error._tag).toBe("NotImplementedError");
-    expect(error.remediation).toContain("not supported yet");
+    expect(error).toBeInstanceOf(LandofileValidationError);
+    expect(error).toMatchObject({
+      issues: [
+        {
+          path: ["services", "web", "environment", "APP_HOST"],
+          source: expect.objectContaining({ path: ["services", "web", "environment", "APP_HOST"] }),
+          message: expect.stringContaining('Unsupported shell parameter operator ".HOST"'),
+        },
+      ],
+    });
   };
 
   test("resolves top-level `includes:` during layered discovery", async () => {
@@ -660,7 +668,7 @@ describe("LandofileService layer — reserved section rejection (US-014)", () =>
     });
   });
 
-  test("rejects configuration expressions ${...} with NotImplementedError + remediation", async () => {
+  test("rejects configuration expressions ${...} as a located validation issue", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),

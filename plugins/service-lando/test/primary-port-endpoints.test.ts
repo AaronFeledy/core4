@@ -22,6 +22,7 @@ test("retains the MariaDB primary listener when only another port is published",
     type: "mariadb",
     port: 3307,
     ports: ["8080:80"],
+    creds: { user: "app", database: "app", password: { _tag: "SecretRef", reference: "PRIMARY_DB" } },
   });
   // When
   const plan = await planService(mariadbServiceType, service);
@@ -30,6 +31,13 @@ test("retains the MariaDB primary listener when only another port is published",
     { _tag: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
     { _tag: "published", port: 80, protocol: "tcp", publication: { hostPort: 8080 } },
   ]);
+  expect(plan.serviceTypeId).toBe("mariadb");
+  expect(plan.connection).toMatchObject({
+    family: "mariadb",
+    port: 3307,
+    creds: { password: { _tag: "SecretRef", reference: "PRIMARY_DB" } },
+  });
+  expect(plan.environment.MYSQL_PASSWORD).toEqual({ _tag: "SecretRef", reference: "PRIMARY_DB" });
 });
 
 test("keeps a matching publication as a facet of the same primary listener", async () => {

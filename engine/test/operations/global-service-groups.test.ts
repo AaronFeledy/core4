@@ -12,9 +12,13 @@ import type { ApplyOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 import {
-  applyGlobalServiceGroups,
+  applyGlobalServiceGroups as applyGlobalServiceGroupsEffect,
   globalServiceGroupError,
 } from "../../src/operations/global-service-groups.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";
+
+const applyGlobalServiceGroups = <E, R>(...args: Parameters<typeof applyGlobalServiceGroupsEffect<E, R>>) =>
+  applyGlobalServiceGroupsEffect(...args).pipe(Effect.provide(testEnvironmentResolverLayer));
 
 const globalPlan: AppPlan = {
   id: AppId.make("global"),

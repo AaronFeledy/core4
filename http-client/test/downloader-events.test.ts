@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 import { type Context, Effect, Layer, Option, Queue, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
@@ -15,13 +15,12 @@ import { Downloader, EventService, type LandoEvent } from "@lando/sdk/services";
 import { makeDownloaderEvents } from "../src/downloader-events.ts";
 import { layer as DownloaderLayer } from "../src/downloader.ts";
 
-afterEach(resetRegisteredRedactionValuesForTesting);
-
 test("downloader event text masks values registered after event seam construction", async () => {
   // Given
-  const events = makeDownloaderEvents(Option.none());
+  const redaction = makeRedactionService();
+  const events = makeDownloaderEvents(Option.none(), Effect.runSync(redaction.forProfile("secrets")));
   const secret = "downloader-registered-canary";
-  await Effect.runPromise(registerRedactionValues([secret]));
+  await Effect.runPromise(redaction.registerValues([secret]));
   // When
   const text = events.redactText(`download failed with ${secret}`);
   // Then
@@ -46,7 +45,7 @@ const makeFakeHttpClient = (bodies: Record<string, Uint8Array | "fail">) => {
           }),
         );
       }
-      return HttpClientResponse.fromWeb(request, new Response(body, { status: 200 }));
+      return HttpClientResponse.fromWeb(request, new Response(new Uint8Array(body), { status: 200 }));
     }),
   );
   return { layer: Layer.succeed(HttpClient.HttpClient, client) };

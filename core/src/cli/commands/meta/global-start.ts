@@ -83,6 +83,7 @@ export type GlobalStartError =
   | ToolingExecError;
 
 export type GlobalStartServices =
+  | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService

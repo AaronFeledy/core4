@@ -64,8 +64,8 @@ const unavailable = (ctx: ProviderErrorContext) => (operation: string, message: 
   new ProviderUnavailableError({
     providerId: ctx.providerId,
     operation,
-    message: redactString(withApiReason(message, details)),
-    ...(details === undefined ? {} : { details: redactDetails(details) }),
+    message: redactString(withApiReason(message, details, ctx.redactor), ctx.redactor),
+    ...(details === undefined ? {} : { details: redactDetails(details, ctx.redactor) }),
   });
 
 const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) =>
@@ -80,7 +80,7 @@ const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) 
             message: "Docker API returned malformed info JSON.",
             capability: "docker-info",
             requiredValue: "valid JSON Docker info response",
-            actualValue: redactString(response.body),
+            actualValue: redactString(response.body, ctx.redactor),
             cause,
           }),
       );
@@ -418,7 +418,7 @@ export const makeUnixDockerApiClient = (
                 providerId: ctx.providerId,
                 operation: "docker-api",
                 message: "Docker API response did not include an HTTP status code.",
-                details: redactString(spawned.stdout),
+                details: redactString(spawned.stdout, ctx.redactor),
               });
             }
             return parsed;

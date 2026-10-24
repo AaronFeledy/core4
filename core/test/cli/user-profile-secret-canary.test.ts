@@ -19,6 +19,7 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { appSteps } from "@lando/engine/services/build-app-plan";
 import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
 import * as LandoConfigService from "@lando/engine/services/config";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -88,9 +89,12 @@ test.each([
       id: "lando",
       isAvailable: Effect.succeed(true),
       apply: (plan, options) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           appliedPlan = plan;
-          providerValue = options.serviceEnvironment?.[web]?.VALUE;
+          const service = plan.services[web];
+          if (service === undefined || options.resolveServiceEnvironment === undefined)
+            throw new TypeError("Expected web environment resolver");
+          providerValue = (yield* options.resolveServiceEnvironment(service)).VALUE;
           return { changed: true };
         }),
       inspect: (target) =>
@@ -140,7 +144,7 @@ test.each([
         }),
       ),
       Layer.succeed(SecretStore, secretStore),
-      Layer.succeed(RedactionService, RedactionService.of(makeRedactionService(secretStore))),
+      Layer.succeed(RedactionService, makeRedactionService()),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -188,6 +192,7 @@ test.each([
     const layer = Layer.mergeAll(
       ContainerHelperAssetsLayer.layer.pipe(Layer.provide(dependencies)),
       dependencies,
+      EnvironmentValueResolverLayer.layer.pipe(Layer.provide(dependencies)),
       AppPlannerLayer.layer.pipe(Layer.provide(dependencies)),
       BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)),
     );
@@ -212,7 +217,7 @@ test.each([
             const planner = yield* AppPlanner;
             const plan = yield* planner.plan(landofile, provider.capabilities);
             yield* writeAppCommandCacheStrict({
-              landofile,
+              landofile: landofile.document,
               entries: [{ id: "app:check", summary: "Check", hidden: false, service: "web" }],
               cwd: appRoot,
               cacheRoot: paths.roots.userCacheRoot,
@@ -239,10 +244,19 @@ test.each([
       // Then: provider action sees the value; durable identities and every observed surface do not.
       expect(providerValue).toBe(sentinel);
       expect(result.outcome._tag).toBe(fails ? "Failure" : "Success");
-      expect(appliedPlan?.services[web]?.environment.VALUE).toBe(reference);
-      expect(result.plan.services[web]?.environment.VALUE).toBe(reference);
+      expect(appliedPlan?.services[web]?.environment.VALUE).toEqual({
+        _tag: "SecretRef",
+        reference: "OPAQUE",
+      });
+      expect(result.plan.services[web]?.environment.VALUE).toEqual({
+        _tag: "SecretRef",
+        reference: "OPAQUE",
+      });
       expect(result.cachedPlan).toEqual(result.plan);
-      expect("value" in result.get ? result.get.value : undefined).toBe(reference);
+      expect("value" in result.get ? result.get.value : undefined).toEqual({
+        _tag: "SecretRef",
+        reference: "OPAQUE",
+      });
       expect(appSteps(result.cachedPlan)).toEqual(result.buildIdentity);
       expect(result.buildIdentity).toHaveLength(1);
       expect(executions).toBe(1);

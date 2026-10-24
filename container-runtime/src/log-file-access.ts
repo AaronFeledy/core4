@@ -1,10 +1,12 @@
 import { readFile } from "node:fs/promises";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 
 import { Effect, Option, type Scope, Stream } from "effect";
 
 import { type ContainerHelperUnavailableError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess, LogFileHandle, LogFileRead, LogFileStat } from "@lando/sdk/log-follow";
 import type { ContainerHelperArtifact } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError } from "@lando/sdk/services";
 
 import { logFileHelperExecArgv } from "./container-helper.ts";
@@ -23,6 +25,7 @@ const maxReadBytes = 65_536;
 const unsignedDecimalPattern = /^(0|[1-9][0-9]*)$/;
 
 export interface DockerLogFileAccessOptions {
+  readonly redactor?: Redactor;
   readonly providerId: string;
   readonly api: DataPlaneApiClient;
   readonly container: string;
@@ -160,9 +163,15 @@ export const scopedDockerLogFileAccess = (
       }).pipe(
         Effect.tap((response) => ensure2xx(response, providerId, "create helper exec")),
         Effect.flatMap((response) => parseExecId(response.body, providerId)),
-        Effect.map(
-          (id) =>
-            new HelperSession(
+        Effect.flatMap((id) =>
+          Effect.gen(function* () {
+            const service = yield* Effect.serviceOption(RedactionService);
+            const redactor =
+              options.redactor ??
+              (Option.isSome(service)
+                ? yield* service.value.forProfile("secrets")
+                : createStandaloneRedactor("secrets"));
+            return new HelperSession(
               providerId,
               (stdin, signal) =>
                 stream({
@@ -174,6 +183,7 @@ export const scopedDockerLogFileAccess = (
                   signal,
                 }),
               {
+                redactor,
                 onEndedBeforeResponse: () =>
                   exitCodeOf(id).pipe(
                     Effect.map((exitCode) =>
@@ -185,7 +195,8 @@ export const scopedDockerLogFileAccess = (
                     ),
                   ),
               },
-            ),
+            );
+          }),
         ),
       ),
       (session) => session.close(),

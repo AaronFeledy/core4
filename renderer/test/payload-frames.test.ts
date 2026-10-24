@@ -1,27 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import {
-  RedactionService,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { REDACTED } from "@lando/sdk/secrets";
-import { SecretStore } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { createBufferedRendererIO } from "../src/io.ts";
 import { layerStreamFrameSink } from "../src/output.ts";
 import { layerPlainService } from "../src/runtime.ts";
 
-const store = SecretStore.of({
-  id: "fixture",
-  has: () => Effect.succeed(true),
-  get: () => Effect.succeed("known-secret"),
-  list: Effect.succeed(["fixture"]),
-});
-
 const drive = async (format: "text" | "json", chunks: readonly (string | Uint8Array)[]) => {
   const io = createBufferedRendererIO();
-  const service = makeRedactionService(store);
+  const service = makeRedactionService();
+  Effect.runSync(service.registerValues(["known-secret"]));
   const layer = layerStreamFrameSink(format).pipe(
     Layer.provide(Layer.merge(layerPlainService(io), Layer.succeed(RedactionService, service))),
   );
@@ -47,10 +36,10 @@ describe("payload frames", () => {
   test.each(["text", "json"] as const)("masks split stderr values in %s", async (format) => {
     // Given
     const io = createBufferedRendererIO();
+    const service = makeRedactionService();
+    Effect.runSync(service.registerValues(["known-secret"]));
     const layer = layerStreamFrameSink(format).pipe(
-      Layer.provide(
-        Layer.merge(layerPlainService(io), Layer.succeed(RedactionService, makeRedactionService(store))),
-      ),
+      Layer.provide(Layer.merge(layerPlainService(io), Layer.succeed(RedactionService, service))),
     );
     // When
     await Effect.runPromise(
@@ -105,9 +94,8 @@ describe("payload frames", () => {
 
   test("sees process registrations after the sink is acquired", async () => {
     // Given
-    resetRegisteredRedactionValuesForTesting();
     const io = createBufferedRendererIO();
-    const service = makeRedactionService(store);
+    const service = makeRedactionService();
     const layer = layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(layerPlainService(io), Layer.succeed(RedactionService, service))),
     );
@@ -123,6 +111,5 @@ describe("payload frames", () => {
     );
     // Then
     expect(io.stdout()).toBe(`${REDACTED}!`);
-    resetRegisteredRedactionValuesForTesting();
   });
 });

@@ -17,6 +17,7 @@ import type {
   ContainerHelperAssets,
   DataMover,
   Downloader,
+  EnvironmentValueResolver,
   EventService,
   FileSyncEngine,
   FileSystem,
@@ -121,6 +122,7 @@ type MinimalRuntimeServices =
   | PrivateFileAccessService
   | RedactionService
   | SecretStore
+  | EnvironmentValueResolver
   | StateStore
   | HttpClient.HttpClient
   | Downloader

@@ -120,6 +120,7 @@ const database = servicePlan("database");
 const node = servicePlan("node");
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "BringUp App",
   slug: "bringupapp",
@@ -135,6 +136,7 @@ const plan: AppPlan = {
 };
 
 const makeAliasProbePlan = (): AppPlan => ({
+  valueModel: 1,
   id: AppId.make("windows-host-alias-lando"),
   name: "Windows Host Alias Lando",
   slug: "windows-host-alias-lando",

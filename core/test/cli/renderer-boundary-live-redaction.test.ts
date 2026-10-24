@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { SecretStore } from "@lando/sdk/services";
+import { EnvironmentValueResolver, SecretStore } from "@lando/sdk/services";
 import { Effect, Layer, Option, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
@@ -20,6 +21,8 @@ for (const format of ["text", "json"] as const) {
     // When
     await runWithRendererHandling(
       Effect.gen(function* () {
+        const session = yield* (yield* EnvironmentValueResolver).openSession();
+        yield* session.resolveEnvironment({ VALUE: { _tag: "SecretRef", reference: "canary" } });
         const sink = yield* Effect.serviceOption(StreamFrameSink);
         if (Option.isSome(sink)) {
           yield* sink.value.emit({ _tag: "stdout", chunk: canary.slice(0, 9), raw: true });
@@ -27,9 +30,12 @@ for (const format of ["text", "json"] as const) {
           if (sink.value.flush !== undefined) yield* sink.value.flush();
         }
         return { output: Option.isSome(sink) ? "" : `${canary}!\n` };
-      }),
+      }).pipe(Effect.scoped),
       {
-        runtime: RedactionService.layer.pipe(Layer.provide(store)),
+        runtime: Layer.mergeAll(
+          RedactionService.layer,
+          EnvironmentValueResolverLayer.layer.pipe(Layer.provide(Layer.merge(store, RedactionService.layer))),
+        ),
         rendererMode: "plain",
         resultFormat: format,
         resultSchema: Schema.Struct({ output: Schema.String }),

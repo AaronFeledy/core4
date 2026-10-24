@@ -5,6 +5,7 @@ import { Effect, Option, Schema } from "effect";
 import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, AppPlan, type AppPlan as AppPlanShape } from "@lando/sdk/schema";
+import { AppPlanSanitizer } from "@lando/sdk/services";
 
 const APPLIED_STATE_VERSION = 1;
 const APPLIED_PLAN_NAMESPACE = "applied-plans";
@@ -16,7 +17,13 @@ const AppliedPlans = Schema.Record(AppId, AppPlan);
  * provider state: lifecycle operations resolve them from the current Landofile,
  * so a record never carries hooks that could run stale.
  */
-const appliedPlanRecord = ({ events: _events, ...plan }: AppPlanShape): AppPlanShape => plan;
+const appliedPlanRecord = Effect.fnUntraced(function* (plan: AppPlanShape) {
+  const sanitizer = yield* Effect.serviceOption(AppPlanSanitizer);
+  const { events: _events, ...applied } = Option.isSome(sanitizer)
+    ? sanitizer.value.sanitizeForPersistence(plan)
+    : plan;
+  return applied;
+});
 
 export const appliedPlansDir = (stateDir: string): string =>
   `${stateDir.replace(/\/+$/u, "")}/${APPLIED_PLAN_NAMESPACE}`;
@@ -99,7 +106,12 @@ export function makeAppliedPlanStore(
     return {
       persistAppliedPlan: (stateStore, plan) =>
         open(stateStore, plan.id).pipe(
-          Effect.flatMap((bucket) => bucket.set(appliedPlanRecord(plan)).pipe(Effect.as(bucket.path))),
+          Effect.flatMap((bucket) =>
+            appliedPlanRecord(plan).pipe(
+              Effect.flatMap((applied) => bucket.set(applied)),
+              Effect.as(bucket.path),
+            ),
+          ),
           Effect.mapError((cause) => error("persist", cause)),
         ),
       loadAppliedPlan: (stateStore, appId) =>
@@ -151,10 +163,11 @@ export function makeAppliedPlanStore(
     persistAppliedPlan: (stateStore, plan) =>
       open(stateStore).pipe(
         Effect.flatMap((bucket) =>
-          bucket.modify((current) => [
-            bucket.path,
-            { ...(current ?? {}), [plan.id]: appliedPlanRecord(plan) },
-          ]),
+          appliedPlanRecord(plan).pipe(
+            Effect.flatMap((applied) =>
+              bucket.modify((current) => [bucket.path, { ...(current ?? {}), [plan.id]: applied }]),
+            ),
+          ),
         ),
         Effect.mapError((cause) => error("persist", cause)),
       ),

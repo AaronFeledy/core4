@@ -86,6 +86,7 @@ const servicePlan: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Persisted Podman",
   slug: "persisted-podman",
@@ -825,6 +826,7 @@ const dbServicePlan: ServicePlan = {
 };
 
 const multiServicePlan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Persisted Podman",
   slug: "persisted-podman",

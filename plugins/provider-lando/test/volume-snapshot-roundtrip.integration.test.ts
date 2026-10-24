@@ -24,7 +24,7 @@ import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-s
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
 import { makePodmanApiClient, layer as providerLayer } from "@lando/provider-lando";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -85,18 +85,7 @@ const silentEvents = Layer.succeed(
   }),
 );
 
-const passthroughRedaction = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () =>
-      Effect.succeed({
-        redactString: (input: string) => input,
-        redactValue: (input: unknown) => input,
-      }),
-  }),
-);
+const passthroughRedaction = RedactionService.layer;
 
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 

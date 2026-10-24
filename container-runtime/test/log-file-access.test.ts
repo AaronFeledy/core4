@@ -1,8 +1,8 @@
 // allow: SIZE_OK - Protocol fixtures and lifecycle regressions stay together in this test-only port.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type { DataPlaneApiClient, DataPlaneHttpRequest } from "@lando/container-runtime/data-plane";
 import { scopedDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type LogFileHandle,
@@ -13,8 +13,10 @@ import {
 import { AbsolutePath, LogSource, ServiceName } from "@lando/sdk/schema";
 import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect";
 
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
+let fixtureRedaction = makeRedactionService();
+beforeEach(() => {
+  fixtureRedaction = makeRedactionService();
+});
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 const text = (value: Uint8Array): string => new TextDecoder().decode(value);
@@ -268,12 +270,14 @@ describe("Docker-compatible scoped log file access", () => {
 
   test("redacts runtime-registered values in helper stderr", async () => {
     const canary = "opaque-log-helper-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
+    Effect.runSync(fixtureRedaction.registerValues([canary]));
     const failure = await Effect.runPromise(
       Effect.flip(
         Effect.scoped(
           Effect.flatMap(
-            accessFor(protocolApi([dockerFrame(2, bytes(`helper said ${canary}\n`))])),
+            accessFor(protocolApi([dockerFrame(2, bytes(`helper said ${canary}\n`))])).pipe(
+              Effect.provideService(RedactionService, fixtureRedaction),
+            ),
             (access) => access.stat("/app.log"),
           ),
         ),

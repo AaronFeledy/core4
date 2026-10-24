@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize } from "node:v8";
 import { Cause, Effect, Exit, Layer, Option, References, Schema, Tracer } from "effect";
+import { planLiteralTestLandofile as planTestLandofile } from "../compiled-landofile.ts";
 
 import {
   CapabilityError,
@@ -127,7 +128,9 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 
 const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCapabilities) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provideService(GlobalConfigSources, {
@@ -139,10 +142,9 @@ const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCap
 
 const planExit = (landofile: LandofileShape, providerCapabilities = providerLandoCapabilities) =>
   Effect.runPromiseExit(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
-      Effect.provide(PluginRegistryLayer.layer),
-    ),
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
 
 test("planning emits phase spans beneath AppPlanner.plan", async () => {
@@ -157,7 +159,9 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
   });
   // When
   const result = await Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofileFixture, providerLandoCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) =>
+      planTestLandofile(planner, landofileFixture, providerLandoCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.withTracer(tracer),
@@ -279,7 +283,9 @@ test("sidecar mode plans without agentSocket and retains intent", async () => {
 
 const planWithFileSystem = (landofile: LandofileShape) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerLandoCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provide(BunFileSystem.layer),
@@ -305,7 +311,9 @@ const planWithConfig = (
   providerCapabilities = providerLandoCapabilities,
 ) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provide(configLayer(defaultProviderId)),
@@ -459,7 +467,9 @@ const planWithCustomRegistry = (
   providerCapabilities = providerLandoCapabilities,
 ) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
@@ -470,7 +480,9 @@ const planExitWithCustomRegistry = (
   providerCapabilities = providerLandoCapabilities,
 ) =>
   Effect.runPromiseExit(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
@@ -538,7 +550,7 @@ describe("AppPlannerLayer.layer", () => {
         const execute = () =>
           Effect.runPromise(
             Effect.flatMap(AppPlanner, (planner) =>
-              planner.plan(landofile, {
+              planTestLandofile(planner, landofile, {
                 ...providerLandoCapabilities,
                 agentSocket: { delivery: "bind-directory" },
               }),
@@ -657,7 +669,9 @@ describe("AppPlannerLayer.layer", () => {
     });
     // When
     const appPlan = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+      Effect.flatMap(AppPlanner, (planner) =>
+        planTestLandofile(planner, landofile, providerLandoCapabilities),
+      ).pipe(
         Effect.provide(AppPlannerLayer.layer),
         Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
       ),
@@ -1018,7 +1032,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const appPlan = await Effect.runPromise(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
@@ -1319,7 +1335,8 @@ describe("AppPlannerLayer.layer", () => {
       const serviceType = followLogSourceServiceType(true);
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             Schema.decodeUnknownSync(LandofileShape)({
               name: "logs-app",
               runtime: 4,
@@ -1352,7 +1369,8 @@ describe("AppPlannerLayer.layer", () => {
       const serviceType = followLogSourceServiceType(false);
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             Schema.decodeUnknownSync(LandofileShape)({
               name: "logs-app",
               runtime: 4,
@@ -1523,7 +1541,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const appPlan = await Effect.runPromise(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
@@ -1596,7 +1616,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const exit = await Effect.runPromiseExit(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
@@ -1663,7 +1685,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const exit = await Effect.runPromiseExit(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
@@ -1702,7 +1726,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const appPlan = await Effect.runPromise(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
@@ -1739,7 +1765,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const exit = await Effect.runPromiseExit(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
@@ -1867,9 +1895,9 @@ describe("AppPlannerLayer.layer", () => {
       try {
         const runPlan = (landofile: LandofileShape) =>
           Effect.runPromise(
-            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-              Effect.provide(layer),
-            ),
+            Effect.flatMap(AppPlanner, (planner) =>
+              planTestLandofile(planner, landofile, providerLandoCapabilities),
+            ).pipe(Effect.provide(layer)),
           );
 
         const first = await runPlan(cachedLandofile);
@@ -1991,9 +2019,9 @@ describe("AppPlannerLayer.layer", () => {
       try {
         const runPlan = () =>
           Effect.runPromise(
-            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-              Effect.provide(layer),
-            ),
+            Effect.flatMap(AppPlanner, (planner) =>
+              planTestLandofile(planner, landofile, providerLandoCapabilities),
+            ).pipe(Effect.provide(layer)),
           );
 
         // When
@@ -2209,7 +2237,8 @@ describe("AppPlannerLayer.layer", () => {
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2263,7 +2292,8 @@ describe("AppPlannerLayer.layer", () => {
 
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2347,7 +2377,8 @@ describe("AppPlannerLayer.layer", () => {
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2440,7 +2471,8 @@ describe("AppPlannerLayer.layer", () => {
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2509,7 +2541,8 @@ describe("AppPlannerLayer.layer", () => {
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2561,7 +2594,8 @@ describe("AppPlannerLayer.layer", () => {
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2787,9 +2821,9 @@ describe("AppPlannerLayer.layer", () => {
       );
       const runPlan = () =>
         Effect.runPromise(
-          Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-            Effect.provide(layer),
-          ),
+          Effect.flatMap(AppPlanner, (planner) =>
+            planTestLandofile(planner, landofile, providerLandoCapabilities),
+          ).pipe(Effect.provide(layer)),
         );
 
       try {
@@ -2997,7 +3031,8 @@ describe("AppPlannerLayer.layer", () => {
       };
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "slow-sync-app",
               runtime: 4,
@@ -4033,7 +4068,8 @@ describe("AppPlannerLayer.layer", () => {
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -4114,7 +4150,8 @@ describe("AppPlannerLayer.layer", () => {
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -4218,7 +4255,8 @@ describe("AppPlannerLayer.layer", () => {
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -4314,9 +4352,9 @@ describe("AppPlannerLayer.layer", () => {
       try {
         const runPlan = () =>
           Effect.runPromise(
-            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-              Effect.provide(layer),
-            ),
+            Effect.flatMap(AppPlanner, (planner) =>
+              planTestLandofile(planner, landofile, providerLandoCapabilities),
+            ).pipe(Effect.provide(layer)),
           );
 
         const first = await runPlan();
@@ -4449,7 +4487,8 @@ describe("AppPlannerLayer.layer", () => {
           const runPlan = (version: string) =>
             Effect.runPromise(
               Effect.flatMap(AppPlanner, (appPlanner) =>
-                appPlanner.plan(
+                planTestLandofile(
+                  appPlanner,
                   {
                     name: "myapp",
                     runtime: 4,
@@ -4492,7 +4531,8 @@ describe("AppPlannerLayer.layer", () => {
           const appName = "skip-plan-cache";
           const result = await Effect.runPromise(
             Effect.flatMap(AppPlanner, (appPlanner) =>
-              appPlanner.plan(
+              planTestLandofile(
+                appPlanner,
                 {
                   name: appName,
                   runtime: 4,
@@ -4566,7 +4606,8 @@ describe("AppPlannerLayer.layer", () => {
       await withTempCwd(async () => {
         const exactPin = await Effect.runPromise(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(
+            planTestLandofile(
+              appPlanner,
               {
                 name: "myapp",
                 runtime: 4,
@@ -4586,7 +4627,8 @@ describe("AppPlannerLayer.layer", () => {
 
         const imageOverride = await Effect.runPromise(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(
+            planTestLandofile(
+              appPlanner,
               {
                 name: "myapp",
                 runtime: 4,
@@ -4612,7 +4654,8 @@ describe("AppPlannerLayer.layer", () => {
 
         const missingArtifact = await Effect.runPromiseExit(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(
+            planTestLandofile(
+              appPlanner,
               {
                 name: "myapp",
                 runtime: 4,
@@ -4633,7 +4676,8 @@ describe("AppPlannerLayer.layer", () => {
 
         const unsupported = await Effect.runPromiseExit(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(
+            planTestLandofile(
+              appPlanner,
               {
                 name: "myapp",
                 runtime: 4,
@@ -4886,7 +4930,7 @@ describe("AppPlannerLayer.layer", () => {
       try {
         const validPlan = await Effect.runPromise(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(landofile, providerLandoCapabilities),
+            planTestLandofile(appPlanner, landofile, providerLandoCapabilities),
           ).pipe(Effect.provide(plannerLayer)),
         );
         const cachedBytes = await readFile(appPlanCachePath(cacheRoot, appName, appRoot));
@@ -4924,7 +4968,7 @@ describe("AppPlannerLayer.layer", () => {
         // When
         const exit = await Effect.runPromiseExit(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(landofile, providerLandoCapabilities),
+            planTestLandofile(appPlanner, landofile, providerLandoCapabilities),
           ).pipe(Effect.provide(plannerLayer)),
         );
 
@@ -5176,7 +5220,7 @@ describe("Compose runtime knobs", () => {
   const planInjectedExit = (providerCapabilities: ProviderCapabilities) =>
     Effect.runPromiseExit(
       Effect.flatMap(AppPlanner, (appPlanner) =>
-        appPlanner.plan(injectedLandofile, providerCapabilities),
+        planTestLandofile(appPlanner, injectedLandofile, providerCapabilities),
       ).pipe(
         Effect.provide(AppPlannerLayer.layer),
         Effect.provide(Layer.succeed(PluginRegistry, tmpfsInjectingRegistry)),
@@ -5220,7 +5264,7 @@ describe("Compose runtime knobs", () => {
       const runPlan = (providerCapabilities: ProviderCapabilities) =>
         Effect.runPromiseExit(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(knobLandofile, providerCapabilities),
+            planTestLandofile(appPlanner, knobLandofile, providerCapabilities),
           ).pipe(Effect.provide(cachedLayer)),
         );
 

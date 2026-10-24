@@ -12,7 +12,7 @@ const LANDO_DEFAULTS = {
 } as const satisfies ServiceCreds;
 
 describe("resolveServiceCreds", () => {
-  test("authored user wins over MYSQL_USER", () => {
+  test("rejects conflicting authored user and MYSQL_USER", () => {
     // Given
     const input = {
       family: "mysql" as const,
@@ -22,10 +22,7 @@ describe("resolveServiceCreds", () => {
     };
 
     // When
-    const creds = resolveServiceCreds(input);
-
-    // Then
-    expect(creds.user).toBe("bob");
+    expect(() => resolveServiceCreds(input)).toThrow("creds.user conflicts with environment.MYSQL_USER");
   });
 
   test("omitted authored user uses MYSQL_USER and does not invent lando", () => {
@@ -57,7 +54,7 @@ describe("resolveServiceCreds", () => {
     expect(creds).toEqual(LANDO_DEFAULTS);
   });
 
-  test("authored database wins over MYSQL_DATABASE", () => {
+  test("rejects conflicting authored database and MYSQL_DATABASE", () => {
     // Given
     const input = {
       family: "mysql" as const,
@@ -68,10 +65,9 @@ describe("resolveServiceCreds", () => {
     };
 
     // When
-    const creds = resolveServiceCreds(input);
-
-    // Then
-    expect(creds.database).toBe("authored-db");
+    expect(() => resolveServiceCreds(input)).toThrow(
+      "creds.database conflicts with environment.MYSQL_DATABASE",
+    );
   });
 
   test("MYSQL_DATABASE wins over topLevelDatabase", () => {
@@ -162,11 +158,11 @@ describe("familyEnvFor", () => {
     });
   });
 
-  test("mssql writes SA_PASSWORD only and not MSSQL_SA_PASSWORD", () => {
+  test("mssql projects its effective administrator password to init and client aliases", () => {
     // Given
     const creds: ServiceCreds = {
       user: "sa",
-      password: "unused",
+      password: "Sa!secret",
       database: "appdb",
       rootPassword: "Sa!secret",
     };
@@ -175,12 +171,45 @@ describe("familyEnvFor", () => {
     const env = familyEnvFor("mssql", creds);
 
     // Then
-    expect(env).toEqual({ SA_PASSWORD: "Sa!secret" });
-    expect(env).not.toHaveProperty("MSSQL_SA_PASSWORD");
+    expect(env).toEqual({
+      SA_PASSWORD: "Sa!secret",
+      MSSQL_SA_PASSWORD: "Sa!secret",
+      SQLCMDPASSWORD: "Sa!secret",
+    });
   });
 });
 
 describe("landoDbEnvFor", () => {
+  test.each(["mysql", "mariadb", "mssql"] as const)(
+    "%s preserves root password bindings in every owned projection",
+    (family) => {
+      const rootPassword = { _tag: "SecretRef", reference: "ROOT_PASSWORD" } as const;
+      const creds = resolveServiceCreds({ family, authored: { rootPassword }, defaults: LANDO_DEFAULTS });
+      const environment = familyEnvFor(family, creds);
+      expect(creds.rootPassword).toEqual(rootPassword);
+      expect(landoDbEnvFor(creds, 5544).LANDO_DB_ROOT_PASSWORD).toEqual(rootPassword);
+      if (family === "mssql") {
+        expect(creds.user).toBe("sa");
+        expect(creds.password).toEqual(rootPassword);
+        expect(environment.SA_PASSWORD).toEqual(rootPassword);
+        expect(environment.SQLCMDPASSWORD).toEqual(rootPassword);
+      } else expect(environment.MYSQL_ROOT_PASSWORD).toEqual(rootPassword);
+    },
+  );
+
+  test("mssql rejects incompatible native administrator aliases", () => {
+    expect(() =>
+      resolveServiceCreds({
+        family: "mssql",
+        defaults: LANDO_DEFAULTS,
+        environment: {
+          SA_PASSWORD: { _tag: "SecretRef", reference: "FIRST" },
+          MSSQL_SA_PASSWORD: { _tag: "SecretRef", reference: "SECOND" },
+        },
+      }),
+    ).toThrow("environment.SA_PASSWORD conflicts with environment.MSSQL_SA_PASSWORD");
+  });
+
   test("omits LANDO_DB_ROOT_PASSWORD when rootPassword is absent", () => {
     // Given
     const creds: ServiceCreds = {

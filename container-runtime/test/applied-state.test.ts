@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import {
   appliedPlanPath,
@@ -8,8 +8,10 @@ import {
 } from "@lando/container-runtime/applied-state";
 import type { StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan, ProviderId } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
+import { AppPlanSanitizer } from "@lando/sdk/services";
+import { legacyPlan, service } from "./fixtures/environment-values.ts";
 
 interface OpenCall {
   readonly key: string;
@@ -42,6 +44,58 @@ const recordingStateStore = (calls: OpenCall[]): PluginStateStore => ({
 });
 
 describe("applied plan state layouts", () => {
+  test.each(["per-app", "record"] as const)(
+    "%s layout reads historical identity without inventing execution authority",
+    async (layout) => {
+      // Given
+      const legacy = {
+        ...legacyPlan(),
+        services: {
+          [service.name]: {
+            ...service,
+            environment: { TOKEN: "${secret:TOKEN}" },
+            environmentSecrets: { TOKEN: "DRAFT" },
+          },
+        },
+      };
+      const encoded = {
+        ...Schema.encodeSync(AppPlan)(legacy),
+        services: {
+          [service.name]: {
+            ...Schema.encodeSync(AppPlan)(legacy).services[service.name],
+            environmentSecrets: { TOKEN: "DRAFT" },
+          },
+        },
+      };
+      const raw = JSON.parse(JSON.stringify(layout === "per-app" ? encoded : { [legacy.id]: encoded }));
+      const state: PluginStateStore = {
+        open: (spec) =>
+          Effect.succeed({
+            path: AbsolutePath.make("/tmp/lando-values/applied.json"),
+            get: Schema.decodeUnknownEffect(spec.schema)(raw).pipe(Effect.orDie),
+            exists: Effect.succeed(true),
+            set: () => Effect.die("read-only fixture"),
+            update: () => Effect.die("read-only fixture"),
+            modify: () => Effect.die("read-only fixture"),
+            remove: Effect.die("read-only fixture"),
+          }),
+        withLock: (_key, body) => body,
+      };
+      const store =
+        layout === "per-app"
+          ? makeAppliedPlanStore({ providerId: "docker", layout })
+          : makeAppliedPlanStore({ providerId: "podman", layout });
+      // When
+      const observed = await Effect.runPromise(store.loadAppliedPlan(state, legacy.id));
+      // Then
+      expect(observed?.id).toBe(legacy.id);
+      expect(observed?.root).toBe(legacy.root);
+      expect(observed?.services[service.name]?.environment).toEqual({ TOKEN: "${secret:TOKEN}" });
+      expect(observed).not.toHaveProperty("valueModel");
+      expect(observed?.services[service.name]).not.toHaveProperty("environmentSecrets");
+    },
+  );
+
   test("per-app layout preserves the namespaced file format", async () => {
     const calls: OpenCall[] = [];
     const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });
@@ -94,7 +148,7 @@ describe("applied plan records", () => {
     slug: "hooked",
     root: AbsolutePath.make("/tmp/hooked"),
     provider: ProviderId.make("lando"),
-    services: {},
+    services: { [service.name]: { ...service, serviceTypeId: "derived-web" } },
     routes: [],
     networks: [],
     stores: [],
@@ -125,6 +179,33 @@ describe("applied plan records", () => {
       }),
     withLock: (_key, body) => body,
   });
+
+  test.each(["per-app", "record"] as const)(
+    "%s direct persistence applies the injected private annotation projection",
+    async (layout) => {
+      const written: unknown[] = [];
+      const annotated = {
+        ...plan,
+        extensions: { retainedTooling: { task: "cleanup" }, eventSites: ["stale"] },
+      };
+      const store =
+        layout === "per-app"
+          ? makeAppliedPlanStore({ providerId: "lando", layout })
+          : makeAppliedPlanStore({ providerId: "podman", layout });
+      await Effect.runPromise(
+        store.persistAppliedPlan(writingStateStore(written), annotated).pipe(
+          Effect.provideService(AppPlanSanitizer, {
+            sanitizeForPersistence: (input) => {
+              const { eventSites: _sites, ...extensions } = input.extensions;
+              return { ...input, extensions };
+            },
+          }),
+        ),
+      );
+      const expected = { ...record, extensions: { retainedTooling: { task: "cleanup" } } };
+      expect(written).toEqual([layout === "per-app" ? expected : { [plan.id]: expected }]);
+    },
+  );
 
   test("the per-app layout persists the plan without its Landofile events", async () => {
     const written: unknown[] = [];

@@ -131,7 +131,7 @@ export const bindSourceChanged = (service: ServicePlan, inspected: BringUpInspec
     if (hostSocketMount?.source !== source(SSH_SIDECAR_HOST_SOCKET_DIRECTORY)) return true;
   }
   const socketTarget = service.environment.LANDO_HOST_PROXY_SOCKET;
-  if (socketTarget === undefined) return false;
+  if (typeof socketTarget !== "string") return false;
   const plannedSocket = service.mounts.find(
     (mount) => mount.type === "bind" && mount.realization === "passthrough" && mount.target === socketTarget,
   );

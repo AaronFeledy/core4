@@ -2,13 +2,8 @@ import { expect, test } from "bun:test";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
-import {
-  RedactionService,
-  createPayloadValues,
-  makeRedactionService,
-  registerRedactionValues,
-} from "@lando/redaction/service";
-import { createPayloadRedactor, createRedactor } from "@lando/sdk/secrets";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
 import { Effect, Exit, Layer, Queue, Stream } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
@@ -23,12 +18,7 @@ test("forwards unregistered assignments and binary script bytes without decoding
   const root = await mkdtemp(join(tmpdir(), "lando-script-bytes-"));
   const script = join(root, "binary.bun.sh");
   const chunks: Uint8Array[] = [];
-  const redaction = makeRedactionService({
-    id: "empty",
-    list: Effect.succeed([]),
-    get: () => Effect.succeed(""),
-    has: () => Effect.succeed(false),
-  });
+  const redaction = makeRedactionService();
   try {
     await writeFile(
       script,
@@ -401,7 +391,8 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
   const secret = "scoped-stream-secret";
   const frames: StreamFrameSinkFrame[] = [];
   const events: LandoEvent[] = [];
-  const values = createPayloadValues([]);
+  const redaction = makeRedactionService();
+  const values = await Effect.runPromise(redaction.payloadValues());
   const payloads = { stdout: createPayloadRedactor(values), stderr: createPayloadRedactor(values) };
   const layer = Layer.mergeAll(
     BunShellRunner.layer(() => {
@@ -423,15 +414,7 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
           }),
       }),
     ),
-    Layer.succeed(
-      RedactionService,
-      RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: (options) => Effect.succeed(() => options?.redactionTokens ?? []),
-        forProfile: (profile, options) =>
-          Effect.succeed(createRedactor(profile, { values: options?.redactionTokens ?? [] })),
-      }),
-    ),
+    Layer.succeed(RedactionService, redaction),
     Layer.succeed(
       EventService,
       EventService.of({

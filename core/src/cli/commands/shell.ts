@@ -272,7 +272,7 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       ...(options.user === undefined ? {} : { user: options.user }),
     };
     const terminalSize = currentTerminalSize(io);
-    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.document.agentEnv, process.env);
     const serviceEnv = withAgentContextEnv(options.env, process.env, {
       allowlist,
       lowerThanEnv: service.environment,

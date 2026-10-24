@@ -58,6 +58,33 @@ test("preserves connection addresses when info crosses the SDK boundary", () => 
   expect(encoded).toEqual(service);
 });
 
+test("preserves display credentials alongside scoped connections", () => {
+  // Given
+  const input = {
+    ...service,
+    creds: { user: "app", database: "app", password: "[REDACTED]", rootPassword: "[REDACTED]" },
+  };
+  // When
+  const encoded = Schema.encodeSync(ServiceInfo)(Schema.decodeUnknownSync(ServiceInfo)(input));
+  // Then
+  expect(encoded).toEqual(input);
+});
+
+test.each(["password", "rootPassword"])("rejects deferred %s in the info display boundary", (field) => {
+  // Given
+  const input = {
+    ...service,
+    creds: {
+      user: "app",
+      database: "app",
+      password: "[REDACTED]",
+      [field]: { _tag: "SecretRef", reference: "DATABASE_PASSWORD" },
+    },
+  };
+  // When / Then
+  expect(() => Schema.decodeUnknownSync(ServiceInfo)(input)).toThrow();
+});
+
 test("rejects legacy structured host endpoints when decoding service info", () => {
   // Given
   const { connections: _, ...metadata } = service;

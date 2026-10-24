@@ -26,6 +26,7 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   const port = service.port ?? DEFAULT_PORT;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  if (service.password !== undefined) ctx.addEnv("REDISCLI_AUTH", service.password);
   const command = [
     ...(service.persist === false ? EPHEMERAL_COMMAND : DEFAULT_COMMAND),
     ...(service.port === undefined ? [] : ["--port", String(port)]),
@@ -93,6 +94,7 @@ export const redisServiceType: ServiceType = {
     const auth = password === undefined ? {} : { REDISCLI_AUTH: password };
     return Effect.succeed({
       base: "lando",
+      ...(password === undefined ? {} : { nonSqlCreds: { user: "default", password, database: "0" } }),
       normalizedConfig: {
         ...input.service,
         type: "redis",

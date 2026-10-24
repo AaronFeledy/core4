@@ -24,7 +24,7 @@ import type {
 } from "@lando/sdk/app";
 import { LogSourceId, ServiceName } from "@lando/sdk/schema";
 import type { BuildOrchestrator, LogChunk, RouterService, ShellRunner } from "@lando/sdk/services";
-import { EventService, Renderer } from "@lando/sdk/services";
+import { type EnvironmentValueResolver, EventService, Renderer } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
@@ -47,6 +47,7 @@ const toLogChunk = (line: LogsAppLine): LogChunk => ({
 });
 
 export type AppHandleRuntimeServices =
+  | EnvironmentValueResolver
   | LandoRuntimeServices
   | BuildOrchestrator
   | PrivateFileAccessService
