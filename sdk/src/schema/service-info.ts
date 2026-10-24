@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 
+import { ServiceCredsDisplay } from "./database-connection.ts";
 import { EndpointInfo } from "./endpoint.ts";
 import { RoutePlan } from "./networking.ts";
-import { ServiceCredsDisplay } from "./service-connection.ts";
 
 // ServiceInfo — provider-neutral runtime info returned by `lando info`.
 

@@ -17,7 +17,7 @@ import type { SqlExec } from "./actions.ts";
 import { hostFile, parseCount, secretTokens } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
-import { credsEnv, currentAppliedServiceConnection, resolveSqlCreds } from "./creds.ts";
+import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
 import { ensureReadableDump } from "./dump-file.ts";
 import { SqlEnvironmentSession, isSqlBindingFailure } from "./environment.ts";
 import { countCommand } from "./families.ts";
@@ -67,7 +67,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       );
     }
     const authored = deps.landofile.services?.[target.name];
-    const connection = yield* currentAppliedServiceConnection(service, {
+    const connection = yield* currentAppliedDatabaseConnection(service, {
       app: deps.plan.id,
       providerId: deps.providerId,
     });

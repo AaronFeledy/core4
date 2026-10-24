@@ -1,12 +1,12 @@
-import type { ServiceConnection, ServiceCreds } from "@lando/sdk/schema";
+import type { DatabaseConnection, ServiceCreds } from "@lando/sdk/schema";
 
 export interface ServiceExpressionFacts {
   readonly creds: ServiceCreds;
-  readonly port?: ServiceConnection["port"];
+  readonly port?: DatabaseConnection["port"];
 }
 
 export const serviceExpressionFacts = (service: {
-  readonly connection?: ServiceConnection;
+  readonly connection?: DatabaseConnection;
   readonly nonSqlCreds?: ServiceCreds;
 }): ServiceExpressionFacts | undefined => {
   if (service.connection !== undefined)

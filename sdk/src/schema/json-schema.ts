@@ -214,6 +214,7 @@ import {
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
+import { DatabaseConnection, ServiceCreds, ServiceCredsDisplay } from "./database-connection.ts";
 import {
   DeprecationNotice,
   DeprecationNoticeJsonShape,
@@ -421,7 +422,6 @@ import {
   StyledSpanTone,
 } from "./renderer-panel.ts";
 import { RouteFilter, RouteFilterType } from "./route-filter.ts";
-import { ServiceConnection, ServiceCreds, ServiceCredsDisplay } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceInfo } from "./service-info.ts";
 import {
@@ -519,7 +519,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   EnvironmentValue,
   Environment,
   ServiceCreds,
-  ServiceConnection,
+  DatabaseConnection,
   ServiceCredsDisplay,
   CurrentExecutableAppPlan,
   EventStepPlan,
@@ -999,7 +999,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   EnvironmentValue: "Normalized literal or deferred environment value.",
   Environment: "Single typed environment map.",
   ServiceCreds: "Credentials with typed deferred passwords.",
-  ServiceConnection: "Canonical database family, credentials and planned port.",
+  DatabaseConnection: "Canonical database family, credentials and planned port.",
   ServiceCredsDisplay: "String-only redacted credential display.",
   CurrentExecutableAppPlan: "Explicitly current plan required for creation eligibility.",
   EventStepPlan: "Compiled event step with authored provenance and execution status.",

@@ -9,6 +9,7 @@ import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import { ComposeServiceKnobFields } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
+import { ServiceCreds } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
 import { ComposeEnvironmentInput } from "./environment-input.ts";
@@ -36,7 +37,6 @@ import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { RouteFilter } from "./route-filter.ts";
-import { ServiceCreds } from "./service-connection.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
@@ -503,7 +503,7 @@ const ServiceSecurityField = ServiceSecurityInput.pipe(
 /**
  * Login credentials a catalog service may author under `services.<name>.creds`.
  */
-export { ServiceCreds } from "./service-connection.ts";
+export { ServiceCreds } from "./database-connection.ts";
 
 /**
  * App-relative file-backed configuration a catalog service may author under

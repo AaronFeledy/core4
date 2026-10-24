@@ -10,10 +10,10 @@ import type { Effect, Schema } from "effect";
 
 import type { AppFeatureError } from "../errors/index.ts";
 import type {
+  DatabaseConnection,
   EnvironmentValue,
   ProviderCapabilities,
   ServiceConfig,
-  ServiceConnection,
 } from "../schema/index.ts";
 import type {
   ServiceAppMountIntent,
@@ -59,7 +59,7 @@ export interface AppFeatureServiceView {
   readonly primary: boolean;
   readonly featureIds: ReadonlyArray<string>;
   readonly normalizedConfig: ServiceConfig;
-  readonly connection?: ServiceConnection | undefined;
+  readonly connection?: DatabaseConnection | undefined;
 }
 
 /**

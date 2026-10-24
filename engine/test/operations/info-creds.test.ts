@@ -5,9 +5,9 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type DatabaseConnection,
   PortNumber,
   ProviderId,
-  type ServiceConnection,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
@@ -28,7 +28,7 @@ const metadata = {
 
 const makeService = (
   environment: Readonly<Record<string, string>>,
-  connection?: ServiceConnection,
+  connection?: DatabaseConnection,
 ): ServicePlan => ({
   name: ServiceName.make("postgres"),
   type: "postgres",
@@ -48,7 +48,10 @@ const makeService = (
   extensions: {},
 });
 
-const makePlan = (environment: Readonly<Record<string, string>>, connection?: ServiceConnection): AppPlan => {
+const makePlan = (
+  environment: Readonly<Record<string, string>>,
+  connection?: DatabaseConnection,
+): AppPlan => {
   const service = makeService(environment, connection);
   return {
     id: AppId.make("info-creds-app"),
@@ -93,13 +96,13 @@ const provide = (plan: AppPlan) => {
 
 const infoForEnvironment = (
   environment: Readonly<Record<string, string>>,
-  connection?: ServiceConnection,
+  connection?: DatabaseConnection,
 ) => {
   const plan = makePlan(environment, connection);
   return Effect.runPromise(infoForPlan(plan).pipe(Effect.provide(provide(plan))));
 };
 
-const connection: ServiceConnection = {
+const connection: DatabaseConnection = {
   family: "postgres",
   port: PortNumber.make(5544),
   creds: { user: "dbuser", database: "appdb", password: { _tag: "SecretRef", reference: "TEST" } },

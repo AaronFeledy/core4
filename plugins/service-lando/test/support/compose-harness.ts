@@ -1,10 +1,10 @@
 import { Effect } from "effect";
 
 import {
+  type DatabaseConnection,
   type PlanMetadata,
   ProviderId,
   type ServiceConfig,
-  type ServiceConnection,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
@@ -51,7 +51,7 @@ const featureDefinitionFor = (
 const composeFeatureFor = (
   featureRef: { readonly id: string; readonly config?: Record<string, unknown> },
   featureOverrides: ReadonlyMap<string, ServiceFeatureDefinition> | undefined,
-  connection: ServiceConnection | undefined,
+  connection: DatabaseConnection | undefined,
 ): ComposeServiceFeature => ({
   id: featureRef.id,
   ...(featureRef.config === undefined ? {} : { config: featureRef.config }),

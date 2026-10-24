@@ -2,7 +2,7 @@ export * from "./agent-forwarding.ts";
 export * from "./app-plan.ts";
 export * from "./environment-value.ts";
 export * from "./compiled-landofile.ts";
-export * from "./service-connection.ts";
+export * from "./database-connection.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
 export * from "./config-translate.ts";

@@ -11,9 +11,9 @@
 import { DateTime } from "effect";
 
 import type {
+  DatabaseConnection,
   Environment,
   EnvironmentValue,
-  ServiceConnection,
   ServiceCreds,
   ServicePlan,
 } from "@lando/sdk/schema";
@@ -31,7 +31,7 @@ export interface BaseSeed {
   readonly provider: ServicePlan["provider"];
   readonly primary: ServicePlan["primary"];
   readonly environment?: Environment;
-  readonly connection?: ServiceConnection;
+  readonly connection?: DatabaseConnection;
   readonly nonSqlCreds?: ServiceCreds;
   readonly defaultFeatures: ReadonlyArray<ServiceFeatureDefinition>;
 }
@@ -47,7 +47,7 @@ export interface DraftServicePlan {
   command?: ServicePlan["command"];
   entrypoint?: ServicePlan["entrypoint"];
   environment: Record<string, EnvironmentValue>;
-  readonly connection?: ServiceConnection;
+  readonly connection?: DatabaseConnection;
   readonly nonSqlCreds?: ServiceCreds;
   user?: string;
   workingDirectory?: ServicePlan["workingDirectory"];

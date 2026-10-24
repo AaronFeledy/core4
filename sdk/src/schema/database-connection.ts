@@ -19,7 +19,7 @@ export const ServiceCreds = Schema.Struct({
 });
 export type ServiceCreds = typeof ServiceCreds.Type;
 
-export const ServiceConnection = Schema.Struct({
+export const DatabaseConnection = Schema.Struct({
   family: Schema.Literals(["mysql", "mariadb", "postgres", "mongodb", "mssql"]).annotate({
     description: "Database protocol family.",
   }),
@@ -28,10 +28,10 @@ export const ServiceConnection = Schema.Struct({
   }),
   port: PortNumber.annotate({ description: "Planned database TCP port." }),
 }).annotate({
-  identifier: "ServiceConnection",
+  identifier: "DatabaseConnection",
   description: "Canonical database connection facts owned by service-type resolution.",
 });
-export type ServiceConnection = typeof ServiceConnection.Type;
+export type DatabaseConnection = typeof DatabaseConnection.Type;
 
 export const ServiceCredsDisplay = Schema.Struct({
   user: Schema.String.annotate({ description: "Displayed username." }),

@@ -76,7 +76,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   EnvironmentValue: "sdk/test/schema/environment-value.test.ts",
   Environment: "sdk/test/schema/environment-value.test.ts",
   ServiceCreds: "sdk/test/schema/environment-value.test.ts",
-  ServiceConnection: "sdk/test/schema/environment-value.test.ts",
+  DatabaseConnection: "sdk/test/schema/environment-value.test.ts",
   ServiceCredsDisplay: "sdk/test/schema/environment-value.test.ts",
   CurrentExecutableAppPlan: "sdk/test/schema/app-plan.test.ts",
   EventStepPlan: "sdk/test/schema/app-plan.test.ts",

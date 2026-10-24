@@ -1,4 +1,4 @@
-import { AbsolutePath, Environment, ServiceConnection, planAppIdentity } from "@lando/sdk/schema";
+import { AbsolutePath, DatabaseConnection, Environment, planAppIdentity } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { Predicate } from "effect";
 import type { SqlCreds } from "./creds.ts";
@@ -18,7 +18,7 @@ export type SqlPlanService = {
   readonly name: string;
   readonly type: string;
   readonly environment: Environment;
-  readonly connection?: ServiceConnection;
+  readonly connection?: DatabaseConnection;
   readonly storage: ReadonlyArray<{ readonly store: string; readonly target?: string }>;
 };
 
@@ -125,7 +125,7 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
       environment,
       ...(service.connection === undefined
         ? {}
-        : { connection: Schema.decodeUnknownSync(ServiceConnection)(service.connection) }),
+        : { connection: Schema.decodeUnknownSync(DatabaseConnection)(service.connection) }),
       storage,
     };
   }

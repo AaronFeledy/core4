@@ -2,13 +2,13 @@ import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
 import { canonicalJson } from "../digest/index.ts";
 
 import {
+  type DatabaseConnection,
   type Environment,
   type EnvironmentValue,
   LandofileShape,
   LogSource,
   type ProviderId,
   ServiceConfig,
-  type ServiceConnection,
   ServiceName,
   ServicePlan,
 } from "../schema/index.ts";
@@ -298,7 +298,7 @@ export interface ServiceFeatureContractHarness {
   readonly appName?: string;
   readonly appRoot?: string;
   readonly normalizedConfig?: ServiceConfig;
-  readonly connection?: ServiceConnection;
+  readonly connection?: DatabaseConnection;
   readonly config?: Readonly<Record<string, unknown>>;
 }
 
@@ -512,7 +512,7 @@ export interface AppFeatureContractService {
   readonly primary?: boolean;
   readonly featureIds?: ReadonlyArray<string>;
   readonly environment?: Environment;
-  readonly connection?: ServiceConnection;
+  readonly connection?: DatabaseConnection;
 }
 
 /** Input the app-feature contract uses to execute a single app feature. */

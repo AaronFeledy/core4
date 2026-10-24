@@ -1,7 +1,7 @@
 import { Result } from "effect";
 
 import { SqlServiceAmbiguousError, SqlServiceNotFoundError } from "@lando/sdk/errors";
-import type { ServiceConnection } from "@lando/sdk/schema";
+import type { DatabaseConnection } from "@lando/sdk/schema";
 
 import { type SqlFamily, familyFromServiceType } from "./families.ts";
 
@@ -13,7 +13,7 @@ export type SqlTarget = {
 
 export type SqlTargetPlan = {
   readonly services: Readonly<
-    Record<string, { readonly name: string; readonly type: string; readonly connection?: ServiceConnection }>
+    Record<string, { readonly name: string; readonly type: string; readonly connection?: DatabaseConnection }>
   >;
 };
 

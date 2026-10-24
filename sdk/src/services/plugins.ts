@@ -9,13 +9,13 @@ import type {
 import type {
   AbsoluteContainerPath,
   ContainerUser,
+  DatabaseConnection,
   LogSource,
   PlanMetadata,
   PluginManifest,
   ProviderCapabilities,
   ProviderId,
   ServiceConfig,
-  ServiceConnection,
   ServiceCreds,
   ServiceName,
   ToolingTaskShape,
@@ -106,7 +106,7 @@ export interface FeatureRef {
  * A service type MUST NOT hand-build a `ServicePlan`.
  */
 export interface ServiceTypeResolution {
-  readonly connection?: ServiceConnection;
+  readonly connection?: DatabaseConnection;
   readonly nonSqlCreds?: ServiceCreds;
   readonly base: "l337" | "lando";
   readonly normalizedConfig: ServiceConfig;
@@ -158,7 +158,7 @@ export interface ServiceType {
   readonly identity?: ServiceImageIdentity;
   readonly toolingForConnection?: (
     name: ServiceName,
-    connection: ServiceConnection,
+    connection: DatabaseConnection,
   ) => Readonly<Record<string, ToolingTaskShape>>;
   readonly projectFiles?: (service: ServiceConfig) => ReadonlyArray<ServiceTypeProjectFileDeclaration>;
   readonly schema: Schema.Codec<unknown, unknown>;

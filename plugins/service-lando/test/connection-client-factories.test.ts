@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { PortNumber, type ServiceConnection, ServiceName } from "@lando/sdk/schema";
+import { type DatabaseConnection, PortNumber, ServiceName } from "@lando/sdk/schema";
 import { serviceTypes } from "../src/index.ts";
 
 test.each([
@@ -12,7 +12,7 @@ test.each([
   ["mssql:2019", "mssql", "sqlcmd", "SQLCMDPASSWORD"],
 ] as const)("registered %s rebuilds its client from supplied connection facts", (id, family, client, key) => {
   const definition = serviceTypes.get(id);
-  const facts: ServiceConnection = {
+  const facts: DatabaseConnection = {
     family,
     port: PortNumber.make(5566),
     creds: {

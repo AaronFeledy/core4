@@ -5,7 +5,7 @@ import {
   DATABASE_FAMILY_ENV_KEYS,
   DATABASE_PORT_ENV_KEY,
 } from "@lando/sdk/database-creds";
-import { ServiceConnection } from "@lando/sdk/schema";
+import { DatabaseConnection } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
 describe("database connection facts", () => {
@@ -23,7 +23,7 @@ describe("database connection facts", () => {
       creds: { user: "alice", database: "appdb", password: { _tag: "SecretRef", reference: "DB_PASSWORD" } },
     };
     // When
-    const connection = Schema.decodeUnknownSync(ServiceConnection)(input);
+    const connection = Schema.decodeUnknownSync(DatabaseConnection)(input);
     // Then
     expect(connection.port).toBe(43210);
     expect(DATABASE_FAMILY_DEFAULT_PORTS[family]).toBe(port);
@@ -33,7 +33,7 @@ describe("database connection facts", () => {
     "rejects invalid explicit ports rather than applying an observation fallback: %j",
     (port) => {
       // Given / When
-      const result = Schema.decodeUnknownResult(ServiceConnection)({
+      const result = Schema.decodeUnknownResult(DatabaseConnection)({
         family: "mongodb",
         port,
         creds: { user: "mongo", database: "mongodb", password: "literal" },
@@ -46,7 +46,7 @@ describe("database connection facts", () => {
     "does not invent missing %s connection facts from native environment keys",
     (family) => {
       // Given / When
-      const result = Schema.decodeUnknownResult(ServiceConnection)({
+      const result = Schema.decodeUnknownResult(DatabaseConnection)({
         family,
         environment: { [DATABASE_PORT_ENV_KEY]: "43210" },
       });

@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { SecretStoreUnavailableError } from "@lando/sdk/errors";
-import { PortNumber, type ServiceConnection, ServiceName, encodeUriComponent } from "@lando/sdk/schema";
+import { type DatabaseConnection, PortNumber, ServiceName, encodeUriComponent } from "@lando/sdk/schema";
 import { Cause, Effect, Exit, Option } from "effect";
 import { executeDbCommand } from "../src/execute.ts";
 import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
@@ -10,7 +10,7 @@ import { valueResolver } from "./support/value-resolver.ts";
 afterEach(cleanupSqlTestDeps);
 
 const password = { _tag: "SecretRef", reference: "DATABASE" } as const;
-const connection: ServiceConnection = {
+const connection: DatabaseConnection = {
   family: "postgres",
   port: PortNumber.make(5544),
   creds: { user: "applied-user", database: "applied-db", password },
@@ -124,7 +124,7 @@ test("uses one resolver session for source and target bindings during cross-app 
 });
 
 test("preserves typed Mongo URI encoding until concrete command dispatch", async () => {
-  const mongo: ServiceConnection = {
+  const mongo: DatabaseConnection = {
     ...connection,
     family: "mongodb",
     creds: { ...connection.creds, user: "a@b", database: "db name" },

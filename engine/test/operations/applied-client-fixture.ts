@@ -4,10 +4,10 @@ import {
   AppId,
   type AppPlan,
   type CurrentExecutableAppPlan,
+  type DatabaseConnection,
   GlobalConfig,
   PortNumber,
   ProviderId,
-  type ServiceConnection,
   ServiceName,
   type ToolingTaskShape,
 } from "@lando/sdk/schema";
@@ -36,7 +36,7 @@ import * as Secrets from "../../src/services/secret-store.ts";
 import * as Tooling from "../../src/services/tooling-engine.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 
-export const connection = (reference: string, port: number): ServiceConnection => ({
+export const connection = (reference: string, port: number): DatabaseConnection => ({
   family: "postgres",
   port: PortNumber.make(port),
   creds: {

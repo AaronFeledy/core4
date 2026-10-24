@@ -3,9 +3,9 @@ import {
   AbsolutePath,
   AppId,
   type CurrentExecutableAppPlan,
+  type DatabaseConnection,
   PortNumber,
   ProviderId,
-  type ServiceConnection,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
@@ -16,7 +16,7 @@ import { servicePlanFromDraft, toAppFeatureDraft } from "../../src/planner/exten
 import { composeAppFeatures } from "../../src/services/app-feature.ts";
 import { composeService } from "../../src/services/feature.ts";
 
-const connection: ServiceConnection = {
+const connection: DatabaseConnection = {
   family: "postgres",
   port: PortNumber.make(5544),
   creds: {

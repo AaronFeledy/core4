@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
+import { DatabaseConnection, ServiceCreds } from "./database-connection.ts";
 import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { EventsPlan } from "./landofile-events.ts";
@@ -29,7 +30,6 @@ import {
   ProviderId,
   ServiceName,
 } from "./primitives.ts";
-import { ServiceConnection, ServiceCreds } from "./service-connection.ts";
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.
@@ -71,7 +71,7 @@ const ServicePlanFields = {
 export const ServicePlan = Schema.Union([
   Schema.Struct({
     ...ServicePlanFields,
-    connection: Schema.optionalKey(ServiceConnection).annotate({
+    connection: Schema.optionalKey(DatabaseConnection).annotate({
       description: "Canonical database connection resolved by the service type.",
     }),
     nonSqlCreds: Schema.optionalKey(Schema.Never).annotate({

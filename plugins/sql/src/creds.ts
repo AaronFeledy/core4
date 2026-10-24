@@ -1,13 +1,13 @@
 import { PlanReplanRequiredError } from "@lando/sdk/errors";
 import { concatenateEnvironmentValues, encodeEnvironmentComponent } from "@lando/sdk/expressions";
-import type { Environment, ServiceConnection, ServiceCreds } from "@lando/sdk/schema";
+import type { DatabaseConnection, Environment, ServiceCreds } from "@lando/sdk/schema";
 import { Effect, absurd } from "effect";
 import type { SqlFamily } from "./families.ts";
 import type { SqlPlanService } from "./views.ts";
 
 export type SqlCreds = ServiceCreds & { readonly port: number };
 
-export const currentAppliedServiceConnection = Effect.fn("Sql.currentAppliedServiceConnection")(function* (
+export const currentAppliedDatabaseConnection = Effect.fn("Sql.currentAppliedDatabaseConnection")(function* (
   service: SqlPlanService,
   context: { readonly app: string; readonly providerId: string },
 ) {
@@ -25,7 +25,7 @@ export const currentAppliedServiceConnection = Effect.fn("Sql.currentAppliedServ
   return service.connection;
 });
 
-export const resolveSqlCreds = (connection: ServiceConnection): SqlCreds => ({
+export const resolveSqlCreds = (connection: DatabaseConnection): SqlCreds => ({
   ...connection.creds,
   port: connection.port,
 });

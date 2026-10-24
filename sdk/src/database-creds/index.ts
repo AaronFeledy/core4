@@ -1,6 +1,6 @@
-import type { ServiceConnection, ServiceCreds } from "../schema/service-connection.ts";
+import type { DatabaseConnection, ServiceCreds } from "../schema/database-connection.ts";
 
-export type DatabaseFamily = ServiceConnection["family"];
+export type DatabaseFamily = DatabaseConnection["family"];
 
 /** Service environment key carrying a database service's planned container listen port. */
 export const DATABASE_PORT_ENV_KEY = "LANDO_DB_PORT";

@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { PortNumber, type ServiceConnection } from "@lando/sdk/schema";
+import { type DatabaseConnection, PortNumber } from "@lando/sdk/schema";
 import { Effect, Exit } from "effect";
-import { credsEnv, currentAppliedServiceConnection, resolveSqlCreds } from "../src/creds.ts";
+import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "../src/creds.ts";
 import { dumpCommand, loadCommand } from "../src/families.ts";
 
 describe("applied SQL credentials", () => {
   test.each(["mysql", "mariadb", "postgres", "mongodb", "mssql"] as const)(
     "preserves %s connection facts without defaults",
     (family) => {
-      const connection: ServiceConnection = {
+      const connection: DatabaseConnection = {
         family,
         port: PortNumber.make(43210),
         creds: {
@@ -25,7 +25,7 @@ describe("applied SQL credentials", () => {
 
   test("fails closed for historical environment-only services", async () => {
     const exit = await Effect.runPromiseExit(
-      currentAppliedServiceConnection(
+      currentAppliedDatabaseConnection(
         {
           name: "db",
           type: "mysql:8",

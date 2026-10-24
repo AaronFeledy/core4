@@ -3,11 +3,11 @@ import {
   AbsolutePath,
   AppId,
   type CurrentExecutableAppPlan,
+  type DatabaseConnection,
   GlobalConfig,
   PortNumber,
   PortablePath,
   ProviderId,
-  type ServiceConnection,
   ServiceName,
   type ToolingTaskShape,
 } from "@lando/sdk/schema";
@@ -27,7 +27,7 @@ import { type RunToolingOptions, runTooling } from "../../src/operations/tooling
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
 
-const fixture = (task: ToolingTaskShape, failureCode = 0, database?: ServiceConnection) => {
+const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseConnection) => {
   const calls: {
     readonly service: string;
     readonly command: readonly string[];

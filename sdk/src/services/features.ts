@@ -21,6 +21,7 @@ import type {
   CertificatePlan,
   CommandSpec,
   DataStoreMountPlan,
+  DatabaseConnection,
   DependencyPlan,
   EndpointPlan,
   EnvironmentValue,
@@ -30,7 +31,6 @@ import type {
   PortablePath,
   ProviderCapabilities,
   ServiceConfig,
-  ServiceConnection,
 } from "../schema/index.ts";
 import type { ServiceTypeHostFacts } from "./plugins.ts";
 
@@ -130,7 +130,7 @@ export interface ServiceFeatureContext {
   readonly host?: ServiceTypeHostFacts | undefined;
   /** The service type's normalized config for this service. */
   readonly normalizedConfig: ServiceConfig;
-  readonly connection?: ServiceConnection | undefined;
+  readonly connection?: DatabaseConnection | undefined;
   /** This feature's decoded config (from its `FeatureRef.config`, via `schema`). */
   readonly config: Readonly<Record<string, unknown>>;
 

@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   type BoundText,
+  DatabaseConnection,
   Environment,
   EnvironmentValue,
   EventCmdStep,
   ServiceConfig,
-  ServiceConnection,
   ServiceCredsDisplay,
   ToolingEnvironment,
   ToolingTaskShape,
@@ -99,7 +99,7 @@ describe("environment values", () => {
       password,
     });
     const tooling = Schema.decodeUnknownSync(ToolingTaskShape)({ cmd: "psql", env: environment });
-    const connection = Schema.decodeUnknownSync(ServiceConnection)({
+    const connection = Schema.decodeUnknownSync(DatabaseConnection)({
       family: "postgres",
       port: 5544,
       creds: { user: "alice", password, database: "db" },
