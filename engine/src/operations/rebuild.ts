@@ -30,6 +30,7 @@ import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
+import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
@@ -40,7 +41,7 @@ import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
-import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
+import { inspectAppliedService } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
@@ -155,12 +156,10 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
           }),
       }),
   });
-  yield* withBuildProvider(
-    builds.buildApp(builtPlan, { force: true, ...(signal === undefined ? {} : { signal }) }),
-    provider,
-  );
-
-  const ready = yield* waitForServiceReadiness({
+  const ready = yield* completeStartup({
+    policy: "selected-rebuild",
+    builds,
+    selectedPlan: builtPlan,
     provider,
     plan: readinessPlan,
     services: services.map((service) => service.name),

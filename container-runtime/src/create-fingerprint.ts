@@ -10,16 +10,13 @@ import {
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
 import { composeConfigMounts } from "./compose-configs.ts";
-import {
-  ContainerPlanError,
-  containerHealthcheck,
-  normalizeCommand,
-  normalizeEntrypoint,
-} from "./create-values.ts";
+import { ContainerPlanError } from "./container-plan-error.ts";
+import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
 import { AGENT_SESSION_LABEL, HOST_PROXY_SESSION_LABEL } from "./labels.ts";
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 import { realizePodmanComposeKnobs } from "./podman/compose-knobs.ts";
 import { podmanNetworkNames } from "./podman/networks.ts";
+import { compileServiceProbe } from "./service-probe.ts";
 
 export const CREATE_CONFIG_LABEL = "dev.lando.create-config";
 
@@ -132,7 +129,21 @@ export const createConfigFingerprint = (
           key !== CREATE_CONFIG_LABEL && key !== AGENT_SESSION_LABEL && key !== HOST_PROXY_SESSION_LABEL,
       ),
     ),
-    healthcheck: containerHealthcheck(service.healthcheck),
+    healthcheck: containerHealthcheck(service.healthcheck, plan, service),
+    readiness:
+      service.readiness === undefined
+        ? undefined
+        : {
+            ...service.readiness,
+            target:
+              service.readiness.target === undefined
+                ? undefined
+                : {
+                    port: service.readiness.target.port,
+                    transport: service.readiness.target.transport,
+                  },
+            command: compileServiceProbe(service.readiness, plan, service),
+          },
     exposedPorts: physicalListenerPorts(service.endpoints),
     publications: physicalPublications(service.endpoints).sort((a, b) =>
       canonicalJson(a).localeCompare(canonicalJson(b)),
@@ -146,5 +157,5 @@ export const createConfigFingerprint = (
     ),
     knobs,
   };
-  return `v2:${sha256Hex(canonicalJson(projection))}`;
+  return `v3:${sha256Hex(canonicalJson(projection))}`;
 };

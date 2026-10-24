@@ -65,7 +65,12 @@ describe("makeHealthcheckRunner", () => {
     );
     const result = successOf(timed.exit);
 
-    expect(result).toEqual({ healthy: false, service, attempts: 3, lastStatus: "exit 1" });
+    expect(result).toEqual({
+      healthy: false,
+      service,
+      attempts: 3,
+      lastStatus: "exit 1; red; attempts 3; elapsed 20000ms; custom probe; ",
+    });
     expect(fake.calls).toHaveLength(3);
   });
 
@@ -126,7 +131,8 @@ describe("makeHealthcheckRunner", () => {
     expect(failure).toBeInstanceOf(HealthcheckTimeoutError);
     expect(timed.elapsedMs).toBe(20_000);
     expect(fake.calls).toHaveLength(2);
-    if (failure instanceof HealthcheckTimeoutError) expect(failure.lastStatus).toBe("timeout after 5s");
+    if (failure instanceof HealthcheckTimeoutError)
+      expect(failure.lastStatus).toBe("timeout after 5s; red; attempts 2; elapsed 20000ms; sh -c slow");
   });
 
   test("a passing start-period probe completes immediately", async () => {
@@ -237,7 +243,12 @@ describe("makeHealthcheckRunner", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isFailure(exit)) expect(failureOf(exit)).not.toBeInstanceOf(HealthcheckTimeoutError);
     if (Exit.isSuccess(exit)) {
-      expect(exit.value).toEqual({ healthy: false, service, attempts: 2, lastStatus: "provider offline" });
+      expect(exit.value).toEqual({
+        healthy: false,
+        service,
+        attempts: 2,
+        lastStatus: "provider failure; red; attempts 2; elapsed 1000ms; custom probe; provider offline",
+      });
       expect(fake.calls).toHaveLength(2);
     }
   });

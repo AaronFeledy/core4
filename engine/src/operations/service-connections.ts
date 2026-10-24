@@ -3,6 +3,7 @@ import {
   physicalPublicationIdentity,
 } from "@lando/container-runtime/physical-publications";
 import {
+  type AppPlan,
   type EndpointRef,
   type LogicalEndpoint,
   type ObservedPublication,
@@ -14,7 +15,9 @@ import {
   type ServiceState,
   groupLogicalEndpoints,
   logicalEndpointIdentity,
+  serviceListenerTarget,
 } from "@lando/sdk/schema";
+import { Result } from "effect";
 import { connectionActivity } from "./connection-state.ts";
 import { clientConnectionUrls, connectionHost, connectionUrl } from "./connection-url.ts";
 import { projectRouteConnections } from "./route-connections.ts";
@@ -48,6 +51,7 @@ export const observedPublicationConnection = (
 };
 
 export const projectServiceConnections = (input: {
+  readonly plan: Pick<AppPlan, "slug" | "networking">;
   readonly service: ServicePlan;
   readonly state: ServiceState;
   readonly publications: PublicationObservation;
@@ -67,17 +71,19 @@ export const projectServiceConnections = (input: {
   for (const group of groups) {
     const endpoint = endpointRef(group);
     const protocol = group.protocols.length === 1 ? (group.protocols[0] ?? group.transport) : group.transport;
-    connections.push({
-      scope: "app",
-      source: "listener",
-      endpoint,
-      protocol,
-      binding: "assigned",
-      host: String(service.name),
-      port: group.port,
-      state: absent ? "inactive" : activity,
-      ...clientConnectionUrls({ service, endpoint, protocol, host: String(service.name), port: group.port }),
-    });
+    const target = serviceListenerTarget(input.plan, service, endpoint);
+    if (Result.isSuccess(target))
+      connections.push({
+        scope: "app",
+        source: "listener",
+        endpoint,
+        protocol,
+        binding: "assigned",
+        host: target.success.host,
+        port: group.port,
+        state: absent ? "inactive" : activity,
+        ...clientConnectionUrls({ service, endpoint, protocol, host: target.success.host, port: group.port }),
+      });
     for (const facet of service.endpoints) {
       if (facet._tag !== "published" || logicalEndpointIdentity(facet) !== logicalEndpointIdentity(group))
         continue;

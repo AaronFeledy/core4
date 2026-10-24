@@ -85,6 +85,7 @@ import { decodeAppPlan } from "./plan-decode.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
+import { validateServiceProbes } from "./service-probes.ts";
 import {
   type ResolvedService,
   appFeatureError,
@@ -533,6 +534,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     effectiveEventsFor(planServices(finalized.services)),
   );
   yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
+  yield* validateServiceProbes(plan);
   yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, plan.extensions);

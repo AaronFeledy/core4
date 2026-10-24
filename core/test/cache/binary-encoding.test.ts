@@ -198,7 +198,7 @@ describe("binary cache encoding policy", () => {
   }
 
   test("app-plan fixture matches the encoder output", async () => {
-    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v32.bin")));
+    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v35.bin")));
   });
 
   test("app-plan rejects the previous schema fixture", async () => {

@@ -56,6 +56,10 @@ const ServicePlanFields = {
   routes: Schema.Array(RouteRef),
   dependsOn: Schema.Array(DependencyPlan),
   healthcheck: Schema.optionalKey(HealthcheckPlan),
+  readiness: Schema.optionalKey(HealthcheckPlan).annotate({
+    description:
+      "Startup probe; defaults to healthcheck when absent. Ongoing native health uses healthcheck only.",
+  }),
   scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",
   }),
@@ -160,7 +164,10 @@ export const landoServiceNetworkAliases = (
   service: Pick<ServicePlan, "name">,
 ): ReadonlyArray<string> => {
   if (plan.networking !== undefined) {
-    return plan.networking.sharedNetworkMembership?.aliases[service.name] ?? [];
+    const shared = plan.networking.sharedNetworkMembership;
+    return shared === undefined
+      ? []
+      : serviceCrossAppAliases(plan.slug, service.name, shared.aliases[service.name]);
   }
   return serviceCrossAppAliases(plan.slug, service.name);
 };

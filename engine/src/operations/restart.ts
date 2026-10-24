@@ -41,6 +41,7 @@ import type { RedactionService } from "@lando/redaction/service";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
+import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
@@ -51,9 +52,8 @@ import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
-import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
+import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
-import { startFileSyncSessions } from "./start-file-sync.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import { StartAppResultSchema, type StartManagedScope, startApp } from "./start.ts";
@@ -228,9 +228,10 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       Effect.map((runtime) => [String(service.name), runtime] as const),
     ),
   );
-  yield* startFileSyncSessions(selectedPlan, events);
-
-  const ready = yield* waitForServiceReadiness({
+  const ready = yield* completeStartup({
+    policy: "selected-restart",
+    selectedPlan,
+    events,
     provider,
     plan: target.plan,
     services: selected,
