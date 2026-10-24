@@ -171,6 +171,6 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
             ),
           );
       }
-      return result;
+      return { result, recoverySnapshotId: recovery.id };
     }),
   });

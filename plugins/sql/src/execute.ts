@@ -2,7 +2,7 @@ import { DateTime, Effect, absurd } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
-import { SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
+import { SqlRecoveryOperationError, SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
 import type {
   DataTransferResult,
   Environment,
@@ -222,6 +222,9 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     let retentionApplied: boolean | undefined;
     let transfer: DataTransferResult | undefined;
     let seedStatus: "seeded" | undefined;
+    let completionReceipt:
+      | { readonly recoverySnapshotId: string; readonly operation: SqlRecoveryOperationError["operation"] }
+      | undefined;
     const runPhysical = <A, E>(
       reason: Parameters<typeof runPhysicalOperation<A, E>>[0]["reason"],
       body: Parameters<typeof runPhysicalOperation<A, E>>[0]["body"],
@@ -250,7 +253,12 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         ...(preflight === undefined ? {} : { preflight }),
         ...(retainSnapshotIds === undefined ? {} : { retainSnapshotIds }),
         body,
-      });
+      }).pipe(
+        Effect.map(({ result, recoverySnapshotId }) => {
+          completionReceipt = { recoverySnapshotId, operation: reason === "manual" ? "snapshot" : reason };
+          return result;
+        }),
+      );
     switch (action) {
       case "export":
         transfer = yield* runExport(deps, deps.exec, io);
@@ -353,7 +361,21 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         return absurd<never>(action);
     }
 
-    yield* progress.complete;
+    yield* progress.complete.pipe(
+      Effect.mapError((cause) =>
+        completionReceipt === undefined
+          ? cause
+          : new SqlRecoveryOperationError({
+              message: `${completionReceipt.operation} COMPLETED for ${target.name}, but its completion notification failed. Snapshot ${completionReceipt.recoverySnapshotId} remains available.`,
+              service: target.name,
+              operation: completionReceipt.operation,
+              recoverySnapshotId: completionReceipt.recoverySnapshotId,
+              cause,
+              remediation:
+                "Do not repeat the completed database operation. Resolve the notification failure; use lando db:snapshots to inspect available snapshots. No automatic rollback was performed.",
+            }),
+      ),
+    );
     return {
       service: target.name,
       family: target.family,
