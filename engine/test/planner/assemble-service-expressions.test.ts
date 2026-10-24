@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { ConfigExpressionError } from "@lando/sdk/errors";
-import { parseExpression } from "@lando/sdk/expressions";
 import { type LandofileShape, PortNumber, ServiceName } from "@lando/sdk/schema";
 import { FileSystem, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -250,9 +249,7 @@ test("fails at the value path when the referenced service does not exist", () =>
     );
     expect(error).toMatchObject({
       _tag: "ConfigExpressionError",
-      expression: JSON.stringify(
-        Effect.runSync(parseExpression("{{ services.nope.creds.user }}", { filePath: `${root}/.lando.yml` })),
-      ),
+      expression: "{{ services.nope.creds.user }}",
       path: "services.web.environment.DATABASE_URL",
       filePath: `${root}/.lando.yml`,
     });
@@ -279,11 +276,7 @@ test("fails when the referenced service publishes no credentials", () =>
     );
     expect(error).toMatchObject({
       path: "services.web.environment.CACHE_PASSWORD",
-      expression: JSON.stringify(
-        Effect.runSync(
-          parseExpression("{{ services.cache.creds.password }}", { filePath: `${root}/.lando.yml` }),
-        ),
-      ),
+      expression: "{{ services.cache.creds.password }}",
     });
   }));
 
