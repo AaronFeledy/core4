@@ -522,7 +522,10 @@ describe("create-body service publish ports", () => {
               {
                 method: "POST",
                 path: "/networks/lando_bridge_network/connect",
-                body: { Container: containerName, EndpointConfig: { Aliases: ["web.global.internal"] } },
+                body: {
+                  Container: containerName,
+                  EndpointConfig: { Aliases: ["web.publish-ports.internal", "web.global.internal"] },
+                },
               },
             ]
           : [],
