@@ -16,6 +16,8 @@ import type {
   ProviderId,
   ServiceConfig,
   ServiceConnection,
+  ServiceCreds,
+  ServiceName,
   ToolingTaskShape,
 } from "../schema/index.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
@@ -105,6 +107,7 @@ export interface FeatureRef {
  */
 export interface ServiceTypeResolution {
   readonly connection?: ServiceConnection;
+  readonly nonSqlCreds?: ServiceCreds;
   readonly base: "l337" | "lando";
   readonly normalizedConfig: ServiceConfig;
   readonly features: ReadonlyArray<FeatureRef>;
@@ -146,6 +149,10 @@ export interface ServiceType {
   readonly extends?: string;
   readonly artifacts?: Readonly<Record<string, string>>;
   readonly identity?: ServiceImageIdentity;
+  readonly toolingForConnection?: (
+    name: ServiceName,
+    connection: ServiceConnection,
+  ) => Readonly<Record<string, ToolingTaskShape>>;
   readonly projectFiles?: (service: ServiceConfig) => ReadonlyArray<ServiceTypeProjectFileDeclaration>;
   readonly schema: Schema.Codec<unknown, unknown>;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;

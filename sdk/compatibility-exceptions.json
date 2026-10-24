@@ -1,5 +1,11 @@
 [
   {
+    "surface": "schema:ServicePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed pre-release credential publication: ServicePlan becomes a strict union of the existing connection-or-no-credentials shape and nonSqlCreds for Redis. Actual generated fragments preserve all 25 existing properties and required fields in the first arm, and all 24 non-connection properties in the second; ServiceCreds is unchanged. Optional Never anti-fields forbid competing credential sources, while historical services with neither remain valid. Typed environment/connection evolution is intentional; consumers discriminate descriptors without resolving secrets during observation. Tests cover coexistence rejection, literal/reference Redis planning, serialized AppPlan invocation, and existing SQL projections."
+  },
+  {
     "surface": "schema:ServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.environment.anyOf",

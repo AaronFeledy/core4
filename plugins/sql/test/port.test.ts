@@ -11,15 +11,10 @@ for (const family of ["mysql", "mariadb", "postgres", "mongodb"] as const) {
   test(`${family} seed uses distinct source and target ports, including readiness probes`, async () => {
     const source = sourcePlan("/shop", `${family}:8.0`);
     const sourceServices = Object.fromEntries(
-      Object.entries(source.services).map(([name, service]) => [
-        name,
-        {
-          ...service,
-          ...(service.connection === undefined
-            ? {}
-            : { connection: { ...service.connection, port: PortNumber.make(43210) } }),
-        },
-      ]),
+      Object.entries(source.services).map(([name, service]) => {
+        if (service.connection === undefined) return [name, service];
+        return [name, { ...service, connection: { ...service.connection, port: PortNumber.make(43210) } }];
+      }),
     );
     const harness = makeSqlTestDeps({
       type: `${family}:8.0`,

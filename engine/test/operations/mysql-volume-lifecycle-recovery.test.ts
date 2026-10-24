@@ -47,6 +47,7 @@ describe("MySQL volume identity recovery across destructive lifecycle operations
     // Given a plan with authored steps whose MySQL store resolves to the legacy volume
     const harness = makeHarness({ plannedApp: mysqlPlan, listVolumes: recoveredVolumes });
     const tooling = { cleanup: { cmd: "echo stopping", service: ":host" } };
+    const { nonSqlCreds: _nonSqlCreds, ...mysqlWithoutNonSqlCreds } = mysqlService;
     const credsScope = {
       db: {
         port: PortNumber.make(3306),
@@ -58,7 +59,10 @@ describe("MySQL volume identity recovery across destructive lifecycle operations
         {
           ...mysqlPlan,
           services: {
-            [mysqlService.name]: { ...mysqlService, connection: { family: "mysql", ...credsScope.db } },
+            [mysqlService.name]: {
+              ...mysqlWithoutNonSqlCreds,
+              connection: { family: "mysql", ...credsScope.db },
+            },
           },
         },
         { "pre-stop": [{ task: "cleanup" }] },

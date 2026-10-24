@@ -117,6 +117,28 @@ describe("AppRef", () => {
 });
 
 describe("ServicePlan", () => {
+  test.each(["redis-password", { _tag: "SecretRef", reference: "REDIS_PASSWORD" }])(
+    "rejects coexisting SQL connection and non-SQL credentials with password %j",
+    (password) => {
+      // Given
+      const creds = { user: "default", password, database: "0" };
+      const service = {
+        ...servicePlanFixture,
+        connection: { family: "postgres", port: 5432, creds },
+        nonSqlCreds: creds,
+      };
+      // When
+      const result = Schema.decodeUnknownResult(ServicePlan)(service);
+      const appResult = Schema.decodeUnknownResult(AppPlan)({
+        ...appPlanFixture,
+        services: { web: service },
+      });
+      // Then
+      expect(Result.isFailure(result)).toBe(true);
+      expect(Result.isFailure(appResult)).toBe(true);
+    },
+  );
+
   test("decodes a minimal MVP service (one mount, one endpoint) and preserves required fields", () => {
     const decoded = Schema.decodeUnknownSync(ServicePlan)(servicePlanFixture);
     expect(decoded.name).toBe(ServiceName.make("web"));

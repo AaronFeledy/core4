@@ -29,12 +29,12 @@ import {
   ProviderId,
   ServiceName,
 } from "./primitives.ts";
-import { ServiceConnection } from "./service-connection.ts";
+import { ServiceConnection, ServiceCreds } from "./service-connection.ts";
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.
 
-export const ServicePlan = Schema.Struct({
+const ServicePlanFields = {
   name: ServiceName,
   type: Schema.String,
   provider: ProviderId,
@@ -43,9 +43,6 @@ export const ServicePlan = Schema.Struct({
   command: Schema.optionalKey(CommandSpec),
   entrypoint: Schema.optionalKey(CommandSpec),
   environment: Environment,
-  connection: Schema.optionalKey(ServiceConnection).annotate({
-    description: "Canonical database connection resolved by the service type.",
-  }),
   user: Schema.optionalKey(Schema.String),
   workingDirectory: Schema.optionalKey(PortablePath),
   appMount: Schema.optionalKey(AppMountPlan),
@@ -66,7 +63,25 @@ export const ServicePlan = Schema.Struct({
     description: "Service-type resolution inputs and selected artifact, excluding source file contents.",
   }),
   extensions: ProviderExtensionConfig,
-});
+};
+export const ServicePlan = Schema.Union([
+  Schema.Struct({
+    ...ServicePlanFields,
+    connection: Schema.optionalKey(ServiceConnection).annotate({
+      description: "Canonical database connection resolved by the service type.",
+    }),
+    nonSqlCreds: Schema.optionalKey(Schema.Never).annotate({
+      description: "Non-SQL credentials cannot coexist with a database connection.",
+    }),
+  }),
+  Schema.Struct({
+    ...ServicePlanFields,
+    connection: Schema.optionalKey(Schema.Never),
+    nonSqlCreds: ServiceCreds.annotate({
+      description: "Published non-SQL credentials, mutually exclusive with a database connection.",
+    }),
+  }),
+]);
 export type ServicePlan = typeof ServicePlan.Type;
 
 // Shared file-sync naming and mount-target contract used by the planner and providers.

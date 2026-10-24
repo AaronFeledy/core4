@@ -71,7 +71,8 @@ describe("desired immutable create config", () => {
     expect(new Set(fingerprints).size).toBe(values.length);
   });
 
-  const changes: ReadonlyArray<readonly [string, Partial<ServicePlan>]> = [
+  type FingerprintChange = Partial<Omit<ServicePlan, "connection" | "nonSqlCreds">>;
+  const changes: ReadonlyArray<readonly [string, FingerprintChange]> = [
     ["environment", { environment: { MODE: "after" } }],
     ["command", { command: ["sleep", "60"] }],
     ["entrypoint", { entrypoint: ["/entrypoint"] }],
