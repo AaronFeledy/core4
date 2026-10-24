@@ -13,12 +13,12 @@ import { ProxyApplyError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import { AppId, CommandResultEnvelope, type ServiceConnection } from "@lando/sdk/schema";
 import { Duration, Effect, Schema } from "effect";
+import { runFixtureCli } from "./convergence-cli.ts";
 import { liveEnabled, managedProviderSocketPath } from "./scanner-live-fixture";
 
 // Uses the inherited managed runtime and global router, like the other CLI-driven live
 // tests. The fault lives only at this app's own certificate path, so other apps are untouched.
 const cliEntry = resolve(import.meta.dir, "../../bin/lando.ts");
-const commandTimeout = 120_000;
 const inventoryNotice = "Start did not complete. Resources were left in place";
 
 // Decode the terminal frame, including the public envelope, strictly: human inventory
@@ -55,25 +55,17 @@ const inspectWeb = async (container: string) => {
   return Schema.decodeUnknownSync(Schema.fromJsonString(containerObservation))(response.body);
 };
 
-const lando = async (cwd: string, args: readonly string[]) => {
+const landoCommand = (cwd: string, args: readonly string[]) => {
   const binary = process.env.LANDO_SCENARIO_E2E_BINARY;
   // A compiled runner may be acting as Bun through BUN_BE_BUN; the CLI under test must not inherit it.
   const { BUN_BE_BUN: _bunBeBun, ...inherited } = process.env;
-  const proc = Bun.spawn([...(binary === undefined ? [process.execPath, cliEntry] : [binary]), ...args], {
-    cwd,
-    env: { ...(binary === undefined ? process.env : inherited), LANDO_TELEMETRY_ENABLED: "false" },
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: commandTimeout,
+  return runFixtureCli([...(binary === undefined ? [process.execPath, cliEntry] : [binary]), ...args], cwd, {
+    ...(binary === undefined ? process.env : inherited),
+    LANDO_TELEMETRY_ENABLED: "false",
   });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  return { exitCode, stdout, stderr };
 };
+
+const lando = (cwd: string, args: readonly string[]) => Effect.runPromise(landoCommand(cwd, args));
 
 const isHttpsRoute = (connection: ServiceConnection, hostname: string) =>
   connection.scope === "host" &&
@@ -98,7 +90,7 @@ const waitForActiveRoute = async (cwd: string, hostname: string) => {
         },
       },
       Effect.gen(function* () {
-        const info = yield* Effect.promise(() => lando(cwd, ["info", "--format=json"]));
+        const info = yield* landoCommand(cwd, ["info", "--format=json"]);
         expect(info.exitCode, info.stdout + info.stderr).toBe(0);
         const envelope = terminalEnvelope(info.stdout);
         expect(envelope.ok).toBe(true);
