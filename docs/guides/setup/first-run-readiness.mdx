@@ -8,7 +8,7 @@ tags: [beta, docs, setup, readiness]
 
 # Check first-run readiness
 
-Run `lando doctor` after setup to check the selected provider. On an Intel Mac (`darwin-x64`), install and start Docker Desktop, then run `lando setup --provider=docker` instead of the default setup command below. Setup does not install Docker for you.
+Run `lando setup` in your terminal and follow the prompts, then use `lando doctor` to check the result. Choose the recommended Lando-managed runtime on supported hosts; Docker is not required. On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks. Setup does not install Docker for you.
 
 ```sh
 lando setup

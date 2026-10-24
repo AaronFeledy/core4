@@ -62,7 +62,7 @@ Add-Content -LiteralPath $PROFILE -Value $landoProfilePath
 
 Run these once for each profile where you want Lando. The current session already has the PATH entry from the earlier command.
 
-Before setup, choose the supported provider for your host. On an Intel Mac (`darwin-x64`), install and start Docker Desktop, then use `lando setup --provider=docker` instead of `lando setup` below. Setup does not install Docker for you. On other supported hosts, use the default managed `lando` provider:
+Run setup in your terminal and follow the prompts. Choose the recommended Lando-managed runtime on supported hosts; Docker is not required. On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks. Setup does not install Docker for you:
 
 ```sh
 lando setup
