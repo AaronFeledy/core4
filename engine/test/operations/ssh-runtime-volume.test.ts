@@ -93,6 +93,7 @@ const registry = (state: string, selected: string[]) => ({
           service: ServiceName.make("ssh-agent"),
           providerId: ProviderId.make("lando"),
           status: state,
+          publications: { status: "unknown" as const },
           state,
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),

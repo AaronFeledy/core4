@@ -148,7 +148,9 @@ describe("mssql ServiceType", () => {
         expect(serviceType.schema).toBe(MssqlServiceConfig);
         expect(plan.type).toBe("mssql");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
-        expect(plan.endpoints).toEqual([{ _tag: "internal", port: 1433, protocol: "tcp", name: "database" }]);
+        expect(plan.endpoints).toEqual([
+          { _tag: "internal", port: 1433, protocol: "tcp", name: "database", primary: true },
+        ]);
         expect(plan.storage).toHaveLength(1);
         expect(plan.storage[0]?.store).toBe("myapp-mssql-data");
         expect(String(plan.storage[0]?.target)).toBe("/var/opt/mssql");
@@ -286,7 +288,7 @@ describe("mssql ServiceType", () => {
 
         expect(plan.artifact).toEqual({ kind: "ref", ref: "mcr.microsoft.com/mssql/server:custom" });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 14333, protocol: "tcp", name: "database" },
+          { _tag: "internal", port: 14333, protocol: "tcp", name: "database", primary: true },
         ]);
         expect(plan.command).toEqual(["/opt/mssql/bin/sqlservr"]);
         expect(plan.user).toBe("1000:1000");

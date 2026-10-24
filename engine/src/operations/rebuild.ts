@@ -19,17 +19,16 @@ import {
   BuildOrchestrator,
   type EventService,
   type LandofileService,
-  RouterService,
+  type RouterService,
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
 import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
-import { type AppPlan, type AppRef, ServiceName } from "@lando/sdk/schema";
+import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
@@ -38,6 +37,7 @@ import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
@@ -98,7 +98,6 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   const { signal, managed } = options;
   const registry = yield* RuntimeProviderRegistry;
   const builds = yield* BuildOrchestrator;
-  const proxy = yield* RouterService;
   const provider = yield* registry.select(plan);
   const services = Object.values(plan.services);
 
@@ -160,7 +159,6 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
     provider,
   );
 
-  const routedUrls = yield* routeUrlsForPlan(proxy, builtPlan);
   const ready = yield* waitForServiceReadiness({
     provider,
     plan: readinessPlan,
@@ -168,10 +166,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
     initial,
     ...(signal === undefined ? {} : { signal }),
   });
-  return ready.map((row) => ({
-    ...row,
-    endpoints: [...(routedUrls.get(ServiceName.make(row.name)) ?? []), ...row.endpoints],
-  }));
+  return startedServices(yield* collectPlanConnections(readinessPlan, ready));
 });
 
 export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (

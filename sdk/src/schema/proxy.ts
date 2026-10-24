@@ -110,6 +110,40 @@ export const ProxyAuthority = Schema.Struct({
 });
 export type ProxyAuthority = typeof ProxyAuthority.Type;
 
+export const RouteEvidence = Schema.Struct({
+  configuredAuthorities: Schema.Array(ProxyAuthority).annotate({
+    description: "Configured ingress authorities, independent of runtime evidence.",
+  }),
+  observation: Schema.Union([
+    Schema.Struct({
+      status: Schema.Literal("unknown").annotate({
+        description: "Live route publication could not be established.",
+      }),
+    }),
+    Schema.Struct({
+      status: Schema.Literal("missing").annotate({
+        description: "Requested route publication is proven absent.",
+      }),
+    }),
+    Schema.Struct({
+      status: Schema.Literal("present").annotate({
+        description: "Live router publication evidence is available.",
+      }),
+      publications: Schema.Array(
+        Schema.Struct({
+          route: RoutePlan.annotate({
+            description: "Requested route whose owned rule and backend were observed.",
+          }),
+          authority: ProxyAuthority.annotate({
+            description: "Observed ingress authority publishing this route.",
+          }),
+        }),
+      ).annotate({ description: "Observed matches for requested routes and actual ingress authorities." }),
+    }),
+  ]).annotate({ description: "Read-only live evidence, never inferred from setup or apply success." }),
+});
+export type RouteEvidence = typeof RouteEvidence.Type;
+
 export const ProxyApplyResult = Schema.Struct({
   app: AppId.annotateKey({
     description: "App whose durable route set was replaced.",

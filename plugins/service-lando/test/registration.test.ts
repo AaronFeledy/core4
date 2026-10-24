@@ -186,7 +186,7 @@ describe("@lando/service-lando registration", () => {
         "port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [],
       ),
     ).toEqual([
-      ["tcp", 9000],
+      ["http", 9000],
       ["http", 9001],
     ]);
     expect(objectStore.environment.MINIO_BUCKET).toBe("uploads");

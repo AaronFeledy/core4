@@ -101,7 +101,9 @@ Open the inbox URL printed by `lando info` and check for the message. For the PH
 
 SMTP stays on `1025` unless you set `port:`. The UI stays on `8025`. Lando
 adds a default hostname route to that UI port; override `routes:` when you
-want a different URL.
+want a different URL. SMTP is the service's primary listener, but the route
+still lands on the UI because it's the only HTTP listener. `lando info` lists
+both as App Network connections, `tcp://inbox:1025` and `http://inbox:8025`.
 
 ## Replace MailHog
 

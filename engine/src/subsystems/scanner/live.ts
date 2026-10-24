@@ -2,7 +2,7 @@ import { Effect, Layer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { ScannerError } from "@lando/sdk/errors";
-import type { AppId, ServiceName } from "@lando/sdk/schema";
+import { type AppId, type AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import {
   type PortCollision,
@@ -14,6 +14,8 @@ import {
 } from "@lando/sdk/services";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { collectObservedConnections, observeService } from "../../operations/connection-collector.ts";
+import { observedPublicationConnection, serviceState } from "../../operations/service-connections.ts";
 import {
   SCANNER_ID,
   type ScanSourceEndpoint,
@@ -53,9 +55,9 @@ export const makeUrlScanner = (
         return { appId, endpoints: [] };
       }
       const redactor = yield* resolveRedactor;
-      const targets =
+      const candidates =
         options?.urls === undefined
-          ? (yield* deps.listEndpoints(appId)).flatMap((endpoint) => {
+          ? (yield* deps.listEndpoints(appId, options?.plan)).flatMap((endpoint) => {
               const scan = options?.plan?.services[endpoint.service]?.scanner;
               const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
               return resolved.enabled
@@ -64,11 +66,21 @@ export const makeUrlScanner = (
             })
           : options.urls.flatMap((supplied) => {
               const protocol = URL.parse(supplied.url)?.protocol;
-              if (protocol !== undefined && protocol !== "http:" && protocol !== "https:") return [];
+              const host = URL.parse(supplied.url)?.hostname;
+              if (
+                (protocol !== undefined && protocol !== "http:" && protocol !== "https:") ||
+                host?.includes("*")
+              )
+                return [];
               const scan = options.plan?.services[supplied.service]?.scanner;
               const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
               return resolved.enabled ? [{ target: supplied, config: resolved }] : [];
             });
+      const targets = [
+        ...new Map(
+          candidates.map((entry) => [`${entry.target.service}/${entry.target.url}`, entry]),
+        ).values(),
+      ];
       const scanned = yield* Effect.forEach(
         targets,
         ({ target, config }) =>
@@ -116,17 +128,37 @@ const providerListError = (error: ProviderError, redactor: Redactor): ScannerErr
 const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>
   Effect.fn("RuntimeProvider.listEndpoints")(function* (
     appId: AppId,
+    suppliedPlan?: AppPlan,
   ): Effect.fn.Return<ReadonlyArray<ScanSourceEndpoint>, ScannerError> {
     const redactor = yield* resolveRedactor;
-    const infos = yield* provider
-      .list({ app: appId })
-      .pipe(Effect.mapError((error) => providerListError(error, redactor)));
-    return infos.flatMap((info) =>
-      (info.state ?? info.status) === "stopped" || info.endpoints === undefined
+    const plans =
+      provider.appliedPlans === undefined
         ? []
-        : info.endpoints.flatMap((endpoint) =>
-            endpoint._tag === "published" ? [{ ...endpoint, service: info.service }] : [],
-          ),
+        : yield* provider.appliedPlans.pipe(Effect.mapError((error) => providerListError(error, redactor)));
+    const plan = suppliedPlan ?? plans.find((plan) => plan.id === appId);
+    const infos = yield* (
+      plan === undefined
+        ? provider.list({ app: appId })
+        : Effect.forEach(Object.values(plan.services), (service) =>
+            provider.inspect({ app: appId, service: service.name, plan }),
+          )
+    ).pipe(Effect.mapError((error) => providerListError(error, redactor)));
+    if (plan !== undefined) {
+      const rows = yield* collectObservedConnections(
+        plan,
+        infos.map((runtime) => observeService(plan, runtime)),
+      );
+      return rows.flatMap((row) =>
+        row.connections.map((connection) => ({ ...connection, service: ServiceName.make(row.name) })),
+      );
+    }
+    return infos.flatMap((runtime) =>
+      runtime.publications.status === "present"
+        ? runtime.publications.bindings.map((binding) => ({
+            ...observedPublicationConnection(binding, serviceState(runtime.state ?? runtime.status)),
+            service: runtime.service,
+          }))
+        : [],
     );
   });
 

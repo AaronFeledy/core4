@@ -255,7 +255,10 @@ export const makeHarness = (
           status: "running",
           state: "running",
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
-          endpoints: plannedApp.services[target.service]?.endpoints ?? [],
+          publications: {
+            status: "present",
+            bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
+          },
         })),
     stop: (target) =>
       Effect.sync(() => {

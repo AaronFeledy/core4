@@ -104,6 +104,7 @@ describe("Tomcat authored HTTP port", () => {
         port: selectedPort,
         protocol: "http",
         name: "web",
+        primary: true,
       });
       expect(result.plan.healthcheck?.command).toEqual([
         "bash",

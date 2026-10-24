@@ -17,6 +17,7 @@ const runtime = (extras: Partial<ServiceRuntimeInfo> = {}): ServiceRuntimeInfo =
   service: web.name,
   providerId: plan.provider,
   status: "running",
+  publications: { status: "unknown" },
   state: "running",
   containerId: "web-container",
   lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),

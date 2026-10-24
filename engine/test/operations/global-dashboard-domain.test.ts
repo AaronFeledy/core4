@@ -72,7 +72,8 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
 
     // Then: planning and publication use the new domain without regenerating global YAML.
     expect(changed.plan.routes.map((route) => route.hostname)).toEqual(["mailpit.custom.test"]);
-    expect(urls.get(mail)).toEqual(["https://mailpit.custom.test:38443"]);
+    expect(router.routesByApp.get(changed.plan.id)).toEqual(changed.plan.routes);
+    expect(urls).toBeUndefined();
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -222,7 +222,7 @@ For every verb, the default `BunSelfRunner` MUST prepend a scoped private `lando
 
 #### 8.2.5 The `app:open` command
 
-`app:open` resolves only planned `http` or `https` routes/endpoints from `ServiceInfo`. Default selection is the primary route, preferring HTTPS; `--service`, `--route`, and `--all` refine it. No target returns `OpenTargetUnresolvedError`; scheme violations use `HostProxyOpenUrlSchemeError` semantics. `--print` skips browser launch, and `--format json` returns targets. A headless host prints the URL and exits successfully. Events are `cli-app:open-*` plus `pre-open-url`/`post-open-url`.
+`app:open` resolves only `http` or `https` targets, using the same listener selection as default routes (§6.6): a marked HTTP(S) primary, else the single HTTP(S) listener, never list order, with a named or numeric selector refining it. Hyperlink and open targets are `assigned`, `active`, non-wildcard host connections (§6.10). Default selection prefers the primary route, preferring HTTPS; `--service`, `--route`, and `--all` refine it. No target returns `OpenTargetUnresolvedError`; scheme violations use `HostProxyOpenUrlSchemeError` semantics. `--print` skips browser launch, and `--format json` returns targets. A headless host prints the URL and exits successfully. Events are `cli-app:open-*` plus `pre-open-url`/`post-open-url`.
 
 #### 8.2.6 The `meta:mcp` command
 

@@ -97,7 +97,9 @@ describe("dotnet ServiceType", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]).toMatchObject({ store: "lando-cache-nuget", readOnly: false });
     expect(String(plan.storage[0]?.target)).toBe("/root/.nuget/packages");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5000, protocol: "http", name: "api" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 5000, protocol: "http", name: "api", primary: true },
+    ]);
   });
 
   test("resolves certificates and NuGet cache metadata", async () => {
@@ -123,7 +125,9 @@ describe("dotnet ServiceType", () => {
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.test/dotnet-sdk:custom" });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8123, protocol: "http", name: "api" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8123, protocol: "http", name: "api", primary: true },
+    ]);
     expect(plan.command).toEqual(["dotnet", "watch"]);
     expect(plan.user).toBe("1000:1000");
   });

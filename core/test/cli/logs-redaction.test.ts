@@ -153,7 +153,7 @@ const makeLayer = (rawLine: string) => {
         providerId,
         status: "running",
         state: "running",
-        endpoints: [],
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),

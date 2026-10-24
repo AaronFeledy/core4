@@ -75,7 +75,7 @@ describe("finalizeServices auto-generated hostnames", () => {
     const service = Schema.decodeUnknownSync(ServicePlan)(result.services.appserver);
     expect(service.endpoints).toEqual([HTTP_ENDPOINT]);
   });
-  test("routes to the first HTTP endpoint after TCP using the configured default domain", async () => {
+  test("routes to the marked HTTP primary after TCP using the configured default domain", async () => {
     // Given
     const draft = phpishDraft(undefined);
     const plannedServiceDraft: PlannedServiceDraft = {
@@ -84,8 +84,8 @@ describe("finalizeServices auto-generated hostnames", () => {
         ...draft.draft,
         endpoints: [
           { _tag: "internal", protocol: "tcp", port: 1025, name: "smtp" },
-          { _tag: "internal", protocol: "http", port: 8025, name: "ui" },
           { _tag: "internal", protocol: "http", port: 8080, name: "secondary" },
+          { _tag: "internal", protocol: "http", port: 8025, name: "ui", primary: true },
         ],
       },
     };

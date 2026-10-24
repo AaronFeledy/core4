@@ -275,6 +275,7 @@ describe("SSH agent doctor posture", () => {
           service: ServiceName.make("ssh-agent"),
           providerId: ProviderId.make("lando"),
           status: started ? "running" : "exited",
+          publications: { status: "present" as const, bindings: [] },
         })),
       exec: () => Effect.sync(() => ({ exitCode: ++probes < 3 ? 2 : 0, stdout: "", stderr: "" })),
     };

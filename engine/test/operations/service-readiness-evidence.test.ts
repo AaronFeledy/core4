@@ -18,6 +18,7 @@ const stopped = {
   service: web.name,
   providerId: plan.provider,
   status: "stopped",
+  publications: { status: "unknown" as const },
   exitCode: 17,
 };
 const target = { plan, service: web.name };

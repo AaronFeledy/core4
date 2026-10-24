@@ -54,8 +54,9 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEndpoint({
     _tag: "internal",
     port: Schema.decodeUnknownSync(PortNumber)(apiPort),
-    protocol: "tcp",
+    protocol: "http",
     name: ctx.serviceName,
+    primary: true,
   });
   ctx.addEndpoint({
     _tag: "internal",

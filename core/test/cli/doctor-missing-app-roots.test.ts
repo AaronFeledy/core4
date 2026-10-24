@@ -23,6 +23,7 @@ const snapshot = (appRoot = root, cache = false, runtimeObserved = true): Provid
       service: ServiceName.make("web"),
       status: "running",
       containerId: "observed-container",
+      publications: { status: "unknown" },
     },
   ],
   volumes: [

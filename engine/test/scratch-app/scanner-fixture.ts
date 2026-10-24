@@ -13,6 +13,7 @@ export const service = {
   service: ServiceName.make("app"),
   providerId: ProviderId.make("other"),
   status: "running",
+  publications: { status: "unknown" as const },
   containerId: "observed-container",
   labels,
 };

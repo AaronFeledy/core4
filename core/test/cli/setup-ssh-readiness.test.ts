@@ -47,6 +47,7 @@ test.each([
           service: ServiceName.make("ssh-agent"),
           providerId: ProviderId.make("lando"),
           status: scenario.state,
+          publications: { status: "present" as const, bindings: [] },
         }).pipe(Effect.tap(() => Deferred.succeed(inspecting, undefined))),
       exec: () =>
         Effect.sync(() => {

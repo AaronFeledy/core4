@@ -4,6 +4,7 @@ import { DateTime } from "effect";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 
 import { defaultTunnelTarget } from "../../src/operations/share.ts";
+import { web } from "./start-progress-topology-support.ts";
 
 const service = ServiceName.make("web");
 const routedPlan: AppPlan = {
@@ -64,5 +65,33 @@ describe("defaultTunnelTarget", () => {
     const target = defaultTunnelTarget({ ...routedPlan, routes: [] });
     // Then
     expect(target).toEqual({ _tag: "route", routeId: routedPlan.id });
+  });
+
+  test("selects the primary listener route instead of the first route", () => {
+    const plan: AppPlan = {
+      ...routedPlan,
+      services: {
+        [service]: {
+          ...web,
+          name: service,
+          endpoints: [
+            { _tag: "internal", protocol: "http", port: 8080 },
+            { _tag: "internal", protocol: "http", port: 3000, primary: true },
+          ],
+        },
+      },
+      routes: [
+        ...routedPlan.routes,
+        {
+          hostname: "primary.demo.test",
+          scheme: "https",
+          priority: 2,
+          service,
+          backend: { service, protocol: "http", port: 3000 },
+        },
+      ],
+    };
+    const target = defaultTunnelTarget(plan);
+    expect(target).toEqual({ _tag: "route", routeId: "primary.demo.test", hostname: "primary.demo.test" });
   });
 });

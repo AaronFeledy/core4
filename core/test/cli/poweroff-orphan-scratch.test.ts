@@ -44,6 +44,7 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
                   service: ServiceName.make("web"),
                   providerId: ProviderId.make("lando"),
                   status: "running" as const,
+                  publications: { status: "unknown" as const },
                   labels: { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": id },
                 },
               ]),

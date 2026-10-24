@@ -82,6 +82,7 @@ export const harness = (
         providerId: ProviderId.make("lando"),
         service: ServiceName.make(name),
         status,
+        publications: { status: "unknown" as const },
         ...(options.missing && name === "mail" ? {} : { containerId: `${name}-container` }),
       }))
     ).filter((observation) => !removedIds.has(observation.containerId));
