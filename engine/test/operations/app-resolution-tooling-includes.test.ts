@@ -8,9 +8,10 @@ import { type Context, Effect } from "effect";
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { LandofileService } from "@lando/sdk/services";
 
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { loadUserLandofile } from "../../src/landofile/app-resolution.ts";
+import { scopedLandofileRuntimeInputs } from "../../src/services/landofile-live.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
-import { literalTestLandofile } from "../compiled-landofile.ts";
 
 test("loadUserLandofile resolves toolingIncludes-only injected services", async () => {
   // Given an injected Landofile service whose only include surface is toolingIncludes
@@ -25,7 +26,13 @@ test("loadUserLandofile resolves toolingIncludes-only injected services", async 
       toolingIncludes: { docs: { file: "./tasks.yml" } },
     };
     const service = {
-      discover: Effect.succeed(literalTestLandofile(shape, appRoot)),
+      discover: Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
+        loadAuthoredDocuments(
+          [{ file: join(appRoot, ".lando.yml"), value: shape }],
+          { appRoot, file: join(appRoot, ".lando.yml") },
+          inputs,
+        ),
+      ),
     } satisfies Context.Service.Shape<typeof LandofileService>;
 
     // When the user Landofile is loaded through the injected service path
