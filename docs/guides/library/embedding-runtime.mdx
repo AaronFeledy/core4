@@ -59,7 +59,8 @@ shut down or remove the app. Use
 runtime scope, matching the CLI's detached semantics.
 
 Service startup also honors each Landofile `depends_on` condition: `service_started`
-waits for the dependency to start, `service_healthy` waits for its healthcheck, and
+waits for the dependency to start, `service_healthy` waits for its startup check (its healthcheck, or the stronger startup probe
+its service type declares), and
 `service_completed_successfully` waits for a zero exit code. An optional dependency
 declared with `required: false` does not block the remaining services when it is absent
 or fails.

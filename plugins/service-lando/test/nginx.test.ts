@@ -290,6 +290,7 @@ describe("nginx PHP FPM app-feature wire", () => {
     addDependency: () => undefined,
     addHostAlias: () => undefined,
     setHealthcheck: () => undefined,
+    setReadiness: () => undefined,
     setCerts: () => undefined,
     setEntrypoint: () => undefined,
     setArtifact: () => undefined,

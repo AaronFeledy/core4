@@ -114,6 +114,34 @@ test("direct app composer uses declarations and reuses their decoded config", as
   expect(decodes).toBe(1);
 });
 
+test("prepared app features preserve startup readiness independently of ongoing health", async () => {
+  // Given
+  const service = draft("web");
+  const readiness = {
+    kind: "command" as const,
+    command: ["check-startup"],
+    intervalSeconds: 1,
+    timeoutSeconds: 2,
+    retries: 3,
+  };
+  const definition: AppFeatureDefinition = {
+    id: "test.readiness",
+    priority: 100,
+    apply: (ctx) => Effect.sync(() => ctx.forEachSelected((selected) => selected.setReadiness(readiness))),
+  };
+  // When
+  await Effect.runPromise(
+    composeAppFeatures({
+      appRoot: "/srv/app",
+      services: [service],
+      features: [{ id: definition.id, definition }],
+    }),
+  );
+  // Then
+  expect(service.readiness).toEqual(readiness);
+  expect(service.healthcheck).toBeUndefined();
+});
+
 test("prepared selected service disappearing fails instead of silently applying to a subset", async () => {
   const definition: AppFeatureDefinition = { id: "test.invariant", priority: 100, apply: () => Effect.void };
   const input = {

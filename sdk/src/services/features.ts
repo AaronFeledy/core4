@@ -161,6 +161,8 @@ export interface ServiceFeatureContext {
   addHostAlias(alias: HostAliasPlan): void;
   /** Set the service healthcheck. */
   setHealthcheck(healthcheck: HealthcheckPlan): void;
+  /** Set startup readiness independently from ongoing health. */
+  setReadiness(readiness: HealthcheckPlan): void;
   /** Set the service certificate plan. */
   setCerts(certs: CertificatePlan): void;
   /** Set the service entrypoint. */

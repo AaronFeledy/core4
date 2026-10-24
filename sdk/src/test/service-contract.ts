@@ -355,6 +355,9 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     setHealthcheck(healthcheck) {
       recorded.settings.healthcheck = healthcheck;
     },
+    setReadiness(readiness) {
+      recorded.settings.readiness = readiness;
+    },
     setCerts(certs) {
       recorded.settings.certs = certs;
     },
@@ -615,6 +618,7 @@ const makeRecordingAppFeatureContext = (
       addDependency: recordMutation,
       addHostAlias: recordMutation,
       setHealthcheck: recordMutation,
+      setReadiness: recordMutation,
       setCerts: recordMutation,
       setEntrypoint: recordMutation,
       setCommand: recordMutation,

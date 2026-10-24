@@ -95,6 +95,7 @@ describe("canonical typed connection projections", () => {
               ],
             });
           } else expect(clientValue).toEqual(password);
+          if (family.clientKey === "MYSQL_PWD") expect(environment.MYSQL_PWD).toBeUndefined();
           const connection = resolution.connection;
           if (connection === undefined) throw new Error("missing connection");
           expect(() => assertConnectionProjections(connection, environment)).not.toThrow();
@@ -116,7 +117,7 @@ describe("canonical typed connection projections", () => {
     expect(environment.LANDO_DB_PASSWORD).toEqual(reference);
   });
 
-  test.each(["MYSQL_PASSWORD", "LANDO_DB_PASSWORD", "MYSQL_PWD"])(
+  test.each(["MYSQL_PASSWORD", "LANDO_DB_PASSWORD", "MYSQL_ROOT_PASSWORD"])(
     "rejects a post-feature overwrite of %s without restoring a reference",
     async (key) => {
       const resolution = await resolve(mysqlServiceType, {

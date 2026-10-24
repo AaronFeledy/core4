@@ -54,6 +54,7 @@ export const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: Serv
   if (authored === false)
     return {
       ...servicePlan,
+      readiness: { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 5 },
       healthcheck: {
         kind: "none",
         intervalSeconds: existing?.intervalSeconds ?? 10,
@@ -74,9 +75,10 @@ export const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: Serv
     ...(url !== undefined ? { url } : {}),
     ...(port !== undefined ? { port } : {}),
     ...(startPeriodSeconds !== undefined ? { startPeriodSeconds } : {}),
+    ...(authored.command === undefined && existing?.target !== undefined ? { target: existing.target } : {}),
   };
   if (merged.kind === "command" && merged.command === undefined) return servicePlan;
-  return { ...servicePlan, healthcheck: merged };
+  return { ...servicePlan, healthcheck: merged, readiness: merged };
 };
 
 export { applyAuthoredDependencies } from "../services/authored-dependencies.ts";

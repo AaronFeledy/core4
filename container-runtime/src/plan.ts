@@ -7,13 +7,9 @@ import {
   fileSyncVolumeName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
+import { ContainerPlanError } from "./container-plan-error.ts";
 import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
-import {
-  ContainerPlanError,
-  containerHealthcheck,
-  normalizeCommand,
-  normalizeEntrypoint,
-} from "./create-values.ts";
+import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
 import { literalServiceEnvironment, requireCurrentCreationPlan } from "./environment-values.ts";
 import {
   APP_LABEL,
@@ -337,7 +333,7 @@ export const containerCreateBodyFragment = (
   if (artifact?.kind !== "ref") {
     return (options.onMissingArtifact ?? missingArtifact)(artifact);
   }
-  const healthcheck = containerHealthcheck(service.healthcheck);
+  const healthcheck = containerHealthcheck(service.healthcheck, plan, service);
   const exposedPorts = containerExposedPorts(service.endpoints);
 
   return {

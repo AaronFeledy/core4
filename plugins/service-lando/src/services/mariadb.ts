@@ -104,7 +104,6 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
     ...familyEnvFor("mariadb", creds),
     ...landoDbEnvFor(creds, port),
     MYSQL_TCP_PORT: String(port),
-    MYSQL_PWD: creds.password,
   });
   ctx.addStorage({
     store: `${appName}-mariadb-data`,
@@ -113,7 +112,13 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   });
   ctx.setHealthcheck(
     commandHealthcheck(
-      ["mariadb-admin", "ping", "-h", "127.0.0.1", "-P", String(port), "-u", creds.user, "--silent"],
+      [
+        "sh",
+        "-c",
+        'MYSQL_PWD="$MYSQL_PASSWORD" exec mariadb-admin ping -h 127.0.0.1 -P "$1" -u "$MYSQL_USER" --silent',
+        "mariadb-healthcheck",
+        String(port),
+      ],
       60,
     ),
   );

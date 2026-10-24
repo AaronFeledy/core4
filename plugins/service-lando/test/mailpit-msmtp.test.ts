@@ -46,6 +46,7 @@ const applyWire = (views: ReadonlyArray<AppFeatureServiceView>) => {
       addStorage: unsupported("addStorage"),
       addHostAlias: unsupported("addHostAlias"),
       setHealthcheck: unsupported("setHealthcheck"),
+      setReadiness: unsupported("setReadiness"),
       setCerts: unsupported("setCerts"),
       setEntrypoint: unsupported("setEntrypoint"),
       setCommand: unsupported("setCommand"),

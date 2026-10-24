@@ -77,6 +77,10 @@ const makeMutators = (
     });
     draft.healthcheck = { ...healthcheck };
   },
+  setReadiness: (readiness) => {
+    recordWrite(ledger, { feature, serviceName: draft.serviceName, field: "readiness", value: readiness });
+    draft.readiness = { ...readiness };
+  },
   setCerts: (certs) => {
     recordWrite(ledger, { feature, serviceName: draft.serviceName, field: "certs", value: certs });
     draft.certs = { ...certs };

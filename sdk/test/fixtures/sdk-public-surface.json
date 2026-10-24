@@ -170,7 +170,7 @@
     ],
     "HealthcheckRunner": [
       "id:string",
-      "run:(plan:HealthcheckPlan,appId:AppId,service:ServiceName) => Effect.Effect<HealthcheckResult,HealthcheckRunError>"
+      "run:(plan:HealthcheckPlan,appId:AppId,service:ServiceName,appPlan?:AppPlan) => Effect.Effect<HealthcheckResult,HealthcheckRunError>"
     ],
     "HostProxyService": [
       "id:string",
@@ -1691,6 +1691,7 @@
       "deprecateField",
       "deprecateSchema",
       "deriveAuthoringAst",
+      "effectiveReadiness",
       "encodeUriComponent",
       "endpointInvariantIssues",
       "fileSyncVolumeName",
@@ -1745,6 +1746,7 @@
       "schemaArtifactFilename",
       "schemaDeprecationsFromJsonSchema",
       "selectHttpEndpoint",
+      "serviceListenerTarget",
       "snapshotHandle",
       "structuralDeprecationKey",
       "suggestionForUnknownKey",

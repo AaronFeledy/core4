@@ -488,6 +488,14 @@
       "digest": "2896907ac9f7480907d73bc5a1abedd3d4c6fdde39fc116a2155ee213174ef42"
     },
     {
+      "fixture": "docs/guides/mongodb/fixtures/mongodb-e2e-default",
+      "digest": "602013e08cc40d2766fb8e9910c02b3d825a430cebf2332c3963aa451330d236"
+    },
+    {
+      "fixture": "docs/guides/mongodb/fixtures/mongodb-e2e-port",
+      "digest": "d01b31b0b3310bcfd22a7df546da2b93922a6eedaa12746c460ac216d148876c"
+    },
+    {
       "fixture": "docs/guides/mssql/fixtures/mssql-demo",
       "digest": "2798b1b10b1da4a3aea0d2ffc3dd451796ab08b8da8aa012d96598c4c40cdb78"
     },

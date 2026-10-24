@@ -91,8 +91,12 @@ test.each([
   const labels = { ...commonContainerLabels(logicalLabels ? plan : physical, physicalService) };
   if (proof === "missing") delete labels[CREATE_CONFIG_LABEL];
   if (proof === "stale") labels[CREATE_CONFIG_LABEL] = "v2:stale";
-  if (proof === "old")
-    labels[CREATE_CONFIG_LABEL] = labels[CREATE_CONFIG_LABEL]?.replace(/^v2:/, "v1:") ?? "v1:old";
+  if (proof === "old") {
+    labels[CREATE_CONFIG_LABEL] = labels[CREATE_CONFIG_LABEL]?.replace(/^v\d+:/, "v2:") ?? "v2:old";
+    expect(labels[CREATE_CONFIG_LABEL]).not.toBe(
+      commonContainerLabels(physical, physicalService)[CREATE_CONFIG_LABEL],
+    );
+  }
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.void,

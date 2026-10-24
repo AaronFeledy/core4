@@ -106,7 +106,6 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, familyEnvFor("mysql", creds));
   addEnvRecord(ctx, landoDbEnvFor(creds, port));
-  ctx.addEnv("MYSQL_PWD", creds.password);
   ctx.addEnv("MYSQL_TCP_PORT", String(port));
   ctx.addStorage({
     store: `${appName}-${ctx.serviceName}-mysql-data`,
@@ -115,7 +114,13 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   });
   ctx.setHealthcheck(
     commandHealthcheck(
-      ["mysqladmin", "ping", "-h", "127.0.0.1", "-P", String(port), "-u", creds.user, "--silent"],
+      [
+        "sh",
+        "-c",
+        'MYSQL_PWD="$MYSQL_PASSWORD" exec mysqladmin ping -h 127.0.0.1 -P "$1" -u "$MYSQL_USER" --silent',
+        "mysql-healthcheck",
+        String(port),
+      ],
       60,
     ),
   );

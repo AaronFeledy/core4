@@ -186,11 +186,34 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     expect(db.storage[0]?.store).toBe("myapp-mongodb-data");
     expect(String(db.storage[0]?.target)).toBe("/data/db");
     expect(db.healthcheck?.kind).toBe("command");
-    expect(db.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/27017"]);
+    expect(db.healthcheck?.target?.port).toBe(27017);
+    expect(db.readiness?.target?.port).toBe(27017);
+    expect(db.environment.HOME).toBeUndefined();
     expect(db.environment.LANDO_SERVICE_TYPE).toBe("mongodb");
     expect(db.environment.MONGO_INITDB_ROOT_USERNAME).toBe("lando");
     expect(db.environment.MONGO_INITDB_ROOT_PASSWORD).toBe("lando");
     expect(db.environment.MONGO_INITDB_DATABASE).toBe("myapp");
+  });
+
+  test.each([
+    {
+      healthcheck: { kind: "command", command: ["custom-mongo-check"], timeoutSeconds: 9 },
+      expected: { kind: "command", command: ["custom-mongo-check"], timeoutSeconds: 9 },
+    },
+    { healthcheck: false, expected: { kind: "none" } },
+  ])("replaces both default probes with authored $healthcheck", async ({ healthcheck, expected }) => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "custom-probe",
+      services: { db: { type: "mongodb", home: false, healthcheck } },
+    });
+    // When
+    const plan = await planLandofile(landofile);
+    // Then
+    const service = plan.services[ServiceName.make("db")];
+    expect(service?.healthcheck).toMatchObject(expected);
+    expect(service?.readiness).toEqual(service?.healthcheck);
+    expect(service?.readiness?.target).toBeUndefined();
   });
 
   test("`lando mongosh` tooling alias routes through provider.exec to the mongodb service", async () => {
