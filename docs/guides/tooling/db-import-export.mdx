@@ -35,6 +35,54 @@ lando db:import backups/app.sql.zst --service database --yes
 
 MySQL, MariaDB, and Postgres execute the dump through the client without automatically resetting the database first; what changes depends on the dump statements. MongoDB restores its archive without automatically dropping collections. SQL Server uses `sqlcmd` backup and restore files, and its restore replaces the target database.
 
+Postgres exports include `DROP IF EXISTS` statements for the objects in the dump,
+so importing a Lando export recreates those objects and their saved data. Objects
+absent from the dump are not automatically removed. Source ownership and grants
+are omitted; the restoring user owns the recreated objects. Postgres imports stop
+at the first SQL error instead of reporting partial work as success. Earlier
+statements may already have changed data, so use the reported recovery snapshot
+if needed.
+
+For SQL Server, use a `.bak` path to make the file type clear:
+
+```sh
+lando db:export backups/app.bak --service database
+lando db:import backups/app.bak --service database --yes
+```
+
+Lando prepares a server-readable backup directory, completes `BACKUP DATABASE`,
+then copies the backup to your host. Import uploads the backup before running
+`RESTORE DATABASE` from `master`. A failed backup stops before copying a stale
+file. Export never creates a missing database; the
+[catalog service startup](../services/mssql.mdx) owns default database creation.
+
+## Inspect a failed database command
+
+Request JSON when you need structured diagnostics:
+
+```sh
+lando db:export backups/app.sql.gz --service database --format=json
+```
+
+Failed service-command transfers report `DataTransferError`; failed SQL actions
+report `SqlCommandFailedError`. When the command supplied them, `exitCode` and
+`stderrTail` preserve its exit status and redacted stderr. The tail is limited to
+8 KiB, including its truncation marker. Oversized unfinished lines may be
+suppressed. A provider failure without an exit status does not invent one.
+Database payloads and stdout are never included in these command failures.
+
+A failed export leaves an existing host destination unchanged. After a snapshot
+is captured, failures during database resume, readiness, import, reset, or restore
+report `recoverySnapshotId` with recovery guidance. Command failures keep their
+tag and diagnostics. A manual snapshot also remains available when restarting
+the database fails; that failure reports the captured snapshot instead of losing
+its handle. Failures outside command execution may use a different error tag.
+Fix the reported problem before retrying. Restore the snapshot only if recovery
+is needed. A failed capture never invents a snapshot ID.
+
+Import and seed stop with the same diagnostics if their emptiness query fails.
+`--yes` skips confirmation, not a failed database check.
+
 ## Take and restore a snapshot
 
 Snapshots land in Lando's snapshot store, not next to your dump files. Lando briefly stops a running database before copying or restoring its volume, then starts it and waits until it accepts a SQL command. A database that was already stopped stays stopped.

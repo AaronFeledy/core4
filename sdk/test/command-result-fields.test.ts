@@ -214,7 +214,7 @@ test("omits malformed typed fields instead of falling back when extras are valid
     remediation: 42,
     reason: { value: "nope" },
     issues: ["invalid"],
-    service: "not a SQL confirmation",
+    service: 42,
     steps: [{ id: "invalid" }],
     path: "config.path",
   };
@@ -223,7 +223,7 @@ test("omits malformed typed fields instead of falling back when extras are valid
   expect(envelope.error).toEqual({ _tag: "WrongShapesError", message: "failure", path: "config.path" });
 });
 
-test("drops service from a non-start error that still has a service field", () => {
+test("preserves declared service context on non-start execution errors", () => {
   const error = new ServiceExecError({
     providerId: "lando",
     operation: "exec",
@@ -236,8 +236,9 @@ test("drops service from a non-start error that still has a service field", () =
     message: "exec failed",
     providerId: "lando",
     operation: "exec",
+    service: "web",
   });
-  expect(envelope.error).not.toHaveProperty("service");
+  expect(envelope.error?.service).toBe("web");
 });
 
 test("includes service and logTail on a ServiceStartError envelope", () => {

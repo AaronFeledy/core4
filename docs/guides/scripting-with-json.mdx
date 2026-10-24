@@ -27,6 +27,10 @@ On success the envelope wraps the command's typed result under `result` with
 the redaction service runs before emission so secrets never appear in
 machine output.
 
+Failures that include a service identify it in `error.service`; scripts don't
+need to parse that name from the human message. Other JSON-safe error fields stay
+structured too. Raw causes, stacks, and redaction-token lists are not emitted.
+
 Streaming commands such as `app:logs` and `app:exec` emit `StreamFrame`
 frames under `--format json` and terminate with a single result frame.
 Source and compiled `--format json` are identical because both use the same
