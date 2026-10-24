@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ScratchAppError, ServiceNotReadyError } from "@lando/sdk/errors";
 import { ProviderId } from "@lando/sdk/schema";
 import { type RuntimeProviderShape, ScratchAppService, type ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Scope } from "effect";
@@ -59,10 +59,16 @@ test.each([
           acquire({ keepOnFailure, detached }).pipe(Effect.scoped, Effect.provide(f.layer)),
         );
         // Then cleanup follows retention policy and leaves the source untouched.
-        expect(failureOf(exit)).toMatchObject({
+        const failure = failureOf(exit);
+        expect(failure).toMatchObject({
           _tag: "ScratchAppError",
           cause: { _tag: "ServiceNotReadyError" },
         });
+        if (!(failure instanceof ScratchAppError) || !(failure.cause instanceof ServiceNotReadyError))
+          throw new TypeError("Expected scratch readiness failure");
+        expect(failure.message).toContain(failure.cause.message);
+        if (keepOnFailure) expect(failure.remediation).toBe(failure.cause.remediation);
+        else expect(failure.remediation).toContain("--keep-on-failure");
         expect(f.applied).toHaveLength(1);
         expect(f.destroyed).toHaveLength(keepOnFailure ? 0 : 1);
         const id = f.applied[0]?.id;

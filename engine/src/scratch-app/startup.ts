@@ -1,4 +1,4 @@
-import { AppPlacementError, ScratchAppError } from "@lando/sdk/errors";
+import { AppPlacementError, ScratchAppError, ServiceNotReadyError } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan, RouterConfig } from "@lando/sdk/schema";
 import {
   EnvironmentValueResolver,
@@ -91,6 +91,18 @@ export const withScratchAcquisition = <A, E, R>(
             ),
           );
       const result = yield* restore(effect).pipe(
+        Effect.mapError((error) => {
+          if (!(error instanceof ScratchAppError) || !(error.cause instanceof ServiceNotReadyError))
+            return error;
+          return new ScratchAppError({
+            operation: error.operation,
+            message: `${error.message} ${error.cause.message}`,
+            remediation: request.keepOnFailure
+              ? error.cause.remediation
+              : "Correct the source Landofile and retry scratch acquisition. Use --keep-on-failure to retain a failing instance for inspection.",
+            cause: error.cause,
+          });
+        }),
         Effect.onExit((exit) =>
           Exit.isFailure(exit) && !request.keepOnFailure ? cleanup("acquire-failure") : Effect.void,
         ),
