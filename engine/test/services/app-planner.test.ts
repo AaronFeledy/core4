@@ -196,7 +196,7 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     "AppPlanner.discover",
     "AppPlanner.loadComposeConfigs",
     "AppPlanner.planServices",
-    "AppPlanner.composeFeatures",
+    "AppPlanner.applyPreparedFeatures",
     "AppPlanner.finalizeServices",
     "AppPlanner.validateServiceProbes",
   ]);
@@ -1817,7 +1817,7 @@ describe("AppPlannerLayer.layer", () => {
       const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-app-plan-cache-root-")));
       process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
       await writeFile(join(appRoot, "cache.env"), "ENV_FILE_VALUE=one\n");
-      let servicePlanCalls = 0;
+      let featureApplyCalls = 0;
       const cachedType = makeLegacyServiceTypeFake({
         id: "cached-type",
         toServicePlan: ({
@@ -1827,7 +1827,6 @@ describe("AppPlannerLayer.layer", () => {
           primary = false,
           metadata,
         }) => {
-          servicePlanCalls += 1;
           return Schema.decodeUnknownSync(ServicePlan)({
             name: ServiceName.make(name),
             type: "cached-type",
@@ -1855,6 +1854,15 @@ describe("AppPlannerLayer.layer", () => {
           });
         },
       });
+      // Declaration also builds a fake plan; only application must be skipped on cache hits.
+      const cachedFeature: ServiceFeatureDefinition = {
+        ...cachedType.testFeature,
+        apply: (ctx) =>
+          Effect.suspend(() => {
+            featureApplyCalls += 1;
+            return cachedType.testFeature.apply(ctx);
+          }),
+      };
       const layer = AppPlannerLayer.layer.pipe(
         Layer.provide(
           Layer.mergeAll(
@@ -1875,7 +1883,7 @@ describe("AppPlannerLayer.layer", () => {
                 loadServiceType: () => Effect.succeed(cachedType),
                 loadServiceFeature: (id: string) =>
                   id === cachedType.testFeature.id
-                    ? Effect.succeed(cachedType.testFeature)
+                    ? Effect.succeed(cachedFeature)
                     : Effect.fail(
                         new PluginLoadError({
                           message: `Service feature ${id} is not registered.`,
@@ -1902,10 +1910,13 @@ describe("AppPlannerLayer.layer", () => {
           );
 
         const first = await runPlan(cachedLandofile);
+        expect(featureApplyCalls).toBe(1);
         const cachedBytes = await readFile(appPlanCachePath(cacheRoot, "cached-app", process.cwd()));
         const second = await runPlan(cachedLandofile);
+        expect(featureApplyCalls).toBe(1);
         await writeFile(join(appRoot, "cache.env"), "ENV_FILE_VALUE=two\n");
         const changedFromFile = await runPlan(cachedLandofile);
+        expect(featureApplyCalls).toBe(2);
         const changed = await runPlan({
           ...cachedLandofile,
           services: {
@@ -1923,7 +1934,7 @@ describe("AppPlannerLayer.layer", () => {
         expect(second.metadata.resolvedAt).toEqual(first.metadata.resolvedAt);
         expect(changedFromFile.services[ServiceName.make("web")]?.environment.ENV_FILE_VALUE).toBe("two");
         expect(changed.name).toBe("cached-app");
-        expect(servicePlanCalls).toBe(3);
+        expect(featureApplyCalls).toBe(3);
       } finally {
         if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
         else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
@@ -1939,7 +1950,7 @@ describe("AppPlannerLayer.layer", () => {
       const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-app-plan-env-file-cache-")));
       process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
       await writeFile(join(appRoot, "cache.env"), "ENV_FILE_VALUE=one\n");
-      let servicePlanCalls = 0;
+      let featureApplyCalls = 0;
       const cachedType = makeLegacyServiceTypeFake({
         id: "env-file-cache-type",
         normalizeConfig: ({ environment: _environment, ...normalizedConfig }) => normalizedConfig,
@@ -1950,7 +1961,6 @@ describe("AppPlannerLayer.layer", () => {
           primary = false,
           metadata,
         }) => {
-          servicePlanCalls += 1;
           return Schema.decodeUnknownSync(ServicePlan)({
             name: ServiceName.make(name),
             type: "env-file-cache-type",
@@ -1978,6 +1988,15 @@ describe("AppPlannerLayer.layer", () => {
           });
         },
       });
+      // Keep declaration work out of the persisted-cache application counter.
+      const cachedFeature: ServiceFeatureDefinition = {
+        ...cachedType.testFeature,
+        apply: (ctx) =>
+          Effect.suspend(() => {
+            featureApplyCalls += 1;
+            return cachedType.testFeature.apply(ctx);
+          }),
+      };
       const layer = AppPlannerLayer.layer.pipe(
         Layer.provide(
           Layer.mergeAll(
@@ -1998,7 +2017,7 @@ describe("AppPlannerLayer.layer", () => {
                 loadServiceType: () => Effect.succeed(cachedType),
                 loadServiceFeature: (id: string) =>
                   id === cachedType.testFeature.id
-                    ? Effect.succeed(cachedType.testFeature)
+                    ? Effect.succeed(cachedFeature)
                     : Effect.fail(
                         new PluginLoadError({
                           message: `Service feature ${id} is not registered.`,
@@ -2029,20 +2048,20 @@ describe("AppPlannerLayer.layer", () => {
         await runPlan();
 
         // Then
-        expect(servicePlanCalls).toBe(1);
+        expect(featureApplyCalls).toBe(1);
 
         // When
         await runPlan();
 
         // Then
-        expect(servicePlanCalls).toBe(1);
+        expect(featureApplyCalls).toBe(1);
 
         // When
         await writeFile(join(appRoot, "cache.env"), "ENV_FILE_VALUE=two\n");
         await runPlan();
 
         // Then
-        expect(servicePlanCalls).toBe(2);
+        expect(featureApplyCalls).toBe(2);
       } finally {
         if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
         else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
