@@ -35,6 +35,14 @@ lando db:import backups/app.sql.zst --service database --yes
 
 MySQL, MariaDB, and Postgres execute the dump through the client without automatically resetting the database first; what changes depends on the dump statements. MongoDB restores its archive without automatically dropping collections. SQL Server uses `sqlcmd` backup and restore files, and its restore replaces the target database.
 
+Postgres exports include `DROP IF EXISTS` statements for the objects in the dump,
+so importing a Lando export recreates those objects and their saved data. Objects
+absent from the dump are not automatically removed. Source ownership and grants
+are omitted; the restoring user owns the recreated objects. Postgres imports stop
+at the first SQL error instead of reporting partial work as success. Earlier
+statements may already have changed data, so use the reported recovery snapshot
+if needed.
+
 For SQL Server, use a `.bak` path to make the file type clear:
 
 ```sh

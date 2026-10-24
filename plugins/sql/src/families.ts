@@ -62,6 +62,9 @@ const mysqlClient = (
 
 const postgresClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
   "psql",
+  "-X",
+  "-v",
+  "ON_ERROR_STOP=on",
   "-p",
   String(creds.port),
   "-U",
@@ -111,7 +114,19 @@ export const dumpCommand = (
         creds.database,
       ];
     case "postgres":
-      return ["pg_dump", "-p", String(creds.port), "-U", creds.user, "-d", creds.database];
+      return [
+        "pg_dump",
+        "--clean",
+        "--if-exists",
+        "--no-owner",
+        "--no-acl",
+        "-p",
+        String(creds.port),
+        "-U",
+        creds.user,
+        "-d",
+        creds.database,
+      ];
     case "mongodb":
       return mongoTool("mongodump --archive", `--db=${quoteShell(creds.database)}`);
     default:

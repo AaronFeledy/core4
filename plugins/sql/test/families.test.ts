@@ -138,8 +138,20 @@ describe("family command builders", () => {
     ]);
   });
 
-  test("postgres dump uses pg_dump -U and -d", () => {
-    expect(dumpCommand("postgres", creds)).toEqual(["pg_dump", "-p", "43210", "-U", "alice", "-d", "appdb"]);
+  test("postgres dump recreates included objects without source ownership or ACLs", () => {
+    expect(dumpCommand("postgres", creds)).toEqual([
+      "pg_dump",
+      "--clean",
+      "--if-exists",
+      "--no-owner",
+      "--no-acl",
+      "-p",
+      "43210",
+      "-U",
+      "alice",
+      "-d",
+      "appdb",
+    ]);
   });
 
   test("mongodb dump uses MONGO_URI from the environment", () => {
@@ -164,8 +176,19 @@ describe("family command builders", () => {
     ]);
   });
 
-  test("postgres load uses psql -U and -d", () => {
-    expect(loadCommand("postgres", creds)).toEqual(["psql", "-p", "43210", "-U", "alice", "-d", "appdb"]);
+  test("postgres load ignores startup files and stops on the first SQL error", () => {
+    expect(loadCommand("postgres", creds)).toEqual([
+      "psql",
+      "-X",
+      "-v",
+      "ON_ERROR_STOP=on",
+      "-p",
+      "43210",
+      "-U",
+      "alice",
+      "-d",
+      "appdb",
+    ]);
   });
 
   test("mongodb load uses MONGO_URI from the environment", () => {
@@ -221,6 +244,9 @@ describe("family command builders", () => {
     ]);
     expect(countCommand("postgres", creds)).toEqual([
       "psql",
+      "-X",
+      "-v",
+      "ON_ERROR_STOP=on",
       "-p",
       "43210",
       "-U",
@@ -272,6 +298,9 @@ describe("family command builders", () => {
     ]);
     expect(resetCommand("postgres", creds)).toEqual([
       "psql",
+      "-X",
+      "-v",
+      "ON_ERROR_STOP=on",
       "-p",
       "43210",
       "-U",

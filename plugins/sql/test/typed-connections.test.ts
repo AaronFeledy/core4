@@ -41,7 +41,19 @@ test("exports the applied connection rather than desired credentials or native e
   expect(result.family).toBe("postgres");
   const endpoint = harness.transfers()[0]?.from;
   if (endpoint?._tag !== "serviceCmd") throw new Error("Expected database command");
-  expect(endpoint.command).toEqual(["pg_dump", "-p", "5544", "-U", "applied-user", "-d", "applied-db"]);
+  expect(endpoint.command).toEqual([
+    "pg_dump",
+    "--clean",
+    "--if-exists",
+    "--no-owner",
+    "--no-acl",
+    "-p",
+    "5544",
+    "-U",
+    "applied-user",
+    "-d",
+    "applied-db",
+  ]);
   expect(endpoint.env).toEqual({ PGPASSWORD: "actual/secret" });
   expect(JSON.stringify(harness.deps.plan)).not.toContain("actual/secret");
   expect(JSON.stringify(endpoint.command)).not.toContain("actual/secret");
