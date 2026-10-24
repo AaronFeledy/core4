@@ -21,6 +21,7 @@ import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-s
 import { eventStepLabel } from "./event-step-identity.ts";
 
 import type { ExpressionContext } from "@lando/sdk/expressions";
+import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
@@ -262,11 +263,13 @@ const runTask = Effect.fnUntraced(function* (
       ),
     );
   }
-  const resolved = yield* resolveToolingTaskShape(
+  const client = yield* resolveConnectionClientTask({
+    plan: options.plan,
+    name: leaf.task,
     task,
-    context,
-    sitesUnder(invocationAuthorityForPlan(options.plan)?.sites ?? [], ["tooling", leaf.task]),
-  );
+    sites: sitesUnder(invocationAuthorityForPlan(options.plan)?.sites ?? [], ["tooling", leaf.task]),
+  });
+  const resolved = yield* resolveToolingTaskShape(client.task, context, client.sites);
   const { redactor, redactionTokens } = yield* options.redactorFor({ env: [resolved.env, leaf.vars] });
   const result = yield* runInvocation(options, leaf.task, resolved, { redactionTokens }).pipe(
     Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)),

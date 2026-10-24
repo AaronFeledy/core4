@@ -31,6 +31,7 @@ import {
   loadUserLandofile,
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
+import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
 import { invocationToolingForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
 import {
@@ -207,11 +208,14 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     task: toolingLookupKey,
   };
   const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
-  const resolvedTask = yield* resolveToolingTaskShape(
+  const client = yield* resolveConnectionClientTask({
+    plan,
+    name: toolingLookupKey,
     task,
-    {},
-    sitesUnder(sites, ["tooling", toolingLookupKey]),
-  );
+    sites: sitesUnder(sites, ["tooling", toolingLookupKey]),
+    currentLandofile: landofile,
+  });
+  const resolvedTask = yield* resolveToolingTaskShape(client.task, {}, client.sites);
   const compiled = yield* compileToolingInvocations({
     ...options,
     lookupKey: toolingLookupKey,

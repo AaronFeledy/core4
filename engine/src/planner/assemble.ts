@@ -111,6 +111,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     defaultDomain,
     services: seeds,
     effectiveTooling,
+    connectionClients,
     invocationSites,
     appRoot,
     appName,
@@ -401,7 +402,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
       return attachCompiledInvocationPlan(
-        attachEffectiveTooling(cached, effectiveTooling),
+        attachEffectiveTooling(cached, effectiveTooling, connectionClients),
         executableSites,
         effectiveEventsFor(planServices(cached.services)),
       );
@@ -526,6 +527,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices)),
       ),
       effectiveTooling,
+      connectionClients,
     ),
     executableSites,
     effectiveEventsFor(planServices(finalized.services)),

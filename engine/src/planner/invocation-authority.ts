@@ -13,7 +13,11 @@ import type {
   ServiceScopedLandofile,
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
-import { compileEffectiveTooling, effectiveToolingForPlan } from "./effective-tooling.ts";
+import {
+  compileEffectiveTooling,
+  connectionClientsForPlan,
+  effectiveToolingForPlan,
+} from "./effective-tooling.ts";
 import { serviceCredsScopeForPlan, serviceScopeContext } from "./landofile-scopes.ts";
 
 const KEY = "@lando/core/invocation-authority";
@@ -97,9 +101,10 @@ export const invocationToolingForPlan = Effect.fnUntraced(function* (
   const landofile = compiled.document;
   const authored = compileEffectiveTooling({ landofile, services: [] });
   const names = new Set(Object.keys(authored));
+  const refreshed = new Set([...names, ...Object.keys(connectionClientsForPlan(plan))]);
   const sites = effectiveInvocationSites({
     landofile,
-    taskNames: [...names],
+    taskNames: [...refreshed],
     sites: yield* compileInvocationSites(
       compiled.pendingSites,
       serviceScopeContext({
@@ -116,7 +121,7 @@ export const invocationToolingForPlan = Effect.fnUntraced(function* (
     tooling: { ...effectiveToolingForPlan(plan), ...authored },
     sites: [
       ...(invocationAuthorityForPlan(plan)?.sites ?? []).filter(
-        (site) => site.path[0] === "tooling" && !names.has(String(site.path[1])),
+        (site) => site.path[0] === "tooling" && !refreshed.has(String(site.path[1])),
       ),
       ...sites,
     ],

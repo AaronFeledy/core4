@@ -6,13 +6,18 @@ import {
   LandofileShape,
   type LoadScopedLandofile,
   type ProviderCapabilities,
+  ServiceName,
   ServiceScopedLandofile,
 } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { type Context, DateTime, Effect, Iterable, Result, Schema } from "effect";
 import { hostProviderIdFrom } from "../providers/host-provider.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
-import { compileEffectiveTooling, toolingBeforeDefaults } from "./effective-tooling.ts";
+import {
+  compileEffectiveTooling,
+  connectionClientOwners,
+  toolingBeforeDefaults,
+} from "./effective-tooling.ts";
 import { validEventNames } from "./event-names.ts";
 import { effectiveInvocationSites } from "./invocation-authority.ts";
 import {
@@ -181,6 +186,15 @@ const knownEventSetFrom = Effect.fnUntraced(function* (resolution: ResolvedLando
     name: entry.name,
     serviceTypeId: entry.serviceType.id,
     ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
+    connectionClientNames:
+      entry.resolution.connection === undefined
+        ? []
+        : Object.keys(
+            entry.serviceType.toolingForConnection?.(
+              ServiceName.make(entry.name),
+              entry.resolution.connection,
+            ) ?? {},
+          ),
   }));
   const effectiveTooling = compileEffectiveTooling({ landofile, services: toolingServices });
   const invocationSites = effectiveInvocationSites({
@@ -197,6 +211,7 @@ const knownEventSetFrom = Effect.fnUntraced(function* (resolution: ResolvedLando
   return {
     ...resolution,
     effectiveTooling,
+    connectionClients: connectionClientOwners({ landofile, services: toolingServices }),
     invocationSites,
     knownEventNames,
   };
