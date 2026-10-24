@@ -125,6 +125,15 @@ const metadata = {
 const servicePlan = (name: "web" | "database"): ServicePlan => ({
   name: ServiceName.make(name),
   type: name === "web" ? "node" : "postgres",
+  ...(name === "database"
+    ? {
+        connection: {
+          family: "postgres" as const,
+          port: 5432,
+          creds: { user: "lando", database: "postgres", password: "start-database-canary" },
+        },
+      }
+    : {}),
   provider: providerId,
   primary: name === "web",
   artifact: { kind: "ref", ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine" },
