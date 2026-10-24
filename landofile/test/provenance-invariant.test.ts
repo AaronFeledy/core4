@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { evaluateTemplateEither, parseExpressionEither } from "@lando/sdk/expressions";
 import { type ValueOrigins, isLandofileOverride, isLandofileReset } from "@lando/sdk/landofile";
 import { Effect, Predicate, Result } from "effect";
 import { LANDOFILE_LAYER_POSITIONS } from "../src/layers.ts";
@@ -97,7 +98,19 @@ function assertProvenance(document: object): number {
         resolve(dirname(source.file), authored),
       );
     } else {
-      expect(value, `${JSON.stringify(path)} from ${JSON.stringify(source)}`).toEqual(authored);
+      const template =
+        typeof authored === "string"
+          ? parseExpressionEither(authored, { filePath: source.file, bareShellParameters: "preserve" })
+          : undefined;
+      const literal =
+        template !== undefined &&
+        Result.isSuccess(template) &&
+        template.success.segments.every(
+          (segment) => segment.kind === "LiteralSegment" || segment.kind === "CommentSegment",
+        )
+          ? Result.getOrThrow(evaluateTemplateEither(template.success, {}))
+          : authored;
+      expect(value, `${JSON.stringify(path)} from ${JSON.stringify(source)}`).toEqual(literal);
     }
   }
   return checked;
@@ -184,9 +197,11 @@ describe("composed Landofile provenance invariant", () => {
       `name: helpers\nx-loaded: "{{ load('./payload.json') }}"\nx-imported: "{{ import('./payload.json').value }}"\n`,
     );
     // When: compose, leaving recipe/environment expressions unmaterialized.
-    const { merged } = await Effect.runPromise(composeLandofileRootLayers(root, inputs));
-    // Then: generated leaves inherit the expression cursor, not invented authored child paths.
-    expect(merged["x-loaded"]).toEqual({ nested: ["{{{{ app.name }} $${VALUE}", 17] });
+    const { merged, runtime } = await Effect.runPromise(composeLandofileRootLayers(root, inputs));
+    // Then: produced text stays inert data with no newly compiled expression sites.
+    expect(merged["x-loaded"]).toEqual({ nested: ["{{ app.name }} ${VALUE}", 17] });
+    expect(merged["x-imported"]).toEqual({ nested: ["{{ app.name }} ${VALUE}", 17] });
+    expect(runtime.pendingSites).toEqual([]);
     expect(assertProvenance(merged)).toBe(5);
     for (const key of ["x-loaded", "x-imported"]) {
       expect(exactOriginAt(getOrigins(merged), [key, "nested", 0]).source.path).toEqual([key]);
