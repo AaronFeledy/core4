@@ -113,8 +113,14 @@ test.skipIf(!liveEnabled)(
       expect(
         initialResult.servicesStarted
           .find((service) => service.name === "web")
-          ?.endpoints.some((endpoint) => {
-            const url = new URL(endpoint);
+          ?.connections.some((connection) => {
+            if (
+              connection.scope !== "host" ||
+              connection.binding !== "assigned" ||
+              connection.state !== "active"
+            )
+              return false;
+            const url = new URL(connection.url);
             return url.protocol === "https:" && url.hostname === initialHostname;
           }),
       ).toBe(true);
@@ -184,15 +190,25 @@ test.skipIf(!liveEnabled)(
       expect(
         result.servicesStarted
           .find((service) => service.name === "web")
-          ?.endpoints.some((endpoint) => {
-            const url = new URL(endpoint);
+          ?.connections.some((connection) => {
+            if (
+              connection.scope !== "host" ||
+              connection.binding !== "assigned" ||
+              connection.state !== "active"
+            )
+              return false;
+            const url = new URL(connection.url);
             return url.protocol === "https:" && url.hostname === newHostname;
           }),
       ).toBe(true);
       expect(await inspectWeb(container)).toEqual(initial);
       const httpEndpoint = result.servicesStarted
         .find((service) => service.name === "web")
-        ?.endpoints.map((endpoint) => new URL(endpoint))
+        ?.connections.flatMap((connection) =>
+          connection.scope === "host" && connection.binding === "assigned" && connection.state === "active"
+            ? [new URL(connection.url)]
+            : [],
+        )
         .find((url) => url.protocol === "http:" && url.hostname === newHostname);
       if (httpEndpoint === undefined) throw new Error("Recovered web service has no new-host HTTP endpoint");
       // Bun's fetch replaces a custom Host header, so request loopback with node:http and the

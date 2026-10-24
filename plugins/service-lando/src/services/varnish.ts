@@ -60,6 +60,7 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
     port: Schema.decodeUnknownSync(PortNumber)(port),
     protocol: "http",
     name: ctx.serviceName,
+    primary: true,
   });
   ctx.setHealthcheck(commandHealthcheck(["varnishadm", "ping"], 5));
   if (backend.length > 0) {

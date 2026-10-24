@@ -8,12 +8,11 @@ import type {
   RouterPortsExhausted,
   RouterWatcherError,
 } from "@lando/sdk/errors";
-import type { AppPlan, ProxyApplyResult, RouterConfig, ServiceName } from "@lando/sdk/schema";
+import type { AppPlan, ProxyApplyResult, RouterConfig } from "@lando/sdk/schema";
 import type { RouterServiceShape } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
-import { proxyUrlsByService } from "./route-urls.ts";
 
 export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
   proxy: RouterServiceShape,
@@ -39,8 +38,3 @@ export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
     Effect.andThen(proxy.applyRoutes(plan.routes, plan.id)),
   );
 });
-
-export const routeUrlsForPlan = (proxy: RouterServiceShape, plan: AppPlan) =>
-  routerEnabled(plan)
-    ? proxy.status.pipe(Effect.map((status) => proxyUrlsByService(plan.routes, status.authorities)))
-    : Effect.succeed<ReadonlyMap<ServiceName, ReadonlyArray<string>>>(new Map());

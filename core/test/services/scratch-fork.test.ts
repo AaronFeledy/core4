@@ -292,6 +292,7 @@ const makeScratchForkLayer = (
         providerId,
         status: "running",
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
   });
@@ -379,6 +380,8 @@ const makeScratchForkLayer = (
               capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
               setup: () => options.setupRouter ?? Effect.void,
               revalidateStartup: Effect.void,
+              observeRoutes: () =>
+                Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
               applyRoutes: (routes, app) =>
                 (options.applyRoutes ?? Effect.void).pipe(
                   Effect.andThen(

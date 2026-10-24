@@ -1,4 +1,3 @@
-import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import type { FileSystem } from "@lando/sdk/services";
 import { type Context, Effect, Predicate, Schema } from "effect";
 
@@ -16,14 +15,14 @@ import {
   type ProviderCapabilities,
   type ProviderId,
   type RoutePlan,
-  ServiceName,
   ServicePlan,
   type StorageScope,
+  selectHttpEndpoint,
 } from "@lando/sdk/schema";
 
-import { validationIssue } from "@lando/sdk/schema";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
+import { endpointValidationError, normalizeEndpoints } from "../services/endpoint-normalizer.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
 import {
@@ -33,6 +32,7 @@ import {
   serviceBindRemediation,
 } from "./compose-capabilities.ts";
 import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
+import { resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
@@ -41,77 +41,7 @@ import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
 import { type ShadowHostCheck, checkShadowHosts } from "./shadow-host-checks.ts";
 import { expandExcludesToShadows } from "./storage.ts";
-
-const duplicateEndpointNameError = (
-  appRoot: string,
-  serviceName: string,
-  endpointName: string,
-): LandofileValidationError =>
-  new LandofileValidationError({
-    message: `Service ${serviceName} declares duplicate endpoint name ${endpointName}.`,
-    remediation: `Give each endpoint of service ${serviceName} a unique name.`,
-    file: `${appRoot}/.lando.yml`,
-    issues: [
-      validationIssue(
-        ["services", serviceName, "endpoints"],
-        `Service ${serviceName} declares duplicate endpoint name ${endpointName}.`,
-      ),
-    ],
-  });
-
-type RoutableEndpoint = ServicePlan["endpoints"][number] & {
-  readonly protocol: "http" | "https";
-  readonly port: number;
-};
-
-const isRoutableEndpoint = (endpoint: ServicePlan["endpoints"][number]): endpoint is RoutableEndpoint =>
-  "port" in endpoint && (endpoint.protocol === "http" || endpoint.protocol === "https");
-
-export const resolveRoute = Effect.fnUntraced(function* (
-  appRoot: string,
-  serviceName: string,
-  endpoints: ServicePlan["endpoints"],
-  route: NormalizedRoute,
-): Effect.fn.Return<RoutePlan, LandofileValidationError> {
-  const hostname = route.hostname;
-  const candidates = endpoints.filter(isRoutableEndpoint);
-  const endpoint =
-    route.endpoint === undefined
-      ? candidates[0]
-      : candidates.find((candidate) => {
-          if (typeof route.endpoint === "number") return candidate.port === route.endpoint;
-          return candidate.name === route.endpoint;
-        });
-  if (endpoint === undefined) {
-    return yield* Effect.fail(
-      new LandofileValidationError({
-        message: `Route ${hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`,
-        remediation: `Select an HTTP endpoint of service ${serviceName} for route ${hostname}.`,
-        file: `${appRoot}/.lando.yml`,
-        issues: [
-          validationIssue(
-            ["services", serviceName, "routes"],
-            `Route ${hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`,
-          ),
-        ],
-      }),
-    );
-  }
-  return {
-    priority: 2,
-    hostname,
-    scheme: route.scheme ?? "https",
-    service: ServiceName.make(serviceName),
-    ...(route.endpoint === undefined ? {} : { endpoint: route.endpoint }),
-    ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
-    ...(route.filters.length === 0 ? {} : { filters: route.filters }),
-    backend: {
-      service: ServiceName.make(serviceName),
-      protocol: endpoint.protocol,
-      port: endpoint.port,
-    },
-  };
-});
+export { resolveRoute } from "./endpoint-routes.ts";
 
 export interface FinalizedServices {
   readonly gitHostChecks: readonly GitHostCheck[];
@@ -244,8 +174,11 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
               ...redirectSteps,
             ],
           };
+    const endpoints = normalizeEndpoints(draft.endpoints, draft.normalizedConfig);
+    const endpointError = endpointValidationError(endpoints, { appRoot: input.appRoot, serviceName: name });
+    if (endpointError !== undefined) return yield* Effect.fail(endpointError);
     const planned = applyHostReachability(
-      servicePlanFromDraft(draftForPlan, [], input.metadata, extensionsForPlan),
+      servicePlanFromDraft({ ...draftForPlan, endpoints }, [], input.metadata, extensionsForPlan),
       input.providerCapabilities.hostReachability,
     );
     const servicePlan = {
@@ -331,15 +264,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     }
     const servicePlanWithHome = withHome;
 
-    const endpointNames = new Set<string>();
-    for (const endpoint of servicePlanWithHome.endpoints) {
-      if (endpoint.name === undefined) continue;
-      if (endpointNames.has(endpoint.name)) {
-        yield* Effect.fail(duplicateEndpointNameError(input.appRoot, name, endpoint.name));
-      }
-      endpointNames.add(endpoint.name);
-    }
-
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {
       for (const [routeIndex, route] of authoredRoutes.entries()) {
@@ -351,22 +275,18 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         );
       }
     } else {
-      const endpoint = servicePlanWithHome.endpoints.find(isRoutableEndpoint);
-      if (endpoint !== undefined) {
+      const selection = selectHttpEndpoint(servicePlanWithHome.endpoints);
+      if (selection.status !== "none") {
         routeRefs.push(
           ...(yield* routeAccumulator.add(
-            {
-              priority: 2,
+            yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, {
               hostname: `${name}.${input.appSlug}.${input.defaultDomain}`,
               scheme: "https",
-              service: ServiceName.make(name),
-              ...(endpoint.name === undefined ? { endpoint: endpoint.port } : { endpoint: endpoint.name }),
-              backend: {
-                service: ServiceName.make(name),
-                protocol: endpoint.protocol,
-                port: endpoint.port,
-              },
-            },
+              filters: [],
+              ...(selection.status === "selected"
+                ? { endpoint: selection.endpoint.names[0] ?? selection.endpoint.port }
+                : {}),
+            }),
             { key: `services.${name}.endpoints` },
           )),
         );

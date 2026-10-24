@@ -27,6 +27,7 @@ import type {
   ProxyCapabilities,
   ProxyConfig,
   ProxyStatus,
+  RouteEvidence,
   RoutePlan,
   ScanVerdict,
   ServiceName,
@@ -96,6 +97,10 @@ export class RouterService extends Context.Service<
       appId: AppId,
     ) => Effect.Effect<ProxyApplyResult, ProxyApplyError>;
     readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
+    readonly observeRoutes: (
+      app: AppId,
+      requestedRoutes: ReadonlyArray<RoutePlan>,
+    ) => Effect.Effect<RouteEvidence, ProxyError>;
     readonly status: Effect.Effect<ProxyStatus, ProxyError>;
     readonly stop: Effect.Effect<void, ProxyError>;
   }

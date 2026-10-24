@@ -72,6 +72,8 @@ export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(f
         service: ServiceName.make(service),
         containerId: container.Id,
         status: container.State === "running" ? "running" : "stopped",
+        ...(container.State === undefined ? {} : { state: container.State }),
+        publications: { status: "unknown" },
         labels,
       },
     ];

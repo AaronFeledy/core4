@@ -40,6 +40,7 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
     port,
     protocol: "http",
     name: ctx.serviceName,
+    primary: true,
   });
   ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
   if (ownsImageConfig) {

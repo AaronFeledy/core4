@@ -56,6 +56,7 @@ test.each([0, 2])("running agent exec exit %s distinguishes ready from starting"
         service: ServiceName.make("ssh-agent"),
         providerId: ProviderId.make("lando"),
         status: "running",
+        publications: { status: "unknown" as const },
       }),
     exec: () => Effect.succeed({ exitCode, stdout: "", stderr: "" }),
   };
@@ -91,6 +92,7 @@ test.each([
         service: ServiceName.make("ssh-agent"),
         providerId: ProviderId.make("lando"),
         status,
+        publications: { status: "unknown" as const },
       }),
     exec: () =>
       Effect.sync(() => {
@@ -130,6 +132,7 @@ test.each([false, true])(
               service: ServiceName.make("ssh-agent"),
               providerId: ProviderId.make("lando"),
               status: "running",
+              publications: { status: "unknown" as const },
             })
           : Effect.never,
       exec: () => Effect.never,
@@ -169,6 +172,7 @@ test("wait exhausts its budget when a running agent never answers", async () => 
         service: ServiceName.make("ssh-agent"),
         providerId: ProviderId.make("lando"),
         status: "running",
+        publications: { status: "unknown" as const },
       }),
     exec: () =>
       Effect.sync(() => {

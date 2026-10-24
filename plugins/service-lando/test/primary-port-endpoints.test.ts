@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ServiceConfig } from "@lando/sdk/schema";
+import { ServiceConfig, groupLogicalEndpoints, selectHttpEndpoint } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
@@ -27,12 +27,12 @@ test("retains the MariaDB primary listener when only another port is published",
   const plan = await planService(mariadbServiceType, service);
   // Then
   expect(plan.endpoints).toEqual([
-    { _tag: "internal", port: 3307, protocol: "tcp", name: "server" },
+    { _tag: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
     { _tag: "published", port: 80, protocol: "tcp", publication: { hostPort: 8080 } },
   ]);
 });
 
-test("uses a matching publication without duplicating the primary listener", async () => {
+test("keeps a matching publication as a facet of the same primary listener", async () => {
   // Given
   const service = Schema.decodeUnknownSync(ServiceConfig)({
     type: "mariadb",
@@ -43,17 +43,23 @@ test("uses a matching publication without duplicating the primary listener", asy
   const plan = await planService(mariadbServiceType, service);
   // Then
   expect(plan.endpoints).toEqual([
+    { _tag: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
     {
       _tag: "published",
       port: 3307,
       protocol: "tcp",
+      name: "server",
+      primary: true,
       publication: { bindAddress: "127.0.0.1", hostPort: 13307 },
     },
+  ]);
+  expect(groupLogicalEndpoints(plan.endpoints)).toEqual([
+    { port: 3307, transport: "tcp", primary: true, names: ["server"], protocols: ["tcp"] },
   ]);
 });
 
 test.each([nginxServiceType, node22ServiceType])(
-  "$id moves the first matching publication ahead of secondary ports without losing authored metadata",
+  "$id preserves primary role and authored metadata without classifying unknown ports as HTTP",
   async (serviceType) => {
     // Given
     const service = Schema.decodeUnknownSync(ServiceConfig)({
@@ -70,18 +76,37 @@ test.each([nginxServiceType, node22ServiceType])(
     const plan = await planService(serviceType, service);
     // Then
     expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 3187, protocol: "http", name: "server", primary: true },
+      { _tag: "published", port: 3188, protocol: "tcp", publication: { hostPort: 13188 } },
       {
         _tag: "published",
         port: 3187,
         protocol: "http",
         name: "primary",
+        primary: true,
         appProtocol: "http",
         publication: { bindAddress: "127.0.0.1", hostPort: 13187 },
       },
-      { _tag: "published", port: 3188, protocol: "http", publication: { hostPort: 13188 } },
-      { _tag: "published", port: 3187, protocol: "http", publication: { hostPort: 23187 } },
-      { _tag: "published", port: 3189, protocol: "http", publication: { hostPort: 13189 } },
+      {
+        _tag: "published",
+        port: 3187,
+        protocol: "http",
+        primary: true,
+        name: "server",
+        publication: { hostPort: 23187 },
+      },
+      { _tag: "published", port: 3189, protocol: "tcp", publication: { hostPort: 13189 } },
     ]);
+    expect(selectHttpEndpoint([...plan.endpoints].reverse())).toEqual({
+      status: "selected",
+      endpoint: {
+        port: 3187,
+        protocol: "http",
+        transport: "tcp",
+        primary: true,
+        names: ["primary", "server"],
+      },
+    });
   },
 );
 
@@ -96,7 +121,7 @@ test("retains TCP when UDP publishes the same port number", async () => {
   const plan = await planService(mariadbServiceType, service);
   // Then
   expect(plan.endpoints).toEqual([
-    { _tag: "internal", port: 3307, protocol: "tcp", name: "server" },
+    { _tag: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
     { _tag: "published", port: 3307, protocol: "udp", publication: { hostPort: 13307 } },
   ]);
 });
@@ -112,9 +137,17 @@ test("selects the TCP publication when UDP with the same port is authored first"
   const plan = await planService(node22ServiceType, service);
   // Then
   expect(plan.endpoints).toEqual([
-    { _tag: "published", port: 3187, protocol: "http", publication: { hostPort: 23187 } },
+    { _tag: "internal", port: 3187, protocol: "http", primary: true, name: "server" },
     { _tag: "published", port: 3187, protocol: "udp", publication: { hostPort: 13187 } },
-    { _tag: "published", port: 3188, protocol: "http", publication: { hostPort: 13188 } },
+    { _tag: "published", port: 3188, protocol: "tcp", publication: { hostPort: 13188 } },
+    {
+      _tag: "published",
+      port: 3187,
+      protocol: "http",
+      primary: true,
+      name: "server",
+      publication: { hostPort: 23187 },
+    },
   ]);
 });
 
@@ -130,6 +163,8 @@ test.each([{ scenario: "absent" }, { scenario: "empty", ports: [] }])(
     // When
     const plan = await planService(mariadbServiceType, service);
     // Then
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3307, protocol: "tcp", name: "server" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 3307, protocol: "tcp", name: "server", primary: true },
+    ]);
   },
 );

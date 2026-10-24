@@ -1,9 +1,10 @@
 import { APP_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
+import { physicalListenerPorts } from "@lando/container-runtime/physical-publications";
 import { Effect, Predicate } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import type { NetworkingPlan } from "@lando/sdk/schema";
+import type { EndpointPlan, NetworkingPlan } from "@lando/sdk/schema";
 
 import {
   type PublishedContainerReceipt,
@@ -40,20 +41,18 @@ export const WINDOWS_COMPAT_NETWORK_LIST_PATH = "/networks" as const;
 export const supportsWindowsPublishedRecovery = (input: {
   readonly networking: NetworkingPlan | undefined;
   readonly networks?: unknown;
-  readonly endpoints: ReadonlyArray<{
-    readonly _tag: string;
-    readonly protocol?: string;
-    readonly publication?: { readonly bindAddress?: string | undefined } | undefined;
-  }>;
+  readonly endpoints: ReadonlyArray<EndpointPlan>;
 }): boolean => {
-  const published = input.endpoints.filter((endpoint) => endpoint._tag === "published");
+  // Internal facets of a published listener describe the same physical port, not an unpublished one.
+  const published = input.endpoints.flatMap((endpoint) => (endpoint._tag === "published" ? [endpoint] : []));
   return (
     input.networking?.perAppBridge === null &&
     input.networking.sharedNetworkMembership !== undefined &&
     published.length > 0 &&
-    published.length === input.endpoints.length &&
+    input.endpoints.every((endpoint) => endpoint.protocol !== "unix") &&
+    physicalListenerPorts(input.endpoints).length === physicalListenerPorts(published).length &&
     published.every(
-      (endpoint) => endpoint.protocol !== "udp" && endpoint.publication?.bindAddress === "127.0.0.1",
+      (endpoint) => endpoint.protocol !== "udp" && endpoint.publication.bindAddress === "127.0.0.1",
     ) &&
     (input.networks === undefined ||
       (Predicate.isObject(input.networks) && Object.keys(input.networks).length <= 1))

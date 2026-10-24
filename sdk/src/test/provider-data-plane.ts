@@ -612,6 +612,7 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
       service: target.service,
       providerId: TEST_PROVIDER_ID,
       status: "running" as const,
+      publications: { status: "unknown" as const },
     });
   }),
   list: (filter) =>
@@ -621,6 +622,7 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
         service: TEST_SERVICE_NAME,
         providerId: TEST_PROVIDER_ID,
         status: "running",
+        publications: { status: "unknown" as const },
       },
     ]),
   snapshotVolume: (spec) =>

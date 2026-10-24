@@ -48,6 +48,7 @@ const orphanGroup = (root: string): AppliedOrphanGroup => ({
       service: ServiceName.make("web"),
       providerId,
       status: "running",
+      publications: { status: "unknown" },
       containerId: "container-web",
     },
   ],

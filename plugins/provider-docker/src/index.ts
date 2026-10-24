@@ -44,7 +44,7 @@ import type {
 } from "@lando/container-runtime/podman/compose";
 import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
-import { inspect, publishedEndpointsFromInspect } from "@lando/container-runtime/podman/inspect";
+import { inspect, publicationObservationFromInspect } from "@lando/container-runtime/podman/inspect";
 import { containerConsoleLogs, logs } from "@lando/container-runtime/podman/logs";
 import {
   bindResolvedProviderOps,
@@ -674,9 +674,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                     path: `/containers/${encodeURIComponent(container.name)}/json`,
                   });
 
-                  let endpoints: ServiceRuntimeInfo["endpoints"] = [];
+                  let publications: ServiceRuntimeInfo["publications"] = { status: "unknown" };
                   if (inspectResponse.status >= 200 && inspectResponse.status < 300) {
-                    endpoints = publishedEndpointsFromInspect(yield* parseJson(inspectResponse, "list"));
+                    publications = publicationObservationFromInspect(
+                      yield* parseJson(inspectResponse, "list"),
+                    );
+                  } else if (inspectResponse.status === 404) {
+                    publications = { status: "missing" };
                   }
 
                   return {
@@ -687,10 +691,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                     service: ServiceName.make(serviceName),
                     providerId: ProviderId.make(PROVIDER_ID),
                     status,
-                    state: status,
+                    state: container.state,
                     containerId: container.id,
                     labels: container.labels,
-                    endpoints,
+                    publications,
                     ...(container.startedAt === undefined
                       ? {}
                       : {

@@ -249,7 +249,7 @@ const makeStopLayer = (
         providerId,
         status: stopped.has(target.service) ? "stopped" : "running",
         state: stopped.has(target.service) ? "stopped" : "running",
-        endpoints: [],
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
   };
@@ -506,7 +506,7 @@ describe("lando stop", () => {
           providerId,
           status: "stopped",
           state: "stopped",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
     };
@@ -776,7 +776,7 @@ describe("lando stop", () => {
           providerId,
           status: "stopped",
           state: "stopped",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
     };

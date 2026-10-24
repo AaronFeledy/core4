@@ -21,6 +21,7 @@ test.each(["running", "exited"])(
           providerId: ProviderId.make("lando"),
           status: state,
           state,
+          publications: { status: "present" as const, bindings: [] },
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     };

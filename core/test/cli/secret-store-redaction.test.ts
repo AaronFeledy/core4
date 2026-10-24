@@ -94,7 +94,7 @@ test.each([false, true])(
           providerId: ProviderId.make(TestRuntimeProvider.id),
           status: "running",
           state: `Provider observed ${applied[0]}`,
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
     };
     const base = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
@@ -189,7 +189,7 @@ test.each([false, true])(
             command: "app:start",
             ok: true,
             result: {
-              servicesStarted: [{ name: "web", state: "running", endpoints: [] }],
+              servicesStarted: [{ name: "web", state: "running", connections: [] }],
             },
           },
     );

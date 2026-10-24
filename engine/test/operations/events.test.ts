@@ -1214,6 +1214,7 @@ describe("hostEvents runtime", () => {
           service: ServiceName.make("web"),
           providerId: ProviderId.make("test"),
           status,
+          publications: { status: "unknown" as const },
         }),
     };
     const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });

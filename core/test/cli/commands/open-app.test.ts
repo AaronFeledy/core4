@@ -1,15 +1,35 @@
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Effect, Exit, Layer, Result } from "effect";
+import { realpath } from "node:fs/promises";
+import { invokeOperation } from "@lando/core/cli/operations";
+import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { Cause, DateTime, Effect, Exit, Layer, Result } from "effect";
 
 import { ShellExecError } from "@lando/sdk/errors";
-import { type AppPlan, type RoutePlan, ServiceName } from "@lando/sdk/schema";
-import { EventService, ShellRunner } from "@lando/sdk/services";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  type RoutePlan,
+  ServiceName,
+  type StartedService,
+  appIdentityKey,
+} from "@lando/sdk/schema";
+import {
+  AppPlanner,
+  EventService,
+  LandofileService,
+  RouterService,
+  RuntimeProviderRegistry,
+  ShellRunner,
+} from "@lando/sdk/services";
 
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 
 import {
   type OpenAppOptions,
+  openApp,
   openForPlan,
   openOptionsFromInput,
   renderOpenAppResult,
@@ -26,7 +46,12 @@ const route = (over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service
 
 const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan => {
   const services: Record<string, unknown> = {};
-  for (const name of serviceNames) services[name] = { name, routes: [], endpoints: [] };
+  for (const name of serviceNames)
+    services[name] = {
+      name,
+      routes: [],
+      endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
+    };
   return {
     id: "myapp",
     name: "myapp",
@@ -83,14 +108,153 @@ const layers = (rec: ReturnType<typeof record>) =>
     ),
   );
 
+const observed = (plan: AppPlan) =>
+  Object.values(plan.services).map((service) => ({
+    name: String(service.name),
+    state: "running",
+    connections:
+      plan.router?.enabled === false
+        ? []
+        : plan.routes
+            .filter((route) => route.service === service.name)
+            .map((route) => ({
+              scope: "host",
+              source: "route",
+              binding: "assigned",
+              state: "active",
+              host: route.hostname,
+              protocol: route.scheme === "http" ? "http" : "https",
+              port: route.scheme === "http" ? 80 : 443,
+              pathPrefix: route.pathPrefix ?? "",
+              url: `${route.scheme === "http" ? "http" : "https"}://${route.hostname}${route.pathPrefix ?? ""}`,
+              alternateUrls: [],
+              endpoint: { port: 80, transport: "tcp", names: [], primary: false },
+            })),
+  })) satisfies readonly StartedService[];
+
 const run = (plan: AppPlan, options: OpenAppOptions, rec: ReturnType<typeof record>) =>
-  Effect.runPromiseExit(openForPlan(plan, options).pipe(Effect.provide(layers(rec))));
+  Effect.runPromiseExit(openForPlan(plan, options, observed(plan)).pipe(Effect.provide(layers(rec))));
 
 const httpsPlan = () =>
   makePlan([route({ hostname: "web.myapp.lndo.site", scheme: "https", service: "web" })], ["web"]);
 
 describe("openForPlan", () => {
-  test("--print uses scheme-specific listen ports without launching", async () => {
+  test.each([false, true])(
+    "public operation driver uses applied observations with route published=%s",
+    async (published) => {
+      const rec = record();
+      const appRoot = AbsolutePath.make(await realpath(process.cwd()));
+      const identity = { appRoot, ownerKey: appIdentityKey("owner", appRoot) };
+      const metadata = { resolvedAt: DateTime.makeUnsafe(0), source: "open-driver", runtime: 4 as const };
+      const name = ServiceName.make("web");
+      const providerId = ProviderId.make("test");
+      const plan: AppPlan = {
+        id: AppId.make("myapp"),
+        name: "myapp",
+        slug: "myapp",
+        root: identity.appRoot,
+        identity,
+        provider: providerId,
+        routes: [
+          { ...route({ hostname: "applied.test", scheme: "https", service: "web" }), pathPrefix: "/v1" },
+        ],
+        services: {
+          [name]: {
+            name,
+            provider: providerId,
+            type: "generic",
+            primary: false,
+            environment: {},
+            mounts: [],
+            storage: [],
+            endpoints: [{ _tag: "published", protocol: "http", port: 80, publication: {} }],
+            routes: [],
+            dependsOn: [],
+            hostAliases: [],
+            metadata,
+            extensions: {},
+          },
+        },
+        networks: [],
+        stores: [],
+        fileSync: [],
+        metadata,
+        extensions: {},
+      };
+      const inspected: string[] = [];
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "test",
+        inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) => {
+          inspected.push(String(target.service));
+          return Effect.succeed({
+            app: target.app,
+            service: target.service,
+            providerId,
+            status: "running",
+            state: "running",
+            publications: {
+              status: "present" as const,
+              bindings: [{ port: 80, transport: "tcp" as const, bindAddress: "127.0.0.1", hostPort: 49152 }],
+            },
+          });
+        },
+      };
+      const runtime = Layer.mergeAll(
+        layers(rec),
+        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.die("must use applied plan") })),
+        Layer.succeed(
+          LandofileService,
+          LandofileService.of({ discover: Effect.die("must not load edited config") }),
+        ),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(plan),
+            appliedPlansFor: () => Effect.succeed([plan]),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan }),
+            capabilities: Effect.succeed(provider.capabilities),
+            list: Effect.succeed([providerId]),
+            select: () => Effect.succeed(provider),
+          }),
+        ),
+        Layer.succeed(
+          RouterService,
+          RouterService.of({
+            ...makeTestRouterService(),
+            status: Effect.die("status is not route evidence"),
+            observeRoutes: (_app, routes) =>
+              Effect.succeed({
+                configuredAuthorities: [{ hostname: "applied.test", scheme: "https", port: 443 }],
+                observation: published
+                  ? {
+                      status: "present",
+                      publications: routes.map((route) => ({
+                        route,
+                        authority: { hostname: route.hostname, scheme: "https", port: 9443 },
+                      })),
+                    }
+                  : { status: "missing" },
+              }),
+          }),
+        ),
+      );
+      const result = await Effect.runPromise(
+        invokeOperation(openApp({ print: true })).pipe(Effect.provide(runtime)),
+      );
+      expect(result).toMatchObject({
+        ok: true,
+        value: {
+          launch: "printed",
+          targets: [{ url: published ? "https://applied.test:9443/v1" : "http://localhost:49152" }],
+        },
+      });
+      expect(inspected).toEqual(["web"]);
+      expect(rec.commands).toEqual([]);
+      expect(rec.events).toEqual([]);
+    },
+  );
+  test("--print uses observed ingress ports without launching", async () => {
     const rec = record();
     const plan = makePlan(
       [
@@ -100,10 +264,18 @@ describe("openForPlan", () => {
       ["web", "api"],
     );
     const result = await Effect.runPromise(
-      openForPlan(plan, { print: true, all: true }, [], {
-        http: 8080,
-        https: 8443,
-      }).pipe(Effect.provide(layers(rec))),
+      openForPlan(
+        plan,
+        { print: true, all: true },
+        observed(plan).map((row) => ({
+          ...row,
+          connections: row.connections.map((connection) => ({
+            ...connection,
+            port: connection.protocol === "http" ? 8080 : 8443,
+            url: `${connection.protocol}://${connection.host}:${connection.protocol === "http" ? 8080 : 8443}`,
+          })),
+        })),
+      ).pipe(Effect.provide(layers(rec))),
     );
     expect(result.targets.map((target) => target.url)).toEqual([
       "https://web.myapp.lndo.site:8443",

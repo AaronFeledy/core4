@@ -298,7 +298,10 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
         providerId,
         status: "running",
         state: "running",
-        endpoints: plannedApp.services[target.service]?.endpoints ?? [],
+        publications: {
+          status: "present",
+          bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
+        },
       }),
   };
 
@@ -384,7 +387,10 @@ const makeCachedBuildLayer = () => {
         providerId,
         status: "running",
         state: "running",
-        endpoints: planWithAppBuild.services[target.service]?.endpoints ?? [],
+        publications: {
+          status: "present",
+          bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
+        },
       }),
     execStream: () => {
       appBuildCalls += 1;
@@ -451,7 +457,7 @@ describe("lando rebuild", () => {
     ).toEqual(["pre-rebuild", "destroy", "apply", "post-rebuild"]);
     expect(result.servicesRebuilt).toEqual(["web"]);
     expect(renderRebuildAppResult(result)).toBe(
-      "rebuilt: test-rebuild - web (running) http://localhost:3000",
+      "rebuilt: test-rebuild - web (running) Host: http://localhost:3000 App Network: http://web:3000",
     );
   });
 

@@ -26,6 +26,7 @@ test.each([
         service: web.name,
         providerId: plan.provider,
         status: "stopped",
+        publications: { status: "unknown" as const },
         exitCode: 7,
       }),
   };
@@ -58,6 +59,7 @@ test("global supervised warnings use global logs", async () => {
         service: web.name,
         providerId: plan.provider,
         status: "stopped",
+        publications: { status: "unknown" as const },
         exitCode: 7,
       }),
   };

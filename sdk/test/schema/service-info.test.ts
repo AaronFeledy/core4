@@ -1,0 +1,86 @@
+import { expect, test } from "bun:test";
+import { ServiceInfo, ServiceState, StartedService } from "@lando/sdk/schema";
+import { Schema } from "effect";
+
+const service = {
+  app: "demo",
+  service: "db",
+  api: 4,
+  type: "postgres",
+  provider: "test",
+  primary: true,
+  status: "running",
+  connections: [
+    {
+      scope: "app",
+      source: "listener",
+      protocol: "tcp",
+      host: "db",
+      endpoint: { port: 15432, transport: "tcp", names: [], primary: true },
+      binding: "assigned",
+      port: 15432,
+      url: "tcp://db:15432",
+      alternateUrls: [],
+      state: "active",
+    },
+  ],
+} as const;
+
+test.each([
+  "unknown",
+  "stopped",
+  "starting",
+  "running",
+  "healthy",
+  "unhealthy",
+  "ready",
+  "completed",
+  "restarting",
+  "paused",
+  "error",
+])("shares state %s between info and startup", (state) => {
+  expect(Schema.is(ServiceState)(state)).toBe(true);
+  expect(Schema.decodeUnknownSync(ServiceInfo)({ ...service, status: state }).status).toBe(state);
+  expect(Schema.decodeUnknownSync(StartedService)({ name: "db", state, connections: [] }).state).toBe(state);
+});
+
+test("rejects unknown lifecycle strings instead of accepting arbitrary startup state", () => {
+  expect(() =>
+    Schema.decodeUnknownSync(StartedService)({ name: "db", state: "ready-ish", connections: [] }),
+  ).toThrow();
+});
+
+test("preserves connection addresses when info crosses the SDK boundary", () => {
+  // Given / When
+  const decoded = Schema.decodeUnknownSync(ServiceInfo)(service);
+  const encoded = Schema.encodeSync(ServiceInfo)(decoded);
+  // Then
+  expect(encoded).toEqual(service);
+});
+
+test("rejects legacy structured host endpoints when decoding service info", () => {
+  // Given
+  const { connections: _, ...metadata } = service;
+  const legacy = {
+    ...metadata,
+    endpoints: [{ _tag: "internal", protocol: "tcp", port: 15432 }],
+    internal: [],
+  };
+  // When / Then
+  expect(() => Schema.decodeUnknownSync(ServiceInfo)(legacy)).toThrow();
+});
+
+test("rejects missing scoped connections when decoding service info", () => {
+  // Given
+  const { connections: _, ...incomplete } = service;
+  // When / Then
+  expect(() => Schema.decodeUnknownSync(ServiceInfo)(incomplete)).toThrow();
+});
+
+test.each([
+  { name: "db", state: "running", endpoints: [] },
+  { name: "db", state: "running", endpoints: [{ protocol: "tcp", port: 15432 }], internal: [] },
+])("rejects invalid startup address contracts: %j", (input) => {
+  // Given / When / Then
+  expect(() => Schema.decodeUnknownSync(StartedService)(input)).toThrow();
+});

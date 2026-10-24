@@ -1,13 +1,6 @@
 import { Schema } from "effect";
 
-import {
-  type ComposePortEntry,
-  type EndpointPublication,
-  type InternalEndpointInput,
-  PortNumber,
-  type PublishedEndpointInput,
-  type ServiceConfig,
-} from "@lando/sdk/schema";
+import { type InternalEndpointInput, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext } from "@lando/sdk/services";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
@@ -57,29 +50,6 @@ export const assertListenerConfig = (service: ServiceConfig, listener: Listener)
   }
 };
 
-const publicationFor = (entry: ComposePortEntry): typeof EndpointPublication.Type => ({
-  ...(entry.hostIp === undefined ? {} : { bindAddress: entry.hostIp }),
-  ...(entry.published === undefined ? {} : { hostPort: entry.published }),
-});
-
-export const publishedEndpointsFromPorts = (
-  entries: readonly ComposePortEntry[],
-  fallbackProtocol?: "http" | "https" | "tcp",
-): readonly PublishedEndpointInput[] =>
-  entries.map((entry) => ({
-    _tag: "published",
-    port: entry.target,
-    protocol: entry.protocol === "udp" ? "udp" : (fallbackProtocol ?? "tcp"),
-    publication: publicationFor(entry),
-    ...(entry.name === undefined ? {} : { name: entry.name }),
-    ...(entry.appProtocol === undefined ? {} : { appProtocol: entry.appProtocol }),
-  }));
-
-export const internalEndpointsFromExpose = (
-  targets: readonly PortNumber[],
-  protocol: "http" | "https" | "tcp",
-): readonly InternalEndpointInput[] => targets.map((port) => ({ _tag: "internal", port, protocol }));
-
 export const addServicePortEndpoints = (
   ctx: ServiceFeatureContext,
   fallback: { readonly port: number; readonly protocol: "http" | "https" | "tcp" },
@@ -89,15 +59,7 @@ export const addServicePortEndpoints = (
     port: Schema.decodeUnknownSync(PortNumber)(fallback.port),
     protocol: fallback.protocol,
     name: ctx.serviceName,
+    primary: true,
   };
-  const published = publishedEndpointsFromPorts(ctx.normalizedConfig.ports ?? [], fallback.protocol);
-  const primaryPublication = published.find(
-    (endpoint) => endpoint.port === primary.port && endpoint.protocol !== "udp",
-  );
-
-  // Default routes select the first HTTP endpoint, so the primary listener must lead.
-  ctx.addEndpoint(primaryPublication ?? primary);
-  for (const endpoint of published) {
-    if (endpoint !== primaryPublication) ctx.addEndpoint(endpoint);
-  }
+  ctx.addEndpoint(primary);
 };

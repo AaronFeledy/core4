@@ -16,7 +16,7 @@ import {
   PreAppStartEvent,
   PreStartEvent,
 } from "@lando/sdk/events";
-import { CheckResult, type PreparedFileSyncTarget, ServiceName } from "@lando/sdk/schema";
+import { CheckResult, type PreparedFileSyncTarget, StartedService } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildOptions,
@@ -43,7 +43,6 @@ import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp } from "../config/router-config.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
-import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 import { applyAppRoutes } from "../lifecycle/routes.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
@@ -52,7 +51,7 @@ import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { verifyPendingStartResume } from "./accelerated-start-resume.ts";
-import { startedServiceRow } from "./authority-url.ts";
+import { collectPlanConnections, observeService, startedServices } from "./connection-collector.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent } from "./events.ts";
 import {
@@ -81,11 +80,7 @@ import {
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
-export const StartedServiceResultSchema = Schema.Struct({
-  name: Schema.String,
-  state: Schema.String,
-  endpoints: Schema.Array(Schema.String),
-});
+export const StartedServiceResultSchema = StartedService;
 
 export const StartAppResultSchema = Schema.Struct({
   app: Schema.String,
@@ -338,7 +333,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                   inspectAppliedService({ provider, plan: builtPlan, service: service.name }).pipe(
                     Effect.map((runtime) => {
                       initialRuntime.set(String(service.name), runtime);
-                      return startedServiceRow(service, runtime);
+                      return observeService(builtPlan, runtime);
                     }),
                   ),
                 );
@@ -359,7 +354,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
               );
 
               const applyRoutes = applyAppRoutes(proxy, builtPlan, target.landofile?.router);
-              const proxyResult = yield* builtPlan.routes.length === 0
+              yield* builtPlan.routes.length === 0
                 ? applyRoutes
                 : withRoutesStartProgress({ events, plan, work: applyRoutes });
               const readyServices = yield* waitForServiceReadiness({
@@ -369,11 +364,9 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 initial: initialRuntime,
                 ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
               });
-              const proxyUrls = appliedProxyUrlsByService(proxyResult);
-              const servicesStarted = readyServices.map((service) => ({
-                ...service,
-                endpoints: [...(proxyUrls.get(ServiceName.make(service.name)) ?? []), ...service.endpoints],
-              }));
+              const servicesStarted = startedServices(
+                yield* collectPlanConnections(builtPlan, readyServices),
+              );
 
               yield* events.publish(
                 PostAppStartEvent.make({

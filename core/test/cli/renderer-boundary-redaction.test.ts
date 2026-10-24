@@ -237,7 +237,13 @@ test("start command hints remain usable when a secret explicitly matches the CLI
         yield* registerRedactionValues([...tokens, "lando"]);
         return {
           app: customSecret,
-          servicesStarted: [{ name: "lando", state: "running", endpoints: [`https://${customSecret}.test`] }],
+          servicesStarted: [
+            {
+              name: "lando",
+              state: "running" as const,
+              connections: connections([`https://${customSecret}.test`]),
+            },
+          ],
         };
       }),
       {
@@ -264,3 +270,4 @@ test("start command hints remain usable when a secret explicitly matches the CLI
     resetRegisteredRedactionValuesForTesting();
   }
 });
+import { connections } from "./connection-fixtures";

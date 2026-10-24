@@ -10,6 +10,7 @@ import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { CommandWarnings } from "../../src/cli/command-warnings.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { preCommandOutputMode } from "../../src/cli/spec/command-boundary.ts";
+import { connections } from "./connection-fixtures";
 
 const infoResult = {
   app: "demo",
@@ -22,7 +23,10 @@ const infoResult = {
       provider: "lando",
       primary: true,
       status: "running",
-      endpoints: ["http://demo.lndo.site"],
+      connections: [
+        ...connections(["http://demo.lndo.site"]),
+        ...connections(["http://appserver:80"], "app"),
+      ],
     },
     {
       app: "demo",
@@ -32,7 +36,7 @@ const infoResult = {
       provider: "lando",
       primary: false,
       status: "running",
-      endpoints: [],
+      connections: connections(["tcp://database:3306"], "app"),
     },
   ],
 } as const;

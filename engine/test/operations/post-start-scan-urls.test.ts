@@ -1,119 +1,82 @@
-import { describe, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
+import { type ServiceConnection, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
-
-import { ServiceName } from "@lando/sdk/schema";
-import type { UrlScannerShape } from "@lando/sdk/services";
-
 import { runPostStartScan, startupScanUrls } from "../../src/operations/post-start-scan.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
 
-describe("startupScanUrls", () => {
-  test.each(["tcp", "udp", "redis", "valkey", "postgresql", "memcached"])(
-    "excludes %s endpoints while retaining HTTP and HTTPS targets",
-    (protocol) => {
-      const urls = startupScanUrls(plan, [
-        {
-          name: "web",
-          endpoints: [`${protocol}://localhost:16379`, "http://localhost:8080", "https://localhost:8443"],
-        },
-      ]);
-      expect(urls).toEqual([
-        { service: web.name, url: "http://localhost:8080/" },
-        { service: web.name, url: "https://localhost:8443/" },
-      ]);
+const host = (url: string) =>
+  ({
+    scope: "host",
+    source: "publication",
+    binding: "assigned",
+    state: "active",
+    protocol: "http",
+    host: URL.parse(url)?.hostname ?? "localhost",
+    port: 8080,
+    url,
+    alternateUrls: [],
+    endpoint: { port: 3000, transport: "tcp", names: [], primary: true },
+  }) satisfies ServiceConnection;
+
+test("scans only active assigned host HTTP connections and deduplicates them", () => {
+  const assigned = host("http://localhost:8080");
+  const connections: ServiceConnection[] = [
+    assigned,
+    assigned,
+    { ...assigned, state: "inactive" },
+    { ...assigned, state: "unknown" },
+    { ...assigned, protocol: "tcp", url: "tcp://localhost:8080" },
+    { ...assigned, scope: "app", source: "listener" },
+    {
+      scope: "host",
+      source: "publication",
+      binding: "pending",
+      protocol: "http",
+      state: "unknown",
+      host: "localhost",
+      endpoint: assigned.endpoint,
     },
-  );
-
-  test.each([
-    "http://*.wild.demo.lndo.site:8000",
-    "https://wild.*.demo.lndo.site:4443",
-    "http://web*.demo.lndo.site:8000/prefix",
-    "https://%2A.demo.lndo.site",
-  ])("skips wildcard hostname %s while keeping exact routes and provider endpoints", (wildcard) => {
-    const services = [
-      { name: "web", endpoints: [wildcard, "https://web.demo.lndo.site", "http://localhost:8080"] },
-    ];
-    const urls = startupScanUrls(plan, services);
-    expect(urls).toEqual([
-      { service: web.name, url: "https://web.demo.lndo.site/" },
-      { service: web.name, url: "http://localhost:8080/" },
-    ]);
-    expect(services[0]?.endpoints).toEqual([wildcard, "https://web.demo.lndo.site", "http://localhost:8080"]);
-  });
-
-  test("keeps an exact hostname when its path contains an asterisk", () => {
-    const urls = startupScanUrls(plan, [{ name: "web", endpoints: ["https://web.demo.lndo.site/files/*"] }]);
-    expect(urls).toEqual([{ service: web.name, url: "https://web.demo.lndo.site/files/*/" }]);
-  });
-
-  test("does not probe or publish a tree when every displayed hostname is a wildcard", async () => {
-    let calls = 0;
-    const scanner: UrlScannerShape = {
-      id: "stub",
-      scan: () =>
-        Effect.sync(() => {
-          calls++;
-          return { appId: plan.id, endpoints: [] };
-        }),
-      detectCollisions: () => Effect.succeed([]),
-    };
-    const urls = startupScanUrls(plan, [{ name: "web", endpoints: ["http://*.demo.lndo.site:8000"] }]);
-    await Effect.runPromise(
-      runPostStartScan({
-        scanner,
-        plan,
-        urls,
-        events: {
-          publish: () =>
-            Effect.sync(() => {
-              calls++;
-            }),
-        },
-      }),
-    );
-    expect(calls).toBe(0);
-  });
-
-  test("joins scanner paths onto published and routed bases", () => {
-    const scan = { enabled: true, path: "/ready", okCodes: [], retries: 0, timeoutMs: 1000 };
-    const urls = startupScanUrls(
-      {
-        ...plan,
-        services: {
-          [web.name]: { ...web, scanner: scan },
-          [ServiceName.make("api")]: {
-            ...web,
-            name: ServiceName.make("api"),
-            scanner: { ...scan, path: "/" },
-          },
-        },
-      },
-      [
-        { name: "web", endpoints: ["http://localhost:8080", "https://web.demo.lndo.site:4443"] },
-        { name: "api", endpoints: ["https://web.demo.lndo.site/api"] },
-      ],
-    );
-    expect(urls.map((row) => row.url)).toEqual([
-      "http://localhost:8080/ready",
-      "https://web.demo.lndo.site:4443/ready",
-      "https://web.demo.lndo.site/api/",
-    ]);
-  });
+  ];
+  const urls = startupScanUrls(plan, [{ name: "web", state: "running", connections }]);
+  expect(urls).toEqual([{ service: web.name, url: "http://localhost:8080/" }]);
 });
 
-test("publishes no tree and never probes disabled or non-HTTP targets", async () => {
-  // Given a disabled HTTP service and a non-HTTP target.
-  let scans = 0;
-  let publications = 0;
-  const scanner: UrlScannerShape = {
-    id: "stub",
-    scan: () =>
-      Effect.sync(() => {
-        scans++;
-        return { appId: plan.id, endpoints: [] };
-      }),
-    detectCollisions: () => Effect.succeed([]),
+test.each([
+  "http://*.demo.test",
+  "https://wild.*.demo.test",
+  "http://web*.demo.test/prefix",
+  "https://%2A.demo.test",
+])("excludes wildcard %s without rejecting an asterisk in a path", (wildcard) => {
+  const urls = startupScanUrls(plan, [
+    { name: "web", state: "running", connections: [host(wildcard), host("https://web.demo.test/files/*")] },
+  ]);
+  expect(urls).toEqual([{ service: web.name, url: "https://web.demo.test/files/*/" }]);
+});
+
+test("preserves route prefixes when appending a configured scanner path", () => {
+  const planned = {
+    ...plan,
+    services: {
+      [web.name]: {
+        ...web,
+        scanner: { enabled: true, path: "/ready", okCodes: [], retries: 0, timeoutMs: 1000 },
+      },
+    },
   };
+  const urls = startupScanUrls(planned, [
+    {
+      name: "web",
+      state: "ready",
+      connections: [
+        { ...host("https://web.demo.test/api"), source: "route", protocol: "https", pathPrefix: "/api" },
+      ],
+    },
+  ]);
+  expect(urls).toEqual([{ service: web.name, url: "https://web.demo.test/api/ready" }]);
+});
+
+test("never probes disabled or non-HTTP targets", async () => {
+  let calls = 0;
   const disabledPlan = {
     ...plan,
     services: {
@@ -123,15 +86,22 @@ test("publishes no tree and never probes disabled or non-HTTP targets", async ()
       },
     },
   };
-  // When scanning the supplied targets.
   await Effect.runPromise(
     runPostStartScan({
-      scanner,
       plan: disabledPlan,
+      scanner: {
+        id: "test",
+        scan: () =>
+          Effect.sync(() => {
+            calls++;
+            return { appId: plan.id, endpoints: [] };
+          }),
+        detectCollisions: () => Effect.succeed([]),
+      },
       events: {
         publish: () =>
           Effect.sync(() => {
-            publications++;
+            calls++;
           }),
       },
       urls: [
@@ -140,7 +110,5 @@ test("publishes no tree and never probes disabled or non-HTTP targets", async ()
       ],
     }),
   );
-  // Then no probe or progress publication occurs.
-  expect(publications).toBe(0);
-  expect(scans).toBe(0);
+  expect(calls).toBe(0);
 });
