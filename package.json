@@ -28,7 +28,7 @@
       "plugins/*"
     ],
     "catalog": {
-      "effect": "4.0.0"
+      "effect": "4.0.5"
     }
   },
   "engines": {
@@ -36,8 +36,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@types/bun": "^1.4.0",
-    "mdast-util-to-markdown": "^2.1.2",
+    "@types/bun": "^1.4.3",
+    "mdast-util-to-markdown": "^2.2.0",
     "typescript": "^5.9.0"
   },
   "scripts": {
