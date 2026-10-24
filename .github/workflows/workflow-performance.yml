@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   workflow-performance-blocked:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Report missing Docker Hub credentials
@@ -42,7 +42,7 @@ jobs:
 # To re-enable, set WORKFLOW_PERFORMANCE_EXECUTION to "enabled" in scripts/build-workflow-performance-workflow.ts and run `bun run codegen`.
 # The complete native cell jobs remain commented below for review.
 #   container-helper:
-#     runs-on: ubuntu-24.04
+#     runs-on: ubuntu-26.04
 #     timeout-minutes: 20
 #     steps:
 #       - uses: actions/checkout@v5
@@ -84,7 +84,7 @@ jobs:
 #           retention-days: 14
 #   workflow-performance-linux-x64:
 #     needs: [container-helper]
-#     runs-on: ubuntu-24.04
+#     runs-on: ubuntu-26.04
 #     timeout-minutes: 360
 #     steps:
 #       - uses: actions/checkout@v5
@@ -221,7 +221,7 @@ jobs:
 #             --commit "${{ github.sha }}" \
 #             --platform "linux-x64" \
 #             --architecture "x64" \
-#             --runner "ubuntu-24.04" \
+#             --runner "ubuntu-26.04" \
 #             --binary-version "$BINARY_VERSION" \
 #             --runtime-version "$WORKFLOW_PERF_RUNTIME_VERSION" \
 #             --provider-version "$PROVIDER_VERSION" \

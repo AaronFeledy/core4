@@ -311,7 +311,7 @@ describe("ci workflow codegen", () => {
       const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(32);
+      expect(versionFileMatches).toBe(40);
       expect(workflow).not.toContain("bun-version: ");
       expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(12);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
@@ -398,8 +398,7 @@ describe("ci workflow codegen", () => {
       expect(fixtureVerification).not.toContain("docs/reference/schemas");
       expect(fixtureVerification).toContain('if [[ -n "$schema_changes" ]]; then');
       expect(fixtureVerification).toContain('printf "%s\\n" "$schema_changes"');
-      expect(workflow).toContain(`  schema-snapshot:
-    runs-on: ubuntu-24.04
+      expect(workflow).toContain(`    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -438,7 +437,7 @@ describe("ci workflow codegen", () => {
         "git diff --exit-code -- core/src/plugins/generated core/src/recipes/bundled.ts",
       );
       expect(workflow).toContain(
-        "needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
+        "needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
       );
     },
     codegenTestTimeout,
@@ -461,7 +460,7 @@ describe("ci workflow codegen", () => {
         "run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
       );
       expect(workflow).toContain(
-        "needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
+        "needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
       );
     },
     codegenTestTimeout,
@@ -486,15 +485,16 @@ describe("ci workflow codegen", () => {
         "windows-x64",
         "windows-arm64",
       ]) {
-        expect(workflow).toContain(`- platform: ${platform}`);
+        expect(staticChecksPlatform).toContain(`"platform":"${platform}"`);
       }
       expect(staticChecksPlatform).toContain("- name: Regenerate and verify codegen catalog");
       expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
-      expect(staticChecksPlatform).not.toContain("- name: Typecheck");
+      expect(staticChecksPlatform).toContain("- name: Typecheck");
+      expect(staticChecksPlatform).toContain("if: matrix.platform == 'linux-x64'");
       expect(workflow).toContain("- name: Lint");
       expect(workflow).toContain("run: bun run lint");
-      expect(staticChecksPlatform).toContain("- name: Audit dependencies");
-      expect(staticChecksPlatform).toContain("run: bun run audit");
+      expect(staticChecksPlatform).not.toContain("- name: Audit dependencies");
+      expect(staticChecksPlatform).not.toContain("run: bun run audit");
       expect(staticChecksPlatform).not.toContain("bun audit fix");
       expect(workflow).toContain("bun-install-isolated-experiment:");
       expect(workflow).toContain("continue-on-error: true");
@@ -553,7 +553,9 @@ describe("ci workflow codegen", () => {
       const workflow = await readFile(workflowPath, "utf8");
 
       expect(workflow).toContain("guide-scenarios-linux-x64:");
-      expect(workflow).toContain("needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]");
+      expect(workflow).toContain(
+        "needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
+      );
       expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(26);
       expect(workflow).not.toContain("run: bun run codegen:guide-scenarios");
       expect(workflow).toContain("run: bun run typecheck");
@@ -590,11 +592,6 @@ describe("ci workflow codegen", () => {
       ).toBeLessThan(workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")));
       expect(
         workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")),
-      ).toBeLessThan(
-        workflow.indexOf("run: bun run typecheck", workflow.indexOf("guide-scenarios-linux-x64")),
-      );
-      expect(
-        workflow.indexOf("run: bun run typecheck", workflow.indexOf("guide-scenarios-linux-x64")),
       ).toBeLessThan(
         workflow.indexOf("run: bun run lint:guides", workflow.indexOf("guide-scenarios-linux-x64")),
       );
@@ -696,7 +693,7 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "generates the six-platform PR CI matrix with timing and timeout instrumentation",
+    "generates the six-platform broad CI matrix with timing and timeout instrumentation",
     async () => {
       await runCodegen();
 
@@ -718,9 +715,9 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("static-checks:");
       expect(workflow).toContain("static-checks-platform:");
       expect(workflow).toContain("unit-tests-linux-x64:");
-      expect(workflow).toContain("needs: [static-checks-platform, container-helper-arm64]");
+      expect(workflow).toContain("needs: [selection, static-checks-platform, container-helper-arm64]");
       expect(workflow).toContain("container-helper-arm64:");
-      expect(workflow).toContain('if [[ "${{ needs.container-helper-arm64.result }}" != "success" ]]; then');
+      expect(workflow).toContain("run: bun run scripts/validate-ci.ts");
       for (const platform of [
         "darwin-arm64",
         "darwin-x64",
@@ -729,7 +726,7 @@ describe("ci workflow codegen", () => {
         "windows-x64",
         "windows-arm64",
       ]) {
-        expect(workflow).toContain(`- platform: ${platform}`);
+        expect(workflow).toContain(`"platform":"${platform}"`);
       }
       expect(workflow).toContain(
         "run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",

@@ -8,7 +8,12 @@ import {
 
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import { LOGIN_ACTION } from "./build-php-base-workflow.ts";
-import { CI_PLATFORMS, type CiPlatform, type PlatformReadinessCell } from "./ci-platforms.ts";
+import {
+  CI_PLATFORMS,
+  type CiPlatform,
+  LINUX_X64_TEST_RUNNER,
+  type PlatformReadinessCell,
+} from "./ci-platforms.ts";
 import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 import { WORKFLOW_PERFORMANCE_CELLS } from "./workflow-performance-plan.ts";
 
@@ -192,7 +197,7 @@ const commentOut = (block: string): string =>
     .join("\n");
 
 const renderBlockedNoticeJob = (): string => `  workflow-performance-blocked:
-    runs-on: ubuntu-24.04
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 5
     steps:
       - name: Report missing Docker Hub credentials
