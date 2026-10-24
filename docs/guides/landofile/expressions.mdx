@@ -199,7 +199,7 @@ tooling:
       - 'sh -c "echo $${HOME}"'
 ```
 
-Lando decodes the escape once, when it parses the file, and `lando app:config:lint` accepts it. From there the value is ordinary text: `lando app:config --format=json` shows `GREETING` as `pre-${HOME}-post`, and the container or tooling shell receives the same `${HOME}`. Lando never reads your host `HOME` for it, and `$${secret:KEY}` is plain text too, never a secret-store lookup. The exact `${secret:KEY}` reference you author as a whole service `environment`, `creds.password`, or tooling `env` value is the one `${` form Lando resolves; see [Secret stores](../config/secret-stores.mdx#where-references-resolve).
+Lando decodes the escape once, when it parses the file, and `lando app:config:lint` accepts it. From there the value is ordinary text: `lando app:config --format=json` shows `GREETING` as `pre-${HOME}-post`, and the container or tooling shell receives the same `${HOME}`. Lando never reads your host `HOME` for it, and `$${secret:KEY}` is plain text too, never a secret-store lookup. Authored `${secret:KEY}` references are the one `${` form Lando resolves, at supported environment and password sites. A reference can stand alone or have text around it; see [Secret stores](../config/secret-stores.mdx#where-references-resolve).
 
 ```sh
 lando app:config --format=json
