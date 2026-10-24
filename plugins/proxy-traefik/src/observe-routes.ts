@@ -1,11 +1,12 @@
 import { RequestPolicy } from "@lando/http-client";
+import { NetworkTrust } from "@lando/http-client/network-trust";
 import { type AppId, PortNumber, type RouteEvidence, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import { Effect, Option } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import { readAcquisitionState } from "./port-acquisition-state.ts";
-import { defaultDomainFile } from "./proxy-paths.ts";
+import { defaultDomainFile, defaultIssuerFile } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { decodeRouteSnapshot, matchesLiveRoute } from "./route-evidence-match.ts";
 import { routeReloadSnapshot } from "./route-reload-snapshot.ts";
@@ -49,12 +50,26 @@ export const observeRoutes = Effect.fn("TraefikRouter.observeRoutes")(function* 
     );
     const request = (scheme: "http" | "https", path: string) => {
       const url = new URL(`${scheme}://traefik.${domain}:${ports[scheme]}${path}`);
-      return http.execute(HttpClientRequest.get(url.href)).pipe(
+      const response = http.execute(HttpClientRequest.get(url.href)).pipe(
         Effect.provideService(RequestPolicy, {
           ...requestPolicy,
           redirect: "manual",
           connectionTarget: { address: host, origin: url.origin },
         }),
+      );
+      if (scheme === "http") return response;
+      // Prove the router's own issuer without requiring setup to modify host trust.
+      // The override is limited to this origin-bound request and retains TLS identity checks.
+      return dependencies.fileSystem.readText(defaultIssuerFile(dependencies.paths, domain)).pipe(
+        Effect.flatMap((issuer) =>
+          response.pipe(
+            Effect.provideService(NetworkTrust, {
+              proxy: { noProxy: [] },
+              caPems: [issuer],
+              trustHost: false,
+            }),
+          ),
+        ),
       );
     };
     const schemes = [...new Set(requestedRoutes.flatMap(routeSchemes))];

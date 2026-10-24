@@ -33,6 +33,7 @@ export const makeHarness = (issueFailure?: CaError) => {
     ["/issued/default.key", "default key"],
     ["/issued/app.crt", "app cert"],
     ["/issued/app.key", "app key"],
+    ["/issued/ca.crt", "issuer cert"],
   ]);
   const certificateAuthority: CertificateAuthorityShape = {
     id: "test-ca",
