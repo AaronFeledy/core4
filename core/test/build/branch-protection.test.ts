@@ -5,34 +5,7 @@ import { describe, expect, test } from "bun:test";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const runbookPath = resolve(repoRoot, "docs/contributing/ci.md");
 
-const requiredChecks = [
-  "static-checks",
-  "unit-tests-linux-x64",
-  "schema-snapshot",
-  "bundled-codegen",
-  "docs-build",
-  "library-api-tests",
-  "recipe-tests",
-  "guide-scenarios-darwin-arm64",
-  "guide-scenarios-darwin-x64",
-  "guide-scenarios-linux-arm64",
-  "guide-scenarios-linux-x64",
-  "guide-scenarios-windows-x64",
-  "guide-scenarios-windows-arm64",
-  "build-darwin-arm64",
-  "build-darwin-x64",
-  "build-linux-arm64",
-  "build-linux-x64",
-  "build-windows-x64",
-  "build-windows-arm64",
-  "perf-budget-linux-x64",
-  "provider-integration-darwin-arm64",
-  "provider-integration-darwin-x64",
-  "provider-integration-linux-arm64",
-  "provider-integration-linux-x64",
-  "provider-integration-windows-x64",
-  "provider-integration-windows-arm64",
-] as const;
+const requiredChecks = ["ci"] as const;
 
 const extractBranchProtectionSection = (runbook: string): string => {
   const lines = runbook.split("\n");

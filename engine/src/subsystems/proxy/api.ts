@@ -44,6 +44,8 @@ export const layerUnavailable = Layer.succeed(
       () => new ProxyError({ message: ROUTER_UNAVAILABLE_MESSAGE, proxyId: UNAVAILABLE_ID }),
     ),
     status: Effect.succeed({ state: "stopped" as const, authorities: [], configuredApps: [] }),
+    observeRoutes: () =>
+      Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" as const } }),
     stop: Effect.void,
   }),
 );

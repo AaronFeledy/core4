@@ -8,6 +8,11 @@ tags: [beta, docs, schemas, library]
 
 # Validate a Landofile with Standard Schema
 
+Use `LandofileStandardSchema` in a host program to validate a parsed `.lando.yml`
+object before resolving its expressions. In the example, `input` is that parsed
+object, not a YAML string. Read `result.issues` for validation problems or
+`result.value` for the accepted authoring shape.
+
 ```ts
 import { LandofileStandardSchema } from "@lando/sdk/schema/standard";
 

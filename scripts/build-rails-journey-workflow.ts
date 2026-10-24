@@ -67,7 +67,6 @@ export const renderRailsJourneyWorkflow = (): string => `${GENERATED_HEADER}
 name: rails-journey
 
 on:
-  pull_request:
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:

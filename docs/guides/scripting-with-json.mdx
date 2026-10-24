@@ -8,9 +8,9 @@ tags: [beta, docs, cli, json, scripting, agent]
 
 # Script Lando with JSON
 
-`lando version --json` prints the selectable result keys as a JSON array. It
-does not run the command body. Use `--format=json` or `-j` when you want the
-full `CommandResultEnvelope`.
+Use `lando version --format=json` or `lando version -j` to run the command and read its full `CommandResultEnvelope`. Start scripts with the exit status and `ok` field, then read `result` or `error` as appropriate.
+
+Bare `lando version --json` is different: it lists selectable result keys as a JSON array without running the command body:
 
 ```sh
 lando version --json
@@ -39,6 +39,8 @@ Project scripts from `.lando/scripts/*.bun.sh` emit the same envelope. With
 `stderr`, and `exitCode`, and Lando exits with the script's own code even
 when `ok` is `true`. Writing those scripts is covered in
 [Add project commands with Bun Shell scripts](../tooling/bun-shell-scripts/).
+
+After adding the `stamp.bun.sh` example from that guide to your app, run these commands from its directory:
 
 ```sh
 lando app:cache:refresh

@@ -93,13 +93,16 @@ import type {
   RemoteConfig,
   RemoteEnvironment,
   RemoteTestResult,
-  ServiceCreds,
+  ServiceInfo,
+  ServiceInfoLogSource,
   ServiceName,
+  StartedService,
   SyncResult,
   TunnelSession,
   TunnelTarget,
 } from "../schema/index.ts";
 import type { LandoEvent } from "../services/events.ts";
+export type { EndpointRef, ServiceConnection, ServiceState, StartedService } from "../schema/index.ts";
 import type {
   AppPlanner,
   CacheService,
@@ -203,11 +206,7 @@ export interface StartAppOptions {
 export interface StartAppResult {
   readonly checks?: ReadonlyArray<CheckResult>;
   readonly app: string;
-  readonly servicesStarted: ReadonlyArray<{
-    readonly name: string;
-    readonly state: string;
-    readonly endpoints: ReadonlyArray<string>;
-  }>;
+  readonly servicesStarted: readonly StartedService[];
 }
 
 export type AppPlanResolutionError = UserLandofileError | ProviderSelectionError | AppPlannerError;
@@ -362,37 +361,10 @@ export interface InfoAppOptions {
   readonly filters?: ReadonlyArray<string>;
 }
 
-export type InfoServiceStatus =
-  | "unknown"
-  | "stopped"
-  | "starting"
-  | "running"
-  | "healthy"
-  | "unhealthy"
-  | "error";
-
-export type InfoLogSourceAvailability = "available" | "redirected-to-console" | "unavailable";
-
-export interface InfoLogSource {
-  readonly id: string;
-  readonly path: string;
-  readonly strategy: "redirect" | "follow";
-  readonly availability: InfoLogSourceAvailability;
-  readonly reason?: string;
-}
-
-export interface InfoAppService {
-  readonly app: string;
-  readonly service: string;
-  readonly api: 4;
-  readonly type: string;
-  readonly provider: string;
-  readonly primary: boolean;
-  readonly status: InfoServiceStatus;
-  readonly endpoints: ReadonlyArray<string>;
-  readonly logSources?: ReadonlyArray<InfoLogSource>;
-  readonly creds?: ServiceCreds;
-}
+export type InfoServiceStatus = ServiceInfo["status"];
+export type InfoLogSourceAvailability = ServiceInfoLogSource["availability"];
+export type InfoLogSource = ServiceInfoLogSource;
+export type InfoAppService = ServiceInfo;
 
 export interface InfoAppAgentEnv {
   readonly enabled: boolean;

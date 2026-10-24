@@ -7,7 +7,7 @@ tags: [beta, docs, elasticsearch, service]
 
 # Add Elasticsearch
 
-Put `type: elasticsearch` in your services block. Lando pulls `docker.elastic.co/elasticsearch/elasticsearch:8.17.0` and listens on `9200`:
+Add `type: elasticsearch` under `services` in `.lando.yml`. Lando pulls `docker.elastic.co/elasticsearch/elasticsearch:8.17.0` and listens on `9200`:
 
 ```yaml
 name: elasticsearch-demo
@@ -43,7 +43,7 @@ The default config sets `discovery.type: single-node` for local dev and disables
 
 ## Check cluster health
 
-The fixture above declares `es-cli` as an app tooling alias. Query cluster health once the service is up:
+The Landofile above declares `es-cli` as an app tooling alias. Query cluster health once the service is up:
 
 ```sh
 lando es-cli /_cluster/health
@@ -58,6 +58,8 @@ lando es-cli /_cat/indices
 ```
 
 ## Pin a version
+
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Set `image:` when the default Elasticsearch 8 image isn't the version you want:
 

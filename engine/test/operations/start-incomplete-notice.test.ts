@@ -71,6 +71,7 @@ const runtimeFor = (name: string, observed: Partial<ServiceRuntimeInfo>): Servic
   service: ServiceName.make(name),
   providerId,
   status: "stopped",
+  publications: { status: "unknown" },
   ...observed,
 });
 

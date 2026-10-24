@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Schema } from "effect";
 
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
   ProviderId,
+  ServiceInfo,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
@@ -70,6 +71,7 @@ const provide = (plan: AppPlan) => {
         providerId,
         status: "running",
         state: "running",
+        publications: { status: "unknown" },
       }),
   };
   return Layer.succeed(
@@ -104,7 +106,9 @@ describe("infoForPlan creds from LANDO_DB_*", () => {
       password: REDACTED,
       database: "appdb",
     });
-    expect(JSON.stringify(result)).not.toContain(SECRET_VALUE);
+    const encoded = Schema.encodeSync(ServiceInfo)(Schema.decodeUnknownSync(ServiceInfo)(result.services[0]));
+    expect(encoded.creds).toEqual(result.services[0]?.creds);
+    expect(JSON.stringify(encoded)).not.toContain(SECRET_VALUE);
   });
 
   test("includes redacted rootPassword when LANDO_DB_ROOT_PASSWORD is defined", async () => {

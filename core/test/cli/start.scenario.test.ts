@@ -468,6 +468,25 @@ const makeStartLayer = (
       Effect.sync(() => void buildOrder.push("proxy-remove")).pipe(
         Effect.andThen(options.proxyRemoveEffect ?? Effect.void),
       ),
+    observeRoutes: (_app, routes) =>
+      Effect.succeed({
+        configuredAuthorities: routes.flatMap((route) =>
+          (route.scheme === "both" ? (["http", "https"] as const) : [route.scheme]).map((scheme) => ({
+            scheme,
+            hostname: route.hostname,
+            port: scheme === "https" ? 4443 : 4080,
+          })),
+        ),
+        observation: {
+          status: "present",
+          publications: routes.flatMap((route) =>
+            (route.scheme === "both" ? (["http", "https"] as const) : [route.scheme]).map((scheme) => ({
+              route,
+              authority: { scheme, hostname: route.hostname, port: scheme === "https" ? 4443 : 4080 },
+            })),
+          ),
+        },
+      }),
     status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
     stop: Effect.void,
   });
@@ -546,7 +565,21 @@ const makeStartLayer = (
                   status: "running",
                   state: "running",
                   lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
-                  endpoints: plannedApp.services[target.service]?.endpoints ?? [],
+                  publications: {
+                    status: "present",
+                    bindings: (plannedApp.services[target.service]?.endpoints ?? []).flatMap((endpoint) =>
+                      endpoint._tag === "published" && endpoint.publication.hostPort !== undefined
+                        ? [
+                            {
+                              port: endpoint.port,
+                              transport: endpoint.protocol === "udp" ? ("udp" as const) : ("tcp" as const),
+                              bindAddress: endpoint.publication.bindAddress ?? "127.0.0.1",
+                              hostPort: endpoint.publication.hostPort,
+                            },
+                          ]
+                        : [],
+                    ),
+                  },
                 })
               : Effect.fail(options.inspectFailure)),
         ),
@@ -814,16 +847,10 @@ const makeAutoStartLayer = async (options: {
         providerId,
         status: "running",
         state: "running",
-        endpoints: [
-          {
-            _tag: "published",
-            protocol: "http",
-            port: 8080,
-            name: "http",
-            publication: {},
-            materialization: { bindAddress: "127.0.0.1", hostPort: 8080 },
-          },
-        ],
+        publications: {
+          status: "present",
+          bindings: [{ port: 8080, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 8080 }],
+        },
       }),
     list: () => Effect.succeed([]),
   };
@@ -1163,8 +1190,10 @@ describe("lando start", () => {
       ["database", "running"],
     ]);
     expect(renderStartAppResult(result)).toContain("ready: test-start");
-    expect(renderStartAppResult(result)).toContain("web (running) http://localhost:3000");
-    expect(renderStartAppResult(result)).toContain("database (running) tcp://localhost:5432");
+    expect(renderStartAppResult(result)).toContain("web (running) Host: http://localhost:3000");
+    expect(renderStartAppResult(result)).toContain(
+      "database (running) Host: postgresql://lando@localhost:5432/postgres",
+    );
   });
 
   test("uses the captured scratch AppRef when starting a resolved scratch target", async () => {
@@ -1205,9 +1234,13 @@ describe("lando start", () => {
     ]);
     expect(harness.buildOrder.slice(10)).toContain("inspect:web");
     expect(harness.buildOrder.slice(10)).toContain("inspect:database");
-    expect(result.servicesStarted.find((service) => service.name === "web")?.endpoints).toEqual([
-      "https://web.test-start.lndo.site:4443",
-    ]);
+    expect(
+      result.servicesStarted
+        .find((service) => service.name === "web")
+        ?.connections.flatMap((connection) =>
+          connection.scope === "host" && connection.binding === "assigned" ? [connection.url] : [],
+        ),
+    ).toEqual(["https://web.test-start.lndo.site:4443"]);
   });
 
   test("retains applied resources and routes with only the primary post-app-start publication failure", async () => {
@@ -1888,12 +1921,62 @@ describe("lando start", () => {
         {
           name: "web",
           state: "completed",
-          endpoints: ["http://localhost:3000"],
+          connections: [
+            {
+              scope: "host",
+              source: "publication",
+              protocol: "http",
+              host: "localhost",
+              endpoint: { port: 3000, transport: "tcp", names: [], primary: false },
+              binding: "assigned",
+              port: 3000,
+              url: "http://localhost:3000",
+              alternateUrls: [],
+              state: "inactive",
+            },
+            {
+              scope: "app",
+              source: "listener",
+              protocol: "http",
+              host: "web",
+              endpoint: { port: 3000, transport: "tcp", names: [], primary: false },
+              binding: "assigned",
+              port: 3000,
+              url: "http://web:3000",
+              alternateUrls: [],
+              state: "inactive",
+            },
+          ],
         },
         {
           name: "database",
           state: "running",
-          endpoints: ["tcp://localhost:5432"],
+          connections: [
+            {
+              scope: "host",
+              source: "publication",
+              protocol: "tcp",
+              host: "localhost",
+              endpoint: { port: 5432, transport: "tcp", names: [], primary: false },
+              binding: "assigned",
+              port: 5432,
+              url: "tcp://localhost:5432",
+              alternateUrls: [],
+              state: "active",
+            },
+            {
+              scope: "app",
+              source: "listener",
+              protocol: "tcp",
+              host: "database",
+              endpoint: { port: 5432, transport: "tcp", names: [], primary: false },
+              binding: "assigned",
+              port: 5432,
+              url: "tcp://database:5432",
+              alternateUrls: [],
+              state: "active",
+            },
+          ],
         },
       ],
     };
@@ -1913,12 +1996,62 @@ describe("lando start", () => {
         {
           name: "web",
           state: "ready",
-          endpoints: ["http://localhost:3000"],
+          connections: [
+            {
+              scope: "host",
+              source: "publication",
+              protocol: "http",
+              host: "localhost",
+              endpoint: { port: 3000, transport: "tcp", names: [], primary: false },
+              binding: "assigned",
+              port: 3000,
+              url: "http://localhost:3000",
+              alternateUrls: [],
+              state: "active",
+            },
+            {
+              scope: "app",
+              source: "listener",
+              protocol: "http",
+              host: "web",
+              endpoint: { port: 3000, transport: "tcp", names: [], primary: false },
+              binding: "assigned",
+              port: 3000,
+              url: "http://web:3000",
+              alternateUrls: [],
+              state: "active",
+            },
+          ],
         },
         {
           name: "database",
           state: "running",
-          endpoints: ["tcp://localhost:5432"],
+          connections: [
+            {
+              scope: "host",
+              source: "publication",
+              protocol: "tcp",
+              host: "localhost",
+              endpoint: { port: 5432, transport: "tcp", names: [], primary: false },
+              binding: "assigned",
+              port: 5432,
+              url: "tcp://localhost:5432",
+              alternateUrls: [],
+              state: "active",
+            },
+            {
+              scope: "app",
+              source: "listener",
+              protocol: "tcp",
+              host: "database",
+              endpoint: { port: 5432, transport: "tcp", names: [], primary: false },
+              binding: "assigned",
+              port: 5432,
+              url: "tcp://database:5432",
+              alternateUrls: [],
+              state: "active",
+            },
+          ],
         },
       ],
     };
@@ -2183,7 +2316,7 @@ describe("lando start", () => {
           providerId,
           status: "running",
           state: "running",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
     };
@@ -2334,7 +2467,7 @@ describe("lando start", () => {
           providerId,
           status: "running",
           state: "running",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
     };
@@ -2475,7 +2608,7 @@ describe("lando start", () => {
           providerId,
           status: "running",
           state: "running",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
     };
@@ -2625,7 +2758,7 @@ describe("lando start", () => {
           providerId,
           status: "running",
           state: "running",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
     };
@@ -2784,7 +2917,7 @@ describe("lando start", () => {
           providerId,
           status: "running",
           state: "running",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
     };
@@ -2977,7 +3110,7 @@ describe("lando start", () => {
           providerId,
           status: "running",
           state: "running",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
     };
@@ -3147,7 +3280,7 @@ describe("lando start", () => {
           providerId,
           status: "running",
           state: "running",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
     };

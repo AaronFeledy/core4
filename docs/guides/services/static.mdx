@@ -7,7 +7,7 @@ tags: [beta, docs, static, service]
 
 # Serve a static site
 
-Put `type: static` in your services block. That defaults to the nginx variant. Lando pulls `nginx:1.26-alpine` and listens on `80`. The webroot defaults to `.`, resolving to the app root at `/app`, and the app source is mounted read-only. The server can't mutate your repository:
+Add `type: static` under `services` in `.lando.yml`. That defaults to the nginx variant. Lando pulls `nginx:1.26-alpine` and listens on `80`. The webroot defaults to `.`, resolving to the app root at `/app`, and the app source is mounted read-only. The server can't mutate your repository:
 
 ```yaml
 name: static-demo
@@ -25,6 +25,8 @@ tooling:
       - curl
 ```
 
+
+Before starting this example, build your site into `dist/` so that `dist/index.html` exists. The configuration serves generated files, not your source templates.
 
 ## Read missing paths and directories
 
@@ -55,7 +57,7 @@ Wrong hostname? You get the proxy page (`404 · Lando proxy`) instead. See [Use 
 
 ## Serve a subdirectory
 
-Set `webroot` to a path relative to the app mount at `/app`, just as you do for nginx, Apache, and PHP services. The fixture uses `webroot: dist` to serve the build output directory. Inside the container, `LANDO_WEBROOT` is always the resolved absolute path, here `/app/dist`. Omit `webroot` or use `.` to serve the app root. Use an absolute value such as `webroot: /srv/site` only when you need a very specific container path outside the usual app layout; make sure that directory exists in the container. Relative paths that escape `/app`, such as `../srv`, are rejected.
+Set `webroot` to a path relative to the app mount at `/app`, just as you do for nginx, Apache, and PHP services. The example uses `webroot: dist` to serve the build output directory. Inside the container, `LANDO_WEBROOT` is always the resolved absolute path, here `/app/dist`. Omit `webroot` or use `.` to serve the app root. Use an absolute value such as `webroot: /srv/site` only when you need a very specific container path outside the usual app layout; make sure that directory exists in the container. Relative paths that escape `/app`, such as `../srv`, are rejected.
 
 ## Serve with Caddy
 
@@ -85,6 +87,8 @@ services:
 `static:caddy` writes nothing at start either, but it still listens on `80` by default, so the same port rule applies there.
 
 ## Pin a version
+
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Set `image:` to pin a specific nginx or Caddy version:
 

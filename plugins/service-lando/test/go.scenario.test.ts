@@ -190,7 +190,9 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     if (web === undefined) throw new Error("web service missing from go plan");
 
     expect(web.type).toBe("go:1.22");
-    expect(web.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
+    expect(web.endpoints).toEqual([
+      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+    ]);
     expect(web.healthcheck).toBeUndefined();
     expect(String(web.workingDirectory)).toBe("/app");
     expect(String(web.appMount?.target)).toBe("/app");

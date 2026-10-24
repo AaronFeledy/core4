@@ -1,92 +1,48 @@
 import { expect, test } from "bun:test";
+import { BindAddress, PortablePath, type PublicationObservation } from "@lando/sdk/schema";
+import { publishedEndpointUrl } from "../../src/operations/authority-url.ts";
+import { projectServiceConnections } from "../../src/operations/service-connections.ts";
+import { web } from "./start-progress-topology-support.ts";
 
-import { AppId, BindAddress, type EndpointPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+test.each([
+  { status: "unknown" },
+  { status: "present", bindings: [] },
+  { status: "present", bindings: [{ port: 15432, transport: "tcp", bindAddress: "::1", hostPort: 49152 }] },
+] satisfies PublicationObservation[])(
+  "retains planned listeners independently of $status publication evidence",
+  (publications) => {
+    const service = {
+      ...web,
+      endpoints: [
+        { _tag: "internal", protocol: "tcp", port: 15432 },
+        {
+          _tag: "published",
+          protocol: "tcp",
+          port: 15432,
+          publication: { bindAddress: BindAddress.make("::1") },
+        },
+        { _tag: "internal", protocol: "udp", port: 15432 },
+        { _tag: "internal", protocol: "unix", socketPath: PortablePath.make("/run/db.sock") },
+      ],
+    } satisfies typeof web;
+    const rows = projectServiceConnections({ service, state: "running", publications, routes: [] });
+    expect(rows.filter((row) => row.scope === "app").map((row) => row.url)).toEqual([
+      "tcp://web:15432",
+      "udp://web:15432",
+    ]);
+    const host = rows.find((row) => row.scope === "host");
+    expect(host?.binding).toBe(
+      publications.status === "present" && publications.bindings.length > 0 ? "assigned" : "pending",
+    );
+  },
+);
 
-import {
-  publishedEndpointUrl,
-  publishedEndpointUrls,
-  startedServiceRow,
-} from "../../src/operations/authority-url.ts";
-
-test("uses planned endpoints and status when inspect omits endpoints and state", () => {
-  // Given
-  const service = {
-    name: ServiceName.make("web"),
-    endpoints: [
-      { _tag: "internal", protocol: "http", port: 8080 },
-      { _tag: "published", protocol: "http", port: 8080, publication: {} },
-      { _tag: "published", protocol: "https", port: 8443, publication: { hostPort: 38443 } },
-    ] satisfies ReadonlyArray<EndpointPlan>,
-  };
-  // When
-  const row = startedServiceRow(service, {
-    app: AppId.make("app"),
-    service: service.name,
-    providerId: ProviderId.make("test"),
-    status: "running",
-  });
-  // Then
-  expect(row).toEqual({ name: "web", state: "running", endpoints: ["https://localhost:38443"] });
-  expect(Object.keys(row)).toEqual(["name", "state", "endpoints"]);
-});
-
-test("prefers observed state and materialized endpoints when inspect supplies them", () => {
-  // Given
-  const service = { name: ServiceName.make("web"), endpoints: [] };
-  // When
-  const row = startedServiceRow(service, {
-    app: AppId.make("app"),
-    service: service.name,
-    providerId: ProviderId.make("test"),
-    status: "created",
-    state: "running",
-    endpoints: [
-      {
-        _tag: "published",
-        protocol: "http",
-        port: 8080,
-        publication: { hostPort: 1234 },
-        materialization: { bindAddress: BindAddress.make("::1"), hostPort: 49152 },
-      },
-    ],
-  });
-  // Then
-  expect(row).toEqual({ name: "web", state: "running", endpoints: ["http://[::1]:49152"] });
-});
-
-test("renders only explicitly published endpoint URLs", () => {
-  const urls = publishedEndpointUrls([
-    { _tag: "internal", protocol: "http", port: 8080 },
-    {
-      _tag: "published",
-      protocol: "https",
-      port: 8443,
-      publication: { bindAddress: BindAddress.make("127.0.0.1"), hostPort: 38443 },
-    },
-  ]);
-
-  expect(urls).toEqual(["https://localhost:38443"]);
-});
-
-test("uses provider materialization for an assigned host port", () => {
+test.each(["::1"])("brackets %s once in scalar configured URL formatting", (address) => {
   const url = publishedEndpointUrl({
     _tag: "published",
     protocol: "http",
     port: 8080,
-    publication: {},
-    materialization: { bindAddress: BindAddress.make("127.0.0.1"), hostPort: 49152 },
+    publication: { bindAddress: BindAddress.make(address), hostPort: 49152 },
   });
-
-  expect(url).toBe("http://localhost:49152");
-});
-
-test("brackets IPv6 bind addresses in openable URLs", () => {
-  const url = publishedEndpointUrl({
-    _tag: "published",
-    protocol: "http",
-    port: 8080,
-    publication: { bindAddress: BindAddress.make("::1"), hostPort: 49152 },
-  });
-
   expect(url).toBe("http://[::1]:49152");
 });

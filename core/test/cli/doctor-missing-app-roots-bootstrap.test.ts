@@ -60,6 +60,7 @@ test.each([false, true])(
                   providerId: ProviderId.make(provider.id),
                   status: "running",
                   containerId: "observed-container",
+                  publications: { status: "unknown" },
                 },
               ],
             },

@@ -119,6 +119,7 @@ describe("managed Windows published lifecycle", () => {
           providerId,
           status: "running",
           containerId: "exact-global-id",
+          publications: { status: "unknown" },
         }),
       ),
     );

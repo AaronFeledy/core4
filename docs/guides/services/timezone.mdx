@@ -8,7 +8,7 @@ tags: [beta, docs, services, environment, timezone]
 
 # Set the timezone
 
-Set `TZ` under the service's `environment` map. Landofiles have no dedicated `timezone:` key. This is a different mechanism from `LANDO_CONFIG__` env overrides (see [env-overrides](../landofile/env-overrides.mdx)), which overlay Lando's own config instead:
+Set `TZ` under the service's `environment` map in `.lando.yml`. Landofiles have no dedicated `timezone:` key. This is a different mechanism from `LANDO_CONFIG__` env overrides (see [env-overrides](../landofile/env-overrides.mdx)), which overlay Lando's own config instead:
 
 ```yaml
 name: timezone-demo
@@ -41,8 +41,7 @@ services:
 
 ## Don't interpolate host env
 
-A Landofile can't reach into your host shell's environment with
-`${HOST_VAR}` syntax. Lando rejects configuration expressions:
+Do not use `${HOST_VAR}` to copy a host-shell variable into this setting. That interpolation syntax is rejected; the scenario below checks the rejection:
 
   <Scenario id="rejected-host-env-interpolation" render>
     <Step name="scaffold">

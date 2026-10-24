@@ -8,6 +8,8 @@ tags: [beta, docs, landofile, config, explain]
 
 # See which Landofile values your recipe still manages
 
+From your app directory, inspect which service values still follow the recipe options recorded in your Landofile:
+
 ```sh
 lando app:config:explain
 ```
@@ -70,7 +72,7 @@ The JSON envelope's `result` carries `landofilePath`, `form`, `recipe`, `compari
 
 ## When the comparison is blocked
 
-Blocking is normal, and honest. The semantic comparison needs a recorded producer identity, option values, and a recipe version the installed recipe still publishes. When any of that is missing, Lando says so and still reports the bounded facts it can read straight out of the file.
+The comparison needs a recorded producer identity, option values, and a recipe version the installed recipe still publishes. When any of that is missing, Lando says so and still reports the bounded facts it can read straight out of the file.
 
 | Situation | `comparison.reason` |
 | --- | --- |

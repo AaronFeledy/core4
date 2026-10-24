@@ -8,14 +8,17 @@ tags: [beta, docs, plugins, trust]
 
 # Trust plugin postinstall
 
-Untrusted installs never run package `postinstall`. The tarball can land. The script does not.
+Lando runs a package's `postinstall` only when the package is trusted. Trust
+allows code to run on your host, so use the following commands only for a
+package you have decided to authorize.
 
 ```sh
 lando plugin:trust @lando/plugin-php
 lando plugin:add @lando/plugin-php --trust
 ```
 
-Untrusted packages can sit on disk. Their postinstall does not get a microphone.
+An untrusted package can be unpacked on disk without its `postinstall` script
+running. The presence of package files does not prove that the script ran.
 
 ## Trust a name
 
@@ -24,13 +27,15 @@ lando plugin:trust @lando/plugin-php
 lando plugin:trust list
 ```
 
-Names persist in `<userConfRoot>/plugin-trust.yml`. Org globs are not up.
+Trusted names persist in `<userConfRoot>/plugin-trust.yml`. Organization
+wildcards are not supported.
 
 `--trust` and `-y` on `plugin:add` also persist that name. Non-interactive add without `--trust` fails with InteractionRequiredError when the package has no `scripts.postinstall` (the same prompt path as explicit `--trust`). If the package has `scripts.postinstall` and you omit `--trust`, the tarball still lands and the script is skipped (`trustSource: untrusted`).
 
 ## Trust a checkout
 
-Absolute path only.
+Replace `/absolute/path/to/plugin` with the checkout's absolute path. Relative
+paths are not accepted.
 
 ```sh
 lando meta:plugin:trust-authoring-root /absolute/path/to/plugin

@@ -2,7 +2,7 @@ import { completionIntentServices } from "@lando/container-runtime/dependency-ga
 import { runProbe } from "@lando/sdk/probe";
 import type { HealthcheckRunnerShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Clock, DateTime, Duration, Effect, Ref, Result } from "effect";
-import { startedServiceRow } from "./authority-url.ts";
+import { reconcileReadinessState } from "./connection-state.ts";
 import {
   type ReadinessTarget,
   failReadiness,
@@ -106,5 +106,6 @@ export const waitForService = Effect.fn("ServiceReadiness.waitForService")(funct
       : Effect.sleep(
           Duration.millis(Math.min(2_000, Math.max(0, started + 2_000 - (yield* Clock.currentTimeMillis)))),
         ).pipe(Effect.as("running" as const));
-  return { ...startedServiceRow(service, yield* inspect), state, initial };
+  const runtime = yield* inspect;
+  return { name: String(service.name), state: reconcileReadinessState(state, runtime), runtime, initial };
 });

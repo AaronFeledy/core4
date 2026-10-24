@@ -102,7 +102,9 @@ describe("php:8.2 ServiceType", () => {
 
     expect(plan.mounts).toEqual([]);
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+    ]);
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
@@ -212,7 +214,9 @@ describe("php:8.2 ServiceType", () => {
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/php:8.2-custom" });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
   });
@@ -321,7 +325,9 @@ describe("php serving modes (via:)", () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "apache" });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache-bookworm" });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).toContain('LANDO_HOST_OS:-}" = win32');
     expect(plan.command?.[2]).toContain("stat -c '%u:%g'");
@@ -496,7 +502,9 @@ describe("php serving modes (via:)", () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm" });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-fpm-bookworm" });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9000, protocol: "tcp", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 9000, protocol: "tcp", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000"]);
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
@@ -550,7 +558,9 @@ describe("php serving modes (via:)", () => {
   test("via fpm listens on an authored port", async () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm", port: 9070 });
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9070, protocol: "tcp", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 9070, protocol: "tcp", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9070"]);
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).toContain("listen = 9070");

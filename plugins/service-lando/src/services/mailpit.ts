@@ -23,6 +23,7 @@ const applyMailpitFeature = (ctx: ServiceFeatureContext): void => {
     port: Schema.decodeUnknownSync(PortNumber)(smtpPort),
     protocol: "tcp",
     name: "smtp",
+    primary: true,
   });
   ctx.addEndpoint({
     _tag: "internal",

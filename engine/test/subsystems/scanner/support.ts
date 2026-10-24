@@ -64,11 +64,17 @@ export const publishedEndpoint = (
   protocol: PublishedEndpoint["protocol"],
   port: number,
 ): ScanSourceEndpoint => ({
-  _tag: "published",
+  scope: "host",
+  source: "publication",
+  binding: "assigned",
+  state: "active",
+  host: "localhost",
+  endpoint: { port, transport: protocol === "udp" ? "udp" : "tcp", names: [], primary: false },
+  url: `${protocol}://localhost:${port}`,
+  alternateUrls: [],
   service,
   protocol,
   port,
-  publication: { hostPort: port },
 });
 
 export const endpointsOf = (

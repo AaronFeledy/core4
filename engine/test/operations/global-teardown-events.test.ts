@@ -85,6 +85,7 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
                   providerId,
                   service: ServiceName.make("web"),
                   status: "running",
+                  publications: { status: "unknown" },
                   containerId: "observed",
                 },
               ],

@@ -64,7 +64,6 @@ export const renderPlatformReadinessWorkflow = (): string => `${GENERATED_HEADER
 name: platform-readiness
 
 on:
-  pull_request:
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:

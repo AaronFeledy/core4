@@ -216,7 +216,15 @@ import {
   DownloaderCapabilities,
 } from "./downloader.ts";
 import { EmbeddingPluginPolicy } from "./embedding-plugin-policy.ts";
-import { BindAddress, InternalEndpoint, PublishedEndpoint } from "./endpoint.ts";
+import { EndpointInvariantIssue, HttpEndpointSelection, LogicalEndpoint } from "./endpoint-selection.ts";
+import {
+  BindAddress,
+  EndpointRef,
+  InternalEndpoint,
+  ObservedPublication,
+  PublicationObservation,
+  PublishedEndpoint,
+} from "./endpoint.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
   FileSyncEngineCapabilities,
@@ -337,6 +345,7 @@ import {
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
 import { ProviderSetupPlan } from "./provider-setup.ts";
+import { RouteEvidence } from "./proxy.ts";
 import {
   ProxyApplyResult,
   ProxyAuthority,
@@ -401,8 +410,9 @@ import {
   StyledSpanTone,
 } from "./renderer-panel.ts";
 import { RouteFilter, RouteFilterType } from "./route-filter.ts";
+import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
-import { ServiceInfo } from "./service-info.ts";
+import { ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
 import {
   DotnetServiceConfig,
   LocalStackServiceConfig,
@@ -713,6 +723,17 @@ const basePublicSchemaRegistry = schemaRegistry({
   ProviderExtensionConfig,
   HostPlatform,
   ServiceInfo,
+  ServiceInfoLogSource,
+  StartedService,
+  EndpointRef,
+  ObservedPublication,
+  PublicationObservation,
+  EndpointInvariantIssue,
+  HttpEndpointSelection,
+  LogicalEndpoint,
+  ServiceConnection,
+  ServiceState,
+  RouteEvidence,
   EmbeddingPluginPolicy,
   ContributionRef,
   PluginSetupFlagContribution,
@@ -1205,6 +1226,17 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ProviderExtensionConfig: "Public Lando schema contract for Provider Extension Config.",
   HostPlatform: "Public Lando schema contract for Host Platform.",
   ServiceInfo: "Public Lando schema contract for Service Info.",
+  EndpointRef: "Logical network listener identity and aliases.",
+  ObservedPublication: "Actual host publication observed by a runtime provider.",
+  PublicationObservation: "Explicit unknown, absent, or present runtime publication evidence.",
+  EndpointInvariantIssue: "Logical listener alias, primary, or protocol conflict.",
+  HttpEndpointSelection: "Unambiguous HTTP listener selection without order-based fallback.",
+  LogicalEndpoint: "Grouped facets of one logical network listener.",
+  ServiceConnection: "Scoped service connection with explicit binding and activity evidence.",
+  ServiceState: "Shared observed and supervised service lifecycle vocabulary.",
+  RouteEvidence: "Read-only configured ingress and live route publication evidence.",
+  ServiceInfoLogSource: "Declared service log source and provider availability returned by info.",
+  StartedService: "Service startup result with scoped connection evidence.",
   EmbeddingPluginPolicy: "Public Lando schema contract for Embedding Plugin Policy.",
   ContributionRef: "Public Lando schema contract for Contribution Ref.",
   PluginSetupFlagContribution: "Public Lando schema contract for Plugin Setup Flag Contribution.",
@@ -2541,10 +2573,8 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceConfigInput.workingDirectory",
   "ServiceInfo.api",
   "ServiceInfo.app",
-  "ServiceInfo.endpoints",
   "ServiceInfo.primary",
   "ServiceInfo.provider",
-  "ServiceInfo.routes",
   "ServiceInfo.service",
   "ServiceInfo.status",
   "ServiceInfo.type",

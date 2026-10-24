@@ -1,6 +1,8 @@
+import { isIP } from "node:net";
 import { Schema } from "effect";
 import type { DirectHttpTransport } from "./direct-http.ts";
 import { type ResolvedNetworkTrust, fetchInitForNetwork, usesDirectEndpoint } from "./network-trust.ts";
+import type { RequestPolicyShape } from "./policy.ts";
 
 export interface HttpTransports {
   readonly fetch: typeof fetch;
@@ -10,6 +12,10 @@ export interface HttpTransports {
 class RedirectError extends Schema.TaggedError<RedirectError>()("RedirectError", {
   message: Schema.String,
   urlOrigin: Schema.String,
+}) {}
+
+class ConnectionTargetError extends Schema.TaggedError<ConnectionTargetError>()("ConnectionTargetError", {
+  message: Schema.String,
 }) {}
 
 interface RequestNetwork {
@@ -24,6 +30,7 @@ export interface NetworkRequest {
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: RequestInit["body"] | undefined;
   readonly redirect?: "follow" | "manual" | "error";
+  readonly connectionTarget?: RequestPolicyShape["connectionTarget"];
 }
 
 export const requestWithNetworkTrust = async (
@@ -34,6 +41,19 @@ export const requestWithNetworkTrust = async (
   let url = new URL(request.url);
   let method = request.method ?? "GET";
   const headers = new Headers(request.headers);
+  const target = request.connectionTarget;
+  if (target !== undefined) {
+    if (
+      isIP(target.address) === 0 ||
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      url.origin !== target.origin ||
+      url.username !== "" ||
+      url.password !== "" ||
+      (headers.has("host") && headers.get("host") !== url.host)
+    )
+      throw new ConnectionTargetError({ message: "Invalid connection target or conflicting authority" });
+    headers.set("host", url.host);
+  }
   let body = request.body;
   const { trust, transports, systemCaPems } = network;
   const startsDirect = usesDirectEndpoint(url, trust);
@@ -47,8 +67,15 @@ export const requestWithNetworkTrust = async (
   for (let redirects = 0; ; redirects += 1) {
     signal.throwIfAborted();
     const response =
-      startsDirect && usesDirectEndpoint(url, trust)
-        ? await transports.direct(url, { method, headers, signal, ca, body })
+      target !== undefined || (startsDirect && usesDirectEndpoint(url, trust))
+        ? await transports.direct(url, {
+            method,
+            headers,
+            signal,
+            ca,
+            body,
+            ...(target === undefined ? {} : { connectionAddress: target.address }),
+          })
         : await transports.fetch(url.href, {
             method,
             headers,
@@ -61,7 +88,8 @@ export const requestWithNetworkTrust = async (
     if (
       ![301, 302, 303, 307, 308].includes(response.status) ||
       location === null ||
-      request.redirect === "manual"
+      request.redirect === "manual" ||
+      target !== undefined
     ) {
       return response;
     }

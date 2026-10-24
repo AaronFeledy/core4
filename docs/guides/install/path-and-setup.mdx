@@ -9,7 +9,7 @@ tags: [beta, docs, installer]
 
 > **Alpha status:** `get.lando.dev` and `update.lando.dev` are not serving v4 yet. Download the binary from a GitHub dev prerelease. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-After you download and verify the platform-qualified binary from a `v4.0.0-dev.N` prerelease, put it on PATH as `lando`. These commands preserve an existing executable in a unique backup before installing. For Linux x64, run these commands from the download directory:
+After you download and verify the platform-qualified binary from a `v4.0.0-dev.N` prerelease, put it on PATH as `lando`. These commands preserve an existing executable in a unique backup before installing. For Linux x64, run these commands from the download directory. On another Linux or macOS architecture, replace `lando-linux-x64` with the asset you downloaded before running them:
 
 ```sh
 (
@@ -30,7 +30,7 @@ lando --version
 
 Replace `lando-linux-x64` with the asset you downloaded on Linux or macOS. Add `$HOME/.local/bin` to your shell profile's PATH to keep `lando` available in new terminals.
 
-On Windows, name the downloaded asset `lando.exe`, then move it into a directory on PATH. The commands below back up an existing `lando.exe` in that directory before installing the Alpha. In PowerShell from the download directory:
+On Windows, name the downloaded asset `lando.exe`, then move it into a directory on PATH. The commands below back up an existing `lando.exe` in that directory before installing the Alpha. In PowerShell from the download directory, use the following commands. On ARM64 Windows, replace `lando-windows-x64.exe` with `lando-windows-arm64.exe` first:
 
 ```powershell
 Rename-Item .\lando-windows-x64.exe lando.exe
@@ -60,14 +60,16 @@ if (($env:PATH -split [IO.Path]::PathSeparator)[0] -ne $landoBin) {
 Add-Content -LiteralPath $PROFILE -Value $landoProfilePath
 ```
 
-Run these once for each profile where you want Lando. The current session already has the PATH entry from the earlier command. Then:
+Run these once for each profile where you want Lando. The current session already has the PATH entry from the earlier command.
+
+Run setup in your terminal and follow the prompts. Choose the recommended Lando-managed runtime on supported hosts; Docker is not required. On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks. Setup does not install Docker for you:
 
 ```sh
 lando setup
 lando doctor
 ```
 
-The default provider is `lando` (managed Podman). Default setup may fail on Alpha if host prerequisites block the managed runtime. If the managed runtime still cannot install and you have working system Docker:
+The default provider is `lando` (managed Podman). Check `lando doctor` for provider and host health. If setup reports a missing host prerequisite, follow its remediation and rerun setup. If the managed runtime still cannot install and you have working system Docker:
 
 ```sh
 lando setup --provider=docker

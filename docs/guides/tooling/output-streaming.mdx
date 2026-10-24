@@ -8,7 +8,7 @@ tags: [beta, docs, tooling, renderer, task-tree]
 
 # Stream tooling output
 
-Run a tooling command from the app root:
+From the app root, run a tooling task whose target service is already running. This example assumes a PHP app with a [Composer task](./composer-php.mdx):
 
 ```sh
 lando composer install
@@ -26,7 +26,7 @@ Redirected input still reaches the command as plain bytes, with no terminal in b
 
 The tree has a parent task for the command and one child for the run, then a complete or fail close with the exit code. Command output does not ride that tree as per-line `task.detail` events. Host and container tools share one sink: bytes print as they arrive, value-only redacted and byte-exact, including a last line with no trailing newline.
 
-Redirect stdout and the file or pipe gets the command's output and nothing else. The task tree, warnings, and other Lando messages go to stderr, so a dump task writes a clean dump. Redirecting stdout also drops the PTY, whatever stdin is:
+Redirect stdout and the file or pipe gets the command's output and nothing else. The examples below use an app-defined task named `gen`; replace it with your own task. The task tree, warnings, and other Lando messages go to stderr, so a dump task writes a clean dump. Redirecting stdout also drops the PTY, whatever stdin is:
 
 ```sh
 lando gen > out.txt

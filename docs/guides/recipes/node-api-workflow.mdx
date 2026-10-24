@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, node-api, node, express, fastify, hono, postgres]
 
 # Run the Node API recipe
 
+Create a Node API environment with Postgres, then install and serve your chosen framework. Run these commands from your host terminal.
+
 ```sh
 lando init --recipe node-api --name=node-api-demo --yes
 cd node-api-demo
@@ -17,63 +19,9 @@ The named init creates `node-api-demo/` and writes only `.lando.yml` there. Chan
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
-## See what the recipe writes
-
-| Piece | What you get |
-| --- | --- |
-| `api` | `node:lts` (or `node:22` with `--answer=node=22`), port `3000`, `API_FRAMEWORK` set to your framework pick, `DATABASE_URL` when Postgres is present |
-| `database` | `type: postgres` by default; omitted with `--answer=database=none` |
-| Tooling | `lando npm` and `lando node` on `api`; `lando psql` on `database` when Postgres is present |
-
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Framework choices are `express`, `fastify`, and `hono`.
-
-## Init, start, and tear down
-
-<Guide>
-  <Scenario id="reader-path" render>
-    <Step name="scaffold">
-      <Variable name="appName" value="node-api-workflow" display="node-api-demo" />
-      <Run command="lando init --recipe node-api --name={{appName}} --yes" />
-    </Step>
-    <Step name="confirm-defaults">
-      <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"API_FRAMEWORK\":\\s*\"express\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DATABASE_URL\":\\s*\"postgresql://" } }} />
-    </Step>
-    <Step name="start">
-      <Run command="lando start" />
-      <Verify event="post-start" />
-    </Step>
-    <Step name="info">
-      <Run command="lando info" />
-    </Step>
-    <Step name="cleanup">
-      <Cleanup />
-      <Run command="lando destroy -y" />
-    </Step>
-  </Scenario>
-
-  <Scenario id="hono-no-database" render>
-    <Step name="init">
-      <Variable name="appName" value="node-api-workflow-hono" display="node-api-hono" />
-      <Run command="lando init --recipe node-api --name={{appName}} --yes --answer=node=22 --answer=framework=hono --answer=database=none" />
-    </Step>
-    <Step name="inspect">
-      <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"API_FRAMEWORK\":\\s*\"hono\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\"none\"" } }} />
-    </Step>
-  </Scenario>
-</Guide>
-
 ## Install the framework and serve it
 
-Init does not drop an app scaffold. Initialize npm in the running `api` service, then install the framework you picked:
+Init does not create application code. Initialize npm in the running `api` service, then install the framework you picked:
 
 ```sh
 lando npm init -y
@@ -150,6 +98,60 @@ lando node server.mjs
 
 That binds port `3000` inside `api` until you stop it.
 
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `api` | `node:lts` (or `node:22` with `--answer=node=22`), port `3000`, `API_FRAMEWORK` set to your framework pick, `DATABASE_URL` when Postgres is present |
+| `database` | `type: postgres` by default; omitted with `--answer=database=none` |
+| Tooling | `lando npm` and `lando node` on `api`; `lando psql` on `database` when Postgres is present |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Framework choices are `express`, `fastify`, and `hono`.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="node-api-workflow" display="node-api-demo" />
+      <Run command="lando init --recipe node-api --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"API_FRAMEWORK\":\\s*\"express\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DATABASE_URL\":\\s*\"postgresql://" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="hono-no-database" render>
+    <Step name="init">
+      <Variable name="appName" value="node-api-workflow-hono" display="node-api-hono" />
+      <Run command="lando init --recipe node-api --name={{appName}} --yes --answer=node=22 --answer=framework=hono --answer=database=none" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"API_FRAMEWORK\":\\s*\"hono\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\"none\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
 ## Talk to Postgres
 
 When you keep the default database, `api` already has `DATABASE_URL` set to `postgresql://lando:<password>@database:5432/node-api-demo`:
@@ -175,7 +177,7 @@ const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const { rows } = await pool.query("SELECT 1 AS ok");
 ```
 
-Nothing in your code names the host or password. The Landofile fills `DATABASE_URL` from the database service's resolved credentials, so an authored `creds:` block and a rebuild both just work. With `--answer=database=none` there is no `database` service and no `DATABASE_URL`.
+Nothing in your code names the host or password. The Landofile fills `DATABASE_URL` from the database service's resolved credentials, so the application uses the credentials resolved from your `creds:` block after a rebuild. With `--answer=database=none` there is no `database` service and no `DATABASE_URL`.
 
 `lando info` lists the user and database name and redacts the password. `lando exec api -- printenv DATABASE_URL` masks the credentials in what it prints, `postgresql://[redacted]@database:5432/node-api-demo`. Your code inside `api` still gets the real value. Ping from tooling, no password needed:
 

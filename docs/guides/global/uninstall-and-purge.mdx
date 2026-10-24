@@ -8,7 +8,10 @@ tags: [beta, docs, global, lifecycle]
 
 # Uninstall the global app
 
-This is the host-level global app. It is not `lando uninstall` for the CLI.
+Use `lando global:uninstall` to clear the host-level global app's generated
+services, not to remove the Lando CLI. If you only need to stop one shared service,
+use `lando global:stop --service` instead. Volumes are retained unless you choose
+a purge operation.
 
 ## Stop one global service
 
@@ -31,11 +34,12 @@ Mailpit's route needs Traefik, so that also starts Traefik when it's stopped and
 
 ## Clear generated services
 
+Run this to regenerate the global Landofile with its services cleared. Provider
+volumes stay in place, and the command does not require `--yes`.
+
 ```sh
 lando global:uninstall
 ```
-
-That regenerates the global Landofile with services cleared and leaves provider volumes in place. Uninstall does not require `--yes`.
 
 To destroy provider resources and volumes first, then clear services:
 
@@ -63,7 +67,8 @@ This reads and cleans up only the selected provider. Volumes stay unless you pas
 
 To move the global app to another provider, do not destroy it by hand. See [Switch providers](../setup/provider-selection.mdx#switch-providers).
 
-Volumes stay unless you also pass `--purge`:
+To remove volumes as well as provider resources, add `--purge`. This deletes the
+global app's stored volume data:
 
 ```sh
 lando global:destroy --yes --purge

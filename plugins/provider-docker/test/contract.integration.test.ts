@@ -1244,16 +1244,11 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
 
     expect(inspected.status).toBe("running");
-    expect(inspected.endpoints).toEqual([
-      {
-        _tag: "published",
-        port: 31080,
-        protocol: "http",
-        name: "http",
-        publication: { bindAddress: "127.0.0.1", hostPort: 31080 },
-        materialization: { bindAddress: "0.0.0.0", hostPort: 32768 },
-      },
-    ]);
+    // Actual daemon bindings are reported as observed, never decorated with the planned HTTP endpoint.
+    expect(inspected.publications).toEqual({
+      status: "present",
+      bindings: [{ port: 31080, transport: "tcp", bindAddress: "0.0.0.0", hostPort: 32768 }],
+    });
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
     expect(logs).toEqual(
       ["ready", "lando-contract-split-line", "L".repeat(20_000)].map((line) => ({
@@ -1807,16 +1802,10 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
 
     expect(inspected.status).toBe("running");
-    expect(inspected.endpoints).toEqual([
-      {
-        _tag: "published",
-        port: 31080,
-        protocol: "http",
-        name: "http",
-        publication: { bindAddress: "127.0.0.1", hostPort: 31080 },
-        materialization: { bindAddress: "0.0.0.0", hostPort: 32768 },
-      },
-    ]);
+    expect(inspected.publications).toEqual({
+      status: "present",
+      bindings: [{ port: 31080, transport: "tcp", bindAddress: "0.0.0.0", hostPort: 32768 }],
+    });
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
     expect(logs).toEqual(
       ["ready", "lando-contract-split-line", "L".repeat(20_000)].map((line) => ({

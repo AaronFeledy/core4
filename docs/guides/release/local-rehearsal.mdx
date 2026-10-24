@@ -8,11 +8,13 @@ tags: [beta, docs, release]
 
 # Local release rehearsal
 
-Use `LOCAL_REHEARSAL=1` to run the release pipeline through a chosen stage
-without signing credentials. `--binary --through-stage=8-compile` runs the
+For release contributors, `LOCAL_REHEARSAL=1` runs the release pipeline through
+a chosen stage without signing credentials. Start with the command and platform
+requirements in [the release workflow](../../contributing/release.md). `--binary --through-stage=8-compile` runs the
 binary pipeline through the current-platform compile stage; `--library
 --through-stage=12-manifest` runs the library pipeline through manifest
-writing. Missing signing credentials warning-skip in local rehearsal.
+writing. When signing credentials are missing, local rehearsal skips those signing
+steps with warnings; it does not produce proof of a signed release.
 
 Both targets prepare the static container helper before typecheck and tests.
 Use a working Lando provider for the containerized build, or set

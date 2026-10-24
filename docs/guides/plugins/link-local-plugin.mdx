@@ -8,19 +8,23 @@ tags: [beta, docs, plugins, authoring]
 
 # Link a local plugin
 
-`lando meta:plugin:link` validates the checkout, then symlinks it into the user plugin root.
+Run `lando meta:plugin:link` from your plugin checkout to validate it and create
+a symlink in your user plugin root. Keep the checkout at that location while
+using the link.
 
 ```sh
 lando meta:plugin:link
 ```
 
-That is cwd. Pass a path when the checkout is next door.
+With no argument, the command uses your current directory. Pass a path to link
+a checkout elsewhere:
 
 ```sh
 lando meta:plugin:link ../lando-plugin-demo
 ```
 
-A symlink is cheaper than a tarball, and meaner if you later move the checkout.
+After linking, check that `<userDataRoot>/plugins/<name>` points to your checkout,
+where `<name>` is the plugin manifest's name.
 
 ## What it writes
 
@@ -37,7 +41,8 @@ Also trust the absolute checkout if you need postinstall or authoring-root check
 lando meta:plugin:trust-authoring-root /absolute/path/to/plugin
 ```
 
-Relative paths are rejected.
+Replace `/absolute/path/to/plugin` with the checkout's absolute path. Relative
+paths are rejected.
 
 ## Unlink
 
