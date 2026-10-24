@@ -1,9 +1,11 @@
 import { dirname } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 import { LandofileParseError } from "@lando/sdk/errors";
+import { isPlainRecord } from "@lando/sdk/landofile";
 import { Effect } from "effect";
 import { captureCompilationContext, sourceCarrier } from "./compilation.ts";
 import { rejectComposeKeys } from "./compose/rejections.ts";
+import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { type LegacyFailureSource, legacyLoadFailure } from "./legacy-load-failure.ts";
 import { type LandofileLoadContext, ensureConsistentRoot } from "./load-context.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
@@ -131,6 +133,7 @@ export const resolveLandofileSourceExpressions = Effect.fn("Landofile.resolveSou
     );
   }
   const prepared = yield* prepareOverlay(resolved.value, { file, layer: context.layer }, value);
+  if (isPlainRecord(value)) copyLandofileProvenance(value, prepared.value);
   const document = rememberLandofileReferencedFiles(
     rememberOrigins(prepared.value, prepared.origins),
     resolved.dependencies,

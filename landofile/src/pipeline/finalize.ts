@@ -55,6 +55,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   const scope =
     context.scope ??
     (yield* buildLandofileLoadScope([{ file, value: document }], context.env, context.pendingSites));
+  const constraintScope = { ...scope, pendingSites: [...(scope.pendingSites ?? [])] };
   const composed = yield* Effect.try({
     try: () =>
       composedCarrier({
@@ -178,7 +179,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     const resolved = yield* materializeLandofileLayer(
       entry.source,
       rememberOrigins(authored, origins),
-      scope,
+      constraintScope,
     );
     const range = isPlainRecord(resolved) ? resolved.lando : undefined;
     if (typeof range !== "string" || !isValidSemverRange(range))
