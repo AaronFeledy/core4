@@ -12,6 +12,7 @@ import {
   type ServiceConfig,
   type ServiceCreds,
 } from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 import { MysqlServiceConfig } from "@lando/sdk/schema/services/mysql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
@@ -138,6 +139,28 @@ export const mysqlServiceFeature: ServiceFeatureDefinition = {
   apply: serviceFeatureApply(MYSQL_FEATURE_ID, "mysql service feature failed to apply", applyMysqlFeature),
 };
 
+const mysqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]> = (name, connection) =>
+  connection.family !== "mysql"
+    ? {}
+    : {
+        mysql: {
+          description: "Open the MySQL client for this service.",
+          dir: PortablePath.make("/"),
+          service: name,
+          cmd: [
+            "mysql",
+            "-h",
+            "127.0.0.1",
+            "-P",
+            String(connection.port),
+            "-u",
+            connection.creds.user,
+            connection.creds.database,
+          ],
+          env: { MYSQL_PWD: connection.creds.password },
+        },
+      };
+
 const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
   id,
   name: "mysql",
@@ -146,6 +169,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
   artifacts: MYSQL_ARTIFACTS,
   identity: rootIdentity(),
   schema: MysqlServiceConfig,
+  toolingForConnection: mysqlToolingForConnection,
   resolve: (input) => {
     if (id !== "mysql" && input.service.image !== undefined && input.service.image !== image) {
       return Effect.fail(
@@ -178,15 +202,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
         },
         logSources: MYSQL_LOG_SOURCES,
         features: [{ id: MYSQL_FEATURE_ID }],
-        tooling: {
-          mysql: {
-            description: "Open the MySQL client for this service.",
-            dir: PortablePath.make("/"),
-            service: input.name,
-            cmd: ["mysql", "-h", "127.0.0.1", "-P", String(port), "-u", creds.user, creds.database],
-            env: { MYSQL_PWD: creds.password },
-          },
-        },
+        tooling: mysqlToolingForConnection(ServiceName.make(input.name), { family: "mysql", creds, port }),
       };
     });
   },

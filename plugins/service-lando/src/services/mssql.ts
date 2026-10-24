@@ -3,7 +3,7 @@ import { sha256Hex } from "@lando/sdk/digest";
 import { Effect, Schema } from "effect";
 
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { PortablePath } from "@lando/sdk/schema";
+import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
@@ -99,6 +99,17 @@ export const mssqlServiceFeature: ServiceFeatureDefinition = {
   apply: serviceFeatureApply(MSSQL_FEATURE_ID, "mssql service feature failed to apply", applyMssqlFeature),
 };
 
+const mssqlToolingForConnection: NonNullable<ServiceType["toolingForConnection"]> = (name, connection) =>
+  connection.family !== "mssql"
+    ? {}
+    : {
+        sqlcmd: {
+          service: name,
+          cmd: [...sqlcmdToolingArgv(connection.port)],
+          env: { SQLCMDPASSWORD: connection.creds.password },
+        },
+      };
+
 const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
   id,
   name: "mssql",
@@ -107,6 +118,7 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
   artifacts: ARTIFACTS,
   identity: { defaultUser: "mssql", homes: { mssql: "/var/opt/mssql", root: "/root" } },
   schema: MssqlServiceConfig,
+  toolingForConnection: mssqlToolingForConnection,
   resolve: (input) => {
     const arch = input.host?.arch ?? process.arch;
     if (
@@ -154,13 +166,7 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
           },
         },
         features: [{ id: MSSQL_FEATURE_ID }],
-        tooling: {
-          sqlcmd: {
-            service: input.name,
-            cmd: [...sqlcmdToolingArgv(port)],
-            env: { SQLCMDPASSWORD: creds.password },
-          },
-        },
+        tooling: mssqlToolingForConnection(ServiceName.make(input.name), { family: "mssql", creds, port }),
       };
     });
   },

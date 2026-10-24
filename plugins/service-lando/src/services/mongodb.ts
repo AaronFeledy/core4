@@ -8,6 +8,7 @@ import {
   type ServiceConfig,
   type ServiceCreds,
 } from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
@@ -115,6 +116,22 @@ export const mongodbServiceFeature: ServiceFeatureDefinition = {
   ),
 };
 
+const mongodbToolingForConnection: NonNullable<ServiceType["toolingForConnection"]> = (name, connection) =>
+  connection.family !== "mongodb"
+    ? {}
+    : {
+        mongosh: {
+          service: name,
+          cmd: [
+            "sh",
+            "-c",
+            'for arg do case "$arg" in --eval|--eval=*|--json|--json=*|--shell|-f|--file|--file=*|*.js|*.mongodb) exec mongosh --nodb --eval "db=connect(process.env.MONGO_URI)" "$@";; esac; done; exec mongosh --nodb --eval "db=connect(process.env.MONGO_URI)" --shell "$@"',
+            "mongosh",
+          ],
+          env: { MONGO_URI: mongoUri(connection.creds, connection.port) },
+        },
+      };
+
 export const mongodbServiceType: ServiceType = {
   id: "mongodb",
   name: "mongodb",
@@ -123,6 +140,7 @@ export const mongodbServiceType: ServiceType = {
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
   schema: Schema.Unknown,
+  toolingForConnection: mongodbToolingForConnection,
   resolve: (input) => {
     return serviceTypeResolve("mongodb", "mongodb service type failed to resolve", () => {
       const creds = credsFor(input, input.service);
@@ -140,18 +158,11 @@ export const mongodbServiceType: ServiceType = {
           },
         },
         features: [{ id: MONGODB_FEATURE_ID }],
-        tooling: {
-          mongosh: {
-            service: input.name,
-            cmd: [
-              "sh",
-              "-c",
-              'for arg do case "$arg" in --eval|--eval=*|--json|--json=*|--shell|-f|--file|--file=*|*.js|*.mongodb) exec mongosh --nodb --eval "db=connect(process.env.MONGO_URI)" "$@";; esac; done; exec mongosh --nodb --eval "db=connect(process.env.MONGO_URI)" --shell "$@"',
-              "mongosh",
-            ],
-            env: { MONGO_URI: mongoUri(creds, port) },
-          },
-        },
+        tooling: mongodbToolingForConnection(ServiceName.make(input.name), {
+          family: "mongodb",
+          creds,
+          port,
+        }),
       };
     });
   },

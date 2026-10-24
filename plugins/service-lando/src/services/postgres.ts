@@ -2,7 +2,7 @@ import { sha256Hex } from "@lando/sdk/digest";
 
 import { Schema } from "effect";
 
-import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
+import { PortablePath, type ServiceConfig, type ServiceCreds, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
   addEnvRecord,
@@ -110,6 +110,27 @@ export const postgresServiceFeature: ServiceFeatureDefinition = {
   ),
 };
 
+const postgresToolingForConnection: NonNullable<ServiceType["toolingForConnection"]> = (name, connection) =>
+  connection.family !== "postgres"
+    ? {}
+    : {
+        psql: {
+          description: "Open the PostgreSQL client for this service.",
+          dir: PortablePath.make("/"),
+          service: name,
+          cmd: [
+            "psql",
+            "-p",
+            String(connection.port),
+            "-U",
+            connection.creds.user,
+            "-d",
+            connection.creds.database,
+          ],
+          env: { PGPASSWORD: connection.creds.password },
+        },
+      };
+
 export const postgresServiceType: ServiceType = {
   id: "postgres",
   name: "postgres",
@@ -118,6 +139,7 @@ export const postgresServiceType: ServiceType = {
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
   schema: Schema.Unknown,
+  toolingForConnection: postgresToolingForConnection,
   resolve: (input) => {
     return serviceTypeResolve("postgres", "postgres service type failed to resolve", () => {
       const creds = credsFor(input);
@@ -136,15 +158,11 @@ export const postgresServiceType: ServiceType = {
           },
         },
         features: [{ id: POSTGRES_FEATURE_ID }],
-        tooling: {
-          psql: {
-            description: "Open the PostgreSQL client for this service.",
-            dir: PortablePath.make("/"),
-            service: input.name,
-            cmd: ["psql", "-p", String(port), "-U", creds.user, "-d", creds.database],
-            env: { PGPASSWORD: creds.password },
-          },
-        },
+        tooling: postgresToolingForConnection(ServiceName.make(input.name), {
+          family: "postgres",
+          creds,
+          port,
+        }),
       };
     });
   },

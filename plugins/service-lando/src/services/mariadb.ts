@@ -11,6 +11,7 @@ import {
   PortablePath,
   type ServiceCreds,
 } from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
   addEnvRecord,
@@ -140,6 +141,28 @@ export const mariadbServiceFeature: ServiceFeatureDefinition = {
   ),
 };
 
+const mariadbToolingForConnection: NonNullable<ServiceType["toolingForConnection"]> = (name, connection) =>
+  connection.family !== "mariadb"
+    ? {}
+    : {
+        mariadb: {
+          description: "Open the MariaDB client for this service.",
+          dir: PortablePath.make("/"),
+          service: name,
+          cmd: [
+            "mariadb",
+            "-h",
+            "127.0.0.1",
+            "-P",
+            String(connection.port),
+            "-u",
+            connection.creds.user,
+            connection.creds.database,
+          ],
+          env: { MYSQL_PWD: connection.creds.password },
+        },
+      };
+
 export const mariadbServiceType: ServiceType = {
   id: "mariadb",
   name: "mariadb",
@@ -148,6 +171,7 @@ export const mariadbServiceType: ServiceType = {
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
   schema: Schema.Unknown,
+  toolingForConnection: mariadbToolingForConnection,
   resolve: (input) => {
     return serviceTypeResolve("mariadb", "mariadb service type failed to resolve", () => {
       const creds = mariadbCreds(input, input.name, input.service);
@@ -167,15 +191,11 @@ export const mariadbServiceType: ServiceType = {
         },
         logSources: MARIADB_LOG_SOURCES,
         features: [{ id: MARIADB_FEATURE_ID }],
-        tooling: {
-          mariadb: {
-            description: "Open the MariaDB client for this service.",
-            dir: PortablePath.make("/"),
-            service: input.name,
-            cmd: ["mariadb", "-h", "127.0.0.1", "-P", String(port), "-u", creds.user, creds.database],
-            env: { MYSQL_PWD: creds.password },
-          },
-        },
+        tooling: mariadbToolingForConnection(ServiceName.make(input.name), {
+          family: "mariadb",
+          creds,
+          port,
+        }),
       };
     });
   },
