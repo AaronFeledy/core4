@@ -35,6 +35,43 @@ lando db:import backups/app.sql.zst --service database --yes
 
 MySQL, MariaDB, and Postgres execute the dump through the client without automatically resetting the database first; what changes depends on the dump statements. MongoDB restores its archive without automatically dropping collections. SQL Server uses `sqlcmd` backup and restore files, and its restore replaces the target database.
 
+For SQL Server, use a `.bak` path to make the file type clear:
+
+```sh
+lando db:export backups/app.bak --service database
+lando db:import backups/app.bak --service database --yes
+```
+
+Lando prepares a server-readable backup directory, completes `BACKUP DATABASE`,
+then copies the backup to your host. Import uploads the backup before running
+`RESTORE DATABASE` from `master`. A failed backup stops before copying a stale
+file. Export never creates a missing database; the
+[catalog service startup](../services/mssql.mdx) owns default database creation.
+
+## Inspect a failed database command
+
+Request JSON when you need structured diagnostics:
+
+```sh
+lando db:export backups/app.sql.gz --service database --format=json
+```
+
+Failed service-command transfers report `DataTransferError`; failed SQL actions
+report `SqlCommandFailedError`. When the command supplied them, `exitCode` and
+`stderrTail` preserve its exit status and redacted stderr. The tail is limited to
+8 KiB, including its truncation marker. Oversized unfinished lines may be
+suppressed. A provider failure without an exit status does not invent one.
+Database payloads and stdout are never included in these command failures.
+
+A failed export leaves an existing host destination unchanged. If an import or
+reset fails after taking its recovery snapshot, the command error keeps its tag
+and diagnostics and adds `recoverySnapshotId` with restore guidance. Failures
+outside command execution may use a different error tag. Fix the reported
+problem before retrying or restoring that snapshot.
+
+Import and seed stop with the same diagnostics if their emptiness query fails.
+`--yes` skips confirmation, not a failed database check.
+
 ## Take and restore a snapshot
 
 Snapshots land in Lando's snapshot store, not next to your dump files. Lando briefly stops a running database before copying or restoring its volume, then starts it and waits until it accepts a SQL command. A database that was already stopped stays stopped.
