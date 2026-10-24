@@ -418,7 +418,7 @@ podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
 LANDO_GUIDE_E2E=1 LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\[e2e\]"
-bun test core/test/live
+LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
 ```
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
