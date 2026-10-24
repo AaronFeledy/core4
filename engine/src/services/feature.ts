@@ -1,12 +1,18 @@
-import { SchemaIssue } from "effect";
-import { Effect, Result, Schema } from "effect";
+import { Effect } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import type { EndpointPlan, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 
-import { type BaseSeed, type DraftServicePlan, makeDraft, sortRecord } from "./draft.ts";
+import { type BaseSeed, type DraftServicePlan, makeDraft } from "./draft.ts";
 import { endpointValidationError, normalizeEndpoints } from "./endpoint-normalizer.ts";
+import {
+  type ApplicationConfig,
+  type PreparedServiceComposition,
+  applicationFeatureConfig,
+  declarePreparedServiceEndpoints,
+  prepareServiceComposition,
+} from "./feature-preparation.ts";
 import { finalizeDraft } from "./finalize-service.ts";
 
 export type { BaseSeed } from "./draft.ts";
@@ -27,56 +33,8 @@ export interface ComposeServiceInput {
   readonly features: ReadonlyArray<ComposeServiceFeature>;
 }
 
-interface OrderedFeature extends ComposeServiceFeature {
-  readonly index: number;
-}
-
-const recordConfig = (
-  input: unknown,
-  feature: string,
-): Effect.Effect<Readonly<Record<string, unknown>>, ServiceFeatureError> => {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    return Effect.fail(
-      new ServiceFeatureError({ message: "Service feature config must decode to an object", feature }),
-    );
-  }
-
-  const output: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(input)) output[key] = value;
-  return Effect.succeed(sortRecord(output));
-};
-
-const decodeFeatureConfig = (
-  feature: OrderedFeature,
-): Effect.Effect<Readonly<Record<string, unknown>>, ServiceFeatureError> => {
-  const rawConfig = feature.config ?? {};
-  if (feature.definition.schema === undefined) return Effect.succeed(sortRecord(rawConfig));
-
-  const decoded = Schema.decodeUnknownResult(feature.definition.schema)(rawConfig, {
-    onExcessProperty: "error",
-  });
-  if (Result.isSuccess(decoded)) return recordConfig(decoded.success, feature.id);
-
-  const details = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue)
-    .issues.map((issue) => issue.message)
-    .join("; ");
-  return Effect.fail(
-    new ServiceFeatureError({
-      message:
-        details.length > 0 ? `Invalid service feature config: ${details}` : "Invalid service feature config",
-      feature: feature.id,
-      cause: decoded.failure,
-    }),
-  );
-};
-
-const stableFeatureOrder = (input: ComposeServiceInput): ReadonlyArray<OrderedFeature> =>
-  [...input.base.defaultFeatures.map((definition) => ({ id: definition.id, definition })), ...input.features]
-    .map((feature, index) => ({ ...feature, index }))
-    .sort((left, right) => left.definition.priority - right.definition.priority || left.index - right.index);
-
 const makeContext = (
-  input: ComposeServiceInput,
+  input: PreparedServiceComposition["facts"],
   draft: DraftServicePlan,
   config: Readonly<Record<string, unknown>>,
 ): ServiceFeatureContext => ({
@@ -114,9 +72,6 @@ const makeContext = (
       draft.storageOwnership = owned;
     }
   },
-  addEndpoint: (endpoint) => {
-    draft.endpoints.push({ ...endpoint });
-  },
   addDependency: (dependency) => {
     draft.dependsOn.push({ ...dependency });
   },
@@ -149,31 +104,51 @@ const makeContext = (
   },
 });
 
+export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedService")(function* (input: {
+  readonly prepared: PreparedServiceComposition;
+  readonly endpointContributions: readonly EndpointPlan[];
+  readonly applicationConfigs: ReadonlyMap<number, ApplicationConfig>;
+}): Effect.fn.Return<
+  {
+    readonly plan: ServicePlan;
+    readonly endpointContributions: readonly EndpointPlan[];
+    readonly featureIds: readonly string[];
+  },
+  ServiceFeatureError
+> {
+  const facts = input.prepared.facts;
+  const draft = makeDraft({ ...facts.base, defaultFeatures: [] });
+  const orderedFeatures = input.prepared.features;
+  draft.featureIds = orderedFeatures.map((feature) => feature.id);
+  const endpointContributions = input.endpointContributions;
+  draft.endpoints = endpointContributions.map((endpoint) => ({ ...endpoint }));
+
+  yield* Effect.forEach(
+    orderedFeatures,
+    (feature) =>
+      Effect.gen(function* () {
+        const config = yield* applicationFeatureConfig(
+          feature,
+          input.applicationConfigs.get(feature.index) ?? { _tag: "Original" },
+        );
+        yield* feature.definition.apply(makeContext(facts, draft, config));
+      }),
+    { discard: true },
+  );
+
+  const finalized = finalizeDraft(draft);
+  if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
+  return { plan: finalized, endpointContributions, featureIds: draft.featureIds };
+});
+
 export const composeServiceWithContributions = Effect.fn("ServiceFeature.composeServiceWithContributions")(
-  function* (
-    input: ComposeServiceInput,
-  ): Effect.fn.Return<
-    { readonly plan: ServicePlan; readonly endpointContributions: readonly EndpointPlan[] },
-    ServiceFeatureError
-  > {
-    const draft = makeDraft(input.base);
-    const orderedFeatures = stableFeatureOrder(input);
-    draft.featureIds = orderedFeatures.map((feature) => feature.id);
-
-    yield* Effect.forEach(
-      orderedFeatures,
-      (feature) =>
-        Effect.gen(function* () {
-          const config = yield* decodeFeatureConfig(feature);
-          yield* feature.definition.apply(makeContext(input, draft, config));
-        }),
-      { discard: true },
-    );
-
-    const endpointContributions = draft.endpoints;
-    const finalized = finalizeDraft(draft);
-    if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
-    return { plan: finalized, endpointContributions };
+  function* (input: ComposeServiceInput) {
+    const declared = yield* declarePreparedServiceEndpoints(prepareServiceComposition(input));
+    return yield* applyPreparedService({
+      prepared: declared.prepared,
+      endpointContributions: declared.contributions,
+      applicationConfigs: new Map(),
+    });
   },
 );
 

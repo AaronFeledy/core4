@@ -1,6 +1,6 @@
 import { sha256Hex } from "@lando/sdk/digest";
 
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { PortablePath, type ServiceConfig, type ServiceCreds, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
@@ -15,7 +15,7 @@ import {
 import { appNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
+import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -81,7 +81,6 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   // Probe over TCP: the image's first-boot init server listens only on the unix socket.
   ctx.setHealthcheck(
     commandHealthcheck(
@@ -103,6 +102,8 @@ export const postgresServiceFeature: ServiceFeatureDefinition = {
   id: POSTGRES_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(
     POSTGRES_FEATURE_ID,
     "postgres service feature failed to apply",

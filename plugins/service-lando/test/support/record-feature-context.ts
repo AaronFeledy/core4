@@ -21,7 +21,6 @@ export const recordFeatureContext = (
     addBuildStep: record("addBuildStep"),
     addExtension: record("addExtension"),
     addStorage: record("addStorage"),
-    addEndpoint: record("addEndpoint"),
     addDependency: record("addDependency"),
     addHostAlias: record("addHostAlias"),
     setHealthcheck: record("setHealthcheck"),

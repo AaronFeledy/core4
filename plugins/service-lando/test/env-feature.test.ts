@@ -24,7 +24,6 @@ const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
     addBuildStep() {},
     addExtension() {},
     addStorage() {},
-    addEndpoint() {},
     addDependency() {},
     addHostAlias() {},
     setHealthcheck() {},

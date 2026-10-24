@@ -20,9 +20,11 @@ import type {
 } from "@lando/sdk/services";
 
 import { validationIssue } from "@lando/sdk/schema";
+import type { EndpointPlan } from "@lando/sdk/schema";
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "../services/base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../services/base/lando.ts";
+import type { ApplicationConfig, PreparedServiceComposition } from "../services/feature-preparation.ts";
 import type { ServiceHomeIntent } from "./home.ts";
 import type { ServiceConfigSource } from "./service-config-files.ts";
 
@@ -229,11 +231,9 @@ export interface ResolvedService {
   readonly serviceType: ServiceType;
   readonly resolution: ServiceTypeResolution;
   readonly logSources: ReadonlyArray<LogSource>;
-  readonly baseDefaultIds: ReadonlyArray<string>;
-  readonly featureRefs: ReadonlyArray<{
-    readonly id: string;
-    readonly config?: Readonly<Record<string, unknown>>;
-  }>;
+  readonly prepared: PreparedServiceComposition;
+  readonly endpointContributions: readonly EndpointPlan[];
+  readonly applicationConfigs: ReadonlyMap<number, ApplicationConfig>;
   readonly resolvedArtifactTag: string | undefined;
   readonly envFileInputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
   readonly projectFiles: ReadonlyArray<ServiceTypeProjectFileInput>;
@@ -250,7 +250,13 @@ export const resolvedServiceCacheInput = (entry: ResolvedService) => ({
   ...(entry.resolution.connection === undefined ? {} : { connection: entry.resolution.connection }),
   ...(entry.resolution.nonSqlCreds === undefined ? {} : { nonSqlCreds: entry.resolution.nonSqlCreds }),
   logSources: entry.logSources,
-  featureRefs: entry.featureRefs,
+  features: entry.prepared.features.map((feature) => ({
+    id: feature.id,
+    index: feature.index,
+    priority: feature.definition.priority,
+    originalConfig: feature.originalRawConfig,
+    applicationConfig: entry.applicationConfigs.get(feature.index) ?? { _tag: "Original" },
+  })),
   envFileInputs: entry.envFileInputs,
   projectFiles: entry.projectFiles.map((file) => ({
     path: file.path,

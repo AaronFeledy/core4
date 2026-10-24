@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   AbsolutePath,
@@ -22,7 +22,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
@@ -168,7 +168,6 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
   applyAuthoredProcessFields(ctx, ["user"]);
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
 
   if (service.command === undefined && service.entrypoint === undefined) {
@@ -192,6 +191,13 @@ export const apacheServiceFeature: ServiceFeatureDefinition = {
   id: APACHE_FEATURE_ID,
   schema: Schema.Unknown,
   priority: APACHE_FEATURE_PRIORITY,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, {
+        port: authoredListenPort(ctx.normalizedConfig.port) ?? DEFAULT_PORT,
+        protocol: "http",
+      }),
+    ),
   apply: serviceFeatureApply(APACHE_FEATURE_ID, "service-lando.apache failed to apply", applyApacheFeature),
 };
 

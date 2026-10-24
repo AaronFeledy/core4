@@ -13,16 +13,26 @@ const lateHttp: AppFeatureDefinition = {
   id: "test.late-http",
   priority: 100,
   selectors: { names: ["web"] },
+  declareEndpoints: (ctx) =>
+    Effect.succeed(
+      Object.fromEntries(
+        ctx.selected.map((service) => [
+          service.serviceName,
+          [
+            {
+              _tag: "internal" as const,
+              protocol: "http" as const,
+              port: 7000,
+              name: "late",
+              ...(service.connection === undefined ? { primary: true } : {}),
+            },
+          ],
+        ]),
+      ),
+    ),
   apply: (ctx) =>
     Effect.sync(() =>
       ctx.forEachSelected((service) => {
-        service.addEndpoint({
-          _tag: "internal",
-          protocol: "http",
-          port: 7000,
-          name: "late",
-          ...(service.service.connection === undefined ? { primary: true } : {}),
-        });
         if (service.service.connection !== undefined)
           service.addEnv("CLIENT_PASSWORD", service.service.connection.creds.password);
       }),

@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
-import { LandofileShape, PortNumber } from "@lando/sdk/schema";
+import { LandofileShape, PortNumber, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceTypeResolution } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { deriveAppPlanCacheKey } from "../../src/cache/app-plan.ts";
 import { type ResolvedService, resolvedServiceCacheInput } from "../../src/planner/service-types.ts";
+import { prepareServiceComposition } from "../../src/services/feature-preparation.ts";
 
 const creds = { user: "parent", database: "parent", password: "parent" };
 const resolution: ServiceTypeResolution = {
@@ -29,8 +30,21 @@ const keyFor = (value: ServiceTypeResolution) => {
     },
     resolution: value,
     logSources: [],
-    baseDefaultIds: [],
-    featureRefs: [],
+    prepared: prepareServiceComposition({
+      base: {
+        name: ServiceName.make("db"),
+        type: "db",
+        provider: ProviderId.make("test"),
+        primary: false,
+        defaultFeatures: [],
+      },
+      baseKind: value.base,
+      appRoot: "/app",
+      normalizedConfig: value.normalizedConfig,
+      features: [],
+    }),
+    endpointContributions: [],
+    applicationConfigs: new Map(),
     resolvedArtifactTag: undefined,
     envFileInputs: [],
     projectFiles: [],

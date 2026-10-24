@@ -95,6 +95,7 @@ If you are looking for a public surface or policy:
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
+| Provider-independent service/app endpoint declarations, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
@@ -116,6 +117,7 @@ If you are looking for a public surface or policy:
 | Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
 | Schema and generated-reference publication | 07 | §7.8 |
 | Shared resolved-Landofile validation, lint rules, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
+| Authored HTTP route binding, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
 | Canonical Landofile parser and serializer | 07 | §7.8.1 |
 | Command kinds and namespaces | 08 | §8.1 |
 | Top-level aliases and collision errors | 08 | §8.1.2 |
@@ -142,6 +144,7 @@ If you are looking for a public surface or policy:
 | Durable `lando` grants, scope-local `lando-session`, and 1Password references | 10 | §9.5.1 |
 | Plugin authoring commands | 10 | §9.10 |
 | Networking, same-provider routes, provider mismatch rejection, tunnels, and host ports | 11 | §10.1 + §10.2 |
+| Exact route-application acceptance, bounded convergence, warm-route reuse, and stopped-router withdrawal | 11 | §10.2.1 |
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
 | SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |

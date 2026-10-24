@@ -128,6 +128,14 @@
       "digest": "8243d238dba13dd7175234aea03cbdbc7a953c2b5568aa9618c133b83c709102"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/route-declared-http",
+      "digest": "4d49aacd279230fe3efc6458589504641f955efae6f4f4b9465527706608d1de"
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/route-missing-http",
+      "digest": "ab78ee10251571f12549ce10a6d9728201df7344889fe42eee427380bf283cb9"
+    },
+    {
       "fixture": "docs/guides/config-translate/fixtures/lando3-compose-arguments",
       "invalid": {
         "status": "invalid",
@@ -1070,6 +1078,15 @@
         "digest": "aa9246e83fc28448cbd0704c046b9d649e44afbdb6a9b7301c71a6d0b0ed8204"
       },
       "reason": "Explicit empty endpoint declarations suppress generated listeners instead of inheriting the service defaults."
+    },
+    "docs/guides/route-shorthand/fixtures/route-shorthand-demo": {
+      "before": {
+        "digest": "a05a7da1df7e4e0880b520fa518a450cfd2ce591ebc275113f5e2c9d70c22e83"
+      },
+      "after": {
+        "digest": "8ce3989a78b0312903b6811adcf1593a85c8a14bd1491afa3a6e73cd287190b9"
+      },
+      "reason": "The route shorthand guide now explicitly declares its Compose listener as HTTP. This records the authored protocol change while retaining the previous fixture digest; publishing a TCP port alone no longer implies an HTTP listener."
     }
   }
 }

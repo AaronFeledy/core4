@@ -5,6 +5,7 @@ import {
   type RouteObjectInput,
   type ValidationIssue,
   type ValidationIssuePath,
+  type ValidationIssueSource,
   formatValidationIssuePath,
 } from "@lando/sdk/schema";
 import { Result } from "effect";
@@ -12,7 +13,12 @@ import { Result } from "effect";
 export { parseRouteShorthand } from "@lando/sdk/landofile";
 
 export interface NormalizedRoute {
-  readonly source?: { readonly key: string; readonly file?: string };
+  readonly source?: {
+    readonly key: string;
+    readonly file?: string;
+    readonly path?: ValidationIssuePath;
+    readonly provenance?: ValidationIssueSource;
+  };
   readonly hostname: string;
   readonly scheme?: "http" | "https" | "both";
   readonly endpoint?: string | number;
@@ -20,11 +26,17 @@ export interface NormalizedRoute {
   readonly filters: ReadonlyArray<RouteFilter>;
 }
 
-type RouteContext = { readonly path: ValidationIssuePath; readonly file?: string };
+type RouteContext = {
+  readonly path: ValidationIssuePath;
+  readonly file?: string;
+  readonly provenance?: ValidationIssueSource;
+};
 
 const routeSource = (ctx: RouteContext) => ({
   key: formatValidationIssuePath(ctx.path),
+  path: ctx.path,
   ...(ctx.file === undefined ? {} : { file: ctx.file }),
+  ...(ctx.provenance === undefined ? {} : { provenance: ctx.provenance }),
 });
 
 const objectFieldErrors = (route: RouteObjectInput, ctx: RouteContext): ReadonlyArray<ValidationIssue> => {

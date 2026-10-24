@@ -1,9 +1,10 @@
 import type { DatabaseConnection, Environment } from "@lando/sdk/schema";
-import type { ServiceFeatureContext } from "@lando/sdk/services";
 import { credentialValuesAgree, familyEnvFor, landoDbEnvFor } from "./_creds-helpers.ts";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
-export const connectionFor = (ctx: ServiceFeatureContext): DatabaseConnection => {
+export const connectionFor = (ctx: {
+  readonly connection?: DatabaseConnection | undefined;
+}): DatabaseConnection => {
   if (ctx.connection === undefined) {
     throw new ServiceConfigIssue(
       ["type"],

@@ -66,6 +66,57 @@ export class Greeter extends Context.Service<Greeter, {
 
 Your package name prefixes the service id. `src/index.ts` exports `plugin = definePlugin({ name: PLUGIN_NAME, manifest, layer: services })`, where `services` is `Greeter.layer`. The generated test provides that layer before calling `greet`. Your package pins Effect 4 and uses TypeScript 5.9 or newer.
 
+## Declare a feature's endpoints
+
+Put listener declarations in `declareEndpoints`, not `apply`. Config lint runs
+declarations without applying features, probing a provider, issuing certificates,
+or building a plan. Keep the callback deterministic and resource-free. It receives
+immutable service facts and the original decoded feature configuration, before
+planning substitutes certificate or SSH delivery configuration.
+
+```ts
+import { Effect } from "effect";
+import type { ServiceFeatureDefinition } from "@lando/sdk/services";
+
+export const webFeature: ServiceFeatureDefinition = {
+  id: "acme.web",
+  priority: 600,
+  declareEndpoints: () => Effect.succeed([
+    { _tag: "internal", name: "browser", protocol: "http", port: 8080 },
+  ]),
+  apply: (ctx) => Effect.sync(() => {
+    ctx.setCommand(["my-server", "--port", "8080"]);
+  }),
+};
+```
+
+For an app feature, return endpoint lists keyed by selected service name. The same
+`activatedBy` and `selectors` logic chooses services for declarations and application.
+Declaration contexts have no mutation methods; application contexts cannot add endpoints.
+
+```ts
+import { Effect } from "effect";
+import type { AppFeatureDefinition } from "@lando/sdk/services";
+
+export const adminListeners: AppFeatureDefinition = {
+  id: "acme.admin-listeners",
+  priority: 700,
+  selectors: { names: ["web"] },
+  declareEndpoints: (ctx) => Effect.succeed(Object.fromEntries(
+    ctx.selected.map((service) => [service.serviceName, [
+      { _tag: "internal", name: "admin", protocol: "http", port: 9000 },
+    ]]),
+  )),
+  apply: (ctx) => Effect.sync(() => {
+    ctx.forEachSelected((service) => service.addEnv("ADMIN_PORT", "9000"));
+  }),
+};
+```
+
+Declarations compose in stable feature-priority order, service features before app
+features. Authored `endpoints:` overrides the contributions, including an empty
+list. `ports:` adds publication facets without turning a TCP-only listener into HTTP.
+
 ## Renderer plugins
 
 `@lando/renderer-lando` is the bundled example. It declares:

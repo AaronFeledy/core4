@@ -36,7 +36,11 @@ export const validateResolvedLandofile = (input: {
     for (const [index, entry] of (entries ?? []).entries()) {
       const path = [...prefix, index];
       const source = getLandofileValueSource(landofile, path);
-      const result = normalizeRoute(entry, { path, file: source?.file ?? input.landofilePath });
+      const result = normalizeRoute(entry, {
+        path,
+        file: source?.file ?? input.landofilePath,
+        ...(source === undefined ? {} : { provenance: source }),
+      });
       // A blocked value still holds expression text; report only the fields that were evaluated.
       if (Result.isFailure(result)) {
         for (const issue of result.failure)
@@ -87,7 +91,17 @@ export const validateResolvedLandofile = (input: {
   }
   // Proxy entries need validation even when no service with that name was declared.
   for (const [name, entries] of Object.entries(landofile.proxy ?? {})) {
-    if (!routes.has(name)) routes.set(name, checkRoutes(entries, ["proxy", name]));
+    if (routes.has(name)) continue;
+    const normalized = checkRoutes(entries, ["proxy", name]);
+    routes.set(name, normalized);
+    for (const route of normalized) {
+      issues.push({
+        rule: "landofile.route",
+        path: route.source?.path ?? ["proxy", name],
+        message: `Proxy route ${route.hostname} targets undeclared service ${name}.`,
+        suggestion: `Declare service ${name} under services:, or change proxy.${name} to an existing service name.`,
+      });
+    }
   }
   return { routes, issues: issues.map((issue) => attributePlannerIssue(landofile, issue)) };
 };

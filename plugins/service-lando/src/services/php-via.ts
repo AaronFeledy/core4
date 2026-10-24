@@ -94,15 +94,13 @@ export const hasCustomPhpImage = (service: ServiceConfig): boolean => {
   return version === undefined || service.image !== phpImageFor(version, "apache");
 };
 
-export const phpListenPort = (via: PhpVia, authoredPort: number | undefined): number => {
+export const phpListenPort = (via: Exclude<PhpVia, "cli">, authoredPort: number | undefined): number => {
   if (authoredPort !== undefined) return authoredPort;
   switch (via) {
     case "apache":
       return PHP_APACHE_PORT;
     case "fpm":
       return PHP_FPM_PORT;
-    case "cli":
-      return PHP_APACHE_PORT;
     default: {
       const exhaustive: never = via;
       return exhaustive;
@@ -110,7 +108,25 @@ export const phpListenPort = (via: PhpVia, authoredPort: number | undefined): nu
   }
 };
 
-export const phpEndpointProtocol = (via: PhpVia): "http" | "tcp" => (via === "fpm" ? "tcp" : "http");
+/** CLI has no listener. Apache must retain whether its port was explicitly authored. */
+export const phpServingMode = (via: PhpVia, authoredPort: number | undefined) => {
+  switch (via) {
+    case "apache":
+      return {
+        via,
+        listener: { port: phpListenPort(via, authoredPort), protocol: "http" },
+        authoredApachePort: authoredPort,
+      } as const;
+    case "fpm":
+      return { via, listener: { port: phpListenPort(via, authoredPort), protocol: "tcp" } } as const;
+    case "cli":
+      return { via, listener: undefined } as const;
+    default: {
+      const exhaustive: never = via;
+      return exhaustive;
+    }
+  }
+};
 
 export const assertPhpViaKeys = (via: PhpVia, service: ServiceConfig): void => {
   if ((via === "fpm" || via === "cli") && service.allowOverride !== undefined) {

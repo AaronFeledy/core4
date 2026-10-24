@@ -63,7 +63,11 @@ describe("route normalization", () => {
       const result = normalizeRoute(route, { path: ["services", "web", "routes", 0] });
       // Then
       expect(result).toEqual(
-        Result.succeed({ ...route, filters: route.filters ?? [], source: { key: "services.web.routes[0]" } }),
+        Result.succeed({
+          ...route,
+          filters: route.filters ?? [],
+          source: { key: "services.web.routes[0]", path: ["services", "web", "routes", 0] },
+        }),
       );
     },
   );
@@ -121,7 +125,11 @@ describe("route normalization", () => {
       const result = normalizeRoute({ hostname }, ctx);
       // Then
       expect(result).toEqual(
-        Result.succeed({ hostname, filters: [], source: { key: "services.web.routes[0]", file: ctx.file } }),
+        Result.succeed({
+          hostname,
+          filters: [],
+          source: { key: "services.web.routes[0]", file: ctx.file, path: ["services", "web", "routes", 0] },
+        }),
       );
     },
   );
@@ -190,8 +198,18 @@ describe("route normalization", () => {
     // Then
     expect(result).toEqual(
       Result.succeed([
-        { hostname: "app", endpoint: 1, filters: [], source: { key: "services.web.routes[0]" } },
-        { hostname: "app", endpoint: 65535, filters: [], source: { key: "services.web.routes[1]" } },
+        {
+          hostname: "app",
+          endpoint: 1,
+          filters: [],
+          source: { key: "services.web.routes[0]", path: ["services", "web", "routes", 0] },
+        },
+        {
+          hostname: "app",
+          endpoint: 65535,
+          filters: [],
+          source: { key: "services.web.routes[1]", path: ["services", "web", "routes", 1] },
+        },
       ]),
     );
   });

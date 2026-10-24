@@ -27,6 +27,7 @@ import type {
   ServiceTypeResolution,
 } from "../services/index.ts";
 import { ContractFailure, isNonEmptyString } from "./_shared.ts";
+import { appEndpointDeclarations, serviceEndpointDeclarations } from "./endpoint-declaration-contract.ts";
 
 export const TestServiceType: ServiceType = {
   id: "test",
@@ -345,9 +346,6 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     addStorage(storage) {
       recorded.storage.push(storage);
     },
-    addEndpoint(endpoint) {
-      recorded.endpoints.push(endpoint);
-    },
     addDependency(dependency) {
       recorded.dependencies.push(dependency);
     },
@@ -432,6 +430,7 @@ export const runServiceFeatureContract = Effect.fnUntraced(function* (
   );
 
   const { context, recorded } = makeRecordingServiceFeatureContext(input);
+  recorded.endpoints.push(...(yield* serviceEndpointDeclarations(feature, context)));
   const applyEffect = yield* Effect.try({
     try: () => feature.apply(context),
     catch: (cause) => serviceFeatureFailure("feature apply succeeds", String(cause)),
@@ -477,6 +476,7 @@ export const runServiceFeatureContract = Effect.fnUntraced(function* (
   );
 
   const second = makeRecordingServiceFeatureContext(input);
+  second.recorded.endpoints.push(...(yield* serviceEndpointDeclarations(feature, second.context)));
   const secondApplyEffect = yield* Effect.try({
     try: () => feature.apply(second.context),
     catch: (cause) => serviceFeatureFailure("feature apply succeeds", String(cause)),
@@ -615,7 +615,6 @@ const makeRecordingAppFeatureContext = (
       setAppMount: recordMutation,
       addBuildStep: recordMutation,
       addStorage: recordMutation,
-      addEndpoint: recordMutation,
       addDependency: recordMutation,
       addHostAlias: recordMutation,
       setHealthcheck: recordMutation,
@@ -722,6 +721,7 @@ export const runAppFeatureContract = Effect.fnUntraced(function* (
 
   const { context, records, selectedNames, conflicts, forbiddenReads } =
     makeRecordingAppFeatureContext(input);
+  const declarations = yield* appEndpointDeclarations(feature, context);
 
   yield* requireAppFeature(
     selectedNames.length > 0,
@@ -756,7 +756,9 @@ export const runAppFeatureContract = Effect.fnUntraced(function* (
 
   const mutatedSelected = selectedNames.some((name) => records.get(name)?.mutated === true);
   yield* requireAppFeature(
-    selectedNames.length === 0 || mutatedSelected,
+    selectedNames.length === 0 ||
+      mutatedSelected ||
+      Object.values(declarations).some((endpoints) => endpoints.length > 0),
     "app feature mutates at least one selected service draft",
     { selectedNames },
   );

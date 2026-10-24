@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { PortNumber, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
@@ -87,19 +87,6 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(port),
-    protocol: "tcp",
-    name: ctx.serviceName,
-    primary: true,
-  });
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: MANAGEMENT_PORT,
-    protocol: "http",
-    name: "management",
-  });
   ctx.setHealthcheck(commandHealthcheck(["rabbitmq-diagnostics", "-q", "ping"], 30));
 
   applyAuthoredProcessFields(ctx);
@@ -109,6 +96,25 @@ export const rabbitmqServiceFeature: ServiceFeatureDefinition = {
   id: RABBITMQ_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => {
+      const port = plannedPort(ctx.normalizedConfig, RABBITMQ_LISTENER);
+      return [
+        {
+          _tag: "internal" as const,
+          port: Schema.decodeUnknownSync(PortNumber)(port),
+          protocol: "tcp" as const,
+          name: ctx.serviceName,
+          primary: true as const,
+        },
+        {
+          _tag: "internal" as const,
+          port: MANAGEMENT_PORT,
+          protocol: "http" as const,
+          name: "management",
+        },
+      ];
+    }),
   apply: serviceFeatureApply(
     RABBITMQ_FEATURE_ID,
     "rabbitmq service feature failed to apply",

@@ -25,7 +25,7 @@ import {
   authoredPmaCreds,
   resolveAuthoredHosts,
 } from "./_phpmyadmin-hosts.ts";
-import { assertListenerConfig, plannedPort } from "./_port-helpers.ts";
+import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
@@ -47,13 +47,6 @@ const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS.latest });
   ctx.addEnv("APACHE_PORT", String(port));
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(port),
-    protocol: "http",
-    name: ctx.serviceName,
-    primary: true,
-  });
   ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
 
   applyAuthoredProcessFields(ctx);
@@ -63,6 +56,13 @@ export const phpmyadminServiceFeature: ServiceFeatureDefinition = {
   id: PHPMYADMIN_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, PHPMYADMIN_LISTENER),
+        protocol: "http",
+      }),
+    ),
   apply: serviceFeatureApply(
     PHPMYADMIN_FEATURE_ID,
     "phpmyadmin service feature failed to apply",
