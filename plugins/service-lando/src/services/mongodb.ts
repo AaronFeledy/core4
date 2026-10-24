@@ -13,7 +13,7 @@ import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
   addEnvRecord,
-  loopbackTcpHealthcheck,
+  commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
@@ -102,7 +102,22 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
 
   applyAuthoredProcessFields(ctx);
 
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
+  ctx.setHealthcheck(
+    commandHealthcheck(
+      [
+        "bash",
+        "-ec",
+        // The init daemon accepts even authenticated loopback clients before the final daemon starts.
+        'read -r host _ <<< "$(hostname -I)"\n' +
+          'test -n "$host"\n' +
+          'case "$host" in *:*) host="[$host]" ;; esac\n' +
+          'exec env HOME=/tmp mongosh --quiet --norc "mongodb://$host:$1/admin?directConnection=true&serverSelectionTimeoutMS=2000&connectTimeoutMS=2000" --eval "quit(db.adminCommand({ping: 1}).ok === 1 ? 0 : 1)"',
+        "mongodb-healthcheck",
+        String(port),
+      ],
+      30,
+    ),
+  );
 };
 
 export const mongodbServiceFeature: ServiceFeatureDefinition = {
