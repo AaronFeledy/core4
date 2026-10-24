@@ -162,13 +162,17 @@ describe("elasticsearch ServiceType", () => {
     });
   }
 
-  test("elasticsearch:8 and elasticsearch alias resolve to the same canonical service plan", async () => {
+  test("elasticsearch aliases preserve declaration identity with otherwise identical canonical plans", async () => {
     const primary = await planElasticsearchService(elasticsearch8ServiceType, { type: "elasticsearch:8" });
     const alias = await planElasticsearchService(elasticsearchServiceType, { type: "elasticsearch" });
 
     expect(primary.type).toBe("elasticsearch");
     expect(alias.type).toBe("elasticsearch");
-    expect(alias).toEqual(primary);
+    const { serviceTypeId: primaryId, ...primaryFacts } = primary;
+    const { serviceTypeId: aliasId, ...aliasFacts } = alias;
+    expect(primaryId).toBe("elasticsearch:8");
+    expect(aliasId).toBe("elasticsearch");
+    expect(aliasFacts).toEqual(primaryFacts);
   });
 
   test("uses the authored service name for the endpoint and LANDO context", async () => {

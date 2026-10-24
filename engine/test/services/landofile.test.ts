@@ -633,7 +633,13 @@ describe("LandofileService layer — reserved section rejection (US-014)", () =>
   const assertUnsupportedRejection = (error: unknown): void => {
     expect(error).toBeInstanceOf(LandofileValidationError);
     expect(error).toMatchObject({
-      issues: [{ path: ["services", "web", "environment", "APP_HOST"], rule: "unsupported-expression" }],
+      issues: [
+        {
+          path: ["services", "web", "environment", "APP_HOST"],
+          source: expect.objectContaining({ path: ["services", "web", "environment", "APP_HOST"] }),
+          message: expect.stringContaining('Unsupported shell parameter operator ".HOST"'),
+        },
+      ],
     });
   };
 

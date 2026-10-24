@@ -59,21 +59,13 @@ test.each([
   {
     type: "mysql",
     healthcheck: { kind: "command" },
-    expectedCommand: [
-      "sh",
-      "-c",
-      'mysqladmin ping -h 127.0.0.1 -P 3306 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
-    ],
+    expectedCommand: ["mysqladmin", "ping", "-h", "127.0.0.1", "-P", "3306", "-u", "lando", "--silent"],
     intervalSeconds: 10,
   },
   {
     type: "mysql",
     healthcheck: { interval: "5s" },
-    expectedCommand: [
-      "sh",
-      "-c",
-      'mysqladmin ping -h 127.0.0.1 -P 3306 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
-    ],
+    expectedCommand: ["mysqladmin", "ping", "-h", "127.0.0.1", "-P", "3306", "-u", "lando", "--silent"],
     intervalSeconds: 5,
   },
   {

@@ -65,12 +65,17 @@ test("hashes independently specified UTF-16 bytes for provider environment tuple
   );
 });
 
-test("normalizes whole secret references while preserving embedded references verbatim", () => {
+test("distinguishes literal secret-looking commands from bindings while preserving embedded text", () => {
   const input = { service, stepId: "compile" };
   const whole = appBuildKeyForStep({ ...input, command: "${secret:TOKEN}" });
-  const object = appBuildKeyForStep({ ...input, command: { secret: "TOKEN" } });
+  const object = appBuildKeyForStep({ ...input, command: { _tag: "SecretRef", reference: "TOKEN" } });
   const embedded = appBuildKeyForStep({ ...input, command: "echo ${secret:TOKEN}" });
-  expect(whole).toBe(object);
+  expect(whole).not.toBe(object);
+  expect(whole).toBe(
+    sha256Hex(
+      `{"command":"\u0024{secret:TOKEN}","landoVersion":${JSON.stringify(CORE_VERSION)},"service":{"environment":[],"mounts":[],"name":"web"},"stepId":"compile"}`,
+    ),
+  );
   expect(embedded).not.toBe(appBuildKeyForStep({ ...input, command: "echo TOKEN" }));
   expect(embedded).toBe(
     sha256Hex(
@@ -79,7 +84,7 @@ test("normalizes whole secret references while preserving embedded references ve
   );
 });
 
-test("sorts build-arg tuples by UTF-16 and normalizes only whole secret references", async () => {
+test("sorts build-arg tuples by UTF-16 and preserves literal secret-looking arguments", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-canonical-args-"));
   try {
     await writeFile(join(root, "Dockerfile"), "FROM alpine\n");
@@ -95,7 +100,7 @@ test("sorts build-arg tuples by UTF-16 and normalizes only whole secret referenc
     const fingerprint = await key(input);
     expect(fingerprint).toBe(
       sha256Hex(
-        `{"landoVersion":${JSON.stringify(CORE_VERSION)},"provider":{"id":"test","platform":"linux","version":"1.0.0"},"service":{"artifact":{"args":[["10","ten"],["2","two"],["B",{"secret":"TOKEN"}],["a","embedded \u0024{secret:TOKEN}"]],"contentDigest":${JSON.stringify(contentDigest)},"kind":"build"},"buildSteps":[],"configSources":[],"environment":[],"mounts":[],"name":"web","type":"node"}}`,
+        `{"landoVersion":${JSON.stringify(CORE_VERSION)},"provider":{"id":"test","platform":"linux","version":"1.0.0"},"service":{"artifact":{"args":[["10","ten"],["2","two"],["B","\u0024{secret:TOKEN}"],["a","embedded \u0024{secret:TOKEN}"]],"contentDigest":${JSON.stringify(contentDigest)},"kind":"build"},"buildSteps":[],"configSources":[],"environment":[],"mounts":[],"name":"web","type":"node"}}`,
       ),
     );
   } finally {

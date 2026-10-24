@@ -159,6 +159,7 @@ test("invalidates cached Git metadata paths when commondir changes", async () =>
       containerCommonDir: "/app/common-a",
     });
     const plan = Schema.decodeUnknownSync(AppPlan)({
+      valueModel: 1,
       id: "git-cache",
       name: "git-cache",
       slug: "git-cache",

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { DatabaseConnection, PortNumber } from "@lando/sdk/schema";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { runAppFeatureContract } from "@lando/sdk/test";
 
@@ -43,7 +44,20 @@ describe("service-lando catalog × app-feature contract suite", () => {
           feature: phpMyAdminWireFeature,
           services: [
             { serviceName: "pma", serviceType: "phpmyadmin", base: "lando" },
-            { serviceName: "database", serviceType: "mysql", base: "lando" },
+            {
+              serviceName: "database",
+              serviceType: "mysql",
+              base: "lando",
+              connection: DatabaseConnection.make({
+                family: "mysql",
+                port: PortNumber.make(3306),
+                creds: {
+                  user: "app",
+                  database: "app",
+                  password: { _tag: "SecretRef", reference: "DB_PASSWORD" },
+                },
+              }),
+            },
           ],
         }),
       ),
