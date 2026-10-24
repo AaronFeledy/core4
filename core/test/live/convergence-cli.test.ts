@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runProbe } from "@lando/sdk/probe";
 import { Duration, Effect, Fiber } from "effect";
-import { runFixtureCli } from "./convergence-cli.ts";
+import { decodeInfoCliEnvelope, runFixtureCli } from "./convergence-cli.ts";
 
 const alive = (pid: number) => {
   try {
@@ -15,6 +15,20 @@ const alive = (pid: number) => {
     throw cause;
   }
 };
+
+test("decodes info's single command envelope rather than a start progress frame", () => {
+  const envelope = {
+    apiVersion: "v4" as const,
+    command: "app:info",
+    ok: true,
+    result: { app: "demo", services: [] },
+    warnings: [],
+    deprecations: [],
+  };
+  expect(decodeInfoCliEnvelope(`${JSON.stringify(envelope)}\n`)).toEqual(envelope);
+  expect(() => decodeInfoCliEnvelope(JSON.stringify({ _tag: "result", envelope }))).toThrow();
+  expect(() => decodeInfoCliEnvelope(JSON.stringify({ ...envelope, unexpected: true }))).toThrow();
+});
 
 test("preserves completed CLI output and nonzero status", async () => {
   const result = await Effect.runPromise(

@@ -1,4 +1,9 @@
-import { Effect } from "effect";
+import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
+
+export const decodeInfoCliEnvelope = Schema.decodeUnknownSync(Schema.fromJsonString(CommandResultEnvelope), {
+  onExcessProperty: "error",
+});
 
 export const runFixtureCli = (
   command: readonly string[],

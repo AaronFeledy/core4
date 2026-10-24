@@ -13,7 +13,7 @@ import { ProxyApplyError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import { AppId, CommandResultEnvelope, type ServiceConnection } from "@lando/sdk/schema";
 import { Duration, Effect, Schema } from "effect";
-import { runFixtureCli } from "./convergence-cli.ts";
+import { decodeInfoCliEnvelope, runFixtureCli } from "./convergence-cli.ts";
 import { liveEnabled, managedProviderSocketPath } from "./scanner-live-fixture";
 
 // Uses the inherited managed runtime and global router, like the other CLI-driven live
@@ -91,14 +91,19 @@ const waitForActiveRoute = async (cwd: string, hostname: string) => {
       },
       Effect.gen(function* () {
         const info = yield* landoCommand(cwd, ["info", "--format=json"]);
-        expect(info.exitCode, info.stdout + info.stderr).toBe(0);
-        const envelope = terminalEnvelope(info.stdout);
-        expect(envelope.ok).toBe(true);
-        const result = Schema.decodeUnknownSync(AppInfoResultSchema)(envelope.result);
-        connections = result.services.find((service) => service.service === "web")?.connections ?? [];
-        return connections.some(
-          (connection) => isHttpsRoute(connection, hostname) && connection.state === "active",
-        );
+        return yield* Effect.try({
+          try: () => {
+            expect(info.exitCode, info.stdout + info.stderr).toBe(0);
+            const envelope = decodeInfoCliEnvelope(info.stdout);
+            expect(envelope.ok).toBe(true);
+            const result = Schema.decodeUnknownSync(AppInfoResultSchema)(envelope.result);
+            connections = result.services.find((service) => service.service === "web")?.connections ?? [];
+            return connections.some(
+              (connection) => isHttpsRoute(connection, hostname) && connection.state === "active",
+            );
+          },
+          catch: (cause) => cause,
+        });
       }),
     ),
   );
