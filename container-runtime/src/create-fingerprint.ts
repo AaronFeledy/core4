@@ -99,7 +99,8 @@ export const createConfigFingerprint = (
     sessionMountTargets.add("/usr/local/bin/open");
   }
   const projection = {
-    artifact: createArtifactIdentity(service),
+    artifactProvenance: createArtifactIdentity(service),
+    artifact: service.artifact,
     command: normalizeCommand(service.command),
     entrypoint: normalizeEntrypoint(service.entrypoint),
     user: service.user === "" ? undefined : service.user,
@@ -155,5 +156,5 @@ export const createConfigFingerprint = (
     ),
     knobs,
   };
-  return `v1:${sha256Hex(canonicalJson(projection))}`;
+  return `v2:${sha256Hex(canonicalJson(projection))}`;
 };

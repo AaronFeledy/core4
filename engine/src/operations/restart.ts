@@ -46,6 +46,7 @@ import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts"
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
+import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
@@ -112,14 +113,40 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       }),
     );
   }
-  const runtimePlan = yield* withRetainedAgentOverlays(selectedPlan, target.app);
+  const projectedServices = yield* Effect.forEach(Object.values(selectedPlan.services), (service) =>
+    Effect.gen(function* () {
+      const artifact = appliedPlan.services[service.name]?.artifact;
+      if (artifact?.kind !== "ref" || artifact.ref.length === 0) {
+        return yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId: String(target.plan.provider),
+            operation: "restart",
+            message: `Selected restart requires a concrete applied artifact for ${service.name}.`,
+            remediation: `Run \`lando rebuild -s ${service.name}\` to create this service.`,
+          }),
+        );
+      }
+      return [
+        service.name,
+        serviceWithArtifact(service, { providerId: appliedPlan.provider, ...artifact }),
+      ] as const;
+    }),
+  );
+  const runtimePlan = yield* withRetainedAgentOverlays(
+    { ...selectedPlan, services: Object.fromEntries(projectedServices) },
+    target.app,
+  );
+  const inspectionPlan: AppPlan = {
+    ...target.plan,
+    services: { ...target.plan.services, ...runtimePlan.services },
+  };
   const services = Object.values(runtimePlan.services);
 
   for (const service of services) {
     const runtime = yield* provider.inspect({
       app: target.plan.id,
       service: service.name,
-      plan: target.plan,
+      plan: inspectionPlan,
     });
     if (runtime.status === "stopped" && runtime.containerId === undefined) {
       return yield* Effect.fail(
@@ -131,7 +158,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
         }),
       );
     }
-    const reasons = bringUpRecreateReasons(target.plan, service, runtime, { skipAbsentFields: true });
+    const reasons = bringUpRecreateReasons(inspectionPlan, service, runtime, { skipAbsentFields: true });
     if (reasons[0] !== undefined) {
       return yield* Effect.fail(
         makeServiceRestartWouldRecreateError({

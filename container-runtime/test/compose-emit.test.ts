@@ -741,7 +741,7 @@ describe("Compose mapping-key quoting", () => {
           labels: {
             "dev.lando.app": "myapp",
             "dev.lando.app-root": "/srv/apps/myapp",
-            "dev.lando.create-config": expect.stringMatching(/^v1:[a-f0-9]{64}$/u),
+            "dev.lando.create-config": expect.stringMatching(/^v2:[a-f0-9]{64}$/u),
             "dev.lando.service": "web",
           },
           networks: {
@@ -757,7 +757,7 @@ describe("Compose mapping-key quoting", () => {
           labels: {
             "dev.lando.app": "myapp",
             "dev.lando.app-root": "/srv/apps/myapp",
-            "dev.lando.create-config": expect.stringMatching(/^v1:[a-f0-9]{64}$/u),
+            "dev.lando.create-config": expect.stringMatching(/^v2:[a-f0-9]{64}$/u),
             "dev.lando.service": "database",
           },
           networks: {
