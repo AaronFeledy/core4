@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { type Context, Effect } from "effect";
 
 import type { LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
-import type { LandofileService } from "@lando/sdk/services";
+import { LandofileService } from "@lando/sdk/services";
 
 import {
   assertUserAppIdNotReserved,
@@ -16,6 +16,7 @@ import {
 } from "../../src/landofile/app-resolution.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import * as TestLandofileServiceLayer from "../services/landofile-layer.ts";
 
 const testStateStoreLayer = makeTestStateStore().layer;
 
@@ -58,20 +59,24 @@ describe("user-app reserved-id guard", () => {
 
 describe("loadUserLandofile includes", () => {
   test("resolves a local include before returning and applying the reserved-id guard", async () => {
+    // Given
     const dir = await mkdtemp(join(tmpdir(), "lando-app-resolution-includes-"));
     const previous = process.cwd();
     try {
-      await writeFile(join(dir, ".lando.yml"), "name: myapp\n", "utf8");
+      await writeFile(join(dir, ".lando.yml"), "name: myapp\nincludes:\n  - ./fragment.yml\n", "utf8");
       await writeFile(join(dir, "fragment.yml"), "services:\n  web:\n    type: node\n", "utf8");
       process.chdir(dir);
 
+      // When
       const result = await Effect.runPromise(
-        loadUserLandofile(fakeLandofileService({ name: "myapp", includes: ["./fragment.yml"] })).pipe(
-          Effect.provide(testStateStoreLayer),
+        LandofileService.pipe(
+          Effect.flatMap(loadUserLandofile),
+          Effect.provide(TestLandofileServiceLayer.layer),
         ),
       );
       const actual: unknown = result.document;
 
+      // Then
       expect(actual).toEqual({ name: "myapp", services: { web: { type: "node" } } });
     } finally {
       process.chdir(previous);

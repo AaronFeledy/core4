@@ -8,6 +8,8 @@ tags: [beta, docs, landofile, includes, lockfile]
 
 # Include Landofile fragments
 
+Use `includes:` in your `.lando.yml` to share service or tooling configuration without copying it into every app. For a complete local example, follow [Opt into a user profile](#opt-into-a-user-profile), then inspect the result with `lando app:config --format=json` from the app directory.
+
 Put fragments under `includes:`. `kind: landofile` (the default,
 whole-file fragments) and `compose` fragments resolve per file before the
 layer merge, while `tooling` fragments resolve after it; see the
@@ -72,7 +74,7 @@ services:
       API_TOKEN: '${secret:CORP_API_TOKEN}'
 ```
 
-Select it explicitly in each consuming app's Landofile:
+Review a profile before including it: opting in trusts its build and tooling commands, not just its environment values. Select it explicitly in each consuming app's Landofile:
 
 ```yaml
 includes:

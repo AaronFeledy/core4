@@ -7,7 +7,7 @@ tags: [beta, docs, valkey, service]
 
 # Add Valkey
 
-Put `type: valkey` in your services block. Lando pulls `valkey/valkey:8` and listens on `6379`:
+Add `type: valkey` under `services` in `.lando.yml`. Lando pulls `valkey/valkey:8` and listens on `6379`:
 
 ```yaml
 name: valkey-demo
@@ -38,6 +38,8 @@ tooling:
 
 ## Connect from another service
 
+From another app service, use hostname `cache` and port `6379`. `localhost` inside that service refers to its own container, not Valkey.
+
 `lando info` advertises both a `valkey://` endpoint (primary) and a `redis://` alias, so new and existing client libraries connect without code changes:
 
 ```
@@ -47,7 +49,7 @@ redis://localhost:6379
 
 ## Open the client
 
-The fixture above declares `valkey-cli` as an app tooling alias. Ping the cache to verify it's reachable:
+The Landofile above declares `valkey-cli` as an app tooling alias. Ping the cache to verify it's reachable:
 
 ```sh
 lando valkey-cli ping
@@ -61,6 +63,8 @@ lando valkey-cli get hello
 ```
 
 ## Pin a version
+
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Set `image:` when the default image isn't the version you want:
 

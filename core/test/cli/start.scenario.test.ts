@@ -60,7 +60,7 @@ import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { makeTestStateStore } from "@lando/core/testing";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { readJournal } from "@lando/engine/operations/accelerated-start-journal";
-import { attachEffectiveEvents, effectiveEventsForPlan } from "@lando/engine/planner/effective-events";
+import { effectiveEventsForPlan, withProjectEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as LandoConfigService from "@lando/engine/services/config";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
@@ -950,7 +950,7 @@ const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
 describe("lando start", () => {
   test("runs declared pre-start and post-start event steps in order around the start", async () => {
     // Given
-    const plannedApp = attachEffectiveEvents(
+    const plannedApp = withProjectEvents(
       { ...plan },
       {
         "pre-start": ["echo pre-one", { cmd: "echo pre-two", service: "web" }],
@@ -980,11 +980,13 @@ describe("lando start", () => {
 
   test("a pre-start event failure aborts before apply with tagged identity and a redacted tail", async () => {
     // Given
-    const failedPlan = {
-      ...plan,
-      services: { ...plan.services, [web.name]: { ...web, environment: { EVENT_SECRET: "secret-token" } } },
-    };
-    attachEffectiveEvents(failedPlan, { "pre-start": ["fail pre"] });
+    const failedPlan = withProjectEvents(
+      {
+        ...plan,
+        services: { ...plan.services, [web.name]: { ...web, environment: { EVENT_SECRET: "secret-token" } } },
+      },
+      { "pre-start": ["fail pre"] },
+    );
     const harness = makeStartLayer({ plannedApp: failedPlan });
 
     // When
@@ -1006,7 +1008,7 @@ describe("lando start", () => {
   test("explicit secret-shaped cmd env values are redacted from task detail output", async () => {
     // Given
     const secret = "event-only-token";
-    const plannedApp = attachEffectiveEvents(
+    const plannedApp = withProjectEvents(
       { ...plan },
       { "pre-start": [{ cmd: "print event token", env: { EVENT_TOKEN: secret } }] },
     );
@@ -1029,7 +1031,7 @@ describe("lando start", () => {
   test("explicit secret-shaped cmd env values are redacted from tagged failure output tails", async () => {
     // Given
     const secret = "event-only-failure-token";
-    const plannedApp = attachEffectiveEvents(
+    const plannedApp = withProjectEvents(
       { ...plan },
       { "pre-start": [{ cmd: "fail event token", env: { EVENT_TOKEN: secret } }] },
     );
@@ -1054,12 +1056,11 @@ describe("lando start", () => {
     // Given
     const secret = "named-event-task-token";
     const plannedApp = attachEffectiveTooling(
-      { ...plan },
+      withProjectEvents({ ...plan }, { "pre-start": [{ task: "secret-task" }] }),
       {
         "secret-task": { cmd: "fail named task", service: "web", env: { EVENT_TOKEN: secret } },
       },
     );
-    attachEffectiveEvents(plannedApp, { "pre-start": [{ task: "secret-task" }] });
     const harness = makeStartLayer({
       plannedApp,
       eventResult: { exitCode: 9, stdout: secret, stderr: `${secret} failed` },
@@ -1083,7 +1084,7 @@ describe("lando start", () => {
 
   test("unknown named event tasks preserve the typed compile failure message", async () => {
     // Given
-    const plannedApp = attachEffectiveEvents({ ...plan }, { "pre-start": [{ task: "missing-task" }] });
+    const plannedApp = withProjectEvents({ ...plan }, { "pre-start": [{ task: "missing-task" }] });
     const harness = makeStartLayer({ plannedApp });
 
     // When
@@ -1098,11 +1099,13 @@ describe("lando start", () => {
 
   test("a post-start event step failure warns without destroying the app or removing routes", async () => {
     // Given
-    const failedPlan = {
-      ...routedPlan,
-      services: { ...plan.services, [web.name]: { ...web, environment: { EVENT_SECRET: "secret-token" } } },
-    };
-    attachEffectiveEvents(failedPlan, { "post-start": ["fail post"] });
+    const failedPlan = withProjectEvents(
+      {
+        ...routedPlan,
+        services: { ...plan.services, [web.name]: { ...web, environment: { EVENT_SECRET: "secret-token" } } },
+      },
+      { "post-start": ["fail post"] },
+    );
     const harness = makeStartLayer({ plannedApp: failedPlan });
 
     // When
@@ -1940,7 +1943,7 @@ describe("lando start", () => {
     await withGlobalRoots(async () => {
       const moduleRoot = await realpath(await mkdtemp(join(process.cwd(), ".lando-start-global-module-")));
       try {
-        const userPlan = attachEffectiveEvents(
+        const userPlan = withProjectEvents(
           { ...plan, requires: { globalServices: ["traefik"] } },
           { "pre-start": ["echo before-global"] },
         );

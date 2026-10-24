@@ -33,7 +33,10 @@ import {
 } from "../landofile/app-resolution.ts";
 import { invocationToolingForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import {
+  collectAppPlanPublicCredentialValues,
+  collectAppPlanRedactionTokens,
+} from "../services/app-plan-redaction.ts";
 import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { reservedToolingNameConflict } from "./reserved-aliases.ts";
 
@@ -217,6 +220,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     agentEnvAllowlist,
   });
   const invocations = compiled.invocations;
+  const publicValues = collectAppPlanPublicCredentialValues(plan);
   const redactionTokens = [
     ...new Set([
       ...collectAppPlanRedactionTokens(plan),
@@ -227,6 +231,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
               (entry): entry is [string, string] => typeof entry[1] === "string",
             ),
           ),
+          publicValues,
         ),
       ),
     ]),

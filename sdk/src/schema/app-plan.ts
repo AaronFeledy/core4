@@ -4,6 +4,7 @@ import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
+import { EventsPlan } from "./landofile-events.ts";
 import { LogSource } from "./log-source.ts";
 import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan } from "./mounts.ts";
 import {
@@ -238,6 +239,16 @@ export const AppPlan = Schema.Struct({
    */
   fileSync: Schema.Array(FileSyncPlan).annotate({
     description: "File-sync sessions selected during planning.",
+  }),
+  /**
+   * Effective Landofile `events:` and `config.yml hostEvents` steps compiled
+   * by the planner. Omitted on hand-built plans. Provider applied state never
+   * records it: lifecycle operations resolve Landofile events from the current
+   * Landofile, not from what was applied.
+   */
+  events: Schema.optionalKey(EventsPlan).annotate({
+    description:
+      "Effective event steps resolved from current project and host configuration, never applied state.",
   }),
   metadata: PlanMetadata.annotate({ description: "Plan provenance and resolution timestamp." }),
   extensions: ProviderExtensionConfig.annotate({ description: "Provider-specific extension intent." }),

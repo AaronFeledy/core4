@@ -8,7 +8,7 @@ tags: [beta, docs, services, environment, timezone]
 
 # Set the timezone
 
-Set `TZ` under the service's `environment` map. Landofiles have no dedicated `timezone:` key. This is a different mechanism from `LANDO_CONFIG__` env overrides (see [env-overrides](../landofile/env-overrides.mdx)), which overlay Lando's own config instead:
+Set `TZ` under the service's `environment` map in `.lando.yml`. Landofiles have no dedicated `timezone:` key. This is a different mechanism from `LANDO_CONFIG__` env overrides (see [env-overrides](../landofile/env-overrides.mdx)), which overlay Lando's own config instead:
 
 ```yaml
 name: timezone-demo
@@ -41,12 +41,7 @@ services:
 
 ## Don't interpolate host env
 
-A Landofile can't reach into your host shell's environment with
-`${HOST_VAR}` syntax. Lando rejects that form with `LandofileValidationError`
-at the value's path, here `services.app.environment.TZ`. Use
-`{{ env.HOST_VAR }}` to read your host, or `$${HOST_VAR}` when the
-container shell should expand it; see
-[Landofile expressions](../landofile/expressions.mdx#keep-var-and--as-text).
+Do not use `${HOST_VAR}` to copy a host-shell variable into this setting. Lando rejects that form with `LandofileValidationError` at the value's path, here `services.app.environment.TZ`. Use `{{ env.HOST_VAR }}` to read your host, or `$${HOST_VAR}` when the container shell should expand it; see [Landofile expressions](../landofile/expressions.mdx#keep-var-and--as-text). The scenario below checks the rejection:
 
   <Scenario id="rejected-host-env-interpolation" render>
     <Step name="scaffold">

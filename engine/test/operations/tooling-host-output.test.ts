@@ -23,7 +23,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { DateTime, Effect, Layer, Schema } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import * as EventRuntime from "../../src/services/event-service.ts";
 import { makeShellRunnerService } from "../../src/services/shell-runner.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
@@ -34,7 +34,7 @@ const harness = (
   onFrame?: (frame: StreamFrameSinkFrame) => void,
 ) => {
   const frames: StreamFrameSinkFrame[] = [];
-  const plan: CurrentExecutableAppPlan = {
+  const basePlan: CurrentExecutableAppPlan = {
     valueModel: 1,
     id: AppId.make("host-output"),
     name: "host-output",
@@ -49,7 +49,7 @@ const harness = (
     extensions: {},
     metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"), source: "test", runtime: 4 },
   };
-  if (events !== undefined) attachEffectiveEvents(plan, events);
+  const plan = events === undefined ? basePlan : withProjectEvents(basePlan, events);
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
     testEnvironmentResolverLayer,

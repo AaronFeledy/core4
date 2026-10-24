@@ -156,9 +156,10 @@ export const loadAuthoredDocuments = Effect.fn("Landofile.loadDocuments")(functi
     readonly file: string;
     readonly forced?: Readonly<Record<string, unknown>>;
   },
+  inputs?: LandofileRuntimeInputs,
 ) {
   const pendingSites: import("@lando/sdk/schema").ParsedPendingSite[] = [];
-  const compilationContext = captureCompilationContext(context.appRoot);
+  const compilationContext = captureCompilationContext(context.appRoot, inputs?.templates.context?.env);
   const prepared = yield* Effect.forEach(sources, (source) => {
     const position =
       LANDOFILE_LAYER_POSITIONS.find(
@@ -181,11 +182,15 @@ export const loadAuthoredDocuments = Effect.fn("Landofile.loadDocuments")(functi
       },
     }).pipe(Effect.map(({ value }) => ({ layer, landofile: value })));
   });
-  const document = yield* composePreparedLayers(prepared, {
-    appRoot: context.appRoot,
-    pendingSites,
-    policy: DEFAULT_LANDOFILE_LOAD_POLICY,
-  });
+  const document = yield* composePreparedLayers(
+    prepared,
+    {
+      appRoot: context.appRoot,
+      pendingSites,
+      policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+    },
+    inputs,
+  );
   return yield* finalizeLandofile(
     context.file,
     copyLandofileProvenance(document, { ...document, ...context.forced }),

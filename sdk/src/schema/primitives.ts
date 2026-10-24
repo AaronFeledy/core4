@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { ComposeEnvironmentInput } from "./environment-input.ts";
+
 export const AppId = Schema.String.pipe(Schema.brand("AppId"));
 export type AppId = typeof AppId.Type;
 
@@ -130,3 +132,14 @@ export type ProviderExtensionConfig = typeof ProviderExtensionConfig.Type;
  */
 export const CommandSpec = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
 export type CommandSpec = typeof CommandSpec.Type;
+
+/**
+ * ToolingVarLiteral — a scalar literal value for a Landofile `tooling.<task>.vars.<name>`.
+ */
+export const ToolingVarLiteral = Schema.Union([Schema.String, Schema.Number, Schema.Boolean]);
+export type ToolingVarLiteral = typeof ToolingVarLiteral.Type;
+
+export const ToolingEnvironment = ComposeEnvironmentInput.annotate({
+  description: "Environment variables supplied to a tooling task as scalar values.",
+});
+export type ToolingEnvironment = typeof ToolingEnvironment.Type;

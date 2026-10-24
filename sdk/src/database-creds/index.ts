@@ -5,6 +5,14 @@ export type DatabaseFamily = ServiceConnection["family"];
 /** Service environment key carrying a database service's planned container listen port. */
 export const DATABASE_PORT_ENV_KEY = "LANDO_DB_PORT";
 
+/** Published credential tuple shared by database services and their consumers. */
+export const LANDO_DB_ENV_KEYS = {
+  user: "LANDO_DB_USER",
+  password: "LANDO_DB_PASSWORD",
+  database: "LANDO_DB_NAME",
+  rootPassword: "LANDO_DB_ROOT_PASSWORD",
+} as const;
+
 /** Each family's published listen port, used when a service declares no planned port. */
 export const DATABASE_FAMILY_DEFAULT_PORTS = {
   mysql: 3306,

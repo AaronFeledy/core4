@@ -76,6 +76,7 @@ import { validateConnectionValues } from "./connection-values.ts";
 import { compileEffectiveEvents } from "./effective-events.ts";
 import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
+import { environmentCacheInput } from "./environment-cache-input.ts";
 import { resolveKnownEventSet } from "./event-set.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
@@ -337,7 +338,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     env: authoredLandofile.context.env,
   });
   const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
-    compileEffectiveEvents({ ...hostEventCompileBase, services });
+    compileEffectiveEvents({ ...hostEventCompileBase, services, invocationSites: executableSites });
   const planServices = (services: Readonly<Record<string, unknown>>) =>
     Object.fromEntries(
       Object.entries(services).map(([name, service]) => [
@@ -364,7 +365,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     versionConstraints,
     serviceInputs: {
       pendingSites: authoredLandofile.pendingSites,
-      environment: authoredLandofile.context.env,
+      environment: environmentCacheInput(authoredLandofile),
+      invocationSites: executableSites,
       landofile: landofile.services ?? {},
       composition: {
         topLevelEnvFileInputs: topLevelEnvFiles.inputs,

@@ -21,7 +21,6 @@ import { Effect, Layer, Schema, Stream } from "effect";
 import { runAppEvent } from "../../src/operations/events.ts";
 import * as Invocation from "../../src/operations/tooling-compile.ts";
 import { planApp } from "../../src/planner/assemble.ts";
-import { attachEffectiveEvents, compiledEventsForPlan } from "../../src/planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import * as Registry from "../../src/plugins/registry.ts";
 import * as Resolver from "../../src/services/environment-value-resolver.ts";
@@ -163,12 +162,7 @@ test.each([
       // When both entrypoints execute through the fake provider.
       await h.direct();
       await h.event();
-      await h.event(
-        attachEffectiveEvents(
-          { ...h.plan, extensions: JSON.parse(JSON.stringify(h.plan.extensions)) },
-          compiledEventsForPlan(h.plan) ?? {},
-        ),
-      );
+      await h.event({ ...h.plan, extensions: JSON.parse(JSON.stringify(h.plan.extensions)) });
       // Then neither entrypoint interprets the semantic task again.
       expect(h.specs.map((spec) => spec.command[2])).toEqual(Array(3).fill(`${literal} "$@"`));
       expect(h.reads).toEqual([]);

@@ -11,7 +11,7 @@ import {
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { stopApp } from "../../src/operations/stop.ts";
-import { attachEffectiveEvents, compiledEventsForPlan } from "../../src/planner/effective-events.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling, effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import { serviceCredsScopeForPlan } from "../../src/planner/landofile-scopes.ts";
 import { resolveMysqlVolumeTarget } from "../../src/planner/mysql-volume.ts";
@@ -54,7 +54,7 @@ describe("MySQL volume identity recovery across destructive lifecycle operations
       },
     };
     const authored = attachEffectiveTooling(
-      attachEffectiveEvents(
+      withProjectEvents(
         {
           ...mysqlPlan,
           services: {
@@ -77,7 +77,7 @@ describe("MySQL volume identity recovery across destructive lifecycle operations
     // Then
     expect(resolved.plan).not.toBe(authored);
     expect(resolved.plan.stores[0]?.name).toBe(legacy);
-    expect(compiledEventsForPlan(resolved.plan)).toEqual(compiledEventsForPlan(authored));
+    expect(resolved.plan.events).toEqual(authored.events);
     expect(effectiveToolingForPlan(resolved.plan)).toEqual(tooling);
     expect(serviceCredsScopeForPlan(resolved.plan)).toEqual(credsScope);
   });

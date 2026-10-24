@@ -29,7 +29,7 @@ export interface ResolvedAppTarget {
 export const userAppRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
 export const assertUserAppIdNotReserved = (
-  landofile: LandofileShape,
+  landofile: Pick<LandofileShape, "name">,
 ): Effect.Effect<void, AppIdReservedError> => {
   const resolved = landofile.name ?? "app";
   return RESERVED_APP_IDS.has(resolved)

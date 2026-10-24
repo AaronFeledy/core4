@@ -1,0 +1,17 @@
+name: playwright-demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+    port: 3000
+    command: [node, server.mjs]
+  e2e:
+    type: "node:22"
+    image: mcr.microsoft.com/playwright:v1.64.1-noble
+    home: false
+    ports: []
+tooling:
+  playwright:
+    service: e2e
+    dir: /app
+    cmd: [npx, playwright]

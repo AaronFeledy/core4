@@ -9,7 +9,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runAppEvent, runAppInitEvents } from "../../src/operations/events.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { EventCommandExecutor } from "../../src/services/event-command-executor.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
@@ -98,7 +98,7 @@ describe("app initialization lifecycle events", () => {
   test("runs pre-init then post-init before the operation-specific pre event", async () => {
     // Given
     const executed: string[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-init": ["pre-init-one", "pre-init-two"],
       "post-init": ["post-init-one"],
       "pre-start": ["pre-start-one"],
@@ -119,7 +119,7 @@ describe("app initialization lifecycle events", () => {
   test("fails closed when a pre-init step fails", async () => {
     // Given
     const executed: string[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), { "pre-init": ["fail-pre-init"] });
+    const plan = withProjectEvents(eventPlan(), { "pre-init": ["fail-pre-init"] });
 
     // When
     const error = await Effect.runPromise(
@@ -137,7 +137,7 @@ describe("app initialization lifecycle events", () => {
     const executed: string[] = [];
     const published: string[] = [];
     const secret = "post-init-secret";
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "post-init": [{ cmd: secret, env: { EVENT_SECRET: secret } }],
     });
 
@@ -166,7 +166,7 @@ describe("app initialization lifecycle events", () => {
     // Given
     const executed: string[] = [];
     const published: string[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-init": ["{{ event._tag }}"],
       "post-init": ["{{ event._tag }}"],
     });

@@ -50,6 +50,14 @@ interface EventRedactionScope {
   readonly redactionTokens: ReadonlyArray<string>;
 }
 
+type EventRecord = Readonly<Record<string, unknown>> | undefined;
+
+export interface EventRedactionSources {
+  readonly env?: ReadonlyArray<EventRecord>;
+  readonly input?: ReadonlyArray<EventRecord>;
+  readonly directTokens?: ReadonlyArray<string>;
+}
+
 interface EventRuntimeOptions {
   readonly plan: AppPlan;
   readonly event: LandofileEventName;
@@ -58,10 +66,8 @@ interface EventRuntimeOptions {
   readonly environmentResolver: Option.Option<Context.Service.Shape<typeof EnvironmentValueResolver>>;
   readonly hostRunner?: Context.Service.Shape<typeof ShellRunner>;
   readonly redactor: Redactor;
-  readonly redactorFor: (
-    records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>,
-    directTokens?: ReadonlyArray<string>,
-  ) => Effect.Effect<EventRedactionScope>;
+  /** `env` maps hold env-style names; `input` holds command flags and args, named like config fields. */
+  readonly redactorFor: (sources: EventRedactionSources) => Effect.Effect<EventRedactionScope>;
   readonly runCanonical: (
     leaf: ResolvedToolingCommandStepLeaf,
     redactionTokens: ReadonlyArray<string>,
@@ -213,7 +219,7 @@ const runInvocation = Effect.fnUntraced(function* (
 
 const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) {
   const startedAt = yield* Clock.currentTimeMillis;
-  const { redactor, redactionTokens } = yield* options.redactorFor([leaf.env]);
+  const { redactor, redactionTokens } = yield* options.redactorFor({ env: [leaf.env] });
   const env = hostEventChildEnv(leaf.source, leaf.env, leaf.service);
   const task: ToolingTaskShape = {
     cmd: leaf.command,
@@ -235,7 +241,7 @@ const runTask = Effect.fnUntraced(function* (
 ) {
   const startedAt = yield* Clock.currentTimeMillis;
   const task = effectiveToolingForPlan(options.plan)?.[leaf.task];
-  const variableRedaction = yield* options.redactorFor([leaf.vars]);
+  const variableRedaction = yield* options.redactorFor({ env: [leaf.vars] });
   if (task === undefined) {
     const script = yield* runBunShellTooling(
       { name: leaf.task, cwd: String(options.plan.root) },
@@ -261,7 +267,7 @@ const runTask = Effect.fnUntraced(function* (
     context,
     sitesUnder(invocationAuthorityForPlan(options.plan)?.sites ?? [], ["tooling", leaf.task]),
   );
-  const { redactor, redactionTokens } = yield* options.redactorFor([resolved.env, leaf.vars]);
+  const { redactor, redactionTokens } = yield* options.redactorFor({ env: [resolved.env, leaf.vars] });
   const result = yield* runInvocation(options, leaf.task, resolved, { redactionTokens }).pipe(
     Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)),
   );
@@ -357,7 +363,7 @@ export const makeEventStepRunners = (
         leaf,
         Clock.currentTimeMillis.pipe(
           Effect.flatMap((startedAt) =>
-            options.redactorFor([leaf.flags, leaf.args], leaf.raw).pipe(
+            options.redactorFor({ input: [leaf.flags, leaf.args], directTokens: leaf.raw }).pipe(
               Effect.flatMap(({ redactor, redactionTokens }) =>
                 options.runCanonical(leaf, redactionTokens).pipe(
                   Effect.mapError((error) =>

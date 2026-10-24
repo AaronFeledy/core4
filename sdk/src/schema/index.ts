@@ -109,6 +109,7 @@ export { PostHttpCallEvent, PreHttpCallEvent } from "../events/http-call.ts";
 export * from "./json-schema.ts";
 export * from "./json-schema-editor.ts";
 export * from "./landofile.ts";
+export * from "./landofile-events.ts";
 export * from "./landofile-directive.ts";
 export * from "./landofile-source.ts";
 export * from "./landofile-overlay.ts";

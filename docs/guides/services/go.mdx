@@ -7,7 +7,7 @@ tags: [beta, docs, go, service]
 
 # Add Go
 
-Put `type: go:1.23` on the primary service. Go has no bare `type: go` alias, so pin a version. Lando currently
+Add `type: go:1.23` to your primary service in `.lando.yml` at the root of your Go project. Go has no bare `type: go` alias, so pin a version. Lando currently
 supports `go:1.22` and `go:1.23`, and derives the default image
 (`golang:1.23` for `go:1.23`) from the version you pin. Your repository is
 bind-mounted read-write at `/app` by default, which is also the working
@@ -61,12 +61,13 @@ lando exec web -- go build -o /tmp/app .
 lando exec web -- go run .
 ```
 
-Bind your HTTP server to the default port `8080` so it's reachable through
-the proxy at the app URL.
+Bind your HTTP server to port `8080` on an interface reachable from the app network, not only container loopback, so the proxy can reach it at the app URL.
 
 Go publishes its port endpoint but has no default healthcheck, even with an authored `command:`. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running.
 
 ## Pin a version
+
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Pin a different supported Go minor version, or set `image:` to use a custom
 Go base image:

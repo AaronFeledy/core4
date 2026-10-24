@@ -273,6 +273,7 @@ import {
   LandofileAuthoringShape,
   LandofileAuthoringShapeWire,
 } from "./landofile-authoring.ts";
+import { EventStepPlan, EventStepSource, EventStepStatus, EventsPlan } from "./landofile-events.ts";
 import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
   AppMountInput,
@@ -521,6 +522,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceConnection,
   ServiceCredsDisplay,
   CurrentExecutableAppPlan,
+  EventStepPlan,
+  EventStepSource,
+  EventStepStatus,
+  EventsPlan,
   CompilationContext,
   ParsedPendingSite,
   SourceCompiledLandofile,
@@ -997,6 +1002,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceConnection: "Canonical database family, credentials and planned port.",
   ServiceCredsDisplay: "String-only redacted credential display.",
   CurrentExecutableAppPlan: "Explicitly current plan required for creation eligibility.",
+  EventStepPlan: "Compiled event step with authored provenance and execution status.",
+  EventStepSource: "Host or project provenance of a compiled event step.",
+  EventStepStatus: "Active, skipped or deduplicated compiled event step status.",
+  EventsPlan: "Effective current Landofile and host event steps, excluded from applied state.",
   CompilationContext: "Ephemeral app root and captured environment snapshot.",
   ParsedPendingSite: "Parsed authored expression with stable identity and source attribution.",
   SourceCompiledLandofile: "Source-stage compilation carrier.",

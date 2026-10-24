@@ -22,6 +22,7 @@ import {
 import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { runtimeServiceContext } from "@lando/engine/runtime/observability";
+import { scopedLandofileRuntimeInputs } from "@lando/engine/services/landofile-live";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
@@ -79,10 +80,11 @@ const planFromShape = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const sourcePath = join(appRoot, ".lando.yml");
   const authored = yield* Schema.encodeEffect(LandofileShape)(shape, { onExcessProperty: "error" });
-  const landofile = yield* loadAuthoredDocuments([{ file: sourcePath, value: authored }], {
-    appRoot,
-    file: sourcePath,
-  });
+  const landofile = yield* loadAuthoredDocuments(
+    [{ file: sourcePath, value: authored }],
+    { appRoot, file: sourcePath },
+    yield* scopedLandofileRuntimeInputs,
+  );
   yield* assertUserAppIdNotReserved(landofile.document);
   yield* assertLandoVersionConstraint(landofile.document, { sourcePath });
   return yield* planResolvedLandofile(landofile, appRoot);

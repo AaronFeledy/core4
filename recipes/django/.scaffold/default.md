@@ -1,6 +1,14 @@
 # Start a Django project
 
-`lando init --recipe django` scaffolds Django on Python with PostgreSQL, Redis, and an optional Celery worker.
+Create a Django development stack with Python, PostgreSQL, Redis, and an
+optional Celery worker. The recipe writes `.lando.yml`, not a Django project.
+Starting the stack keeps the web container available for setup; it does not
+start the Django server.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe django --name=my-django --yes
@@ -10,6 +18,9 @@ lando info
 ```
 
 The named init creates `my-django/`. Change into it before app commands. `--yes` skips the Celery worker. Pass `--answer` to add it.
+
+To choose a different stack, use this initialization command instead of the
+default one above. Run it from the parent directory, not inside the app:
 
 ```sh
 lando init --recipe django --name=my-django --yes \

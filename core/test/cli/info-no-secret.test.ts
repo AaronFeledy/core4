@@ -7,6 +7,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  PortNumber,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -79,8 +80,8 @@ const postgres: ServicePlan = {
   artifact: { kind: "ref", ref: "postgres:16-alpine" },
   command: ["postgres"],
   // The service carries a secret-shaped value in its environment; info must
-  // never serialize this. LANDO_DB_* is the published creds surface and must
-  // emit redacted password fields only.
+  // never serialize this. The connection is the published creds surface and
+  // must emit redacted password fields only.
   environment: {
     POSTGRES_USER: "lando",
     POSTGRES_DB: "appdb",
@@ -88,6 +89,11 @@ const postgres: ServicePlan = {
     LANDO_DB_USER: "lando",
     LANDO_DB_PASSWORD: SECRET_VALUE,
     LANDO_DB_NAME: "appdb",
+  },
+  connection: {
+    family: "postgres",
+    port: PortNumber.make(5432),
+    creds: { user: "lando", database: "appdb", password: { _tag: "SecretRef", reference: "DB_PASSWORD" } },
   },
   mounts: [],
   storage: [],

@@ -4,17 +4,29 @@ import { DateTime, Effect, Option } from "effect";
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent, PostInitEvent, PreInitEvent } from "@lando/sdk/events";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import type { AppLifecycleEventName, AppPlan, EventStep, LandofileEventName } from "@lando/sdk/schema";
+import type {
+  AppLifecycleEventName,
+  AppPlan,
+  EventStep,
+  EventStepPlan,
+  LandofileEventName,
+} from "@lando/sdk/schema";
 import { LANDO_HOST_EVENT_ENV, ServiceName } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, RuntimeProviderRegistry, ShellRunner } from "@lando/sdk/services";
 
-import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
+import {
+  RedactionService,
+  collectSecretEnvValues,
+  collectSecretStructuralValues,
+} from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
-import { type CompiledEventStep, compiledEventsForPlan } from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import {
+  collectAppPlanPublicCredentialValues,
+  collectAppPlanRedactionTokens,
+} from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-compiler.ts";
@@ -22,7 +34,7 @@ import type { ToolingCommandStepLeaf } from "../tooling/step-program.ts";
 import { runToolingStepProgram } from "../tooling/step-runner.ts";
 import { runCanonicalCommand, withinEventInvocation } from "./event-invocation.ts";
 import { eventStepFile, eventStepLabel } from "./event-step-identity.ts";
-import { makeEventStepRunners } from "./event-step-runtime.ts";
+import { type EventRedactionSources, makeEventStepRunners } from "./event-step-runtime.ts";
 
 interface EventRedactor {
   readonly redactString: (value: string) => string;
@@ -38,6 +50,7 @@ const authoredStepKind = (step: EventStep): "cmd" | "task" | "command" => {
 const redactionValuesForStep = (
   step: EventStep,
   tooling: ReturnType<typeof effectiveToolingForPlan>,
+  publicValues: ReadonlySet<string>,
 ): ReadonlyArray<string> => {
   if (typeof step === "string") return [];
   const env =
@@ -49,7 +62,10 @@ const redactionValuesForStep = (
   return env === undefined
     ? []
     : collectSecretEnvValues(
-        Object.fromEntries(Object.entries(env).map(([name, value]) => [name, String(value)])),
+        Object.fromEntries(
+          Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        ),
+        publicValues,
       );
 };
 
@@ -124,9 +140,9 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (
   event: LandofileEventName,
   redactor: EventRedactor,
 ) {
-  const compiled = compiledEventsForPlan(plan)?.[event] ?? [];
+  const compiled = plan.events?.[event] ?? [];
   const primary = Object.entries(plan.services).find(([, service]) => service.primary === true)?.[0];
-  const resolved: CompiledEventStep[] = [];
+  const resolved: EventStepPlan[] = [];
   for (const entry of compiled) {
     if (entry.status !== "active" || entry.source !== "host") {
       resolved.push(entry);
@@ -203,28 +219,32 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
       }
       const tooling = effectiveToolingForPlan(plan);
       const appPlanRedactionTokens = collectAppPlanRedactionTokens(plan);
+      const publicValues = collectAppPlanPublicCredentialValues(plan);
       const redactor = yield* redactionOption.value.forProfile("secrets", {
         sourceEnv: process.env,
         redactionTokens: [
           ...appPlanRedactionTokens,
-          ...runnable.flatMap((entry) => redactionValuesForStep(entry.step, tooling)),
+          ...runnable.flatMap((entry) => redactionValuesForStep(entry.step, tooling, publicValues)),
         ],
       });
-      const redactorFor = (
-        records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>,
-        directTokens: ReadonlyArray<string> = [],
-      ) => {
+      const collectRecords = (
+        records: EventRedactionSources["env"],
+        collect: typeof collectSecretEnvValues,
+      ): string[] =>
+        (records ?? []).flatMap((record) => {
+          if (record === undefined) return [];
+          return Object.entries(record).flatMap(([name, value]) =>
+            (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
+              typeof occurrence === "string" ? collect({ [name]: occurrence }, publicValues) : [],
+            ),
+          );
+        });
+      const redactorFor = (sources: EventRedactionSources) => {
         const redactionTokens = [
           ...appPlanRedactionTokens,
-          ...directTokens,
-          ...records.flatMap((record) => {
-            if (record === undefined) return [];
-            return Object.entries(record).flatMap(([name, value]) =>
-              (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
-                collectSecretEnvValues({ [name]: String(occurrence) }),
-              ),
-            );
-          }),
+          ...(sources.directTokens ?? []),
+          ...collectRecords(sources.env, collectSecretEnvValues),
+          ...collectRecords(sources.input, collectSecretStructuralValues),
         ];
         return redactionOption.value
           .forProfile("secrets", {
@@ -295,6 +315,12 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
   );
 });
 
+/** A post-event failure warns instead of failing, so the warning carries the step's redacted output. */
+const postEventWarning = (error: EventRuntimeError): string => {
+  const tail = error instanceof LandofileEventStepFailedError ? error.outputTail.trim() : "";
+  return [error.message, ...(tail.length > 0 ? [tail] : []), error.remediation].join(" ");
+};
+
 export const runPostAppEvent = Effect.fn("AppOperation.runPostEvent")(function* (
   plan: AppPlan,
   event: AppLifecycleEventName,
@@ -306,7 +332,7 @@ export const runPostAppEvent = Effect.fn("AppOperation.runPostEvent")(function* 
         Effect.flatMap((events) =>
           events.publish(
             MessageWarnEvent.make({
-              body: [error.message, error.remediation].join(" "),
+              body: postEventWarning(error),
               timestamp: DateTime.nowUnsafe(),
             }),
           ),

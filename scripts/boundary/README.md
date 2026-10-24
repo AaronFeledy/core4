@@ -1,6 +1,8 @@
 # Boundary Rule Inventory
 
-`registry.ts` is the canonical list of boundary rules. This inventory classifies each live rule against the workspace package DAG so ownership checks do not survive as duplicate AST policy.
+Use this inventory to find the rule behind a boundary failure and decide whether a new package boundary can replace an existing scan. `registry.ts` is the canonical rule list. The package dependency graph (DAG) enforces which packages may depend on each other; the remaining rules enforce constraints that dependency direction cannot express.
+
+Run all rules from the repository root with `bun run check:boundaries`. To investigate one failure, run `bun run scripts/check-boundaries.ts <rule-id>`, replacing `<rule-id>` with a name in the table below.
 
 Verdicts describe the next action for the current rule:
 
@@ -31,7 +33,7 @@ The renderer rule is classified `keep` after the `@lando/renderer` extraction co
 
 ## Post-extraction ratchet audit
 
-The update, uninstall, config, and plugin extractions moved operation ownership into `@lando/engine`, while the native CLI spec split removed `core/src/cli/oclif/`. The audit below was run against that layout. A passing gate establishes that the live scope remains enforceable; the focused searches show the production subjects or owner residue that a package edge cannot replace.
+The update, uninstall, config, and plugin extractions moved operation ownership into `@lando/engine`, while the native CLI spec split removed `core/src/cli/oclif/`. The audit below records evidence from that layout, not a fresh measurement of the current tree. Its paths and findings are retained as historical evidence. Run the current rule to check today's scope; the recorded searches explain which behavioral constraints package edges could not replace.
 
 | Rule | Verdict | Evidence command and finding |
 | --- | --- | --- |

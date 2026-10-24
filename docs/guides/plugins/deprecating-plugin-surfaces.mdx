@@ -8,7 +8,10 @@ tags: [beta, docs, plugins, deprecations]
 
 # Deprecate plugin surfaces
 
-Attach a `DeprecationNotice` on the plugin manifest. Same shape everywhere: `since`, optional `removeIn`, optional `severity`, optional `replacement`, required `note`, optional `docsUrl`, optional `ticket`.
+Add a `deprecated` notice to a plugin manifest to tell callers when a surface
+was deprecated and what to use instead. The `DeprecationNotice` shape is shared
+by whole plugins and individual contributions; the fields below control its
+message, severity, and removal schedule.
 
 `nolint` on the fence: this is a plugin manifest, not a Landofile, so Landofile schema checks do not apply.
 
@@ -26,7 +29,8 @@ deprecated:
   note: "Use the next plugin for this contribution."
 ```
 
-A deprecation is a calendar, not a vibe.
+Set `since` to the deprecation release and use `note` to explain the migration.
+Check the `removeIn` rules below before choosing a removal release.
 
 ## Fields
 

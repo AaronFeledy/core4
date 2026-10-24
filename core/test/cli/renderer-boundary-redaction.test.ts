@@ -10,6 +10,40 @@ import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-tru
 import { renderStartAppResult } from "../../src/cli/commands/start-result.ts";
 import { runWithRendererHandling, summaryPaintOptions } from "../../src/cli/renderer-boundary.ts";
 
+test("collected plan credentials preserve package names while masking distinct passwords and camelCase env", async () => {
+  const plan = {
+    services: {
+      mariadb: {
+        creds: { user: "magento", password: "magento", database: "magento" },
+        environment: { MARIADB_USER: "magento", MARIADB_PASSWORD: "magento", MARIADB_DATABASE: "magento" },
+      },
+      appserver: {
+        environment: { DB_PASSWORD: "distinct-private-password", stripeSecretKey: "sk_test_canary" },
+      },
+    },
+  };
+  const io = createBufferedRendererIO();
+  await runWithRendererHandling(
+    Effect.gen(function* () {
+      const redaction = yield* RedactionService;
+      yield* redaction.registerValues(collectAppPlanRedactionTokens(plan));
+      return "mage-os/magento-coding-standard --magento-init-params distinct-private-password sk_test_canary";
+    }),
+    {
+      runtime: RedactionService.layer,
+      rendererMode: "plain",
+      io,
+      render: (result) => result,
+      formatError: ({ error }) => String(error),
+      setExitCode: (code) => expect(code).toBe(0),
+    },
+  );
+  expect(io.stdout().trim()).toBe(
+    "mage-os/magento-coding-standard --magento-init-params [redacted] [redacted]",
+  );
+  expect(io.stderr()).toBe("");
+});
+
 const redactionLayer = Layer.effect(
   RedactionService,
   Effect.gen(function* () {

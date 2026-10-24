@@ -7,13 +7,13 @@ tags: [beta, docs, landofile]
 
 # Start an app with no services
 
-A Landofile can declare only `name:` and skip `services:` entirely. `services:` is independently optional alongside `tooling:` and `includes:`.
+Save the following as `.lando.yml` in an app directory to create an app with no services of its own. `services:` is optional, independently of `tooling:` and `includes:`.
 
 ```yaml
 name: zero-services
 ```
 
-Useful when you want a CLI-wrapper app with no containers of its own, or when `includes:` pulls services in from elsewhere.
+After completing `lando setup`, run `lando start --format=json` from that directory, then `lando app:config --format=json` to inspect the configuration. This is useful for a CLI-wrapper app with no containers of its own, or when `includes:` supplies services from elsewhere.
 
 <Guide>
   <Scenario id="app-with-no-services" render>

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { runTooling } from "@lando/engine/operations/tooling";
-import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
+import { withProjectEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { configTranslators } from "@lando/lando3";
@@ -124,8 +124,10 @@ const run = (landofile: LandofileShape, failOn?: string) => {
     metadata,
     extensions: {},
   };
-  const plan = attachEffectiveTooling(basePlan, landofile.tooling ?? {});
-  attachEffectiveEvents(plan, landofile.events ?? {});
+  const plan = attachEffectiveTooling(
+    withProjectEvents(basePlan, landofile.events ?? {}),
+    landofile.tooling ?? {},
+  );
   const provider = {
     ...TestRuntimeProvider,
     execStream: (target: ExecTarget, spec: CommandSpec) =>

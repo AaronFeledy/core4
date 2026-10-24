@@ -179,6 +179,34 @@ describe("ServicePlan", () => {
 });
 
 describe("AppPlan", () => {
+  test("preserves current eligibility and typed event values through a strict JSON roundtrip", () => {
+    // Given
+    const input = {
+      ...appPlanFixture,
+      valueModel: 1,
+      events: {
+        "pre-start": [
+          {
+            step: { cmd: "echo ready", env: { TOKEN: { _tag: "SecretRef", reference: "TOKEN" } } },
+            source: "host",
+            sourceIndex: 3,
+            status: "active",
+          },
+        ],
+      },
+    } as const;
+    const strict = { onExcessProperty: "error" } as const;
+    // When
+    const plan = Schema.decodeUnknownSync(CurrentExecutableAppPlan)(input, strict);
+    const decoded = Schema.decodeUnknownSync(CurrentExecutableAppPlan)(
+      JSON.parse(JSON.stringify(Schema.encodeSync(CurrentExecutableAppPlan)(plan))),
+      strict,
+    );
+    // Then
+    expect(decoded.valueModel).toBe(1);
+    expect(decoded.events).toEqual(input.events);
+  });
+
   test("preserves missing legacy eligibility and requires an explicit current marker", () => {
     // Given
     const historical = appPlanFixture;

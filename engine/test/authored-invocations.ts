@@ -4,7 +4,6 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { planApp } from "../src/planner/assemble.ts";
 import { effectiveToolingForPlan } from "../src/planner/effective-tooling.ts";
-import { carryPlanAttachments } from "../src/planner/plan-attachments.ts";
 import * as Registry from "../src/plugins/registry.ts";
 import { compileTestLandofile } from "./compiled-landofile.ts";
 
@@ -27,6 +26,10 @@ export const compileAuthoredEventPlan = (plan: AppPlan, events: LandofileEvents)
         loaded,
         TestRuntimeProvider.capabilities,
       );
-      return carryPlanAttachments(compiled, plan);
+      return {
+        ...plan,
+        ...(compiled.events === undefined ? {} : { events: compiled.events }),
+        extensions: { ...plan.extensions, ...compiled.extensions },
+      };
     }).pipe(Effect.provide(Registry.layerWith({ bundled: false }, []))),
   );

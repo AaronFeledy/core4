@@ -21,7 +21,7 @@ services:
     primary: true
 ```
 
-Add a project constraint next to the Landofile:
+Save the configuration as `.lando.yml`, then create `.nvmrc` beside it with this version constraint:
 
 ```text
 22.11.0
@@ -98,7 +98,7 @@ The explicit-version example below keeps the version in the Landofile with
 ## Run the app
 
 The default Node keep-alive process holds the container open and exits cleanly on
-SIGTERM or SIGINT. Install dependencies and start your server via tooling:
+SIGTERM or SIGINT. Declare an `npm` tooling alias targeting `app` before using the commands below; the Node service does not add that alias automatically. See [Run TypeScript on a Node service](./node-typescript.mdx) for a complete tooling block. Then install dependencies and start your server:
 
 ```sh
 # Declare an npm tooling alias to install dependencies inside the service
@@ -197,6 +197,8 @@ tooling `dir:`. See [Compile PHP theme assets with Node](./node-theme-assets.mdx
 
 ## Pin the service type
 
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
+
 Use an explicit type when the Landofile, rather than project files, should own
 the version. Lando supports `node:lts` and `node:22` as explicit types:
 
@@ -216,5 +218,10 @@ services:
 Custom `image:` values work with explicit Node types. Don't combine `image:`
 with bare `type: node`; inference must choose the image without a second source
 of truth.
+
+## Next
+
+- [Run a TanStack Start app on Postgres](./node-tanstack-start.mdx) for a full-stack React app with Drizzle and a server function
+- [Run Playwright end-to-end tests against your app](./node-playwright.mdx) for browser tests from an `e2e` service
 
 </Guide>

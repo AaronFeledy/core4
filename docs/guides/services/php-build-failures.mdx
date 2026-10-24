@@ -7,16 +7,25 @@ tags: [beta, docs, php, service, build]
 
 # Recover from a failed PHP build
 
-`build.app` runs a list of shell commands against the service's build layer every time the app builds. Each entry executes as `sh -lc "<command>"`, in order, after Lando's own PHP prerequisite steps. A `composer install`
+A failed PHP build stops startup and reports the command that failed. Read that command's output, fix the script or its dependencies, then rerun `lando start`.
+
+`build.app` defines shell commands for the app phase of a service build. Each entry executes as `sh -lc "<command>"`, in order, after Lando's own PHP prerequisite steps. A `composer install`
 that fails on a bad `composer.json`, a missing PHP extension a package
 requires, or a stray `exit 1` all fail a build step the same way: the step
 exits non-zero, and Lando stops instead of starting a half-built app.
 
+## Recover from a failing build step
+
+Fix the failing command in `build.app`. Most often that means fixing the underlying script itself, not the Landofile. Then rerun `lando start`. It reuses the containers from the failed attempt, reruns the failed step, and only recreates a container whose config changed.
+Editing a `build.app` entry changes that step's content-hash build key, so
+the next `lando start` reruns it. A `build.artifact` edit changes the image
+key the same way, so start rebuilds that image too. `lando rebuild` is the
+forced rerun when the command text is unchanged and only bind-mounted inputs
+changed, or when you want a forced pull.
+
 ## The build plan captures the exact failing command
 
-Every `build.app` entry reaches the app's build plan verbatim, whether or not it will actually succeed. Planning never runs a build step. It just records the command to run later. A fixture with an earlier
-`composer install --no-dev` step and a deterministic `exit 1` proves both
-commands land in the resolved plan.
+Every `build.app` entry reaches the app's build plan verbatim, whether or not it will actually succeed. Planning never runs a build step. It just records the command to run later. This means a successful plan check does not prove that `composer install --no-dev`, or any other build command, will succeed when executed.
 
 ## What a failing build step looks like
 
@@ -47,15 +56,6 @@ with its list of `BuildStepFailedError` entries, and prints one warning
 naming which services are running, created/stopped, or unverified. Nothing is
 removed. `lando stop` shuts the app down if you want it quiet while you
 fix the script.
-
-## Recover from a failing build step
-
-Fix the failing command in `build.app`. Most often that means fixing the underlying script itself, not the Landofile. Then rerun `lando start`. It reuses the containers from the failed attempt, reruns the failed step, and only recreates a container whose config changed.
-Editing a `build.app` entry changes that step's content-hash build key, so
-the next `lando start` reruns it. A `build.artifact` edit changes the image
-key the same way, so start rebuilds that image too. `lando rebuild` is the
-forced rerun when the command text is unchanged and only bind-mounted inputs
-changed, or when you want a forced pull.
 
 ## Prove the plan
 

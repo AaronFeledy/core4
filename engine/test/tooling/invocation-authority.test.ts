@@ -1,12 +1,11 @@
 import { expect, test } from "bun:test";
 import { ConfigExpressionError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import { type AppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
+import { AppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import { PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { planApp } from "../../src/planner/assemble.ts";
-import { compiledEventsForPlan } from "../../src/planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../../src/planner/invocation-authority.ts";
 import * as Registry from "../../src/plugins/registry.ts";
@@ -35,7 +34,7 @@ const compile = (document: unknown, env: Readonly<Record<string, string>> = {}) 
 const execute = (plan: AppPlan, context: ExpressionContext) =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const entries = compiledEventsForPlan(plan)?.["pre-start"] ?? [];
+      const entries = (plan.events?.["pre-start"] ?? []).filter((entry) => entry.status === "active");
       const sites = invocationAuthorityForPlan(plan)?.sites ?? [];
       const commands: unknown[] = [];
       const program = yield* compileEventStepProgram(
@@ -44,7 +43,11 @@ const execute = (plan: AppPlan, context: ExpressionContext) =>
         entries.map((entry) => ({
           authoredIndex: entry.sourceIndex,
           source: entry.source,
-          invocationSites: sitesUnder(sites, ["events", "pre-start", entry.sourceIndex]),
+          invocationSites: sitesUnder(sites, [
+            entry.source === "host" ? "hostEvents" : "events",
+            "pre-start",
+            entry.sourceIndex,
+          ]),
         })),
       );
       yield* runToolingStepProgram(program, context, {
@@ -106,11 +109,15 @@ test("persists bounded static dependencies and preserves lazy missing paths acro
     },
     { STATIC: "captured", UNRELATED: "must-not-persist" },
   );
-  const cached = { ...plan, extensions: JSON.parse(JSON.stringify(plan.extensions)) };
+  const cached = Schema.decodeUnknownSync(AppPlan)(
+    JSON.parse(JSON.stringify(Schema.encodeSync(AppPlan)(plan))),
+  );
   // When
   const commands = await execute(cached, { event: { use: true, CANARY: "runtime" } });
   // Then
   expect(commands).toEqual([{ command: "captured-runtime", env: undefined }]);
+  expect(cached.events).toEqual(plan.events);
+  expect(invocationAuthorityForPlan(cached)).not.toHaveProperty("events");
   expect(JSON.stringify(cached.extensions)).not.toContain("must-not-persist");
 });
 

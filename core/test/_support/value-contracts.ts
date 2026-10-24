@@ -1,4 +1,3 @@
-import { attachEffectiveEvents, compiledEventsForPlan } from "@lando/engine/planner/effective-events";
 import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { SecretNotFoundError } from "@lando/sdk/errors";
@@ -13,11 +12,7 @@ import { Effect, Layer } from "effect";
 
 export const currentTestPlan = (
   input: Omit<CurrentExecutableAppPlan, "valueModel">,
-): CurrentExecutableAppPlan => {
-  const plan = CurrentExecutableAppPlan.make({ ...input, valueModel: 1 });
-  const events = compiledEventsForPlan(input);
-  return events === undefined ? plan : attachEffectiveEvents(plan, events);
-};
+): CurrentExecutableAppPlan => CurrentExecutableAppPlan.make({ ...input, valueModel: 1 });
 
 /** Already-loaded literal data only; authored expressions must use the real compiler. */
 export const literalLandofile = (document: LandofileShape, root: string): LoadScopedLandofile =>

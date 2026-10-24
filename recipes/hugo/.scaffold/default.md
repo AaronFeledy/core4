@@ -1,6 +1,13 @@
 # Hugo
 
-`lando init --recipe hugo` scaffolds a Hugo site with a Node builder and an nginx sidecar.
+Create a Hugo starter site with a Node-based builder and nginx for generated
+static files. The starter includes enough content and layouts to serve a page
+on the first start.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe hugo --name=my-hugo --yes
@@ -30,7 +37,8 @@ The starter archetype sets `draft = false`, so the post publishes right away. Se
 
 For the full day-to-day path, see [Run the Hugo recipe](/guides/recipes/hugo-workflow/).
 
-When you are finished:
+When you are finished, remove the app containers and networks. This keeps
+volumes unless you also pass `--volumes` or `--purge`:
 
 ```sh
 lando destroy -y

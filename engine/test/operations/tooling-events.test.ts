@@ -28,7 +28,7 @@ import { DateTime, Effect, Layer, Option, Redacted, Schema, Stream } from "effec
 
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
@@ -94,8 +94,10 @@ const harness = (input: {
     metadata,
     extensions: {},
   };
-  const plan = attachEffectiveTooling(basePlan, input.tooling);
-  if (input.events !== undefined) attachEffectiveEvents(plan, input.events);
+  const plan = attachEffectiveTooling(
+    input.events === undefined ? basePlan : withProjectEvents(basePlan, input.events),
+    input.tooling,
+  );
 
   const record = (label: string) => {
     executed.push(label);

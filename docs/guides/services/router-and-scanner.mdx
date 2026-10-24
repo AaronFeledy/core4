@@ -7,7 +7,7 @@ tags: [beta, docs, services, router, scanner]
 
 # Turn the router off and tune the post-start URL scanner
 
-Lando starts a shared router for every app that has routes and, once the app is up, probes each published HTTP and HTTPS URL to make sure something answers. Both behaviors have knobs. Turn the router off when you only want host ports, and tune or disable the scanner per service when the default probe doesn't fit.
+Lando starts a shared router for every app that has routes and, once the app is up, probes each published HTTP and HTTPS URL to make sure something answers. You can configure these behaviors separately. Turn the router off when you only want host ports, and tune or disable the scanner per service when the default probe doesn't fit.
 
 ```yaml
 name: router-and-scanner-demo
@@ -24,7 +24,7 @@ proxy:
     - web.router-and-scanner-demo.lndo.site
 ```
 
-Check it, then start:
+Save the example in `.lando.yml`, then run these commands from the app directory:
 
 ```sh
 lando app:config:lint
@@ -32,7 +32,7 @@ lando start
 lando info
 ```
 
-With `router.enabled: false`, `lando info` lists only the endpoints `web` publishes on host ports. The `web.router-and-scanner-demo.lndo.site` route stays in the Landofile, but nobody serves it until you flip the router back on.
+With `router.enabled: false`, `lando info` lists only the endpoints `web` publishes on host ports. The `web.router-and-scanner-demo.lndo.site` route stays in the Landofile, but Lando does not publish it until you enable the router again.
 
 ## Turn the router off
 
@@ -164,7 +164,7 @@ Skip every service on this machine by setting the same key in your global config
 scanner: false
 ```
 
-Per-service `scanner:` settings override the global one. A global `false` turns scanning off unless a service authors an object to opt back in. Pick this for a service that has no HTTP surface worth probing, or for a machine where the first request always takes longer than any sane timeout.
+Per-service `scanner:` settings override the global one. A global `false` turns scanning off unless a service authors an object to opt back in. Pick this for a service that has no HTTP surface worth probing, or when you deliberately want to skip the post-start HTTP check.
 
 <Guide>
   <Scenario id="router-disabled" render>

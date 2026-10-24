@@ -3,9 +3,11 @@ import {
   type BoundText,
   Environment,
   EnvironmentValue,
+  EventCmdStep,
   ServiceConfig,
   ServiceConnection,
   ServiceCredsDisplay,
+  ToolingEnvironment,
   ToolingTaskShape,
   encodeUriComponent,
   normalizeEnvironmentValue,
@@ -13,6 +15,32 @@ import {
 import { Result, Schema } from "effect";
 
 describe("environment values", () => {
+  test("normalizes event and tooling environments through the same descriptor codec", () => {
+    // Given
+    const input = { TOKEN: { _tag: "SecretRef", reference: "TOKEN" }, PORT: 5544, ENABLED: false };
+    // When
+    const event = Schema.decodeUnknownSync(EventCmdStep)({ cmd: "echo ready", env: input });
+    const tooling = Schema.decodeUnknownSync(ToolingEnvironment)(input);
+    // Then
+    const expected = {
+      TOKEN: { _tag: "SecretRef", reference: "TOKEN" },
+      PORT: "5544",
+      ENABLED: "false",
+    } as const;
+    expect(event.env).toEqual(expected);
+    expect(tooling).toEqual(expected);
+  });
+
+  test.each([null, ["TOKEN"], { TOKEN: null }, JSON.parse('{"__proto__":"bad"}'), ["__proto__=bad"]])(
+    "rejects invalid event environments: %j",
+    (env) => {
+      // Given / When
+      const result = Schema.decodeUnknownResult(EventCmdStep)({ cmd: "echo ready", env });
+      // Then
+      expect(Result.isFailure(result)).toBe(true);
+    },
+  );
+
   test.each([
     "${secret:X}",
     { _tag: "SecretRef", reference: "X" },

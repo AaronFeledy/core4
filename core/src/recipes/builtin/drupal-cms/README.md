@@ -1,18 +1,12 @@
 # drupal-cms
 
-Drupal CMS 2 scaffold with PHP, a database (MariaDB or PostgreSQL), and Drush.
+Use this recipe to run Drupal CMS 2 with PHP, MariaDB or PostgreSQL, and Drush.
+Initialization configures the stack; the scaffold and install commands below
+create the application and install the site.
 
-## Generated services
+## Host prerequisites
 
-- `appserver`: `php:8.4`, `framework: drupal`, `webroot: web`, `allowOverride: true`. A root artifact step installs Git for the pinned SVG Image source. Database credentials are injected as environment variables.
-- `database`: `mariadb` or `postgres` (prompt: `database`).
-
-## Generated tooling
-
-- `lando drush`: Drush (via `vendor/bin/drush` after scaffolding).
-- `lando composer`: Composer inside the appserver.
-- `lando drupal-cms-scaffold`: Scaffold Drupal CMS 2 and project-local Drush into the mounted app root. Handles empty volume directories atomically.
-- `lando drupal-cms-install`: Install Drupal CMS 2 using the drupal_cms_starter recipe with wired database credentials.
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Bootstrapping the codebase
 
@@ -49,6 +43,14 @@ re-audits. Any failure publishes nothing. The app keeps `composer.json` and `com
 Drupal CMS 2 uses the same Lando stack as the `drupal` recipe; the difference is
 the Composer project (`drupal/cms`) and its bundled install profile / recipes.
 
-## Host prerequisites
+## Generated services
 
-- Lando v4 install with `provider-lando` or `provider-docker`.
+- `appserver`: `php:8.4`, `framework: drupal`, `webroot: web`, `allowOverride: true`. A root artifact step installs Git for the pinned SVG Image source. Database credentials are injected as environment variables.
+- `database`: `mariadb` or `postgres` (prompt: `database`).
+
+## Generated tooling
+
+- `lando drush`: Drush (via `vendor/bin/drush` after scaffolding).
+- `lando composer`: Composer inside the appserver.
+- `lando drupal-cms-scaffold`: Scaffold Drupal CMS 2 and project-local Drush into the mounted app root. Handles empty volume directories atomically.
+- `lando drupal-cms-install`: Install Drupal CMS 2 using the drupal_cms_starter recipe with wired database credentials.

@@ -2,6 +2,7 @@ import {
   DATABASE_FAMILY_ENV_KEYS,
   DATABASE_PORT_ENV_KEY,
   type DatabaseFamily,
+  LANDO_DB_ENV_KEYS,
 } from "@lando/sdk/database-creds";
 import {
   type Environment,
@@ -161,8 +162,8 @@ export const familyEnvFor = (family: CredsFamily, creds: ServiceCreds): Environm
 
 export const landoDbEnvFor = (creds: ServiceCreds, port: number): Environment => ({
   [DATABASE_PORT_ENV_KEY]: String(port),
-  LANDO_DB_USER: creds.user,
-  LANDO_DB_PASSWORD: creds.password,
-  LANDO_DB_NAME: creds.database,
-  ...optionalRoot("LANDO_DB_ROOT_PASSWORD", creds.rootPassword),
+  [LANDO_DB_ENV_KEYS.user]: creds.user,
+  [LANDO_DB_ENV_KEYS.password]: creds.password,
+  [LANDO_DB_ENV_KEYS.database]: creds.database,
+  ...optionalRoot(LANDO_DB_ENV_KEYS.rootPassword, creds.rootPassword),
 });

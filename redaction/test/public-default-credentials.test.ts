@@ -1,6 +1,72 @@
 import { expect, test } from "bun:test";
+import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
-import { collectSecretEnvValues, createStandaloneRedactor, makeRedactionService } from "../src/service.ts";
+import {
+  collectPublicCredentialValues,
+  collectSecretEnvValues,
+  createStandaloneRedactor,
+  makeRedactionService,
+} from "../src/service.ts";
+
+test.each([
+  { MARIADB_USER: "magento", MARIADB_PASSWORD: "magento", MARIADB_DATABASE: "shop" },
+  { POSTGRES_USER: "magento", POSTGRES_PASSWORD: "magento", POSTGRES_DB: "shop" },
+  {
+    MONGO_INITDB_ROOT_USERNAME: "magento",
+    MONGO_INITDB_ROOT_PASSWORD: "magento",
+    MONGO_INITDB_DATABASE: "shop",
+  },
+  { LANDO_DB_USER: "magento", LANDO_DB_PASSWORD: "magento", LANDO_DB_NAME: "shop" },
+  { MYSQL_USER: "magento", MYSQL_ROOT_PASSWORD: "magento" },
+  { LANDO_DB_USER: "magento", LANDO_DB_ROOT_PASSWORD: "magento" },
+  { MYSQL_USER: "shop", MYSQL_PASSWORD: "magento", MYSQL_DATABASE: "magento" },
+])("excludes a password published as its own tuple's identity: %j", (env) => {
+  expect(collectSecretEnvValues({ ...env, PROJECT_PASSWORD: "magento" })).toEqual([]);
+});
+
+test.each([
+  { MYSQL_USER: "magento", MYSQL_PASSWORD: "magento-dev", MYSQL_DATABASE: "magento" },
+  { MYSQL_USER: "Magento", MYSQL_PASSWORD: "magento-dev", MYSQL_DATABASE: "shop" },
+  { APP_NAME: "magento-dev", DB_PASSWORD: "magento-dev" },
+  { OWNER_USER: "magento-dev", OWNER_PASSWORD: "magento-dev" },
+  { MYSQL_USER: "magento-dev", POSTGRES_PASSWORD: "magento-dev" },
+  { MYSQL_USER: "magento-dev", MARIADB_PASSWORD: "magento-dev" },
+  { PGPASSWORD: "magento-dev", DB_PASSWORD: "magento-dev" },
+  { MYSQL_PWD: "magento-dev", DB_PASSWORD: "magento-dev" },
+])("keeps passwords without an exact same-tuple identity match: %j", (env) => {
+  expect(collectSecretEnvValues(env)).toContain("magento-dev");
+});
+
+test("excludes public values supplied by the enclosing scope", () => {
+  expect(
+    collectSecretEnvValues({ PMA_PASSWORD: "magento", API_TOKEN: "private-token" }, new Set(["magento"])),
+  ).toEqual(["private-token"]);
+});
+
+test("compares tuple identities case-sensitively without treating empty values as public", () => {
+  expect(collectSecretEnvValues({ MYSQL_USER: "Magento", MYSQL_PASSWORD: "magento" })).toEqual(["magento"]);
+  expect(collectPublicCredentialValues({ MYSQL_USER: "", MYSQL_PASSWORD: "" }).size).toBe(0);
+});
+
+test("preserves package names in payload output with public credential values", () => {
+  const values = collectSecretEnvValues({ MYSQL_USER: "magento", MYSQL_PASSWORD: "magento" });
+  const payload = createPayloadRedactor(() => values);
+  const text = "mage-os/magento-coding-standard --magento-init-params lando exec appserver -- echo magento";
+  expect(Buffer.concat([payload.write(new TextEncoder().encode(text)), payload.flush()]).toString()).toBe(
+    text,
+  );
+});
+
+test("explicit registration still masks a public credential value", async () => {
+  const service = makeRedactionService();
+  const redactor = await Effect.runPromise(
+    service.forProfile("secrets", {
+      sourceEnv: { MYSQL_USER: "magento", MYSQL_PASSWORD: "magento" },
+    }),
+  );
+  await Effect.runPromise(service.registerValues(["magento"]));
+  expect(redactor.redactString("echo magento")).toBe("echo [redacted]");
+});
 
 test("excludes only exact published defaults when collecting secret environment values", () => {
   // Given

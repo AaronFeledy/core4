@@ -22,7 +22,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { runAppEvent } from "@lando/engine/operations/events";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
+import { withProjectEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
@@ -186,7 +186,7 @@ describe("EventCommandExecutorLayer.layer", () => {
   test("retains the executor when a canonical command enters another command-backed lifecycle event", async () => {
     // Given
     const harness = makeHarness();
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-stop": [{ command: "meta:test:second" }],
     });
     let secondRan = false;
@@ -945,13 +945,12 @@ describe("EventCommandExecutorLayer.layer", () => {
     const secret = "--RAW-ARGV-SECRET";
     const invocations: ToolingInvocation[] = [];
     const plan = attachEffectiveTooling(
-      attachEffectiveEvents(
+      withProjectEvents(
         { ...eventPlan(), root: AbsolutePath.make(process.cwd()) },
         { "pre-start": [{ command: "app:inspect", raw: [secret] }] },
       ),
       { inspect: { cmd: "inspect" } },
     );
-    attachEffectiveEvents(plan, { "pre-start": [{ command: "app:inspect", raw: [secret] }] });
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
         resolveAppliedPlan: () => Effect.succeed(undefined),
@@ -993,13 +992,12 @@ describe("EventCommandExecutorLayer.layer", () => {
     const harness = makeHarness();
     const secret = "TOOLING-ENV-SECRET";
     const plan = attachEffectiveTooling(
-      attachEffectiveEvents(
+      withProjectEvents(
         { ...eventPlan(), root: AbsolutePath.make(process.cwd()) },
         { "pre-start": [{ command: "app:inspect" }] },
       ),
       { inspect: { cmd: "inspect", env: { API_TOKEN: secret } } },
     );
-    attachEffectiveEvents(plan, { "pre-start": [{ command: "app:inspect" }] });
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
         resolveAppliedPlan: () => Effect.succeed(undefined),

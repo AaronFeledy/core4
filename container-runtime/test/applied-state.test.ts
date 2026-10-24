@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import {
   appliedPlanPath,
   appliedPlansDir,
   makeAppliedPlanStore,
 } from "@lando/container-runtime/applied-state";
-import type { PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId } from "@lando/sdk/schema";
-import { AppPlan } from "@lando/sdk/schema";
+import type { StateStoreError } from "@lando/sdk/errors";
+import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
+import { AbsolutePath, AppId, AppPlan, ProviderId } from "@lando/sdk/schema";
+import type { StateBucket } from "@lando/sdk/services";
+import { AppPlanSanitizer } from "@lando/sdk/services";
 import { legacyPlan, service } from "./fixtures/environment-values.ts";
 
 interface OpenCall {
@@ -136,5 +138,90 @@ describe("applied plan state layouts", () => {
         hasDefault: true,
       },
     ]);
+  });
+});
+
+describe("applied plan records", () => {
+  const plan: AppPlan = {
+    id: AppId.make("hooked"),
+    name: "hooked",
+    slug: "hooked",
+    root: AbsolutePath.make("/tmp/hooked"),
+    provider: ProviderId.make("lando"),
+    services: {},
+    routes: [],
+    networks: [],
+    stores: [],
+    fileSync: [],
+    events: { "pre-stop": [{ step: "echo bye", source: "project", sourceIndex: 0, status: "active" }] },
+    metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-22T00:00:00Z"), source: ".lando.yml", runtime: 4 },
+    extensions: {},
+  };
+  const { events: _events, ...record } = plan;
+  const writingStateStore = (written: unknown[]): PluginStateStore => ({
+    open: <A, I>(_spec: PluginStateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
+      Effect.succeed({
+        path: AbsolutePath.make("/tmp/plugin-state/applied-plans.json"),
+        get: Effect.succeed(null),
+        set: (value: A) =>
+          Effect.sync(() => {
+            written.push(value);
+          }),
+        update: () => Effect.die("not used"),
+        modify: <B>(f: (cur: A | null) => readonly [B, A]) =>
+          Effect.sync(() => {
+            const [result, next] = f(null);
+            written.push(next);
+            return result;
+          }),
+        remove: Effect.void,
+        exists: Effect.succeed(false),
+      }),
+    withLock: (_key, body) => body,
+  });
+
+  test.each(["per-app", "record"] as const)(
+    "%s direct persistence applies the injected private annotation projection",
+    async (layout) => {
+      const written: unknown[] = [];
+      const annotated = {
+        ...plan,
+        extensions: { retainedTooling: { task: "cleanup" }, eventSites: ["stale"] },
+      };
+      const store =
+        layout === "per-app"
+          ? makeAppliedPlanStore({ providerId: "lando", layout })
+          : makeAppliedPlanStore({ providerId: "podman", layout });
+      await Effect.runPromise(
+        store.persistAppliedPlan(writingStateStore(written), annotated).pipe(
+          Effect.provideService(AppPlanSanitizer, {
+            sanitizeForPersistence: (input) => {
+              const { eventSites: _sites, ...extensions } = input.extensions;
+              return { ...input, extensions };
+            },
+          }),
+        ),
+      );
+      const expected = { ...record, extensions: { retainedTooling: { task: "cleanup" } } };
+      expect(written).toEqual([layout === "per-app" ? expected : { [plan.id]: expected }]);
+    },
+  );
+
+  test("the per-app layout persists the plan without its Landofile events", async () => {
+    const written: unknown[] = [];
+    const store = makeAppliedPlanStore({ providerId: "lando", layout: "per-app" });
+
+    await Effect.runPromise(store.persistAppliedPlan(writingStateStore(written), plan));
+
+    expect(written).toEqual([record]);
+  });
+
+  test("the record layout persists the plan without its Landofile events", async () => {
+    const written: unknown[] = [];
+    const store = makeAppliedPlanStore({ providerId: "podman", layout: "record" });
+
+    await Effect.runPromise(store.persistAppliedPlan(writingStateStore(written), plan));
+
+    expect(written).toEqual([{ [plan.id]: record }]);
   });
 });

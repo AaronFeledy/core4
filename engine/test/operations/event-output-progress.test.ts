@@ -7,7 +7,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { DateTime, Effect, Layer } from "effect";
 import { runAppEvent } from "../../src/operations/events.ts";
 import { StreamFrameSink, createCollectingStreamFrameSink } from "../../src/operations/stream-frame-sink.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as EventRuntime from "../../src/services/event-service.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
@@ -32,8 +32,10 @@ for (const kind of ["cmd", "task"] as const) {
         extensions: {},
         metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-01T00:00:00Z"), source: "test", runtime: 4 },
       };
-      const plan = attachEffectiveTooling(basePlan, { named: task });
-      attachEffectiveEvents(plan, { "post-start": [kind === "cmd" ? task : { task: "named" }] });
+      const plan = attachEffectiveTooling(
+        withProjectEvents(basePlan, { "post-start": [kind === "cmd" ? task : { task: "named" }] }),
+        { named: task },
+      );
       const payload = createCollectingStreamFrameSink();
       const layer = Layer.mergeAll(
         testEnvironmentResolverLayer,

@@ -1,0 +1,182 @@
+---
+id: xhprof-xhgui
+provider: test
+timeout: 90000
+tags: [beta, docs, php, tooling, profiling, xhprof, xhgui, postgres]
+---
+
+# Profile PHP requests with XHProf and XHGui
+
+Install the XHProf extension in your PHP service, send each web request's profile to an XHGui service, and read the call graph in your browser.
+
+You need Lando 4 with a ready provider. The default provider is `lando` (managed Podman). Run the host commands from a new app directory for this demo. In an existing app, merge the services, mount, and tooling into your Landofile rather than replacing it.
+
+Use this only for local development. Profiles can contain query parameters, selected server fields, and PHP environment values. This example uses demo database credentials and leaves XHGui's UI and upload endpoint unauthenticated. Don't expose it through a public tunnel or profile requests carrying real credentials or customer data.
+
+## Configure PHP, XHGui, and Postgres
+
+Save this as `.lando.yml` in your app directory:
+
+```yaml
+name: xhprof-demo
+services:
+  app:
+    type: "php:8.3"
+    primary: true
+    build:
+      artifact:
+        - "pecl install xhprof"
+        - "docker-php-ext-enable xhprof"
+    mounts:
+      - source: "./xhprof.ini"
+        target: "/usr/local/etc/php/conf.d/zz-xhprof.ini"
+        readOnly: true
+  xhgui:
+    type: compose
+    image: xhgui/xhgui:0.23
+    appMount: false
+    home: false
+    environment:
+      XHGUI_SAVE_HANDLER: pdo
+      XHGUI_PDO_DSN: "pgsql:host=profiles;dbname=xhgui"
+      XHGUI_PDO_USER: xhgui
+      XHGUI_PDO_PASS: xhgui
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 80
+    dependsOn:
+      profiles:
+        condition: service_healthy
+  profiles:
+    type: postgres
+    creds:
+      user: xhgui
+      password: xhgui
+      database: xhgui
+tooling:
+  composer:
+    service: app
+    cmd: [composer]
+    dir: /app
+```
+
+- `app` runs PHP 8.3 under Apache. The two `build.artifact` steps compile and enable XHProf when Lando builds the image, and the mount drops a PHP ini file into the image's `conf.d` directory.
+- `xhgui` runs the upstream XHGui image, which serves its UI on port 80. `appMount: false` keeps your source out of it. Set `home: false` to skip home persistence because Lando doesn't know this image's home path; otherwise, you must set `home.path`. Keep the explicit HTTP `ui` endpoint so Lando can proxy port 80 and give the UI its own `*.lndo.site` URL.
+- `profiles` is the Postgres store. XHGui creates its `results` and `watches` tables on first use. `dependsOn` holds XHGui until the Postgres healthcheck passes.
+- `composer` runs Composer inside `app`. The PHP service ships Composer, so there is nothing else to install.
+
+Save this as `xhprof.ini` next to the Landofile:
+
+```ini
+auto_prepend_file = /app/xhgui-header.php
+```
+
+Save this as `xhgui-header.php` next to the Landofile:
+
+```php
+<?php
+$autoload = '/app/vendor/perftools/php-profiler/autoload.php';
+if (PHP_SAPI === 'cli' || !is_file($autoload)) {
+    return;
+}
+require_once $autoload;
+
+try {
+    $profiler = new \Xhgui\Profiler\Profiler([
+        'save.handler' => \Xhgui\Profiler\Profiler::SAVER_UPLOAD,
+        'save.handler.upload' => ['url' => 'http://xhgui/run/import'],
+    ]);
+    $profiler->start();
+} catch (\Throwable $e) {
+    error_log('xhgui: ' . $e->getMessage());
+}
+```
+
+PHP runs this file before every script. It skips the CLI, so `lando composer` and other commands aren't profiled, and it does nothing until the profiler package is installed. Web requests upload their profile to `http://xhgui/run/import` when they finish; `xhgui` is the service key on the app network.
+
+Save this as `index.php` so there is something worth measuring:
+
+```php
+<?php
+function fib(int $n): int
+{
+    return $n < 2 ? $n : fib($n - 1) + fib($n - 2);
+}
+
+echo 'fib(25) = ' . fib(25) . "\n";
+```
+
+## Start and install the profiler
+
+```sh
+lando start
+lando exec app -- php -m
+lando composer require perftools/php-profiler
+```
+
+Check that `xhprof` and `curl` appear in the module list. The profiler uses PHP's cURL extension to upload runs. Composer writes `composer.json` and `composer.lock` to your app directory; commit both so the next `lando composer install` gets the same profiler release. The `vendor` directory stays inside the `app` service, not on your host.
+
+## Profile a request
+
+Run `lando info` and open the `app` URL in your browser. The page prints `fib(25) = 75025`.
+
+Open the `xhgui` URL from `lando info`. Check that the run list shows a run for `/`, then open it and check that its function table lists `fib`. Every page load adds a run, so reload a few times to compare.
+
+If no run appears, check that `xhprof` and `curl` are in `lando exec app -- php -m` and that `lando exec app -- ls /app/vendor/perftools/php-profiler` lists the package. Check `lando logs -s app` for `xhgui:` setup errors.
+
+The profiler suppresses upload exceptions during shutdown, so an empty app log doesn't prove that a profile was saved. Check `lando logs -s xhgui` and `lando logs -s profiles` for import or database errors. After correcting an error, reload the app page and look for a new run containing `fib`.
+
+## Check the Lando configuration
+
+These checks exercise the declared services and tooling. They don't build XHProf or upload a profile; use the steps above for that:
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="xhprof-demo" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\\{[^}]*\"type\":\\s*\"php:8.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "pecl install xhprof" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"xhgui/xhgui:0.23\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"profiles\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"xhprof-demo\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Keep or remove the profiles
+
+`lando destroy -y` removes the app's containers and networks but keeps its volumes, so saved runs and the installed `vendor` directory are still there after the next start:
+
+```sh
+lando destroy -y
+```
+
+Add `--volumes` only when you want to delete the app's persistent volumes, including every saved profile. Your source files stay on the host.
+
+## Next
+
+- [Debug PHP with Xdebug in PhpStorm](./xdebug-phpstorm.mdx) to step through the slow function
+- [Customize PHP](../services/php-customization.mdx) for other `build.artifact` and ini patterns
+- [Add a Compose service](../services/compose-passthrough.mdx) for the keys `type: compose` accepts
+- [Choose a catalog service's endpoints](../proxy/route-shorthand.mdx#choose-a-catalog-services-endpoints) for named endpoints and routes

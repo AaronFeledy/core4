@@ -465,7 +465,8 @@
     "./database-creds": [
       "DATABASE_FAMILY_DEFAULT_PORTS",
       "DATABASE_FAMILY_ENV_KEYS",
-      "DATABASE_PORT_ENV_KEY"
+      "DATABASE_PORT_ENV_KEY",
+      "LANDO_DB_ENV_KEYS"
     ],
     "./digest": ["canonicalJson", "sha256Hex"],
     "./docs/components": [
@@ -626,6 +627,7 @@
       "LandofileEventInvocationDepthError",
       "LandofileEventLifecycleReentryError",
       "LandofileEventStepFailedError",
+      "LandofileEventsSkippedError",
       "LandofileExpressionEvalError",
       "LandofileExpressionForbiddenError",
       "LandofileExpressionParseError",
@@ -1280,7 +1282,11 @@
       "EventForSelector",
       "EventForStep",
       "EventStep",
+      "EventStepPlan",
+      "EventStepSource",
+      "EventStepStatus",
       "EventTaskStep",
+      "EventsPlan",
       "FailureRole",
       "FileFormat",
       "FileRef",
@@ -1600,6 +1606,7 @@
       "ToolManifest",
       "ToolingArgShape",
       "ToolingDefaultsShape",
+      "ToolingEnvironment",
       "ToolingEventName",
       "ToolingFlagShape",
       "ToolingIncludeShape",
@@ -1781,6 +1788,9 @@
       "createRedactor",
       "createSecretRedactor",
       "isPublicDefaultCredential",
+      "isSecretEnvName",
+      "isSecretFieldName",
+      "isSecretStructuralName",
       "isUsableExactRedactionValue",
       "parseSecretReference"
     ],

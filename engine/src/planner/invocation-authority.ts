@@ -5,33 +5,20 @@ import {
   compileInvocationSites,
   compiledValueError,
 } from "@lando/landofile/compiled-sites";
-import {
-  type AppPlan,
-  EventStep,
-  type HostEvents,
-  type LandofileShape,
-  type ServiceScopedLandofile,
+import type {
+  AppPlan,
+  EventsPlan,
+  HostEvents,
+  LandofileShape,
+  ServiceScopedLandofile,
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
-import type { CompiledEvents } from "./effective-events.ts";
 import { compileEffectiveTooling, effectiveToolingForPlan } from "./effective-tooling.ts";
 import { serviceCredsScopeForPlan, serviceScopeContext } from "./landofile-scopes.ts";
 
 const KEY = "@lando/core/invocation-authority";
 const Authority = Schema.Struct({
   sites: InvocationProgram,
-  events: Schema.Record(
-    Schema.String,
-    Schema.Array(
-      Schema.Struct({
-        step: Schema.toType(EventStep),
-        source: Schema.Literals(["host", "project"]),
-        sourceIndex: Schema.Number,
-        status: Schema.Literals(["active", "skipped", "deduped"]),
-        skipReason: Schema.optionalKey(Schema.String),
-      }),
-    ),
-  ),
 });
 export const invocationAuthorityForPlan = (plan: AppPlan) => {
   const value = plan.extensions[KEY];
@@ -64,14 +51,8 @@ export const compilePlanInvocationSites = Effect.fnUntraced(function* (input: {
 export const attachCompiledInvocationPlan = <Plan extends AppPlan>(
   plan: Plan,
   sites: InvocationProgram,
-  events: CompiledEvents,
-): Plan =>
-  attachInvocationAuthority(plan, {
-    sites,
-    events: Object.fromEntries(
-      Object.entries(events).flatMap(([name, steps]) => (steps === undefined ? [] : [[name, steps]])),
-    ),
-  });
+  events: EventsPlan,
+): Plan => attachInvocationAuthority({ ...plan, events }, { sites });
 
 export const sitesUnder = (
   sites: InvocationProgram,

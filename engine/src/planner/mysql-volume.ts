@@ -5,7 +5,6 @@ import type { AppPlan } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { carryPlanAttachments } from "./plan-attachments.ts";
 
 /** Select an unambiguous existing identity; never mutate provider storage. */
 export const resolveMysqlVolume = <Plan extends AppPlan>(
@@ -45,7 +44,7 @@ export const resolveMysqlVolume = <Plan extends AppPlan>(
         },
         stores: plan.stores.map((store) => (store.name === scoped ? { ...store, name: legacy } : store)),
       };
-      return carryPlanAttachments(plan, legacyPlan);
+      return legacyPlan;
     },
     Effect.mapError((cause): LandofileValidationError | ProviderUnavailableError =>
       cause._tag === "ProviderUnavailableError"

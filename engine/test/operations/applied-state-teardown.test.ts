@@ -5,10 +5,18 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
-import { DateTime, Effect, Exit, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { AppResolveError, LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { makeRedactionService } from "@lando/redaction/service";
+import type { LandofileEventsOutcome } from "@lando/sdk/app";
+import {
+  AppResolveError,
+  LandofileEventsSkippedError,
+  LandofileValidationError,
+  ProviderUnavailableError,
+} from "@lando/sdk/errors";
+import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import {
   AbsolutePath,
   AppId,
@@ -23,10 +31,12 @@ import type { AppliedOrphanGroup, ListFilter, ServiceRuntimeInfo } from "@lando/
 import {
   AppPlanner,
   EventService,
+  InteractionService,
   LandofileService,
   PathsService,
   RuntimeProviderRegistry,
   StateStore,
+  ToolingEngine,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -40,9 +50,13 @@ import {
 } from "../../src/operations/applied-state-target.ts";
 import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
+import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { compileAuthoredEventPlan } from "../authored-invocations.ts";
+import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
@@ -118,7 +132,7 @@ for (const landofilePresent of [true, false]) {
 test("calls onDesired when desired resolution succeeds", async () => {
   await withTempRoot(async (root) => {
     // Given
-    const plan = planAt(root);
+    const plan = currentTestPlan(planAt(root));
     const harness = makeLayer({ desiredPlan: plan });
     // When
     const result = await Effect.runPromise(
@@ -235,7 +249,7 @@ const makeLayer = (input: {
   const removalAttempts: Array<{ readonly service: string; readonly containerId: string | undefined }> = [];
   const desiredLoads: string[] = [];
   const evidenceRoots: string[] = [];
-  const published: string[] = [];
+  const published: LandoEvent[] = [];
   let appliedPlan = input.appliedPlan;
   const provider = {
     ...TestRuntimeProvider,
@@ -376,7 +390,10 @@ const makeLayer = (input: {
     Layer.succeed(
       EventService,
       EventService.of({
-        publish: (event) => Effect.sync(() => void published.push(event._tag)),
+        publish: (event) =>
+          Effect.sync(() => {
+            if (Schema.is(LandoEventSchema)(event)) published.push(event);
+          }),
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
@@ -773,7 +790,13 @@ describe("applied-state teardown", () => {
         withResolvedCwd(root, stopApp()).pipe(Effect.provide(harness.layer)),
       );
 
-      expect(result).toEqual({ app: appliedPlan.name, outcome: "stopped", servicesStopped: [] });
+      expect(result).toEqual({
+        app: appliedPlan.name,
+        outcome: "stopped",
+        servicesStopped: [],
+        // This layer has no redactor, so the loader detail stays out of the reason.
+        landofileEvents: { status: "skipped", reason: `the Landofile in ${root} could not be loaded` },
+      });
       expect(harness.destroyCalls).toEqual([appliedPlan]);
       expect(harness.appliedPlan()).toEqual(appliedPlan);
     });
@@ -1062,7 +1085,7 @@ describe("applied-state teardown", () => {
       expect(JSON.stringify(result)).toContain("An accelerated mount has no matching file sync engine.");
       expect(harness.mutationOrder).toEqual([]);
       expect(harness.removalAttempts).toEqual([]);
-      expect(harness.published).not.toContain("pre-destroy");
+      expect(harness.published.map((event) => event._tag)).not.toContain("pre-destroy");
     });
   });
 
@@ -1194,3 +1217,296 @@ describe("applied-state teardown", () => {
 });
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { currentTestPlan } from "../current-plan.ts";
+
+describe("Landofile events on applied-state teardown", () => {
+  const recordingEngine = (executed: string[]) =>
+    ToolingEngine.of({
+      id: "recording",
+      run: (invocation) =>
+        Effect.sync(() => {
+          executed.push(invocation.commands[0]?.[2]?.replace(/ "[$]@"$/u, "") ?? invocation.tool);
+          return {
+            tool: invocation.tool,
+            service: invocation.service ?? "web",
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          };
+        }),
+    });
+  const eventRuntime = (executed: string[]) =>
+    Layer.mergeAll(
+      Layer.succeed(ToolingEngine, recordingEngine(executed)),
+      testEnvironmentResolverLayerFor(makeRedactionService()),
+    );
+  /** Landofile-event notices only; the harness has no proxy, which destroy warns about separately. */
+  const notices = (published: ReadonlyArray<LandoEvent>) =>
+    published.flatMap((event) =>
+      (event._tag === "message.info" || event._tag === "message.warn") &&
+      event.body.startsWith("Skipping Landofile events")
+        ? [[event._tag, event.body] as const]
+        : [],
+    );
+  const teardown = (
+    operation: "stop" | "destroy",
+  ): Effect.Effect<
+    { readonly outcome?: string; readonly landofileEvents?: LandofileEventsOutcome },
+    Effect.Error<ReturnType<typeof stopApp>> | Effect.Error<ReturnType<typeof destroyApp>>,
+    Effect.Services<ReturnType<typeof stopApp>> | Effect.Services<ReturnType<typeof destroyApp>>
+  > => (operation === "stop" ? stopApp() : destroyApp());
+  const withWeb = (plan: AppPlan): AppPlan => ({
+    ...plan,
+    services: { [web.name]: { ...web, primary: true } },
+  });
+
+  test.each(["stop", "destroy"] as const)(
+    "%s uses current parsed runtime sites without altering applied ownership",
+    async (operation) => {
+      const executed: string[] = [];
+      await withTempRoot(async (root) => {
+        const appliedPlan = withWeb(planAt(root));
+        const desiredPlan = await compileAuthoredEventPlan(
+          attachEffectiveTooling(appliedPlan, { cleanup: { cmd: "echo {{ vars.value }}" } }),
+          {
+            [`pre-${operation}`]: [
+              { cmd: "echo {{ event._tag }}", for: ["one"] },
+              { task: "cleanup", vars: { value: "{{{{ event._tag }}" } },
+              { defer: "echo deferred-{{ item }}", for: ["a", "b"] },
+            ],
+          },
+        );
+        const harness = makeLayer({ appliedPlan, desiredPlan });
+        await Effect.runPromise(
+          withResolvedCwd(
+            root,
+            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
+          ),
+        );
+        expect(executed).toEqual([
+          `echo pre-${operation}`,
+          "echo {{ event._tag }}",
+          "echo deferred-b",
+          "echo deferred-a",
+        ]);
+        expect(harness.destroyCalls).toEqual([appliedPlan]);
+        expect(appliedPlan.events).toBeUndefined();
+        expect(appliedPlan.extensions).not.toHaveProperty("@lando/core/invocation-authority");
+      });
+    },
+  );
+
+  test.each([
+    ["stop", ["pre-init", "post-init", "pre-stop", "post-stop"]],
+    ["destroy", ["pre-init", "post-init", "pre-destroy", "post-destroy"]],
+  ] as const)("%s runs the current Landofile's steps against the applied app", async (operation, events) => {
+    await withTempRoot(async (root) => {
+      // Given an applied plan read back without events and a Landofile that declares them
+      const executed: string[] = [];
+      const appliedPlan = withWeb(planAt(root));
+      const desiredPlan = withProjectEvents(
+        appliedPlan,
+        Object.fromEntries(events.map((event) => [event, [`echo ${event}`]])),
+      );
+      const harness = makeLayer({ appliedPlan, desiredPlan });
+
+      // When
+      await Effect.runPromise(
+        withResolvedCwd(
+          root,
+          teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
+        ),
+      );
+
+      // Then every Landofile step ran, in lifecycle order, and nothing was skipped
+      expect(executed).toEqual(events.map((event) => `echo ${event}`));
+      expect(notices(harness.published)).toEqual([]);
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+    });
+  });
+
+  test.each(["stop", "destroy"] as const)(
+    "%s runs a task: step whose tooling comes from the current Landofile, before the provider teardown",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        // Given the applied record carries no tooling, while the current Landofile defines the task
+        const executed: string[] = [];
+        const appliedPlan = withWeb(planAt(root));
+        const desiredPlan = attachEffectiveTooling(
+          withProjectEvents(appliedPlan, { [`pre-${operation}`]: [{ task: "cleanup" }] }),
+          { cleanup: { cmd: "echo teardown" } },
+        );
+        const harness = makeLayer({ appliedPlan, desiredPlan });
+
+        // When
+        await Effect.runPromise(
+          withResolvedCwd(
+            root,
+            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
+          ),
+        );
+
+        // Then
+        expect(executed).toEqual(["echo teardown"]);
+        expect(harness.destroyCalls).toEqual([appliedPlan]);
+      });
+    },
+  );
+
+  test.each(["stop", "destroy"] as const)(
+    "%s reports in its result that Landofile events ran",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        // Given
+        const appliedPlan = withWeb(planAt(root));
+        const harness = makeLayer({ appliedPlan, desiredPlan: appliedPlan });
+
+        // When
+        const result = await Effect.runPromise(
+          withResolvedCwd(
+            root,
+            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime([]), harness.layer))),
+          ),
+        );
+
+        // Then
+        expect(result.landofileEvents).toEqual({ status: "ran" });
+      });
+    },
+  );
+
+  test.each(["stop", "destroy"] as const)(
+    "%s still tears down when the Landofile no longer loads, and says why its events were skipped",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        // Given the applied plan but a Landofile the loader rejects
+        const executed: string[] = [];
+        const appliedPlan = withWeb(planAt(root));
+        const harness = makeLayer({ appliedPlan });
+
+        // When
+        const result = await Effect.runPromise(
+          withResolvedCwd(
+            root,
+            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
+          ),
+        );
+
+        // Then
+        expect(result.outcome).toBe(operation === "stop" ? "stopped" : "destroyed");
+        expect(executed).toEqual([]);
+        const reason = `the Landofile in ${root} could not be loaded. The current Landofile is invalid`;
+        expect(notices(harness.published)).toEqual([
+          ["message.warn", `Skipping Landofile events for applied-teardown: ${reason}.`],
+        ]);
+        expect(result.landofileEvents).toEqual({ status: "skipped", reason });
+        expect(harness.destroyCalls).toEqual([appliedPlan]);
+      });
+    },
+  );
+
+  const interaction = (answer: boolean, interactive = true) =>
+    Layer.succeed(
+      InteractionService,
+      InteractionService.of({
+        id: "test",
+        isInteractive: Effect.succeed(interactive),
+        prompt: () => Effect.die("not used"),
+        promptAll: () => Effect.die("not used"),
+        confirm: () => Effect.succeed(answer),
+        select: () => Effect.die("not used"),
+        secret: () => Effect.die("not used"),
+      }),
+    );
+
+  describe("destroy that removes data while a present Landofile cannot source its hooks", () => {
+    const run = (
+      root: string,
+      options: { readonly volumes?: boolean; readonly yes?: boolean },
+      extra: Layer.Layer<InteractionService> | Layer.Layer<never> = Layer.empty,
+    ) => {
+      const appliedPlan = withWeb(planAt(root));
+      const harness = makeLayer({ appliedPlan });
+      return {
+        harness,
+        exit: Effect.runPromiseExit(
+          withResolvedCwd(
+            root,
+            destroyApp(options).pipe(Effect.provide(Layer.mergeAll(eventRuntime([]), harness.layer, extra))),
+          ),
+        ),
+      };
+    };
+
+    test("fails closed without --yes when nothing can confirm", async () => {
+      await withTempRoot(async (root) => {
+        const { harness, exit } = run(root, { volumes: true });
+        const outcome = await exit;
+        expect(Exit.isFailure(outcome)).toBe(true);
+        if (Exit.isFailure(outcome)) {
+          const error = Cause.squash(outcome.cause);
+          expect(error).toBeInstanceOf(LandofileEventsSkippedError);
+          expect((error as LandofileEventsSkippedError).reason).toContain("could not be loaded");
+        }
+        expect(harness.destroyCalls).toEqual([]);
+      });
+    });
+
+    test("fails when an interactive session declines", async () => {
+      await withTempRoot(async (root) => {
+        const { harness, exit } = run(root, { volumes: true }, interaction(false));
+        const outcome = await exit;
+        expect(Exit.isFailure(outcome)).toBe(true);
+        expect(harness.destroyCalls).toEqual([]);
+      });
+    });
+
+    test("proceeds when an interactive session confirms", async () => {
+      await withTempRoot(async (root) => {
+        const { harness, exit } = run(root, { volumes: true }, interaction(true));
+        const outcome = await exit;
+        expect(Exit.isSuccess(outcome)).toBe(true);
+        expect(harness.destroyCalls).toHaveLength(1);
+      });
+    });
+
+    test("proceeds with --yes and still reports the skip", async () => {
+      await withTempRoot(async (root) => {
+        const { harness, exit } = run(root, { volumes: true, yes: true });
+        const outcome = await exit;
+        expect(Exit.isSuccess(outcome)).toBe(true);
+        if (Exit.isSuccess(outcome)) expect(outcome.value.landofileEvents?.status).toBe("skipped");
+        expect(harness.destroyCalls).toHaveLength(1);
+      });
+    });
+
+    test("does not gate a destroy that keeps data", async () => {
+      await withTempRoot(async (root) => {
+        const { harness, exit } = run(root, {});
+        expect(Exit.isSuccess(await exit)).toBe(true);
+        expect(harness.destroyCalls).toHaveLength(1);
+      });
+    });
+  });
+
+  test("destroy at a missing root skips Landofile events with a notice", async () => {
+    await withTempRoot(async (parent) => {
+      // Given
+      const root = join(parent, "gone");
+      const executed: string[] = [];
+      const appliedPlan = withWeb(planAt(root));
+      const harness = makeLayer({ appliedPlan });
+
+      // When
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(root).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
+      );
+
+      // Then
+      expect(result.outcome).toBe("destroyed");
+      expect(executed).toEqual([]);
+      expect(notices(harness.published)).toEqual([
+        ["message.info", `Skipping Landofile events for applied-teardown: no Landofile in ${root}.`],
+      ]);
+    });
+  });
+});
