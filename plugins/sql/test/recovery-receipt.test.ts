@@ -1,11 +1,74 @@
 import { afterEach, expect, test } from "bun:test";
-import { SqlCommandFailedError, SqlRecoveryOperationError } from "@lando/sdk/errors";
+import { DataTransferError, SqlCommandFailedError, SqlRecoveryOperationError } from "@lando/sdk/errors";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { executeDbCommand } from "../src/execute.ts";
 import { FakeRestoreError, FakeStartError, cleanupSqlTestDeps } from "./support/fakes.ts";
 import { makeRetentionTestDeps } from "./support/retention-store.ts";
 
 afterEach(cleanupSqlTestDeps);
+
+test("does not fabricate command evidence for a malformed wire failure", async () => {
+  const fixture = await makeRetentionTestDeps();
+  const deps = {
+    ...fixture.deps,
+    transfer: () => Effect.fail({ _tag: "DataTransferError", message: "failed", exitCode: "invalid" }),
+  };
+
+  const exit = await Effect.runPromiseExit(
+    executeDbCommand(deps, { action: "import", file: "dump.sql", yes: true }),
+  );
+
+  if (!Exit.isFailure(exit)) throw new Error("expected malformed failure");
+  const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+  expect(error).toBeInstanceOf(SqlRecoveryOperationError);
+  expect(error).toMatchObject({ recoverySnapshotId: fixture.captured[0] });
+  expect(error).not.toHaveProperty("exitCode");
+  expect(fixture.captured).toHaveLength(1);
+});
+
+test.each(["transfer", "resume"] as const)(
+  "normalizes wire-encoded %s failures before attaching recovery context",
+  async (phase) => {
+    const fixture = await makeRetentionTestDeps();
+    const failure =
+      phase === "transfer"
+        ? new DataTransferError({
+            message: "Load failed.",
+            operation: "exec",
+            exitCode: 3,
+            stderrTail: "denied\n",
+          })
+        : new SqlCommandFailedError({
+            message: "Readiness failed.",
+            service: "database",
+            command: ["mysql"],
+            exitCode: 7,
+            stderrTail: "unavailable\n",
+            remediation: "Repair database access.",
+          });
+    const wire = Schema.encodeUnknownSync(Schema.Union([DataTransferError, SqlCommandFailedError]))(failure);
+    const deps =
+      phase === "transfer"
+        ? { ...fixture.deps, transfer: () => Effect.fail(wire) }
+        : { ...fixture.deps, resume: () => Effect.fail(wire) };
+
+    const exit = await Effect.runPromiseExit(
+      executeDbCommand(deps, { action: "import", file: "dump.sql", yes: true }),
+    );
+
+    if (!Exit.isFailure(exit)) throw new Error("expected command failure");
+    const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+    expect(error).toBeInstanceOf(phase === "transfer" ? DataTransferError : SqlCommandFailedError);
+    expect(error).toMatchObject({
+      _tag: failure._tag,
+      exitCode: failure.exitCode,
+      stderrTail: failure.stderrTail,
+      recoverySnapshotId: fixture.captured[0],
+    });
+    expect(fixture.captured).toHaveLength(1);
+    expect(fixture.removed).toEqual([]);
+  },
+);
 
 test.each(["import", "reset", "restore", "snapshot"] as const)(
   "%s preserves diagnostics and the captured snapshot when post-capture readiness fails",
