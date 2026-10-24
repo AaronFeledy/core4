@@ -33,12 +33,12 @@ const resolve = (type: ServiceType, config: Record<string, unknown>) =>
 const project = async (resolution: Awaited<ReturnType<typeof resolve>>) => {
   const featureRef = resolution.features[0];
   const feature = featureRef === undefined ? undefined : serviceFeatures.get(featureRef.id);
-  if (feature === undefined) throw new Error("missing builtin database feature");
+  if (featureRef === undefined || feature === undefined) throw new Error("missing builtin database feature");
   const { ctx } = recordFeatureContext({
     serviceType: resolution.normalizedConfig.type ?? "",
     normalizedConfig: resolution.normalizedConfig,
     connection: resolution.connection,
-    config: {},
+    config: featureRef.config ?? {},
   });
   const environment: Record<string, EnvironmentValue> = {};
   await Effect.runPromise(

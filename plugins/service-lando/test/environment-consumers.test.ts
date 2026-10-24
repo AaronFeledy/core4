@@ -11,6 +11,7 @@ import { recordFeatureContext } from "./support/record-feature-context.ts";
 const reference = { _tag: "SecretRef", reference: "PASSWORD" } as const;
 
 test("MSSQL healthcheck reads SQLCMDPASSWORD internally without a password argv", async () => {
+  // Given
   const resolution = await Effect.runPromise(
     mssqlServiceType.resolve({
       name: "db",
@@ -24,16 +25,39 @@ test("MSSQL healthcheck reads SQLCMDPASSWORD internally without a password argv"
   );
   const { ctx, calls } = recordFeatureContext({
     serviceType: "mssql",
-    config: {},
+    config: resolution.features[0]?.config ?? {},
     normalizedConfig: resolution.normalizedConfig,
     connection: resolution.connection,
   });
+  // When
   await Effect.runPromise(mssqlServiceFeature.apply(ctx));
+  // Then
   expect(calls).toContainEqual(["addEnv", "SQLCMDPASSWORD", reference]);
   expect(calls).toContainEqual([
     "setHealthcheck",
     expect.objectContaining({
-      command: ["/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost,1433", "-U", "sa", "-C", "-Q", "SELECT 1"],
+      command: [
+        "/bin/bash",
+        "-c",
+        'export SQLCMDPASSWORD="$SA_PASSWORD"; exec "$@"',
+        "lando-mssql-health",
+        "/opt/mssql-tools18/bin/sqlcmd",
+        "-S",
+        "localhost,1433",
+        "-U",
+        "sa",
+        "-C",
+        "-b",
+        "-r1",
+        "-d",
+        "master",
+        "-l",
+        "2",
+        "-t",
+        "5",
+        "-Q",
+        "IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'app' AND state_desc = 'ONLINE' AND HAS_DBACCESS(name) = 1) THROW 50000, 'Database is not accessible', 1;",
+      ],
     }),
   ]);
 });
