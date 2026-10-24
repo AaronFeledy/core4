@@ -71,6 +71,8 @@ The `mariadb` type ships the client task. After start:
 lando mariadb
 ```
 
+The generated client supplies its password for each invocation. Lando scopes the client-only `MYSQL_PWD` variable to client and healthcheck processes, not the database server's initialization environment.
+
 Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). You can also pipe a plain SQL file directly into the client. This executes the statements in the dump against the database, so back up any data you need first:
 
 ```sh
