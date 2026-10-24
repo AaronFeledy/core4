@@ -2,7 +2,6 @@
 name: platform-readiness
 
 on:
-  pull_request:
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
@@ -16,7 +15,7 @@ permissions:
 
 jobs:
   container-helper:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -57,8 +56,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   platform-readiness-linux-x64:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     needs: [container-helper]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
@@ -203,6 +203,7 @@ jobs:
           retention-days: 14
 
   platform-readiness-linux-arm64:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     needs: [container-helper]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
@@ -349,7 +350,7 @@ jobs:
           retention-days: 14
 
   platform-readiness-darwin-arm64:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     needs: [container-helper]
     runs-on: [self-hosted, lando-virt, macOS, ARM64]
     timeout-minutes: 45
@@ -414,7 +415,7 @@ jobs:
           retention-days: 14
 
   platform-readiness-darwin-x64:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     needs: [container-helper]
     runs-on: [self-hosted, lando-virt, macOS, X64]
     timeout-minutes: 45
@@ -479,7 +480,7 @@ jobs:
           retention-days: 14
 
   platform-readiness-windows-x64:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     needs: [container-helper]
     runs-on: [self-hosted, lando-virt, Windows, X64]
     timeout-minutes: 45
@@ -553,7 +554,7 @@ jobs:
           retention-days: 14
 
   platform-readiness-windows-arm64:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     needs: [container-helper]
     runs-on: [self-hosted, lando-virt, Windows, ARM64]
     timeout-minutes: 45

@@ -8,6 +8,8 @@ tags: [beta, docs, landofile, config, translate]
 
 # Translate a config into a v4 Landofile
 
+Preview a conversion without changing files. From the app directory, run:
+
 ```sh
 lando app:config:translate
 ```
@@ -28,6 +30,8 @@ The default output is the translated YAML. When a single layer is produced, you 
 `--format=json` prints the structured preview: `inputPath`, `translator`, `target`, `files`, `content`, `targets` (one `layer`, `path`, `content` per declared layer), `diagnostics`, and `deletions`.
 
 ## Write the files
+
+Review the preview and its diagnostics before writing. The next command replaces the declared v4 Landofile layers and can remove source files listed in `deletions`; Lando backs up each replaced or removed file before changing it.
 
 ```sh
 lando app:config:translate --write

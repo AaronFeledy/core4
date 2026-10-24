@@ -76,7 +76,13 @@ describe("executeDbCommand", () => {
           inspected.push(target);
           expect(harness.countAttempts()).toBe(0);
           expect(harness.lifecycle()).toEqual([]);
-          return { app: target.app, service: target.service, providerId: source.provider, status: "running" };
+          return {
+            app: target.app,
+            service: target.service,
+            providerId: source.provider,
+            status: "running",
+            publications: { status: "unknown" as const },
+          };
         }),
     });
     // When: seeding from the applied source.
@@ -235,6 +241,7 @@ describe("executeDbCommand", () => {
                   service: target.service,
                   providerId: source.provider,
                   status: "stopped",
+                  publications: { status: "unknown" as const },
                 }),
             }
           : {}),

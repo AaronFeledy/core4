@@ -2,22 +2,12 @@ import { SchemaIssue } from "effect";
 import { Effect, Result, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import {
-  PortablePath,
-  type ServiceConfig,
-  type ServicePlan,
-  containerDestinationRefusalMessage,
-  parseContainerDestination,
-} from "@lando/sdk/schema";
+import type { EndpointPlan, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 
-import {
-  type BaseSeed,
-  type DraftServicePlan,
-  deterministicMetadata,
-  makeDraft,
-  sortRecord,
-} from "./draft.ts";
+import { type BaseSeed, type DraftServicePlan, makeDraft, sortRecord } from "./draft.ts";
+import { endpointValidationError, normalizeEndpoints } from "./endpoint-normalizer.ts";
+import { finalizeDraft } from "./finalize-service.ts";
 
 export type { BaseSeed } from "./draft.ts";
 
@@ -155,119 +145,50 @@ const makeContext = (
   },
 });
 
-const destinationError = (target: string, reason: "not-absolute" | "root"): ServiceFeatureError =>
-  new ServiceFeatureError({
-    message: containerDestinationRefusalMessage(reason, target),
-    feature: "destination",
-  });
+export const composeServiceWithContributions = Effect.fn("ServiceFeature.composeServiceWithContributions")(
+  function* (
+    input: ComposeServiceInput,
+  ): Effect.fn.Return<
+    { readonly plan: ServicePlan; readonly endpointContributions: readonly EndpointPlan[] },
+    ServiceFeatureError
+  > {
+    const draft = makeDraft(input.base);
+    const orderedFeatures = stableFeatureOrder(input);
+    draft.featureIds = orderedFeatures.map((feature) => feature.id);
 
-const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFeatureError => {
-  const featureIds = draft.featureIds ?? [];
-  const dataTrees = draft.storageOwnership ?? [];
-  const coreExtension =
-    draft.buildSteps.length === 0 && featureIds.length === 0 && dataTrees.length === 0
-      ? {}
-      : {
-          "@lando/core/service-features": {
-            ...(featureIds.length === 0 ? {} : { featureIds: [...featureIds] }),
-            ...(dataTrees.length === 0 ? {} : { dataTrees: dataTrees.map((tree) => ({ ...tree })) }),
-            ...(draft.buildSteps.length === 0
-              ? {}
-              : { buildSteps: draft.buildSteps.map((step) => ({ ...step })) }),
-          },
-        };
+    yield* Effect.forEach(
+      orderedFeatures,
+      (feature) =>
+        Effect.gen(function* () {
+          const config = yield* decodeFeatureConfig(feature);
+          yield* feature.definition.apply(makeContext(input, draft, config));
+        }),
+      { discard: true },
+    );
 
-  let appMount: ServicePlan["appMount"];
-  if (draft.appMount !== undefined) {
-    const parsed = parseContainerDestination(draft.appMount.target);
-    if (!parsed.ok) return destinationError(draft.appMount.target, parsed.reason);
-    appMount = {
-      ...draft.appMount,
-      target: parsed.value,
-      realization: "passthrough",
-    };
-  }
-
-  const mounts: Array<ServicePlan["mounts"][number]> = [];
-  for (const mount of draft.mounts) {
-    const parsed = parseContainerDestination(mount.target);
-    if (!parsed.ok) return destinationError(mount.target, parsed.reason);
-    mounts.push({
-      ...mount,
-      target: parsed.value,
-      realization: "passthrough",
+    const endpointContributions = draft.endpoints;
+    draft.endpoints = normalizeEndpoints(endpointContributions, input.normalizedConfig);
+    const endpointError = endpointValidationError(draft.endpoints, {
+      appRoot: input.appRoot,
+      serviceName: draft.name,
     });
-  }
-
-  const storage: Array<ServicePlan["storage"][number]> = [];
-  for (const entry of draft.storage) {
-    const parsed = parseContainerDestination(entry.target);
-    if (!parsed.ok) return destinationError(entry.target, parsed.reason);
-    storage.push({
-      ...entry,
-      target: parsed.value,
-    });
-  }
-
-  return {
-    name: draft.name,
-    type: draft.type,
-    provider: draft.provider,
-    primary: draft.primary,
-    ...(draft.artifact === undefined ? {} : { artifact: draft.artifact }),
-    ...(draft.command === undefined ? {} : { command: draft.command }),
-    ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
-    environment: sortRecord(draft.environment),
-    ...(draft.user === undefined ? {} : { user: draft.user }),
-    ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
-    ...(appMount === undefined ? {} : { appMount }),
-    mounts,
-    storage,
-    endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
-    routes: [],
-    dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),
-    ...(draft.healthcheck === undefined ? {} : { healthcheck: draft.healthcheck }),
-    ...(draft.certs === undefined ? {} : { certs: draft.certs }),
-    hostAliases: draft.hostAliases.map((alias) => ({ ...alias })),
-    metadata: deterministicMetadata,
-    extensions: { ...coreExtension, ...(draft.extensions ?? {}) },
-  };
-};
+    if (endpointError !== undefined) {
+      return yield* Effect.fail(
+        new ServiceFeatureError({
+          message: endpointError.message,
+          feature: "endpoints",
+          cause: endpointError,
+        }),
+      );
+    }
+    const finalized = finalizeDraft(draft);
+    if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
+    return { plan: finalized, endpointContributions };
+  },
+);
 
 export const composeService = Effect.fn("ServiceFeature.composeService")(function* (
   input: ComposeServiceInput,
 ): Effect.fn.Return<ServicePlan, ServiceFeatureError> {
-  const draft = makeDraft(input.base);
-  const orderedFeatures = stableFeatureOrder(input);
-  draft.featureIds = orderedFeatures.map((feature) => feature.id);
-
-  yield* Effect.forEach(
-    orderedFeatures,
-    (feature) =>
-      Effect.gen(function* () {
-        const config = yield* decodeFeatureConfig(feature);
-        yield* feature.definition.apply(makeContext(input, draft, config));
-      }),
-    { discard: true },
-  );
-
-  // Explicit endpoint intent replaces feature defaults, including an empty list.
-  if (input.normalizedConfig.endpoints !== undefined) {
-    draft.endpoints = input.normalizedConfig.endpoints.map((endpoint) => {
-      switch (endpoint.protocol) {
-        case "unix":
-          return { ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) };
-        case "http":
-        case "https":
-        case "tcp":
-        case "udp":
-          return { ...endpoint };
-        default:
-          return endpoint satisfies never;
-      }
-    });
-  }
-  const finalized = finalizeDraft(draft);
-  if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
-  return finalized;
+  return (yield* composeServiceWithContributions(input)).plan;
 });

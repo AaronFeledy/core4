@@ -7,7 +7,7 @@ tags: [beta, docs, tomcat, service]
 
 # Add Tomcat
 
-Put `type: tomcat` in your services block. That shorthand is Tomcat 11. Lando mounts your app at `/app` and serves the webroot (the project root by default) as the ROOT webapp:
+Add `type: tomcat` under `services` in `.lando.yml` at the root of your web application. That shorthand is Tomcat 11. Lando mounts your app at `/app` and serves the webroot (the project root by default) as the ROOT webapp:
 
 ```yaml
 name: tomcat-demo
@@ -99,7 +99,7 @@ on `lando.certs`, so `lando info` shows an `https://` URL after start. Set
 `certs: false` if you do not want a leaf certificate.
 
 ```sh
-lando info --json
+lando info --format=json
 ```
 
 </Guide>

@@ -9,6 +9,26 @@ tags: [beta, docs, config, offline]
 
 Lando reuses cached state wherever it can, so a lot of everyday work keeps running without network access.
 
+Before going offline, start the app while connected so Lando can pull images and build containers. If the Landofile uses remote includes, run `lando app:includes:update` from the app directory while connected to populate its lockfile and cache. Later, `lando app:includes:update --no-network --format=json` checks those cached includes without fetching them.
+
+## What works offline
+
+Starting an app you already ran before works offline, as long as its images were already pulled and its containers already built. `lando start` and `lando restart` reuse images already in your provider instead of pulling them again, including the images for global services like the proxy. Scratch apps, `lando global:start`, and `lando global:restart` work the same way. Command routing and plugin resolution read from the on-disk command cache under the user cache root (refreshed with `app:cache:refresh`), not the network.
+
+The bundled SSH sidecar installs `openssh-client` and `socat` when the global app builds its image, not when the container starts. After that first online build, later starts reuse the image and cached build layers without network access. SSH agent forwarding can come back offline after a poweroff or reboot.
+
+`lando rebuild` and `lando global:rebuild` re-pull the images your services reference so updated tags take effect, then rerun the build. If the registry can't be reached, Lando warns and rebuilds from the local copies. With `--format=json`, that warning is in the result's `warnings` array with code `LANDO_ARTIFACT_REFRESH_FAILED`. Only an image that was never pulled needs network access.
+
+Runtime bundle, tool, npm and tarball recipe downloads, and git recipes pinned to a full commit SHA first check the local cache. A cache hit never touches the network. A git recipe on a branch, tag, or default branch is fetched again on every init; `lando init --source=git` warns and uses the cached commit when that fetch fails. When a download is actually required and the network is unavailable, the download fails with `DownloadOfflineError` instead of hanging or silently retrying.
+
+Once a remote include has a lockfile entry and a cached copy, loading the app reads that copy instead of the network. `lando start`, `lando app:config`, tooling, `lando app:includes:verify`, and `lando app:includes:update --no-network` all work offline from then on. See [Pin a remote include](../landofile/includes-and-lockfile.mdx#pin-a-remote-include).
+
+## Honest limits
+
+A successful config or cache check does not prove that every build step can run offline. Build steps that download packages need network access when their cached layers are missing or their inputs change.
+
+An image that was never pulled has nothing in the local cache, so the first `lando start` for that image still needs network access. A remote include can only be resolved offline once it already has a lockfile entry and a cached copy from a prior online run. Changing an include's `version:` also needs network access, because the next load fetches the new version. There is no global `--offline` flag. Offline behavior is scoped per command, such as `--no-network` on `app:includes:update`.
+
 <Guide>
   <Scenario id="update-includes-without-network" render>
     <Step name="scaffold">
@@ -32,21 +52,3 @@ Lando reuses cached state wherever it can, so a lot of everyday work keeps runni
 The fixture above has no remote includes, so `--no-network` succeeds trivially. A remote include with no prior lockfile or cache entry fails with `LandofileIncludeError` instead of falling back to a network fetch. The error names the missing source and says `--no-network` blocked the fetch.
 
 Run the same command once with network access (`lando app:includes:update`) to populate the lockfile and cache. `--no-network` works offline from that point on.
-
-## What works offline
-
-Starting an app you already ran before works offline, as long as its images were already pulled and its containers already built. `lando start` and `lando restart` reuse images already in your provider instead of pulling them again, including the images for global services like the proxy. Scratch apps, `lando global:start`, and `lando global:restart` work the same way. Command routing and plugin resolution read from the on-disk command cache under the user cache root (refreshed with `app:cache:refresh`), not the network.
-
-The bundled SSH sidecar installs `openssh-client` and `socat` when the global app builds its image, not when the container starts. After that first online build, later starts reuse the image and cached build layers without network access. SSH agent forwarding can come back offline after a poweroff or reboot.
-
-`lando rebuild` and `lando global:rebuild` re-pull the images your services reference so updated tags take effect, then rerun the build. If the registry can't be reached, Lando warns and rebuilds from the local copies. With `--format=json`, that warning is in the result's `warnings` array with code `LANDO_ARTIFACT_REFRESH_FAILED`. Only an image that was never pulled needs network access.
-
-Runtime bundle, tool, npm and tarball recipe downloads, and git recipes pinned to a full commit SHA first check the local cache. A cache hit never touches the network. A git recipe on a branch, tag, or default branch is fetched again on every init; `lando init --source=git` warns and uses the cached commit when that fetch fails. When a download is actually required and the network is unavailable, the download fails with `DownloadOfflineError` instead of hanging or silently retrying.
-
-Once a remote include has a lockfile entry and a cached copy, loading the app reads that copy instead of the network. `lando start`, `lando app:config`, tooling, `lando app:includes:verify`, and `lando app:includes:update --no-network` all work offline from then on. See [Pin a remote include](../landofile/includes-and-lockfile.mdx#pin-a-remote-include).
-
-## Honest limits
-
-Build steps that download packages need network access when their cached layers are missing or their inputs change.
-
-An image that was never pulled has nothing in the local cache, so the first `lando start` for that image still needs network access. A remote include can only be resolved offline once it already has a lockfile entry and a cached copy from a prior online run. Changing an include's `version:` also needs network access, because the next load fetches the new version. There is no global `--offline` flag. Offline behavior is scoped per command, such as `--no-network` on `app:includes:update`.

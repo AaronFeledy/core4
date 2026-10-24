@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { CheckResult } from "@lando/sdk/schema";
+import { StartAppResultSchema } from "@lando/engine/operations/start";
 import { Effect, Exit, Fiber, Schema } from "effect";
 
 import {
@@ -15,16 +15,7 @@ import {
 const envelope = Schema.Struct({
   ok: Schema.Boolean,
   warnings: Schema.Array(Schema.Unknown),
-  result: Schema.Struct({
-    checks: Schema.Array(CheckResult),
-    servicesStarted: Schema.Array(
-      Schema.Struct({
-        name: Schema.String,
-        state: Schema.String,
-        endpoints: Schema.Array(Schema.String),
-      }),
-    ),
-  }),
+  result: StartAppResultSchema,
 });
 
 describe.serial("live start scanner", () => {
@@ -47,7 +38,15 @@ describe.serial("live start scanner", () => {
                 json,
               ).envelope;
               expect(result.ok).toBe(true);
-              const url = result.result.servicesStarted[0]?.endpoints[0];
+              const publication = result.result.servicesStarted[0]?.connections.find(
+                (connection) =>
+                  connection.scope === "host" &&
+                  connection.source === "publication" &&
+                  connection.binding === "assigned" &&
+                  connection.state === "active" &&
+                  connection.protocol === "http",
+              );
+              const url = publication?.binding === "assigned" ? publication.url : undefined;
               if (url === undefined) return yield* Effect.die(new Error("start published no URL"));
               const request = yield* recordedRequest(fixture.root);
               expect(request).toEqual({ host: new URL(url).host, path, method: "GET" });

@@ -1,3 +1,4 @@
+import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
 import {
   COMPOSE_KNOBS_TRANSPORT_CHECK,
   MACHINE_LIFECYCLE_ACCEPTANCE_CELLS,
@@ -146,7 +147,7 @@ export const PROVIDER_ACCEPTANCE_CELLS: readonly ProviderAcceptanceCellPlan[] = 
   {
     id: "docker-engine-linux",
     engine: "Docker Engine",
-    runsOn: "ubuntu-24.04",
+    runsOn: LINUX_X64_TEST_RUNNER,
     provider: "docker",
     releaseBlocking: true,
     installPodman6: false,
@@ -170,7 +171,7 @@ export const PROVIDER_ACCEPTANCE_CELLS: readonly ProviderAcceptanceCellPlan[] = 
   {
     id: "lando-podman6-linux",
     engine: "Lando managed Podman 6",
-    runsOn: "ubuntu-24.04",
+    runsOn: LINUX_X64_TEST_RUNNER,
     provider: "lando",
     releaseBlocking: true,
     installPodman6: false,
@@ -181,7 +182,7 @@ export const PROVIDER_ACCEPTANCE_CELLS: readonly ProviderAcceptanceCellPlan[] = 
   {
     id: "podman-podman6-linux",
     engine: "Podman 6",
-    runsOn: "ubuntu-24.04",
+    runsOn: LINUX_X64_TEST_RUNNER,
     provider: "podman",
     releaseBlocking: true,
     installPodman6: true,

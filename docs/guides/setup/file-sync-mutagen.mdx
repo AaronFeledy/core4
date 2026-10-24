@@ -23,6 +23,8 @@ The `file-sync` doctor check verifies that the installed tools and session clien
 
 ## Start the app
 
+If you set a service’s `user`, use a numeric UID and GID on Windows, such as `1000:1000`. Lando uses that identity for synced files. Named service users cannot be resolved before the container starts; use the numeric identity from your image.
+
 From your project directory:
 
 ```sh
@@ -38,8 +40,6 @@ lando doctor
 ```
 
 Edit a project file on Windows and check the change through the app's URL or tooling. Files written inside the synced project paths return to Windows too. Lando completes the initial sync before it starts the app's services. That first scan can take several minutes for a large project; later starts reuse the session and its history. The project app mount is accelerated; extra bind mounts, including config files, keep their ordinary mount behavior.
-
-If you set a service's `user`, use a numeric UID and GID on Windows, such as `1000:1000`. Lando uses that identity for synced files. Named service users cannot be resolved before the container starts; use the numeric identity from your image.
 
 ## Exclude generated files
 

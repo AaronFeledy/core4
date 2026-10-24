@@ -12,13 +12,17 @@ Run `xdg-open` or `open` inside a host-proxy-enabled service to open a URL on yo
 
 ## Start the app and open a URL
 
+Run these from the app directory on the host. Replace `web` with a service name
+from your Landofile. The two opener commands are alternatives; each opens the URL
+in your host browser.
+
 ```sh
 lando start
 lando exec web -- xdg-open https://example.com/x
 lando exec web -- open https://example.com/x
 ```
 
-Replace `web` with your service name. Both commands take exactly one URL or path. Flags, including macOS `open -a`, `--help`, and `--`, are unsupported and fail without launching anything. Use `./-filename` for a filename beginning with a dash.
+Both commands take exactly one URL or path. Flags, including macOS `open -a`, `--help`, and `--`, are unsupported and fail without launching anything. Use `./-filename` for a filename beginning with a dash.
 
 Lando mounts the same static client read-only as `/usr/local/bin/lando`, `/usr/local/bin/xdg-open`, and `/usr/local/bin/open`. The two opener names intentionally shadow image-provided openers when `/usr/local/bin` precedes `/usr/bin` on `PATH`. They do not install a browser inside the container. A client without host-proxy connection settings fails with an error rather than trying a container opener.
 

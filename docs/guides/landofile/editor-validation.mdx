@@ -16,9 +16,11 @@ Put this on the first line of `.lando.yml`:
 
 Any editor running the YAML language server (VS Code with the Red Hat YAML
 extension, Neovim with `yamlls`, Zed, JetBrains with the YAML plugin) reads
-that modeline, fetches the schema, and flags the same problems
-`lando app:config:lint` reports: unknown keys, wrong types, out-of-range
-ports. You also get completion and hover docs for every key.
+that modeline, fetches the schema, and flags structural problems such as
+unknown keys, wrong literal types, and out-of-range ports. You also get
+completion and hover docs for every key. Run `lando app:config:lint` from
+the app directory for checks that require resolved expressions, service
+types, or included files; editor validation does not replace lint.
 
 New Landofiles already have it. `lando init` and `lando app:config:translate`
 write the modeline on the first line of every file they create. Files you

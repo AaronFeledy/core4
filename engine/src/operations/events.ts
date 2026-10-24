@@ -13,11 +13,18 @@ import type {
 import { LANDO_HOST_EVENT_ENV, ServiceName } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, RuntimeProviderRegistry, ShellRunner } from "@lando/sdk/services";
 
-import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
+import {
+  RedactionService,
+  collectSecretEnvValues,
+  collectSecretStructuralValues,
+} from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import {
+  collectAppPlanPublicCredentialValues,
+  collectAppPlanRedactionTokens,
+} from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-compiler.ts";
@@ -25,7 +32,7 @@ import type { ToolingCommandStepLeaf } from "../tooling/step-program.ts";
 import { runToolingStepProgram } from "../tooling/step-runner.ts";
 import { runCanonicalCommand, withinEventInvocation } from "./event-invocation.ts";
 import { eventStepFile, eventStepLabel } from "./event-step-identity.ts";
-import { makeEventStepRunners } from "./event-step-runtime.ts";
+import { type EventRedactionSources, makeEventStepRunners } from "./event-step-runtime.ts";
 
 interface EventRedactor {
   readonly redactString: (value: string) => string;
@@ -41,6 +48,7 @@ const authoredStepKind = (step: EventStep): "cmd" | "task" | "command" => {
 const redactionValuesForStep = (
   step: EventStep,
   tooling: ReturnType<typeof effectiveToolingForPlan>,
+  publicValues: ReadonlySet<string>,
 ): ReadonlyArray<string> => {
   if (typeof step === "string") return [];
   const env =
@@ -53,6 +61,7 @@ const redactionValuesForStep = (
     ? []
     : collectSecretEnvValues(
         Object.fromEntries(Object.entries(env).map(([name, value]) => [name, String(value)])),
+        publicValues,
       );
 };
 
@@ -206,28 +215,32 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
       }
       const tooling = effectiveToolingForPlan(plan);
       const appPlanRedactionTokens = collectAppPlanRedactionTokens(plan);
+      const publicValues = collectAppPlanPublicCredentialValues(plan);
       const redactor = yield* redactionOption.value.forProfile("secrets", {
         sourceEnv: process.env,
         redactionTokens: [
           ...appPlanRedactionTokens,
-          ...runnable.flatMap((entry) => redactionValuesForStep(entry.step, tooling)),
+          ...runnable.flatMap((entry) => redactionValuesForStep(entry.step, tooling, publicValues)),
         ],
       });
-      const redactorFor = (
-        records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>,
-        directTokens: ReadonlyArray<string> = [],
-      ) => {
+      const collectRecords = (
+        records: EventRedactionSources["env"],
+        collect: typeof collectSecretEnvValues,
+      ): string[] =>
+        (records ?? []).flatMap((record) => {
+          if (record === undefined) return [];
+          return Object.entries(record).flatMap(([name, value]) =>
+            (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
+              collect({ [name]: String(occurrence) }, publicValues),
+            ),
+          );
+        });
+      const redactorFor = (sources: EventRedactionSources) => {
         const redactionTokens = [
           ...appPlanRedactionTokens,
-          ...directTokens,
-          ...records.flatMap((record) => {
-            if (record === undefined) return [];
-            return Object.entries(record).flatMap(([name, value]) =>
-              (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
-                collectSecretEnvValues({ [name]: String(occurrence) }),
-              ),
-            );
-          }),
+          ...(sources.directTokens ?? []),
+          ...collectRecords(sources.env, collectSecretEnvValues),
+          ...collectRecords(sources.input, collectSecretStructuralValues),
         ];
         return redactionOption.value
           .forProfile("secrets", {

@@ -311,6 +311,7 @@ test.each(["restart", "rebuild"] as const)(
           service: target.service,
           providerId: plan.provider,
           status: applied ? "stopped" : "running",
+          publications: { status: "unknown" },
           state: applied ? "stopped" : "running",
           containerId: "container",
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),

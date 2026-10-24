@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   container-helper:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -53,7 +53,7 @@ jobs:
           retention-days: 14
   docker-fallback-smoke:
     needs: [container-helper]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -128,7 +128,7 @@ jobs:
             notice: "Docker Desktop requires a licensed desktop app and is not installed on GitHub-hosted macOS runners."
           - cell: docker-engine-linux
             engine: Docker Engine
-            runs-on: ubuntu-24.04
+            runs-on: ubuntu-26.04
             provider: docker
             release-blocking: true
             install-podman6: false
@@ -182,7 +182,7 @@ jobs:
             notice: "GitHub-hosted CI runtime is available."
           - cell: lando-podman6-linux
             engine: Lando managed Podman 6
-            runs-on: ubuntu-24.04
+            runs-on: ubuntu-26.04
             provider: lando
             release-blocking: true
             install-podman6: false
@@ -191,7 +191,7 @@ jobs:
             notice: "GitHub-hosted CI runtime is available."
           - cell: podman-podman6-linux
             engine: Podman 6
-            runs-on: ubuntu-24.04
+            runs-on: ubuntu-26.04
             provider: podman
             release-blocking: true
             install-podman6: true

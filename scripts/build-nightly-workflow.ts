@@ -12,7 +12,12 @@ import {
   landoRootlessPrereqSteps,
   landoRuntimeSocketPath,
 } from "./build-ci-workflow.ts";
-import { CI_PLATFORMS, type CiPlatform, LINUX_X64_CI_RUNNERS } from "./ci-platforms.ts";
+import {
+  CI_PLATFORMS,
+  type CiPlatform,
+  LINUX_X64_CI_RUNNERS,
+  LINUX_X64_TEST_RUNNER,
+} from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 import { NIGHTLY_TIER_TESTS, TEST_TIMINGS_FILE } from "./test-shards.ts";
@@ -45,7 +50,7 @@ const contractTestStep = (platform: string): string => `
 const providerLandoE2eJob = `
   provider-lando-e2e-linux-x64:
     needs: [${CONTAINER_HELPER_JOB_ID}]
-    runs-on: ubuntu-24.04
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -254,7 +259,7 @@ interface NightlyJob {
 }
 
 const JOBS: ReadonlyArray<NightlyJob> = [
-  { id: "file-sync-contract-linux-x64", runsOn: "ubuntu-24.04", platform: "linux-x64" },
+  { id: "file-sync-contract-linux-x64", runsOn: LINUX_X64_TEST_RUNNER, platform: "linux-x64" },
   { id: "file-sync-contract-darwin-arm64", runsOn: "macos-15", platform: "darwin-arm64" },
   { id: "file-sync-contract-darwin-x64", runsOn: "macos-15-intel", platform: "darwin-x64" },
   { id: "file-sync-contract-windows-x64", runsOn: "windows-2022", platform: "windows-x64" },
@@ -272,7 +277,7 @@ ${contractTestStep(job.platform)}`;
 
 const nightlyTierUnitTestsJob = `
   nightly-tier-unit-tests-linux-x64:
-    runs-on: ubuntu-24.04
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
@@ -283,7 +288,7 @@ ${bunSetupStep}
 
 const refreshTestTimingsJob = `
   refresh-test-timings-linux-x64:
-    runs-on: ubuntu-24.04
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -306,7 +311,7 @@ ${bunSetupStep}
 
 const runtimeBundleManifestLiveJob = `
   runtime-bundle-manifest-live:
-    runs-on: ubuntu-24.04
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5

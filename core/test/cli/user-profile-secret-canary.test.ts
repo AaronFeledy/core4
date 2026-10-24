@@ -100,7 +100,7 @@ test.each([
           providerId: ProviderId.make("lando"),
           status: "running",
           state: "running",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       execStream: () => {
         executions += 1;

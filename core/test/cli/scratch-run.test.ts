@@ -255,6 +255,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
         providerId,
         status: "running",
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => die("snapshotVolume"),

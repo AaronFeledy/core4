@@ -40,8 +40,10 @@ test("every guide app retains its encoded Landofile digest or tagged load failur
       cwd: repoRoot,
       dot: true,
     }),
-  ].sort();
-  const apps = [...new Map(paths.map((path) => [dirname(path), path])).entries()];
+  ]
+    .map((path) => path.replaceAll("\\", "/"))
+    .sort();
+  const apps = [...new Map(paths.map((path) => [dirname(path).replaceAll("\\", "/"), path])).entries()];
   const update = process.env.UPDATE_GOLDEN === "1";
   const golden =
     update && !(await Bun.file(goldenPath).exists())

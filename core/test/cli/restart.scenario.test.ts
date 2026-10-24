@@ -269,11 +269,21 @@ const makeRestartLayer = (
         status: "running",
         state: "running",
         containerId: `cid-${String(target.service)}`,
-        endpoints: (plannedApp.services[target.service]?.endpoints ?? []).map((endpoint) =>
-          endpoint._tag === "published" && endpoint.publication.hostPort === undefined
-            ? { ...endpoint, materialization: { bindAddress: "127.0.0.1", hostPort: 34567 } }
-            : endpoint,
-        ),
+        publications: {
+          status: "present",
+          bindings: (plannedApp.services[target.service]?.endpoints ?? []).flatMap((endpoint) =>
+            endpoint._tag === "published"
+              ? [
+                  {
+                    port: endpoint.port,
+                    transport: endpoint.protocol === "udp" ? ("udp" as const) : ("tcp" as const),
+                    bindAddress: endpoint.publication.bindAddress ?? "127.0.0.1",
+                    hostPort: endpoint.publication.hostPort ?? 34567,
+                  },
+                ]
+              : [],
+          ),
+        },
       }),
   };
 
@@ -408,7 +418,7 @@ describe("lando restart", () => {
       ["web", "running"],
     ]);
     expect(renderRestartAppResult(result)).toBe(
-      "restarted: test-restart - web (running) http://localhost:3000",
+      "restarted: test-restart - web (running) Host: http://localhost:3000 App Network: http://web:3000",
     );
   });
 

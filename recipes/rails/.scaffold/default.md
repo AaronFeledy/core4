@@ -1,6 +1,14 @@
 # Start a Rails project
 
-`lando init --recipe rails` scaffolds Ruby on Rails, PostgreSQL, Redis, plus `rails`, `bundle`, and `rake` tooling.
+Create a Rails development stack with PostgreSQL, Redis, and `rails`,
+`bundle`, and `rake` tooling. The recipe writes a Landofile and a minimal
+Gemfile; create the Rails project and install its dependencies before running
+the server.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe rails --name=my-rails-app --yes

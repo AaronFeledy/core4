@@ -10,6 +10,7 @@ import {
 import { isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
+import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
@@ -70,12 +71,14 @@ const evolvedTypedCache = new Map<
 const evolvedTyped = (source: keyof typeof typedCaptured) => {
   const cached = evolvedTypedCache.get(source);
   if (cached !== undefined) return cached;
-  const evolved = evolveHistoricalIncludeChecksum(
-    evolveHistoricalTimestamps(
-      evolveHistoricalShorthand(
-        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+  const evolved = evolveHistoricalEndpointMetadata(
+    evolveHistoricalIncludeChecksum(
+      evolveHistoricalTimestamps(
+        evolveHistoricalShorthand(
+          normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+        ),
+        "authoring",
       ),
-      "authoring",
     ),
   );
   evolvedTypedCache.set(source, evolved);
@@ -119,11 +122,13 @@ describe("embedded wire closed x-* artifact repair", () => {
   }, 120_000);
 
   test("collapses an identifier-only local ref onto the same normalized graph", async () => {
-    const repaired = evolveHistoricalTimestamps(
-      evolveHistoricalShorthand(
-        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+    const repaired = evolveHistoricalEndpointMetadata(
+      evolveHistoricalTimestamps(
+        evolveHistoricalShorthand(
+          normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+        ),
+        "authoring",
       ),
-      "authoring",
     );
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),

@@ -1,8 +1,13 @@
-import { DateTime, Effect, Option } from "effect";
+import { DateTime, Effect, Option, Schema } from "effect";
 import { serviceContainerName } from "../plan.ts";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { AppPlan, EndpointPlan, PublishedEndpoint, ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  ObservedPublication,
+  type PublicationObservation,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
 
 import type {
@@ -31,49 +36,43 @@ interface ContainerInspect {
   };
 }
 
-export const publishedEndpointsFromInspect = (
-  inspect: unknown,
-  plannedEndpoints: ReadonlyArray<EndpointPlan> = [],
-): NonNullable<ServiceRuntimeInfo["endpoints"]> => {
-  if (typeof inspect !== "object" || inspect === null) return [];
-  const ports = (inspect as ContainerInspect).NetworkSettings?.Ports;
-  if (typeof ports !== "object" || ports === null) return [];
+const PublicationInspect = Schema.Struct({
+  NetworkSettings: Schema.Struct({
+    Ports: Schema.Record(
+      Schema.String,
+      Schema.Union([
+        Schema.Null,
+        Schema.Array(Schema.Struct({ HostIp: Schema.String, HostPort: Schema.String })),
+      ]),
+    ),
+  }),
+});
 
-  const endpoints: Array<NonNullable<ServiceRuntimeInfo["endpoints"]>[number]> = [];
-  for (const [containerPort, bindings] of Object.entries(ports)) {
-    if (!Array.isArray(bindings)) continue;
-    const [portNum, protocol] = containerPort.split("/");
-    const port = Number.parseInt(portNum ?? "0", 10);
-    if (port <= 0) continue;
-    const transport = protocol === "udp" ? "udp" : "tcp";
-    const planned = plannedEndpoints.find(
-      (endpoint): endpoint is PublishedEndpoint =>
-        endpoint._tag === "published" &&
-        endpoint.port === port &&
-        (endpoint.protocol === "udp" ? "udp" : "tcp") === transport,
-    );
-    for (const binding of bindings) {
-      if (typeof binding !== "object" || binding === null) continue;
-      const hostPort = Number.parseInt(typeof binding.HostPort === "string" ? binding.HostPort : "0", 10);
-      if (hostPort <= 0) continue;
-      const materialization = {
-        bindAddress: typeof binding.HostIp === "string" ? binding.HostIp : "0.0.0.0",
-        hostPort,
-      };
-      if (planned !== undefined) {
-        endpoints.push({ ...planned, materialization });
-        continue;
-      }
-      endpoints.push({
-        _tag: "published" as const,
+export const publicationObservationFromInspect = (inspect: unknown): PublicationObservation => {
+  const decoded = Schema.decodeUnknownOption(PublicationInspect)(inspect);
+  if (Option.isNone(decoded)) return { status: "unknown" };
+  const bindings: ObservedPublication[] = [];
+  for (const [key, values] of Object.entries(decoded.value.NetworkSettings.Ports)) {
+    const match = /^(\d+)\/(tcp|udp)$/u.exec(key);
+    const port = Number(match?.[1]);
+    const transport = match?.[2];
+    if (!Number.isInteger(port) || port < 1 || port > 65535 || (transport !== "tcp" && transport !== "udp")) {
+      return { status: "unknown" };
+    }
+    for (const value of values ?? []) {
+      const binding = {
         port,
-        protocol: transport,
-        name: containerPort,
-        publication: materialization,
-      });
+        transport,
+        bindAddress: value.HostIp === "" ? "0.0.0.0" : value.HostIp,
+        hostPort: Number(value.HostPort),
+      };
+      if (!/^\d+$/u.test(value.HostPort) || !Schema.is(ObservedPublication)(binding)) {
+        return { status: "unknown" };
+      }
+      bindings.push(binding);
     }
   }
-  return endpoints;
+  return { status: "present", bindings };
 };
 
 export interface InspectOptions {
@@ -94,7 +93,17 @@ const statusFromInspect = (inspect: ContainerInspect): string => {
   if (inspect.State?.Running === true || inspect.State?.Status === "running") {
     return "running";
   }
-  return "stopped";
+  if (inspect.State?.Running === false) return "stopped";
+  switch (inspect.State?.Status) {
+    case "created":
+    case "exited":
+    case "dead":
+    case "stopped":
+    case "removing":
+      return "stopped";
+    default:
+      return "unknown";
+  }
 };
 
 const healthFromInspect = (inspect: ContainerInspect): ServiceRuntimeInfo["health"] | undefined => {
@@ -151,7 +160,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       providerId: plan.provider,
       status: "stopped",
       state: "stopped",
-      endpoints: service.endpoints,
+      publications: { status: "missing" },
     };
   }
   if (response.status < 200 || response.status >= 300) {
@@ -172,7 +181,6 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
   const status = statusFromInspect(decoded);
   const health = healthFromInspect(decoded);
   const startedAt = lastStartedAt(decoded);
-  const materialized = publishedEndpointsFromInspect(decoded, service.endpoints);
   const bindSources = inspectBindSources(decoded);
   const networkNames = inspectNetworkNames(decoded);
   return {
@@ -181,7 +189,10 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
     service: service.name,
     providerId: plan.provider,
     status,
-    state: decoded.State?.Status === "restarting" ? "restarting" : status,
+    state:
+      decoded.State?.Status === "restarting" || decoded.State?.Status === "paused"
+        ? decoded.State.Status
+        : status,
     ...((decoded.State?.Status === "exited" || decoded.State?.Status === "dead") &&
     typeof decoded.State.ExitCode === "number"
       ? { exitCode: decoded.State.ExitCode }
@@ -191,7 +202,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
     ...(typeof decoded.Image === "string" && decoded.Image.length > 0
       ? { imageIdentity: decoded.Image }
       : {}),
-    endpoints: materialized.length > 0 ? materialized : service.endpoints,
+    publications: publicationObservationFromInspect(decoded),
     ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
     publishFingerprint: fingerprintInspectPublishPorts(decoded),
     labels: inspectContainerLabels(decoded),

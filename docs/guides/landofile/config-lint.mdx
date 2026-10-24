@@ -8,11 +8,15 @@ tags: [beta, docs, landofile, config, lint]
 
 # Lint a Landofile
 
+Check your Landofile before starting containers. From the app directory, run:
+
 ```sh
 lando app:config:lint
 ```
 
-That validates every retained root and include fragment against its authoring schema, validates the effective composition, resolves every service type, runs the same resolved-Landofile validation stage that `lando start` and `lando app:cache:refresh` run before they plan, and checks that every key under `events:` names an event Lando can actually run and that no tooling task takes a name a built-in command owns. No doctor checks, no provider probes, no container runtime. A clean Landofile exits `0`.
+Lint checks each retained root and include fragment against its authoring schema, then validates their effective composition and resolves every service type. It runs the same resolved-Landofile validation stage as `lando start` and `lando app:cache:refresh`, including event names and conflicts between tooling names and built-in commands.
+
+It does not run doctor checks, probe a provider, or start a container runtime. A clean Landofile exits `0`. In JSON output, inspect `result.valid` and the violations list; successful command execution is not itself a clean-lint verdict.
 
 Lint resolves `{{ recipe.<option> }}` and `{{ env.* }}` expressions the same way `lando start` does, before validation, so a whole-value expression like `primary: "{{ recipe.flag }}"` or `httpPort: "{{ number(default(env.PORT, '8080')) }}"` lints as the boolean or number it resolves to. An unset env var with no `default()` is a violation at that path, reported against the layer file that wrote it. Planner-owned expressions (`app.*`, `proxy.*`, `services.<name>.creds.*`) evaluate too, so a route hostname built from `{{ app.name }}` is checked as the string it becomes. See [Landofile expressions](./expressions.mdx#whole-value-expressions-keep-their-type).
 

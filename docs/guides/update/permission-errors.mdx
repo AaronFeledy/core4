@@ -10,7 +10,7 @@ tags: [beta, docs, update, permissions]
 
 > **Alpha status:** In-place `lando update` is **not a shipping user path**. `update.lando.dev` is down, and there is no signed Windows or macOS binary to replace. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-If you cannot execute the Linux x64 binary you downloaded, you do not have an updater problem. You have a file you do not own. Put `lando` in a directory you can write, `chmod +x`, and rerun `lando --version`.
+If a downloaded Linux or macOS binary will not execute, first check that it is the asset for your platform and that your shell resolves the intended file. An execution failure does not by itself prove an ownership problem. Follow [Put lando on PATH and run setup](../install/path-and-setup.mdx) to set its executable permission, install it in a directory you can write, and verify `lando --version`.
 
 Alpha does not elevate for you. It will not run `sudo`, UAC, or any other silent privilege hop to overwrite an install path.
 

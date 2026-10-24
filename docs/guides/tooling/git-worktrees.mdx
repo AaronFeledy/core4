@@ -34,6 +34,8 @@ Keep the main app running. The worktree copies its database straight from the ru
 
 ## Add the worktree
 
+Run these commands from the main `shop` checkout:
+
 ```sh
 git worktree add ../shop-feature -b feature
 cd ../shop-feature
@@ -103,7 +105,7 @@ lando db:seed --snapshot seeded
 
 ## Snapshot before risky work
 
-Take a snapshot before a migration, list it, and roll back when the migration eats a table:
+Take a snapshot before a migration and list it to confirm it was saved. Run the restore command only when you want to replace the current database with that snapshot; `--yes` skips confirmation:
 
 ```sh
 lando db:snapshot --label before-migration

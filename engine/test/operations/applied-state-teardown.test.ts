@@ -450,6 +450,7 @@ const orphanGroup = (input: {
     service: ServiceName.make(name),
     providerId,
     status: "running",
+    publications: { status: "unknown" as const },
     ...((input.withoutContainerId ?? []).includes(name) ? {} : { containerId: `container-${name}` }),
   })),
   volumes: [
@@ -521,6 +522,7 @@ describe("applied-state teardown", () => {
               appRoot: AbsolutePath.make(root),
               providerId,
               status: "running",
+              publications: { status: "unknown" },
               containerId: "foreign",
             },
           ],

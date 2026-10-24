@@ -54,6 +54,7 @@ const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
     port: Schema.decodeUnknownSync(PortNumber)(port),
     protocol: "http",
     name: ctx.serviceName,
+    primary: true,
   });
   ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
 

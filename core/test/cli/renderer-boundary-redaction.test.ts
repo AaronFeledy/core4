@@ -16,6 +16,45 @@ import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-tru
 import { renderStartAppResult } from "../../src/cli/commands/start-result.ts";
 import { runWithRendererHandling, summaryPaintOptions } from "../../src/cli/renderer-boundary.ts";
 
+test("collected plan credentials preserve package names while masking distinct passwords and camelCase env", async () => {
+  resetRegisteredRedactionValuesForTesting();
+  const plan = {
+    services: {
+      mariadb: {
+        creds: { user: "magento", password: "magento", database: "magento" },
+        environment: { MARIADB_USER: "magento", MARIADB_PASSWORD: "magento", MARIADB_DATABASE: "magento" },
+      },
+      appserver: {
+        environment: { DB_PASSWORD: "distinct-private-password", stripeSecretKey: "sk_test_canary" },
+      },
+    },
+  };
+  const io = createBufferedRendererIO();
+  try {
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const redaction = yield* RedactionService;
+        yield* redaction.registerValues(collectAppPlanRedactionTokens(plan));
+        return "mage-os/magento-coding-standard --magento-init-params distinct-private-password sk_test_canary";
+      }),
+      {
+        runtime: RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer)),
+        rendererMode: "plain",
+        io,
+        render: (result) => result,
+        formatError: ({ error }) => String(error),
+        setExitCode: (code) => expect(code).toBe(0),
+      },
+    );
+    expect(io.stdout().trim()).toBe(
+      "mage-os/magento-coding-standard --magento-init-params [redacted] [redacted]",
+    );
+    expect(io.stderr()).toBe("");
+  } finally {
+    resetRegisteredRedactionValuesForTesting();
+  }
+});
+
 const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
@@ -198,7 +237,13 @@ test("start command hints remain usable when a secret explicitly matches the CLI
         yield* registerRedactionValues([...tokens, "lando"]);
         return {
           app: customSecret,
-          servicesStarted: [{ name: "lando", state: "running", endpoints: [`https://${customSecret}.test`] }],
+          servicesStarted: [
+            {
+              name: "lando",
+              state: "running" as const,
+              connections: connections([`https://${customSecret}.test`]),
+            },
+          ],
         };
       }),
       {
@@ -225,3 +270,4 @@ test("start command hints remain usable when a secret explicitly matches the CLI
     resetRegisteredRedactionValuesForTesting();
   }
 });
+import { connections } from "./connection-fixtures";

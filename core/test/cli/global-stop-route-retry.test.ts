@@ -42,6 +42,7 @@ test("selected global stop retries failed route cleanup after its container was 
           service: ServiceName.make(name),
           containerId: `${name}-container`,
           status: "running",
+          publications: { status: "unknown" },
         },
       ]),
     );

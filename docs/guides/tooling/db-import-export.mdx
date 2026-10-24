@@ -9,7 +9,9 @@ tags: [beta, docs, tooling, database]
 
 Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed` to fill a database Lando freshly created from a dump, a snapshot, or another running app.
 
-A single database service needs no `--service` flag. Two or more database services require `--service <name>`.
+Run dump commands from your app directory with the database service running. A single database service needs no `--service` flag; with two or more, pass `--service <name>` to select the target.
+
+Export a backup before importing into a database that contains data. Import can change or delete existing data, and `--yes` skips confirmation. The examples show gzip and zstd alternatives; choose one rather than importing the same dump twice.
 
 ```sh
 lando db:export dump.sql.gz
@@ -31,13 +33,15 @@ lando db:import backups/app.sql.gz --service database --yes
 lando db:import backups/app.sql.zst --service database --yes
 ```
 
-MySQL, MariaDB, Postgres, and MongoDB stream through the client. SQL Server uses `sqlcmd` backup and restore files.
+MySQL, MariaDB, and Postgres execute the dump through the client without automatically resetting the database first; what changes depends on the dump statements. MongoDB restores its archive without automatically dropping collections. SQL Server uses `sqlcmd` backup and restore files, and its restore replaces the target database.
 
 ## Take and restore a snapshot
 
 Snapshots land in Lando's snapshot store, not next to your dump files. Lando briefly stops a running database before copying or restoring its volume, then starts it and waits until it accepts a SQL command. A database that was already stopped stays stopped.
 
 Each snapshot has an owner recorded from the source volume's physical identity, not just the app name. Lando keeps its catalog entry at `<userDataRoot>/snapshots/<owner-key>/<store>/<id>.json`, with a copy-mode archive beside it or a reference to a native image on the recording provider. There is no separate index. If Lando cannot prove the volume's identity, capture fails before copying data. `db:snapshot` can adopt a legacy database volume after verifying its mounted target.
+
+Take and list the snapshot first. Run `db:restore` only when you intend to replace the current database with the saved state; it is not part of taking a backup.
 
 ```sh
 lando db:snapshot --label before-change
