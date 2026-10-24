@@ -186,7 +186,8 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     expect(db.storage[0]?.store).toBe("myapp-mongodb-data");
     expect(String(db.storage[0]?.target)).toBe("/data/db");
     expect(db.healthcheck?.kind).toBe("command");
-    expect(db.healthcheck?.command?.at(-1)).toBe("27017");
+    expect(db.healthcheck?.target?.port).toBe(27017);
+    expect(db.readiness?.target?.port).toBe(27017);
     expect(db.environment.HOME).toBeUndefined();
     expect(db.environment.LANDO_SERVICE_TYPE).toBe("mongodb");
     expect(db.environment.MONGO_INITDB_ROOT_USERNAME).toBe("lando");
@@ -194,9 +195,14 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     expect(db.environment.MONGO_INITDB_DATABASE).toBe("myapp");
   });
 
-  test("preserves an authored healthcheck instead of the default probe", async () => {
+  test.each([
+    {
+      healthcheck: { kind: "command", command: ["custom-mongo-check"], timeoutSeconds: 9 },
+      expected: { kind: "command", command: ["custom-mongo-check"], timeoutSeconds: 9 },
+    },
+    { healthcheck: false, expected: { kind: "none" } },
+  ])("replaces both default probes with authored $healthcheck", async ({ healthcheck, expected }) => {
     // Given
-    const healthcheck = { kind: "command", command: ["custom-mongo-check"], timeoutSeconds: 9 };
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "custom-probe",
       services: { db: { type: "mongodb", home: false, healthcheck } },
@@ -204,7 +210,10 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     // When
     const plan = await planLandofile(landofile);
     // Then
-    expect(plan.services[ServiceName.make("db")]?.healthcheck).toMatchObject(healthcheck);
+    const service = plan.services[ServiceName.make("db")];
+    expect(service?.healthcheck).toMatchObject(expected);
+    expect(service?.readiness).toEqual(service?.healthcheck);
+    expect(service?.readiness?.target).toBeUndefined();
   });
 
   test("`lando mongosh` tooling alias routes through provider.exec to the mongodb service", async () => {

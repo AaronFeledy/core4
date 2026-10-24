@@ -1,74 +1,51 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { basename, dirname, join } from "node:path";
 import { Schema } from "effect";
-import { mongodbServiceType } from "../src/services/mongodb.ts";
-import { composeServicePlan } from "./support/compose-harness.ts";
+import { mongodbProbes } from "../src/services/mongodb-probes.ts";
 
-// The probe runs in Linux containers; this test executes its POSIX payload on the host.
 test.skipIf(process.platform === "win32").each([
-  { addresses: "10.0.0.2 10.0.1.2", ok: 1, clientExit: 0, exit: 0, host: "10.0.0.2" },
-  { addresses: "fd00::2 fd00::3", ok: 1, clientExit: 0, exit: 0, host: "[fd00::2]" },
-  { addresses: "10.0.0.2", ok: 0, clientExit: 0, exit: 1, host: "10.0.0.2" },
-  { addresses: "10.0.0.2", ok: 1, clientExit: 33, exit: 33, host: "10.0.0.2" },
-  { addresses: "", ok: 1, clientExit: 0, exit: 1, host: undefined },
-])("propagates protocol status with address=$addresses ok=$ok clientExit=$clientExit", async (input) => {
-  // Given: only address discovery and the external Mongo client are substituted.
+  { clientExit: 0, ok: 1, exit: 0 },
+  { clientExit: 0, ok: 0, exit: 1 },
+  { clientExit: 33, ok: 1, exit: 33 },
+])("distinguishes a real listener from protocol status $exit", async (input) => {
   const root = await mkdtemp(join(tmpdir(), "lando-mongo-probe-"));
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      data() {},
+      open(socket) {
+        socket.end();
+      },
+    },
+  });
   try {
-    const hostname = join(root, "hostname");
-    const mongosh = join(root, "mongosh");
-    await writeFile(hostname, '#!/bin/sh\ntest "$1" = -I || exit 2\nprintf "%s\\n" "$ADDRESSES"\n');
-    await writeFile(
-      mongosh,
+    const client = join(root, "mongosh");
+    await Bun.write(
+      client,
       `#!${process.execPath}
 const args = process.argv.slice(2);
-console.log(JSON.stringify({ args, home: process.env.HOME }));
+console.log(JSON.stringify({ args, home: process.env.HOME, mode: require("node:fs").statSync(process.env.HOME).mode & 0o777 }));
 if (Number(process.env.CLIENT_EXIT)) process.exit(Number(process.env.CLIENT_EXIT));
-const expression = args[args.indexOf("--eval") + 1];
-new Function("db", "quit", expression)(
-  { adminCommand: () => ({ ok: Number(process.env.PING_OK) }) },
-  (code) => process.exit(code),
-);
+new Function("db", "quit", args[args.indexOf("--eval") + 1])(
+  { adminCommand: () => ({ ok: Number(process.env.PING_OK) }) }, (code) => process.exit(code));
 `,
     );
-    await chmod(hostname, 0o755);
-    await chmod(mongosh, 0o755);
-    const config = Schema.decodeUnknownSync(LandofileShape)({
-      name: "probe",
-      services: {
-        db: {
-          type: "mongodb",
-          port: 37017,
-          creds: { user: "probe-user", password: "probe-secret", database: "probe-db" },
-          environment: { HOME: "/authored-home" },
-        },
-      },
-    });
-    const service = config.services?.[ServiceName.make("db")];
-    if (service === undefined) throw new Error("Mongo service is missing");
-    const plan = await composeServicePlan({
-      serviceType: mongodbServiceType,
-      service,
-      appRoot: root,
-      serviceName: "db",
-      metadata: { resolvedAt: "2026-05-28T00:00:00Z", source: "probe", runtime: 4 },
-    });
-    const command = plan.healthcheck?.command;
-    if (command === undefined || typeof command === "string")
-      throw new Error("Mongo argv healthcheck is missing");
-
-    // When
+    await chmod(client, 0o755);
+    const probes = mongodbProbes(server.port);
+    const command = probes.readiness.command;
+    if (command === undefined || typeof command === "string") throw new Error("Missing argv probe");
     const child = Bun.spawn([...command], {
       env: {
         ...process.env,
-        ...plan.environment,
         PATH: `${root}:${process.env.PATH}`,
-        ADDRESSES: input.addresses,
-        PING_OK: String(input.ok),
+        LANDO_PROBE_HOST: "127.0.0.1",
+        LANDO_PROBE_PORT: String(server.port),
         CLIENT_EXIT: String(input.clientExit),
+        PING_OK: String(input.ok),
+        HOME: "/authored-home",
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -78,28 +55,70 @@ new Function("db", "quit", expression)(
       new Response(child.stdout).text(),
       new Response(child.stderr).text(),
     ]);
-
-    // Then
     expect({ exitCode, stderr }).toEqual({ exitCode: input.exit, stderr: "" });
-    expect(plan.environment.HOME).toBe("/authored-home");
-    expect(command.join(" ")).not.toContain("probe-secret");
-    expect(command.join(" ")).not.toContain("probe-user");
-    if (input.host === undefined) {
-      expect(stdout).toBe("");
-    } else {
-      const observed = Schema.decodeUnknownSync(
-        Schema.Struct({
-          args: Schema.Array(Schema.String),
-          home: Schema.String,
-        }),
-      )(JSON.parse(stdout));
-      expect(observed.home).toBe("/tmp");
-      expect(observed.args).toContain("--norc");
-      expect(observed.args).toContain(
-        `mongodb://${input.host}:37017/admin?directConnection=true&serverSelectionTimeoutMS=2000&connectTimeoutMS=2000`,
-      );
-    }
+    const observed = Schema.decodeUnknownSync(
+      Schema.Struct({ args: Schema.Array(Schema.String), home: Schema.String, mode: Schema.Number }),
+    )(JSON.parse(stdout));
+    expect(observed.args).toContain(
+      `mongodb://127.0.0.1:${server.port}/admin?directConnection=true&serverSelectionTimeoutMS=2000&connectTimeoutMS=2000&socketTimeoutMS=2000`,
+    );
+    expect(observed.args).toContain("--norc");
+    expect(observed.home).not.toBe("/authored-home");
+    expect(observed.mode).toBe(0o700);
+    expect(await readdir(dirname(observed.home))).not.toContain(basename(observed.home));
   } finally {
+    server.stop(true);
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.skipIf(process.platform === "win32")(
+  "does not launch mongosh when the listener is unavailable",
+  async () => {
+    const command = mongodbProbes(1).readiness.command;
+    if (command === undefined || typeof command === "string") throw new Error("Missing argv probe");
+    const child = Bun.spawn([...command], {
+      env: { ...process.env, LANDO_PROBE_HOST: "127.0.0.1", LANDO_PROBE_PORT: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exit, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+    expect(exit).toBe(1);
+    expect(stderr.trim()).toBe("Mongo listener unavailable");
+  },
+);
+
+test.skipIf(process.platform === "win32")(
+  "ongoing health succeeds without a Mongo client or shell state",
+  async () => {
+    const server = Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socket: {
+        data() {},
+        open(socket) {
+          socket.end();
+        },
+      },
+    });
+    try {
+      const command = mongodbProbes(server.port).healthcheck.command;
+      if (command === undefined || typeof command === "string") throw new Error("Missing argv probe");
+      const child = Bun.spawn([...command], {
+        env: {
+          PATH: "/usr/bin:/bin",
+          HOME: "/nonexistent-probe-home",
+          LANDO_PROBE_HOST: "127.0.0.1",
+          LANDO_PROBE_PORT: String(server.port),
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(await child.exited).toBe(0);
+      expect(await new Response(child.stdout).text()).toBe("");
+      expect(await new Response(child.stderr).text()).toBe("");
+    } finally {
+      server.stop(true);
+    }
+  },
+);

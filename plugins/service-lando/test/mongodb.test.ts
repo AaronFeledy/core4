@@ -148,7 +148,7 @@ describe("mongodb ServiceType", () => {
   test("keeps the readiness budget when planning the default probe", async () => {
     const plan = await planMongodb({ type: "mongodb" });
 
-    expect(plan.healthcheck).toEqual({
+    expect(plan.healthcheck).toMatchObject({
       kind: "command",
       command: expect.any(Array),
       intervalSeconds: 10,
@@ -164,7 +164,8 @@ describe("mongodb ServiceType", () => {
     expect(firstEndpointPort(plan)).toBe(47017);
     expect(plan.command).toEqual(["mongod", "--port", "47017"]);
     expect(plan.environment.LANDO_DB_PORT).toBe("47017");
-    expect(plan.healthcheck?.command?.at(-1)).toBe("47017");
+    expect(plan.healthcheck?.target?.port).toBe(47017);
+    expect(plan.readiness?.target?.port).toBe(47017);
   });
 
   test("preserves authored environment variables alongside mongo defaults", async () => {
