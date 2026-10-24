@@ -358,14 +358,26 @@ describe("@lando/service-lando registration", () => {
       readOnly: false,
     });
     expect(database.healthcheck?.command).toEqual([
+      "/bin/bash",
+      "-c",
+      'export SQLCMDPASSWORD="$SA_PASSWORD"; exec "$@"',
+      "lando-mssql-health",
       "/opt/mssql-tools18/bin/sqlcmd",
       "-S",
       "localhost,1433",
       "-U",
       "sa",
       "-C",
+      "-b",
+      "-r1",
+      "-d",
+      "master",
+      "-l",
+      "2",
+      "-t",
+      "5",
       "-Q",
-      "SELECT 1",
+      "IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'sql-app' AND state_desc = 'ONLINE' AND HAS_DBACCESS(name) = 1) THROW 50000, 'Database is not accessible', 1;",
     ]);
   });
 

@@ -2,7 +2,7 @@ import { DateTime, Effect, absurd } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
-import { SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
+import { SqlRecoveryOperationError, SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
 import type {
   DataTransferResult,
   Environment,
@@ -14,12 +14,13 @@ import { snapshotHandle } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import type { SqlExec } from "./actions.ts";
+import { checkedSqlExecution } from "./checked-execution.ts";
 import { hostFile, parseCount, secretTokens } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
 import { ensureReadableDump } from "./dump-file.ts";
-import { SqlEnvironmentSession, isSqlBindingFailure } from "./environment.ts";
+import { SqlEnvironmentSession } from "./environment.ts";
 import { countCommand } from "./families.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
@@ -120,14 +121,13 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     ];
 
     if (action === "import") {
-      const counted = yield* deps
-        .exec(target.name, countCommand(target.family, creds), env)
-        .pipe(
-          Effect.catch((error) =>
-            isSqlBindingFailure(error) ? Effect.fail(error) : Effect.succeed({ ok: false, stdout: "" }),
-          ),
-        );
-      const count = counted.ok ? parseCount(counted.stdout) : undefined;
+      const command = countCommand(target.family, creds);
+      const counted = yield* checkedSqlExecution(deps.exec(target.name, command, env), {
+        service: target.name,
+        command,
+        env,
+      });
+      const count = parseCount(counted.stdout);
       yield* confirmOrFail(
         input,
         deps.confirm,
@@ -222,6 +222,9 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     let retentionApplied: boolean | undefined;
     let transfer: DataTransferResult | undefined;
     let seedStatus: "seeded" | undefined;
+    let completionReceipt:
+      | { readonly recoverySnapshotId: string; readonly operation: SqlRecoveryOperationError["operation"] }
+      | undefined;
     const runPhysical = <A, E>(
       reason: Parameters<typeof runPhysicalOperation<A, E>>[0]["reason"],
       body: Parameters<typeof runPhysicalOperation<A, E>>[0]["body"],
@@ -250,7 +253,12 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         ...(preflight === undefined ? {} : { preflight }),
         ...(retainSnapshotIds === undefined ? {} : { retainSnapshotIds }),
         body,
-      });
+      }).pipe(
+        Effect.map(({ result, recoverySnapshotId }) => {
+          completionReceipt = { recoverySnapshotId, operation: reason === "manual" ? "snapshot" : reason };
+          return result;
+        }),
+      );
     switch (action) {
       case "export":
         transfer = yield* runExport(deps, deps.exec, io);
@@ -263,7 +271,14 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         );
         break;
       case "reset":
-        yield* runPhysical("reset", () => runReset(deps.exec, target.name, target.family, creds, env), true);
+        yield* runPhysical(
+          "reset",
+          () =>
+            runReset(deps.exec, target.name, target.family, creds, env).pipe(
+              Effect.provideService(SqlEnvironmentSession, session),
+            ),
+          true,
+        );
         break;
       case "snapshot": {
         const handle = yield* runPhysical(
@@ -346,7 +361,21 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         return absurd<never>(action);
     }
 
-    yield* progress.complete;
+    yield* progress.complete.pipe(
+      Effect.mapError((cause) =>
+        completionReceipt === undefined
+          ? cause
+          : new SqlRecoveryOperationError({
+              message: `${completionReceipt.operation} COMPLETED for ${target.name}, but its completion notification failed. Snapshot ${completionReceipt.recoverySnapshotId} remains available.`,
+              service: target.name,
+              operation: completionReceipt.operation,
+              recoverySnapshotId: completionReceipt.recoverySnapshotId,
+              cause,
+              remediation:
+                "Do not repeat the completed database operation. Resolve the notification failure; use lando db:snapshots to inspect available snapshots. No automatic rollback was performed.",
+            }),
+      ),
+    );
     return {
       service: target.name,
       family: target.family,
