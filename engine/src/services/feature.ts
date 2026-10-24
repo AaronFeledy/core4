@@ -219,7 +219,11 @@ const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFeatureErr
     ...(draft.command === undefined ? {} : { command: draft.command }),
     ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
     environment: sortRecord(draft.environment),
-    ...(draft.connection === undefined ? {} : { connection: draft.connection }),
+    ...(draft.connection !== undefined
+      ? { connection: draft.connection }
+      : draft.nonSqlCreds === undefined
+        ? {}
+        : { nonSqlCreds: draft.nonSqlCreds }),
     ...(draft.user === undefined ? {} : { user: draft.user }),
     ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
     ...(appMount === undefined ? {} : { appMount }),

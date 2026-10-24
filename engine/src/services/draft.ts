@@ -10,7 +10,13 @@
  */
 import { DateTime } from "effect";
 
-import type { Environment, EnvironmentValue, ServiceConnection, ServicePlan } from "@lando/sdk/schema";
+import type {
+  Environment,
+  EnvironmentValue,
+  ServiceConnection,
+  ServiceCreds,
+  ServicePlan,
+} from "@lando/sdk/schema";
 import type {
   ServiceAppMountIntent,
   ServiceBuildStepIntent,
@@ -25,6 +31,7 @@ export interface BaseSeed {
   readonly primary: ServicePlan["primary"];
   readonly environment?: Environment;
   readonly connection?: ServiceConnection;
+  readonly nonSqlCreds?: ServiceCreds;
   readonly defaultFeatures: ReadonlyArray<ServiceFeatureDefinition>;
 }
 
@@ -39,6 +46,7 @@ export interface DraftServicePlan {
   entrypoint?: ServicePlan["entrypoint"];
   environment: Record<string, EnvironmentValue>;
   readonly connection?: ServiceConnection;
+  readonly nonSqlCreds?: ServiceCreds;
   user?: string;
   workingDirectory?: ServicePlan["workingDirectory"];
   appMount?: ServiceAppMountIntent;
@@ -81,6 +89,7 @@ export const makeDraft = (base: BaseSeed): DraftServicePlan => ({
   primary: base.primary,
   environment: sortRecord(base.environment ?? {}),
   ...(base.connection === undefined ? {} : { connection: base.connection }),
+  ...(base.nonSqlCreds === undefined ? {} : { nonSqlCreds: base.nonSqlCreds }),
   mounts: [],
   featureIds: base.defaultFeatures.map((feature) => feature.id),
   buildSteps: [],

@@ -119,6 +119,7 @@ export const toAppFeatureDraft = (
   ...(servicePlan.entrypoint === undefined ? {} : { entrypoint: servicePlan.entrypoint }),
   environment: { ...servicePlan.environment },
   ...(servicePlan.connection === undefined ? {} : { connection: servicePlan.connection }),
+  ...(servicePlan.nonSqlCreds === undefined ? {} : { nonSqlCreds: servicePlan.nonSqlCreds }),
   ...(servicePlan.user === undefined ? {} : { user: servicePlan.user }),
   ...(servicePlan.workingDirectory === undefined ? {} : { workingDirectory: servicePlan.workingDirectory }),
   ...(servicePlan.appMount === undefined
@@ -161,7 +162,11 @@ export const servicePlanFromDraft = (
   ...(draft.command === undefined ? {} : { command: draft.command }),
   ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
   environment: sortRecord(draft.environment),
-  ...(draft.connection === undefined ? {} : { connection: draft.connection }),
+  ...(draft.connection !== undefined
+    ? { connection: draft.connection }
+    : draft.nonSqlCreds === undefined
+      ? {}
+      : { nonSqlCreds: draft.nonSqlCreds }),
   ...(draft.user === undefined ? {} : { user: draft.user }),
   ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
   ...(draft.appMount === undefined ? {} : { appMount: { ...draft.appMount, realization: "passthrough" } }),

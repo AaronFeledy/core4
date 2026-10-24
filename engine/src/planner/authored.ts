@@ -160,6 +160,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
           provider: input.provider,
           primary: planServicePrimary(name, resolution.normalizedConfig.primary),
           ...(resolution.connection === undefined ? {} : { connection: resolution.connection }),
+          ...(resolution.nonSqlCreds === undefined ? {} : { nonSqlCreds: resolution.nonSqlCreds }),
           ...(resolution.normalizedConfig.environment === undefined
             ? {}
             : { environment: resolution.normalizedConfig.environment }),

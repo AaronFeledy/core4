@@ -15,13 +15,13 @@ import {
   LandofileShape,
   type LoadScopedLandofile,
   type ParsedPendingSite,
-  type ServiceConnection,
   ServiceScopedLandofile,
   type ValidationIssuePath,
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { normalizeAppSlug } from "./naming.ts";
+import { type ServiceExpressionFacts, serviceExpressionFacts } from "./service-credential-facts.ts";
 
 export interface MaterializeLandofileScopesInput {
   readonly landofile: LoadScopedLandofile;
@@ -31,7 +31,7 @@ export interface MaterializeLandofileScopesInput {
 }
 
 export type DeferredExpressionSites = readonly ParsedPendingSite[];
-export type ServiceCredsScope = Readonly<Record<string, Pick<ServiceConnection, "creds" | "port">>>;
+export type ServiceCredsScope = Readonly<Record<string, ServiceExpressionFacts>>;
 export const deferredSiteKey = (path: ValidationIssuePath): string => path.join(".");
 export const configExpressionIssuePath = (error: ConfigExpressionError): ValidationIssuePath =>
   error.path.length === 0
@@ -122,11 +122,10 @@ export const materializeServiceScopeSites = Effect.fn("Landofile.serviceSites")(
 
 export const serviceCredsScopeForPlan = (plan: AppPlan): ServiceCredsScope =>
   Object.fromEntries(
-    Object.values(plan.services).flatMap((service) =>
-      service.connection === undefined
-        ? []
-        : [[service.name, { creds: service.connection.creds, port: service.connection.port }]],
-    ),
+    Object.values(plan.services).flatMap((service) => {
+      const facts = serviceExpressionFacts(service);
+      return facts === undefined ? [] : [[service.name, facts]];
+    }),
   );
 
 export const materializeLandofileScopesForPlan = Effect.fn("Landofile.planScopes")(function* (

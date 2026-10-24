@@ -24,6 +24,7 @@ import {
 import { loadAuthorizedServiceProjectFiles } from "./node-authoring.ts";
 import { type PlannerIssue, attributePlannerIssue } from "./resolved-validation.ts";
 import { validateServiceSeed } from "./seed-validation.ts";
+import { serviceExpressionFacts } from "./service-credential-facts.ts";
 import {
   loadServiceTypeWithVersion,
   resolvePinnedArtifactTag,
@@ -237,9 +238,8 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
       continue;
     }
     const seed = resolved.success;
-    const connection = seed.resolution.connection;
-    if (connection !== undefined)
-      serviceCredsScope[name] = { creds: connection.creds, port: connection.port };
+    const facts = serviceExpressionFacts(seed.resolution);
+    if (facts !== undefined) serviceCredsScope[name] = facts;
     const checked = yield* validateServiceSeed(seed, appRoot, input.landofilePath);
     for (const error of checked.errors) record(error);
     resolvedByName.set(name, { ...seed, logSources: checked.logSources });

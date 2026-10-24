@@ -94,6 +94,7 @@ export const redisServiceType: ServiceType = {
     const auth = password === undefined ? {} : { REDISCLI_AUTH: password };
     return Effect.succeed({
       base: "lando",
+      ...(password === undefined ? {} : { nonSqlCreds: { user: "default", password, database: "0" } }),
       normalizedConfig: {
         ...input.service,
         type: "redis",
