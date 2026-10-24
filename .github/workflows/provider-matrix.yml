@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Isolate Lando roots
         run: |
@@ -219,7 +219,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
