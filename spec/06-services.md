@@ -239,6 +239,8 @@ Canonical credentials also survive inheritance. An omitted child credential sour
 
 For generated connection clients, private tooling metadata records the winning task's contributing service, not another credential or task snapshot. Invocation regenerates the factory-owned defaults from ownership-matched applied connection facts, preserving current unrelated defaults and their parsed expression sites. A current authored whole-task replacement bypasses this generated-client path. Both top-level tooling and event `task:` calls obey the same rule; neither imports applied lifecycle events or old authored tooling. Missing historical connection facts or an incompatible applied client family fail with `PlanReplanRequiredError`, not desired-credential fallback.
 
+The applied service's `serviceTypeId`, not its normalized `type` or the current desired declaration, selects the composed factory. The loaded declaration's ID must match exactly. Missing or unavailable applied declaration identity fails with `PlanReplanRequiredError`; observation and teardown remain supported. Only normal application records new applied identity, not plan-cache refresh or inference from task winners. This identity survives service-record persistence and partial application but does not change physical container-create fingerprints.
+
 Reserved tooling names `run`, `scratch`, and `scratch:*` produce `landofile.tooling` issues in lint and planning; planning aggregates them in one `LandofileValidationError` (§7.8). Service types MUST NOT use `topLevelAlias` while the unsupported tooling-task key list (`UNSUPPORTED_TOOLING_TASK_KEYS` in `@lando/landofile`) rejects it (§8.5).
 
 #### 6.11.4 App-scoped features (`AppFeature`)
