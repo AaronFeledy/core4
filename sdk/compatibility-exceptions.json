@@ -3465,13 +3465,13 @@
     "surface": "schema:PostScratchDestroyEvent",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Pre-release nested service plans replace the unshipped parallel secret map with typed environment descriptors and canonical connection facts; historical literal environments remain readable."
+    "justification": "Pre-release nested service plans replace the unshipped parallel secret map with typed environment descriptors and canonical connection facts; historical literal environments remain readable. The unchanged optional scratch teardown plan embeds ServicePlan values whose network endpoints gain optional primary:true and whose internal network endpoints gain optional opaque appProtocol. This reviewed nested endpoint change does not open the service map, alter teardown fields or invalidate older applied plans. The checker reports the containing additionalProperties schema rather than descending into its endpoint union."
   },
   {
     "surface": "schema:PreScratchDestroyEvent",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Pre-release nested service plans replace the unshipped parallel secret map with typed environment descriptors and canonical connection facts; historical literal environments remain readable."
+    "justification": "Pre-release nested service plans replace the unshipped parallel secret map with typed environment descriptors and canonical connection facts; historical literal environments remain readable. The unchanged optional scratch teardown plan embeds ServicePlan values whose network endpoints gain optional primary:true and whose internal network endpoints gain optional opaque appProtocol. This reviewed nested endpoint change does not open the service map, alter teardown fields or invalidate older applied plans. The checker reports the containing additionalProperties schema rather than descending into its endpoint union."
   },
   {
     "surface": "schema:ServicePlan",
@@ -4206,10 +4206,142 @@
     "justification": "Reviewed pre-release template-context defaults input/output: scalar maps remain accepted, numbers/booleans now normalize to strings, and descriptors/KEY=value lists are added. Strings remain literal; consumers discriminate _tag. Raw reserved tags require authored admission rejection; null/bare entries and __proto__ fail runtime decode. Tests: environment-value, service-config-compose-spellings, public-schema-contracts."
   },
   {
+    "surface": "command:app:info",
+    "changeKind": "property-removed",
+    "path": "$.services.items.endpoints",
+    "justification": "Approved unreleased connection contract replaces endpoint URL lists with required scoped connections carrying listener identity, binding and observation state. No endpoints compatibility alias is retained."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.status",
+    "justification": "Approved unreleased shared ServiceState adds ready, completed, restarting and paused to the existing info status vocabulary so observed and supervised states are preserved."
+  },
+  {
+    "surface": "command:app:rebuild",
+    "changeKind": "property-removed",
+    "path": "$.servicesStarted.items.endpoints",
+    "justification": "Approved unreleased rebuild output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:app:rebuild",
+    "changeKind": "enum-changed",
+    "path": "$.servicesStarted.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:app:restart",
+    "changeKind": "property-removed",
+    "path": "$.servicesStarted.items.endpoints",
+    "justification": "Approved unreleased restart output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:app:restart",
+    "changeKind": "enum-changed",
+    "path": "$.servicesStarted.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:app:start",
+    "changeKind": "property-removed",
+    "path": "$.servicesStarted.items.endpoints",
+    "justification": "Approved unreleased start output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:app:start",
+    "changeKind": "enum-changed",
+    "path": "$.servicesStarted.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "property-removed",
+    "path": "$.services.items.endpoints",
+    "justification": "Approved unreleased global info replaces endpoint URL lists with required scoped connections carrying listener identity, binding and observation state, matching app info. No endpoints compatibility alias is retained."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.status",
+    "justification": "Approved unreleased shared ServiceState adds ready, completed, restarting and paused to the existing global info status vocabulary so observed and supervised states are preserved."
+  },
+  {
+    "surface": "command:meta:global:rebuild",
+    "changeKind": "property-removed",
+    "path": "$.servicesRebuilt.items.endpoints",
+    "justification": "Approved unreleased global rebuild output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:meta:global:rebuild",
+    "changeKind": "enum-changed",
+    "path": "$.servicesRebuilt.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:meta:global:restart",
+    "changeKind": "property-removed",
+    "path": "$.servicesStarted.items.endpoints",
+    "justification": "Approved unreleased global restart output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:meta:global:restart",
+    "changeKind": "enum-changed",
+    "path": "$.servicesStarted.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:meta:global:start",
+    "changeKind": "property-removed",
+    "path": "$.servicesStarted.items.endpoints",
+    "justification": "Approved unreleased global start output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:meta:global:start",
+    "changeKind": "enum-changed",
+    "path": "$.servicesStarted.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:meta:global:status",
+    "changeKind": "property-removed",
+    "path": "$.services.items.endpoints",
+    "justification": "Approved unreleased global status replaces endpoint URL lists with required scoped connections carrying listener identity, binding and observation state, matching app info. No endpoints compatibility alias is retained."
+  },
+  {
+    "surface": "command:meta:global:status",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.status",
+    "justification": "Approved unreleased shared ServiceState adds ready, completed, restarting and paused to the existing global status vocabulary so observed and supervised states are preserved."
+  },
+  {
     "surface": "schema:DotnetServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.environment.anyOf",
     "justification": "Reviewed pre-release .NET service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:EndpointInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:EndpointPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration."
+  },
+  {
+    "surface": "schema:InternalEndpoint",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Approved internal network endpoint extension adds optional primary:true and opaque appProtocol. The Unix-socket variant is unchanged, neither field becomes required, and existing applied endpoints remain decodable."
   },
   {
     "surface": "schema:LocalStackServiceConfig",
@@ -4218,10 +4350,22 @@
     "justification": "Reviewed pre-release LocalStack service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
   },
   {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
     "surface": "schema:MailhogServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.environment.anyOf",
     "justification": "Reviewed pre-release Mailhog service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
   },
   {
     "surface": "schema:MailpitServiceConfig",
@@ -4230,10 +4374,22 @@
     "justification": "Reviewed pre-release Mailpit service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
   },
   {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
     "surface": "schema:MinIOServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.environment.anyOf",
     "justification": "Reviewed pre-release MinIO service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
   },
   {
     "surface": "schema:MssqlServiceConfig",
@@ -4242,10 +4398,22 @@
     "justification": "Reviewed pre-release MSSQL service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
   },
   {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
     "surface": "schema:MysqlServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.environment.anyOf",
     "justification": "Reviewed pre-release MySQL service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
   },
   {
     "surface": "schema:PhpMyAdminServiceConfig",
@@ -4254,10 +4422,22 @@
     "justification": "Reviewed pre-release phpMyAdmin service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
   },
   {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
     "surface": "schema:PhpServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.environment.anyOf",
     "justification": "Reviewed pre-release PHP service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
   },
   {
     "surface": "schema:RabbitMQServiceConfig",
@@ -4266,10 +4446,64 @@
     "justification": "Reviewed pre-release RabbitMQ service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
   },
   {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-removed",
+    "path": "$.endpoints",
+    "justification": "Approved unreleased ServiceInfo removes the optional endpoint-info array in favor of required scoped connections. Planned listener identity and observed host bindings are represented separately; no endpoints compatibility alias is retained."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-removed",
+    "path": "$.routes",
+    "justification": "Approved unreleased ServiceInfo removes the separate optional RoutePlan array. Host connections with source:route retain route path and protocol plus explicit binding and observation state in the common connections collection. No routes compatibility alias is retained."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "enum-widened",
+    "path": "$.status",
+    "justification": "Approved unreleased shared ServiceState adds ready, completed, restarting and paused to the existing ServiceInfo status vocabulary so observed and supervised states are preserved."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-added",
+    "path": "$.connections",
+    "justification": "Approved unreleased ServiceInfo requires scoped connections in place of optional endpoints and routes. Each connection preserves listener identity, provenance and activity; assigned connections carry addresses while pending connections cannot fabricate ports or URLs. Older provisional ServiceInfo payloads are intentionally not accepted."
+  },
+  {
+    "surface": "schema:ServicePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration."
+  },
+  {
     "surface": "schema:TomcatServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.environment.anyOf",
     "justification": "Reviewed pre-release Tomcat service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
   },
   {
     "surface": "schema:VarnishServiceConfig",
@@ -4312,5 +4546,11 @@
     "changeKind": "unsupported-construct",
     "path": "$.creds.rootPassword.anyOf",
     "justification": "Reviewed pre-release phpMyAdmin administrative credential input: optional rootPassword retains literal strings and adds compiled SecretRef/BoundText, never numeric/boolean credentials. Consumers discriminate _tag and resolve only at dispatch. Raw reserved tags require rejection before authored admission. Credential siblings/requiredness stay unchanged. Tests: environment-value, bindings, public-schema-contracts."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
   }
 ]

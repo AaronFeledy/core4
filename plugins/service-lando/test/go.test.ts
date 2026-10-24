@@ -88,7 +88,9 @@ describe("go:1.22 ServiceType", () => {
 
     expect(plan.mounts).toEqual([]);
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+    ]);
 
     expect(plan.healthcheck).toBeUndefined();
 
@@ -149,7 +151,9 @@ describe("go:1.22 ServiceType", () => {
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/golang:1.22-custom" });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9090, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 9090, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.extensions["lando-service-go"]).toMatchObject({ port: 9090 });
   });

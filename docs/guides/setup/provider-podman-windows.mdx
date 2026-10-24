@@ -8,9 +8,9 @@ tags: [beta, docs, provider-podman, setup, windows, podman-desktop]
 
 # Use Podman Desktop on Windows
 
-Download the unsigned Windows binary from the GitHub `v4.0.0-dev.N` prerelease and put it on PATH. Use `lando setup --provider=podman` when you already have a working Podman Desktop machine; the default `lando setup` uses Lando's managed runtime.
+Download the unsigned Windows binary from the GitHub `v4.0.0-dev.N` prerelease and put it on PATH. Use `lando setup --provider=podman` when you already have a working Podman Desktop machine. For Lando's managed runtime instead, follow [Lando setup](./provider-selection.mdx).
 
-After setup succeeds, run `lando doctor --provider=podman` to check the selected provider.
+After setup succeeds, run `lando doctor`. Confirm Podman is selected and the runtime is running.
 
 The default Podman Desktop machine named pipe on Windows is `npipe://./pipe/podman-machine-default`. Set the host environment variable `LANDO_PODMAN_MACHINE` to override the machine name without editing config. The following shows its name and example value, not PowerShell assignment syntax:
 

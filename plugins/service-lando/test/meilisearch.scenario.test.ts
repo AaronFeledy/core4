@@ -182,7 +182,9 @@ describe("meilisearch service type — scenario: index create + document post + 
       kind: "ref",
       ref: "getmeili/meilisearch:v1.11",
     });
-    expect(search.endpoints).toEqual([{ _tag: "internal", port: 7700, protocol: "http", name: "search" }]);
+    expect(search.endpoints).toEqual([
+      { _tag: "internal", port: 7700, protocol: "http", name: "search", primary: true },
+    ]);
     expect(search.storage).toHaveLength(1);
     expect(search.storage[0]?.store).toBe("myapp-meilisearch-data");
     expect(search.healthcheck?.kind).toBe("command");

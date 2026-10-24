@@ -60,6 +60,7 @@ const pluginCommandPayload = {
 };
 
 const appPlanFixture: AppPlan = {
+  valueModel: 1,
   id: AppId.make("fixture-app"),
   name: "fixture-app",
   slug: "fixture-app",
@@ -197,12 +198,12 @@ describe("binary cache encoding policy", () => {
   }
 
   test("app-plan fixture matches the encoder output", async () => {
-    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v28.bin")));
+    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v32.bin")));
   });
 
   test("app-plan rejects the previous schema fixture", async () => {
     const fixture = await readFile(join(fixtureRoot, "app-plan-v27.bin"));
-    const cacheRoot = join(tmpdir(), `lando-app-plan-v23-${crypto.randomUUID()}`);
+    const cacheRoot = join(tmpdir(), `lando-app-plan-v27-${crypto.randomUUID()}`);
     const path = appPlanCachePath(cacheRoot, "fixture-app", "/workspace/fixture-app");
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, fixture);

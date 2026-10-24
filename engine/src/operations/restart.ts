@@ -16,7 +16,7 @@ import {
   PreRestartEvent,
   PreServiceStopEvent,
 } from "@lando/sdk/events";
-import { type AppPlan, ServiceName } from "@lando/sdk/schema";
+import type { AppPlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildOrchestrator,
@@ -27,7 +27,7 @@ import {
   type ManagedFileTransactionGuard,
   type PathsService,
   type PluginRegistry,
-  RouterService,
+  type RouterService,
   RuntimeProviderRegistry,
   type ShellRunner,
   StateStore,
@@ -41,7 +41,6 @@ import type { RedactionService } from "@lando/redaction/service";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
@@ -49,6 +48,7 @@ import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
 import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
@@ -95,7 +95,6 @@ const restartSelectedServices = Effect.fnUntraced(function* (
   const { signal } = options;
   const events = yield* EventService;
   const registry = yield* RuntimeProviderRegistry;
-  const proxy = yield* RouterService;
   const provider = yield* registry.select(target.plan);
   const appliedPlan = yield* registry.resolveAppliedPlan(target.plan.root);
   if (
@@ -231,7 +230,6 @@ const restartSelectedServices = Effect.fnUntraced(function* (
   );
   yield* startFileSyncSessions(selectedPlan, events);
 
-  const routedUrls = yield* routeUrlsForPlan(proxy, target.plan);
   const ready = yield* waitForServiceReadiness({
     provider,
     plan: target.plan,
@@ -239,10 +237,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
     initial: new Map(initial),
     ...(signal === undefined ? {} : { signal }),
   });
-  const started = ready.map((row) => ({
-    ...row,
-    endpoints: [...(routedUrls.get(ServiceName.make(row.name)) ?? []), ...row.endpoints],
-  }));
+  const started = startedServices(yield* collectPlanConnections(target.plan, ready));
 
   const postRestart = PostRestartEvent.make({
     _tag: "post-restart",

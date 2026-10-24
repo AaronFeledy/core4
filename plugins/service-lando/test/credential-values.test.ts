@@ -237,6 +237,7 @@ describe("canonical typed connection projections", () => {
     "redis deliberately copies $._tag password into environment and generated client",
     async (password) => {
       const resolution = await resolve(redisServiceType, { type: "redis", password });
+      expect(resolution.nonSqlCreds).toEqual({ user: "default", database: "0", password });
       expect(resolution.normalizedConfig.environment?.REDISCLI_AUTH).toEqual(password);
       expect(resolution.tooling?.["redis-cli"]?.env?.REDISCLI_AUTH).toEqual(password);
       expect((await project(resolution)).REDISCLI_AUTH).toEqual(password);

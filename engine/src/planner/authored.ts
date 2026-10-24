@@ -4,9 +4,10 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { type ProviderId, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { PluginRegistry, ServiceTypeHostFacts } from "@lando/sdk/services";
 
+import { applyAuthoredDependencies } from "../services/authored-dependencies.ts";
 import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
 import { mergeComposeKnobs } from "../services/compose-knobs.ts";
-import { type ComposeServiceFeature, composeService } from "../services/feature.ts";
+import { type ComposeServiceFeature, composeServiceWithContributions } from "../services/feature.ts";
 import { planServicePrimary } from "./effective-events.ts";
 import {
   SERVICE_FEATURES_EXTENSION_KEY,
@@ -80,32 +81,7 @@ export const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: Serv
   return { ...servicePlan, healthcheck: merged };
 };
 
-export const applyAuthoredDependencies = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
-  const authoredDependencies = new Map(
-    (service.dependsOn ?? []).map((dependency) => [
-      dependency.service,
-      {
-        service: ServiceName.make(dependency.service),
-        condition: dependency.condition ?? "service_started",
-        required: dependency.required ?? true,
-      },
-    ]),
-  );
-  if (authoredDependencies.size === 0) return servicePlan;
-
-  const contributedServices = new Set(servicePlan.dependsOn.map((dependency) => dependency.service));
-  return {
-    ...servicePlan,
-    dependsOn: [
-      ...servicePlan.dependsOn.map(
-        (dependency) => authoredDependencies.get(dependency.service) ?? dependency,
-      ),
-      ...[...authoredDependencies]
-        .filter(([service]) => !contributedServices.has(ServiceName.make(service)))
-        .map(([, dependency]) => dependency),
-    ],
-  };
-};
+export { applyAuthoredDependencies } from "../services/authored-dependencies.ts";
 
 export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* (input: {
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
@@ -129,7 +105,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
     resolvedArtifactTag,
     configSourceInputs,
   } of input.resolvedServices) {
-    const rawPlan = yield* Effect.gen(function* () {
+    const composition = yield* Effect.gen(function* () {
       const configuredFeatureRefs = featureRefs.filter(
         (featureRef) => !baseDefaultIds.includes(featureRef.id) || featureRef.config !== undefined,
       );
@@ -153,7 +129,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
             .loadServiceFeature(id)
             .pipe(Effect.mapError((error) => servicePlanError(input.appRoot, name, error))),
       );
-      return yield* composeService({
+      return yield* composeServiceWithContributions({
         base: {
           name: ServiceName.make(name),
           type: resolution.normalizedConfig.type ?? serviceType.id,
@@ -173,9 +149,17 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
         host: input.host,
         normalizedConfig: resolution.normalizedConfig,
         features,
-      }).pipe(Effect.mapError((error) => servicePlanError(input.appRoot, name, error)));
+      }).pipe(
+        Effect.mapError((error) =>
+          servicePlanError(
+            input.appRoot,
+            name,
+            error.cause instanceof LandofileValidationError ? error.cause : error,
+          ),
+        ),
+      );
     });
-    const withDefaultExcludes = mergeDefaultExcludes(rawPlan);
+    const withDefaultExcludes = mergeDefaultExcludes(composition.plan);
     const withStorage = applyAuthoredStorage(
       applyAuthoredHealthcheck(withDefaultExcludes, service),
       service,
@@ -236,7 +220,13 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
         identity: serviceType.identity,
         pinnedArtifactTag: resolvedArtifactTag,
       }),
-      draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
+      // App-feature drafts carry original declarations, not synthesized publications.
+      draft: toAppFeatureDraft(
+        name,
+        { ...servicePlan, endpoints: composition.endpointContributions },
+        resolution,
+        baseDefaultIds,
+      ),
       logSources,
       routes,
       extensions:

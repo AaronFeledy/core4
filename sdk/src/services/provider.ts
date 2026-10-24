@@ -24,7 +24,7 @@ import type {
   ServiceStartError,
   VolumeOperationError,
 } from "../errors/index.ts";
-import type { EndpointInfo } from "../schema/endpoint.ts";
+import type { PublicationObservation } from "../schema/endpoint.ts";
 import type {
   AbsolutePath,
   AgentSocketBridgeInput,
@@ -258,7 +258,7 @@ export interface ServiceRuntimeInfo {
   readonly containerId?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
-  readonly endpoints?: ReadonlyArray<EndpointInfo>;
+  readonly publications: PublicationObservation;
   readonly lastStartedAt?: Date;
   /** Inspect fingerprint of published host ports. Absent when the container is missing. */
   readonly publishFingerprint?: string;

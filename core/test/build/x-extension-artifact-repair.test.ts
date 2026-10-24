@@ -32,6 +32,7 @@ import {
 } from "./x-extension-closed-record.ts";
 import { configOutputLandofile } from "./x-extension-config-output.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
+import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
@@ -50,10 +51,12 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalServicePort(
-    evolveHistoricalTimestamps(
-      evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
-      "bare",
+  evolveHistoricalEndpointMetadata(
+    evolveHistoricalServicePort(
+      evolveHistoricalTimestamps(
+        evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
+        "bare",
+      ),
     ),
   );
 

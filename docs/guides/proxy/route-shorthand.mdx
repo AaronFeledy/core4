@@ -87,7 +87,7 @@ services:
 | --- | --- | --- |
 | `hostname` | Host pattern only, with the same label rules as shorthand. No port or path; put those in `endpoint` and `pathPrefix`, or write the shorthand | required |
 | `scheme` | `http`, `https`, or `both` | `https` |
-| `endpoint` | Port number or named endpoint on the service | primary endpoint |
+| `endpoint` | Port number or named endpoint on the service | the HTTP(S) listener marked `primary: true`, or the service's only HTTP(S) listener |
 | `pathPrefix` | Only requests under this path match. Begins with `/`, with no whitespace, query string, or fragment | every path |
 | `filters` | Ordered list of request and response tweaks | none |
 
@@ -137,6 +137,51 @@ Keep endpoint ports aligned with the daemon's configuration. Routes must target
 an HTTP or HTTPS endpoint that remains in the list; Lando won't restore a default
 endpoint to satisfy a route. Normal Landofile layer merging still happens first,
 including merging endpoint entries by exact name when every entry on both sides is named.
+
+A route that names no `endpoint` targets the HTTP or HTTPS listener marked
+`primary: true`. If no HTTP(S) listener is marked, it uses the service's only
+HTTP(S) listener. A TCP primary does not prevent that fallback: Mailpit's route
+uses its HTTP UI even though SMTP is primary. Order in the list does not decide.
+The same rule picks the target of the generated default route and of `lando open`.
+When you author two or more HTTP listeners, mark the one those should use, or
+name an endpoint in every route:
+
+```yaml
+services:
+  web:
+    type: compose
+    image: example/app
+    endpoints:
+      - _tag: internal
+        name: site
+        protocol: http
+        port: 80
+        primary: true
+      - _tag: internal
+        name: admin
+        protocol: http
+        port: 8081
+    routes:
+      - web.{{ app.name }}.lndo.site
+      - hostname: admin.{{ app.name }}.lndo.site
+        endpoint: admin
+```
+
+The first route names no endpoint, so it goes to `site` because that listener is
+marked primary. Without `primary: true`, that route has two equal candidates.
+The same happens to the generated default route of a service that declares two
+unmarked HTTP listeners and no `routes:`. Planning fails with a
+`LandofileValidationError` whose remediation tells you to mark one listener
+`primary: true` or name the endpoint. `lando app:cache:refresh` reports it
+without starting containers.
+
+`primary: true` is the only accepted value; leave the key off the other entries.
+It only chooses which listener Lando treats as the main one. It doesn't change
+what the daemon listens on, and it doesn't publish a host port. Only one listener
+per service can be primary. Two entries with the same port and transport, such
+as a `published` entry beside an `internal` one, are the same listener, so they
+can share a `name` and a `primary` marking. A name can't point at two different
+listeners, and a Unix socket entry counts as a listener for that rule.
 
 ## Choose which overlapping route wins
 
@@ -367,6 +412,19 @@ Skip lint and `lando start` reports the same entries, at the same paths, in one 
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^\"]*endpoint[^\"]*pathPrefix" } }} />
     </Step>
     <Step name="cleanup-invalid-object">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ambiguous-default-route-rejected" render>
+    <Step name="scaffold-ambiguous">
+      <UseFixture name="ambiguous-default-route" />
+    </Step>
+    <Step name="plan-ambiguous-default-route">
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "primary: true" }} />
+    </Step>
+    <Step name="cleanup-ambiguous">
       <Cleanup />
     </Step>
   </Scenario>

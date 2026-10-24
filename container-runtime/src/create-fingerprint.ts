@@ -17,6 +17,7 @@ import {
   normalizeEntrypoint,
 } from "./create-values.ts";
 import { AGENT_SESSION_LABEL, HOST_PROXY_SESSION_LABEL } from "./labels.ts";
+import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 import { realizePodmanComposeKnobs } from "./podman/compose-knobs.ts";
 import { podmanNetworkNames } from "./podman/networks.ts";
 
@@ -132,21 +133,10 @@ export const createConfigFingerprint = (
       ),
     ),
     healthcheck: containerHealthcheck(service.healthcheck),
-    endpoints: service.endpoints.map((endpoint) => {
-      switch (endpoint._tag) {
-        case "published":
-          return {
-            kind: endpoint._tag,
-            port: endpoint.port,
-            protocol: endpoint.protocol === "udp" ? "udp" : "tcp",
-            publication: endpoint.publication,
-          };
-        case "internal":
-          return endpoint.protocol === "unix"
-            ? { kind: endpoint._tag, protocol: endpoint.protocol, socketPath: endpoint.socketPath }
-            : { kind: endpoint._tag, port: endpoint.port, protocol: endpoint.protocol };
-      }
-    }),
+    exposedPorts: physicalListenerPorts(service.endpoints),
+    publications: physicalPublications(service.endpoints).sort((a, b) =>
+      canonicalJson(a).localeCompare(canonicalJson(b)),
+    ),
     hostAliases: service.hostAliases,
     networks: Object.fromEntries(
       podmanNetworkNames(plan).map((name) => [

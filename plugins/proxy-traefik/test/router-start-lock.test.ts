@@ -3,7 +3,7 @@ import { Deferred, Effect, Fiber, Semaphore } from "effect";
 
 import { FileNotFoundError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ServiceName, type StartedService } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
@@ -114,7 +114,9 @@ const makeHarness = () => {
   };
   const globalApp = {
     ensureRunning: () =>
-      Effect.gen(function* () {
+      Effect.gen(function* (): Effect.fn.Return<
+        ReadonlyArray<StartedService & { readonly endpoints: readonly string[] }>
+      > {
         if (pauseSetup) {
           yield* Deferred.succeed(setupEntered, undefined);
           yield* Deferred.await(releaseSetup);
@@ -124,6 +126,7 @@ const makeHarness = () => {
           {
             name: "traefik",
             state: "running",
+            connections: [],
             endpoints: ["http://127.0.0.1:38080", "https://127.0.0.1:38443"],
           },
         ];

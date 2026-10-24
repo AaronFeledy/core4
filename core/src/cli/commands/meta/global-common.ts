@@ -1,10 +1,9 @@
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
 import { unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
 import type { ToolingExecError } from "@lando/sdk/errors";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, StartedService } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { serviceStateRow } from "../service-summary";
-import type { GlobalStartedService } from "./global-start";
 
 export const globalAppRef = (plan: Pick<AppPlan, "id" | "root">): AppRef => ({
   kind: "global",
@@ -12,8 +11,7 @@ export const globalAppRef = (plan: Pick<AppPlan, "id" | "root">): AppRef => ({
   root: plan.root,
 });
 
-export const renderGlobalServiceRow = (service: GlobalStartedService): string =>
-  serviceStateRow(service.name, service.state, service.endpoints);
+export const renderGlobalServiceRow = (service: StartedService): string => serviceStateRow(service);
 
 type GlobalServiceNames = Readonly<Record<string, { readonly name: string }>>;
 export const withGlobalLifecycleEvents = Effect.fnUntraced(function* <A, E, R, PreE, PreR, PostE, PostR>(

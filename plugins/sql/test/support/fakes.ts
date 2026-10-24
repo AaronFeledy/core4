@@ -155,6 +155,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
           service: target.service,
           providerId: ProviderId.make("test"),
           status: "running",
+          publications: { status: "unknown" as const },
         })),
     resolveSnapshot(reference, scope) {
       const list = this.listSnapshots;

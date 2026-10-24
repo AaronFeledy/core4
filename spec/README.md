@@ -90,10 +90,10 @@ If you are looking for a public surface or policy:
 | Artifact build contract | 06 | §6.3 |
 | App mounts and mount realization | 06 | §6.4 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
-| Endpoints, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
+| Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
 | Healthchecks, start-failure retention, certificates, and trust injection | 06 | §6.7 + §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
-| `ServiceInfo` schema | 06 | §6.10 |
+| `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |

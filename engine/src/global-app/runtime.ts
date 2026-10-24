@@ -95,12 +95,12 @@ export const layer = Layer.effect(
                     // reserve a stopped service's persisted pair. Providers
                     // without that capability retain running-only behavior.
                     if (!running && provider.matchingPublishPorts === undefined) continue;
-                    const published = ports.filter((port) =>
-                      (service.endpoints ?? []).some(
-                        (endpoint) =>
-                          endpoint._tag === "published" &&
-                          (endpoint.materialization?.hostPort ?? endpoint.publication?.hostPort) === port,
-                      ),
+                    const published = ports.filter(
+                      (port) =>
+                        service.publications.status === "present" &&
+                        service.publications.bindings.some(
+                          (binding) => binding.transport === "tcp" && binding.hostPort === port,
+                        ),
                     );
                     if (published.length === 0) continue;
                     const verified =

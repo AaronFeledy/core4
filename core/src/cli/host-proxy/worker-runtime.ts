@@ -75,7 +75,7 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
       Effect.scoped(
         Effect.gen(function* () {
           const runtimeContext = yield* Effect.context<
-            ShellRunner | EventService | RedactionService | RouterService
+            ShellRunner | EventService | RedactionService | RouterService | RuntimeProviderRegistry
           >();
           let currentPlan = input.plan;
           const session = yield* scopedHostProxyRunLandoSession({

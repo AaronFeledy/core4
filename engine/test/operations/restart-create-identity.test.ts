@@ -67,7 +67,7 @@ const runRestart = (service: ServicePlan, recorded = applied, driftAtStop = fals
         state: "running",
         containerId: "retained-container",
         labels,
-        endpoints: [],
+        publications: { status: "present", bindings: [] },
       });
     },
     onStop: () => {

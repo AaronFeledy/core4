@@ -75,7 +75,9 @@ describe("mysql ServiceType", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-db-mysql-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3306, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },
+    ]);
   });
 
   test("propagates MySQL overrides (image, creds, port, env) and keeps user as plan.user", async () => {
@@ -96,7 +98,9 @@ describe("mysql ServiceType", () => {
       MYSQL_DATABASE: "appdb",
     });
     expect(plan.environment.MYSQL_USER).not.toBe("uid");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 13306, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 13306, protocol: "tcp", name: "db", primary: true },
+    ]);
   });
 
   test("S1 authored creds win for MYSQL_* and LANDO_DB_* without putting LANDO_DB_* on resolve env", async () => {

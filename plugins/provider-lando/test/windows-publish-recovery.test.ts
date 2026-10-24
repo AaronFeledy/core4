@@ -75,10 +75,11 @@ test("limits optional recovery to shared-only loopback TCP publications", () => 
     sharedCrossAppNetwork: true,
   });
   const endpoint = {
-    _tag: "published",
+    _tag: "published" as const,
     protocol: "http",
+    port: 80,
     publication: { bindAddress: "127.0.0.1" },
-  };
+  } as const;
   expect(supportsWindowsPublishedRecovery({ networking, endpoints: [endpoint] })).toBe(true);
   expect(
     supportsWindowsPublishedRecovery({
@@ -106,6 +107,26 @@ test("limits optional recovery to shared-only loopback TCP publications", () => 
     }),
   ).toBe(false);
   expect(supportsWindowsPublishedRecovery({ networking: undefined, endpoints: [endpoint] })).toBe(false);
+});
+test("treats internal facets of a published listener as the same physical publication", () => {
+  // Given a published listener that the normalizer also retains as an internal named facet.
+  const networking = landoNetworkingPlan({
+    slug: "any-app-id",
+    serviceNames: [],
+    perAppBridge: false,
+    sharedCrossAppNetwork: true,
+  });
+  const published = {
+    _tag: "published",
+    protocol: "http",
+    port: 80,
+    publication: { bindAddress: "127.0.0.1" },
+  } as const;
+  const facet = { _tag: "internal", protocol: "http", port: 80, name: "web" } as const;
+  const internalOnly = { _tag: "internal", protocol: "tcp", port: 9000 } as const;
+  // When / Then only an unpublished physical listener disables recovery.
+  expect(supportsWindowsPublishedRecovery({ networking, endpoints: [facet, published] })).toBe(true);
+  expect(supportsWindowsPublishedRecovery({ networking, endpoints: [published, internalOnly] })).toBe(false);
 });
 test("uses strict Docker-compatible network responses from the production endpoint", () => {
   expect(WINDOWS_COMPAT_NETWORK_LIST_PATH).toBe("/networks");

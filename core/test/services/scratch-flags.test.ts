@@ -190,6 +190,7 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
         providerId,
         status: "running",
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
   });

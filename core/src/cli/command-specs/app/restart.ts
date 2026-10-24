@@ -36,5 +36,5 @@ export const restartSpec = {
   },
   run: (input) =>
     withIncompleteStartNotice(Effect.andThen(refreshAppCache(), restartApp(restartOptionsFromInput(input)))),
-  render: (result) => renderRestartAppResult(result as RestartAppResult),
+  render: (result, _input, ctx) => renderRestartAppResult(result as RestartAppResult, ctx),
 } satisfies LandoCommandSpec<RestartAppResult>;

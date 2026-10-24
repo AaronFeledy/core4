@@ -173,10 +173,10 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   },
   "@lando/lando4": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/proxy-traefik": {
-    dependencies: PLUGIN_RUNTIME_TARGETS,
+    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/http-client"],
     devDependencies: [],
     // Diagnostic regressions register process-global canaries; runtime imports remain forbidden.
-    testTargets: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],
+    testTargets: [...PLUGIN_RUNTIME_TARGETS, "@lando/http-client", "@lando/redaction"],
   },
   "@lando/renderer-lando": {
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/renderer"],

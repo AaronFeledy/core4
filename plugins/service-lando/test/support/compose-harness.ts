@@ -89,8 +89,11 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
       base: {
         name: ServiceName.make(serviceName),
         type: resolution.normalizedConfig.type ?? args.serviceType.id,
+        serviceTypeId: args.serviceType.id,
         provider,
         primary: resolution.normalizedConfig.primary ?? serviceName === "web",
+        ...(resolution.connection === undefined ? {} : { connection: resolution.connection }),
+        ...(resolution.nonSqlCreds === undefined ? {} : { nonSqlCreds: resolution.nonSqlCreds }),
         ...(resolution.normalizedConfig.environment === undefined
           ? {}
           : { environment: resolution.normalizedConfig.environment }),

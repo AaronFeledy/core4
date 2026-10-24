@@ -243,7 +243,7 @@ describe("podman inspect health", () => {
     },
   );
 
-  test("materializes published endpoints from inspect and includes the app root", async () => {
+  test("observes publications from inspect and includes the app root", async () => {
     // Given
     const fake = apiFromResponses([
       {
@@ -262,15 +262,10 @@ describe("podman inspect health", () => {
 
     // Then
     expect(info.appRoot).toBe(appRoot);
-    expect(info.endpoints).toEqual([
-      {
-        _tag: "published",
-        port: 31080,
-        protocol: "tcp",
-        name: "31080/tcp",
-        publication: { bindAddress: "0.0.0.0", hostPort: 32768 },
-      },
-    ]);
+    expect(info.publications).toEqual({
+      status: "present",
+      bindings: [{ port: 31080, transport: "tcp", bindAddress: "0.0.0.0", hostPort: 32768 }],
+    });
   });
 
   test("includes the app root when the inspected container is absent", async () => {
@@ -282,7 +277,7 @@ describe("podman inspect health", () => {
 
     // Then
     expect(info.appRoot).toBe(appRoot);
-    expect(info.endpoints).toEqual(service.endpoints);
+    expect(info.publications).toEqual({ status: "missing" });
   });
 
   test.each(["healthy", "starting", "unhealthy"])(

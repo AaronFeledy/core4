@@ -29,6 +29,7 @@ import {
   composeConfigMounts,
 } from "./compose-configs.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
+import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 
 export { composeConfigBindStrings };
 export { ContainerPlanError, normalizeCommand, normalizeEntrypoint };
@@ -237,11 +238,11 @@ export const containerPortBindings = (
   endpoints: ReadonlyArray<PublishedEndpoint>,
 ): Record<string, ReadonlyArray<Record<string, string>>> => {
   const grouped = new Map<string, Array<Record<string, string>>>();
-  for (const endpoint of endpoints) {
-    const key = `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`;
+  for (const endpoint of physicalPublications(endpoints)) {
+    const key = `${endpoint.port}/${endpoint.transport}`;
     const binding = {
-      HostIp: endpoint.publication.bindAddress ?? "127.0.0.1",
-      HostPort: endpoint.publication.hostPort === undefined ? "" : String(endpoint.publication.hostPort),
+      HostIp: endpoint.bindAddress,
+      HostPort: endpoint.hostPort === undefined ? "" : String(endpoint.hostPort),
     };
     const existing = grouped.get(key);
     if (existing === undefined) grouped.set(key, [binding]);
@@ -259,7 +260,7 @@ export const fingerprintPortBindings = (
       parts.push(`${key}@${item.HostIp ?? ""}:${item.HostPort ?? ""}`);
     }
   }
-  return parts.sort().join("|");
+  return [...new Set(parts)].sort().join("|");
 };
 
 export const fingerprintPlannedPublishPorts = (endpoints: ReadonlyArray<PublishedEndpoint>): string => {
@@ -289,13 +290,7 @@ export const fingerprintInspectPublishPorts = (inspect: unknown): string => {
 export const containerExposedPorts = (
   endpoints: ReadonlyArray<PublishedEndpoint | InternalEndpoint>,
 ): Record<string, Record<string, never>> => {
-  const ports: Record<string, Record<string, never>> = {};
-  for (const endpoint of endpoints) {
-    if (endpoint.protocol === "unix") continue;
-    const key = `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`;
-    ports[key] = {};
-  }
-  return ports;
+  return Object.fromEntries(physicalListenerPorts(endpoints).map((key) => [key, {}]));
 };
 
 export const containerHostConfigFragment = (

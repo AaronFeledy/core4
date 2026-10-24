@@ -6,60 +6,101 @@ import { CI_PLATFORMS } from "../../../scripts/ci-platforms";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const readmePath = resolve(repoRoot, "README.md");
+const repositoryPath = resolve(repoRoot, "docs/contributing/repository.md");
+const installPath = resolve(repoRoot, "docs/alpha-install-and-bug-reports.md");
+const ciPath = resolve(repoRoot, "docs/contributing/ci.md");
 
 const readText = async (path: string): Promise<string> => Bun.file(path).text();
 
-const statusSection = (readme: string): string =>
-  readme.match(/^## Status & roadmap\n[\s\S]*?(?=^## )/m)?.[0] ?? "";
+const installSection = (install: string, heading: string): string =>
+  install.split(`### ${heading}\n`)[1]?.split("\n### ")[0] ?? "";
 
-const alphaCompletionCriteria = (readme: string): string => {
-  const contributing = readme.match(/^## Contributing\n[\s\S]*?(?=^## |(?![\s\S]))/m)?.[0] ?? "";
-  return contributing.match(/^### Alpha completion criteria\n[\s\S]*?(?=^#{1,3} |(?![\s\S]))/m)?.[0] ?? "";
-};
+const releasePolicy = (repository: string): string =>
+  (
+    repository.match(
+      /^## Keep development and release artifacts distinct\n[\s\S]*?(?=^## |(?![\s\S]))/m,
+    )?.[0] ?? ""
+  ).replace(/\s+/g, " ");
 
 const alphaPlatformScope = (ci: string): string =>
   ci.match(/^## Alpha platform scope\n[\s\S]*?(?=^## )/m)?.[0] ?? "";
 
 describe("public alpha contract", () => {
-  test("names Public Alpha 1 current when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
-    expect(status).toContain("Public Alpha 1 is current");
+  test("names Public Alpha 1 current when contributor release policy is read", async () => {
+    const status = releasePolicy(await readText(repositoryPath));
+    expect(status).toContain("Public Alpha 1 is the current milestone");
   });
 
-  test("marks pre-alpha and later Beta when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
+  test("marks pre-alpha and later Beta when contributor release policy is read", async () => {
+    const status = releasePolicy(await readText(repositoryPath));
     expect(status).toContain("pre-alpha");
-    expect(status).toContain("Beta is later");
+    expect(status).toContain("Beta follows Alpha");
   });
 
-  test("omits Current: Beta 1 when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
+  test("omits Current: Beta 1 when contributor release policy is read", async () => {
+    const status = releasePolicy(await readText(repositoryPath));
     expect(status).not.toContain("Current: Beta 1");
   });
 
-  test("names 4.0.0-dev.N on the dev channel when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
+  test("names 4.0.0-dev.N on the dev channel when contributor release policy is read", async () => {
+    const status = releasePolicy(await readText(repositoryPath));
     expect(status).toContain("4.0.0-dev.N");
-    expect(status.includes("on the `dev` channel") || status.includes("`dev` channel")).toBe(true);
+    expect(status).toContain("`dev` channel");
   });
 
-  test("omits 4.0.0-alpha.N when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
+  test("omits 4.0.0-alpha.N when contributor release policy is read", async () => {
+    const status = releasePolicy(await readText(repositoryPath));
     expect(status).not.toContain("4.0.0-alpha.N");
   });
 
-  test("lists every CI platform id when README is read", async () => {
-    const readme = await readText(readmePath);
+  test("lists every CI platform id in the Alpha install guide", async () => {
+    const install = await readText(installPath);
     for (const platform of CI_PLATFORMS) {
-      expect(readme).toContain(platform.id);
+      expect(install).toContain(platform.id);
     }
   });
 
-  test("names darwin-x64 Docker live path and lando default when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
-    expect(status).toContain("darwin-x64");
-    expect(status).toContain("Docker is the live path");
-    expect(status).toContain("default provider stays `lando`");
+  test("uses bare interactive setup in the install guide", async () => {
+    const setup = installSection(await readText(installPath), "Choose setup for your platform");
+    expect(setup).toContain("Run setup in your terminal and follow the prompts.");
+    expect(setup).toContain("```bash\nlando setup\n```");
+    expect(setup).not.toContain("lando setup --provider=");
+  });
+
+  test("recommends the managed runtime without Docker or system Podman in the install guide", async () => {
+    const setup = installSection(await readText(installPath), "Choose setup for your platform");
+    expect(setup).toContain("On supported hosts, choose the recommended Lando-managed runtime;");
+    expect(setup).toContain("it does not require Docker or system Podman.");
+  });
+
+  test("requires Intel Mac Docker Desktop installation and startup before setup", async () => {
+    const setup = installSection(await readText(installPath), "Choose setup for your platform");
+    expect(setup).toContain("On an Intel Mac (`darwin-x64`), install and start Docker Desktop first,");
+    expect(setup).toContain("Setup does not install Docker for you.");
+  });
+
+  test("requires Intel Mac users to choose Docker manually in the setup menu", async () => {
+    const setup = installSection(await readText(installPath), "Choose setup for your platform");
+    expect(setup).toContain(
+      "On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks.",
+    );
+  });
+
+  test("keeps deliberate Docker fallback separate from first-run setup", async () => {
+    const fallback = installSection(await readText(installPath), "Use Docker as a Linux fallback");
+    expect(fallback).toContain(
+      "If the managed runtime still cannot install and system Docker is already working, use the fallback below.",
+    );
+    expect(fallback).toContain(
+      "If you already have apps on another provider, follow [Switch providers](./guides/setup/provider-selection.mdx#switch-providers) first.",
+    );
+    expect(fallback).toContain("```bash\nlando setup --provider=docker\n```");
+    expect(fallback).toContain(
+      "Setup saves Docker as your provider. Run `lando doctor` to verify the result.",
+    );
+    expect(fallback).toContain(
+      "Docker is the supported path on Intel Mac and a fallback on Linux, not the default on other targets.",
+    );
   });
 
   test("finds recipes/drupal/README.mdx when the recipe file is checked", async () => {
@@ -67,22 +108,34 @@ describe("public alpha contract", () => {
     expect(exists).toBe(true);
   });
 
-  test("names rails as a bundled Alpha 1 recipe when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
-    expect(status).toContain("Rails is bundled for Alpha 1 as `rails`");
-    expect(status).toContain("`recipes/rails/`");
-    expect(status).toContain("Ruby/Rails");
-    expect(status).toContain("PostgreSQL");
-    expect(status).toContain("Redis");
-    expect(status).toContain("`rails` and `bundle` tooling");
-    expect(status).toContain("non-interactive default");
-    expect(status).not.toContain("already ships as a public recipe at `recipes/rails`");
+  test("documents the bundled Rails stack and non-interactive init in its executable recipe", async () => {
+    const recipe = await readText(resolve(repoRoot, "recipes/rails/README.mdx"));
+    const manifest = Bun.YAML.parse(await readText(resolve(repoRoot, "recipes/rails/recipe.yml"))) as {
+      id: string;
+      title: string;
+      prompts: Array<{ default?: unknown }>;
+      snapshot: { identity: { sourceKind: string } };
+    };
+    expect(manifest.id).toBe("rails");
+    expect(manifest.snapshot.identity.sourceKind).toBe("bundled");
+    expect(manifest.title).toBe("Ruby on Rails");
+    expect(manifest.prompts.length).toBeGreaterThan(0);
+    expect(manifest.prompts.every((prompt) => prompt.default !== undefined)).toBe(true);
+    expect(recipe).toContain("PostgreSQL");
+    expect(recipe).toContain("Redis");
+    expect(recipe).toContain("lando rails");
+    expect(recipe).toContain("lando bundle");
+    expect(recipe).toContain("lando init --recipe rails --name={{appName}} --yes");
+    expect(recipe).toContain("<Guide>");
   });
 
-  test("requires an executable public Rails README and upgrades the builtin in Alpha completion criteria", async () => {
-    const criteria = alphaCompletionCriteria(await readText(readmePath));
+  test("requires an executable public Rails README and upgrades the builtin in contributor release policy", async () => {
+    const criteria = releasePolicy(await readText(repositoryPath));
     expect(criteria).toContain("public Rails recipe uses an executable `README.mdx`");
-    expect(criteria).toContain("existing builtin implementation is upgraded rather than duplicated");
+    expect(criteria).toContain("`recipes/rails/`");
+    expect(criteria).toContain(
+      "Extend its existing built-in implementation rather than adding a duplicate recipe",
+    );
   });
 
   test("finds the rails builtin stub when the stub manifest is checked", async () => {
@@ -100,16 +153,16 @@ describe("public alpha contract", () => {
     expect(readme).toContain("recipes/");
   });
 
-  test("defers signing installers and self-update when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
-    expect(status).toContain("signing");
+  test("defers signing installers and self-update when contributor release policy is read", async () => {
+    const status = releasePolicy(await readText(repositoryPath));
+    expect(status).toContain("Signing");
     expect(status).toContain("installers");
     expect(status).toContain("self-update");
     expect(status.includes("later") || status.includes("do not ship")).toBe(true);
   });
 
-  test("says GitHub prerelease ships unsigned binaries for all six compile targets when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
+  test("says GitHub prerelease ships unsigned binaries for all six compile targets in the install guide", async () => {
+    const status = await readText(installPath);
     expect(status).toContain("unsigned");
     expect(status).toContain("GitHub prerelease");
     for (const id of [
@@ -132,26 +185,26 @@ describe("public alpha contract", () => {
     expect(ciDocs).not.toContain("4.0.0-alpha.N");
   });
 
-  test("requires live setup doctor Drupal and Rails on every compile target in Alpha completion criteria", async () => {
-    const criteria = alphaCompletionCriteria(await readText(readmePath));
-    expect(criteria).toContain("Alpha 1 is complete only when every compile target passes");
-    expect(criteria).toContain("live `lando setup`");
-    expect(criteria).toContain("live `lando doctor`");
-    expect(criteria).toContain("live canonical Drupal and Rails journeys");
+  test("requires live setup doctor Drupal and Rails on every compile target in CI acceptance", async () => {
+    const criteria = alphaPlatformScope(await readText(ciPath));
+    expect(criteria).toContain("all six compile targets");
+    expect(criteria).toContain("Live `lando setup` and `lando doctor`");
+    expect(criteria).toContain("Drupal canonical journey");
+    expect(criteria).toContain("Rails canonical journey");
   });
 
-  test("says compilation alone is not an exit in Alpha completion criteria", async () => {
-    const criteria = alphaCompletionCriteria(await readText(readmePath));
-    expect(criteria).toContain("Compilation alone is not enough");
+  test("says compilation alone is not an exit in CI acceptance", async () => {
+    const criteria = alphaPlatformScope(await readText(ciPath));
+    expect(criteria).toContain("Compile smoke is not an Alpha exit");
   });
 
-  test("says a roadmap rewrite is not an Alpha 1 exit in Alpha completion criteria", async () => {
-    const criteria = alphaCompletionCriteria(await readText(readmePath));
-    expect(criteria).toContain("a roadmap rewrite does not meet these criteria");
+  test("says a roadmap rewrite is not an Alpha 1 exit in contributor release policy", async () => {
+    const criteria = releasePolicy(await readText(repositoryPath));
+    expect(criteria).toContain("A roadmap rewrite does not satisfy these criteria");
   });
 
-  test("omits signed GA public artifact claims when Status is read", async () => {
-    const status = statusSection(await readText(readmePath));
+  test("omits signed GA public artifact claims when contributor release policy is read", async () => {
+    const status = releasePolicy(await readText(repositoryPath));
     expect(status).toContain("unsigned");
     expect(status).not.toContain("signed 4.0.0");
     expect(status).not.toMatch(/\bGA\b/);

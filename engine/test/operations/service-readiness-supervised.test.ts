@@ -38,6 +38,7 @@ test.each(["always", "unless-stopped", "on-failure"])(
           providerId: plan.provider,
           status: "stopped",
           exitCode: 17,
+          publications: { status: "unknown" },
         }),
     });
     const warnings = makeCommandWarnings(false);
@@ -77,6 +78,7 @@ test.each([undefined, "no", "on-failure"])(
           providerId: plan.provider,
           status: "stopped",
           exitCode: restart === "on-failure" ? 0 : 17,
+          publications: { status: "unknown" as const },
         }),
     };
     const timed = await runExitUnderClock(
@@ -96,7 +98,14 @@ test.each(["unknown", "stopped"])(
   async (status) => {
     const provider = {
       ...TestRuntimeProvider,
-      inspect: () => Effect.succeed({ app: plan.id, service: web.name, providerId: plan.provider, status }),
+      inspect: () =>
+        Effect.succeed({
+          app: plan.id,
+          service: web.name,
+          providerId: plan.provider,
+          status,
+          publications: { status: "unknown" as const },
+        }),
     };
     const timed = await runExitUnderClock(
       waitForServiceReadiness({
@@ -138,6 +147,7 @@ test("a supervised crash loop stops its healthcheck wait on the first exit", asy
         service: target.service,
         providerId: plan.provider,
         status: now >= 250 ? "stopped" : "running",
+        publications: { status: "unknown" as const },
         containerId: "worker",
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
         ...(now >= 250 ? { exitCode: 7 } : {}),
@@ -214,6 +224,7 @@ test("a supervised restart while a sibling waits is downgraded once", async () =
         service: target.service,
         providerId: plan.provider,
         status: "running",
+        publications: { status: "unknown" as const },
         containerId: "container",
         lastStartedAt: DateTime.toDate(
           DateTime.makeUnsafe(target.service === web.name && now >= 250 ? 250 : 0),

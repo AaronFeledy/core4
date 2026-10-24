@@ -82,6 +82,7 @@ const harnessAt = (
                 providerId,
                 service: ServiceName.make("orphan"),
                 status: "running" as const,
+                publications: { status: "unknown" as const },
                 containerId: "owned-container",
               },
             ]

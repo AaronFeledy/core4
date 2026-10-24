@@ -1,156 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
-import { HostProxyCommandNotAllowedError, ProxyError } from "@lando/sdk/errors";
-import type { LandoEvent } from "@lando/sdk/events";
-import {
-  AbsolutePath,
-  type AppPlan,
-  type CommandResultEnvelope,
-  type RoutePlan,
-  ServiceName,
-} from "@lando/sdk/schema";
-import { EventService, RouterService, ShellRunner } from "@lando/sdk/services";
+import { HostProxyCommandNotAllowedError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
 
 import {
   type HostProxyRunLandoExecutor,
   dispatchRunLando,
 } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { buildRunLandoRequest } from "@lando/engine/subsystems/host-proxy/shim";
-import {
-  RedactionService,
-  type RedactionServiceShape,
-  createStandaloneRedactor,
-  makeRedactionService,
-} from "@lando/redaction/service";
-import { buildCommandResultEnvelope } from "@lando/sdk/command-result";
-import { type OpenAppOptions, OpenAppResultSchema, openForPlan } from "../../src/cli/commands/open.ts";
+import { type OpenAppOptions, OpenAppResultSchema } from "../../src/cli/commands/open.ts";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/generated/host-proxy-allowlist.ts";
 import { runOpenForHostProxy } from "../../src/cli/host-proxy/dispatch.ts";
-
-const route = (over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string }): RoutePlan => ({
-  priority: 2,
-  ...over,
-  service: ServiceName.make(over.service),
-  backend: { service: ServiceName.make(over.service), protocol: "http", port: 80 },
-});
-
-const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan => {
-  const services: Record<string, unknown> = {};
-  for (const name of serviceNames) services[name] = { name, routes: [], endpoints: [] };
-  return {
-    id: "myapp",
-    name: "myapp",
-    root: "/srv/apps/myapp",
-    services,
-    routes,
-  } as unknown as AppPlan;
-};
+import {
+  commandServices,
+  hostSideEnvelope,
+  makePlan,
+  recordingEventLayer,
+  redactionLayer,
+  route,
+  silentEventLayer,
+} from "../_support/host-proxy-open-fixtures.ts";
 
 const appRef = { kind: "user" as const, id: "myapp", root: AbsolutePath.make("/srv/apps/myapp") };
 const mount = { containerRoot: "/app", hostRoot: "/srv/apps/myapp" };
-
-const shellLayer = () =>
-  Layer.succeed(
-    ShellRunner,
-    ShellRunner.of({
-      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-      run: () => Effect.die("nu"),
-      runScript: () => Effect.die("nu"),
-      interactive: () => Effect.die("nu"),
-    } as never),
-  );
-
-const silentEventLayer = () =>
-  Layer.succeed(
-    EventService,
-    EventService.of({
-      publish: () => Effect.void,
-      subscribe: () => Effect.die("nu"),
-      subscribeQueue: Effect.die("nu"),
-      waitFor: () => Effect.die("nu"),
-      waitForAny: () => Effect.die("nu"),
-      query: () => Effect.die("nu"),
-    } as never),
-  );
-
-const recordingEventLayer = () => {
-  const events: LandoEvent[] = [];
-  const layer = Layer.succeed(
-    EventService,
-    EventService.of({
-      publish: (event: LandoEvent) =>
-        Effect.sync(() => {
-          events.push(event);
-        }),
-      subscribe: () => Effect.die("nu"),
-      subscribeQueue: Effect.die("nu"),
-      waitFor: () => Effect.die("nu"),
-      waitForAny: () => Effect.die("nu"),
-      query: () => Effect.die("nu"),
-    } as never),
-  );
-  return { events, layer };
-};
-
-const standaloneRedactionService: RedactionServiceShape = makeRedactionService();
-
-const redactionLayer = () =>
-  Layer.succeed(
-    RedactionService,
-    RedactionService.of({
-      ...standaloneRedactionService,
-    }),
-  );
-
-const commandServices = (eventLayer: Layer.Layer<EventService>, httpsPort = 443) =>
-  Layer.mergeAll(
-    shellLayer(),
-    eventLayer,
-    redactionLayer(),
-    Layer.succeed(
-      RouterService,
-      RouterService.of({
-        status: Effect.succeed({
-          state: "running",
-          configuredApps: [],
-          ports: { http: 8080, https: 8443 },
-          authorities: [{ hostname: "web.myapp.lndo.site", scheme: "https", port: httpsPort }],
-        }),
-      } as never),
-    ),
-  );
-
-const hostSideEnvelope = (
-  plan: AppPlan,
-  options: OpenAppOptions,
-): Promise<{ envelope: CommandResultEnvelope; exitCode: number }> => {
-  const redactor = createStandaloneRedactor("secrets", { sourceEnv: process.env });
-  const program = Effect.gen(function* () {
-    const outcome = yield* Effect.exit(openForPlan(plan, options));
-    const encoded = Exit.isSuccess(outcome)
-      ? { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 }
-      : {
-          outcome: {
-            _tag: "failure" as const,
-            additionalErrors: [],
-            error: Option.getOrElse(Cause.findErrorOption(outcome.cause), () => ({
-              _tag: "HostProxyDispatchError",
-              message: Cause.pretty(outcome.cause),
-            })),
-          },
-          exitCode: 1,
-        };
-    const envelope = yield* buildCommandResultEnvelope({
-      command: "app:open",
-      resultSchema: OpenAppResultSchema,
-      outcome: encoded.outcome,
-      redactor,
-    });
-    return { envelope, exitCode: encoded.exitCode };
-  });
-  return Effect.runPromise(program.pipe(Effect.provide(commandServices(silentEventLayer()))));
-};
 
 const roundTrip = (
   plan: AppPlan,
@@ -198,21 +72,20 @@ const withStdoutTty = async <Value>(tty: boolean, run: () => Promise<Value>): Pr
 };
 
 describe("in-container lando open host-proxy round-trip", () => {
-  test("host dispatch retains typed router failure and cleanup defect in its envelope", async () => {
-    const primary = new ProxyError({
-      proxyId: "traefik",
-      message: "router status failed",
-      remediation: "Repair router.",
+  test("host dispatch retains typed inspection failure and cleanup defect in its envelope", async () => {
+    // Given a provider inspection failure with a simultaneous cleanup defect.
+    const primary = new ProviderUnavailableError({
+      providerId: "test",
+      operation: "inspect",
+      message: "runtime inspection failed",
+      remediation: "Repair runtime.",
     });
-    const secondary = new Error("router cleanup failed");
-    const router = RouterService.of({
-      ...Effect.runSync(
-        Effect.map(RouterService, (service) => service).pipe(
-          Effect.provide(commandServices(silentEventLayer())),
-        ),
-      ),
-      status: Effect.failCause(Cause.combine(Cause.fail(primary), Cause.die(secondary))),
-    });
+    const secondary = new Error("inspection cleanup failed");
+    const provider = {
+      ...TestRuntimeProvider,
+      inspect: () => Effect.failCause(Cause.combine(Cause.fail(primary), Cause.die(secondary))),
+    };
+    // When the host gathers connections before opening a target.
     const result = await Effect.runPromise(
       runOpenForHostProxy(httpsPlan(), {
         commandId: "app:open",
@@ -220,30 +93,28 @@ describe("in-container lando open host-proxy round-trip", () => {
         cwd: "/srv/apps/myapp",
         tty: false,
         env: {},
-      }).pipe(
-        Effect.provideService(RouterService, router),
-        Effect.provide(commandServices(silentEventLayer())),
-      ),
+      }).pipe(Effect.provide(commandServices(silentEventLayer(), 443, provider))),
     );
+    // Then both failure roles survive the machine envelope.
     expect(result.exitCode).toBe(1);
     expect(result.envelope.error).toEqual({
-      _tag: "ProxyError",
-      proxyId: "traefik",
-      message: "router status failed",
-      remediation: "Repair router.",
-      additionalErrors: [{ _tag: "Error", role: "peer", message: "router cleanup failed" }],
+      _tag: "ProviderUnavailableError",
+      providerId: "test",
+      operation: "inspect",
+      message: "runtime inspection failed",
+      remediation: "Repair runtime.",
+      additionalErrors: [{ _tag: "Error", role: "peer", message: "inspection cleanup failed" }],
     });
   });
-  test("an unconfigured hostname uses the running ingress listen port", async () => {
+  test("an unobserved hostname fails closed instead of guessing an ingress port", async () => {
     const plan = makePlan(
       [route({ hostname: "unstarted.lndo.site", scheme: "https", service: "web" })],
       ["web"],
     );
     const result = await roundTrip(plan, ["open", "--print"]).exit;
     if (!Exit.isSuccess(result)) throw new Error("round-trip failed");
-    expect(result.value.exitCode).toBe(0);
-    const body = result.value.envelope.result as { targets?: ReadonlyArray<{ url: string }> } | undefined;
-    expect(body?.targets?.[0]?.url).toBe("https://unstarted.lndo.site:8443");
+    expect(result.value.exitCode).toBe(1);
+    expect(result.value.envelope.error?._tag).toBe("OpenTargetUnresolvedError");
   });
 
   test("--print round-trip envelope + exit code equal host-side app:open", async () => {
@@ -266,7 +137,7 @@ describe("in-container lando open host-proxy round-trip", () => {
     const result = await exit;
     if (!Exit.isSuccess(result)) throw new Error("round-trip failed");
     expect(result.value.exitCode).toBe(0);
-    const body = result.value.envelope.result as { targets?: ReadonlyArray<{ url: string }> } | undefined;
+    const body = Schema.decodeUnknownSync(OpenAppResultSchema)(result.value.envelope.result);
     expect(body?.targets?.[0]?.url).toBe("https://web.myapp.lndo.site:4433");
   });
 
@@ -282,7 +153,7 @@ describe("in-container lando open host-proxy round-trip", () => {
     try {
       const options: OpenAppOptions = { platform: "linux", env: {}, ttyPresent: false };
       const host = await hostSideEnvelope(plan, options);
-      const hostResult = host.envelope.result as { launch?: string } | undefined;
+      const hostResult = Schema.decodeUnknownSync(OpenAppResultSchema)(host.envelope.result);
       expect(hostResult?.launch).toBe("headless-degraded");
 
       const { exit } = roundTrip(plan, ["open"]);
@@ -303,7 +174,7 @@ describe("in-container lando open host-proxy round-trip", () => {
       process.env.DISPLAY = ":99";
       try {
         const host = await hostSideEnvelope(plan, { service: "web", json: true, ttyPresent: false });
-        const hostResult = host.envelope.result as { launch?: string } | undefined;
+        const hostResult = Schema.decodeUnknownSync(OpenAppResultSchema)(host.envelope.result);
         expect(hostResult?.launch).toBe("printed");
 
         const { exit } = roundTrip(plan, ["open", "--service", "web", "--format=json"], { tty: true });

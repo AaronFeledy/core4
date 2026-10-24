@@ -75,13 +75,14 @@ export * from "./container-destination.ts";
 export * from "./data-transfer.ts";
 export * from "./volume-identity.ts";
 export {
-  EndpointInfo,
-  EndpointMaterialization,
+  EndpointRef,
+  ObservedPublication,
+  PublicationObservation,
   EndpointPublication,
   InternalEndpointInput,
   PublishedEndpointInput,
-  PublishedEndpointInfo,
 } from "./endpoint.ts";
+export * from "./endpoint-selection.ts";
 export * from "./downloader.ts";
 export {
   DeprecationNotice,
@@ -149,6 +150,7 @@ export * from "./keymap.ts";
 export * from "./keymap-conflict.ts";
 export * from "./subscriber.ts";
 export * from "./service-info.ts";
+export * from "./service-connection.ts";
 export * from "./service-dependency.ts";
 export * from "./services/index.ts";
 export * from "./template.ts";

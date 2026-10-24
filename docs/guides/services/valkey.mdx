@@ -40,12 +40,14 @@ tooling:
 
 From another app service, use hostname `cache` and port `6379`. `localhost` inside that service refers to its own container, not Valkey.
 
-`lando info` advertises both a `valkey://` endpoint (primary) and a `redis://` alias, so new and existing client libraries connect without code changes:
+`lando info` lists the App Network connection as a `valkey://` URL with a `redis://` alternate, so new and existing client libraries connect without code changes:
 
 ```
-valkey://localhost:6379
-redis://localhost:6379
+valkey://cache:6379
+redis://cache:6379
 ```
+
+Valkey publishes no host port by default, so there is no Host connection to open from this machine. Add a `ports:` entry when a desktop client needs one.
 
 ## Open the client
 

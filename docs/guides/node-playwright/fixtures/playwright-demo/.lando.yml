@@ -9,7 +9,7 @@ services:
     type: "node:22"
     image: mcr.microsoft.com/playwright:v1.64.1-noble
     home: false
-    ports: []
+    endpoints: []
 tooling:
   playwright:
     service: e2e

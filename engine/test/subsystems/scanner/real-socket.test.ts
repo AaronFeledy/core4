@@ -41,41 +41,50 @@ afterAll(() => {
 
 const providerAt = (hostPort: number): RuntimeProviderShape => ({
   ...TestRuntimeProvider,
-  list: () =>
-    Effect.succeed([
-      {
-        app: appId,
-        service: web,
-        providerId: ProviderId.make(TestRuntimeProvider.id),
-        status: "running",
-        endpoints: [
-          {
-            _tag: "published" as const,
-            protocol: "http" as const,
-            port: 80,
-            publication: {},
-            materialization: { bindAddress: "127.0.0.1", hostPort },
-          },
-        ],
+  inspect: () =>
+    Effect.succeed({
+      app: appId,
+      service: web,
+      providerId: ProviderId.make(TestRuntimeProvider.id),
+      status: "running",
+      publications: {
+        status: "present",
+        bindings: [{ port: 80, transport: "tcp", bindAddress: "127.0.0.1", hostPort }],
       },
-    ]),
+    }),
 });
 
-const planWith = (scanner: ScanPlan): AppPlan =>
-  ({
-    id: appId,
-    name: "real-scan",
-    slug: "real-scan",
-    root: AbsolutePath.make("/tmp/real-scan"),
-    provider: ProviderId.make(TestRuntimeProvider.id),
-    routes: [],
-    networks: [],
-    stores: [],
-    fileSync: [],
-    metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "real-socket.test", runtime: 4 },
-    extensions: {},
-    services: { [web]: { name: web, scanner } },
-  }) as unknown as AppPlan;
+const planWith = (scanner: ScanPlan): AppPlan => ({
+  id: appId,
+  name: "real-scan",
+  slug: "real-scan",
+  root: AbsolutePath.make("/tmp/real-scan"),
+  provider: ProviderId.make(TestRuntimeProvider.id),
+  routes: [],
+  networks: [],
+  stores: [],
+  fileSync: [],
+  metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "real-socket.test", runtime: 4 },
+  extensions: {},
+  services: {
+    [web]: {
+      name: web,
+      scanner,
+      type: "nginx",
+      provider: ProviderId.make(TestRuntimeProvider.id),
+      primary: true,
+      environment: {},
+      mounts: [],
+      storage: [],
+      routes: [],
+      dependsOn: [],
+      hostAliases: [],
+      extensions: {},
+      metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "real-socket.test", runtime: 4 },
+      endpoints: [{ _tag: "published", protocol: "http", port: 80, publication: {} }],
+    },
+  },
+});
 
 const scanAgainst = (hostPort: number, scanner: ScanPlan) =>
   Effect.runPromise(

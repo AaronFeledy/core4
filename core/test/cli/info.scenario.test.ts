@@ -295,7 +295,24 @@ const makeInfoLayer = (
           providerId,
           status: state,
           state,
-          endpoints: state === "running" ? (plannedApp.services[target.service]?.endpoints ?? []) : [],
+          publications: {
+            status: "present",
+            bindings:
+              state === "running"
+                ? (plannedApp.services[target.service]?.endpoints ?? []).flatMap((endpoint) =>
+                    endpoint._tag === "published" && endpoint.publication.hostPort !== undefined
+                      ? [
+                          {
+                            port: endpoint.port,
+                            transport: endpoint.protocol === "udp" ? ("udp" as const) : ("tcp" as const),
+                            bindAddress: endpoint.publication.bindAddress ?? "127.0.0.1",
+                            hostPort: endpoint.publication.hostPort,
+                          },
+                        ]
+                      : [],
+                  )
+                : [],
+          },
         };
       }),
     list: () => Effect.succeed([]),
@@ -345,6 +362,25 @@ const makeInfoLayer = (
         revalidateStartup: Effect.void,
         applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
         removeRoutes: () => Effect.void,
+        observeRoutes: (_app, routes) =>
+          Effect.succeed({
+            configuredAuthorities: options?.proxyAuthorities ?? [],
+            observation: {
+              status: "present",
+              publications:
+                state === "running"
+                  ? routes.flatMap((route) =>
+                      (options?.proxyAuthorities ?? [])
+                        .filter(
+                          (authority) =>
+                            authority.hostname === route.hostname &&
+                            (route.scheme === "both" || authority.scheme === route.scheme),
+                        )
+                        .map((authority) => ({ route, authority })),
+                    )
+                  : [],
+            },
+          }),
         status: Effect.succeed({
           state,
           authorities: options?.proxyAuthorities ?? [],
@@ -408,29 +444,44 @@ describe("lando info", () => {
     expect(inspectCalls).toEqual([]);
   });
 
-  test("prints running services with endpoint URLs as plain text", async () => {
+  test("prints running services with host URLs and app-network addresses as plain text", async () => {
     const result = await Effect.runPromise(infoApp().pipe(Effect.provide(makeInfoLayer("running"))));
     const output = renderInfoAppResult(result);
 
-    expect(output).toMatch(/node\s+running\s+http:\/\/localhost:3000/);
-    expect(output).toMatch(/postgres\s+running\s+postgresql:\/\/lando@localhost:5432\/appdb/);
-    expect(output).toMatch(/memcached\s+running\s+memcached:\/\/localhost:11211/);
-    expect(output).toMatch(/valkey\s+running\s+valkey:\/\/localhost:6379,\s*redis:\/\/localhost:6379/);
+    expect(output).toContain("service\tstate\tHost\tApp Network");
+    expect(output).toContain("node\trunning\thttp://localhost:3000\thttp://node:3000");
+    expect(output).toContain(
+      "postgres\trunning\tpostgresql://lando@localhost:5432/appdb\tpostgresql://lando@postgres:5432/appdb",
+    );
+    expect(output).toMatch(
+      /memcached\trunning\tmemcached:\/\/localhost:11211\tmemcached:\/\/memcached:11211/,
+    );
+    expect(output).toMatch(
+      /valkey\trunning\tvalkey:\/\/localhost:6379,\s*redis:\/\/localhost:6379\tvalkey:\/\/valkey:6379,\s*redis:\/\/valkey:6379/,
+    );
     expect(output).not.toContain(`${String.fromCharCode(27)}[`);
   });
 
-  test("prints stopped services without endpoints", async () => {
+  test("retains configured addresses as inactive for stopped services", async () => {
     const result = await Effect.runPromise(infoApp().pipe(Effect.provide(makeInfoLayer("stopped"))));
     const output = renderInfoAppResult(result);
 
-    expect(output).toMatch(/node\s+stopped\s+no endpoints/);
-    expect(output).toMatch(/postgres\s+stopped\s+no endpoints/);
-    expect(output).toMatch(/memcached\s+stopped\s+no endpoints/);
-    expect(output).toMatch(/valkey\s+stopped\s+no endpoints/);
-    expect(output).not.toContain("localhost");
+    expect(
+      result.services.map((service) => service.connections.map((connection) => connection.state)),
+    ).toEqual([
+      ["inactive", "inactive"],
+      ["inactive", "inactive"],
+      ["inactive", "inactive"],
+      ["inactive", "inactive"],
+    ]);
+    expect(output).toContain("node\tstopped\thttp://localhost:3000 [inactive]\thttp://node:3000 [inactive]");
+    expect(output).toContain("postgres\tstopped\tpostgresql://lando@localhost:5432/appdb [inactive]");
+    expect(output).toContain("memcached\tstopped\tmemcached://localhost:11211 [inactive]");
+    expect(output).toContain("valkey\tstopped\tvalkey://localhost:6379, redis://localhost:6379 [inactive]");
+    expect(output).not.toContain(`${String.fromCharCode(27)}]8;`);
   });
 
-  test("renders routed authorities from proxy status without exposing internal endpoints", async () => {
+  test("keeps routed host URLs and app-network addresses in separate lists", async () => {
     // Given
     const routedPlan: AppPlan = {
       ...plan,
@@ -465,10 +516,18 @@ describe("lando info", () => {
       ),
     );
 
-    // Then
+    // Then the unpublished listener never becomes a bogus host URL: it is reported
+    // only as the address other services dial on the app network.
     const nodeInfo = result.services.find((service) => service.service === "node");
-    expect(nodeInfo?.endpoints).toEqual(["https://node.test-info.lndo.site:7443"]);
-    expect(renderInfoAppResult(result)).not.toContain("localhost:3000");
+    expect(nodeInfo?.connections.filter((connection) => connection.scope === "host")).toMatchObject([
+      { source: "route", binding: "assigned", state: "active", url: "https://node.test-info.lndo.site:7443" },
+    ]);
+    expect(nodeInfo?.connections.filter((connection) => connection.scope === "app")).toMatchObject([
+      { source: "listener", binding: "assigned", state: "active", url: "http://node:3000" },
+    ]);
+    const output = renderInfoAppResult(result);
+    expect(output).not.toContain("localhost:3000");
+    expect(output).toContain("node\trunning\thttps://node.test-info.lndo.site:7443\thttp://node:3000");
   });
 
   test("prints a visible host-proxy unavailable notice from the plan extension", async () => {
@@ -689,7 +748,7 @@ describe("lando info — resolved log sources", () => {
           providerId,
           status: "running",
           state: "running" as const,
-          endpoints: logPlan.services[target.service]?.endpoints ?? [],
+          publications: { status: "present", bindings: [] },
         }),
       list: () => Effect.succeed([]),
       snapshotVolume: () => Effect.die("not used"),

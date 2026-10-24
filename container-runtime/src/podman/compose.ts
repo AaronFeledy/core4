@@ -26,6 +26,7 @@ import type { ProviderErrorContext } from "../engine-api.ts";
 import { previewEnvironmentValue } from "../environment-values.ts";
 import { type HostAliasMap, serviceHostAliases, writeHostAliases } from "../host-aliases.ts";
 import { requiresLongMountSyntax } from "../mount-syntax.ts";
+import { physicalListenerPorts, physicalPublications } from "../physical-publications.ts";
 import { commonContainerLabels, composeConfigBindStrings, mountSuffix } from "../plan.ts";
 import { volumeOwnershipLabels } from "../volume-ownership.ts";
 import { podmanNetworkNames } from "./networks.ts";
@@ -207,19 +208,18 @@ const serviceTmpfs = (service: ServicePlan): ReadonlyArray<string> =>
   );
 
 const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
-  service.endpoints.flatMap((endpoint) => {
-    if (endpoint._tag === "internal") return [];
-    const suffix = endpoint.protocol === "udp" ? "/udp" : "";
-    const bindAddress = endpoint.publication.bindAddress ?? "127.0.0.1";
-    const hostPort = endpoint.publication.hostPort ?? "";
-    return [`${bindAddress}:${hostPort}:${endpoint.port}${suffix}`];
+  physicalPublications(service.endpoints).map((endpoint) => {
+    const suffix = endpoint.transport === "udp" ? "/udp" : "";
+    const bindAddress = endpoint.bindAddress.includes(":")
+      ? `[${endpoint.bindAddress}]`
+      : endpoint.bindAddress;
+    const hostPort = endpoint.hostPort ?? "";
+    return `${bindAddress}:${hostPort}:${endpoint.port}${suffix}`;
   });
 
 const serviceExpose = (service: ServicePlan): ReadonlyArray<string> =>
-  service.endpoints.flatMap((endpoint) =>
-    endpoint._tag === "internal" && endpoint.protocol !== "unix"
-      ? [`${endpoint.port}${endpoint.protocol === "udp" ? "/udp" : ""}`]
-      : [],
+  physicalListenerPorts(service.endpoints.filter((endpoint) => endpoint._tag === "internal")).map((port) =>
+    port.endsWith("/tcp") ? port.slice(0, -4) : port,
   );
 
 const serviceDependsOn = (service: ServicePlan): Readonly<Record<string, DependsOnEntry>> =>

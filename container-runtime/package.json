@@ -24,6 +24,7 @@
     "./tar": "./src/tar.ts",
     "./plan": "./src/plan.ts",
     "./create-fingerprint": "./src/create-fingerprint.ts",
+    "./physical-publications": "./src/physical-publications.ts",
     "./image-build": "./src/image-build.ts",
     "./container-helper": "./src/container-helper.ts",
     "./log-file-access": "./src/log-file-access.ts",

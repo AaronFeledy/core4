@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const runbookPath = resolve(repoRoot, "docs/contributing/ci.md");
 const readmePath = resolve(repoRoot, "README.md");
+const repositoryPath = resolve(repoRoot, "docs/contributing/repository.md");
 const betaDecisionsPath = resolve(repoRoot, "docs/contributing/decisions.md");
 const rootPackagePath = resolve(repoRoot, "package.json");
 const corePackagePath = resolve(repoRoot, "core/package.json");
@@ -37,20 +38,13 @@ const listPrTemplates = async (): Promise<ReadonlyArray<string>> => {
 
 describe("ci runbook", () => {
   test("documents clean-checkout codegen before typecheck", async () => {
-    // Given: the contributor-facing Building from source instructions.
-    const readme = await readText(readmePath);
-    const buildingFromSource = readme.match(/^## Building from source\n[\s\S]*?(?=^## )/m)?.[0];
-    if (buildingFromSource === undefined) throw new Error("expected README Building from source section");
-    const commands = buildingFromSource
-      .match(/```bash\n([\s\S]*?)\n```/)?.[1]
-      ?.split("\n")
-      .map((line) => line.trim());
-    if (commands === undefined) throw new Error("expected README Building from source bash block");
+    // Given: the authoritative CI runbook's clean-checkout prerequisites and typecheck step.
+    const runbook = await readText(runbookPath);
 
-    // When: the clean-checkout commands are located.
-    const installIndex = commands.indexOf("bun install");
-    const codegenIndex = commands.indexOf("bun run codegen");
-    const typecheckIndex = commands.indexOf("bun run typecheck");
+    // When: install and codegen prerequisites are compared with the typecheck command.
+    const installIndex = runbook.indexOf("`bun install`");
+    const codegenIndex = runbook.indexOf("`bun run codegen`");
+    const typecheckIndex = runbook.indexOf("\nbun run typecheck\n");
 
     // Then: generated sources are materialized after install and before typecheck.
     expect(installIndex).toBeGreaterThanOrEqual(0);
@@ -168,9 +162,9 @@ describe("ci runbook", () => {
   });
 
   test("keeps the Bun floor decision synchronized across docs and package metadata", async () => {
-    const [runbook, readme, betaDecisions, rootPackage, corePackage, bunVersion] = await Promise.all([
+    const [runbook, repository, betaDecisions, rootPackage, corePackage, bunVersion] = await Promise.all([
       readText(runbookPath),
-      readText(readmePath),
+      readText(repositoryPath),
       readText(betaDecisionsPath),
       readText(rootPackagePath),
       readText(corePackagePath),
@@ -181,10 +175,14 @@ describe("ci runbook", () => {
     expect(JSON.parse(corePackage).engines.bun).toBe(">=1.4.2");
     expect(bunVersion.trim()).toBe("1.4.2");
 
-    for (const surface of [runbook, readme, betaDecisions]) {
+    for (const surface of [runbook, betaDecisions]) {
       expect(surface).toContain(">=1.4.2");
       expect(surface).toContain("--bytecode");
     }
+
+    expect(repository).toContain("current minimum is Bun 1.4.2");
+    expect(repository).toContain("bytecode for all six release targets");
+    expect(repository).toContain("./decisions.md#bun-floor-decision");
 
     expect(betaDecisions).toContain("Bun floor decision");
     expect(betaDecisions).toContain("linux-x64");
@@ -216,11 +214,12 @@ describe("ci runbook", () => {
     expect(betaDecisions).toContain("compiled-binary dispatch parity");
   });
 
-  test("links the runbook from README and pull request templates", async () => {
+  test("links README through the contributor source map to the runbook and keeps PR template links", async () => {
     const readme = await readText(readmePath);
     const templates = await listPrTemplates();
 
-    expect(readme).toContain("docs/contributing/ci.md");
+    expect(readme).toContain("docs/contributing/repository.md");
+    expect(await readText(repositoryPath)).toContain("[CI runbook](./ci.md)");
     expect(templates.length).toBeGreaterThan(0);
 
     for (const template of templates) {

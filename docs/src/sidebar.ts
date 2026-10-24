@@ -213,6 +213,7 @@ export const sidebar = [
   {
     label: "Contributing",
     items: [
+      { label: "Source map", slug: "contributing/repository" },
       { label: "CI", slug: "contributing/ci" },
       { label: "Release", slug: "contributing/release" },
       { label: "Decisions", slug: "contributing/decisions" },

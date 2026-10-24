@@ -189,6 +189,7 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
                     headers: request.headers,
                     body,
                     redirect: policy.redirect ?? "follow",
+                    connectionTarget: policy.connectionTarget,
                   },
                   { transports, trust, systemCaPems: hostCaPems },
                   AbortSignal.any([signal, controller.signal]),

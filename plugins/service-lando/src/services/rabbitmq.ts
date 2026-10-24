@@ -92,6 +92,7 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
     port: Schema.decodeUnknownSync(PortNumber)(port),
     protocol: "tcp",
     name: ctx.serviceName,
+    primary: true,
   });
   ctx.addEndpoint({
     _tag: "internal",

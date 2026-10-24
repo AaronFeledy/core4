@@ -59,7 +59,13 @@ const makeService = (calls: Call[]): ResolvedProviderOpsInput["service"] => ({
   },
   inspect: (resolvedPlan, selector) => {
     calls.push({ name: "inspect", args: [resolvedPlan, selector] });
-    return Effect.succeed({ app, service, providerId: ProviderId.make("test"), status: "running" });
+    return Effect.succeed({
+      app,
+      service,
+      providerId: ProviderId.make("test"),
+      status: "running",
+      publications: { status: "unknown" as const },
+    });
   },
 });
 
@@ -218,6 +224,7 @@ describe("resolved provider operations", () => {
             providerId: ProviderId.make("test"),
             status: "stopped",
             containerId: "observed-id",
+            publications: { status: "unknown" as const },
           }),
       },
     });
@@ -242,6 +249,7 @@ describe("resolved provider operations", () => {
             providerId: ProviderId.make("test"),
             status: "stopped",
             containerId: "observed-id",
+            publications: { status: "unknown" as const },
           }),
       },
     });
