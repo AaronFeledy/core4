@@ -3,6 +3,7 @@ import { Effect, Option } from "effect";
 import { RedactionService, createPayloadValues, createStandaloneRedactor } from "./service.ts";
 
 const LIMIT = 8 * 1024;
+const CONTEXT_LIMIT = 8 * LIMIT;
 const MARKER = "[diagnostic truncated]\n";
 const encoder = new TextEncoder();
 const COMMAND_SECRET_ENV = new Set(["PGPASSWORD", "MYSQL_PWD", "SQLCMDPASSWORD", "MONGO_URI"]);
@@ -36,13 +37,25 @@ export const makeDiagnosticTail = Effect.fnUntraced(function* (env?: Readonly<Re
     return tokens.filter((token) => encoder.encode(token).length <= LIMIT);
   });
   const decoder = new TextDecoder();
+  let context = "";
+  let contextBytes = 0;
+  const collect = (text: string) => {
+    if (suppressed) return;
+    contextBytes += encoder.encode(text).length;
+    if (contextBytes > CONTEXT_LIMIT) {
+      // Canonical patterns can span arbitrary newlines. Never clip away their introducer.
+      context = "";
+      suppressed = true;
+      return;
+    }
+    context += text;
+  };
   let pending = "";
   let dropping = false;
   let truncated = false;
   let retained = "";
   let finished = false;
-  const retain = (line: string) => {
-    const safe = redactor.redactString(line);
+  const retain = (safe: string) => {
     const bytes = encoder.encode(retained + safe);
     if (bytes.length <= LIMIT - encoder.encode(MARKER).length) {
       retained += safe;
@@ -73,11 +86,16 @@ export const makeDiagnosticTail = Effect.fnUntraced(function* (env?: Readonly<Re
   };
   return {
     write: (chunk: Uint8Array) => {
-      if (!finished) consume(decoder.decode(payload.write(chunk), { stream: true }));
+      if (finished) return;
+      for (let offset = 0; offset < chunk.length && !suppressed; offset += LIMIT) {
+        collect(decoder.decode(payload.write(chunk.subarray(offset, offset + LIMIT)), { stream: true }));
+      }
     },
     finish: (): string | undefined => {
       if (!finished) {
-        consume(decoder.decode(payload.flush(), { stream: true }) + decoder.decode());
+        collect(decoder.decode(payload.flush(), { stream: true }) + decoder.decode());
+        if (!suppressed) consume(redactor.redactString(context));
+        context = "";
         if (!dropping && pending.length > 0) retain(pending);
         pending = "";
         finished = true;
