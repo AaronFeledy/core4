@@ -9,7 +9,8 @@ import {
 } from "./ci-platforms.ts";
 import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 
-const SCHEDULE_IF = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'";
+const SCHEDULE_IF =
+  "github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')";
 
 export const createJourneyWorkflowBuilder = (workflow: string) => {
   const assertNever = (value: never): never => {
@@ -29,8 +30,6 @@ export const createJourneyWorkflowBuilder = (workflow: string) => {
 
   const renderCadenceIf = (cadence: PlatformReadinessCell["cadence"]): string => {
     switch (cadence) {
-      case "pr+evidence":
-        return "";
       case "evidence":
         return `    if: ${SCHEDULE_IF}\n`;
       default:

@@ -5,13 +5,14 @@
  */
 
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
+import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
 
 export const CONTAINER_HELPER_JOB_ID = "container-helper";
 export const CONTAINER_HELPER_ARM64_JOB_ID = "container-helper-arm64";
 export const CONTAINER_HELPER_ARTIFACT = "container-helper";
 
 export const renderContainerHelperJob = (): string => `  ${CONTAINER_HELPER_JOB_ID}:
-    runs-on: ubuntu-24.04
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5

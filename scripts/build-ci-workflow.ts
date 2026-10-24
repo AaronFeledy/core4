@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
 
 import {
   CONTAINER_HELPER_ARM64_JOB_ID,
@@ -13,6 +14,7 @@ import {
   type CiPlatform,
   LINUX_X64_CI_RUNNERS,
   LINUX_X64_PRIMARY_RUNNER,
+  LINUX_X64_TEST_RUNNER,
   isWindowsCiPlatform,
 } from "./ci-platforms.ts";
 import {
@@ -39,24 +41,17 @@ const staticCheckMatrixInclude = (): string => {
     }
     cells.push({ platform: platform.id, runsOn: platform.runsOn });
   }
-  return cells
-    .map((cell) => `          - platform: ${cell.platform}\n            runs-on: ${cell.runsOn}`)
-    .join("\n");
+  const broad = JSON.stringify(cells.map((cell) => ({ platform: cell.platform, "runs-on": cell.runsOn })));
+  const fast = JSON.stringify([{ platform: "linux-x64", "runs-on": LINUX_X64_TEST_RUNNER }]);
+  return `        include: \${{ fromJSON(needs.selection.outputs.broad == 'true' && '${broad}' || '${fast}') }}`;
 };
 
-const renderLinuxX64MatrixGate = (jobId: string, matrixJobId: string, label: string): string => `  ${jobId}:
+const renderLinuxX64MatrixGate = (jobId: string, matrixJobId: string): string => `  ${jobId}:
     needs: [${matrixJobId}]
     if: always()
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 5
-    steps:
-      - name: Confirm ${label} matrix
-        run: |
-          if [[ "\${{ needs.${matrixJobId}.result }}" != "success" ]]; then
-            echo "${label} matrix result: \${{ needs.${matrixJobId}.result }}"
-            exit 1
-          fi
-          echo "${label} matrix passed on ${linuxX64RunnerList}"
+${ciResultSteps}
 `;
 
 const buildNeeds = `[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, ${CONTAINER_HELPER_JOB_ID}]`;
@@ -84,7 +79,6 @@ const renderStaticChecks = (): string => `  static-checks-platform:
     strategy:
       fail-fast: false
       matrix:
-        include:
 ${staticCheckMatrixInclude()}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 35
@@ -98,15 +92,16 @@ ${setupBunSteps}
       - name: Regenerate and verify codegen catalog
         run: bun run codegen:check
 
+      - name: Typecheck
+        if: matrix.platform == 'linux-x64'
+        run: bun run typecheck
+
       - name: Native Windows private-file ACL tests
         if: startsWith(matrix.platform, 'windows-')
         run: bun test state-store/test/state-store/private-file-access.test.ts
 
       - name: Lint
         run: bun run lint
-
-      - name: Audit dependencies
-        run: bun run audit
 
       - name: Boundary gates
         run: bun run check:boundaries
@@ -137,20 +132,9 @@ ${timingNoticeStep("static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}",
   static-checks:
     needs: [static-checks-platform, ${CONTAINER_HELPER_ARM64_JOB_ID}]
     if: always()
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 5
-    steps:
-      - name: Confirm static-checks platform matrix
-        run: |
-          if [[ "\${{ needs.static-checks-platform.result }}" != "success" ]]; then
-            echo "static-checks platform matrix result: \${{ needs.static-checks-platform.result }}"
-            exit 1
-          fi
-          if [[ "\${{ needs.${CONTAINER_HELPER_ARM64_JOB_ID}.result }}" != "success" ]]; then
-            echo "arm64 container helper result: \${{ needs.${CONTAINER_HELPER_ARM64_JOB_ID}.result }}"
-            exit 1
-          fi
-          echo "static-checks platform matrix passed"
+${ciResultSteps}
 `;
 
 const unitShardList = Array.from({ length: UNIT_SHARD_COUNT }, (_, index) => index + 1).join(", ");
@@ -183,20 +167,13 @@ ${timingNoticeStep("unit-tests-linux-x64-shard/${{ matrix.runs-on }}/${{ matrix.
   unit-tests-linux-x64:
     needs: [unit-tests-linux-x64-shard]
     if: always()
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 5
-    steps:
-      - name: Confirm unit test shard matrix
-        run: |
-          if [[ "\${{ needs.unit-tests-linux-x64-shard.result }}" != "success" ]]; then
-            echo "unit test shard matrix result: \${{ needs.unit-tests-linux-x64-shard.result }}"
-            exit 1
-          fi
-          echo "unit test shard matrix passed on ${linuxX64RunnerList}"
+${ciResultSteps}
 `;
 
 const renderTestIsolation = (): string => `  test-isolation-linux-x64:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
@@ -273,7 +250,7 @@ ${timingNoticeStep(`build-${platform.id}`, platform.timeoutMinutes)}
 `;
 
 const renderDocsBuild = (): string => `  docs-build:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -307,7 +284,7 @@ ${timingNoticeStep("docs-build", 15)}
   deploy-docs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [docs-build]
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     permissions:
       pages: write
@@ -323,7 +300,7 @@ ${timingNoticeStep("docs-build", 15)}
 
 const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:
     needs: [build-linux-x64]
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
@@ -589,7 +566,7 @@ ${timingNoticeStep("runtime-bundle-linux-x64", 40)}
 `;
 
 const windowsRuntimeBundleJob = `  runtime-bundle-win32-x64:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -707,7 +684,6 @@ ${timingNoticeStep(timingLabel, platform.providerTimeoutMinutes)}
 ${renderLinuxX64MatrixGate(
   `provider-integration-${platform.id}`,
   `provider-integration-${platform.id}-runner`,
-  `provider-integration-${platform.id}`,
 )}`;
 };
 
@@ -799,9 +775,6 @@ ${setupBunSteps}
 
 ${codegenStep}
 
-      - name: Typecheck
-        run: bun run typecheck
-
       - name: Lint guides
         run: bun run lint:guides
 
@@ -836,15 +809,11 @@ ${timingNoticeStep(timingLabel, 30)}
 
   if (!isLinuxX64) return runnerJob;
   return `${runnerJob}
-${renderLinuxX64MatrixGate(
-  `guide-scenarios-${platform.id}`,
-  `guide-scenarios-${platform.id}-runner`,
-  `guide-scenarios-${platform.id}`,
-)}`;
+${renderLinuxX64MatrixGate(`guide-scenarios-${platform.id}`, `guide-scenarios-${platform.id}-runner`)}`;
 };
 
 const renderIsolatedInstallExperiment = (): string => `  bun-install-isolated-experiment:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     continue-on-error: true
     steps:
@@ -869,7 +838,7 @@ export const renderCiWorkflow = (): string => {
   const providerIntegrationJobs = CI_PLATFORMS.map(renderProviderIntegrationJob).join("\n");
   const guideScenarioJobs = CI_PLATFORMS.map(renderGuideScenariosJob).join("\n");
 
-  return `${GENERATED_HEADER}
+  return applyCiSelection(`${GENERATED_HEADER}
 name: ci
 
 on:
@@ -895,7 +864,7 @@ ${renderTestIsolation()}
 ${renderContainerHelperJob()}
 ${renderContainerHelperArm64Job()}
   schema-snapshot:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -941,7 +910,7 @@ ${codegenStep}
 ${timingNoticeStep("schema-snapshot", 15)}
 
   bundled-codegen:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -998,7 +967,7 @@ ${codegenStep}
 
 ${timingNoticeStep("library-api-tests/${{ matrix.runs-on }}", 15)}
 
-${renderLinuxX64MatrixGate("library-api-tests", "library-api-tests-runner", "library-api-tests")}
+${renderLinuxX64MatrixGate("library-api-tests", "library-api-tests-runner")}
   recipe-tests-runner:
     strategy:
       fail-fast: false
@@ -1020,13 +989,13 @@ ${codegenStep}
 
 ${timingNoticeStep("recipe-tests/${{ matrix.runs-on }}", 15)}
 
-${renderLinuxX64MatrixGate("recipe-tests", "recipe-tests-runner", "recipe-tests")}
+${renderLinuxX64MatrixGate("recipe-tests", "recipe-tests-runner")}
 ${guideScenarioJobs}
 ${buildJobs}
 ${linuxRuntimeBundleJob}
 ${windowsRuntimeBundleJob}
 ${perfBudgetJob}
-${providerIntegrationJobs}`;
+${providerIntegrationJobs}`);
 };
 
 const main = async (): Promise<void> => {

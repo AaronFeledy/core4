@@ -7,6 +7,7 @@ import {
 } from "./_container-helper-workflow.ts";
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
+import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 import { PROVIDER_ACCEPTANCE_CELLS, type ProviderAcceptanceCellPlan } from "./provider-matrix-plan.ts";
 
@@ -103,7 +104,7 @@ const managedLandoTeardown = `      - name: Teardown managed Lando runtime
 
 const dockerFallbackSmoke = `  docker-fallback-smoke:
     needs: [${CONTAINER_HELPER_JOB_ID}]
-    runs-on: ubuntu-24.04
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5

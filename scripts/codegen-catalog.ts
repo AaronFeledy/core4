@@ -225,6 +225,18 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    id: "dependency-audit-workflow",
+    ownership: "committed-workflow",
+    script: "build-dependency-audit-workflow.ts",
+    workspace: "repo",
+  },
+  {
+    id: "install-lifecycle-workflow",
+    ownership: "committed-workflow",
+    script: "build-install-lifecycle-journey-workflow.ts",
+    workspace: "repo",
+  },
+  {
     id: "release-workflow",
     ownership: "committed-workflow",
     script: "build-release-workflow.ts",
