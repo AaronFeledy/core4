@@ -741,6 +741,10 @@
       "digest": "060f75e1e04c35daaa174af392ecf82f5f9729dfcfdec4e529ef0f95a2190c1e"
     },
     {
+      "fixture": "docs/guides/route-shorthand/fixtures/ambiguous-default-route",
+      "digest": "fd0f10e651a4982ec3a8369cdc2a26ba4cf5d3ba5d574221cbd67f76828a04bb"
+    },
+    {
       "fixture": "docs/guides/route-shorthand/fixtures/catalog-endpoints",
       "digest": "f7b43479c39b1adc7a95655db4d2c3bb4b91ae20c3bd84ee665c4c120470fe4a"
     },
@@ -994,6 +998,15 @@
         "digest": "414f700e136b7d620b521de335df7f8f05a4b89471af7ade6d2121a756b6d3d2"
       },
       "reason": "The guide fixture replaces unsupported braced positional shell substitution with a POSIX test and set default followed by quoted $1 expansion. The empty default keeps the static URL at one root slash. The corrected input now loads; the historical NotImplementedError remains preserved rather than refreshing same-input behavior."
+    },
+    "docs/guides/node-playwright/fixtures/playwright-demo": {
+      "before": {
+        "digest": "7a07cec9f964825aca7f28fddfa28707839dfd570afa2e80c3f4dc807c453c60"
+      },
+      "after": {
+        "digest": "aa9246e83fc28448cbd0704c046b9d649e44afbdb6a9b7301c71a6d0b0ed8204"
+      },
+      "reason": "Explicit empty endpoint declarations suppress generated listeners instead of inheriting the service defaults."
     }
   }
 }
