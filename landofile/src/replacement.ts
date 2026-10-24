@@ -23,7 +23,7 @@ export interface LandofileReplacement {
 export const validateLandofileReplacement = Effect.fn("Landofile.validateReplacement")(
   function* (replacement: LandofileReplacement, inputs: LandofileRuntimeInputs) {
     yield* ensureConsistentRoot(replacement.appRoot, inputs);
-    const runtime = yield* loadContext(replacement.appRoot);
+    const runtime = yield* loadContext(replacement.appRoot, inputs.templates.context?.env);
     const layers = yield* Effect.tryPromise({
       try: () => presentLandofileLayers(replacement.appRoot),
       catch: (cause) =>
@@ -104,6 +104,7 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
     const merged = yield* composePreparedLayers(prepared, runtime, inputs);
     yield* finalizeLandofile(join(replacement.appRoot, ".lando.yml"), merged, {
       appRoot: replacement.appRoot,
+      pendingSites: runtime.pendingSites,
       loadPolicy: runtime.policy,
       logger: runtime.logger,
       ...(inputs?.templates.context?.env === undefined ? {} : { env: inputs.templates.context.env }),
