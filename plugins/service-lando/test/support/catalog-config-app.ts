@@ -44,6 +44,7 @@ export const composeCatalogConfigPlan = (args: {
     });
 
     return {
+      valueModel: 1 as const,
       id: AppId.make(args.slug),
       name: args.slug,
       slug: args.slug,

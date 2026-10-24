@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { basename } from "node:path";
+import { compileServiceProbe } from "@lando/container-runtime/service-probe";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { LANDO_SHARED_CROSS_APP_NETWORK, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -68,9 +69,12 @@ describe("MongoDB final-server readiness", () => {
                 },
               },
             };
-            const probe = plan.services[ServiceName.make("db")]?.healthcheck?.command;
-            if (probe === undefined || typeof probe === "string")
-              throw new Error("MongoDB plan requires an argv healthcheck");
+            if (db.readiness === undefined || db.healthcheck === undefined)
+              throw new Error("MongoDB probes are missing");
+            const probe = compileServiceProbe(db.readiness, plan, db);
+            const cheapProbe = compileServiceProbe(db.healthcheck, plan, db);
+            if (probe === undefined || cheapProbe === undefined)
+              throw new Error("MongoDB commands are missing");
             const app = yield* acquireLiveApp({ plan, socketPath });
             // A non-sticky directory avoids protected_fifos blocking a different exec user.
             // Opening both ends prevents cleanup from blocking if the hook already exited.
@@ -99,6 +103,7 @@ describe("MongoDB final-server readiness", () => {
 
             // Then: it must reject that daemon, but accept the final network listener.
             expect(initializing.exitCode).not.toBe(0);
+            expect((yield* app.exec("db", cheapProbe)).exitCode).not.toBe(0);
             const released = yield* release;
             expect({ exitCode: released.exitCode, stderr: released.stderr }).toEqual({
               exitCode: 0,
@@ -112,6 +117,7 @@ describe("MongoDB final-server readiness", () => {
               timeoutMs: 120_000,
             });
             expect(ready.exitCode).toBe(0);
+            expect((yield* app.exec("db", cheapProbe)).exitCode).toBe(0);
           }),
         ),
       );
