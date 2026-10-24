@@ -108,7 +108,7 @@ test.each(["import", "reset", "restore", "snapshot"] as const)(
     });
     expect(fixture.captured).toHaveLength(1);
     const catalog = await Effect.runPromise(fixture.mover.listSnapshots({}));
-    expect(catalog.map((snapshot) => snapshot.id)).toContain(fixture.captured[0]);
+    expect(catalog.some((snapshot) => snapshot.id === fixture.captured[0])).toBe(true);
     expect(fixture.removed).toEqual([]);
     expect(fixture.harness.transfers()).toEqual([]);
   },
@@ -128,7 +128,7 @@ test("a manual snapshot remains discoverable when its provider cannot resume the
   expect(decoded).toMatchObject({ operation: "snapshot", recoverySnapshotId: fixture.captured[0] });
   expect(fixture.captured).toHaveLength(1);
   const catalog = await Effect.runPromise(fixture.mover.listSnapshots({}));
-  expect(catalog.map((snapshot) => snapshot.id)).toContain(fixture.captured[0]);
+  expect(catalog.some((snapshot) => snapshot.id === fixture.captured[0])).toBe(true);
   expect(fixture.removed).toEqual([]);
 });
 
@@ -142,7 +142,7 @@ test("interruption after capture stays interruption and retains the saved snapsh
   expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   expect(fixture.captured).toHaveLength(1);
   const catalog = await Effect.runPromise(fixture.mover.listSnapshots({}));
-  expect(catalog.map((snapshot) => snapshot.id)).toContain(fixture.captured[0]);
+  expect(catalog.some((snapshot) => snapshot.id === fixture.captured[0])).toBe(true);
   expect(fixture.removed).toEqual([]);
 });
 

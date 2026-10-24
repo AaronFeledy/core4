@@ -3,9 +3,11 @@ import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result
 import { DataTransferError, SqlCommandFailedError } from "@lando/sdk/errors";
 import { Cause, Effect, Exit, Option } from "effect";
 import { checkedSqlExecution } from "../src/checked-execution.ts";
+import { SqlEnvironmentSession } from "../src/environment.ts";
 import { executeDbCommand } from "../src/execute.ts";
 import { DbCommandResult } from "../src/schemas.ts";
 import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
+import { valueResolver } from "./support/value-resolver.ts";
 
 afterEach(cleanupSqlTestDeps);
 
@@ -156,12 +158,18 @@ test("a failed RESTORE keeps its primary tag and safe diagnostics beside recover
 
 test("SQL execution failure is normalized without relabeling a provider message as stderr", async () => {
   const result = await Effect.runPromise(
-    checkedSqlExecution(Effect.fail("private provider error"), {
-      service: "database",
-      command: ["sqlcmd"],
-    }).pipe(Effect.result),
+    Effect.scoped(
+      Effect.gen(function* () {
+        const session = yield* valueResolver({}).resolver.openSession();
+        return yield* checkedSqlExecution(Effect.fail("private provider error"), {
+          service: "database",
+          command: ["sqlcmd"],
+        }).pipe(Effect.provideService(SqlEnvironmentSession, session), Effect.result);
+      }),
+    ),
   );
   if (result._tag !== "Failure") throw new Error("expected failure");
+  if (!(result.failure instanceof SqlCommandFailedError)) throw new Error("expected SQL command failure");
   expect(result.failure._tag).toBe("SqlCommandFailedError");
   expect(result.failure.exitCode).toBeUndefined();
   expect(result.failure.stderrTail).toBeUndefined();
