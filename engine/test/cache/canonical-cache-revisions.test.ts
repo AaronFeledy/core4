@@ -15,13 +15,14 @@ import { decodeAppCommandIndex, decodePluginCommandIndex } from "../../src/cache
 import { appPlanCachePath, appToolingCompilationCachePath } from "../../src/cache/paths.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
-test.each([17, 18, 19])("rejects matching revision-%i persisted plans", async (revision) => {
+test.each([17, 18, 19, 28])("rejects matching revision-%i persisted plans", async (revision) => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-canonical-plan-"));
   try {
     const appRoot = "/workspace/canonical-app";
     const appName = "canonical-app";
     const key = "matching-key";
     const plan: AppPlan = {
+      valueModel: 1,
       id: AppId.make(appName),
       name: appName,
       slug: appName,
@@ -44,6 +45,8 @@ test.each([17, 18, 19])("rejects matching revision-%i persisted plans", async (r
       landoVersion: CORE_VERSION,
       key,
       versionConstraints: [],
+      shadowHostChecks: [],
+      gitHostChecks: [],
       generatedAtMs: 1,
       plan: Schema.encodeSync(AppPlan)(plan),
     });
