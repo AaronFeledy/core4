@@ -94,6 +94,7 @@ describe("ci workflow", () => {
       "compose-vendor-bump.yml",
       "dependency-audit.yml",
       "drupal-journey.yml",
+      "install-lifecycle.yml",
       "nightly.yml",
       "php-base-images.yml",
       "platform-readiness.yml",
