@@ -59,6 +59,7 @@ export const appliedClientFixture = (
     readonly authored?: ToolingTaskShape;
     readonly applied?: "missing" | "historical" | "family" | "root" | "id" | "provider";
     readonly missingDesired?: boolean;
+    readonly inherited?: { readonly plan: CurrentExecutableAppPlan; readonly serviceType: ServiceType };
   } = {},
 ) => {
   const calls: { readonly command: readonly string[]; readonly env?: Readonly<Record<string, string>> }[] =
@@ -78,8 +79,8 @@ export const appliedClientFixture = (
   };
   const service = {
     name: ServiceName.make("database"),
-    type: "postgres",
-    provider: ProviderId.make("test"),
+    type: input.inherited?.serviceType.id ?? "postgres",
+    provider: input.inherited?.plan.provider ?? ProviderId.make("test"),
     primary: true,
     environment: {},
     connection: desired,
@@ -92,7 +93,7 @@ export const appliedClientFixture = (
     extensions: {},
     metadata,
   };
-  const base: CurrentExecutableAppPlan = {
+  const base: CurrentExecutableAppPlan = input.inherited?.plan ?? {
     valueModel: 1,
     id: AppId.make("applied-client"),
     name: "applied-client",
@@ -108,11 +109,11 @@ export const appliedClientFixture = (
     metadata,
   };
   const generated = clientFactory(service.name, desired);
-  const plan = attachEffectiveTooling(
-    withProjectEvents(base, { "pre-start": [{ task: "psql" }] }),
-    generated,
-    { psql: service.name },
-  );
+  const plan =
+    input.inherited?.plan ??
+    attachEffectiveTooling(withProjectEvents(base, { "pre-start": [{ task: "psql" }] }), generated, {
+      psql: service.name,
+    });
   const { connection: _connection, ...historical } = service;
   const applied: AppPlan = {
     ...base,
@@ -147,14 +148,16 @@ export const appliedClientFixture = (
       PluginRegistry.of({
         ...registry,
         loadServiceType: () =>
-          Effect.succeed({
-            id: "postgres",
-            name: "postgres",
-            base: "lando",
-            schema: Schema.Unknown,
-            toolingForConnection: clientFactory,
-            resolve: () => Effect.die("not used"),
-          }),
+          Effect.succeed(
+            input.inherited?.serviceType ?? {
+              id: "postgres",
+              name: "postgres",
+              base: "lando",
+              schema: Schema.Unknown,
+              toolingForConnection: clientFactory,
+              resolve: () => Effect.die("not used"),
+            },
+          ),
       }),
     ),
   ).pipe(Layer.provide(Registry.layerWith({ bundled: false }, [])));

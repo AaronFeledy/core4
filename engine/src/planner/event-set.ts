@@ -6,7 +6,6 @@ import {
   LandofileShape,
   type LoadScopedLandofile,
   type ProviderCapabilities,
-  ServiceName,
   ServiceScopedLandofile,
 } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
@@ -186,15 +185,7 @@ const knownEventSetFrom = Effect.fnUntraced(function* (resolution: ResolvedLando
     name: entry.name,
     serviceTypeId: entry.serviceType.id,
     ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
-    connectionClientNames:
-      entry.resolution.connection === undefined
-        ? []
-        : Object.keys(
-            entry.serviceType.toolingForConnection?.(
-              ServiceName.make(entry.name),
-              entry.resolution.connection,
-            ) ?? {},
-          ),
+    connectionClientNames: entry.resolution.connectionClientNames ?? [],
   }));
   const effectiveTooling = compileEffectiveTooling({ landofile, services: toolingServices });
   const invocationSites = effectiveInvocationSites({

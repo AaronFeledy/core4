@@ -12,6 +12,7 @@ import { ServiceConfig as ServiceConfigSchema, ServiceName, validationIssue } fr
 import type { FileSystem, PluginRegistry, ServiceTypeInput } from "@lando/sdk/services";
 import { type Context, Effect, Iterable, Result, Schema } from "effect";
 import { isComposeBuild } from "../services/compose-build-artifact.ts";
+import { normalizeConnectionClients } from "../services/connection-client-resolution.ts";
 import { type UserAppDefaults, withUserAppDefaults } from "./app-defaults.ts";
 import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
 import {
@@ -138,7 +139,10 @@ const resolveSeed = Effect.fnUntraced(function* (
       ...(input.capabilities === undefined ? {} : { capabilities: input.capabilities }),
       projectFiles,
     })
-    .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
+    .pipe(
+      Effect.flatMap((raw) => normalizeConnectionClients(serviceType, name, { raw })),
+      Effect.mapError((error) => servicePlanError(appRoot, name, error)),
+    );
   return {
     name,
     authoredService: service,
