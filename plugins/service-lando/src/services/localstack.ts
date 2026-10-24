@@ -1,9 +1,11 @@
 import { Effect, Schema } from "effect";
 
-import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import { ServiceFeatureError } from "@lando/sdk/errors";
+import { PortablePath, type ServiceConfig, formatValidationIssuePath } from "@lando/sdk/schema";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
+  ServiceConfigIssue,
   commandHealthcheck,
   literalEnvironmentValue,
   rootIdentity,
@@ -73,9 +75,19 @@ export const localstackServiceFeature: ServiceFeatureDefinition = {
   // After lando.env so GATEWAY_LISTEN stays aligned with the planned endpoint port.
   priority: 750,
   declareEndpoints: (ctx) =>
-    Effect.sync(() => {
-      const { port } = localstackListener(ctx.normalizedConfig);
-      return servicePortEndpoints(ctx, { port, protocol: "http" });
+    Effect.try({
+      try: () => {
+        const { port } = localstackListener(ctx.normalizedConfig);
+        return servicePortEndpoints(ctx, { port, protocol: "http" });
+      },
+      catch: (cause) => {
+        if (!(cause instanceof ServiceConfigIssue)) throw cause;
+        return new ServiceFeatureError({
+          feature: LOCALSTACK_FEATURE_ID,
+          message: `${formatValidationIssuePath(["services", ctx.serviceName, ...cause.path])}: ${cause.message}${cause.suggestion ? ` ${cause.suggestion}` : ""}`,
+          cause,
+        });
+      },
     }),
   apply: serviceFeatureApply(
     LOCALSTACK_FEATURE_ID,

@@ -10,6 +10,7 @@ import {
   localstackServiceType,
 } from "../src/services/localstack.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { recordFeatureContext } from "./support/record-feature-context.ts";
 
 const metadata = {
   resolvedAt: "2026-08-18T00:00:00Z",
@@ -41,6 +42,25 @@ const planLocalStackService = (serviceDefinition: Record<string, unknown>) =>
   });
 
 describe("localstack ServiceType", () => {
+  test("returns a typed declaration failure for a secret-bound gateway", async () => {
+    const { ctx } = recordFeatureContext({
+      serviceType: "localstack",
+      normalizedConfig: {
+        type: "localstack",
+        environment: { GATEWAY_LISTEN: { _tag: "SecretRef", reference: "GATEWAY" } },
+      },
+      config: {},
+    });
+    const declare = localstackServiceFeature.declareEndpoints;
+    if (declare === undefined) throw new Error("LocalStack declaration fixture missing");
+    const result = await Effect.runPromise(declare(ctx).pipe(Effect.result));
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toMatchObject({ _tag: "ServiceFeatureError", feature: LOCALSTACK_FEATURE_ID });
+      expect(result.failure.message).toContain("services.web.environment.GATEWAY_LISTEN");
+    }
+  });
+
   test("plans the default artifact, persistent storage, and named HTTP endpoint", async () => {
     const plan = await planLocalStackService({ type: "localstack" });
 

@@ -173,3 +173,35 @@ test("accumulates proxy binding failures without endpoint or missing-service cas
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("retains independent route findings when LocalStack requires a literal gateway", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-localstack-binding-error-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      emitYamlDocument({
+        name: "binding",
+        services: {
+          cloud: {
+            type: "localstack",
+            environment: { GATEWAY_LISTEN: "${secret:GATEWAY}" },
+            routes: ["cloud.lndo.site"],
+          },
+          web: { type: "compose", image: "nginx:alpine", routes: ["web.lndo.site"] },
+        },
+      }),
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.violations.map(({ rule, path }) => ({ rule, path }))).toEqual([
+      { rule: "landofile.service", path: ["services", "cloud"] },
+      { rule: "landofile.route", path: ["services", "web", "routes", 0] },
+    ]);
+    expect(result.violations[0]?.message).toContain("services.cloud.environment.GATEWAY_LISTEN");
+    expect(result.violations[0]?.source).toMatchObject({ file: join(root, ".lando.yml") });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
