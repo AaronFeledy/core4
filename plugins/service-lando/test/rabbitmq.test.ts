@@ -201,8 +201,10 @@ describe("rabbitmq ServiceType", () => {
         expect(plan.environment).toMatchObject({
           RABBITMQ_DEFAULT_USER: "author",
           RABBITMQ_DEFAULT_PASS: "lando",
+          RABBITMQ_NODE_PORT: "25672",
           EXTRA_VAR: "extra",
         });
+        expect(plan.healthcheck?.command).toEqual(["rabbitmq-diagnostics", "-q", "ping"]);
         expect(plan.command).toEqual(["rabbitmq-server"]);
         expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
         expect(String(plan.workingDirectory)).toBe("/var/lib/rabbitmq");

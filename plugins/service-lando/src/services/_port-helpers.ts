@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
-import { type InternalEndpointInput, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
-import type { ServiceFeatureContext } from "@lando/sdk/services";
+import { type EndpointPlan, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
+import type { ServiceEndpointContext } from "@lando/sdk/services";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
 interface Listener {
@@ -52,16 +52,16 @@ export const assertListenerConfig = (service: ServiceConfig, listener: Listener)
   }
 };
 
-export const addServicePortEndpoints = (
-  ctx: ServiceFeatureContext,
+/** Pure primary internal endpoint list from immutable service facts. */
+export const servicePortEndpoints = (
+  ctx: Pick<ServiceEndpointContext, "serviceName">,
   fallback: { readonly port: number; readonly protocol: "http" | "https" | "tcp" },
-): void => {
-  const primary: InternalEndpointInput = {
+): readonly EndpointPlan[] => [
+  {
     _tag: "internal",
     port: Schema.decodeUnknownSync(PortNumber)(fallback.port),
     protocol: fallback.protocol,
     name: ctx.serviceName,
     primary: true,
-  };
-  ctx.addEndpoint(primary);
-};
+  },
+];

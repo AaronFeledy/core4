@@ -19,7 +19,7 @@ export const appConfigLintSpec: LandoCommandSpec<
 > = {
   resultSchema: ConfigLintResult,
   id: "app:config:lint",
-  summary: "Validate the current app's Landofile schema and resolved event names.",
+  summary: "Check Landofile configuration, declared listeners, routes, and event names.",
   namespace: "app",
   topLevelAlias: false,
   aliases: ["config:lint"],

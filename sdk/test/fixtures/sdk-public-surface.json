@@ -36,6 +36,10 @@
     "writeStderr"
   ],
   "rendererOutputIOMembers": ["stdoutColumns", "stdoutIsTTY", "writeStderr", "writeStdout"],
+  "featureEndpointDeclarations": {
+    "ServiceFeatureDefinition": "readonly declareEndpoints?: (ctx: ServiceEndpointContext) => Effect.Effect<readonly EndpointPlan[], ServiceFeatureError>",
+    "AppFeatureDefinition": "readonly declareEndpoints?: (ctx: AppEndpointDeclarationContext) => Effect.Effect<Readonly<Record<string, readonly EndpointPlan[]>>, AppFeatureError>"
+  },
   "serviceTags": {
     "AppPlanner": [
       "plan:(landofile:LoadScopedLandofile,providerCapabilities:ProviderCapabilities) => Effect.Effect<CurrentExecutableAppPlan,AppPlannerError>"

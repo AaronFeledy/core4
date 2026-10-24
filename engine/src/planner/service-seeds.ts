@@ -163,12 +163,13 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
 ) {
   const { landofile, fileSystem, appRoot } = input;
   const issues: PlannerIssue[] = [];
-  const record = (error: LandofileValidationError) =>
-    issues.push(
-      ...error.issues.map((issue) =>
-        attributePlannerIssue(landofile, { ...issue, rule: "landofile.service" }),
-      ),
+  const record = (error: LandofileValidationError) => {
+    const attributed = error.issues.map((issue) =>
+      attributePlannerIssue(landofile, { ...issue, rule: "landofile.service" }),
     );
+    issues.push(...attributed);
+    return attributed;
+  };
   const loadedTopLevelEnvFiles = yield* loadTopLevelEnvFiles({
     appRoot,
     envFiles: landofile.env_file ?? [],
@@ -198,10 +199,12 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     string,
     ResolvedServiceSeed & { readonly logSources: ReadonlyArray<LogSource> }
   >();
-  const unavailable = new Set<string>();
+  const unavailable = new Map<string, readonly PlannerIssue[]>();
   for (const name of order.order) {
     if (Iterable.some(order.references.get(name) ?? [], (ref) => unavailable.has(ref))) {
-      unavailable.add(name);
+      unavailable.set(name, [
+        ...new Set([...(order.references.get(name) ?? [])].flatMap((ref) => unavailable.get(ref) ?? [])),
+      ]);
       continue;
     }
     const authoredService = landofile.services?.[ServiceName.make(name)];
@@ -237,8 +240,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
       Effect.catchTag("LandofileValidationError", (error) => Effect.succeed(Result.fail(error))),
     );
     if (Result.isFailure(resolved)) {
-      unavailable.add(name);
-      record(resolved.failure);
+      unavailable.set(name, record(resolved.failure));
       continue;
     }
     const seed = resolved.success;

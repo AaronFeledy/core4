@@ -11,12 +11,15 @@ import {
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { type Context, DateTime, Effect, Iterable, Result, Schema } from "effect";
 import { hostProviderIdFrom } from "../providers/host-provider.ts";
+import { resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
 import {
   compileEffectiveTooling,
   connectionClientOwners,
   toolingBeforeDefaults,
 } from "./effective-tooling.ts";
+import { requireServiceProjection } from "./endpoint-availability.ts";
+import { projectEndpoints } from "./endpoint-projection.ts";
 import { validEventNames } from "./event-names.ts";
 import { effectiveInvocationSites } from "./invocation-authority.ts";
 import {
@@ -142,9 +145,24 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     ];
   }
   const validated = validateResolvedLandofile({ landofile, landofilePath, blocked });
-  const issues = [...seeds.issues, ...validated.issues];
+  const projection = yield* projectEndpoints({
+    services: seeds.services,
+    unavailable: seeds.unavailable,
+    landofile,
+    manifests,
+    pluginRegistry,
+    appName,
+    appRoot,
+    provider,
+    host,
+    env: materialized.context.env,
+    gpgForward: resolveGpgAgentIntent({ landofile, globalConfig }).forward,
+    routes: validated.routes,
+  });
+  const issues = [...seeds.issues, ...validated.issues, ...projection.issues];
   const resolution = {
     ...seeds,
+    endpointProjection: projection,
     compiled: ServiceScopedLandofile.make({
       stage: "service-scoped",
       document: landofile,
@@ -181,6 +199,11 @@ export type ResolvedLandofile = Extract<
 
 const knownEventSetFrom = Effect.fnUntraced(function* (resolution: ResolvedLandofile) {
   const { landofile } = resolution;
+  const services = yield* Effect.forEach(resolution.services, (seed) =>
+    requireServiceProjection(resolution.endpointProjection.services, seed.name, resolution.appRoot).pipe(
+      Effect.map((projection) => ({ ...seed, ...projection })),
+    ),
+  );
   const toolingServices = resolution.services.map((entry) => ({
     name: entry.name,
     serviceTypeId: entry.serviceType.id,
@@ -201,6 +224,7 @@ const knownEventSetFrom = Effect.fnUntraced(function* (resolution: ResolvedLando
   const knownEventNames = validEventNames(effectiveTooling);
   return {
     ...resolution,
+    services,
     effectiveTooling,
     connectionClients: connectionClientOwners({ landofile, services: toolingServices }),
     invocationSites,

@@ -155,8 +155,6 @@ export interface ServiceFeatureContext {
    * no preparation.
    */
   addStorage(storage: DataStoreMountPlan, ownership?: DataStoreOwnershipIntent): void;
-  /** Add a service endpoint. */
-  addEndpoint(endpoint: EndpointPlan): void;
   /** Add a service dependency. */
   addDependency(dependency: DependencyPlan): void;
   /** Add a host alias. */
@@ -189,5 +187,24 @@ export interface ServiceFeatureDefinition {
   readonly schema?: Schema.Codec<unknown>;
   readonly priority: number;
   readonly requires?: ReadonlyArray<keyof ProviderCapabilities>;
+  /** Declare listeners without applying features or acquiring runtime resources. */
+  readonly declareEndpoints?: (
+    ctx: ServiceEndpointContext,
+  ) => Effect.Effect<readonly EndpointPlan[], ServiceFeatureError>;
   readonly apply: (ctx: ServiceFeatureContext) => Effect.Effect<void, ServiceFeatureError>;
 }
+
+/** Immutable declaration facts, with the original decoded feature configuration. */
+export type ServiceEndpointContext = Pick<
+  ServiceFeatureContext,
+  | "serviceName"
+  | "serviceType"
+  | "base"
+  | "primary"
+  | "appName"
+  | "appRoot"
+  | "host"
+  | "normalizedConfig"
+  | "connection"
+  | "config"
+>;

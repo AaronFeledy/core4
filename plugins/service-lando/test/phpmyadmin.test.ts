@@ -77,7 +77,6 @@ const unusedMutators = {
   setAppMount: () => undefined,
   addBuildStep: () => undefined,
   addStorage: () => undefined,
-  addEndpoint: () => undefined,
   addHostAlias: () => undefined,
   setHealthcheck: () => undefined,
   setCerts: () => undefined,

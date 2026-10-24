@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 
 import {
-  type DatabaseConnection,
   type PlanMetadata,
   ProviderId,
   type ServiceConfig,
@@ -51,14 +50,10 @@ const featureDefinitionFor = (
 const composeFeatureFor = (
   featureRef: { readonly id: string; readonly config?: Record<string, unknown> },
   featureOverrides: ReadonlyMap<string, ServiceFeatureDefinition> | undefined,
-  connection: DatabaseConnection | undefined,
 ): ComposeServiceFeature => ({
   id: featureRef.id,
   ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
-  definition: {
-    ...featureDefinitionFor(featureRef.id, featureOverrides),
-    apply: (ctx) => featureDefinitionFor(featureRef.id, featureOverrides).apply({ ...ctx, connection }),
-  },
+  definition: featureDefinitionFor(featureRef.id, featureOverrides),
 });
 
 export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<ServicePlan> => {
@@ -81,7 +76,7 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
   const baseDefaultIds = baseDefaultFeatureIds(resolution.base).filter((id) => !resolutionFeatureIds.has(id));
   const defaultFeatures = baseDefaultIds.map((id) => featureDefinitionFor(id, args.featureOverrides));
   const features = resolution.features.map((featureRef) =>
-    composeFeatureFor(featureRef, args.featureOverrides, resolution.connection),
+    composeFeatureFor(featureRef, args.featureOverrides),
   );
 
   const rawPlan = await Effect.runPromise(

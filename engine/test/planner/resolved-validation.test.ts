@@ -219,6 +219,63 @@ test("blocked route fields are skipped while sibling fields and static routes st
   );
 });
 
+test("blocked routes preserve later binding indexes while independent failures accumulate", async () => {
+  // Given
+  await withApp(
+    `services:
+  db:
+    type: validation
+    environment: {FAIL: yes}
+  web:
+    type: validation
+    routes:
+      - hostname: static.lndo.site
+proxy:
+  web:
+    - hostname: "{{ services.db.creds.user }}.lndo.site"
+    - proxy.lndo.site
+`,
+    async (root) => {
+      // When / Then
+      await compareIssues(root, [
+        ["services", "db", "port"],
+        ["services", "web", "routes", 0],
+        ["proxy", "web", 1],
+      ]);
+    },
+  );
+});
+
+test("undeclared proxy targets retain indexed findings beside invalid and unavailable services", async () => {
+  // Given
+  await withApp(
+    `services:
+  web:
+    type: validation
+    routes: []
+  unavailable:
+    type: validation
+    environment: {FAIL: yes}
+proxy:
+  typo:
+    - bad_host!
+    - first.lndo.site
+    - second.lndo.site
+  unavailable:
+    - unavailable.lndo.site
+`,
+    async (root) => {
+      // When / Then
+      await compareIssues(root, [
+        ["services", "unavailable", "port"],
+        ["proxy", "typo", 0],
+        ["proxy", "typo", 1],
+        ["proxy", "typo", 2],
+      ]);
+    },
+  );
+});
+
 test("unknown services in top-level tooling remain expression failures", async () => {
   await withApp(
     `services:

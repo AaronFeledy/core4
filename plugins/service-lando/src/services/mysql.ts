@@ -26,7 +26,7 @@ import {
 import { appNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
+import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -113,7 +113,6 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   ctx.setHealthcheck(
     commandHealthcheck(
       ["mysqladmin", "ping", "-h", "127.0.0.1", "-P", String(port), "-u", creds.user, "--silent"],
@@ -136,6 +135,8 @@ export const mysqlServiceFeature: ServiceFeatureDefinition = {
   id: MYSQL_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(MYSQL_FEATURE_ID, "mysql service feature failed to apply", applyMysqlFeature),
 };
 

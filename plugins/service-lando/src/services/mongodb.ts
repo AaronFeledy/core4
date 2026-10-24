@@ -1,5 +1,5 @@
 import { concatenateEnvironmentValues, encodeEnvironmentComponent } from "@lando/sdk/expressions";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   type EnvironmentValue,
@@ -22,7 +22,7 @@ import {
 import { appNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -84,7 +84,6 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
 
   const serverConfig = addServerConfigMount(ctx, MONGODB_CONFIG_TARGET);
   if (
@@ -109,6 +108,8 @@ export const mongodbServiceFeature: ServiceFeatureDefinition = {
   id: MONGODB_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(
     MONGODB_FEATURE_ID,
     "mongodb service feature failed to apply",

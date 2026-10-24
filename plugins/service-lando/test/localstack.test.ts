@@ -102,20 +102,25 @@ describe("localstack ServiceType", () => {
     });
   });
 
-  test("derives the planned port from GATEWAY_LISTEN when port is omitted", async () => {
-    const plan = await planLocalStackService({
-      type: "localstack",
-      environment: { GATEWAY_LISTEN: "0.0.0.0:24666" },
-    });
+  test.each(["0.0.0.0:24666", "127.0.0.1:24666", "24666"])(
+    "derives the listener from GATEWAY_LISTEN %s when port is omitted",
+    async (gateway) => {
+      // Given / When: the environment alone selects a nondefault listener.
+      const plan = await planLocalStackService({
+        type: "localstack",
+        environment: { GATEWAY_LISTEN: gateway },
+      });
 
-    expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "0.0.0.0:24666" });
-    expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 24666, protocol: "http", name: "cloud", primary: true },
-    ]);
-    expect(plan.healthcheck).toMatchObject({
-      command: ["sh", "-c", "curl -sf http://localhost:24666/_localstack/health"],
-    });
-  });
+      // Then: declaration, actual bind, and healthcheck agree.
+      expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: gateway });
+      expect(plan.endpoints).toEqual([
+        { _tag: "internal", port: 24666, protocol: "http", name: "cloud", primary: true },
+      ]);
+      expect(plan.healthcheck).toMatchObject({
+        command: ["sh", "-c", "curl -sf http://localhost:24666/_localstack/health"],
+      });
+    },
+  );
 
   test("preserves authored environment and process fields", async () => {
     const plan = await planLocalStackService({

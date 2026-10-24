@@ -95,6 +95,19 @@ const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> =>
 
 // Public changes must update sdk/test/fixtures/sdk-public-surface.json in the same change.
 describe("SDK public-surface snapshot", () => {
+  test("matches endpoint declaration signatures and excludes apply-time endpoint mutation", () => {
+    for (const [name, signature] of Object.entries(publicSurface.featureEndpointDeclarations)) {
+      const member = interfaces
+        .get(name)
+        ?.members.find((entry) => entry.name?.getText() === "declareEndpoints");
+      expect(normalizeSignature(member?.getText() ?? "")).toBe(normalizeSignature(signature));
+    }
+    for (const name of ["ServiceFeatureContext", "AppFeatureServiceMutators"]) {
+      expect(interfaces.get(name)?.members.map((member) => member.name?.getText())).not.toContain(
+        "addEndpoint",
+      );
+    }
+  });
   test("matches every Landofile service failure tag", () => {
     const tags = {
       ComposeKeyRejectedError: true,

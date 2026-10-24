@@ -58,19 +58,6 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
     // planned user needs the tree prepared before the bucket mkdir can work.
     { seededOwners: ["root", "0"] },
   );
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(apiPort),
-    protocol: "http",
-    name: ctx.serviceName,
-    primary: true,
-  });
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(CONSOLE_PORT),
-    protocol: "http",
-    name: "console",
-  });
   ctx.setHealthcheck(commandHealthcheck(["mc", "ready", "local"], 30));
 
   if (service.command === undefined && service.entrypoint === undefined) {
@@ -96,6 +83,25 @@ export const minioServiceFeature: ServiceFeatureDefinition = {
   id: MINIO_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => {
+      const apiPort = ctx.normalizedConfig.port ?? DEFAULT_API_PORT;
+      return [
+        {
+          _tag: "internal" as const,
+          port: Schema.decodeUnknownSync(PortNumber)(apiPort),
+          protocol: "http" as const,
+          name: ctx.serviceName,
+          primary: true as const,
+        },
+        {
+          _tag: "internal" as const,
+          port: Schema.decodeUnknownSync(PortNumber)(CONSOLE_PORT),
+          protocol: "http" as const,
+          name: "console",
+        },
+      ];
+    }),
   apply: serviceFeatureApply(MINIO_FEATURE_ID, "minio service feature failed to apply", applyMinioFeature),
 };
 

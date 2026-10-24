@@ -16,7 +16,7 @@ import {
 import { appNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
+import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const MSSQL_LISTENER = {
@@ -86,7 +86,6 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   ctx.setHealthcheck(commandHealthcheck([...sqlcmdHealthcheckArgv(port)], 30));
 
   applyAuthoredProcessFields(ctx);
@@ -96,6 +95,8 @@ export const mssqlServiceFeature: ServiceFeatureDefinition = {
   id: MSSQL_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(MSSQL_FEATURE_ID, "mssql service feature failed to apply", applyMssqlFeature),
 };
 

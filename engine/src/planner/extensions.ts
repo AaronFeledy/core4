@@ -102,7 +102,7 @@ export const toAppFeatureDraft = (
   name: string,
   servicePlan: ServicePlan,
   serviceResolution: ServiceTypeResolution,
-  baseDefaultIds: ReadonlyArray<string>,
+  featureIds: ReadonlyArray<string>,
 ): AppFeatureServiceDraft => ({
   name: servicePlan.name,
   serviceName: name,
@@ -113,7 +113,7 @@ export const toAppFeatureDraft = (
   primary: servicePlan.primary,
   base: serviceResolution.base,
   framework: serviceResolution.normalizedConfig.framework,
-  featureIds: [...baseDefaultIds, ...serviceResolution.features.map((feature) => feature.id)],
+  featureIds,
   normalizedConfig: serviceResolution.normalizedConfig,
   ...(servicePlan.artifact === undefined ? {} : { artifact: servicePlan.artifact }),
   ...(servicePlan.command === undefined ? {} : { command: servicePlan.command }),

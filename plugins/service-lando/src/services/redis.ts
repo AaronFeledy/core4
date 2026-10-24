@@ -6,7 +6,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "redis:7";
@@ -44,7 +44,6 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
       readOnly: false,
     });
   ctx.setHealthcheck(commandHealthcheck(["redis-cli", "-p", String(port), "ping"], 15));
-  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };
@@ -53,6 +52,10 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
   id: REDIS_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "tcp" }),
+    ),
   apply: (ctx) => {
     const startupOverride =
       ctx.normalizedConfig.command !== undefined
