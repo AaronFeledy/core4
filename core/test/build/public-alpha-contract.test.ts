@@ -12,6 +12,9 @@ const ciPath = resolve(repoRoot, "docs/contributing/ci.md");
 
 const readText = async (path: string): Promise<string> => Bun.file(path).text();
 
+const installSection = (install: string, heading: string): string =>
+  install.split(`### ${heading}\n`)[1]?.split("\n### ")[0] ?? "";
+
 const releasePolicy = (repository: string): string =>
   (
     repository.match(
@@ -57,13 +60,47 @@ describe("public alpha contract", () => {
     }
   });
 
-  test("names Intel Mac Docker setup and the managed default in the install guide", async () => {
-    const install = await readText(installPath);
-    expect(install).toContain("Intel Mac (`darwin-x64`)");
-    expect(install).toContain("lando setup --provider=docker");
-    expect(install).toContain("Other supported platforms:");
-    expect(install).toContain("the default is `lando`");
-    expect(install).toContain("Lando-managed Podman");
+  test("uses bare interactive setup in the install guide", async () => {
+    const setup = installSection(await readText(installPath), "Choose setup for your platform");
+    expect(setup).toContain("Run setup in your terminal and follow the prompts.");
+    expect(setup).toContain("```bash\nlando setup\n```");
+    expect(setup).not.toContain("lando setup --provider=");
+  });
+
+  test("recommends the managed runtime without Docker or system Podman in the install guide", async () => {
+    const setup = installSection(await readText(installPath), "Choose setup for your platform");
+    expect(setup).toContain("On supported hosts, choose the recommended Lando-managed runtime;");
+    expect(setup).toContain("it does not require Docker or system Podman.");
+  });
+
+  test("requires Intel Mac Docker Desktop installation and startup before setup", async () => {
+    const setup = installSection(await readText(installPath), "Choose setup for your platform");
+    expect(setup).toContain("On an Intel Mac (`darwin-x64`), install and start Docker Desktop first,");
+    expect(setup).toContain("Setup does not install Docker for you.");
+  });
+
+  test("requires Intel Mac users to choose Docker manually in the setup menu", async () => {
+    const setup = installSection(await readText(installPath), "Choose setup for your platform");
+    expect(setup).toContain(
+      "On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks.",
+    );
+  });
+
+  test("keeps deliberate Docker fallback separate from first-run setup", async () => {
+    const fallback = installSection(await readText(installPath), "Use Docker as a Linux fallback");
+    expect(fallback).toContain(
+      "If the managed runtime still cannot install and system Docker is already working, use the fallback below.",
+    );
+    expect(fallback).toContain(
+      "If you already have apps on another provider, follow [Switch providers](./guides/setup/provider-selection.mdx#switch-providers) first.",
+    );
+    expect(fallback).toContain("```bash\nlando setup --provider=docker\n```");
+    expect(fallback).toContain(
+      "Setup saves Docker as your provider. Run `lando doctor` to verify the result.",
+    );
+    expect(fallback).toContain(
+      "Docker is the supported path on Intel Mac and a fallback on Linux, not the default on other targets.",
+    );
   });
 
   test("finds recipes/drupal/README.mdx when the recipe file is checked", async () => {
