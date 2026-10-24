@@ -7,6 +7,7 @@ import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "
 import { snapshotHandle } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
+import { checkedSqlExecution } from "./checked-execution.ts";
 import { hostFile, parseCount, secretTokens } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
@@ -101,10 +102,13 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   ];
 
   if (action === "import") {
-    const counted = yield* deps
-      .exec(target.name, countCommand(target.family, creds), env)
-      .pipe(Effect.catch(() => Effect.succeed({ ok: false, stdout: "" })));
-    const count = counted.ok ? parseCount(counted.stdout) : undefined;
+    const command = countCommand(target.family, creds);
+    const counted = yield* checkedSqlExecution(deps.exec(target.name, command, env), {
+      service: target.name,
+      command,
+      env,
+    });
+    const count = parseCount(counted.stdout);
     yield* confirmOrFail(
       input,
       deps.confirm,

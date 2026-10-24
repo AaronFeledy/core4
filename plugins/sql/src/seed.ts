@@ -12,6 +12,7 @@ import {
 } from "@lando/sdk/schema";
 
 import { type SqlExec, runImport } from "./actions.ts";
+import { checkedSqlExecution } from "./checked-execution.ts";
 import { parseCount } from "./command-input.ts";
 import { countCommand, loadCommand } from "./families.ts";
 import type { SqlRecoveryContext, SqlRecoveryDeps } from "./recovery.ts";
@@ -42,8 +43,13 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
   const state = yield* deps.initialization(identity);
   const status = (yield* state.read)?.state._tag ?? "unknown";
   if (status !== "fresh") return yield* Effect.fail(reject(status));
-  const counted = yield* deps.exec(input.service, countCommand(input.family, input.creds), input.env);
-  const count = counted.ok ? parseCount(counted.stdout) : undefined;
+  const command = countCommand(input.family, input.creds);
+  const counted = yield* checkedSqlExecution(deps.exec(input.service, command, input.env), {
+    service: input.service,
+    command,
+    env: input.env,
+  });
+  const count = parseCount(counted.stdout);
   if (count !== 0) {
     return yield* Effect.fail(
       new SqlSeedStateError({

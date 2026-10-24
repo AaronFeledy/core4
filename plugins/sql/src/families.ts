@@ -1,4 +1,5 @@
 import type { DatabaseFamily } from "@lando/sdk/database-creds";
+import { mssqlClient, mssqlResetCommand, mssqlRestoreCommand } from "./mssql.ts";
 
 export type SqlFamily = DatabaseFamily;
 
@@ -33,36 +34,6 @@ export const familyFromServiceType = (type: string): SqlFamily | undefined => {
 };
 
 export const isSqlServiceType = (type: string): boolean => familyFromServiceType(type) !== undefined;
-
-export const mssqlBackupServicePath = (database: string): string => `/var/opt/mssql/backup/${database}.bak`;
-
-const mssqlClient = (port: number, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
-  "/opt/mssql-tools18/bin/sqlcmd",
-  "-S",
-  `localhost,${port}`,
-  "-U",
-  "sa",
-  "-C",
-  ...extra,
-];
-
-export const mssqlPrepareBackupCommand = (): ReadonlyArray<string> => [
-  "mkdir",
-  "-p",
-  "/var/opt/mssql/backup",
-];
-
-export const mssqlBackupCommand = (database: string, port: number): ReadonlyArray<string> =>
-  mssqlClient(port, [
-    "-Q",
-    `BACKUP DATABASE [${database}] TO DISK = '${mssqlBackupServicePath(database)}' WITH INIT`,
-  ]);
-
-export const mssqlRestoreCommand = (database: string, port: number): ReadonlyArray<string> =>
-  mssqlClient(port, [
-    "-Q",
-    `RESTORE DATABASE [${database}] FROM DISK = '${mssqlBackupServicePath(database)}' WITH REPLACE`,
-  ]);
 
 type MysqlFamily = "mysql" | "mariadb";
 
@@ -213,7 +184,7 @@ export const versionCommand = (family: SqlFamily, creds: SqlCommandCreds): Reado
     case "mssql":
       return mssqlClient(creds.port, [
         "-d",
-        creds.database,
+        "master",
         "-h",
         "-1",
         "-W",
@@ -267,10 +238,7 @@ export const resetCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
     case "mongodb":
       return mongoShell(`--eval=${quoteShell("db.dropDatabase()")}`);
     case "mssql":
-      return mssqlClient(creds.port, [
-        "-Q",
-        `ALTER DATABASE [${creds.database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${creds.database}]; CREATE DATABASE [${creds.database}];`,
-      ]);
+      return mssqlResetCommand(creds.database, creds.port);
     default:
       return assertNever(family);
   }

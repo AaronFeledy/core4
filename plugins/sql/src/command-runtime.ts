@@ -62,12 +62,10 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
             }),
         }).pipe(Effect.map(AbsolutePath.make)),
       exec: (service, command, env) =>
-        provider
-          .exec(
-            { app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned },
-            { command, ...(env === undefined ? {} : { env }) },
-          )
-          .pipe(Effect.map((result) => ({ ok: result.exitCode === 0, stdout: result.stdout }))),
+        provider.exec(
+          { app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned },
+          { command, ...(env === undefined ? {} : { env }) },
+        ),
       resume: (service, identity) => {
         const resume = provider.resume;
         return resume === undefined

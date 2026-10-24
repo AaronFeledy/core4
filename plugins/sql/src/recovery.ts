@@ -1,6 +1,6 @@
 import { DateTime, Effect, Exit } from "effect";
 
-import { SqlRecoveryOperationError } from "@lando/sdk/errors";
+import { DataTransferError, SqlCommandFailedError, SqlRecoveryOperationError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { SnapshotId, type SnapshotMetadata } from "@lando/sdk/schema";
 
@@ -87,14 +87,28 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
         Effect.mapError((cause) =>
           input.reason === "manual"
             ? cause
-            : new SqlRecoveryOperationError({
-                message: `${input.reason} failed after recovery snapshot ${recovery.id} was created.`,
-                service: input.serviceName,
-                operation: input.reason,
-                recoverySnapshotId: recovery.id,
-                cause,
-                remediation: `Restore recovery snapshot ${recovery.id} after resolving the failure.`,
-              }),
+            : cause instanceof SqlCommandFailedError
+              ? new SqlCommandFailedError({
+                  ...cause,
+                  message: cause.message,
+                  recoverySnapshotId: recovery.id,
+                  remediation: `${cause.remediation ?? "Resolve the command failure."} Restore recovery snapshot ${recovery.id} after resolving the failure.`,
+                })
+              : cause instanceof DataTransferError
+                ? new DataTransferError({
+                    ...cause,
+                    message: cause.message,
+                    recoverySnapshotId: recovery.id,
+                    remediation: `${cause.remediation ?? "Resolve the command failure."} Restore recovery snapshot ${recovery.id} after resolving the failure.`,
+                  })
+                : new SqlRecoveryOperationError({
+                    message: `${input.reason} failed after recovery snapshot ${recovery.id} was created.`,
+                    service: input.serviceName,
+                    operation: input.reason,
+                    recoverySnapshotId: recovery.id,
+                    cause,
+                    remediation: `Restore recovery snapshot ${recovery.id} after resolving the failure.`,
+                  }),
         ),
       );
       if (input.reason !== "manual") {

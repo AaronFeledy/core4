@@ -240,19 +240,19 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         joined.includes("db.getCollectionNames().length");
       if (isVersion) {
         execs.push({ command, ...(env === undefined ? {} : { env }) });
-        return Effect.succeed({ ok: true, stdout: options.observedVersion ?? "8.0" });
+        return Effect.succeed({ exitCode: 0, stdout: options.observedVersion ?? "8.0", stderr: "" });
       }
       if (isCount) {
         return Effect.sync(() => {
           countAttempts += 1;
           if (options.countFails === true || countAttempts <= (options.countFailuresBeforeSuccess ?? 0)) {
-            return { ok: false, stdout: "" };
+            return { exitCode: 1, stdout: "", stderr: "" };
           }
-          return { ok: true, stdout: options.countStdout ?? "0" };
+          return { exitCode: 0, stdout: options.countStdout ?? "0", stderr: "" };
         });
       }
       execs.push({ command, ...(env === undefined ? {} : { env }) });
-      return Effect.succeed({ ok: options.execFails !== true, stdout: "" });
+      return Effect.succeed({ exitCode: options.execFails === true ? 1 : 0, stdout: "", stderr: "" });
     },
     confirm: () => Effect.succeed(false),
     resume: Effect.fnUntraced(function* () {

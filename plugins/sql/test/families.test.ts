@@ -9,12 +9,10 @@ import {
   familyFromServiceType,
   isSqlServiceType,
   loadCommand,
-  mssqlBackupCommand,
-  mssqlBackupServicePath,
-  mssqlPrepareBackupCommand,
   resetCommand,
   versionCommand,
 } from "../src/families.ts";
+import { mssqlBackupCommand, mssqlBackupServicePath, mssqlPrepareBackupCommand } from "../src/mssql.ts";
 
 const SECRET = "s3cret-pass";
 const creds: SqlCreds = {
@@ -200,7 +198,10 @@ describe("family command builders", () => {
   });
 
   test("mssql prepares the server-owned backup directory", () => {
-    expect(mssqlPrepareBackupCommand()).toEqual(["mkdir", "-p", "/var/opt/mssql/backup"]);
+    expect(mssqlPrepareBackupCommand("appdb").slice(-2)).toEqual([
+      "/var/opt/mssql/backup",
+      "/var/opt/mssql/backup/appdb.bak",
+    ]);
   });
 
   test("countCommand uses family-specific emptiness probes", () => {
@@ -241,6 +242,8 @@ describe("family command builders", () => {
       "-U",
       "sa",
       "-C",
+      "-b",
+      "-r1",
       "-d",
       "appdb",
       "-Q",
