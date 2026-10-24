@@ -82,7 +82,7 @@ export class SqlRecoveryOperationError extends Schema.TaggedError<SqlRecoveryOpe
   {
     message: Schema.String,
     service: Schema.String,
-    operation: Schema.Literals(["reset", "restore", "import"]),
+    operation: Schema.Literals(["reset", "restore", "import", "snapshot"]),
     recoverySnapshotId: Schema.String,
     cause: Schema.Unknown,
     remediation: Schema.String,

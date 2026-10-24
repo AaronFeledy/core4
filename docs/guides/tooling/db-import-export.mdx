@@ -63,11 +63,14 @@ report `SqlCommandFailedError`. When the command supplied them, `exitCode` and
 suppressed. A provider failure without an exit status does not invent one.
 Database payloads and stdout are never included in these command failures.
 
-A failed export leaves an existing host destination unchanged. If an import or
-reset fails after taking its recovery snapshot, the command error keeps its tag
-and diagnostics and adds `recoverySnapshotId` with restore guidance. Failures
-outside command execution may use a different error tag. Fix the reported
-problem before retrying or restoring that snapshot.
+A failed export leaves an existing host destination unchanged. After a snapshot
+is captured, failures during database resume, readiness, import, reset, or restore
+report `recoverySnapshotId` with recovery guidance. Command failures keep their
+tag and diagnostics. A manual snapshot also remains available when restarting
+the database fails; that failure reports the captured snapshot instead of losing
+its handle. Failures outside command execution may use a different error tag.
+Fix the reported problem before retrying. Restore the snapshot only if recovery
+is needed. A failed capture never invents a snapshot ID.
 
 Import and seed stop with the same diagnostics if their emptiness query fails.
 `--yes` skips confirmation, not a failed database check.

@@ -87,33 +87,39 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
           return captured.value;
         }),
       );
-      if (input.resumeAfterSnapshot && context.running) yield* context.resume;
-      const result = yield* input.body(context, recovery.id).pipe(
+      const result = yield* Effect.gen(function* () {
+        if (input.resumeAfterSnapshot && context.running) yield* context.resume;
+        return yield* input.body(context, recovery.id);
+      }).pipe(
         Effect.mapError((cause) =>
-          input.reason === "manual"
-            ? cause
-            : cause instanceof SqlCommandFailedError
-              ? new SqlCommandFailedError({
+          cause instanceof SqlCommandFailedError
+            ? new SqlCommandFailedError({
+                ...cause,
+                message: cause.message,
+                recoverySnapshotId: recovery.id,
+                remediation: `${cause.remediation} Use lando db:restore ${recovery.id} after resolving the failure if recovery is needed.`,
+              })
+            : cause instanceof DataTransferError
+              ? new DataTransferError({
                   ...cause,
                   message: cause.message,
                   recoverySnapshotId: recovery.id,
-                  remediation: `${cause.remediation ?? "Resolve the command failure."} Restore recovery snapshot ${recovery.id} after resolving the failure.`,
+                  remediation: `${cause.remediation ?? "Resolve the command failure."} Use lando db:restore ${recovery.id} after resolving the failure if recovery is needed.`,
                 })
-              : cause instanceof DataTransferError
-                ? new DataTransferError({
-                    ...cause,
-                    message: cause.message,
-                    recoverySnapshotId: recovery.id,
-                    remediation: `${cause.remediation ?? "Resolve the command failure."} Restore recovery snapshot ${recovery.id} after resolving the failure.`,
-                  })
-                : new SqlRecoveryOperationError({
-                    message: `${input.reason} failed after recovery snapshot ${recovery.id} was created.`,
-                    service: input.serviceName,
-                    operation: input.reason,
-                    recoverySnapshotId: recovery.id,
-                    cause,
-                    remediation: `Restore recovery snapshot ${recovery.id} after resolving the failure.`,
-                  }),
+              : new SqlRecoveryOperationError({
+                  message:
+                    input.reason === "manual"
+                      ? `Snapshot ${recovery.id} was captured, but ${input.serviceName} could not resume.`
+                      : `${input.reason} failed after recovery snapshot ${recovery.id} was created.`,
+                  service: input.serviceName,
+                  operation: input.reason === "manual" ? "snapshot" : input.reason,
+                  recoverySnapshotId: recovery.id,
+                  cause,
+                  remediation:
+                    input.reason === "manual"
+                      ? `Snapshot ${recovery.id} remains available. Resolve the database restart failure and start the service again.`
+                      : `Resolve the failure, then retry or restore recovery snapshot ${recovery.id} if needed.`,
+                }),
         ),
       );
       if (input.reason !== "manual") {
