@@ -42,6 +42,9 @@ export class SqlCommandFailedError extends Schema.TaggedError<SqlCommandFailedEr
     message: Schema.String,
     service: Schema.String,
     command: Schema.Array(Schema.String),
+    exitCode: Schema.optional(Schema.Number),
+    stderrTail: Schema.optional(Schema.String),
+    recoverySnapshotId: Schema.optional(Schema.String),
     remediation: Schema.String,
   },
 ) {}
