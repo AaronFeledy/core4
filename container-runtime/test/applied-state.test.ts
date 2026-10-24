@@ -148,7 +148,7 @@ describe("applied plan records", () => {
     slug: "hooked",
     root: AbsolutePath.make("/tmp/hooked"),
     provider: ProviderId.make("lando"),
-    services: {},
+    services: { [service.name]: { ...service, serviceTypeId: "derived-web" } },
     routes: [],
     networks: [],
     stores: [],

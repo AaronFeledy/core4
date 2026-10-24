@@ -213,6 +213,7 @@ const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFeatureErr
   return {
     name: draft.name,
     type: draft.type,
+    ...(draft.serviceTypeId === undefined ? {} : { serviceTypeId: draft.serviceTypeId }),
     provider: draft.provider,
     primary: draft.primary,
     ...(draft.artifact === undefined ? {} : { artifact: draft.artifact }),

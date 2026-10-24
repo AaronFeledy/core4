@@ -37,6 +37,10 @@ import { ServiceConnection, ServiceCreds } from "./service-connection.ts";
 const ServicePlanFields = {
   name: ServiceName,
   type: Schema.String,
+  serviceTypeId: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1))).annotate({
+    description:
+      "Canonical registry ID of the effective service-type declaration or composed inheritance chain.",
+  }),
   provider: ProviderId,
   primary: Schema.Boolean,
   artifact: Schema.optionalKey(Schema.Union([ArtifactRef, ArtifactBuildSpec])),

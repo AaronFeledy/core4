@@ -107,6 +107,7 @@ export const toAppFeatureDraft = (
   name: servicePlan.name,
   serviceName: name,
   type: servicePlan.type,
+  ...(servicePlan.serviceTypeId === undefined ? {} : { serviceTypeId: servicePlan.serviceTypeId }),
   serviceType: servicePlan.type,
   provider: servicePlan.provider,
   primary: servicePlan.primary,
@@ -156,6 +157,7 @@ export const servicePlanFromDraft = (
 ): ServicePlan => ({
   name: draft.name,
   type: draft.type,
+  ...(draft.serviceTypeId === undefined ? {} : { serviceTypeId: draft.serviceTypeId }),
   provider: draft.provider,
   primary: draft.primary,
   ...(draft.artifact === undefined ? {} : { artifact: draft.artifact }),

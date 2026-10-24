@@ -27,6 +27,7 @@ import type {
 export interface BaseSeed {
   readonly name: ServicePlan["name"];
   readonly type: ServicePlan["type"];
+  readonly serviceTypeId?: string;
   readonly provider: ServicePlan["provider"];
   readonly primary: ServicePlan["primary"];
   readonly environment?: Environment;
@@ -39,6 +40,7 @@ export interface BaseSeed {
 export interface DraftServicePlan {
   name: ServicePlan["name"];
   type: string;
+  readonly serviceTypeId?: string;
   provider: ServicePlan["provider"];
   primary: boolean;
   artifact?: ServicePlan["artifact"];
@@ -85,6 +87,7 @@ export const sortRecord = <V>(input: Readonly<Record<string, V>>): Record<string
 export const makeDraft = (base: BaseSeed): DraftServicePlan => ({
   name: base.name,
   type: base.type,
+  ...(base.serviceTypeId === undefined ? {} : { serviceTypeId: base.serviceTypeId }),
   provider: base.provider,
   primary: base.primary,
   environment: sortRecord(base.environment ?? {}),

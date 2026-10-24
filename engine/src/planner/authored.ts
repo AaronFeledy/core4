@@ -157,6 +157,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
         base: {
           name: ServiceName.make(name),
           type: resolution.normalizedConfig.type ?? serviceType.id,
+          serviceTypeId: serviceType.id,
           provider: input.provider,
           primary: planServicePrimary(name, resolution.normalizedConfig.primary),
           ...(resolution.connection === undefined ? {} : { connection: resolution.connection }),
