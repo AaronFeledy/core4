@@ -69,9 +69,13 @@ linuxTest.each(["startup", "healthcheck"] as const)("keeps hostile %s values ine
     // Then: SQL stays one argv value, the password stays environment text, and no syntax executes.
     expect(await child.exited).toBe(0);
     const calls = await Bun.file(join(root, "calls")).text();
+    const creationRecord = JSON.stringify({ event: "lando.database.created", database }).replaceAll(
+      "'",
+      "''",
+    );
     const expectedQuery =
       surface === "startup"
-        ? `IF DB_ID(N'a]''quoted${databaseShellText}') IS NULL EXEC(N'CREATE DATABASE [a]]''quoted${databaseShellText}]');`
+        ? `IF DB_ID(N'a]''quoted${databaseShellText}') IS NULL BEGIN EXEC(N'CREATE DATABASE [a]]''quoted${databaseShellText}]'); PRINT N'${creationRecord}'; END;`
         : `IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'a]''quoted${databaseShellText}' AND state_desc = 'ONLINE' AND HAS_DBACCESS(name) = 1) THROW 50000, 'Database is not accessible', 1;`;
     expect(calls.split("\n")).toContain(expectedQuery);
     expect(calls).not.toContain(password);

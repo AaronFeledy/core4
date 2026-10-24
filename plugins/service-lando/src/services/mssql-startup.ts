@@ -78,6 +78,6 @@ server=0
 exit "$status"
 `,
   "lando-mssql-startup",
-  `IF DB_ID(${literal(database)}) IS NULL EXEC(${literal(`CREATE DATABASE ${identifier(database)}`)});`,
+  `IF DB_ID(${literal(database)}) IS NULL BEGIN EXEC(${literal(`CREATE DATABASE ${identifier(database)}`)}); PRINT ${literal(JSON.stringify({ event: "lando.database.created", database }))}; END;`,
   ...mssqlAdminCommand(port, "").slice(0, -2),
 ];

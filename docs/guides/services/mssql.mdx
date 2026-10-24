@@ -23,6 +23,7 @@ Start the service and check the database:
 ```sh
 lando start
 lando sqlcmd -d master -Q "SELECT name, state_desc FROM sys.databases"
+lando logs --service database
 ```
 
 On the selected catalog image, Lando starts SQL Server, waits for it to accept
@@ -32,6 +33,10 @@ replacing an existing database. Initialization failure fails startup. The
 healthcheck connects to `master` and checks that the target database is online
 and accessible, including after a restart. It never creates a database or keeps
 a target connection open.
+
+When Lando creates the database, its startup logs include a
+`lando.database.created` record naming that database. A warm startup reuses the
+database without emitting another creation record.
 
 A custom `image:`, `build:`, `command:`, or `entrypoint:` owns initialization
 instead. An explicit `image:` equal to the selected catalog image still gets
