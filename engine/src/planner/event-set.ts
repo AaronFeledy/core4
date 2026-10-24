@@ -47,7 +47,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
 ) {
   const { pluginRegistry, configService, fileSystem, pathsService } = input;
   let landofile = input.landofile.document;
-  const appRoot = input.landofile.context.appRoot;
+  const appRoot = input.appRoot ?? input.landofile.context.appRoot;
   const landofilePath = input.file ?? `${appRoot}/.lando.yml`;
   const appName = landofile.name ?? "app";
   const host = resolveHostFacts();
