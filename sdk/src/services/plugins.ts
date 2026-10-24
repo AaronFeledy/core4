@@ -118,6 +118,13 @@ export interface ServiceTypeResolution {
    * service/directory values and merge below environment/variable keys.
    */
   readonly tooling?: Readonly<Record<string, ToolingTaskShape>>;
+  /**
+   * Generated connection-client task names. Omission seeds from this declaration's
+   * own factory; an explicit array suppresses seeding. Inheritance retains parent
+   * claims except tasks explicitly contributed by a child, unless reauthorized.
+   * Composed resolutions always carry an explicit array, including empty claims.
+   */
+  readonly connectionClientNames?: readonly string[];
   readonly metadata?: Record<string, unknown>;
 }
 

@@ -11,6 +11,7 @@ import type {
 } from "@lando/sdk/services";
 
 import { mergeValues } from "@lando/sdk/landofile";
+import { normalizeConnectionClients } from "./connection-client-resolution.ts";
 
 /** Single inheritance chain, depth-limited to at most four `extends` hops. */
 export const MAX_SERVICE_TYPE_EXTENDS_DEPTH = 4;
@@ -107,10 +108,13 @@ export const mergeResolutionOverParent = (
     | Record<string, unknown>
     | undefined;
   const logSources = mergeLogSources(parent.logSources, child.logSources);
+  const source = child.connection !== undefined || child.nonSqlCreds !== undefined ? child : parent;
   return {
     base: child.base,
     normalizedConfig: mergeServiceConfig(parent.normalizedConfig, child.normalizedConfig),
     features: mergeFeatures(parent.features, child.features),
+    ...(source.connection === undefined ? {} : { connection: source.connection }),
+    ...(source.nonSqlCreds === undefined ? {} : { nonSqlCreds: source.nonSqlCreds }),
     ...(logSources === undefined ? {} : { logSources }),
     ...(tooling === undefined ? {} : { tooling }),
     ...(metadata === undefined ? {} : { metadata }),
@@ -233,21 +237,33 @@ export const composeExtendedServiceType = Effect.fn("ServiceType.composeExtended
   const mergedArtifacts = mergeArtifacts(chain);
   const mergedIdentity = mergeIdentity(chain);
   const mergedVersions = mergeVersions(chain);
+  const factory = chain.findLast((type) => type.toolingForConnection !== undefined)?.toolingForConnection;
   const resolve = Effect.fn("ServiceType.resolve")(function* (input: ServiceTypeInput) {
     let accumulated: ServiceTypeResolution | undefined = input.parentResolution;
+    let inheritedFactory: ServiceType["toolingForConnection"];
     for (const type of chain) {
       const resolution = yield* type.resolve({
         ...input,
         ...(accumulated === undefined ? {} : { parentResolution: accumulated }),
       });
-      accumulated =
-        accumulated === undefined ? resolution : mergeResolutionOverParent(accumulated, resolution);
+      accumulated = yield* normalizeConnectionClients(type, input.name, {
+        raw: resolution,
+        ...(accumulated === undefined
+          ? {}
+          : {
+              parent: accumulated,
+              merged: mergeResolutionOverParent(accumulated, resolution),
+            }),
+        inheritedFactory,
+      });
+      inheritedFactory = type.toolingForConnection ?? inheritedFactory;
     }
     return accumulated as ServiceTypeResolution;
   });
   return {
     ...leaf,
     resolve,
+    ...(factory === undefined ? {} : { toolingForConnection: factory }),
     ...(mergedArtifacts === undefined ? {} : { artifacts: mergedArtifacts }),
     ...(mergedIdentity === undefined ? {} : { identity: mergedIdentity }),
     ...(mergedVersions === undefined ? {} : { versions: mergedVersions }),
