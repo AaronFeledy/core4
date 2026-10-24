@@ -53,15 +53,17 @@ it's primary, its current status, and its connections:
 parsing prose: `unknown | stopped | starting | running | healthy | unhealthy |
 ready | completed | restarting | paused | error`.
 
-`connections` is a required array with one object per configured address. An
-empty array means the service has nothing to connect to, not a missing field.
+`connections` is a required array. It includes configured addresses and any host
+port bindings the provider observed that don't match a planned publication.
+An empty array means Lando has no connection addresses to report, not a missing
+field.
 Every connection carries:
 
 | Field | Meaning |
 | --- | --- |
 | `scope` | `app` for an address other services in this app dial, `host` for an address you reach from this machine |
 | `source` | `listener` (the service's own port on the app network), `publication` (a port published on the host), or `route` (a router hostname) |
-| `protocol` | The declared listener protocol: `http`, `https`, `tcp`, or `udp`. Lando never guesses HTTP for a port it only knows as TCP |
+| `protocol` | `http`, `https`, `tcp`, or `udp`. Routes use the router's external scheme; other connections use the declared listener protocol, or `tcp`/`udp` for an unmatched observed host port. Lando never guesses HTTP |
 | `host` | Hostname or unbracketed IP address: the service key for `app` scope, `localhost`, a bind address, or a route hostname for `host` scope |
 | `endpoint` | The logical listener this connection comes from: `port`, `transport` (`tcp` or `udp`), its sorted `names`, and whether it is marked `primary` |
 | `binding` | `assigned` when the address has a port, `pending` when it doesn't have one yet |

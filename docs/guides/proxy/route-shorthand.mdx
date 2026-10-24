@@ -87,7 +87,7 @@ services:
 | --- | --- | --- |
 | `hostname` | Host pattern only, with the same label rules as shorthand. No port or path; put those in `endpoint` and `pathPrefix`, or write the shorthand | required |
 | `scheme` | `http`, `https`, or `both` | `https` |
-| `endpoint` | Port number or named endpoint on the service | the listener marked `primary: true`, or the service's only HTTP(S) listener |
+| `endpoint` | Port number or named endpoint on the service | the HTTP(S) listener marked `primary: true`, or the service's only HTTP(S) listener |
 | `pathPrefix` | Only requests under this path match. Begins with `/`, with no whitespace, query string, or fragment | every path |
 | `filters` | Ordered list of request and response tweaks | none |
 
@@ -138,11 +138,13 @@ an HTTP or HTTPS endpoint that remains in the list; Lando won't restore a defaul
 endpoint to satisfy a route. Normal Landofile layer merging still happens first,
 including merging endpoint entries by exact name when every entry on both sides is named.
 
-A route that names no `endpoint` targets the listener marked `primary: true`, or
-the only HTTP or HTTPS listener when nothing is marked. Order in the list does not
-decide. The same rule picks the target of the generated default route and of
-`lando open`. When you author two or more HTTP listeners, mark the one those
-should use, or name an endpoint in every route:
+A route that names no `endpoint` targets the HTTP or HTTPS listener marked
+`primary: true`. If no HTTP(S) listener is marked, it uses the service's only
+HTTP(S) listener. A TCP primary does not prevent that fallback: Mailpit's route
+uses its HTTP UI even though SMTP is primary. Order in the list does not decide.
+The same rule picks the target of the generated default route and of `lando open`.
+When you author two or more HTTP listeners, mark the one those should use, or
+name an endpoint in every route:
 
 ```yaml
 services:

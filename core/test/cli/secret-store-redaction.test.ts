@@ -29,9 +29,13 @@ import * as TestLandofileLayers from "../_support/landofile-layer.ts";
 
 afterEach(resetRegisteredRedactionValuesForTesting);
 
-test.each([false, true])(
-  "start --format=json redacts scheme-store values when provider failure is %s",
-  async (failApply) => {
+test.each([
+  { failApply: false, providerState: "running", expectedState: "running" },
+  { failApply: false, providerState: "opaque", expectedState: "unknown" },
+  { failApply: true, providerState: "running", expectedState: "running" },
+])(
+  "start --format=json redacts scheme-store values (failure $failApply, state $providerState)",
+  async ({ failApply, providerState, expectedState }) => {
     // Given: an unguessable value, a neutral env key, and a store that cannot enumerate it.
     const value = `violet-${crypto.randomUUID()}`;
     const reference = "fake://Vault/Item/field";
@@ -93,7 +97,7 @@ test.each([false, true])(
           service: target.service,
           providerId: ProviderId.make(TestRuntimeProvider.id),
           status: "running",
-          state: `Provider observed ${applied[0]}`,
+          state: providerState === "opaque" ? `Provider observed ${applied[0]}` : providerState,
           publications: { status: "present", bindings: [] },
         }),
     };
@@ -119,7 +123,8 @@ test.each([false, true])(
           environment: { DISPLAY_VALUE: `\${secret:${reference}}` },
           mounts: [],
           storage: [],
-          endpoints: [],
+          // Keep a secret in the projected result even when the opaque provider state is discarded.
+          endpoints: [{ _tag: "internal", protocol: "tcp", port: 8080, name: value }],
           routes: [],
           dependsOn: [],
           hostAliases: [],
@@ -189,7 +194,20 @@ test.each([false, true])(
             command: "app:start",
             ok: true,
             result: {
-              servicesStarted: [{ name: "web", state: "running", connections: [] }],
+              servicesStarted: [
+                {
+                  name: "web",
+                  state: expectedState,
+                  connections: [
+                    {
+                      scope: "app",
+                      source: "listener",
+                      endpoint: { names: ["[redacted]"] },
+                      state: expectedState === "running" ? "active" : "unknown",
+                    },
+                  ],
+                },
+              ],
             },
           },
     );
