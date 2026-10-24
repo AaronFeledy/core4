@@ -126,6 +126,9 @@ const makeContext = (
   setHealthcheck: (healthcheck) => {
     draft.healthcheck = { ...healthcheck };
   },
+  setReadiness: (readiness) => {
+    draft.readiness = { ...readiness };
+  },
   setCerts: (certs) => {
     draft.certs = { ...certs };
   },

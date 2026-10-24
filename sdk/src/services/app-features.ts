@@ -78,6 +78,7 @@ export interface AppFeatureServiceMutators {
   addDependency(dependency: Parameters<ServiceFeatureContext["addDependency"]>[0]): void;
   addHostAlias(alias: Parameters<ServiceFeatureContext["addHostAlias"]>[0]): void;
   setHealthcheck(healthcheck: Parameters<ServiceFeatureContext["setHealthcheck"]>[0]): void;
+  setReadiness(readiness: Parameters<ServiceFeatureContext["setReadiness"]>[0]): void;
   setCerts(certs: Parameters<ServiceFeatureContext["setCerts"]>[0]): void;
   setEntrypoint(entrypoint: Parameters<ServiceFeatureContext["setEntrypoint"]>[0]): void;
   setCommand(command: Parameters<ServiceFeatureContext["setCommand"]>[0]): void;

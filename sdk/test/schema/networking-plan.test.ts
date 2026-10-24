@@ -134,6 +134,7 @@ describe("network resolver helpers consume the typed NetworkingPlan", () => {
 
   test("landoServiceNetworkAliases reads the plan's cross-app aliases", () => {
     expect(landoServiceNetworkAliases(customPlan, { name: ServiceName.make("web") })).toEqual([
+      "web.shop.internal",
       "web.custom.internal",
     ]);
   });

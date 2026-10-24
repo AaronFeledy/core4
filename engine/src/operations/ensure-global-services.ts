@@ -27,11 +27,11 @@ import {
 
 import type { EnvironmentValueResolutionError, PlanReplanRequiredError } from "@lando/sdk/errors";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
+import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
-import { waitForServiceReadiness } from "./service-readiness.ts";
 
 import { withOrdinaryMounts } from "./file-sync-plan.ts";
 import { globalInstall } from "./global-install.ts";
@@ -175,7 +175,8 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(function* (
   );
 
   const finalPlan = { ...plan, services: { ...plan.services, ...builtPlan.services } };
-  const ready = yield* waitForServiceReadiness({
+  const ready = yield* completeStartup({
+    policy: "ensure-global",
     provider,
     plan: finalPlan,
     services: selected.map((service) => service.name),

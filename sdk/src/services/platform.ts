@@ -146,6 +146,7 @@ export class HealthcheckRunner extends Context.Service<
       plan: HealthcheckPlan,
       appId: AppId,
       service: ServiceName,
+      appPlan?: AppPlan,
     ) => Effect.Effect<HealthcheckResult, HealthcheckRunError>;
   }
 >()("@lando/core/HealthcheckRunner") {}

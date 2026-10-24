@@ -62,6 +62,7 @@ export interface DraftServicePlan {
   endpoints: Array<ServicePlan["endpoints"][number]>;
   dependsOn: Array<ServicePlan["dependsOn"][number]>;
   healthcheck?: ServicePlan["healthcheck"];
+  readiness?: ServicePlan["readiness"];
   certs?: ServicePlan["certs"];
   hostAliases: Array<ServicePlan["hostAliases"][number]>;
   provenance?: ServicePlan["provenance"];

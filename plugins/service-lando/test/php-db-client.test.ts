@@ -112,6 +112,7 @@ const unusedMutators = {
   addEndpoint: () => undefined,
   addHostAlias: () => undefined,
   setHealthcheck: () => undefined,
+  setReadiness: () => undefined,
   setCerts: () => undefined,
   setEntrypoint: () => undefined,
   setCommand: () => undefined,

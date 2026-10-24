@@ -1,6 +1,12 @@
 import { Effect } from "effect";
 
-import type { AppPlan, HealthcheckPlan, ServiceDependencyCondition, ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type ServiceDependencyCondition,
+  type ServicePlan,
+  effectiveReadiness,
+} from "@lando/sdk/schema";
+import { compileServiceProbe } from "./service-probe.ts";
 
 import { gateId, gateNodeId } from "./dependency-gates.ts";
 import { type ScheduleEdge, type ScheduleGraph, runDependencySchedule } from "./dependency-schedule.ts";
@@ -54,19 +60,6 @@ export interface ServiceStartHandlers<E, R> {
 /** The schedule node id that starts `service`. */
 export const serviceStartNodeId = (service: string): string => `svc:${service}`;
 
-/**
- * Only `kind: "command"` healthchecks are verifiable through the provider exec
- * channel. Every other shape fails closed.
- */
-const gateVerifiableCommand = (
-  healthcheck: HealthcheckPlan | undefined,
-): ReadonlyArray<string> | undefined => {
-  if (healthcheck === undefined || healthcheck.kind !== "command") return undefined;
-  const command = healthcheck.command;
-  if (command === undefined) return undefined;
-  return typeof command === "string" ? ["sh", "-c", command] : [...command];
-};
-
 export const buildServiceStartGraph = (plan: AppPlan): ScheduleGraph<ServiceStartNode> => {
   const services = Object.values(plan.services).sort((left, right) =>
     String(left.name).localeCompare(String(right.name)),
@@ -115,9 +108,10 @@ interface GateProbeResult {
 const probeHealthy = Effect.fnUntraced(function* <E, R>(
   service: ServicePlan,
   handlers: ServiceStartHandlers<E, R>,
+  plan: AppPlan,
 ): Effect.fn.Return<GateProbeResult, never, R> {
-  const healthcheck = service.healthcheck;
-  const command = gateVerifiableCommand(healthcheck);
+  const healthcheck = effectiveReadiness(service);
+  const command = healthcheck === undefined ? undefined : compileServiceProbe(healthcheck, plan, service);
   if (healthcheck === undefined || command === undefined) return { ok: false };
 
   let lastExitCode: number | undefined;
@@ -213,7 +207,7 @@ export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule"
         case "service_started":
           return Effect.succeed("succeeded" as const);
         case "service_healthy":
-          return probeHealthy(value.service, handlers).pipe(
+          return probeHealthy(value.service, handlers, plan).pipe(
             Effect.map((result) => recordGateOutcome(node.id, result)),
           );
         case "service_completed_successfully":

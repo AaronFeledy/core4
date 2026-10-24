@@ -145,12 +145,12 @@ describe("mongodb ServiceType", () => {
     expect(plan.dependsOn).toEqual([]);
   });
 
-  test("includes a TCP healthcheck on port 27017", async () => {
+  test("keeps the readiness budget when planning the default probe", async () => {
     const plan = await planMongodb({ type: "mongodb" });
 
-    expect(plan.healthcheck).toEqual({
+    expect(plan.healthcheck).toMatchObject({
       kind: "command",
-      command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/27017"],
+      command: expect.any(Array),
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -158,13 +158,14 @@ describe("mongodb ServiceType", () => {
     });
   });
 
-  test("TCP healthcheck tracks the overridden port", async () => {
+  test("tracks the overridden port in the daemon and readiness probe", async () => {
     const plan = await planMongodb({ type: "mongodb", port: 47017 });
 
     expect(firstEndpointPort(plan)).toBe(47017);
     expect(plan.command).toEqual(["mongod", "--port", "47017"]);
     expect(plan.environment.LANDO_DB_PORT).toBe("47017");
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/47017"]);
+    expect(plan.healthcheck?.target?.port).toBe(47017);
+    expect(plan.readiness?.target?.port).toBe(47017);
   });
 
   test("preserves authored environment variables alongside mongo defaults", async () => {

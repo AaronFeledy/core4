@@ -11,13 +11,7 @@ import {
 import { ServiceName } from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import {
-  addEnvRecord,
-  loopbackTcpHealthcheck,
-  rootIdentity,
-  serviceFeatureApply,
-  serviceTypeResolve,
-} from "./_feature-helpers.ts";
+import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
@@ -25,6 +19,7 @@ import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpe
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
+import { mongodbProbes } from "./mongodb-probes.ts";
 
 const DEFAULT_IMAGE = "mongo:7";
 const VERSIONS = ["7"] as const;
@@ -69,6 +64,9 @@ const mongoUri = (creds: ServiceCreds, port: number): EnvironmentValue =>
     "?authSource=admin",
   ]);
 
+const connectMongo =
+  '(async () => { try { db=await connect(process.env.MONGO_URI); } catch (error) { if (error.code === 18 || error.codeName === "AuthenticationFailed") { error.message += " MongoDB rejected the configured credentials. Existing volumes retain their original users; restore the matching credentials or update the user with an authorized administrator. Your data has been retained."; } throw error; } })()';
+
 const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
@@ -102,7 +100,9 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
 
   applyAuthoredProcessFields(ctx);
 
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
+  const probes = mongodbProbes(port);
+  ctx.setHealthcheck(probes.healthcheck);
+  ctx.setReadiness(probes.readiness);
 };
 
 export const mongodbServiceFeature: ServiceFeatureDefinition = {
@@ -125,7 +125,7 @@ const mongodbToolingForConnection: NonNullable<ServiceType["toolingForConnection
           cmd: [
             "sh",
             "-c",
-            'for arg do case "$arg" in --eval|--eval=*|--json|--json=*|--shell|-f|--file|--file=*|*.js|*.mongodb) exec mongosh --nodb --eval "db=connect(process.env.MONGO_URI)" "$@";; esac; done; exec mongosh --nodb --eval "db=connect(process.env.MONGO_URI)" --shell "$@"',
+            `for arg do case "$arg" in --eval|--eval=*|--json|--json=*|--shell|-f|--file|--file=*|*.js|*.mongodb) exec mongosh --nodb --eval '${connectMongo}' "$@";; esac; done; exec mongosh --nodb --eval '${connectMongo}' --shell "$@"`,
             "mongosh",
           ],
           env: { MONGO_URI: mongoUri(connection.creds, connection.port) },

@@ -781,6 +781,11 @@ const createE2eRunCli =
       const proc = Bun.spawn({
         cmd: [binary, ...args],
         cwd,
+        env: {
+          ...process.env,
+          BUN_BE_BUN: undefined,
+          LANDO_DISALLOW_BUN_BE_BUN_REENTRY: undefined,
+        },
         stdout: "pipe",
         stderr: "pipe",
       });
