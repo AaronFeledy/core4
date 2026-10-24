@@ -173,7 +173,15 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     if (error._tag === "LandofileValidationError")
       violations.push(...error.issues.map((issue) => attributeLintIssue(issue, "effective", documents)));
     else {
-      const path = error._tag === "LandofileIncludeError" ? (error.path ?? []) : [];
+      const path =
+        error._tag === "LandofileIncludeError"
+          ? (error.path ?? [])
+          : error._tag === "ConfigExpressionError"
+            ? error.path
+                .split(".")
+                .filter(Boolean)
+                .map((key) => (/^\d+$/.test(key) ? Number(key) : key))
+            : [];
       let errorFile = file;
       if (error._tag === "LandofileIncludeError" && error.file !== undefined) {
         errorFile = error.file;
