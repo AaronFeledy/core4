@@ -44,11 +44,13 @@ services:
 
 ## Check that it's healthy
 
-The `mongodb` type ships the `mongosh` client task. After start:
+The default healthcheck waits for a MongoDB protocol ping on the container's network address, not the temporary loopback-only server used during first-boot initialization. After `lando start` succeeds, you can use the generated `mongosh` client immediately:
 
 ```sh
 lando mongosh --eval "db.runCommand('ping')"
 ```
+
+The client uses your configured credentials. A successful ping returns `ok: 1`.
 
 ## Use your own mongod.conf
 
@@ -65,6 +67,15 @@ services:
 Lando mounts that file read-only at `/etc/lando/mongod.conf` and starts the server with `--config /etc/lando/mongod.conf`. It has to be a regular file, not a directory.
 
 Lando's planned port, `port:` or the default, beats a port line in your config file.
+
+Your config must let the final server listen on the container's network interface, not only `127.0.0.1`. For example, add this to `config/mongod.conf`:
+
+```yaml
+net:
+  bindIpAll: true
+```
+
+This allows other services to connect over the app network. If you intentionally require loopback-only connections or TLS-only clients, provide a matching `healthcheck:` on the service. The default probe uses a credential-free, non-TLS ping and does not override your server's binding or TLS settings.
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
