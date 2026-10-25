@@ -12,7 +12,12 @@ test("SshAgentUnavailableError and GpgAgentUnavailableError encode tag, reason a
   } as const;
   // When
   const ssh = Schema.encodeSync(errors.SshAgentUnavailableError)(
-    new errors.SshAgentUnavailableError({ ...fields, mode: "host", socketPath: "/tmp/agent.sock" }),
+    new errors.SshAgentUnavailableError({
+      ...fields,
+      mode: "host",
+      socketPath: "/tmp/agent.sock",
+      detail: "Socket connection refused",
+    }),
   );
   const gpg = Schema.encodeSync(errors.GpgAgentUnavailableError)(new errors.GpgAgentUnavailableError(fields));
   // Then
@@ -21,6 +26,7 @@ test("SshAgentUnavailableError and GpgAgentUnavailableError encode tag, reason a
     _tag: "SshAgentUnavailableError",
     mode: "host",
     socketPath: "/tmp/agent.sock",
+    detail: "Socket connection refused",
   });
   expect(gpg).toEqual({ ...fields, _tag: "GpgAgentUnavailableError" });
 });
