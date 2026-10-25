@@ -15,6 +15,7 @@ export class LandofileNotFoundError extends Schema.TaggedError<LandofileNotFound
   {
     message: Schema.String,
     cwd: Schema.String,
+    remediation: Schema.NonEmptyString,
   },
 ) {}
 
