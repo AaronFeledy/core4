@@ -30,6 +30,22 @@ const include = (form: string) =>
     : "toolingIncludes:\n  ns:\n    file: ./tasks.yml\n    vars:\n      KEEP: include\n      DROP: include\n";
 
 for (const form of ["includes", "toolingIncludes"]) {
+  test(`${form} tasks are inherited values a higher tooling: !override replaces`, async () => {
+    // Given
+    await withApp(
+      {
+        ".lando.yml": `name: defaults\n${include(form)}tooling:\n  inline:\n    cmd: echo base\n`,
+        "tasks.yml": "tooling:\n  task: echo included\n",
+        ".lando.local.yml": "tooling: !override\n  other:\n    cmd: echo local\n",
+      },
+      async (root) => {
+        // When
+        const compiled = await load(root);
+        // Then
+        expect(Object.keys(compiled.document.tooling ?? {})).toEqual(["other"]);
+      },
+    );
+  });
   test.each(["false", "\n    cmd: echo retained\n    disabled: true"])(
     `${form} retains the fragment's disabled origin for %s`,
     async (task) => {
