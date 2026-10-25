@@ -7,6 +7,7 @@ services:
   worker:
     type: node:lts
 tooling:
+  retired-shorthand: false
   greet:
     description: Greet a target environment
     service: web
