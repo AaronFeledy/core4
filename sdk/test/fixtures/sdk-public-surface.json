@@ -1569,6 +1569,7 @@
       "ScannerConfig",
       "ScenarioProps",
       "SchemaDeprecationAnnotationId",
+      "SchemaIssueLeaf",
       "SchemaLayerMergeAnnotationId",
       "SecretRef",
       "SecretReference",

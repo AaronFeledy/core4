@@ -6,6 +6,7 @@ import {
   RecipeManifest,
   getEditorJsonSchema,
   getJsonSchema,
+  validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 import { LandofileStandardSchema, RecipeManifestStandardSchema } from "@lando/sdk/schema/standard";
 import {
@@ -14,7 +15,7 @@ import {
   JsonSchema,
   Result,
   Schema,
-  SchemaIssue,
+  type SchemaIssue,
   SchemaParser,
   SchemaRepresentation,
 } from "effect";
@@ -119,7 +120,7 @@ function issueDetails(issues: readonly StandardSchemaV1.Issue[]) {
 
 function decoderIssues(decoded: Result.Result<unknown, Schema.SchemaError>) {
   return Result.isFailure(decoded)
-    ? issueDetails(SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues)
+    ? issueDetails(validationIssuesFromSchemaIssue(decoded.failure.issue))
     : [];
 }
 

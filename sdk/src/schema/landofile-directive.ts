@@ -2,6 +2,7 @@ import { Schema, type SchemaAST } from "effect";
 
 const MERGE_DIRECTIVE_MEMBER = "lando/merge-directive-member";
 
+/** Identify marked directive wrappers for diagnostics only; this does not validate authored values. */
 export const isMergeDirectiveMemberAst = (ast: SchemaAST.AST): boolean =>
   ast.annotations?.[MERGE_DIRECTIVE_MEMBER] === true;
 

@@ -116,12 +116,14 @@ export interface SchemaValidationIssueOptions {
   readonly extraAllowedKeys?: (path: ValidationIssuePath) => readonly string[];
 }
 
-export type SchemaIssueLeaf = {
-  readonly _tag: "Unexpected" | "Missing" | "Type";
-  readonly path: ReadonlyArray<PropertyKey>;
-  readonly message: string;
-  readonly suggestion?: string;
-};
+/** Diagnostic leaf retaining the issue category and Standard Schema property-key path. */
+export const SchemaIssueLeaf = Schema.Struct({
+  _tag: Schema.Literals(["Unexpected", "Missing", "Type"]),
+  path: Schema.Array(Schema.PropertyKey),
+  message: Schema.String,
+  suggestion: Schema.optionalKey(Schema.String),
+});
+export type SchemaIssueLeaf = typeof SchemaIssueLeaf.Type;
 
 const expectationIssue = (ast: SchemaAST.AST, issue: SchemaIssue.Issue): SchemaIssue.Issue => {
   const source = authoringExpectation(ast);
@@ -166,6 +168,7 @@ const directivePayloadIssues = (issue: SchemaIssue.Issue): readonly SchemaIssue.
   });
 };
 
+/** Flatten diagnostics, hiding authoring-only alternatives and synthetic directive payload paths. */
 export const schemaIssueLeaves = (
   issue: SchemaIssue.Issue,
   path: ReadonlyArray<PropertyKey> = [],
