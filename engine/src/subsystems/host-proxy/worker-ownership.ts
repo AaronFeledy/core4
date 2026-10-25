@@ -96,6 +96,12 @@ export const terminateOwnedHostProxyWorkersInRoot = Effect.fnUntraced(
     );
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      if (
+        entry.name.endsWith("-ssh-agent") ||
+        entry.name.endsWith("-gpg-agent") ||
+        resolve(paths.hostProxyRunRoot, entry.name) === resolve(paths.tunnelRunDir)
+      )
+        continue;
       const recordPath = resolve(paths.hostProxyRunRoot, entry.name, "worker.json");
       yield* withDetachedWorkerLock(
         {
