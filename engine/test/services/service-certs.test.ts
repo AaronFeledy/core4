@@ -49,6 +49,7 @@ test("reads both custom certificate files and rejects an unreadable key", async 
     // Then: both files were read and the existing authored-path remediation is returned.
     expect(reads).toEqual([certPath, keyPath]);
     expect(failure).toBeInstanceOf(LandofileValidationError);
+    expect(failure.cause).toMatchObject({ _tag: "FilePermissionError", path: keyPath });
     expect(String(failure)).toContain("path ./certs/custom.key could not be read");
   } finally {
     await rm(appRoot, { recursive: true, force: true });
