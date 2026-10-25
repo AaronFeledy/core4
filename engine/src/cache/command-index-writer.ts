@@ -218,7 +218,7 @@ const sourceHashFor = (
   return hash.digest("hex");
 };
 
-const resolveAppCommandCacheSource = Effect.fnUntraced(function* (cwd: string) {
+const resolveAppCommandCacheSource = Effect.fnUntraced(function* (cwd?: string) {
   const filePath = yield* findLandofilePath(cwd);
   if (filePath === undefined) return undefined;
 
@@ -523,7 +523,7 @@ const readPluginCommandCacheTask = async (
 export const readAppCommandCache = (
   options: WriteAppCommandCacheOptions,
 ): Effect.Effect<AppCommandIndexPayload | null, CacheError | LandofileFormConflictError> =>
-  resolveAppCommandCacheSource(options.cwd ?? process.cwd()).pipe(
+  resolveAppCommandCacheSource(options.cwd).pipe(
     Effect.flatMap((source) =>
       source === undefined
         ? Effect.succeed(null)
@@ -546,7 +546,7 @@ export const readFreshAppCommandCacheForCwd = (
     readonly includeScriptInventory?: boolean;
   } = {},
 ): Effect.Effect<AppCommandIndexPayload | null, CacheError | LandofileFormConflictError> =>
-  resolveAppCommandCacheSource(options.cwd ?? process.cwd()).pipe(
+  resolveAppCommandCacheSource(options.cwd).pipe(
     Effect.flatMap((source) =>
       source === undefined
         ? Effect.succeed(null)
@@ -565,7 +565,7 @@ export const readFreshAppCommandCacheForCwd = (
 export const writeAppCommandCacheStrict = (
   options: WriteAppCommandCacheOptions,
 ): Effect.Effect<string | undefined, CacheError | LandofileFormConflictError> =>
-  resolveAppCommandCacheSource(options.cwd ?? process.cwd()).pipe(
+  resolveAppCommandCacheSource(options.cwd).pipe(
     Effect.flatMap((source) =>
       source === undefined
         ? Effect.succeed(undefined)
