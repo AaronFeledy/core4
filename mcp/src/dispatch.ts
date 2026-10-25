@@ -18,7 +18,11 @@ import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@l
 import type { LandoEvent } from "@lando/sdk/events";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import { type CommandResultOutcome, buildCommandResultEnvelope, failureOutcomeFromCause } from "@lando/sdk/command-result";
+import {
+  type CommandResultOutcome,
+  buildCommandResultEnvelope,
+  failureOutcomeFromCause,
+} from "@lando/sdk/command-result";
 import { Logger } from "@lando/sdk/services";
 import { Schema } from "effect";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
@@ -241,7 +245,9 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
   }
   const logger = yield* Effect.serviceOption(Logger);
   if (Option.isSome(logger)) {
-    yield* logger.value.debug("MCP command defect", { cause: deps.redactor.redactString(Cause.pretty(exit.cause)) }).pipe(Effect.ignore);
+    yield* logger.value
+      .debug("MCP command defect", { cause: deps.redactor.redactString(Cause.pretty(exit.cause)) })
+      .pipe(Effect.ignore);
   }
   const encoded = yield* buildCommandResultEnvelope({
     command: commandId,

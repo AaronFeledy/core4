@@ -517,6 +517,17 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
     );
   } catch (error) {
     const cause = Cause.isCause(error) ? error : Cause.die(error);
+    const logLevel = Effect.runSync(
+      Effect.result(
+        Effect.try({
+          try: () => resolveLogLevel({ argv: options.argv, env: process.env }),
+          catch: (selectionError) => selectionError,
+        }),
+      ),
+    );
+    if (logLevel._tag === "Success" && logLevel.success.source !== "default") {
+      setActiveLogLevel(logLevel.success.level);
+    }
     const output = preCommandOutputMode({ argv: options.argv, env: process.env });
     setActiveRendererMode(output.rendererMode);
     if (output.resultFormat !== undefined) setActiveResultFormat(output.resultFormat);

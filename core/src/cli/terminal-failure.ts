@@ -14,11 +14,15 @@ export const recordCliDefect = (cause: Cause.Cause<unknown>, redactor: Redactor,
   Cause.hasDies(cause)
     ? Effect.annotateLogs(Effect.logDebug("Command defect"), {
         cause: redactor.redactString(Cause.pretty(cause)),
-      }).pipe(Effect.provide(LandoLogger.layer({
-        logLevel: activeLogLevel,
-        structured: true,
-        writeLine: (line) => io.writeStderr(`${line}\n`),
-      })))
+      }).pipe(
+        Effect.provide(
+          LandoLogger.layer({
+            logLevel: activeLogLevel,
+            structured: true,
+            writeLine: (line) => io.writeStderr(`${line}\n`),
+          }),
+        ),
+      )
     : Effect.void;
 
 export const renderTerminalFailure = async <A, R, RE>(
@@ -29,25 +33,34 @@ export const renderTerminalFailure = async <A, R, RE>(
   const io = options.io ?? createStdioRendererIO();
   const outcome = failureOutcomeFromCause(cause);
   const format = options.resultFormat ?? DEFAULT_RESULT_FORMAT;
-  await Effect.runPromise(Effect.gen(function* () {
-    yield* recordCliDefect(cause, redactor, io);
-    if (isEnvelopeResultFormat(format)) {
-      const line = yield* encodeCommandResult({
-        command: options.command ?? "cli:unknown",
-        resultSchema: Schema.Unknown,
-        outcome,
-        redactor,
-        format,
-      });
-      yield* writeResultLine(line);
-    } else {
-      yield* writeDiagnosticLine(formatBugReport({
-        ...outcome,
-        context: { commandId: options.command ?? "cli:unknown" },
-        rendererMode: "plain",
-        redactor,
-      }));
-    }
-  }).pipe(Effect.provide(layerPlainService(io))));
-  (options.setExitCode ?? ((code) => { process.exitCode = code; }))(1);
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* recordCliDefect(cause, redactor, io);
+      if (isEnvelopeResultFormat(format)) {
+        const line = yield* encodeCommandResult({
+          command: options.command ?? "cli:unknown",
+          resultSchema: Schema.Unknown,
+          outcome,
+          redactor,
+          format,
+        });
+        yield* writeResultLine(line);
+      } else {
+        yield* writeDiagnosticLine(
+          formatBugReport({
+            ...outcome,
+            context: { commandId: options.command ?? "cli:unknown" },
+            rendererMode: "plain",
+            redactor,
+          }),
+        );
+      }
+    }).pipe(Effect.provide(layerPlainService(io))),
+  );
+  (
+    options.setExitCode ??
+    ((code) => {
+      process.exitCode = code;
+    })
+  )(1);
 };

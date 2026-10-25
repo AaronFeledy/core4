@@ -14,7 +14,7 @@ import {
 } from "effect";
 
 import { GlobalConfigSnapshot } from "@lando/engine/services/config";
-import { failureOutcomeFromCause } from "@lando/sdk/command-result";
+import { failureOutcomeFromCause, primaryFailureReason } from "@lando/sdk/command-result";
 import { JqExpressionError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
@@ -50,8 +50,8 @@ import { renderDeprecationDiagnostics } from "./renderer-deprecations";
 import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
 import type { RendererMode } from "./renderer-selection";
 import { ResultTerminal } from "./result-terminal";
-import { type TraceSelection, activeTrace } from "./trace-selection";
 import { recordCliDefect, renderTerminalFailure } from "./terminal-failure";
+import { type TraceSelection, activeTrace } from "./trace-selection";
 
 export {
   type ResolveCliDeprecationWarningsOptions,
@@ -315,6 +315,11 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     };
     const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
       Effect.sync(() => {
+        const primary = primaryFailureReason(cause);
+        if (primary !== undefined && Cause.isDieReason(primary)) {
+          setExitCode(1);
+          return;
+        }
         const failure = failureOutcomeFromCause(cause);
         if (failure.error instanceof JqExpressionError) {
           setExitCode(2);
@@ -324,7 +329,10 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);
-      const defectRedactor = yield* redaction.forProfile("secrets", { sourceEnv, redactionTokens: extraTokens });
+      const defectRedactor = yield* redaction.forProfile("secrets", {
+        sourceEnv,
+        redactionTokens: extraTokens,
+      });
       yield* recordCliDefect(cause, defectRedactor, io);
       const { error: primaryError, additionalErrors } = failureOutcomeFromCause(cause);
       const error = yield* renderFailureEvidence(
