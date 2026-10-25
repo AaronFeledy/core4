@@ -1,5 +1,4 @@
 import type { TaggedErrorJson } from "@lando/sdk/schema";
-import { escapeDiagnosticText } from "./diagnostic-text";
 import { formatStructuredIssue } from "./validation-issue-text";
 
 const consumed = new Set([
@@ -66,9 +65,8 @@ export const diagnosticFields = (
       if (tail !== undefined) out.push(tail);
     } else if (key === "outputTail" && typeof value === "string") {
       out.push([key, value]);
-    } else if (scalar(value)) out.push([key, escapeDiagnosticText(String(value))]);
-    else if (Array.isArray(value) && value.every(scalar))
-      out.push([key, escapeDiagnosticText(value.join(", "))]);
+    } else if (scalar(value)) out.push([key, String(value)]);
+    else if (Array.isArray(value) && value.every(scalar)) out.push([key, value.join(", ")]);
   }
   return out;
 };

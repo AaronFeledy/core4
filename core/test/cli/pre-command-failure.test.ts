@@ -253,7 +253,7 @@ describe("pre-command failure surface", () => {
     const dimReset = `${String.fromCharCode(27)}[22m`;
     const text = io.stderr();
     expect(text.startsWith("boom\n")).toBe(true);
-    expect(text).toContain(`${dim}code: Error${dimReset}`);
+    expect(text).toContain(`${dim}code: LandoInternalError${dimReset}`);
     expect(text).not.toContain(`${dim}boom`);
   });
 
@@ -267,7 +267,7 @@ describe("pre-command failure surface", () => {
       io,
       setExitCode: () => undefined,
     });
-    expect(io.stderr()).toContain("code: Error");
+    expect(io.stderr()).toContain("code: LandoInternalError");
     expect(io.stderr()).not.toContain("\u001b");
   });
 });

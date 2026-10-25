@@ -11,12 +11,12 @@ export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
     lines.push(`${label} (${renderText(error.code)}): ${renderText(error.body).replaceAll("\n", "\n  ")}`);
     lines.push(...error.remediation.split("\n").map((line) => `  ↳ ${escapeDiagnosticText(line)}`));
     for (const [key, value] of error.extra)
-      lines.push(`  ${key}: ${renderText(value).replaceAll("\n", "\n  ")}`);
+      lines.push(`  ${renderText(key)}: ${renderText(value).replaceAll("\n", "\n  ")}`);
   }
-  const details = [`code: ${envelope.code}`, `commandId: ${renderText(envelope.commandId)}`];
+  const details = [`code: ${renderText(envelope.code)}`, `commandId: ${renderText(envelope.commandId)}`];
   if (envelope.appId !== undefined) details.push(`appId: ${renderText(envelope.appId)}`);
   if (envelope.providerId !== undefined) details.push(`providerId: ${renderText(envelope.providerId)}`);
-  for (const [key, value] of envelope.extra) details.push(`${key}: ${renderText(value)}`);
+  for (const [key, value] of envelope.extra) details.push(`${renderText(key)}: ${renderText(value)}`);
   details.push(`logsDir: ${renderText(envelope.logsDir)}`, `cacheDir: ${renderText(envelope.cacheDir)}`);
   return [...lines, ...details].join("\n");
 };
