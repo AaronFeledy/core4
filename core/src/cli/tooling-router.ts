@@ -170,16 +170,11 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     cwd: appRoot,
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   }).pipe(
-    Effect.catchTag("LandofileFormConflictError", (error) => {
-      switch (resolveBuiltInCommand(token)?.spec.id) {
-        case "app:stop":
-        case "app:destroy":
-        case "meta:doctor":
-          return Effect.succeed(null);
-        default:
-          return Effect.fail(error);
-      }
-    }),
+    // A built-in owns its Landofile policy (teardown tolerates the conflict, start reports it),
+    // so only a tooling token fails here.
+    Effect.catchTag("LandofileFormConflictError", (error) =>
+      resolveBuiltInCommand(token) === undefined ? Effect.fail(error) : Effect.succeed(null),
+    ),
   );
   if (cache === null) {
     const registeredAlias = resolveBuiltInCommand(token);

@@ -40,6 +40,8 @@ for (const [token, commandId] of [
   ["stop", "app:stop"],
   ["destroy", "app:destroy"],
   ["doctor", "meta:doctor"],
+  ["start", "app:start"],
+  ["info", "app:info"],
 ] as const) {
   test(`routes ${token} to its built-in policy despite conflicting Landofile forms`, async () => {
     await withApp(async (root, cacheRoot) => {

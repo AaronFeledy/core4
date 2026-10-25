@@ -162,10 +162,16 @@ const lastEnvelope = (output: string): Record<string, unknown> => {
   if (line === undefined) throw new Error(`No JSON envelope in output: ${output.slice(0, 200)}`);
   const parsed: unknown = JSON.parse(line);
   if (parsed === null || typeof parsed !== "object") throw new Error("Expected a JSON object envelope");
-  return Object.fromEntries(Object.entries(parsed));
+  const record = Object.fromEntries(Object.entries(parsed));
+  // Streaming commands wrap the terminal envelope in a result frame.
+  const frame = record._tag === "result" ? record.envelope : undefined;
+  return frame !== null && typeof frame === "object" ? Object.fromEntries(Object.entries(frame)) : record;
 };
 
-for (const command of ["start", "hello"] as const) {
+for (const [command, commandId] of [
+  ["start", "app:start"],
+  ["hello", "cli:alias-resolution"],
+] as const) {
   test(`${command} reports a tagged conflict without a stack for dual-form Landofiles`, async () => {
     // Given
     const fixture = await makeFixture(`dual-${command}`);
@@ -180,6 +186,7 @@ for (const command of ["start", "hello"] as const) {
       // Then
       expect(result.exitCode, result.stderr).toBe(1);
       expect(lastEnvelope(result.stdout)).toMatchObject({
+        command: commandId,
         error: { _tag: "LandofileFormConflictError", remediation: expect.any(String) },
       });
       expect(`${result.stdout}\n${result.stderr}`).not.toMatch(/\n\s+at |"stack"\s*:/u);
