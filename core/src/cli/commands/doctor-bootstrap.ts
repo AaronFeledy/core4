@@ -22,6 +22,7 @@ import { interruptOnAbort } from "./doctor-abort";
 import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { HostDnsResolver } from "./doctor-host-dns";
+import { buildHostProxyCheck } from "./doctor-host-proxy-check";
 import { appConfigForReport, collectDoctorReport, doctorDeprecations } from "./doctor-report";
 import type { DoctorReport } from "./doctor-report-contract";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
@@ -128,13 +129,20 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
     solutions: [BOOTSTRAP_REMEDIATION],
   });
   const context = built.value;
+  const resolver = yield* Effect.serviceOption(HostDnsResolver);
+  const dnsLayer = Option.isSome(resolver)
+    ? Layer.succeed(HostDnsResolver, resolver.value)
+    : HostDnsResolver.layer;
   const reportContext: Context.Context<never> =
     context ?? (yield* Layer.build(StateStore.layer).pipe(Effect.provide(config.value)));
   const skipped =
     context === undefined
       ? [
           "provider",
-          "subsystems",
+          "router",
+          "ssh",
+          "healthcheck",
+          "scanner",
           "certificate-authority",
           "missing-app-roots",
           "orphaned-volume-snapshots",
@@ -160,15 +168,13 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
       context === undefined
         ? Effect.succeed({ entries: [] })
         : doctorDeprecations().pipe(Effect.provide(context)),
-    ...(context === undefined
-      ? {}
-      : {
-          subsystems: (subsystemOptions) =>
-            subsystemDoctor(subsystemOptions).pipe(
-              Effect.provide(context),
-              Effect.provide(HostDnsResolver.layer),
-            ),
-        }),
+    subsystems: (subsystemOptions) =>
+      (context === undefined
+        ? buildHostProxyCheck(undefined, options.fix === true).pipe(
+            Effect.map((check) => ({ checks: [check] })),
+          )
+        : subsystemDoctor(subsystemOptions).pipe(Effect.provide(context))
+      ).pipe(Effect.provide(dnsLayer)),
     ...(built.self === undefined ? {} : { initialSelfChecks: [built.self] }),
     ...(skipped === undefined ? {} : { skipped }),
   }).pipe(Effect.provide(reportContext), Effect.provide(config.value));

@@ -13,6 +13,7 @@ import * as StateStoreService from "@lando/state-store/service";
 import { Effect, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
+import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns";
 import {
   DoctorReportSchema,
   buildDoctorReportSummary,
@@ -80,6 +81,10 @@ describe("doctor provider-bootstrap failure", () => {
         Effect.runPromise(
           resilientDoctorReport({ app: true, deprecations: true, fix, platform: "darwin", env: {} }).pipe(
             Effect.provide(factory),
+            Effect.provideService(
+              HostDnsResolver,
+              HostDnsResolver.of({ lookup: () => Effect.succeed(["127.0.0.1"]) }),
+            ),
             Effect.provideService(GlobalConfigSources, {
               env: {},
               sources: { user: false, env: false },
@@ -96,7 +101,10 @@ describe("doctor provider-bootstrap failure", () => {
       ]);
       expect(report.skipped?.map((entry) => entry.section)).toEqual([
         "provider",
-        "subsystems",
+        "router",
+        "ssh",
+        "healthcheck",
+        "scanner",
         "certificate-authority",
         "missing-app-roots",
         "orphaned-volume-snapshots",
@@ -118,7 +126,11 @@ describe("doctor provider-bootstrap failure", () => {
       expect(
         report.subsystems.checks.find((check) => check.name === "accelerated-start")?.context.attemptId,
       ).toBe("host-attempt");
-      for (const name of ["router", "ssh", "certs", "healthcheck", "url-scanner", "host-proxy"]) {
+      expect(report.subsystems.checks.find((check) => check.name === "host-proxy")).toMatchObject({
+        status: "pass",
+        context: { dnsResolved: "true", dnsAddresses: "127.0.0.1" },
+      });
+      for (const name of ["router", "ssh", "certs", "healthcheck", "url-scanner"]) {
         expect(report.subsystems.checks.some((check) => check.name === name)).toBe(false);
       }
       expect(report.globalApp.checks.length).toBeGreaterThan(0);
