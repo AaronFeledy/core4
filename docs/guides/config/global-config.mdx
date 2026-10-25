@@ -238,6 +238,8 @@ An invalid `renderer` or `logLevel` in `config.yml`, a drop-in, or `LANDO_CONFIG
 
 `lando doctor` still runs with a broken config and exits `1`. Its first section, `global-config`, reports the `ConfigError` and its fix. Sections that need the config (`provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, `mcp`, plus `app-config`, `app-version-constraints`, and `deprecations` when you pass `--app` or `--deprecations`) show as `SKIPPED` instead of failing one by one. Checks that don't depend on config, such as `filesystem-watch`, still run. `lando uninstall` and `lando version` also run without a valid config.
 
+If config passes but the provider runtime cannot load, doctor reports a `provider-bootstrap` self check and exits `1`. Only runtime-dependent sections show as `SKIPPED`, with reasons pointing to that failure; doctor does not suggest `--fix` for subsystems it could not inspect. Host-only checks still run, including network trust and requested app version constraints. See [Read the report](../subsystems/doctor-walkthrough.mdx#read-the-report) for the section list.
+
   <Scenario id="env-override-config-error" render={false} reason="Regression for ConfigError with env provenance from an invalid env override">
     <Step name="build-with-bad-override">
       <Run
