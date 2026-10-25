@@ -136,6 +136,13 @@
       "digest": "ab78ee10251571f12549ce10a6d9728201df7344889fe42eee427380bf283cb9"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/wrong-filter-prefix",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/wrong-type",
       "invalid": {
         "status": "invalid",
