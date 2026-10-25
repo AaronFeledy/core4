@@ -928,7 +928,7 @@ Every non-interactive canonical command MUST accept `--format json` and `-j`; in
 
 - Bare `--json` after command resolution lists selectable top-level result keys as a JSON array and does not run the command.
 - Valued `--json` projects comma-separated keys and dot paths into `envelope.result`.
-- Failure envelopes are never projected.
+- A failure's retained `result` MAY be projected; its failure metadata MUST remain intact.
 - Space form consumes a value only when it contains comma or dot.
 - Equals form always supplies a field list.
 - `-j` never consumes the next token.

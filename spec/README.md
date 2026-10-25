@@ -132,7 +132,7 @@ If you are looking for a public surface or policy:
 | Init sources, source auth, and hoster init | 08 | §8.8.13 |
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
-| Command completion, machine envelopes, bounded output capture, streams, and closed pipes | 08 + 11 | §8.3 + §8.11 + §10.14 |
+| Command completion, result projection, machine envelopes, bounded output capture, streams, and closed pipes | 08 + 11 | §8.3 + §8.11 + §10.14 |
 | Library entry points and runtime factory | 09 | §16.2 + §16.3 |
 | Library plugin/config policy and scope ownership | 09 | §16.4 + §16.6 |
 | Programmatic CLI and testing APIs | 09 | §16.7 + §16.8 |
