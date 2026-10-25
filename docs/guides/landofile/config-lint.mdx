@@ -22,6 +22,8 @@ Lint resolves `{{ recipe.<option> }}` and `{{ env.* }}` expressions the same way
 
 Lint retains each acquired source once. It can report a bad lower fragment even when a higher layer masks the value and the effective configuration is valid. A value that's wrong in its own file and in the composed app is one finding listing both scopes, unless composition moves it to a different path, such as a later position in a merged list. Identical paths in different files stay separate findings. Event and tooling checks reuse the resolved snapshot instead of loading or evaluating TypeScript again.
 
+For example, `tooling.old-build: disabled` is one finding at fragment and effective scope: "`disabled` is not a command; use false to disable a task". Set `tooling.old-build: false` to disable it. To keep the command and its metadata, set `disabled: true` inside the task object instead.
+
 ## What lint catches
 
 After expression materialization succeeds, lint collects independent findings from the completed resolve pass in one run. An unresolved expression stops materialization at its first error. Lint retains earlier fragment findings, but cannot report checks that depend on the unfinished resolve pass.
