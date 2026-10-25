@@ -6,12 +6,12 @@ import {
   type ComposeKeyRejectedError,
   type Lando3LandofileDetected,
   type LandofileDialectMixError,
-  LandofileFormConflictError,
+  type LandofileFormConflictError,
   type LandofileIncludeError,
   type LandofileLoadExpressionError,
   type LandofileLockMismatchError,
   LandofileNotFoundError,
-  LandofileParseError,
+  type LandofileParseError,
   type LandofileSandboxError,
   type LandofileTimeoutError,
   type LandofileValidationError,
@@ -103,19 +103,7 @@ export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function*
   options: AppIncludesVerifyOptions = {},
 ): Effect.fn.Return<IncludeVerifyReport, AppIncludesVerifyError, StateStore> {
   const cwd = options.cwd ?? process.cwd();
-  const filePath = yield* Effect.tryPromise({
-    try: () => findLandofilePath(cwd),
-    catch: (cause) =>
-      cause instanceof LandofileFormConflictError
-        ? cause
-        : new LandofileParseError({
-            message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
-            filePath: cwd,
-            line: undefined,
-            column: undefined,
-            cause,
-          }),
-  });
+  const filePath = yield* findLandofilePath(cwd);
   if (filePath === undefined) {
     return yield* Effect.fail(
       new LandofileNotFoundError({

@@ -138,7 +138,7 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
  * only when this reports nothing to remove.
  */
 export const resolveTeardownResolution = Effect.gen(function* () {
-  const discovered = yield* Effect.promise(() => findAppRoot(process.cwd()).catch(() => undefined));
+  const discovered = yield* findAppRoot(process.cwd());
   const identity = yield* resolveAppIdentity(discovered ?? process.cwd());
   const root = identity.appRoot;
   const landofilePresent = discovered !== undefined;

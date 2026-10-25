@@ -3,10 +3,10 @@ import { dirname } from "node:path";
 import { Effect, Schema } from "effect";
 
 import {
-  LandofileFormConflictError,
+  type LandofileFormConflictError,
   type LandofileLoadExpressionError,
   LandofileNotFoundError,
-  LandofileParseError,
+  type LandofileParseError,
   type LandofileSandboxError,
   type LandofileTimeoutError,
   type LandofileValidationError,
@@ -91,19 +91,7 @@ export const appIncludesUpdate = Effect.fn("AppIncludesUpdate.update")(function*
   options: AppIncludesUpdateOptions = {},
 ): Effect.fn.Return<IncludeUpdateReport, AppIncludesUpdateError, StateStore> {
   const cwd = options.cwd ?? process.cwd();
-  const filePath = yield* Effect.tryPromise({
-    try: () => findLandofilePath(cwd),
-    catch: (cause) =>
-      cause instanceof LandofileFormConflictError
-        ? cause
-        : new LandofileParseError({
-            message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
-            filePath: cwd,
-            line: undefined,
-            column: undefined,
-            cause,
-          }),
-  });
+  const filePath = yield* findLandofilePath(cwd);
   if (filePath === undefined) {
     return yield* Effect.fail(
       new LandofileNotFoundError({

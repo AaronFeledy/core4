@@ -67,7 +67,7 @@ export const renderAppCacheRefreshResult = (result: AppCacheRefreshResult): stri
 const discoverScripts = Effect.fnUntraced(function* (
   cwd: string,
 ): Effect.fn.Return<ReadonlyArray<DiscoveredBunShellScript>, never> {
-  const appRoot = yield* Effect.promise(() => findAppRoot(cwd));
+  const appRoot = yield* findAppRoot(cwd);
   if (appRoot === undefined) return [] as ReadonlyArray<DiscoveredBunShellScript>;
   return yield* discoverBunShellScripts({ appRoot }).pipe(
     Effect.catch(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),

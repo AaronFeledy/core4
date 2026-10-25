@@ -132,7 +132,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     target === undefined
       ? yield* loadUserLandofile(landofileService)
       : (target.landofile ?? (yield* loadUserLandofileAt(landofileService, target.root)));
-  const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
+  const appRoot = yield* findAppRoot(options.cwd ?? target?.root ?? process.cwd());
   const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
   const authoredTaskNames = new Set(Object.keys(loadedLandofile.document.tooling ?? {}));
   const servicesCanContributeTooling = Object.keys(loadedLandofile.document.services ?? {}).length > 0;

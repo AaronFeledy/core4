@@ -129,8 +129,8 @@ describe("LandofileService layer", () => {
       await writeFile(layerPath, "name: dist-only\n");
       process.chdir(nested);
 
-      expect(await findLandofilePath(nested)).toBe(layerPath);
-      expect(await findAppRoot(nested)).toBe(appRoot);
+      expect(await Effect.runPromise(findLandofilePath(nested))).toBe(layerPath);
+      expect(await Effect.runPromise(findAppRoot(nested))).toBe(appRoot);
       expect((await discover()).name).toBe("dist-only");
     });
   });

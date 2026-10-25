@@ -6,7 +6,7 @@ import { sha256Hex } from "@lando/sdk/digest";
 import { DateTime, Effect } from "effect";
 
 import { isPathWithin } from "@lando/paths";
-import { CacheError } from "@lando/sdk/errors";
+import { CacheError, type LandofileFormConflictError } from "@lando/sdk/errors";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
 import { findLandofilePath } from "@lando/landofile/discovery";
@@ -218,24 +218,29 @@ const sourceHashFor = (
   return hash.digest("hex");
 };
 
-const resolveAppCommandCacheSource = async (cwd: string): Promise<AppCommandCacheSource | undefined> => {
-  const filePath = await findLandofilePath(cwd);
+const resolveAppCommandCacheSource = Effect.fnUntraced(function* (cwd: string) {
+  const filePath = yield* findLandofilePath(cwd);
   if (filePath === undefined) return undefined;
 
   const appRoot = dirname(filePath);
-  const layers = await presentLandofileLayers(appRoot);
-  const [stats, landofileSources, includeLockfileBytes] = await Promise.all([
-    stat(filePath),
-    Promise.all(
-      layers.map(async (layer) => ({
-        relativePath: relative(appRoot, layer.filePath).split(sep).join("/"),
-        bytes: await readFile(layer.filePath),
-      })),
-    ),
-    readOptionalFile(join(appRoot, ".lando.lock.yml")),
-  ]);
+  const layers = yield* presentLandofileLayers(appRoot);
+  const [stats, landofileSources, includeLockfileBytes] = yield* Effect.tryPromise({
+    try: () =>
+      Promise.all([
+        stat(filePath),
+        Promise.all(
+          layers.map(async (layer) => ({
+            relativePath: relative(appRoot, layer.filePath).split(sep).join("/"),
+            bytes: await readFile(layer.filePath),
+          })),
+        ),
+        readOptionalFile(join(appRoot, ".lando.lock.yml")),
+      ]),
+    catch: (cause) =>
+      new CacheError({ message: "Failed to read app-command sources.", key: "app-command", cause }),
+  });
   return { filePath, stats, landofileSources, includeLockfileBytes };
-};
+});
 
 const sourceContentHash = async (
   source: AppCommandCacheSource,
@@ -254,11 +259,8 @@ const pathsEqual = (left: ReadonlyArray<string> | undefined, right: ReadonlyArra
 
 const writeAppCommandCacheTask = async (
   options: WriteAppCommandCacheOptions,
+  source: AppCommandCacheSource,
 ): Promise<string | undefined> => {
-  const cwd = options.cwd ?? process.cwd();
-  const source = await resolveAppCommandCacheSource(cwd);
-  if (source === undefined) return undefined;
-
   const { filePath, stats } = source;
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const appName = options.landofile.name ?? "unnamed";
@@ -398,8 +400,7 @@ interface ReadAppCommandCacheTaskOptions extends WriteAppCommandCacheOptions {
 const readAppCommandCacheTask = async (
   options: ReadAppCommandCacheTaskOptions,
 ): Promise<AppCommandIndexPayload | null> => {
-  const cwd = options.cwd ?? process.cwd();
-  const source = options.source ?? (await resolveAppCommandCacheSource(cwd));
+  const source = options.source;
   if (source === undefined) return null;
 
   const { filePath, stats } = source;
@@ -449,14 +450,14 @@ const readAppCommandCacheTask = async (
   }
 };
 
-const readFreshAppCommandCacheForCwdTask = async (options: {
-  readonly cwd?: string;
-  readonly cacheRoot?: string;
-  readonly includeScriptInventory?: boolean;
-}): Promise<AppCommandIndexPayload | null> => {
-  const cwd = options.cwd ?? process.cwd();
-  const source = await resolveAppCommandCacheSource(cwd);
-  if (source === undefined) return null;
+const readFreshAppCommandCacheForCwdTask = async (
+  options: {
+    readonly cwd?: string;
+    readonly cacheRoot?: string;
+    readonly includeScriptInventory?: boolean;
+  },
+  source: AppCommandCacheSource,
+): Promise<AppCommandIndexPayload | null> => {
   const appRoot = dirname(source.filePath);
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const cachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
@@ -521,16 +522,22 @@ const readPluginCommandCacheTask = async (
 
 export const readAppCommandCache = (
   options: WriteAppCommandCacheOptions,
-): Effect.Effect<AppCommandIndexPayload | null, CacheError> =>
-  Effect.tryPromise({
-    try: () => readAppCommandCacheTask(options),
-    catch: (cause) =>
-      new CacheError({
-        message: "Failed to read app-command cache.",
-        key: "app-command",
-        cause,
-      }),
-  });
+): Effect.Effect<AppCommandIndexPayload | null, CacheError | LandofileFormConflictError> =>
+  resolveAppCommandCacheSource(options.cwd ?? process.cwd()).pipe(
+    Effect.flatMap((source) =>
+      source === undefined
+        ? Effect.succeed(null)
+        : Effect.tryPromise({
+            try: () => readAppCommandCacheTask({ ...options, source }),
+            catch: (cause) =>
+              new CacheError({
+                message: "Failed to read app-command cache.",
+                key: "app-command",
+                cause,
+              }),
+          }),
+    ),
+  );
 
 export const readFreshAppCommandCacheForCwd = (
   options: {
@@ -538,31 +545,43 @@ export const readFreshAppCommandCacheForCwd = (
     readonly cacheRoot?: string;
     readonly includeScriptInventory?: boolean;
   } = {},
-): Effect.Effect<AppCommandIndexPayload | null, CacheError> =>
-  Effect.tryPromise({
-    try: () => readFreshAppCommandCacheForCwdTask(options),
-    catch: (cause) =>
-      new CacheError({
-        message: "Failed to read app-command cache.",
-        key: "app-command",
-        cause,
-      }),
-  });
+): Effect.Effect<AppCommandIndexPayload | null, CacheError | LandofileFormConflictError> =>
+  resolveAppCommandCacheSource(options.cwd ?? process.cwd()).pipe(
+    Effect.flatMap((source) =>
+      source === undefined
+        ? Effect.succeed(null)
+        : Effect.tryPromise({
+            try: () => readFreshAppCommandCacheForCwdTask(options, source),
+            catch: (cause) =>
+              new CacheError({
+                message: "Failed to read app-command cache.",
+                key: "app-command",
+                cause,
+              }),
+          }),
+    ),
+  );
 
 export const writeAppCommandCacheStrict = (
   options: WriteAppCommandCacheOptions,
-): Effect.Effect<string | undefined, CacheError> =>
-  Effect.tryPromise({
-    try: () => writeAppCommandCacheTask(options),
-    catch: (cause) =>
-      cause instanceof CacheError
-        ? cause
-        : new CacheError({
-            message: "Failed to write app-command cache.",
-            key: "app-command",
-            cause,
+): Effect.Effect<string | undefined, CacheError | LandofileFormConflictError> =>
+  resolveAppCommandCacheSource(options.cwd ?? process.cwd()).pipe(
+    Effect.flatMap((source) =>
+      source === undefined
+        ? Effect.succeed(undefined)
+        : Effect.tryPromise({
+            try: () => writeAppCommandCacheTask(options, source),
+            catch: (cause) =>
+              cause instanceof CacheError
+                ? cause
+                : new CacheError({
+                    message: "Failed to write app-command cache.",
+                    key: "app-command",
+                    cause,
+                  }),
           }),
-  });
+    ),
+  );
 
 export const readPluginCommandCache = (
   options: WritePluginCommandCacheOptions = {},

@@ -65,8 +65,7 @@ const makePluginRegistry = (
   const discoverPlugins = Effect.gen(function* () {
     if (staticPlugins !== undefined) return staticPlugins;
     const globalPlugins = yield* discoverGlobalPlugins;
-    const appRoot =
-      discovery.app === false ? undefined : yield* Effect.promise(() => findAppRoot(process.cwd()));
+    const appRoot = discovery.app === false ? undefined : yield* findAppRoot(process.cwd());
     const appPlugins =
       appRoot === undefined
         ? []

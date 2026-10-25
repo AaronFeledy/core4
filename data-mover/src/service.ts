@@ -408,17 +408,17 @@ const snapshotStoreIdentity = (persistence: SnapshotPersistence) =>
     Effect.mapError((cause) => stateFailure("canonicalize", cause)),
   );
 
-const resolveAppRoot = async (paths: ReadonlyArray<string>): Promise<string> => {
-  const cwdRoot = await findAppRoot(process.cwd());
-  if (cwdRoot !== undefined) return realpath(cwdRoot);
+const resolveAppRoot = Effect.fnUntraced(function* (paths: ReadonlyArray<string>) {
+  const cwdRoot = yield* findAppRoot(process.cwd());
+  if (cwdRoot !== undefined) return cwdRoot;
 
   for (const path of paths) {
-    const endpointRoot = await findAppRoot(path);
-    if (endpointRoot !== undefined) return realpath(endpointRoot);
+    const endpointRoot = yield* findAppRoot(path);
+    if (endpointRoot !== undefined) return endpointRoot;
   }
 
-  return realpath(process.cwd());
-};
+  return process.cwd();
+});
 
 const ensureInsideRoot = Effect.fnUntraced(function* (path: string, root: string) {
   const normalized = resolve(path);
@@ -495,8 +495,9 @@ const validateHostEndpoints = Effect.fnUntraced(function* (spec: DataTransferSpe
       ? { from: spec.from, to: spec.to }
       : undefined;
   if (scratchHostCopy !== undefined) {
+    const appRoot = yield* resolveAppRoot([scratchHostCopy.from.path]);
     const root = yield* Effect.tryPromise({
-      try: () => resolveAppRoot([scratchHostCopy.from.path]),
+      try: () => realpath(appRoot),
       catch: () =>
         new DataSourceOutsideRootError({
           message: "Failed to resolve the app root for data endpoint validation.",
@@ -512,8 +513,9 @@ const validateHostEndpoints = Effect.fnUntraced(function* (spec: DataTransferSpe
       endpoint._tag === "hostPath" || endpoint._tag === "hostArchive",
   );
   if (endpoints.length === 0) return;
+  const appRoot = yield* resolveAppRoot(endpoints.map((endpoint) => endpoint.path));
   const root = yield* Effect.tryPromise({
-    try: () => resolveAppRoot(endpoints.map((endpoint) => endpoint.path)),
+    try: () => realpath(appRoot),
     catch: () =>
       new DataSourceOutsideRootError({
         message: "Failed to resolve the app root for data endpoint validation.",

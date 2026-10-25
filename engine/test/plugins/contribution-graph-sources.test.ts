@@ -1,12 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { Effect, Result, Schema } from "effect";
+import { makeLandoPaths } from "@lando/paths";
+import { PathsService } from "@lando/sdk/services";
+import { Effect, Layer, Result, Schema } from "effect";
 
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 
 import {
   type LoadedPluginContribution,
+  PluginContributionGraph,
   mergeLoadedPluginSources,
   pluginCommandCandidates,
 } from "../../src/plugins/contribution-graph.ts";
@@ -22,6 +28,37 @@ const loaded = (source: LoadedPluginContribution["source"], version: string): Lo
 };
 
 describe("plugin contribution source merge", () => {
+  test("builds app contributions when the app has conflicting Landofile forms", async () => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-graph-dual-"));
+    try {
+      await writeFile(join(root, ".lando.yml"), "name: graph\n");
+      await writeFile(join(root, ".lando.ts"), 'export default { name: "graph" };\n');
+      const graphLayer = PluginContributionGraph.layer<never>(
+        {
+          cwd: root,
+          layers: [],
+          manifests: [],
+          externalImports: true,
+          discovery: { bundled: false, system: false, user: false, app: true, disable: [] },
+        },
+        [],
+      ).pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())));
+      // When
+      const plugins = await Effect.runPromise(
+        Effect.scoped(
+          Effect.flatMap(PluginContributionGraph, (graph) => Effect.succeed(graph.plugins)).pipe(
+            Effect.provide(graphLayer),
+          ),
+        ),
+      );
+      // Then
+      expect(plugins).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("uses bundled then system then user then app then explicit identity precedence", () => {
     // Given
     const groups = [

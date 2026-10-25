@@ -17,6 +17,7 @@ import type { LandofileShape } from "@lando/sdk/schema";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import {
   type ToolingRoute,
+  resolveAppCommandHelpAliases,
   resolveToolingRoute,
   toolingHelpRequested,
   toolingName,
@@ -34,6 +35,36 @@ const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>):
     await rm(fixtureRoot, { recursive: true, force: true });
   }
 };
+
+for (const [token, commandId] of [
+  ["stop", "app:stop"],
+  ["destroy", "app:destroy"],
+  ["doctor", "meta:doctor"],
+] as const) {
+  test(`routes ${token} to its built-in policy despite conflicting Landofile forms`, async () => {
+    await withApp(async (root, cacheRoot) => {
+      // Given
+      await writeFile(join(root, ".lando.yml"), "name: conflict\n");
+      await writeFile(join(root, ".lando.ts"), 'export default { name: "conflict" };\n');
+      // When
+      const route = await Effect.runPromise(resolveToolingRoute(token, { cwd: root, cacheRoot }));
+      // Then
+      expect(route).toMatchObject({ _tag: "built-in", commandId });
+    });
+  });
+}
+
+test("omits app help aliases when Landofile forms conflict", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given
+    await writeFile(join(root, ".lando.yml"), "name: conflict\n");
+    await writeFile(join(root, ".lando.ts"), 'export default { name: "conflict" };\n');
+    // When
+    const aliases = await Effect.runPromise(resolveAppCommandHelpAliases({ cwd: root, cacheRoot }));
+    // Then
+    expect(aliases).toBeUndefined();
+  });
+});
 
 const writeFreshCache = async (
   root: string,

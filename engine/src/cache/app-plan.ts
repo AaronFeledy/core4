@@ -6,7 +6,7 @@ import { deserialize, serialize } from "node:v8";
 
 import { Clock, Effect, Schema } from "effect";
 
-import { CacheError, isErrnoCode } from "@lando/sdk/errors";
+import { CacheError, type LandofileFormConflictError, isErrnoCode } from "@lando/sdk/errors";
 import {
   AppPlan,
   CurrentExecutableAppPlan,
@@ -108,32 +108,35 @@ const readIncludeLockChecksums = (path: string): Promise<ReadonlyArray<string>> 
 export const readAppPlanSourceFingerprint = (
   appRoot: string,
   landofile?: LandofileShape,
-): Effect.Effect<AppPlanSourceFingerprint, CacheError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const includeLockfilePath = join(appRoot, ".lando.lock.yml");
-      const layers = await presentLandofileLayers(appRoot);
-      return {
-        landofileContentHashes: await Promise.all(
-          layers.map(async (layer) => ({
-            source: layer.filePath,
-            hash: (await readOptionalHash(layer.filePath)) ?? "",
-          })),
-        ),
-        includeLockfileHash: await readOptionalHash(includeLockfilePath),
-        includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
-        referencedFiles: landofile === undefined ? [] : getLandofileReferencedFiles(landofile),
-        includeSources: landofile === undefined ? [] : getLandofileIncludeSources(landofile),
-      };
-    },
-    catch: (cause) =>
-      new CacheError({
-        message: `Failed to read app-plan cache source fingerprint for ${appRoot}.`,
-        key: "app-plan",
-        path: appRoot,
-        cause,
+): Effect.Effect<AppPlanSourceFingerprint, CacheError | LandofileFormConflictError> =>
+  presentLandofileLayers(appRoot).pipe(
+    Effect.flatMap((layers) =>
+      Effect.tryPromise({
+        try: async () => {
+          const includeLockfilePath = join(appRoot, ".lando.lock.yml");
+          return {
+            landofileContentHashes: await Promise.all(
+              layers.map(async (layer) => ({
+                source: layer.filePath,
+                hash: (await readOptionalHash(layer.filePath)) ?? "",
+              })),
+            ),
+            includeLockfileHash: await readOptionalHash(includeLockfilePath),
+            includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
+            referencedFiles: landofile === undefined ? [] : getLandofileReferencedFiles(landofile),
+            includeSources: landofile === undefined ? [] : getLandofileIncludeSources(landofile),
+          };
+        },
+        catch: (cause) =>
+          new CacheError({
+            message: `Failed to read app-plan cache source fingerprint for ${appRoot}.`,
+            key: "app-plan",
+            path: appRoot,
+            cause,
+          }),
       }),
-  });
+    ),
+  );
 
 const normalizeManifest = (manifest: PluginManifest) => ({
   name: manifest.name,

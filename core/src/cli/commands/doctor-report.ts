@@ -122,7 +122,7 @@ const recordAuthoredMailhogUse = Effect.gen(function* () {
   const maybeDeprecations = yield* Effect.serviceOption(DeprecationService);
   const maybeFs = yield* Effect.serviceOption(FileSystem);
   if (Option.isNone(maybeDeprecations) || Option.isNone(maybeFs)) return;
-  const appRoot = yield* Effect.promise(() => findAppRoot(process.cwd()));
+  const appRoot = yield* findAppRoot(process.cwd());
   if (appRoot === undefined) return;
   for (const name of [".lando.yml", ".lando.yaml"] as const) {
     const path = join(appRoot, name);

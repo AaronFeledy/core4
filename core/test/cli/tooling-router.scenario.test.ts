@@ -165,6 +165,46 @@ const lastEnvelope = (output: string): Record<string, unknown> => {
   return Object.fromEntries(Object.entries(parsed));
 };
 
+for (const command of ["start", "hello"] as const) {
+  test(`${command} reports a tagged conflict without a stack for dual-form Landofiles`, async () => {
+    // Given
+    const fixture = await makeFixture(`dual-${command}`);
+    try {
+      await writeFile(
+        join(fixture.root, ".lando.yml"),
+        "name: conflict\ntooling:\n  hello:\n    cmd: echo hello\n",
+      );
+      await writeFile(join(fixture.root, ".lando.ts"), 'export default { name: "conflict" };\n');
+      // When
+      const result = await runSource(fixture, [command, "--format=json"]);
+      // Then
+      expect(result.exitCode, result.stderr).toBe(1);
+      expect(lastEnvelope(result.stdout)).toMatchObject({
+        error: { _tag: "LandofileFormConflictError", remediation: expect.any(String) },
+      });
+      expect(`${result.stdout}\n${result.stderr}`).not.toMatch(/\n\s+at |"stack"\s*:/u);
+    } finally {
+      await fixture.cleanup();
+    }
+  }, 30_000);
+}
+
+test("stop reports unchanged for a never-started dual-form app", async () => {
+  // Given
+  const fixture = await makeFixture("dual-stop");
+  try {
+    await writeFile(join(fixture.root, ".lando.ts"), 'export default { name: "conflict" };\n');
+    // When
+    const result = await runSource(fixture, ["stop", "--format=json"]);
+    // Then
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(lastEnvelope(result.stdout)).toMatchObject({ result: { outcome: "unchanged" } });
+    expect(`${result.stdout}\n${result.stderr}`).not.toMatch(/\n\s+at |"stack"\s*:/u);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);
+
 test("Given fresh app caches, when global help heads are dispatched, then both paths render root help", async () => {
   const source = await makeFixture("source-root-help");
   const compiled = await makeFixture("compiled-root-help");

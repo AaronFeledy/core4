@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect";
 
 import {
-  LandofileFormConflictError,
+  type LandofileFormConflictError,
   LandofileNotFoundError,
-  LandofileParseError,
+  type LandofileParseError,
   ManagedFileError,
 } from "@lando/sdk/errors";
 import { ManagedFileAction, type ManagedFileResult } from "@lando/sdk/schema";
@@ -54,21 +54,7 @@ export const resolveAgentSkillsAppRoot = Effect.fn("resolveAgentSkillsAppRoot")(
     Effect.gen(function* () {
       const cwd = options.cwd ?? process.cwd();
       const appRoot =
-        options.appRoot !== undefined && options.appRoot !== ""
-          ? options.appRoot
-          : yield* Effect.tryPromise({
-              try: () => findAppRoot(cwd),
-              catch: (cause) =>
-                cause instanceof LandofileFormConflictError
-                  ? cause
-                  : new LandofileParseError({
-                      message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
-                      filePath: cwd,
-                      line: undefined,
-                      column: undefined,
-                      cause,
-                    }),
-            });
+        options.appRoot !== undefined && options.appRoot !== "" ? options.appRoot : yield* findAppRoot(cwd);
       if (appRoot === undefined) {
         return yield* Effect.fail(
           new LandofileNotFoundError({

@@ -183,13 +183,10 @@ const landofileReferencesPlugin = (content: string, name: string): boolean => {
   return false;
 };
 
-const activeLandofileRefusal = async (
-  name: string,
-  cwd: string,
-): Promise<NotImplementedError | undefined> => {
-  const landofilePath = await findLandofilePath(cwd);
+const activeLandofileRefusal = Effect.fnUntraced(function* (name: string, cwd: string) {
+  const landofilePath = yield* findLandofilePath(cwd);
   if (landofilePath === undefined) return undefined;
-  const content = await readFile(landofilePath, "utf8");
+  const content = yield* Effect.promise(() => readFile(landofilePath, "utf8"));
   if (!landofileReferencesPlugin(content, name)) return undefined;
   const appName =
     content.match(/^name:\s*['"]?([^'"#\n]+)['"]?/mu)?.[1]?.trim() ?? basename(dirname(landofilePath));
@@ -198,13 +195,16 @@ const activeLandofileRefusal = async (
     commandId: "meta:plugin:remove",
     remediation: `Remove ${name} from the plugins: block in app ${appName} (${landofilePath}), then retry \`lando plugin:remove ${name}\`.`,
   });
-};
+});
 
 export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
   options: PluginRemoveOptions,
 ): Effect.fn.Return<
   PluginRemoveResult,
-  LandoCommandError | NotImplementedError | PluginManifestError,
+  | LandoCommandError
+  | NotImplementedError
+  | PluginManifestError
+  | import("@lando/sdk/errors").LandofileFormConflictError,
   ConfigService
 > {
   if (options.name === "") {
@@ -265,9 +265,7 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
     );
   }
 
-  const activeRefusal = yield* Effect.promise(() =>
-    activeLandofileRefusal(options.name, options.cwd ?? process.cwd()),
-  );
+  const activeRefusal = yield* activeLandofileRefusal(options.name, options.cwd ?? process.cwd());
   if (activeRefusal !== undefined) return yield* Effect.fail(activeRefusal);
 
   if (!existsSync(pluginsRoot)) return { pluginName: options.name, removed: false };

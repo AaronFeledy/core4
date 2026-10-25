@@ -1406,6 +1406,32 @@ describe("Landofile events on applied-state teardown", () => {
     },
   );
 
+  test.each(["stop", "destroy"] as const)(
+    "%s uses applied state when both Landofile forms exist",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        // Given
+        await Bun.write(join(root, ".lando.ts"), 'export default { name: "conflict" };\n');
+        const appliedPlan = withWeb(planAt(root));
+        const harness = makeLayer({ appliedPlan });
+        // When
+        const result = await Effect.runPromise(
+          withResolvedCwd(
+            root,
+            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime([]), harness.layer))),
+          ),
+        );
+        // Then
+        expect(result.outcome).toBe(operation === "stop" ? "stopped" : "destroyed");
+        expect(harness.destroyCalls).toEqual([appliedPlan]);
+        expect(result.landofileEvents).toEqual({
+          status: "skipped",
+          reason: expect.stringContaining(`Both ${join(root, ".lando.yml")} and ${join(root, ".lando.ts")}`),
+        });
+      });
+    },
+  );
+
   const interaction = (answer: boolean, interactive = true) =>
     Layer.succeed(
       InteractionService,

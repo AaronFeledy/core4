@@ -1,11 +1,6 @@
 import { join } from "node:path";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
-import {
-  ConfigError,
-  LandofileNotFoundError,
-  LandofileParseError,
-  NotImplementedError,
-} from "@lando/sdk/errors";
+import { ConfigError, NotImplementedError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import { writeFileAtomicViaRename } from "../cache/atomic.ts";
 import { findDiscoveredLandofilePath } from "../services/landofile-live.ts";
@@ -14,13 +9,7 @@ export const resolveAppConfigFile = Effect.fn("AppConfig.resolveFile")(function*
   cwd: string,
   subcommand: string,
 ) {
-  const discovered = yield* Effect.tryPromise({
-    try: () => findDiscoveredLandofilePath(cwd),
-    catch: (cause) =>
-      cause instanceof LandofileNotFoundError || cause instanceof LandofileParseError
-        ? cause
-        : new ConfigError({ message: "Failed to discover the app root.", cause }),
-  });
+  const discovered = yield* findDiscoveredLandofilePath(cwd);
   const typescript = join(discovered.appRoot, ".lando.ts");
   const exists = yield* Effect.tryPromise({
     try: () => Bun.file(typescript).exists(),

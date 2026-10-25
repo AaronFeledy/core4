@@ -5,6 +5,7 @@ import { Effect, Schema } from "effect";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { AppPlanResolutionError, PullAppError, PushAppError, RemoteSyncError } from "@lando/sdk/app";
 import {
+  type LandofileFormConflictError,
   LandofileNotFoundError,
   LandofileParseError,
   RemoteDatasetUnsupportedError,
@@ -157,8 +158,11 @@ const redactSyncResult = (result: SyncResultType) =>
 
 const loadRemoteLandofile = Effect.fnUntraced(function* (
   cwd = process.cwd(),
-): Effect.fn.Return<LoadedRemoteLandofile, LandofileNotFoundError | LandofileParseError> {
-  const file = yield* Effect.promise(() => findLandofilePath(cwd));
+): Effect.fn.Return<
+  LoadedRemoteLandofile,
+  LandofileNotFoundError | LandofileParseError | LandofileFormConflictError
+> {
+  const file = yield* findLandofilePath(cwd);
   if (file === undefined) {
     return yield* Effect.fail(
       new LandofileNotFoundError({
@@ -354,7 +358,10 @@ const snapshotBeforeApply = Effect.fnUntraced(function* (
 
 export const appRemoteList = Effect.fn("AppOperation.remoteList")(function* (
   options: RemoteListOptions = {},
-): Effect.fn.Return<ReadonlyArray<RemoteEntry>, LandofileNotFoundError | LandofileParseError> {
+): Effect.fn.Return<
+  ReadonlyArray<RemoteEntry>,
+  LandofileNotFoundError | LandofileParseError | LandofileFormConflictError
+> {
   return yield* loadRemoteLandofile(options.cwd).pipe(
     Effect.flatMap(({ landofile }) => {
       const entries = remoteEntries(landofile);
@@ -368,7 +375,10 @@ export const appRemoteList = Effect.fn("AppOperation.remoteList")(function* (
 
 export const appRemoteAdd = Effect.fn("AppOperation.remoteAdd")(function* (
   options: RemoteAddOptions,
-): Effect.fn.Return<RemoteMutationResult, LandofileNotFoundError | LandofileParseError> {
+): Effect.fn.Return<
+  RemoteMutationResult,
+  LandofileNotFoundError | LandofileParseError | LandofileFormConflictError
+> {
   const loaded = yield* loadRemoteLandofile(options.cwd);
   const remotes = { ...(loaded.landofile.remotes ?? {}), [options.name]: options.config };
   const next = { ...loaded.landofile, remotes };
@@ -383,7 +393,10 @@ export const appRemoteAdd = Effect.fn("AppOperation.remoteAdd")(function* (
 
 export const appRemoteRemove = Effect.fn("AppOperation.remoteRemove")(function* (
   options: RemoteRemoveOptions,
-): Effect.fn.Return<RemoteMutationResult, LandofileNotFoundError | LandofileParseError | RemoteError> {
+): Effect.fn.Return<
+  RemoteMutationResult,
+  LandofileNotFoundError | LandofileParseError | LandofileFormConflictError | RemoteError
+> {
   const loaded = yield* loadRemoteLandofile(options.cwd);
   const existing = loaded.landofile.remotes?.[options.name];
   if (existing === undefined) {

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
+import { type LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
 import { parseExpressionEither } from "@lando/sdk/expressions";
 import {
   isBareRecipeReference,
@@ -261,16 +261,7 @@ export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* 
   options: AppConfigExplainOptions = {},
 ): Effect.fn.Return<AppConfigExplainResult, AppConfigExplainError, never> {
   const cwd = options.cwd ?? process.cwd();
-  const discovered = yield* Effect.tryPromise({
-    try: () => discoverRecipeAnalysisRoot(cwd),
-    catch: (cause) =>
-      cause instanceof LandofileNotFoundError
-        ? cause
-        : new LandofileNotFoundError({
-            message: cause instanceof Error ? cause.message : `No Landofile found from ${cwd}.`,
-            cwd,
-          }),
-  });
+  const discovered = yield* discoverRecipeAnalysisRoot(cwd);
   const { appRoot, dualForm } = discovered;
 
   const programmaticPath = join(appRoot, PROGRAMMATIC_LANDOFILE);

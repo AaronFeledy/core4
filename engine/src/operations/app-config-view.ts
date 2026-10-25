@@ -1,7 +1,7 @@
 import { getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { getSourceDocuments } from "@lando/landofile/pipeline/source-table";
 import { acquireLandofileRootLayers, composeLandofileRootLayers } from "@lando/landofile/service";
-import { ConfigError, LandofileNotFoundError, LandofileWriteValidationError } from "@lando/sdk/errors";
+import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { encodeLandofileSourceValue } from "@lando/sdk/landofile";
 import { LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
@@ -58,13 +58,7 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
   switch (source) {
     case "raw":
     case "merged": {
-      const { appRoot } = yield* Effect.tryPromise({
-        try: () => findDiscoveredLandofilePath(options.cwd ?? process.cwd()),
-        catch: (cause) =>
-          cause instanceof LandofileNotFoundError
-            ? cause
-            : new ConfigError({ message: "Failed to discover the app root.", cause }),
-      });
+      const { appRoot } = yield* findDiscoveredLandofilePath(options.cwd ?? process.cwd());
       const inputs = yield* scopedLandofileRuntimeInputs;
       if (source === "raw") {
         const acquired = yield* acquireLandofileRootLayers(appRoot, inputs);

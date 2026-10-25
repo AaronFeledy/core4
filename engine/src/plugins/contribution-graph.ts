@@ -61,8 +61,8 @@ export class PluginContributionGraph extends Context.Service<
   PluginContributionGraph,
   PluginContributionGraphShape
 >()("@lando/engine/PluginContributionGraph") {
-  static readonly layer = (
-    policy: PluginContributionGraphPolicy,
+  static readonly layer = <R>(
+    policy: PluginContributionGraphPolicy<R>,
     modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
   ) =>
     Layer.effect(
@@ -105,8 +105,7 @@ export class PluginContributionGraph extends Context.Service<
           external && policy.discovery.user
             ? yield* discoverInstalledPlugins("user", paths.pluginsDir, logger)
             : [];
-        const appRoot =
-          external && policy.discovery.app ? yield* Effect.promise(() => findAppRoot(policy.cwd)) : undefined;
+        const appRoot = external && policy.discovery.app ? yield* findAppRoot(policy.cwd) : undefined;
         const app =
           appRoot === undefined
             ? []
@@ -147,8 +146,8 @@ export class PluginContributionGraph extends Context.Service<
     );
 }
 
-export interface PluginContributionGraphPolicy {
-  readonly layers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>;
+export interface PluginContributionGraphPolicy<R = unknown> {
+  readonly layers: ReadonlyArray<Layer.Layer<unknown, unknown, R>>;
   readonly manifests: ReadonlyArray<ResolvedPluginInput>;
   readonly discovery: {
     readonly bundled: boolean;

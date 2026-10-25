@@ -1,6 +1,6 @@
 import { basename, dirname } from "node:path";
 import { canonicalJson } from "@lando/sdk/digest";
-import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
+import { type LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import {
   type ConfigLintResult,
   type ConfigLintViolation,
@@ -91,35 +91,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
 ): Effect.fn.Return<LandofileLintSnapshot, LandofileNotFoundError | LandofileFormConflictError> {
   const cwd = options.cwd ?? process.cwd();
   const templates = options.templates ?? inputs?.templates;
-  const discovered = yield* Effect.tryPromise({
-    try: () => findLandofilePath(cwd),
-    catch: (cause) => cause,
-  }).pipe(Effect.result);
-  if (Result.isFailure(discovered)) {
-    if (discovered.failure instanceof LandofileFormConflictError)
-      return yield* Effect.fail(discovered.failure);
-    return {
-      landofilePath: cwd,
-      result: {
-        app: "",
-        file: cwd,
-        valid: false,
-        violations: [
-          {
-            rule: "landofile.discovery",
-            severity: "error",
-            path: [],
-            scopes: ["fragment"],
-            message:
-              discovered.failure instanceof Error
-                ? discovered.failure.message
-                : "Failed to discover Landofile.",
-          },
-        ],
-      },
-    };
-  }
-  const file = discovered.success;
+  const file = yield* findLandofilePath(cwd);
   if (file === undefined)
     return yield* Effect.fail(
       new LandofileNotFoundError({ message: "No .lando.yml or .lando.ts found.", cwd }),

@@ -108,7 +108,7 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const inputPath = yield* Effect.promise(() => findLandofilePath(cwd));
+  const inputPath = yield* findLandofilePath(cwd);
   if (inputPath === undefined) {
     return yield* Effect.fail(
       new LandofileNotFoundError({

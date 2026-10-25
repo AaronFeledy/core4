@@ -4,6 +4,7 @@ import { Context, Effect, Semaphore } from "effect";
 
 import {
   AppIdReservedError,
+  type LandofileFormConflictError,
   LandofileParseError,
   type LandofileVersionConstraintError,
 } from "@lando/sdk/errors";
@@ -108,13 +109,11 @@ export interface UserAppResolution {
 
 export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAppResolution => {
   const discoveredLandofilePath = (): Effect.Effect<
-    { readonly filePath: string; readonly appRoot: string } | undefined
+    { readonly filePath: string; readonly appRoot: string } | undefined,
+    LandofileFormConflictError
   > =>
-    Effect.promise(() =>
-      findDiscoveredLandofilePath(process.cwd()).then(
-        (result) => result,
-        () => undefined,
-      ),
+    findDiscoveredLandofilePath(process.cwd()).pipe(
+      Effect.catchTag("LandofileNotFoundError", () => Effect.succeed(undefined)),
     );
 
   const loadUserLandofile = (
