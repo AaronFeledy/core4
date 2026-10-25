@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
-  type LandofileShape,
+  LandofileShape,
   PortablePath,
   ProviderId,
 } from "@lando/sdk/schema";
@@ -38,6 +38,19 @@ const eventPlan = (): AppPlan => ({
 });
 
 describe("compileEffectiveTooling", () => {
+  test("false drops a service-type task definition wholesale", () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({ tooling: { inspect: false } });
+    // When
+    const tooling = compileEffectiveTooling({
+      landofile,
+      services: [
+        { name: "web", tooling: { inspect: { cmd: "inspect", flags: { loud: { boolean: true } } } } },
+      ],
+    });
+    // Then
+    expect(tooling.inspect).toEqual({ disabled: true });
+  });
   test("attachment preserves internal include provenance", () => {
     // Given
     const landofile = rememberInternalToolingTasks(
