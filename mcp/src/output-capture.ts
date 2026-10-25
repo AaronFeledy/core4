@@ -44,14 +44,17 @@ export class OutputCapture {
   #knownValues: RedactionValues | undefined;
   #resultValues = new RedactionValues();
   #prepared = false;
+  #profileChanged = false;
 
   constructor(values: () => Iterable<string> = () => []) {
     this.#values = values;
   }
 
-  append(chunk: CommandOutputChunk): void {
+  append(chunk: CommandOutputChunk, originalText: string): void {
     if (this.#prepared) throw stdioTransportError("MCP final output capture is already finalized.");
     this.#knownValues ??= new RedactionValues([...this.#values(), ...this.#resultValues]);
+    // Only retain the lost-context bit, never the pre-profile text, even after chunk eviction.
+    this.#profileChanged ||= chunk.chunk !== originalText;
     this.#chunks.push(Object.freeze({ ...chunk }));
     this.#bytes += contribution(chunk);
     this.#fit(OUTPUT_CHUNK_BUDGET);
@@ -74,21 +77,23 @@ export class OutputCapture {
       texts.set(key, (texts.get(key) ?? "") + frame.chunk);
     }
     const valueBytes = values.reduce((sum, value) => sum + Buffer.byteLength(value, "utf8"), 0);
-    if (valueBytes * Math.max(1, texts.size) > MAX_OUTBOUND_QUEUED_BYTES) {
+    const lateValues = values.filter((value) => !this.#knownValues?.has(value));
+    if (
+      (this.#profileChanged && lateValues.length > 0) ||
+      valueBytes * Math.max(1, texts.size) > MAX_OUTBOUND_QUEUED_BYTES
+    ) {
       this.#chunks.length = 0;
       this.#bytes = 0;
       this.#truncated = true;
       return;
     }
     const encoder = new TextEncoder();
-    const lateValues = values
-      .filter((value) => !this.#knownValues?.has(value))
-      .map((value) => encoder.encode(value));
+    const lateBytes = lateValues.map((value) => encoder.encode(value));
     const omitted = new Set<string>();
-    if (this.#truncated && lateValues.length > 0) {
+    if (this.#truncated && lateBytes.length > 0) {
       // Lost context can contain a newly classified credential prefix; never return its possible suffix.
       for (const [key, text] of texts) {
-        if (hasClippedSecret(encoder.encode(text), lateValues)) omitted.add(key);
+        if (hasClippedSecret(encoder.encode(text), lateBytes)) omitted.add(key);
       }
     }
     const original = this.#chunks.splice(0);

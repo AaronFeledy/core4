@@ -23,6 +23,7 @@ import { projectMcpProgressFrame } from "./result-inspector";
 export const encodeProgressFrame = (
   frame: unknown,
   redactorForFrame: Redactor,
+  capture?: OutputCapture,
 ): Effect.Effect<unknown, McpTransportError> =>
   Effect.try({
     try: () => projectMcpProgressFrame(frame),
@@ -35,7 +36,11 @@ export const encodeProgressFrame = (
           }),
   }).pipe(
     Effect.flatMap((projected) =>
-      redactBoundedJsonValue(projected, redactorForFrame, "MCP progress payload"),
+      redactBoundedJsonValue(projected, redactorForFrame, "MCP progress payload").pipe(
+        Effect.tap((safe) =>
+          Effect.sync(() => capture?.append(projectMcpProgressFrame(safe), projected.chunk)),
+        ),
+      ),
     ),
   );
 
@@ -48,13 +53,7 @@ export const makeStreamFrameSink = (
   const capture = new OutputCapture(payloadValues);
   let finished = false;
   const live = new LiveProgress(payloadValues, (frame) =>
-    encodeProgressFrame(frame, redactorForFrame).pipe(
-      Effect.flatMap((safe) => {
-        capture.append(projectMcpProgressFrame(safe));
-        return notify(safe);
-      }),
-      Effect.orDie,
-    ),
+    encodeProgressFrame(frame, redactorForFrame, capture).pipe(Effect.flatMap(notify), Effect.orDie),
   );
   const sink = StreamFrameSink.of({
     emit: (frame: StreamFrameSinkFrame) =>

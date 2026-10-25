@@ -24,7 +24,7 @@ import { boundedEventString, postEvent, preEvent } from "./call-events";
 import { OutputCapture } from "./output-capture";
 import { encodeProgressFrame } from "./progress";
 import { type McpCommandEntry, type McpToolInput, validateToolInput } from "./registry";
-import { inspectMcpCommandOutcome, projectMcpProgressFrame } from "./result-inspector";
+import { inspectMcpCommandOutcome } from "./result-inspector";
 
 export type McpDispatchError = McpToolNotAllowedError | McpToolInputError | McpTransportError;
 
@@ -220,8 +220,7 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
     capture.redactValues(tokens);
     if (Object.hasOwn(outcome, "value")) {
       for (const frame of entry.spec.streamFrames?.(outcome.value) ?? []) {
-        const safe = yield* encodeProgressFrame(frame, redactor);
-        capture.append(projectMcpProgressFrame(safe));
+        yield* encodeProgressFrame(frame, redactor, capture);
         yield* emitProgressFrame(deps, frame, redactor);
       }
     }
