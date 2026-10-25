@@ -133,6 +133,7 @@ const acquisitionExclusions = new Map([
   ["docs/guides/timezone/fixtures/timezone-rejected-interpolation", "LandofileValidationError"],
   ["docs/guides/expressions/fixtures/expressions-unescaped-shell", "LandofileValidationError"],
   ["docs/guides/your-landofile/fixtures/flow-mapping-rejected", "LandofileParseError"],
+  ["docs/guides/your-landofile/fixtures/dual-form-conflict", "LandofileFormConflictError"],
 ]);
 
 describe("composed Landofile provenance invariant", () => {
