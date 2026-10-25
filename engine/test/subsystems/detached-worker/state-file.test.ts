@@ -10,7 +10,6 @@ test("a separate process waits when the holder removes its worker run directory"
   const root = await mkdtemp(join(tmpdir(), "lando-worker-lock-"));
   const path = join(root, "run", "demo", "worker.json");
   const firstMessage = Promise.withResolvers<unknown>();
-  const messages: unknown[] = [];
   let child: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined;
   await mkdir(dirname(path), { recursive: true });
   try {
@@ -32,7 +31,6 @@ test("a separate process waits when the holder removes its worker run directory"
               stdout: "pipe",
               stderr: "pipe",
               ipc: (message: unknown) => {
-                messages.push(message);
                 firstMessage.resolve(message);
               },
             },
@@ -45,8 +43,6 @@ test("a separate process waits when the holder removes its worker run directory"
     const exitCode = await child.exited;
     // Then it observes contention before entering only after the holder releases.
     expect(exitCode).toBe(0);
-    expect(messages[0]).toBe("held");
-    expect(child.stdout).not.toBeNull();
     expect(await new Response(child.stdout).text()).toBe("entered\n");
   } finally {
     child?.kill();

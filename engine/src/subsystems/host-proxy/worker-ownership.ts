@@ -96,13 +96,14 @@ export const terminateOwnedHostProxyWorkersInRoot = Effect.fnUntraced(
     );
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      const runDir = resolve(paths.hostProxyRunRoot, entry.name);
       if (
         entry.name.endsWith("-ssh-agent") ||
         entry.name.endsWith("-gpg-agent") ||
-        resolve(paths.hostProxyRunRoot, entry.name) === resolve(paths.tunnelRunDir)
+        runDir === resolve(paths.tunnelRunDir)
       )
         continue;
-      const recordPath = resolve(paths.hostProxyRunRoot, entry.name, "worker.json");
+      const recordPath = resolve(runDir, "worker.json");
       yield* withDetachedWorkerLock(
         {
           path: recordPath,
@@ -112,7 +113,7 @@ export const terminateOwnedHostProxyWorkersInRoot = Effect.fnUntraced(
         },
         Effect.gen(function* () {
           if (!(yield* isOwnerOnlyRecordFile(recordPath, options.privateFileAccess))) {
-            yield* Effect.promise(() => rm(dirname(recordPath), { recursive: true, force: true }));
+            yield* Effect.promise(() => rm(runDir, { recursive: true, force: true }));
             return;
           }
           const record = yield* readWorkerRecordAt(recordPath);
@@ -125,23 +126,19 @@ export const terminateOwnedHostProxyWorkersInRoot = Effect.fnUntraced(
               state.appRoot === undefined
                 ? resolve(paths.hostProxyRunRoot, sanitizeAppName(legacyRecord.appId))
                 : resolve(paths.hostProxyRunDir(legacyRecord.appId, state.appRoot));
-            if (legacyDir !== resolve(paths.hostProxyRunRoot, entry.name)) return;
+            if (legacyDir !== runDir) return;
             yield* terminateControlRecord(
               legacyRecord,
               options,
               Effect.promise(() => rm(legacyDir, { recursive: true, force: true })),
-            ).pipe(Effect.catch(() => Effect.void));
+            );
             return;
           }
-          if (
-            resolve(paths.hostProxyRunDir(record.appId, record.appRoot)) !==
-            resolve(paths.hostProxyRunRoot, entry.name)
-          )
-            return;
+          if (resolve(paths.hostProxyRunDir(record.appId, record.appRoot)) !== runDir) return;
           yield* terminateControlRecord(
             record,
             options,
-            Effect.promise(() => rm(dirname(recordPath), { recursive: true, force: true })),
+            Effect.promise(() => rm(runDir, { recursive: true, force: true })),
           );
         }),
       ).pipe(Effect.catch(() => Effect.void));
