@@ -14,7 +14,7 @@ import type {
 
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, missingService } from "./engine-errors.ts";
-import { redactDetails, withApiReason } from "./redact.ts";
+import { redactDetails, redactorFor, withApiReason } from "./redact.ts";
 
 export type ServiceLifecycleAction = "start" | "stop" | "restart";
 
@@ -64,9 +64,9 @@ const lifecycleRequest = (
           message: withApiReason(
             `${input.failureAction} failed with HTTP ${response.status}.`,
             response,
-            ctx.redactor,
+            redactorFor(ctx),
           ),
-          details: redactDetails({ ...input.details, body: response.body }, ctx.redactor),
+          details: redactDetails({ ...input.details, body: response.body }, redactorFor(ctx)),
           remediation: ctx.remediation,
         }),
       );

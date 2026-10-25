@@ -100,7 +100,7 @@ const run = async (withRootStep: boolean, inheritedUser = "app:staff") => {
   await Effect.runPromise(
     buildContainerArtifact(
       { app: appId, service: serviceName, plan: plan(withRootStep), buildKey: "user-key" },
-      { providerId, api: { request } },
+      { providerId, api: { request }, sourceEnv: {} },
     ),
   );
   const posts = requests.filter((entry) => entry.method === "POST");

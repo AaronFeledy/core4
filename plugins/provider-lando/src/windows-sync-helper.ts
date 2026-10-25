@@ -772,7 +772,7 @@ export const removeWindowsSyncHelper = (
           const pruned = yield* request(
             api,
             buildVolumePruneRequest({
-              ctx: { providerId: "lando", remediation: REMEDIATION },
+              ctx: { providerId: "lando", remediation: REMEDIATION, env: { ...process.env } },
               filters: { label: [`dev.lando.sync.nonce=${receipt.volumeNonce}`] },
               all: true,
             }),

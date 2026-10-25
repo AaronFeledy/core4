@@ -21,7 +21,7 @@ import { commonContainerLabels } from "../src/plan.ts";
 import { composePath, emitCompose, renderCompose } from "../src/podman/compose.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 
 interface FileSystemCall {
   readonly operation: string;

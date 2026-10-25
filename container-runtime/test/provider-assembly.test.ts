@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import { AppPlanSanitizer, ContainerHelperAssets, EventService, PathsService } from "@lando/sdk/services";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { dataHelperImage } from "../src/data-plane.ts";
@@ -12,6 +13,11 @@ import {
   providerHostInputs,
   rememberAppliedPlan,
 } from "../src/provider-assembly.ts";
+
+const passthroughRedactor = {
+  redactString: (value: string) => value,
+  redactValue: (value: unknown) => value,
+} satisfies Redactor;
 
 const plan = Schema.decodeSync(AppPlan)({
   id: "app",
@@ -27,13 +33,13 @@ const plan = Schema.decodeSync(AppPlan)({
   extensions: {},
   metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
 });
-const ctx = { providerId: "lando", remediation: "Retry." };
+const ctx = { providerId: "lando", remediation: "Retry.", env: {} };
 const stateOptions = {
   ctx,
   providerId: ProviderId.make("lando"),
   providerName: "provider-lando",
   capabilities: { volumeSnapshot: "native" as const },
-  redactDetails: (value: unknown) => value,
+  redactor: passthroughRedactor,
   load: () => Effect.succeed(undefined),
   persist: () => Effect.void,
   remove: () => Effect.void,

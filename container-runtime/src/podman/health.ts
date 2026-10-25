@@ -6,7 +6,7 @@ import type { AppPlan } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
 
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
-import { redactDetails } from "../redact.ts";
+import { redactDetails, redactorFor } from "../redact.ts";
 import { inspect } from "./inspect.ts";
 
 const defaultServiceHealthPolicy: RetryPolicy = {
@@ -69,7 +69,9 @@ const unavailableFromProbe = (
       attempts: input.attempts,
       elapsedMs: input.elapsedMs,
       ...(input.lastHealth === undefined ? {} : { lastHealth: input.lastHealth }),
-      ...(input.lastError === undefined ? {} : { lastError: redactDetails(input.lastError) }),
+      ...(input.lastError === undefined
+        ? {}
+        : { lastError: redactDetails(input.lastError, redactorFor(ctx)) }),
     },
   });
 

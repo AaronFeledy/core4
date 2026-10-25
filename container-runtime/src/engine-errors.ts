@@ -4,7 +4,7 @@ import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError }
 import type { ServiceSelector } from "@lando/sdk/services";
 
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
-import { redactDetails, redactResponseDetails, redactString, withApiReason } from "./redact.ts";
+import { redactDetails, redactResponseDetails, redactString, redactorFor, withApiReason } from "./redact.ts";
 import { ContainerTransportError } from "./transport.ts";
 
 export const missingApi = (
@@ -39,8 +39,11 @@ export const apiResponseFailure = (
   new ProviderUnavailableError({
     providerId: ctx.providerId,
     operation,
-    message: redactString(withApiReason(message, { body: response.body }, ctx.redactor), ctx.redactor),
-    details: redactResponseDetails(response, ctx.redactor),
+    message: redactString(
+      withApiReason(message, { body: response.body }, redactorFor(ctx)),
+      redactorFor(ctx),
+    ),
+    details: redactResponseDetails(response, redactorFor(ctx)),
     remediation: ctx.remediation,
   });
 
@@ -52,8 +55,8 @@ export const transportFailure = (
   const input = {
     providerId: ctx.providerId,
     operation,
-    message: redactString(withApiReason(cause.message, cause.details, ctx.redactor), ctx.redactor),
-    ...(cause.details === undefined ? {} : { details: redactDetails(cause.details, ctx.redactor) }),
+    message: redactString(withApiReason(cause.message, cause.details, redactorFor(ctx)), redactorFor(ctx)),
+    ...(cause.details === undefined ? {} : { details: redactDetails(cause.details, redactorFor(ctx)) }),
     remediation: ctx.remediation,
     cause,
   };
@@ -72,7 +75,7 @@ export const engineApiFailure = (
     providerId: ctx.providerId,
     operation,
     message: "Failed to call the container engine API.",
-    details: redactDetails({ method: request.method, path: request.path }, ctx.redactor),
+    details: redactDetails({ method: request.method, path: request.path }, redactorFor(ctx)),
     remediation: ctx.remediation,
     cause,
   });

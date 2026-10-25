@@ -25,10 +25,12 @@ import { ContainerTransportError } from "../src/transport.ts";
 const dockerCtx = {
   providerId: "docker",
   remediation: "Run `lando doctor --provider=docker` and retry.",
+  env: {},
 } as const;
 const landoCtx = {
   providerId: "lando",
   remediation: "Run `lando doctor` and retry.",
+  env: {},
 } as const;
 const encoder = new TextEncoder();
 const bytes = (text: string): Uint8Array => encoder.encode(text);
@@ -704,7 +706,7 @@ describe("pull failure handling", () => {
     // When
     const failure = await Effect.runPromise(
       pullImage({ stream: () => Stream.fail(transportError) }, "registry.internal/team/img:1.0", {
-        ctx: { providerId: "docker", remediation: "docker remediation" },
+        ctx: { providerId: "docker", remediation: "docker remediation", env: {} },
         dialect: dockerPullDialect,
       }).pipe(Effect.flip),
     );
@@ -773,7 +775,7 @@ describe("pull failure handling", () => {
 
   test("reports the supplied podman provider context", async () => {
     // Given
-    const podmanCtx = { providerId: "podman", remediation: "Repair Podman and retry." } as const;
+    const podmanCtx = { providerId: "podman", remediation: "Repair Podman and retry.", env: {} } as const;
 
     // When
     const failure = await Effect.runPromise(

@@ -8,7 +8,7 @@ import type { ProviderError, ServiceExitResult, ServiceSelector } from "@lando/s
 import type { WaitDialect } from "./dialect.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, parseEngineJson } from "./engine-errors.ts";
-import { redactDetails, redactResponseDetails, withApiReason } from "./redact.ts";
+import { redactDetails, redactResponseDetails, redactorFor, withApiReason } from "./redact.ts";
 
 export interface WaitForExitOptions {
   readonly api?: EngineHttpApi;
@@ -53,8 +53,12 @@ export const waitForExit = Effect.fn("RuntimeProvider.waitForExit")(function* (
       new ProviderUnavailableError({
         providerId: options.ctx.providerId,
         operation: "waitForExit",
-        message: withApiReason(`Container wait failed with HTTP ${response.status}.`, response),
-        details: redactDetails({ service: service.name, body: response.body }),
+        message: withApiReason(
+          `Container wait failed with HTTP ${response.status}.`,
+          response,
+          redactorFor(options.ctx),
+        ),
+        details: redactDetails({ service: service.name, body: response.body }, redactorFor(options.ctx)),
         remediation: options.ctx.remediation,
       }),
     );
@@ -62,7 +66,7 @@ export const waitForExit = Effect.fn("RuntimeProvider.waitForExit")(function* (
 
   const decoded = yield* parseEngineJson(response, options.ctx, "waitForExit", {
     message: "Container engine API returned malformed JSON.",
-    details: redactResponseDetails(response),
+    details: redactResponseDetails(response, redactorFor(options.ctx)),
   });
   const exitCode = options.dialect.decodeExitCode(decoded);
   if (exitCode === undefined) {

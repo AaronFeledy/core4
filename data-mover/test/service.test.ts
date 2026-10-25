@@ -3316,7 +3316,7 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
                 pullArtifact: (spec) => {
                   pulls.push(spec);
                   return pullImage(api, spec.ref, {
-                    ctx: { providerId: "test", remediation: "Check the test engine." },
+                    ctx: { providerId: "test", remediation: "Check the test engine.", env: {} },
                     dialect: libpodPullDialect,
                     ...spec,
                   }).pipe(Effect.map((image) => ({ ...image, providerId: ProviderId.make("test") })));

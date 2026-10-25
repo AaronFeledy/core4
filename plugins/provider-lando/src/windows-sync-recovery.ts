@@ -56,6 +56,7 @@ export const quiesceRetainedWindowsSyncWriters = Effect.fn("ProviderLando.quiesc
     plan: AppPlan,
     targets: ReadonlyArray<RetainedWindowsSyncTarget>,
   ): Effect.fn.Return<void, ProviderError> {
+    const ctx = { ...context, env: { ...process.env } };
     const sessions = verifiedFileSyncSessions(plan);
     if (plan.provider !== "lando" || sessions === undefined)
       return yield* Effect.fail(failure("The retained accelerated mount plan cannot be verified."));
@@ -163,7 +164,7 @@ export const quiesceRetainedWindowsSyncWriters = Effect.fn("ProviderLando.quiesc
     });
     const writers = yield* inventory;
     for (const writer of writers) {
-      yield* removeObservedContainer(writer, { api, ctx: context });
+      yield* removeObservedContainer(writer, { api, ctx });
     }
     const remaining = yield* inventory;
     if (remaining.length !== 0)

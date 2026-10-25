@@ -62,7 +62,11 @@ beforeEach(() => {
 });
 
 describe.each(["docker", "lando", "podman"] as const)("%s service lifecycle", (providerName) => {
-  const ctx = { providerId: providerName, remediation: `Repair ${providerName} and retry.` } as const;
+  const ctx = {
+    providerId: providerName,
+    remediation: `Repair ${providerName} and retry.`,
+    env: {},
+  } as const;
 
   for (const action of lifecycleActions) {
     test(`issues only POST /${action} for the planned container`, async () => {
@@ -117,6 +121,7 @@ describe("service lifecycle failures", () => {
   const ctx = {
     providerId: "podman",
     remediation: "Repair Podman and retry.",
+    env: {},
     get redactor() {
       return Effect.runSync(fixtureRedaction.forProfile("secrets"));
     },
@@ -223,7 +228,7 @@ describe.each(["docker", "lando", "podman"] as const)("%s exact service lifecycl
         target,
         { containerId: "sha256:inspected-container", imageIdentity: "sha256:inspected-image" },
         "start",
-        { api, ctx: { providerId: providerName, remediation: `Repair ${providerName} and retry.` } },
+        { api, ctx: { providerId: providerName, remediation: `Repair ${providerName} and retry.`, env: {} } },
       ),
     );
 

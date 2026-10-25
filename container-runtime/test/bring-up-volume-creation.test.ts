@@ -32,7 +32,7 @@ test.each([false, true])(
     const receipts: string[] = [];
     const result = await Effect.runPromise(
       bringUp(plan, {
-        ctx: { providerId: "podman", remediation: "test" },
+        ctx: { providerId: "podman", remediation: "test", env: {} },
         onVolumeCreated: (fact) =>
           Effect.sync(() => {
             receipts.push(fact.nativeName);
@@ -98,7 +98,7 @@ test.each([false, true])(
     const result = await Effect.runPromise(
       Effect.result(
         bringUp(servicePlan, {
-          ctx: { providerId: "podman", remediation: "test" },
+          ctx: { providerId: "podman", remediation: "test", env: {} },
           api: {
             request: (request) =>
               Effect.sync(() => {
@@ -156,7 +156,7 @@ test.each(["fails", "interrupts"] as const)(
     });
     const exit = await Effect.runPromiseExit(
       bringUp(plan, {
-        ctx: { providerId: "podman", remediation: "test" },
+        ctx: { providerId: "podman", remediation: "test", env: {} },
         onVolumeCreated: () => (outcome === "fails" ? Effect.fail(failure) : Effect.interrupt),
         api: {
           request: (request) =>

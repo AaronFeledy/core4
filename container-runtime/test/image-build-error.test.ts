@@ -19,7 +19,7 @@ test.each(["error", "errorDetail"] as const)(
       Effect.flip(
         requestContainerBuild({
           request,
-          options: { providerId: "docker", api: { request } },
+          options: { providerId: "docker", api: { request }, sourceEnv: {} },
           path: "/build",
           tag: "lando-web",
           stdin: (async function* () {})(),
@@ -46,7 +46,7 @@ test.each([
     Effect.flip(
       requestContainerBuild({
         request,
-        options: { providerId: "docker", api: { request } },
+        options: { providerId: "docker", api: { request }, sourceEnv: {} },
         path: "/build",
         tag: "lando-web",
         stdin: (async function* () {})(),
@@ -70,7 +70,7 @@ test.each(["error", "errorDetail"] as const)("projects a redacted daemon %s fram
     Effect.flip(
       requestContainerBuild({
         request,
-        options: { providerId: "docker", api: { request } },
+        options: { providerId: "docker", api: { request }, sourceEnv: {} },
         path: "/build",
         tag: "lando-web",
         stdin: (async function* () {})(),
@@ -111,7 +111,7 @@ test("redacts before bounding a long daemon diagnostic", async () => {
     Effect.flip(
       requestContainerBuild({
         request,
-        options: { providerId: "podman", api: { request } },
+        options: { providerId: "podman", api: { request }, sourceEnv: {} },
         path: "/build",
         tag: "lando-web",
         stdin: (async function* () {})(),
@@ -144,7 +144,7 @@ test.each([
     Effect.flip(
       requestContainerBuild({
         request,
-        options: { providerId: "docker", api: { request } },
+        options: { providerId: "docker", api: { request }, sourceEnv: {} },
         path: "/build",
         tag: "lando-web",
         stdin: (async function* () {})(),
@@ -175,7 +175,7 @@ test("preserves unavailable classification when the build socket is down", async
     Effect.flip(
       requestContainerBuild({
         request,
-        options: { providerId: "podman", api: { request } },
+        options: { providerId: "podman", api: { request }, sourceEnv: {} },
         path: "/build",
         tag: "lando-web",
         stdin: (async function* () {})(),

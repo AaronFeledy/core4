@@ -27,7 +27,7 @@ const resolveHelper = Effect.succeed({
   digest: "1".repeat(64),
 });
 const accessFor = (api: DataPlaneApiClient) =>
-  scopedDockerLogFileAccess({ providerId: "test", container: "service", api, resolveHelper });
+  scopedDockerLogFileAccess({ providerId: "test", container: "service", api, resolveHelper, sourceEnv: {} });
 
 async function* inputLines(input: AsyncIterable<Uint8Array> | undefined): AsyncGenerator<string> {
   if (input === undefined) return;
@@ -164,6 +164,7 @@ describe("Docker-compatible scoped log file access", () => {
         Effect.gen(function* () {
           const access = yield* scopedDockerLogFileAccess({
             providerId: "test",
+            sourceEnv: {},
             container: "service",
             api: fake.api,
             resolveHelper: Effect.tap(resolveHelper, () =>

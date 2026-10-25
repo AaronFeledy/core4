@@ -16,7 +16,7 @@ const decoder = new TextDecoder();
 const stderrFrameError = (
   providerId: string,
   payload: StreamBytes,
-  redactor?: Redactor,
+  redactor: Redactor,
 ): ProviderInternalError =>
   new ProviderInternalError({
     providerId,
@@ -25,7 +25,7 @@ const stderrFrameError = (
     details: redactString(decoder.decode(payload), redactor),
   });
 
-export const makeHelperExecOutputDecoder = (providerId: string, redactor?: Redactor) => {
+export const makeHelperExecOutputDecoder = (providerId: string, redactor: Redactor) => {
   const decodeAttach = makeAttachDecoder();
   let mode: OutputMode = "unknown";
 

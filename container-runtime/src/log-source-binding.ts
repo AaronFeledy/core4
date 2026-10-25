@@ -15,6 +15,8 @@ export type ResolveContainerHelper = (
 
 interface ProviderLogSourceOptions {
   readonly redactor?: Redactor;
+  /** Explicit host env snapshot for log-file helper redaction. Never process.env. */
+  readonly sourceEnv: Readonly<Record<string, string | undefined>>;
   readonly providerId: string;
   readonly logFileAccess: LogFileAccess | undefined;
   /** The container platform; with `resolveHelper` it enables file sources without reading helper bytes. */
@@ -49,6 +51,7 @@ export const makeProviderLogSourceBinding = (options: ProviderLogSourceOptions) 
         api,
         container,
         resolveHelper: resolveHelper(helperTarget),
+        sourceEnv: options.sourceEnv,
         ...(options.redactor === undefined ? {} : { redactor: options.redactor }),
       }),
     };

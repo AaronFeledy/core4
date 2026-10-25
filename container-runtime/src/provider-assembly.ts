@@ -57,7 +57,7 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
           providerId: options.ctx.providerId,
           api: options.api,
           capabilities: options.capabilities,
-          redactDetails: options.redactDetails,
+          redactor: options.redactor,
           ...(options.pullHelperImage === undefined ? {} : { pullHelperImage: options.pullHelperImage }),
           ...(options.volumeCreationLabels === undefined
             ? {}

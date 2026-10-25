@@ -1,7 +1,8 @@
-import { Effect, Predicate } from "effect";
+import { Effect, Option, Predicate } from "effect";
 
-import { createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { ArtifactBuildError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
 import { parseNdjsonLines } from "./engine-json.ts";
 
 export interface ContainerBuildHttpRequest {
@@ -25,6 +26,8 @@ export interface ContainerBuildHttpApi {
 export interface ContainerBuildOptions {
   readonly providerId: string;
   readonly api: ContainerBuildHttpApi;
+  /** Explicit host env snapshot for heuristic secret collection. Never process.env. */
+  readonly sourceEnv: Readonly<Record<string, string | undefined>>;
 }
 
 type BuildRequestInput = {
@@ -39,31 +42,42 @@ type BuildRequestInput = {
 const redactBuildQuery = (value: string): string =>
   value.replace(/(buildargs=)(?:[^&\s]+)/giu, "$1[redacted]");
 
-const redactSecrets = (value: string, secretValues: ReadonlyArray<string>): string =>
-  redactBuildQuery(
-    createStandaloneRedactor("secrets", {
-      authoritativeTokens: secretValues.flatMap((secret) => [secret, encodeURIComponent(secret)]),
-    }).redactString(value),
-  );
+/** Build once per request; never construct a redactor per log/error line. */
+const buildSecretsRedactor = Effect.fnUntraced(function* (
+  secretValues: ReadonlyArray<string>,
+  sourceEnv: Readonly<Record<string, string | undefined>>,
+) {
+  const redactionOptions = {
+    sourceEnv,
+    authoritativeTokens: secretValues.flatMap((secret) => [secret, encodeURIComponent(secret)]),
+  };
+  const service = yield* Effect.serviceOption(RedactionService);
+  return Option.isSome(service)
+    ? yield* service.value.forProfile("secrets", redactionOptions)
+    : createStandaloneRedactor("secrets", redactionOptions);
+});
 
-const sanitizeBuildErrorValue = (value: unknown, secretValues: ReadonlyArray<string>): unknown => {
-  if (typeof value === "string") return redactSecrets(value, secretValues);
-  if (Array.isArray(value)) return value.map((entry) => sanitizeBuildErrorValue(entry, secretValues));
+const redactSecrets = (value: string, redactor: Redactor): string =>
+  redactBuildQuery(redactor.redactString(value));
+
+const sanitizeBuildErrorValue = (value: unknown, redactor: Redactor): unknown => {
+  if (typeof value === "string") return redactSecrets(value, redactor);
+  if (Array.isArray(value)) return value.map((entry) => sanitizeBuildErrorValue(entry, redactor));
   if (!Predicate.isObject(value)) return value;
   return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [key, sanitizeBuildErrorValue(entry, secretValues)]),
+    Object.entries(value).map(([key, entry]) => [key, sanitizeBuildErrorValue(entry, redactor)]),
   );
 };
 
 const sanitizeProviderError = (
   cause: ProviderUnavailableError | ProviderInternalError,
-  secretValues: ReadonlyArray<string>,
+  redactor: Redactor,
 ): ProviderUnavailableError | ProviderInternalError => {
   const input = {
     providerId: cause.providerId,
     operation: cause.operation,
-    message: redactSecrets(cause.message, secretValues),
-    details: cause.details === undefined ? undefined : sanitizeBuildErrorValue(cause.details, secretValues),
+    message: redactSecrets(cause.message, redactor),
+    details: cause.details === undefined ? undefined : sanitizeBuildErrorValue(cause.details, redactor),
     remediation: cause.remediation,
   };
   return cause instanceof ProviderInternalError
@@ -73,11 +87,11 @@ const sanitizeProviderError = (
 
 const mapRequestError = (
   options: ContainerBuildOptions,
-  secretValues: ReadonlyArray<string>,
+  redactor: Redactor,
   cause: ProviderUnavailableError | ProviderInternalError,
 ): ProviderUnavailableError | ProviderInternalError =>
   cause instanceof ProviderUnavailableError || cause instanceof ProviderInternalError
-    ? sanitizeProviderError(cause, secretValues)
+    ? sanitizeProviderError(cause, redactor)
     : new ProviderUnavailableError({
         providerId: options.providerId,
         operation: "buildArtifact",
@@ -115,58 +129,61 @@ const parseDigest = (body: string): string | undefined => {
 export const requestContainerBuild = (
   input: BuildRequestInput,
 ): Effect.Effect<string | undefined, ArtifactBuildError | ProviderUnavailableError | ProviderInternalError> =>
-  input
-    .request({
-      method: "POST",
-      path: input.path,
-      headers: { "Content-Type": "application/x-tar" },
-      stdin: input.stdin,
-    })
-    .pipe(
-      Effect.mapError((cause) => mapRequestError(input.options, input.secretValues, cause)),
-      Effect.flatMap(
-        (response): Effect.Effect<string | undefined, ProviderUnavailableError | ArtifactBuildError> => {
-          if (response.status < 200 || response.status >= 300) {
+  Effect.gen(function* () {
+    const redactor = yield* buildSecretsRedactor(input.secretValues, input.options.sourceEnv);
+    return yield* input
+      .request({
+        method: "POST",
+        path: input.path,
+        headers: { "Content-Type": "application/x-tar" },
+        stdin: input.stdin,
+      })
+      .pipe(
+        Effect.mapError((cause) => mapRequestError(input.options, redactor, cause)),
+        Effect.flatMap(
+          (response): Effect.Effect<string | undefined, ProviderUnavailableError | ArtifactBuildError> => {
+            if (response.status < 200 || response.status >= 300) {
+              return Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: input.options.providerId,
+                  operation: "buildArtifact",
+                  message: `Container image build failed with HTTP ${response.status}.`,
+                  details: { status: response.status },
+                }),
+              );
+            }
+            const streamError = buildStreamError(response.body);
+            if (streamError === undefined) return Effect.succeed(parseDigest(response.body));
+            const diagnostic = redactSecrets(streamError, redactor);
+            const boundedDiagnostic = diagnostic.length > 4096 ? `${diagnostic.slice(0, 4095)}…` : diagnostic;
+            const tag = redactSecrets(input.tag, redactor).slice(0, 256);
             return Effect.fail(
-              new ProviderUnavailableError({
+              new ArtifactBuildError({
                 providerId: input.options.providerId,
                 operation: "buildArtifact",
-                message: `Container image build failed with HTTP ${response.status}.`,
-                details: { status: response.status },
+                message: `Container image build failed: ${boundedDiagnostic}`,
+                details: { message: boundedDiagnostic, tag },
+                remediation: `Check the failing Containerfile step for image ${tag}, correct it, and rebuild.`,
               }),
             );
-          }
-          const streamError = buildStreamError(response.body);
-          if (streamError === undefined) return Effect.succeed(parseDigest(response.body));
-          const diagnostic = redactSecrets(streamError, input.secretValues);
-          const boundedDiagnostic = diagnostic.length > 4096 ? `${diagnostic.slice(0, 4095)}…` : diagnostic;
-          const tag = redactSecrets(input.tag, input.secretValues).slice(0, 256);
-          return Effect.fail(
-            new ArtifactBuildError({
-              providerId: input.options.providerId,
-              operation: "buildArtifact",
-              message: `Container image build failed: ${boundedDiagnostic}`,
-              details: { message: boundedDiagnostic, tag },
-              remediation: `Check the failing Containerfile step for image ${tag}, correct it, and rebuild.`,
-            }),
-          );
-        },
-      ),
-      Effect.flatMap((digest) =>
-        input.request({ method: "GET", path: `/images/${encodeURIComponent(input.tag)}/json` }).pipe(
-          Effect.mapError((cause) => mapRequestError(input.options, input.secretValues, cause)),
-          Effect.flatMap((response) =>
-            response.status >= 200 && response.status < 300
-              ? Effect.succeed(digest)
-              : Effect.fail(
-                  new ProviderUnavailableError({
-                    providerId: input.options.providerId,
-                    operation: "buildArtifact",
-                    message: `Built image tag ${input.tag} was not available through the container API.`,
-                    details: { status: response.status, tag: input.tag },
-                  }),
-                ),
+          },
+        ),
+        Effect.flatMap((digest) =>
+          input.request({ method: "GET", path: `/images/${encodeURIComponent(input.tag)}/json` }).pipe(
+            Effect.mapError((cause) => mapRequestError(input.options, redactor, cause)),
+            Effect.flatMap((response) =>
+              response.status >= 200 && response.status < 300
+                ? Effect.succeed(digest)
+                : Effect.fail(
+                    new ProviderUnavailableError({
+                      providerId: input.options.providerId,
+                      operation: "buildArtifact",
+                      message: `Built image tag ${input.tag} was not available through the container API.`,
+                      details: { status: response.status, tag: input.tag },
+                    }),
+                  ),
+            ),
           ),
         ),
-      ),
-    );
+      );
+  });

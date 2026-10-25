@@ -154,7 +154,7 @@ test("packs verified CAs and renders COPY before the owning trust-store RUN", as
           plan: plan(service({ kind: "ref", ref: "debian:12" }, [ca])),
           buildKey: "ca-ref",
         },
-        { providerId, api },
+        { providerId, api, sourceEnv: {} },
       ),
     );
 
@@ -212,7 +212,7 @@ test("adds CA files only to the derived request for authored build plus steps", 
           ),
           buildKey: "ca-build",
         },
-        { providerId, api },
+        { providerId, api, sourceEnv: {} },
       ),
     );
 
@@ -259,7 +259,7 @@ test.each([
             plan: plan(service({ kind: "ref", ref: "debian:12" }, [ca])),
             buildKey: "ca-failure",
           },
-          { providerId, api },
+          { providerId, api, sourceEnv: {} },
         ),
       ),
     );
