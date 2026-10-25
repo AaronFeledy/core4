@@ -1,3 +1,5 @@
+import { type DiscoveryOperation, runDiscoveryOperation } from "@lando/landofile/operation-scope";
+import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
 import { Cause, Effect, Exit, Layer } from "effect";
 
 import {
@@ -504,6 +506,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 export interface RunCliOptions {
   readonly argv: ReadonlyArray<string>;
   readonly rootUrl: string;
+  readonly discovery?: DiscoveryOperation;
 }
 
-export const runCli = (options: RunCliOptions): Promise<void> => runCompiledCli(options.argv);
+export const runCli = (options: RunCliOptions): Promise<void> =>
+  runDiscoveryOperation(
+    options.discovery ?? { cwd: process.cwd(), resolver: makeAppDiscoveryResolver() },
+    () => runCompiledCli(options.argv),
+  );
