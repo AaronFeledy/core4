@@ -646,8 +646,10 @@ const byteStreamFromArchive = (
     maxPayloadBytes: MAX_DECOMPRESSED_ARCHIVE_BYTES,
   });
 
+type DataProvider = Effect.Effect<Context.Service.Shape<typeof RuntimeProvider>, DataTransferError>;
+
 const streamFromEndpoint = (
-  provider: Context.Service.Shape<typeof RuntimeProvider>,
+  selectedProvider: DataProvider,
   endpoint: DataEndpoint,
 ): Stream.Stream<
   Uint8Array,
@@ -659,6 +661,22 @@ const streamFromEndpoint = (
       return byteStreamFromHost(endpoint.path);
     case "hostArchive":
       return byteStreamFromArchive(endpoint.path, endpoint.format);
+    default:
+      return Stream.unwrap(
+        Effect.map(selectedProvider, (provider) => streamFromProvider(provider, endpoint)),
+      );
+  }
+};
+
+const streamFromProvider = (
+  provider: Context.Service.Shape<typeof RuntimeProvider>,
+  endpoint: Exclude<DataEndpoint, { readonly _tag: "hostPath" | "hostArchive" }>,
+): Stream.Stream<
+  Uint8Array,
+  ArchiveFormatError | DataTransferError | DataEndpointUnsupportedError,
+  Scope.Scope
+> => {
+  switch (endpoint._tag) {
     case "servicePath":
       if (provider.capabilities.serviceFileCopy !== "native") {
         return Stream.fail(
@@ -739,7 +757,7 @@ const streamFromEndpoint = (
 };
 
 const writeStreamToEndpoint = Effect.fnUntraced(function* (
-  provider: Context.Service.Shape<typeof RuntimeProvider>,
+  selectedProvider: DataProvider,
   spec: DataTransferSpec,
   body: Stream.Stream<
     Uint8Array,
@@ -792,7 +810,8 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         digest: staged.verified.sha256,
       };
     }
-    case "servicePath":
+    case "servicePath": {
+      const provider = yield* selectedProvider;
       if (provider.capabilities.serviceFileCopy !== "native")
         return yield* failUnsupported(spec.from, target, "native service file copy is unavailable");
       {
@@ -822,7 +841,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           digest: staged.verified.sha256,
         };
       }
-    case "volume":
+    }
+    case "volume": {
+      const provider = yield* selectedProvider;
       if (!provider.capabilities.ephemeralMounts)
         return yield* failUnsupported(spec.from, target, "ephemeral mounts are unavailable");
       {
@@ -873,7 +894,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           digest: staged.verified.sha256,
         };
       }
-    case "artifact":
+    }
+    case "artifact": {
+      const provider = yield* selectedProvider;
       if (!provider.capabilities.artifactImport)
         return yield* failUnsupported(spec.from, target, "artifact import is unavailable");
       {
@@ -909,7 +932,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           digest: staged.verified.sha256,
         };
       }
+    }
     case "serviceCmd": {
+      const provider = yield* selectedProvider;
       const staged = yield* stageVerifiedStream({
         body,
         scratchDir,
@@ -956,7 +981,7 @@ const failureDetail = (cause: Cause.Cause<unknown>): string => {
 };
 
 export const makeDataMoverService = (
-  provider: Context.Service.Shape<typeof RuntimeProvider>,
+  selectedProvider: DataProvider,
   events: DataMoverEvents,
   persistence: SnapshotPersistence,
 ): Context.Service.Shape<typeof DataMover> =>
@@ -996,13 +1021,19 @@ export const makeDataMoverService = (
           );
           return treeResult;
         }
+        const serviceCopy =
+          (spec.from._tag === "hostPath" && spec.to._tag === "servicePath") ||
+          (spec.from._tag === "servicePath" &&
+            (spec.to._tag === "hostPath" || spec.to._tag === "hostArchive"));
         const nativeServiceCopy =
-          provider.capabilities.serviceFileCopy === "native" &&
-          ((spec.from._tag === "hostPath" && spec.to._tag === "servicePath") ||
-            (spec.from._tag === "servicePath" &&
-              (spec.to._tag === "hostPath" || spec.to._tag === "hostArchive")));
-        const body = streamFromEndpoint(provider, spec.from);
-        const result = yield* writeStreamToEndpoint(provider, spec, body, persistence.paths.scratchDir);
+          serviceCopy && (yield* selectedProvider).capabilities.serviceFileCopy === "native";
+        const body = streamFromEndpoint(selectedProvider, spec.from);
+        const result = yield* writeStreamToEndpoint(
+          selectedProvider,
+          spec,
+          body,
+          persistence.paths.scratchDir,
+        );
         const adjusted = nativeServiceCopy ? { ...result, accelerated: true } : result;
         const progress: DataTransferProgress = {
           phase: "completed",
@@ -1063,7 +1094,7 @@ export const makeDataMoverService = (
       Stream.concat(
         Stream.make({ phase: "started" as const, transferredBytes: 0 }),
         Stream.unwrap(
-          makeDataMoverService(provider, events, persistence)
+          makeDataMoverService(selectedProvider, events, persistence)
             .transfer(spec)
             .pipe(
               Effect.map((result) =>
@@ -1077,6 +1108,7 @@ export const makeDataMoverService = (
         ),
       ),
     snapshot: Effect.fn("DataMover.snapshot")(function* (store, opts) {
+      const provider = yield* selectedProvider;
       if (opts?.volumeSnapshot === "native" && provider.capabilities.volumeSnapshot !== "native") {
         return yield* Effect.fail(
           new DataEndpointUnsupportedError({
@@ -1173,7 +1205,7 @@ export const makeDataMoverService = (
           const copyResult =
             native === undefined
               ? yield* writeStreamToEndpoint(
-                  provider,
+                  selectedProvider,
                   {
                     from: { _tag: "volume", app: store.app, store: store.store },
                     to: {
@@ -1183,7 +1215,11 @@ export const makeDataMoverService = (
                     },
                     overwrite: true,
                   },
-                  streamFromEndpoint(provider, { _tag: "volume", app: store.app, store: store.store }),
+                  streamFromEndpoint(selectedProvider, {
+                    _tag: "volume",
+                    app: store.app,
+                    store: store.store,
+                  }),
                   persistence.paths.scratchDir,
                 )
               : undefined;
@@ -1281,6 +1317,7 @@ export const makeDataMoverService = (
       );
     }),
     restore: Effect.fn("DataMover.restore")(function* (handle, store, opts) {
+      const provider = yield* selectedProvider;
       const info = yield* findSnapshotInfo(persistence, handle);
       if (info.native !== undefined && info.native.provider !== provider.id) {
         return yield* Effect.fail(
@@ -1343,7 +1380,7 @@ export const makeDataMoverService = (
           ),
         );
         return yield* writeStreamToEndpoint(
-          provider,
+          selectedProvider,
           {
             from: {
               _tag: "hostArchive",
@@ -1353,7 +1390,7 @@ export const makeDataMoverService = (
             to: { _tag: "volume", app: store.app, store: store.store },
             overwrite: true,
           },
-          streamFromEndpoint(provider, {
+          streamFromEndpoint(selectedProvider, {
             _tag: "hostArchive",
             path: absolutePath(staged.path),
             format: info.format ?? "tar",
@@ -1404,13 +1441,26 @@ export const makeDataMoverService = (
     resolveSnapshot: Effect.fn("DataMover.resolveSnapshot")((reference, scope) =>
       resolveSnapshotInfo(persistence, reference, scope),
     ),
-    ...orphanedSnapshotMethods({
-      provider,
-      storeIdentity: snapshotStoreIdentity(persistence),
-      index: listSnapshotInfos(persistence, {}),
-      legacyReferences: legacySnapshotReferences(persistence.paths),
-    }),
-    removeSnapshot: (handle) => removeCatalogSnapshot(persistence, provider, handle),
+    findOrphanedSnapshots: Effect.flatMap(
+      selectedProvider,
+      (provider) =>
+        orphanedSnapshotMethods({
+          provider,
+          storeIdentity: snapshotStoreIdentity(persistence),
+          index: listSnapshotInfos(persistence, {}),
+          legacyReferences: legacySnapshotReferences(persistence.paths),
+        }).findOrphanedSnapshots,
+    ),
+    removeOrphanedSnapshot: (artifact) =>
+      Effect.flatMap(selectedProvider, (provider) =>
+        orphanedSnapshotMethods({
+          provider,
+          storeIdentity: snapshotStoreIdentity(persistence),
+          index: listSnapshotInfos(persistence, {}),
+          legacyReferences: legacySnapshotReferences(persistence.paths),
+        }).removeOrphanedSnapshot(artifact),
+      ),
+    removeSnapshot: (handle) => removeCatalogSnapshot(persistence, selectedProvider, handle),
     pruneSnapshots: Effect.fn("DataMover.pruneSnapshots")((policy: PrunePolicy) =>
       listSnapshotInfos(persistence, policy.filter ?? {}).pipe(
         Effect.map((infos) => {
@@ -1433,7 +1483,9 @@ export const makeDataMoverService = (
         }),
         Effect.flatMap((remove) =>
           Effect.forEach(remove, (info) =>
-            removeCatalogSnapshot(persistence, provider, snapshotHandle(info)).pipe(Effect.as(info.id)),
+            removeCatalogSnapshot(persistence, selectedProvider, snapshotHandle(info)).pipe(
+              Effect.as(info.id),
+            ),
           ),
         ),
       ),
@@ -1443,7 +1495,7 @@ export const makeDataMoverService = (
 export const layer: Layer.Layer<
   DataMover,
   never,
-  RuntimeProvider | RuntimeProviderRegistry | PathsService | StateStore | EventService | RedactionService
+  RuntimeProviderRegistry | PathsService | StateStore | EventService | RedactionService
 > = Layer.suspend(() =>
   Layer.effect(
     DataMover,
@@ -1454,39 +1506,75 @@ export const layer: Layer.Layer<
       const eventService = yield* Effect.serviceOption(EventService);
       const redaction = yield* Effect.serviceOption(RedactionService);
       const events = yield* makeEvents(eventService, redaction);
-      const fallback = yield* RuntimeProvider;
       const persistence = { paths, stateStore, providerRegistry };
-      // Prefer the call-time RuntimeProvider so plugin commands can override
-      // the bootstrap stub. Fall back to the construction provider for
-      // callers that only provided it to this layer.
-      const service = () =>
-        Effect.serviceOption(RuntimeProvider).pipe(
-          Effect.map((option) =>
-            makeDataMoverService(
-              Option.getOrElse(option, () => fallback),
-              events,
-              persistence,
-            ),
+      const service = (app?: import("@lando/sdk/schema").AppId, providerId?: ProviderId) => {
+        const selected = Effect.gen(function* () {
+          // Explicit call-time bindings come from operations that already selected
+          // their provider. The bootstrap placeholder is never a selection.
+          const supplied = yield* Effect.serviceOption(RuntimeProvider);
+          if (Option.isSome(supplied) && supplied.value.id !== "stub") return supplied.value;
+          if (app === undefined) return yield* providerRegistry.select(providerId);
+          let uninspected: ProviderUnavailableError | undefined;
+          for (const id of yield* providerRegistry.list) {
+            const inspected = yield* Effect.result(
+              providerRegistry
+                .select(id)
+                .pipe(Effect.flatMap((candidate) => candidate.appliedPlans ?? Effect.succeed([]))),
+            );
+            if (inspected._tag === "Failure") {
+              uninspected ??= new ProviderUnavailableError({
+                providerId: id,
+                operation: "select",
+                message: `Could not inspect applied plans on provider ${id} for app ${app}: ${inspected.failure.message}`,
+                remediation: `Inspect provider ${id} with lando doctor --provider=${id} and repair it before transferring app ${app}'s data.`,
+                cause: inspected.failure,
+              });
+              continue;
+            }
+            const plan = inspected.success.find((plan) => plan.id === app);
+            if (plan !== undefined) return yield* providerRegistry.select(plan);
+          }
+          if (uninspected !== undefined) return yield* Effect.fail(uninspected);
+          return yield* Effect.fail(
+            new ProviderUnavailableError({
+              providerId: "unknown",
+              operation: "select",
+              message: `No applied provider plan was found for app ${app}.`,
+              remediation: `Run lando start in app ${app}'s root before transferring its runtime data.`,
+            }),
+          );
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new DataTransferError({
+                message: cause.message,
+                operation: "select",
+                cause,
+                remediation:
+                  "remediation" in cause && typeof cause.remediation === "string"
+                    ? cause.remediation
+                    : "Run lando setup to install a provider, then lando doctor --all to inspect its availability.",
+              }),
           ),
         );
+        return makeDataMoverService(selected, events, persistence);
+      };
       return DataMover.of({
-        transfer: (spec) => service().pipe(Effect.flatMap((mover) => mover.transfer(spec))),
+        transfer: (spec) => service(appFromEndpoint(spec.from) ?? appFromEndpoint(spec.to)).transfer(spec),
         volumeInitialization: Effect.fn("DataMover.volumeInitialization")((identity) =>
           sharedVolumeInitialization(stateStore, identity),
         ),
         transferStream: (spec) =>
-          Stream.unwrap(service().pipe(Effect.map((mover) => mover.transferStream(spec)))),
-        snapshot: (store, opts) => service().pipe(Effect.flatMap((mover) => mover.snapshot(store, opts))),
-        restore: (handle, store, opts) =>
-          service().pipe(Effect.flatMap((mover) => mover.restore(handle, store, opts))),
-        listSnapshots: (filter) => service().pipe(Effect.flatMap((mover) => mover.listSnapshots(filter))),
-        resolveSnapshot: (reference, scope) =>
-          service().pipe(Effect.flatMap((mover) => mover.resolveSnapshot(reference, scope))),
-        findOrphanedSnapshots: service().pipe(Effect.flatMap((mover) => mover.findOrphanedSnapshots)),
+          service(appFromEndpoint(spec.from) ?? appFromEndpoint(spec.to)).transferStream(spec),
+        snapshot: (store, opts) => service(store.app).snapshot(store, opts),
+        restore: (handle, store, opts) => service(store.app).restore(handle, store, opts),
+        listSnapshots: (filter) => service().listSnapshots(filter),
+        resolveSnapshot: (reference, scope) => service().resolveSnapshot(reference, scope),
+        findOrphanedSnapshots: Effect.suspend(() => service().findOrphanedSnapshots),
         removeOrphanedSnapshot: (artifact) =>
-          service().pipe(Effect.flatMap((mover) => mover.removeOrphanedSnapshot(artifact))),
-        removeSnapshot: (handle) => service().pipe(Effect.flatMap((mover) => mover.removeSnapshot(handle))),
-        pruneSnapshots: (policy) => service().pipe(Effect.flatMap((mover) => mover.pruneSnapshots(policy))),
+          service(undefined, ProviderId.make(artifact.ref.provider)).removeOrphanedSnapshot(artifact),
+        removeSnapshot: (handle) => service().removeSnapshot(handle),
+        pruneSnapshots: (policy) => service().pruneSnapshots(policy),
       });
     }),
   ),
