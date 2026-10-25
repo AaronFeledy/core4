@@ -389,7 +389,12 @@ const mapVerifiedError = (error: VerifiedStreamError, spec: DataTransferSpec) =>
 };
 
 const realpathNearestExisting = async (path: string): Promise<string> => {
-  const found = await findRealpathAncestor(path, (candidate) => realpath(candidate).catch(() => null));
+  const found = await findRealpathAncestor(path, (candidate) =>
+    realpath(candidate).catch((cause: unknown) => {
+      if (errnoCode(cause) === "ENOENT") return null;
+      throw cause;
+    }),
+  );
   if (found === null) throw new Error(`No existing ancestor for ${path}`);
   return found.realAncestor;
 };

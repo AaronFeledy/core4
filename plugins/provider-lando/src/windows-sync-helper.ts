@@ -98,12 +98,13 @@ const parse = (body: string): JsonRecord | undefined => {
   }
 };
 
-const failure = (operation: string, message: string): ProviderUnavailableError =>
+const failure = (operation: string, message: string, cause?: unknown): ProviderUnavailableError =>
   new ProviderUnavailableError({
     providerId: "lando",
     operation,
     message,
     remediation: REMEDIATION,
+    cause,
   });
 
 const request = (api: Api, input: EngineHttpRequest) =>
@@ -206,8 +207,8 @@ const matchesPinnedImage = Effect.fnUntraced(function* (api: Api, body: JsonReco
     method: "GET",
     path: `/images/${encodeURIComponent(image)}/json` as EngineHttpRequest["path"],
   }).pipe(
-    Effect.mapError(() =>
-      failure("syncHelper.image.inspect", "Podman image identity could not be verified."),
+    Effect.mapError((cause) =>
+      failure("syncHelper.image.inspect", "Podman image identity could not be verified.", cause),
     ),
   );
   if (inspected.status !== 200) return false;

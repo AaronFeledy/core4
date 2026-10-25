@@ -3,6 +3,7 @@ import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { type Server, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ProcessExecError } from "@lando/sdk/errors";
 import type { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import {
@@ -21,6 +22,19 @@ const restricted: Pick<GpgAgentDiscoveryOptions, "inspectPath" | "probeRestricte
   inspectPath: async () => "socket",
   probeRestricted: async () => "restricted",
 };
+
+test("retains the gpgconf launch failure as the unavailable cause", async () => {
+  const cause = new ProcessExecError({
+    cmd: "gpgconf",
+    message: "gpgconf could not launch.",
+    remediation: "Check executable permissions for gpgconf.",
+  });
+  const result = await Effect.runPromise(
+    discoverHostGpgAgent({ runner: { run: () => Effect.fail(cause) }, launch: false }).pipe(Effect.result),
+  );
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) expect(result.failure.cause).toBe(cause);
+});
 const fakeAgent = (reply: string) =>
   createServer((socket) => {
     socket.write("OK Pleased to meet you\n");

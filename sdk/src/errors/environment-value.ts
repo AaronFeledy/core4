@@ -32,6 +32,9 @@ export class PlanReplanRequiredError extends Schema.TaggedError<PlanReplanRequir
       description: "Historical plan creation rejection discriminator.",
     }),
     providerId: Schema.String.annotate({ description: "Provider asked to create or recreate services." }),
+    cause: Schema.optional(Schema.Unknown).annotate({
+      description: "Failure preventing applied-plan verification.",
+    }),
     operation: Schema.String.annotate({
       description: "Creation operation rejected by the eligibility gate.",
     }),

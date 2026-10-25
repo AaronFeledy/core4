@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { authoredInvocationSites, compileInvocationSites } from "@lando/landofile/compiled-sites";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
-import { Effect } from "effect";
+import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Effect, Result } from "effect";
 import { resolveConnectionClientTask } from "../../src/planner/connection-client-task.ts";
 import {
   attachEffectiveTooling,
@@ -11,6 +13,34 @@ import {
 } from "../../src/planner/effective-tooling.ts";
 import { resolveToolingTaskShape } from "../../src/tooling/step-runner.ts";
 import { appliedClientFixture } from "../operations/applied-client-fixture.ts";
+
+test("retains the provider lookup failure when refusing an applied connection client", async () => {
+  const fixture = appliedClientFixture();
+  const cause = new ProviderUnavailableError({
+    providerId: "test",
+    operation: "appliedPlansFor",
+    message: "Applied state cannot be inspected.",
+    remediation: "Restore access to provider state before retrying the database client.",
+  });
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      return yield* resolveConnectionClientTask({
+        plan: fixture.plan,
+        name: "psql",
+        task: {},
+        sites: [],
+      }).pipe(
+        Effect.provideService(RuntimeProviderRegistry, {
+          ...registry,
+          appliedPlansFor: () => Effect.fail(cause),
+        }),
+      );
+    }).pipe(Effect.provide(fixture.layer), Effect.result),
+  );
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) expect(result.failure.cause).toBe(cause);
+});
 
 test("winning generated client provenance survives attachment without credentials or authored overrides", () => {
   const services: Parameters<typeof connectionClientOwners>[0]["services"] = [

@@ -138,6 +138,7 @@ for (const agent of cases) {
       expect(result.failure).toMatchObject({
         _tag: `${agent.label === "SSH" ? "Ssh" : "Gpg"}AgentTransportError`,
         stage: "broker",
+        cause: loadFailure,
         message: `Unable to resolve the current ${agent.label} agent configuration.`,
         remediation: "Fix the app Landofile and retry lando start.",
       });

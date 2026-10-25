@@ -107,10 +107,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
 
   const stopSelected = Effect.forEach(
     [...services].reverse(),
-    (service) =>
-      provider
-        .stop({ app: plan.id, service: service.name, plan })
-        .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void)),
+    (service) => provider.stop({ app: plan.id, service: service.name, plan }),
     { discard: true },
   );
   yield* markStartMutation(target.plan);

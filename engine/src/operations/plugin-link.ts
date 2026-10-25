@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { lstat, mkdir, readlink, rename, rm, symlink } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 
-import { PluginManifestError } from "@lando/sdk/errors";
+import { PluginManifestError, isErrnoCode } from "@lando/sdk/errors";
 
 import {
   readInstalledPluginRegistry,
@@ -80,7 +80,10 @@ export const assertInsidePluginsRoot = (pluginsRoot: string, target: string, plu
 };
 
 const removeRegistrySymlink = async (path: string): Promise<void> => {
-  const stats = await lstat(path).catch(() => undefined);
+  const stats = await lstat(path).catch((cause: unknown) => {
+    if (isErrnoCode(cause, "ENOENT")) return undefined;
+    throw cause;
+  });
   if (stats?.isSymbolicLink() === true) await rm(path, { force: true });
 };
 
@@ -214,7 +217,10 @@ export const revertPluginLink = async (input: RevertPluginLinkInput): Promise<Re
   const registry = await readInstalledPluginRegistry(pluginsRoot);
   const registryEntry = resolve(pluginsRoot, name);
   assertInsidePluginsRoot(pluginsRoot, registryEntry, name);
-  const stats = await lstat(registryEntry).catch(() => undefined);
+  const stats = await lstat(registryEntry).catch((cause: unknown) => {
+    if (isErrnoCode(cause, "ENOENT")) return undefined;
+    throw cause;
+  });
   const isLinkedSymlink = stats?.isSymbolicLink() === true;
   const lockedState = await readLinkedState(pluginsRoot);
   const lockedLinked = lockedState[name]?.source === "linked";
