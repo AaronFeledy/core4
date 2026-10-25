@@ -138,12 +138,11 @@ When a service type fails to resolve, lint reports that failure and skips the ev
 
 ## Read reserved tooling names
 
-`run`, `scratch`, and every `scratch:*` name belong to scratch apps. A tooling task with one of those names is a `landofile.tooling` finding at `["tooling", "<name>"]`, whether it comes from your Landofile, a tooling include namespaced `scratch`, or a service type. The same rule covers a task whose brackets would land on a reserved event: a task named `start` would bind `pre-start`, and one named `pull` would bind the `post-pull` sync hook. `lando start` rejects the same tasks, and `commandAliases.custom` can't hand those names to a task. A task you wrote points `source` at your `tooling:` entry; rename it. A service type's task points `source` at that service's `type`; drop it by setting `disabled: true` on that name under your `tooling:`.
+`run`, `scratch`, and every `scratch:*` name belong to scratch apps. A tooling task with one of those names is a `landofile.tooling` finding at `["tooling", "<name>"]`, whether it comes from your Landofile, a tooling include namespaced `scratch`, or a service type. The same rule covers a task whose brackets would land on a reserved event: a task named `start` would bind `pre-start`, and one named `pull` would bind the `post-pull` sync hook. `lando start` rejects the same tasks, and `commandAliases.custom` can't hand those names to a task. A task you wrote points `source` at your `tooling:` entry; rename it. A service type's task points `source` at that service's `type`; drop it by setting `tooling.<name>: false`.
 
 ```yaml
 tooling:
-  run:
-    disabled: true
+  run: false
 ```
 
 ## Run it from doctor
