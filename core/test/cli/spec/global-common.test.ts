@@ -78,7 +78,7 @@ test.each([
     services: {},
     withRemediation: true,
     message: "meta:global:start: service nope is not in the global app plan.",
-    remediation: undefined,
+    remediation: "Add service nope to the Landofile, or pick an existing service name.",
   },
   {
     services,
@@ -90,7 +90,7 @@ test.each([
     services,
     withRemediation: false,
     message: "meta:global:info: service nope is not in the global app plan (available: mail, proxy).",
-    remediation: undefined,
+    remediation: "Use one of the available services (mail, proxy).",
   },
 ])("preserves the error fields with remediation=$withRemediation", (fixture) => {
   const commandId = fixture.withRemediation ? "meta:global:start" : "meta:global:info";
@@ -104,7 +104,7 @@ test.each([
   expect(result.tool).toBe(commandId);
   expect(result.message).toBe(fixture.message);
   expect(result.remediation).toBe(fixture.remediation);
-  expect(Object.hasOwn(result, "remediation")).toBe(fixture.remediation !== undefined);
+  expect(result.remediation.trim().length).toBeGreaterThan(0);
 });
 
 test.each([

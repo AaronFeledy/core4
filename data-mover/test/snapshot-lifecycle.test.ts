@@ -155,7 +155,12 @@ test("missing recording provider leaves the snapshot listed", () =>
       ...f.registry,
       select: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "A", message: "offline", operation: "select" }),
+          new ProviderUnavailableError({
+            providerId: "A",
+            message: "offline",
+            operation: "select",
+            remediation: "Install or start the `A` provider and confirm it can perform `select`.",
+          }),
         ),
     });
     const mover = f.mover(f.provider({ id: "B" }), f.stateStore, registry);

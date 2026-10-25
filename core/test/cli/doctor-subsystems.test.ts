@@ -14,16 +14,16 @@ import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-stat
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import { HOST_PROXY_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
 import {
-  DefaultSubsystemDoctorLayer,
   type SubsystemDoctorResult,
   renderSubsystemDoctorResult,
   renderSubsystemDoctorResultAsNdjson,
   subsystemDoctor,
 } from "../../src/cli/commands/doctor-subsystems.ts";
+import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.subsystems.ndjson");
 
-const EXPECTED_SUBSYSTEMS = ["router", "certs", "ssh", "healthcheck", "scanner", "host-proxy"] as const;
+const EXPECTED_SUBSYSTEMS = ["router", "certs", "ssh", "host-proxy"] as const;
 
 const dnsLayer = (addresses: ReadonlyArray<string>) =>
   Layer.succeed(HostDnsResolver, HostDnsResolver.of({ lookup: () => Effect.succeed(addresses) }));
@@ -230,11 +230,11 @@ describe("meta:doctor subsystem checks", () => {
 
     // Then
     const certs = result.checks.find((check) => check.name === "certs");
-    expect(certs).toMatchObject({
-      status: "pass",
-      severity: "info",
-      context: { subsystem: "certs", subsystemId: "mkcert", ready: "true" },
-      solutions: [],
+    expect(certs).toBeUndefined();
+    expect(result.skipped).toContainEqual({
+      section: "certs",
+      status: "skipped",
+      reason: expect.any(String),
     });
   });
 
@@ -451,20 +451,18 @@ describe("meta:doctor subsystem checks", () => {
     }
   });
 
-  test("wires the real runProbe-backed healthcheck and scanner runners, not the unavailable stubs", async () => {
+  test("skips healthcheck and scanner when no service or endpoint was inspected", async () => {
     const result = await runDefault();
     const healthcheck = result.checks.find((check) => check.name === "healthcheck");
     const scanner = result.checks.find((check) => check.name === "scanner");
 
-    expect(healthcheck?.context.subsystemId).toBe("provider-exec");
-    expect(healthcheck?.context.ready).toBe("true");
-    expect(healthcheck?.status).toBe("pass");
-    expect(healthcheck?.solutions).toEqual([]);
-
-    expect(scanner?.context.subsystemId).toBe("http-probe");
-    expect(scanner?.context.ready).toBe("true");
-    expect(scanner?.status).toBe("pass");
-    expect(scanner?.solutions).toEqual([]);
+    expect(healthcheck).toBeUndefined();
+    expect(scanner).toBeUndefined();
+    expect(result.skipped?.map((entry) => entry.section)).toEqual(["healthcheck", "scanner"]);
+    for (const entry of result.skipped ?? []) {
+      expect(entry.status).toBe("skipped");
+      expect(entry.reason.length).toBeGreaterThan(0);
+    }
   });
 
   test("plain-text renderer surfaces every subsystem name, status, and remediation", async () => {

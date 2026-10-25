@@ -19,7 +19,7 @@ import { bringUp } from "../src/podman/bring-up.ts";
 import { StartFailureLogRedactor } from "../src/redact.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("bring-up-log-tail-app");
 const slug = "bring-up-log-tail-app";
 const webName = ServiceName.make("web");
@@ -184,6 +184,8 @@ const makeApi = (options: {
             providerId: "podman",
             operation: "logs",
             message: "logs unavailable",
+            remediation:
+              "Re-run the command after checking `podman` logs for the `logs` failure; if it persists, report the error with that operation name.",
           }),
         );
       }

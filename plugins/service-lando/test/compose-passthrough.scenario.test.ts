@@ -84,9 +84,25 @@ const makeProvider = (
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "buildArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "buildArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
+        }),
+      ),
     pullArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "pullArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "pullArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `pullArtifact`.",
+        }),
+      ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
@@ -112,7 +128,14 @@ const makeProvider = (
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.empty,
     inspect: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "inspect",
+          message: "n/a",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `inspect`.",
+        }),
+      ),
     list: () => Effect.succeed([]),
   };
   return { provider, calls };

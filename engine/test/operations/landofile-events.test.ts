@@ -201,6 +201,7 @@ describe("resolveLandofileEventPlan", () => {
       filePath: join(root, ".lando.yml"),
       line: 3,
       column: 1,
+      remediation: `Correct the YAML syntax in ${join(root, ".lando.yml")} at line 3.`,
     });
 
     // When
@@ -256,6 +257,7 @@ describe("resolveLandofileEventPlan", () => {
       filePath: join(root, ".lando.yml"),
       line: 1,
       column: 1,
+      remediation: `Correct the Landofile expression in ${join(root, ".lando.yml")}.`,
     });
 
     // When

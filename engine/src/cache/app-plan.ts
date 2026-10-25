@@ -133,6 +133,7 @@ export const readAppPlanSourceFingerprint = (
             key: "app-plan",
             path: appRoot,
             cause,
+            remediation: "Delete the Lando cache entry `app-plan` and re-run the command.",
           }),
       }),
     ),
@@ -253,6 +254,7 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
         key: "app-plan",
         path,
         cause,
+        remediation: "Delete the Lando cache entry `app-plan` and re-run the command.",
       }),
   }).pipe(
     Effect.catchIf(
@@ -283,6 +285,7 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
         key: "app-plan",
         path,
         decodeError: cause,
+        remediation: "Delete the Lando cache entry `app-plan` and re-run the command.",
       }),
   }).pipe(Effect.catch(() => Effect.succeed(null)));
 });

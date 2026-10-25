@@ -20,8 +20,12 @@ const userLandofileContent = [
   "",
 ].join("\n");
 
-const globalAppError = (operation: string, message: string, cause: unknown): GlobalAppError =>
-  new GlobalAppError({ message, operation, cause });
+const globalAppError = (
+  operation: string,
+  message: string,
+  cause: unknown,
+  remediation: string,
+): GlobalAppError => new GlobalAppError({ message, operation, cause, remediation });
 
 const sortedEntries = <T>(record: Readonly<Record<string, T>>): ReadonlyArray<readonly [string, T]> =>
   Object.entries(record).sort(([left], [right]) => left.localeCompare(right));
@@ -178,7 +182,12 @@ const makeGlobalAppService = (
         .mkdir(path)
         .pipe(
           Effect.mapError((cause) =>
-            globalAppError("ensureRoot", `Unable to create the global app directory at ${path}.`, cause),
+            globalAppError(
+              "ensureRoot",
+              `Unable to create the global app directory at ${path}.`,
+              cause,
+              `Ensure ${path} is writable, or set LANDO_USER_DATA_ROOT to a writable directory.`,
+            ),
           ),
         ),
     ),
@@ -195,6 +204,7 @@ const makeGlobalAppService = (
           "ensureUserLandofile",
           `Unable to inspect the global app overlay path at ${resolved.userLandofile}.`,
           cause,
+          `Ensure ${resolved.userLandofile} is accessible, then retry \`lando global:install\`.`,
         ),
       ),
     );
@@ -208,6 +218,7 @@ const makeGlobalAppService = (
               "ensureUserLandofile",
               `Unable to create the global app overlay file at ${resolved.userLandofile}.`,
               cause,
+              `Ensure the parent of ${resolved.userLandofile} is writable, then retry \`lando global:install\`.`,
             ),
           ),
         );
@@ -246,6 +257,7 @@ const makeGlobalAppService = (
               "regenerateDist",
               `Unable to create the global service bind-mount source at ${mountPath}.`,
               cause,
+              `Ensure ${mountPath} is writable under the global app root, then retry.`,
             ),
           ),
         );
@@ -260,6 +272,7 @@ const makeGlobalAppService = (
             "regenerateDist",
             `Unable to check the generated global app Landofile at ${resolved.distLandofile}.`,
             cause,
+            `Ensure ${resolved.distLandofile} is accessible, then retry \`lando global:install\`.`,
           ),
         ),
       );
@@ -273,6 +286,7 @@ const makeGlobalAppService = (
               "regenerateDist",
               `Unable to write the generated global app Landofile at ${resolved.distLandofile}.`,
               cause,
+              `Ensure ${resolved.distLandofile} is writable, then retry \`lando global:install\`.`,
             ),
           ),
         );
@@ -287,6 +301,7 @@ const makeGlobalAppService = (
             "regenerateDist",
             `Unable to read the generated global app Landofile at ${resolved.distLandofile}.`,
             cause,
+            `Ensure ${resolved.distLandofile} is readable, then retry \`lando global:install\`.`,
           ),
         ),
       );
@@ -328,6 +343,7 @@ const makeGlobalAppService = (
             "regenerateDist",
             `Unable to write the generated global app Landofile at ${resolved.distLandofile}.`,
             cause,
+            `Ensure ${resolved.distLandofile} is writable, then retry \`lando global:install\`.`,
           ),
         ),
       );
@@ -336,12 +352,22 @@ const makeGlobalAppService = (
 
   const ensureRunning = () =>
     Effect.fail(
-      globalAppError("ensureRunning", "Global service startup requires the app runtime.", undefined),
+      globalAppError(
+        "ensureRunning",
+        "Global service startup requires the app runtime.",
+        undefined,
+        "Provide the app runtime layer that implements GlobalAppService.ensureRunning.",
+      ),
     );
   return GlobalAppService.of({
     id: GLOBAL_APP_ID,
     providerId: Effect.fail(
-      globalAppError("providerId", "Global provider resolution requires the app runtime.", undefined),
+      globalAppError(
+        "providerId",
+        "Global provider resolution requires the app runtime.",
+        undefined,
+        "Provide the app runtime layer that implements GlobalAppService.providerId.",
+      ),
     ),
     root,
     ensureRoot,

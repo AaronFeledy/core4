@@ -16,7 +16,7 @@ import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("recreate-ports");
 const serviceName = ServiceName.make("web");
 const metadata = {

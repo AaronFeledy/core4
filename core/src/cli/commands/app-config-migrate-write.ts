@@ -18,7 +18,7 @@ export class AppConfigMigrateError extends Schema.TaggedError<AppConfigMigrateEr
       "confirmation-required",
       "encode-failed",
     ]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -28,7 +28,7 @@ export class AppConfigMigrateCommitError extends Schema.TaggedError<AppConfigMig
     message: Schema.String,
     phase: Schema.String,
     reason: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -82,7 +82,7 @@ export const writeRecipeMigration = Effect.fnUntraced(function* ({
         }),
     ),
   );
-  const { redactor } = yield* resolveSecretsRedactor();
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
   yield* makeManagedFileTransactions({
     journalRoot: () => resolveLandoRoots().userDataRoot,
     privateFileAccess,

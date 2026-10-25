@@ -54,36 +54,36 @@ export interface DetachedAgentRelayWorkerOptions extends TerminateAgentRelayWork
   readonly publish?: (session: AgentRelaySession) => Effect.Effect<void>;
 }
 
-const workerError = (cause: unknown) =>
-  cause instanceof SshAgentTransportError
-    ? cause
-    : new SshAgentTransportError({
-        ...(cause instanceof DetachedWorkerExitedBeforeReadyError ||
-        cause instanceof DetachedWorkerStartupError ||
-        cause instanceof DetachedWorkerLogError
-          ? {
-              message: causeMessage(cause),
-              remediation: `Inspect ${cause.logPath} for the worker crash.`,
-            }
-          : {
-              message: "Unable to start the SSH agent relay worker.",
-              remediation: "Inspect the agent-relay worker log and run lando doctor before retrying.",
-            }),
-        stage: "worker",
-      });
-
-export const startDetachedAgentRelayWorker = (
+export const startDetachedAgentRelayWorker = Effect.fn("AgentRelay.startDetachedWorker")(function* (
   options: DetachedAgentRelayWorkerOptions,
-): Effect.Effect<AgentRelaySession, SshAgentTransportError> =>
-  withAgentRelayWorkerLock(
+): Effect.fn.Return<AgentRelaySession, SshAgentTransportError> {
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  const redactorOptions = { sourceEnv: { ...process.env } };
+  const redactor =
+    redaction._tag === "Some"
+      ? yield* redaction.value.forProfile("secrets", redactorOptions)
+      : createStandaloneRedactor("secrets", redactorOptions);
+  const workerError = (cause: unknown) =>
+    cause instanceof SshAgentTransportError
+      ? cause
+      : new SshAgentTransportError({
+          ...(cause instanceof DetachedWorkerExitedBeforeReadyError ||
+          cause instanceof DetachedWorkerStartupError ||
+          cause instanceof DetachedWorkerLogError
+            ? {
+                message: redactor.redactString(causeMessage(cause)),
+                remediation: `Inspect ${cause.logPath} for the worker crash.`,
+              }
+            : {
+                message: "Unable to start the SSH agent relay worker.",
+                remediation: "Inspect the agent-relay worker log and run lando doctor before retrying.",
+              }),
+          stage: "worker",
+        });
+  return yield* withAgentRelayWorkerLock(
     options.app,
     options,
     Effect.gen(function* () {
-      const redaction = yield* Effect.serviceOption(RedactionService);
-      const redactor =
-        redaction._tag === "Some"
-          ? yield* redaction.value.forProfile("secrets")
-          : createStandaloneRedactor("secrets");
       if (options.app.kind === "global")
         return yield* Effect.fail(workerError("Global apps cannot forward an agent."));
       const entry = hostProxyWorkerEntry();
@@ -222,3 +222,4 @@ export const startDetachedAgentRelayWorker = (
       );
     }),
   ).pipe(Effect.mapError(workerError));
+});

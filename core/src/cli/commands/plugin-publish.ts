@@ -23,7 +23,7 @@ export class PluginPublishValidationError extends Schema.TaggedError<PluginPubli
   "PluginPublishValidationError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -32,7 +32,7 @@ export class PluginPublishAuthError extends Schema.TaggedError<PluginPublishAuth
   "PluginPublishAuthError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     registry: Schema.String,
   },
 ) {}

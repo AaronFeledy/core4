@@ -6,6 +6,7 @@ import { type AbsolutePath, type AppPlan, type ResourceOwnership, appIdentityKey
 import { type AppliedOrphanGroup, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { type ResolvedAppTarget, resolveDesiredAppTarget, userAppRef } from "../landofile/app-resolution.ts";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 
@@ -71,7 +72,7 @@ export const missingRootAppliedTarget = Effect.fnUntraced(function* (plan: AppPl
 
 export const resolveAppliedStateTarget = Effect.gen(function* () {
   const registry = yield* RuntimeProviderRegistry;
-  const cwdIdentity = yield* resolveAppIdentity(process.cwd());
+  const cwdIdentity = yield* resolveAppIdentity((yield* findAppRoot()) ?? (yield* discoveryCwd()));
   const plan = yield* registry.resolveAppliedPlan(cwdIdentity.appRoot);
   if (plan === undefined) return undefined;
   return yield* appliedStateTarget(plan);
@@ -138,8 +139,8 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
  * only when this reports nothing to remove.
  */
 export const resolveTeardownResolution = Effect.gen(function* () {
-  const discovered = yield* findAppRoot(process.cwd());
-  const identity = yield* resolveAppIdentity(discovered ?? process.cwd());
+  const discovered = yield* findAppRoot();
+  const identity = yield* resolveAppIdentity(discovered ?? (yield* discoveryCwd()));
   const root = identity.appRoot;
   const landofilePresent = discovered !== undefined;
   return yield* teardownResolutionAt(root, landofilePresent, appliedStateTarget);

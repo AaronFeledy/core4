@@ -233,7 +233,15 @@ describe("global route publication", () => {
     // Given a disabled router whose stale file cannot be removed.
     const router = {
       ...makeRouter(),
-      removeRoutes: () => Effect.fail(new ProxyError({ proxyId: "test", message: "unavailable" })),
+      removeRoutes: () =>
+        Effect.fail(
+          new ProxyError({
+            proxyId: "test",
+            message: "unavailable",
+            remediation:
+              "Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
+          }),
+        ),
     };
     // When best-effort withdrawal runs.
     const urls = await Effect.runPromise(
@@ -288,6 +296,7 @@ describe("global route publication", () => {
       providerId: "lando",
       operation: "list",
       message: "unavailable",
+      remediation: "Install or start the `lando` provider and confirm it can perform `list`.",
     });
     const router = makeRouter();
     // When publication needs the sibling observation.

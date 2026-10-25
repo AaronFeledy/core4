@@ -1,3 +1,5 @@
+import { type DiscoveryOperation, runDiscoveryOperation } from "@lando/landofile/operation-scope";
+import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
 import { Cause, Effect, Exit, Layer } from "effect";
 
 import {
@@ -504,11 +506,15 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 export interface RunCliOptions {
   readonly argv: ReadonlyArray<string>;
   readonly rootUrl: string;
+  readonly discovery?: DiscoveryOperation;
 }
 
 export const runCli = async (options: RunCliOptions): Promise<void> => {
   try {
-    await runCompiledCli(options.argv);
+    await runDiscoveryOperation(
+      options.discovery ?? { cwd: process.cwd(), resolver: makeAppDiscoveryResolver() },
+      () => runCompiledCli(options.argv),
+    );
   } catch (error) {
     const cause = Cause.isCause(error) ? error : Cause.die(error);
     const output = preCommandOutputMode({ argv: options.argv, env: process.env });

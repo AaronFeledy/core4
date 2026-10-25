@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId, type ScanPlan, ServiceName } from "@lando/sdk/schema";
-import { RuntimeProvider, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
+import { RuntimeProviderRegistry, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { layer as httpClientLayer } from "@lando/http-client/live";
@@ -90,7 +90,19 @@ const scanAgainst = (hostPort: number, scanner: ScanPlan) =>
   Effect.runPromise(
     Effect.flatMap(UrlScanner, (service) => service.scan(appId, { plan: planWith(scanner) })).pipe(
       Effect.provide(ProviderUrlScanner.layer),
-      Effect.provide(Layer.succeed(RuntimeProvider, providerAt(hostPort))),
+      Effect.provide(
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([ProviderId.make("test")]),
+            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+            appliedPlansFor: () => Effect.succeed([]),
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            select: () => Effect.succeed(providerAt(hostPort)),
+          }),
+        ),
+      ),
       Effect.provide(httpClientLayer),
     ),
   );

@@ -19,6 +19,7 @@ import {
 const ctx = {
   providerId: "custom-docker",
   remediation: "Start the custom engine.",
+  env: {},
   get redactor() {
     return Effect.runSync(fixtureRedaction.forProfile("secrets"));
   },

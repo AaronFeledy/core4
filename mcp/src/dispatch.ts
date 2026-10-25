@@ -16,7 +16,7 @@ import { Cause, Clock, Effect, Option, Predicate } from "effect";
 
 import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
-import { type Redactor, createRedactor } from "@lando/sdk/secrets";
+import type { Redactor } from "@lando/sdk/secrets";
 
 import { type CommandResultOutcome, buildCommandResultEnvelope, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { Logger } from "@lando/sdk/services";
@@ -72,6 +72,7 @@ export interface McpDispatchDeps {
   readonly effective: ReadonlySet<string>;
   readonly allowlistSource: string;
   readonly redactor: Redactor;
+  readonly resultRedactor: (tokens: ReadonlyArray<string>) => Effect.Effect<Redactor>;
   readonly execute: McpExecute;
   readonly notify?: McpNotify;
   readonly publish?: (event: LandoEvent) => Effect.Effect<void, unknown>;
@@ -106,25 +107,6 @@ const emitProgressFrame = (
     : encodeProgressFrame(frame, redactor).pipe(
         Effect.flatMap((encoded) => deps.notify?.(encoded) ?? Effect.void),
       );
-
-export const withResultTokens = (redactor: Redactor, tokens: ReadonlyArray<string>): Redactor => {
-  if (tokens.length === 0) return redactor;
-  const resultRedactor = createRedactor("secrets", { values: tokens });
-  const redactStringBounded = redactor.redactStringBounded;
-  const resultRedactStringBounded = resultRedactor.redactStringBounded;
-  return {
-    redactString: (text) => resultRedactor.redactString(redactor.redactString(text)),
-    ...(redactStringBounded === undefined || resultRedactStringBounded === undefined
-      ? {}
-      : {
-          redactStringBounded: (text: string, maxBytes: number) => {
-            const redacted = redactStringBounded(text, maxBytes);
-            return redacted === undefined ? undefined : resultRedactStringBounded(redacted, maxBytes);
-          },
-        }),
-    redactValue: (value) => resultRedactor.redactValue(redactor.redactValue(value)),
-  };
-};
 
 /**
  * Dispatch a single MCP tool call. Resolves to the redacted command envelope, or
@@ -219,8 +201,7 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
 
     const rawOutcome = yield* deps.execute(entry, runInput);
     const outcome = yield* inspectMcpCommandOutcome(rawOutcome);
-    const redactor = withResultTokens(
-      deps.redactor,
+    const redactor = yield* deps.resultRedactor(
       outcome._tag === "success" ? (entry.spec.redactionTokens?.(outcome.value) ?? []) : [],
     );
     if (outcome._tag === "success") {

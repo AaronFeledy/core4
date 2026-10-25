@@ -50,6 +50,8 @@ const toProviderUnavailable = (cause: unknown) =>
     operation: "list",
     message: "Unable to list runtime provider plugins.",
     cause,
+    remediation:
+      "Run lando plugin:list and repair the provider plugin manifest or import reported by the cause before retrying.",
   });
 
 export const makeRuntimeProviderRegistry = (
@@ -70,10 +72,11 @@ export const makeRuntimeProviderRegistry = (
       const managedFileService = yield* ManagedFileService;
       const paths = yield* PathsService;
       const redaction = yield* Effect.serviceOption(RedactionService);
+      const redactorOptions = { sourceEnv: { ...process.env } };
       const errorRedactor =
         redaction._tag === "Some"
-          ? yield* redaction.value.forProfile("secrets")
-          : createStandaloneRedactor("secrets");
+          ? yield* redaction.value.forProfile("secrets", redactorOptions)
+          : createStandaloneRedactor("secrets", redactorOptions);
       const redactFailure = (error: ProviderUnavailableError) => redactProviderError(error, errorRedactor);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;

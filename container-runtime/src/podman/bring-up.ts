@@ -1,4 +1,4 @@
-import { Cause, type Context, DateTime, Duration, Effect, Stream } from "effect";
+import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
 import { PROVIDER_LABEL } from "../labels.ts";
 
 import {
@@ -49,7 +49,7 @@ import {
   fingerprintPlannedPublishPorts,
   serviceContainerName,
 } from "../plan.ts";
-import { StartFailureLogRedactor, redactDetails, withApiReason } from "../redact.ts";
+import { StartFailureLogRedactor, redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import {
   type ServicePublishProbe,
   classifyServicePublishHost,
@@ -149,6 +149,8 @@ interface BringUpDeps {
   readonly options: BringUpOptions;
   readonly remediation: string;
   readonly creationEnvironments: Map<string, Readonly<Record<string, string>>>;
+  /** Cached once per bringUp; never construct per failure/inspect line. */
+  readonly redactor: ReturnType<typeof redactorFor>;
 }
 
 const creationEligibility = (plan: AppPlan) =>
@@ -205,7 +207,8 @@ const containerRunning = (body: object): boolean => {
 };
 
 const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
-  const message = withApiReason(input.message, input.details);
+  const redactor = deps.redactor;
+  const message = withApiReason(input.message, input.details, redactor);
   const remediation =
     deps.options.startFailureRemediation?.({
       service: String(input.service.name),
@@ -219,7 +222,7 @@ const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
     service: input.service.name,
     message,
     remediation,
-    ...(input.details === undefined ? {} : { details: redactDetails(input.details) }),
+    ...(input.details === undefined ? {} : { details: redactDetails(input.details, redactor) }),
     ...(input.cause === undefined ? {} : { cause: input.cause }),
     ...(input.logTail === undefined ? {} : { logTail: input.logTail }),
   });
@@ -261,14 +264,15 @@ const inspectContainer = Effect.fnUntraced(function* (
             status: response.status,
             body: response.body,
           },
+          deps.redactor,
         ),
-        details: redactDetails({ name, status: response.status, body: response.body }),
+        details: redactDetails({ name, status: response.status, body: response.body }, deps.redactor),
         remediation: deps.remediation,
       }),
     );
   }
   const body = yield* parseEngineJson(response, deps.options.ctx, "bringUp.inspect", {
-    details: redactDetails({ status: response.status, body: response.body }),
+    details: redactDetails({ status: response.status, body: response.body }, deps.redactor),
     remediation: deps.remediation,
   });
   if (typeof body !== "object" || body === null || !("State" in body)) {
@@ -428,13 +432,14 @@ const ensureNetwork = (
             const message = withApiReason(
               `provider-${deps.options.ctx.providerId} network create failed with HTTP ${response.status}.`,
               details,
+              deps.redactor,
             );
             return Effect.fail(
               new ProviderUnavailableError({
                 providerId: deps.options.ctx.providerId,
                 operation: "bringUp.network",
                 message,
-                details: redactDetails(details),
+                details: redactDetails(details, deps.redactor),
                 remediation:
                   deps.options.startFailureRemediation?.({
                     operation: "bringUp.network",
@@ -494,8 +499,12 @@ const ensureVolume = (
                 status: response.status,
                 body: response.body,
               },
+              deps.redactor,
             ),
-            details: redactDetails({ name: store.name, status: response.status, body: response.body }),
+            details: redactDetails(
+              { name: store.name, status: response.status, body: response.body },
+              deps.redactor,
+            ),
             remediation: deps.remediation,
           }),
         );
@@ -969,7 +978,8 @@ const captureServiceLogTail = Effect.fnUntraced(
       ),
     );
     if (collected.length === 0) return undefined;
-    const redactor = yield* StartFailureLogRedactor;
+    const provided = yield* Effect.serviceOption(StartFailureLogRedactor);
+    const redactor = Option.isSome(provided) ? provided.value : deps.redactor;
     const redacted = redactor.redactString(collected.map((chunk) => chunk.line).join("\n"));
     const { lines, truncated } = capRedactedLogLines(redacted.split("\n"));
     return {
@@ -998,7 +1008,7 @@ const withServiceStartLogTail = (
         message: error.message,
         service: error.service,
         ...(error.details === undefined ? {} : { details: error.details }),
-        ...(error.remediation === undefined ? {} : { remediation: error.remediation }),
+        remediation: error.remediation,
         ...(error.cause === undefined ? {} : { cause: error.cause }),
         logTail,
       });
@@ -1046,6 +1056,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     options,
     remediation: plan.id === "global" ? GLOBAL_APPLY_REMEDIATION : APPLY_REMEDIATION,
     creationEnvironments: new Map(),
+    redactor: redactorFor(options.ctx),
   };
 
   for (const service of Object.values(plan.services)) {
@@ -1104,7 +1115,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         operation: "bringUp.schedule",
         message: `provider-${options.ctx.providerId} bringUp service schedule contains a dependency cycle.`,
         remediation: deps.remediation,
-        details: redactDetails({ edges: result.edges }),
+        details: redactDetails({ edges: result.edges }, deps.redactor),
       }),
     );
   }
@@ -1130,7 +1141,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
               operation: "bringUp.schedule",
               message: `provider-${options.ctx.providerId} bringUp schedule blocked an unknown service.`,
               remediation: deps.remediation,
-              details: redactDetails(blocked),
+              details: redactDetails(blocked, deps.redactor),
             }),
           );
         }

@@ -37,7 +37,14 @@ describe("doctor provider-bootstrap failure", () => {
       RuntimeLayerFactory,
       RuntimeLayerFactory.of({
         make: <Services>(): Layer.Layer<Services, ConfigError> =>
-          Layer.effectContext(Effect.fail(new ConfigError({ message: "Injected runtime build failure" }))),
+          Layer.effectContext(
+            Effect.fail(
+              new ConfigError({
+                message: "Injected runtime build failure",
+                remediation: "Injected failure for doctor bootstrap fixture.",
+              }),
+            ),
+          ),
       }),
     );
     try {

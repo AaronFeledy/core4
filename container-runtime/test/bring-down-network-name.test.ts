@@ -37,7 +37,7 @@ test("Podman bring-down removes the private network named in the realized plan",
             return { status: 204, headers: {}, body: "" };
           }),
       },
-      ctx: { providerId: "lando", remediation: "retry" },
+      ctx: { providerId: "lando", remediation: "retry", env: {} },
     }),
   );
   expect(result.changed).toBe(true);
@@ -74,7 +74,7 @@ test.each([dockerLifecycleDialect, libpodLifecycleDialect])(
     const result = await Effect.runPromise(
       bringDown(plan, {
         dialect,
-        ctx: { providerId: "docker", remediation: "retry" },
+        ctx: { providerId: "docker", remediation: "retry", env: {} },
         api: {
           request: (request) =>
             Effect.sync(() => {

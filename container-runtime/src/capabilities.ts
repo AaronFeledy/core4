@@ -25,6 +25,8 @@ export const decodeProviderCapabilitiesFor = (providerId: string) => (input: unk
           requiredValue: "@lando/sdk/schema ProviderCapabilities",
           actualValue: input,
           cause,
+          remediation:
+            "Choose a provider that supports `ProviderCapabilities`, or remove that requirement from the app.",
         }),
     ),
   );

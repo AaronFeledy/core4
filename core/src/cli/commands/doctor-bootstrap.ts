@@ -21,10 +21,11 @@ import { type DoctorOptions, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
+import { HostDnsResolver } from "./doctor-host-dns";
 import { appConfigForReport, collectDoctorReport, doctorDeprecations } from "./doctor-report";
 import type { DoctorReport } from "./doctor-report-contract";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
-import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "./doctor-subsystems";
+import { subsystemDoctor } from "./doctor-subsystems";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
 const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
@@ -162,12 +163,10 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
     ...(context === undefined
       ? {}
       : {
-          // First provide in the pipe wins: selected Traefik/SSH overlay the
-          // unavailable stubs in DefaultSubsystemDoctorLayer.
           subsystems: (subsystemOptions) =>
             subsystemDoctor(subsystemOptions).pipe(
               Effect.provide(context),
-              Effect.provide(DefaultSubsystemDoctorLayer),
+              Effect.provide(HostDnsResolver.layer),
             ),
         }),
     ...(built.self === undefined ? {} : { initialSelfChecks: [built.self] }),

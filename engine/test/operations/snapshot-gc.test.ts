@@ -26,6 +26,7 @@ test("reports providers unavailable when registry construction cannot reach thei
           providerId: "offline",
           operation: "capabilities",
           message: "Runtime is stopped.",
+          remediation: "Install or start the `offline` provider and confirm it can perform `capabilities`.",
         }),
       ),
   });
@@ -195,6 +196,7 @@ test("reports failed removal without counting it when the runtime stops after re
       providerId: "test",
       operation: "removeVolumeSnapshot",
       message: "Runtime stopped after recheck.",
+      remediation: "Install or start the `test` provider and confirm it can perform `removeVolumeSnapshot`.",
     }),
   });
   const mover = {

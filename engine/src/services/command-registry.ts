@@ -35,6 +35,7 @@ import {
 
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { findAppRoot } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { compileAppCommands } from "../cache/command-compiler.ts";
 import {
   readFreshAppCommandCacheForCwd,
@@ -108,7 +109,7 @@ export const layerWith = (
           }
 
           const landofile = (yield* loadUserLandofile(landofileService)).document;
-          const scripts = yield* discoverScriptsForCwd(process.cwd());
+          const scripts = yield* discoverScriptsForCwd(yield* discoveryCwd());
           const pluginManifests =
             pluginRegistryOption._tag === "Some"
               ? yield* pluginRegistryOption.value.list.pipe(Effect.catch(() => Effect.succeed(undefined)))

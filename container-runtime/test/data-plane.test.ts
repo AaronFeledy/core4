@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect";
 
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
@@ -10,6 +11,11 @@ import {
 } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { echoHelperPull } from "./helper-pull-support.ts";
+
+const passthroughRedactor = {
+  redactString: (value: string) => value,
+  redactValue: (value: unknown) => value,
+} satisfies Redactor;
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 const text = (value: Uint8Array): string => new TextDecoder().decode(value);
@@ -72,7 +78,7 @@ describe("snapshot artifact removal", () => {
       const plane = makeProviderDataPlane({
         providerId: "test",
         capabilities: { volumeSnapshot: capability },
-        redactDetails: (value) => value,
+        redactor: passthroughRedactor,
         api: {
           request: () => {
             requests += 1;
@@ -113,7 +119,7 @@ describe("snapshot artifact removal", () => {
     const plane = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "native" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
       api: {
         request: (request) => {
           requests.push(`${request.method} ${request.path}`);
@@ -129,7 +135,7 @@ describe("snapshot artifact removal", () => {
     const plane = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "native" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
       api: { request: () => Effect.succeed({ status: 409, body: "image in use" }) },
     });
     const result = await Effect.runPromise(
@@ -146,7 +152,7 @@ describe("snapshot artifact removal", () => {
     const plane = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "native" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
       api: {
         request: () => {
           requests += 1;
@@ -260,7 +266,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     const ref = await Effect.runPromise(provider.importArtifact(Stream.make(bytes("tar payload"))));
@@ -277,6 +283,8 @@ describe("provider data plane", () => {
       providerId: "test",
       operation: "importArtifact",
       message: "Provider request did not start before the producer resumed.",
+      remediation:
+        "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
     });
     const source = Stream.fromAsyncIterable(
       (async function* () {
@@ -300,6 +308,8 @@ describe("provider data plane", () => {
               operation: "importArtifact",
               message: "Failed to consume artifact upload.",
               cause,
+              remediation:
+                "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
             }),
         });
       },
@@ -308,7 +318,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     // When: the artifact is imported through the provider data plane.
@@ -338,7 +348,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     // When: the real artifact-import path forwards the source to the provider API.
@@ -356,6 +366,8 @@ describe("provider data plane", () => {
       providerId: "test",
       operation: "produceArtifact",
       message: "Artifact producer failed.",
+      remediation:
+        "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
     });
     const api: DataPlaneApiClient = {
       request: (request) =>
@@ -370,6 +382,8 @@ describe("provider data plane", () => {
               operation: "importArtifact",
               message: "Artifact upload failed.",
               cause,
+              remediation:
+                "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
             }),
         }),
     };
@@ -377,7 +391,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
     const source = Stream.concat(Stream.make(bytes("first")), Stream.fail(sourceError));
 
@@ -403,7 +417,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     const ref = await Effect.runPromise(provider.importArtifact(Stream.make(bytes("tar payload"))));
@@ -419,7 +433,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     const exit = await Effect.runPromiseExit(provider.importArtifact(Stream.make(bytes("tar payload"))));
@@ -458,7 +472,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "native" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
       pullHelperImage: echoHelperPull(),
     });
 
@@ -507,16 +521,18 @@ describe("provider data plane", () => {
         providerId: "test",
         operation: "inspect",
         message: "Image inspection unavailable.",
+        remediation: "Inspect provider volume state and retry the `inspect` volume operation.",
       });
       const deleteError = new VolumeOperationError({
         providerId: "test",
         operation: "delete",
         message: "Image deletion unavailable.",
+        remediation: "Inspect provider volume state and retry the `delete` volume operation.",
       });
       const provider = makeProviderDataPlane({
         providerId: "test",
         capabilities: { volumeSnapshot: "native" },
-        redactDetails: (value) => value,
+        redactor: passthroughRedactor,
         pullHelperImage: echoHelperPull(),
         api: {
           request: (request) =>
@@ -559,7 +575,7 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "native" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
       pullHelperImage: echoHelperPull(),
       api: {
         request: (request) =>
@@ -603,7 +619,7 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       capabilities: { volumeSnapshot: "native" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
       pullHelperImage: echoHelperPull(),
       api: {
         request: (request) =>
@@ -669,7 +685,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     const result = await Effect.runPromise(
@@ -708,7 +724,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     await Effect.runPromise(
@@ -744,7 +760,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
     const ownedPlan = {
       ...plan,
@@ -799,7 +815,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
     const ownedPlan: AppPlan = {
       ...plan,
@@ -849,7 +865,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
     const ownedPlan = {
       ...plan,
@@ -889,7 +905,7 @@ describe("provider data plane", () => {
         stream: () => Stream.empty,
       },
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     // When: the caller asks to mount a named data store.
@@ -923,7 +939,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     const result = await Effect.runPromise(
@@ -960,7 +976,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     const result = await Effect.runPromise(
@@ -992,7 +1008,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     const chunks = await Effect.runPromise(
@@ -1032,7 +1048,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     // When: a consumer asks for only the first streamed chunk.
@@ -1076,7 +1092,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "native" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
     const staleGeneration = "00000000-0000-4000-8000-000000000002";
 
@@ -1133,7 +1149,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app") }));
@@ -1165,7 +1181,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app") }));
@@ -1188,7 +1204,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app"), store: "data" }));
@@ -1204,7 +1220,7 @@ describe("provider data plane", () => {
       endpointNamespace: "unix:///run/test.sock",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
       pullHelperImage: echoHelperPull(),
     });
 
@@ -1239,7 +1255,7 @@ describe("provider data plane", () => {
       endpointNamespace: "unix:///run/test.sock",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
       pullHelperImage: echoHelperPull(),
     });
 
@@ -1269,7 +1285,7 @@ describe("provider data plane", () => {
       endpointNamespace: "unix:///run/test.sock",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     // When: its exact identity is listed.
@@ -1289,7 +1305,7 @@ describe("provider data plane", () => {
       endpointNamespace: "unix:///run/test.sock",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
       pullHelperImage: echoHelperPull(),
     });
 
@@ -1336,7 +1352,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
     const result = await Effect.runPromise(
       provider.removeVolume({ app: appId, store: "data" }, volumeGeneration).pipe(Effect.result),
@@ -1366,7 +1382,7 @@ describe("provider data plane", () => {
       endpointNamespace: "unix:///run/test.sock",
       api,
       capabilities: { volumeSnapshot: "native" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
       pullHelperImage: echoHelperPull(),
     });
 
@@ -1407,7 +1423,7 @@ describe("provider data plane", () => {
       endpointNamespace: "unix:///run/test.sock",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
     replace();
 
@@ -1435,7 +1451,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     const exit = await Effect.runPromiseExit(
@@ -1473,7 +1489,7 @@ describe("provider data plane", () => {
       providerId: "test",
       api,
       capabilities: { volumeSnapshot: "none" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     await Effect.runPromise(

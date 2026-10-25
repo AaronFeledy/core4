@@ -1,12 +1,13 @@
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
 import { LandofileService, ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
 import { Cause, Effect, Layer } from "effect";
 import { LANDOFILE_NAME } from "./discovery.ts";
 import { compileLandofileFile } from "./file-compile.ts";
-import { landofileLayerPaths, presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
+import { presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
 import { type LandofileLoadContext, ensureConsistentRoot } from "./load-context.ts";
 import { mergeLandofileRootLayers } from "./merge-validate.ts";
+import { discoverForOperation } from "./operation-discovery.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 
@@ -19,22 +20,39 @@ export {
 } from "./root-compile.ts";
 export { prepareLandofileSource, resolveLandofileSourceExpressions } from "./source.ts";
 
-export const findDiscoveredLandofilePath = Effect.fn("Landofile.findDiscoveredPath")(function* (cwd: string) {
-  const searched: string[] = [];
-  let current = cwd;
-  for (;;) {
-    const candidates = landofileLayerPaths(current);
-    searched.push(...candidates.flatMap(({ yamlPath, typescriptPath }) => [yamlPath, typescriptPath]));
-    const layer = representativeLandofileLayer(yield* presentLandofileLayers(current));
-    if (layer !== undefined) return { filePath: layer.filePath, appRoot: dirname(layer.filePath) };
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
+export const findDiscoveredLandofilePath = Effect.fn("Landofile.findDiscoveredPath")(function* (
+  cwd?: string,
+) {
+  const result = yield* discoverForOperation(cwd);
+  if (result.kind === "found") {
+    const layer = representativeLandofileLayer(yield* presentLandofileLayers(result.directory));
+    if (layer !== undefined) return { filePath: layer.filePath, appRoot: result.directory };
+  }
+  let reason: string;
+  let remediation = `Run lando init in ${result.cwd} to create an app.`;
+  switch (result.kind === "stopped" ? result.reason : "missing") {
+    case "marker":
+      reason = `.lando.stop at ${result.directory}`;
+      remediation = `Run lando init in ${result.cwd}, or move/remove the .lando.stop at ${result.directory} to search above it.`;
+      break;
+    case "bound":
+      reason = "the fixed bound of 64 parent levels";
+      break;
+    case "root":
+      reason = "the filesystem root";
+      break;
+    case "excluded":
+      reason = `the excluded Lando global app or scratch tree at ${result.directory}`;
+      break;
+    case "missing":
+      reason = "the discovered Landofile being removed";
+      break;
   }
   return yield* Effect.fail(
     new LandofileNotFoundError({
-      message: `No .lando.yml or .lando.ts found. Searched: ${searched.join(", ")}`,
-      cwd,
+      message: `No .lando.yml or .lando.ts found. Searched from ${result.cwd} through ${result.directory}; stopped at ${reason}.`,
+      cwd: result.cwd,
+      remediation,
     }),
   );
 });
@@ -53,25 +71,9 @@ export const loadLandofileLayers = Effect.fn("Landofile.loadLayers")(mergeLandof
 
 const makeDiscoverLandofile = Effect.fn("LandofileService.discover")(
   function* (inputs: LandofileRuntimeInputs) {
-    const searched: string[] = [];
-    let current = process.cwd();
-    for (;;) {
-      yield* ensureConsistentRoot(current, inputs);
-      const candidates = landofileLayerPaths(current);
-      searched.push(...candidates.flatMap(({ yamlPath, typescriptPath }) => [yamlPath, typescriptPath]));
-      const layer = representativeLandofileLayer(yield* presentLandofileLayers(current));
-      if (layer !== undefined)
-        return yield* loadLandofileLayers(dirname(layer.filePath), layer.filePath, inputs);
-      const parent = dirname(current);
-      if (parent === current) break;
-      current = parent;
-    }
-    return yield* Effect.fail(
-      new LandofileNotFoundError({
-        message: `No .lando.yml or .lando.ts found. Searched: ${searched.join(", ")}`,
-        cwd: process.cwd(),
-      }),
-    );
+    const discovered = yield* findDiscoveredLandofilePath();
+    yield* ensureConsistentRoot(discovered.appRoot, inputs);
+    return yield* loadLandofileLayers(discovered.appRoot, discovered.filePath, inputs);
   },
   Effect.catchCause((cause) => {
     const failure = Cause.findErrorOption(cause);
@@ -82,6 +84,7 @@ const makeDiscoverLandofile = Effect.fn("LandofileService.discover")(
         filePath: join(process.cwd(), LANDOFILE_NAME),
         line: undefined,
         column: undefined,
+        remediation: `Correct the Landofile under ${process.cwd()} or run the command from a Lando app root.`,
         cause,
       }),
     );

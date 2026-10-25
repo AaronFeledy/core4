@@ -60,7 +60,9 @@ import {
 import {
   redactDetails,
   redactString,
+  redactorFor,
   runtimeDiagnosticContext,
+  standaloneSecretsRedactor,
   withApiReason,
 } from "@lando/container-runtime/redact";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
@@ -121,11 +123,19 @@ export const PLUGIN_NAME = "@lando/provider-docker" as const;
 
 const PROVIDER_ID = "docker";
 
-const DOCKER_CTX: ProviderErrorContext = {
+const DOCKER_CTX_BASE = {
   providerId: "docker",
   remediation:
     "Run `lando doctor --provider=docker` to inspect the Docker provider, then retry `lando start`.",
-};
+} as const;
+
+const DOCKER_CTX: ProviderErrorContext = { ...DOCKER_CTX_BASE, env: {} };
+
+const dockerContextForEnv = (env: ProviderErrorContext["env"]): ProviderErrorContext => ({
+  ...DOCKER_CTX_BASE,
+  env,
+  redactor: standaloneSecretsRedactor(env),
+});
 
 const IMAGE_MISSING_REMEDIATION =
   "The image is not present on this Docker engine and could not be pulled. Run `lando doctor --provider=docker` to inspect the Docker provider, then retry `lando start`.";
@@ -155,33 +165,48 @@ export type { EmitComposeResult };
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
+const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
+
 const unavailable = (
   operation: string,
   message: string,
   details?: unknown,
   cause?: unknown,
   remediation?: string,
-) =>
-  new ProviderUnavailableError({
+) => {
+  const redactor = hostSecretsRedactor();
+  return new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
-    message: redactString(withApiReason(message, details)),
-    ...(details === undefined ? {} : { details: redactDetails(details) }),
+    message: redactString(withApiReason(message, details, redactor), redactor),
+    ...(details === undefined ? {} : { details: redactDetails(details, redactor) }),
     ...(cause === undefined ? {} : { cause }),
-    ...(remediation === undefined ? {} : { remediation }),
+    remediation:
+      remediation ??
+      `Install or start Docker and confirm it can perform \`${operation}\`, then re-run the command.`,
   });
+};
 
-const internal = (operation: string, message: string, details?: unknown, cause?: unknown) =>
-  new ProviderInternalError({
+const internal = (operation: string, message: string, details?: unknown, cause?: unknown) => {
+  const redactor = hostSecretsRedactor();
+  return new ProviderInternalError({
     providerId: PROVIDER_ID,
     operation,
-    message: redactString(message),
-    ...(details === undefined ? {} : { details: redactDetails(details) }),
+    message: redactString(message, redactor),
+    ...(details === undefined ? {} : { details: redactDetails(details, redactor) }),
     ...(cause === undefined ? {} : { cause }),
+    remediation: `Re-run the command after checking Docker logs for the \`${operation}\` failure; if it persists, report the error with that operation name.`,
   });
+};
 
 const missingApi = (operation: string) =>
-  unavailable(operation, `provider-docker ${operation} requires a Docker API client.`);
+  unavailable(
+    operation,
+    `provider-docker ${operation} requires a Docker API client.`,
+    undefined,
+    undefined,
+    `Ensure the Docker engine API is reachable, then retry \`${operation}\`.`,
+  );
 
 const parseJson = (
   response: DockerHttpResponse,
@@ -275,6 +300,8 @@ export const introspectProviderCapabilities = (
             requiredValue: "Docker info response",
             actualValue: undefined,
             cause,
+            remediation:
+              "Choose a provider that supports `docker-info`, or remove that requirement from the app.",
           })
         : cause,
     ),
@@ -286,7 +313,7 @@ export const introspectProviderCapabilities = (
 
 export const makeDockerApiClient = (
   dockerHost = process.env.DOCKER_HOST ?? "/var/run/docker.sock",
-): DockerApiClient => makeRuntimeDockerApiClient(dockerHost, DOCKER_CTX);
+): DockerApiClient => makeRuntimeDockerApiClient(dockerHost, dockerContextForEnv({ ...process.env }));
 
 export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): string => {
   const env = options.env ?? process.env;
@@ -310,7 +337,7 @@ export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): strin
 export const { renderCompose, emitCompose, composePath } = composeAdaptersFor(DOCKER_CTX);
 
 const dockerEnsureImage = (api: DockerApiClient): NonNullable<BringUpOptions["ensureImage"]> =>
-  makeEnsureImage(api, { ctx: DOCKER_CTX, dialect: dockerPullDialect });
+  makeEnsureImage(api, { ctx: dockerContextForEnv({ ...process.env }), dialect: dockerPullDialect });
 
 const isMissingImageDetails = (details: unknown): boolean => {
   if (typeof details !== "object" || details === null) return false;
@@ -344,7 +371,7 @@ interface DiscoveredContainer {
 const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
   api: DockerApiClient,
   labelFilter?: string,
-  ctx: ProviderErrorContext = DOCKER_CTX,
+  ctx: ProviderErrorContext = dockerContextForEnv({ ...process.env }),
 ) {
   const filters = labelFilter === undefined ? {} : { label: [labelFilter] };
   const params = new URLSearchParams({
@@ -365,7 +392,7 @@ const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
 
   const body = yield* parseEngineJson(response, ctx, "list", {
     message: "Docker API returned malformed JSON.",
-    details: redactDetails(response, ctx.redactor),
+    details: redactDetails(response, redactorFor(ctx)),
   });
   const containers = Array.isArray(body) ? body : [];
 
@@ -409,7 +436,10 @@ const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
 const makeUnavailable = (operation: string) => notImplementedError(PROVIDER_ID, operation);
 
 export const makeRuntimeProvider = Effect.fnUntraced(function* (options: ProviderLayerOptions = {}) {
-  const ctx = yield* runtimeDiagnosticContext(DOCKER_CTX);
+  const ctx = yield* runtimeDiagnosticContext({
+    ...DOCKER_CTX_BASE,
+    env: { ...(options.env ?? process.env) },
+  });
   return yield* makeRuntimeProviderWithContext(options, ctx);
 });
 
@@ -443,6 +473,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
     Effect.map((resolved) => {
       const logSourceBinding = makeProviderLogSourceBinding({
         ...(DOCKER_CTX.redactor === undefined ? {} : { redactor: DOCKER_CTX.redactor }),
+        sourceEnv: DOCKER_CTX.env,
         providerId: PROVIDER_ID,
         logFileAccess: options.logFileAccess,
         helperTarget: resolved.hostProxy?.containerTargets[0],
@@ -471,7 +502,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
         }),
       api: dockerApi,
       capabilities: resolvedCapabilities,
-      redactDetails: (value) => redactDetails(value, DOCKER_CTX.redactor),
+      redactor: redactorFor(DOCKER_CTX),
       volumeCreationLabels,
       providerName: "Docker",
       ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
@@ -558,7 +589,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ),
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
-        buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi }),
+        buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi, sourceEnv: DOCKER_CTX.env }),
       ),
       pullArtifact: Effect.fn("RuntimeProvider.pullArtifact")((spec) =>
         pullImage(dockerApi, spec.ref, {

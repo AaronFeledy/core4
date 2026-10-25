@@ -4,7 +4,8 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
-import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
+import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
+import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 test.each(["lndo.test", "LNDO.Test"])(
   "warns for an unresolved configured domain %s even when the default domain resolves",
@@ -49,7 +50,11 @@ test.each(["lndo.test", "LNDO.Test"])(
 
 test("does not run host-proxy checks when config construction fails", async () => {
   // Given
-  const failure = new ConfigError({ message: "config unavailable", path: "/config.yml" });
+  const failure = new ConfigError({
+    message: "config unavailable",
+    path: "/config.yml",
+    remediation: "Restore /config.yml for the doctor fixture.",
+  });
   const config = Layer.effect(ConfigService, Effect.fail(failure));
 
   // When

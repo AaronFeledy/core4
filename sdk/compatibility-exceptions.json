@@ -4558,5 +4558,185 @@
     "changeKind": "unsupported-construct",
     "path": "$.endpoints.items.anyOf",
     "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-keyword",
+    "path": "$.globalConfig.error.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: every error remediation is a required nonblank recovery action, checked on decode and encode."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-keyword",
+    "path": "$.globalConfig.error.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: whitespace-only recovery instructions are rejected on decode and encode."
+  },
+  {
+    "surface": "command:meta:update",
+    "changeKind": "unsupported-keyword",
+    "path": "$.coreFailure.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: update failures carry a nonblank recovery action."
+  },
+  {
+    "surface": "command:meta:update",
+    "changeKind": "unsupported-keyword",
+    "path": "$.coreFailure.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: update recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:AppPlacementError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: placement failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:AppPlacementError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: placement recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:EnvironmentValueResolutionError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: environment resolution failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:EnvironmentValueResolutionError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: environment resolution recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:KeymapConflictError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: keymap conflicts require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:KeymapConflictError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: keymap recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileExpressionEvalError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: expression evaluation failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileExpressionEvalError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: expression evaluation recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileExpressionForbiddenError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: forbidden expressions require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileExpressionForbiddenError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: forbidden-expression recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileExpressionParseError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: expression parse failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileExpressionParseError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: expression parse recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileImportRefMisuseError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: import placement failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileImportRefMisuseError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: import placement recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileLoadLimitError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: load-limit failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileLoadLimitError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: load-limit recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileLoadOutsideRootError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: outside-root loads require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileLoadOutsideRootError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: outside-root recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:PlanReplanRequiredError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: replan failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:PlanReplanRequiredError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: replan recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:RouteInputError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: route input failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:RouteInputError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: route input recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:RouteProviderMismatchError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: provider mismatches require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:RouteProviderMismatchError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: provider-mismatch recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:SubscriberLevelMismatchError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: subscriber-level mismatches require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:SubscriberLevelMismatchError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: subscriber-level recovery instructions cannot be whitespace-only."
   }
 ]

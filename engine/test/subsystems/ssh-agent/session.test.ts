@@ -259,6 +259,7 @@ test.each([false, true])(
             providerId: "lando",
             operation: "exec",
             message: `exec denied ${secret}`,
+            remediation: "Install or start the `lando` provider and confirm it can perform `exec`.",
           }),
         ),
     };

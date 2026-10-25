@@ -295,7 +295,13 @@ export const pluginCommandCandidates = (
 };
 
 const bootstrapFailure = (message: string, cause: unknown) =>
-  new LandoRuntimeBootstrapError({ message, stage: "plugins", cause });
+  new LandoRuntimeBootstrapError({
+    message,
+    stage: "plugins",
+    cause,
+    remediation:
+      "Repair bundled or user plugin discovery (invalid manifests, missing modules) and re-run the command.",
+  });
 
 export const withPluginLayerOverrides = <A, E, R>(
   runtimeLayer: Layer.Layer<A | PluginContributionGraph, E, R>,

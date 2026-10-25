@@ -200,6 +200,8 @@ const makeRecordingLayer = (
                     providerId: String(providerId),
                     operation: "apply",
                     message: "injected apply failure",
+                    remediation:
+                      "Install or start the selected runtime provider and confirm it can perform `apply`.",
                   }),
                 )
               : Effect.succeed({ changed: true }),

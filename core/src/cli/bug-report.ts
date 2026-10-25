@@ -1,10 +1,11 @@
 import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
 import { taggedErrorJson, type ProjectedFailure } from "@lando/sdk/command-result";
-import type { FailureRole, ValidationIssue } from "@lando/sdk/schema";
+import { type FailureRole, ValidationIssue } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
+import { Schema } from "effect";
 import { diagnosticFields } from "./bug-report-fields";
-import { redactDetails, redactString } from "./redact";
 import { renderJsonBugReport, renderPlainBugReport } from "./bug-report-render";
+import { redactDetails } from "./redact";
 
 export { renderJsonBugReport, renderPlainBugReport } from "./bug-report-render";
 export type RendererMode = "lando" | "plain" | "json" | "verbose";
@@ -62,7 +63,7 @@ export const buildBugReport = (input: {
   readonly error: unknown;
   readonly additionalErrors?: ProjectedFailure["additionalErrors"];
   readonly context: BugReportContext;
-  readonly redactor?: Redactor;
+  readonly redactor: Redactor;
 }): BugReportEnvelope => {
   const error = taggedErrorJson(input.error);
   const causes: Array<ReturnType<typeof taggedErrorJson>> = [];
@@ -78,7 +79,7 @@ export const buildBugReport = (input: {
   }
   const ctx = input.context;
   const cacheDir = ctx.cacheRoot ?? resolveUserCacheRoot();
-  const redacted = (text: string) => redactString(text, input.redactor);
+  const redacted = (text: string) => input.redactor.redactString(text);
   const diagnostics = [error, ...causes];
   const app = error.app;
   const appId = ctx.appId ?? asString(error.appId) ?? asString(error.appName) ??
@@ -94,7 +95,7 @@ export const buildBugReport = (input: {
   ).map(([key, value]) => [key, redacted(value)] as const);
   const issues = diagnostics.flatMap((item) => item.issues ?? []);
   return {
-    code: error._tag,
+    code: redacted(error._tag),
     commandId: ctx.commandId,
     body: redacted([...new Set(diagnostics.map((item) => item.message))].join("\n")),
     remediation: redacted([...new Set(diagnostics.map((item) => item.remediation))].join(" ")),
@@ -102,7 +103,7 @@ export const buildBugReport = (input: {
     providerId,
     logsDir: `${cacheDir.replace(/\/+$/u, "")}/logs`,
     cacheDir,
-    ...(issues.length === 0 ? {} : { issues: redactDetails(issues, input.redactor) as ReadonlyArray<ValidationIssue> }),
+    ...(issues.length === 0 ? {} : { issues: Schema.decodeUnknownSync(Schema.Array(ValidationIssue))(input.redactor.redactValue(issues)) }),
     extra,
     ...(input.additionalErrors === undefined || input.additionalErrors.length === 0 ? {} : {
       additionalErrors: input.additionalErrors.map(({ role, error: additionalError }) => {
@@ -110,7 +111,7 @@ export const buildBugReport = (input: {
         const identity = [["appId", additional.appId, appId], ["providerId", additional.providerId, providerId]] as const;
         return {
           role,
-          code: redacted(additional.code),
+          code: additional.code,
           body: additional.body,
           remediation: additional.remediation,
           ...(additional.issues === undefined ? {} : { issues: additional.issues }),
@@ -127,7 +128,7 @@ export const buildBugReport = (input: {
 export const formatBugReport = (input: ProjectedFailure & {
   readonly context: BugReportContext;
   readonly rendererMode: RendererMode;
-  readonly redactor?: Redactor;
+  readonly redactor: Redactor;
 }): string => {
   const envelope = buildBugReport(input);
   return input.rendererMode === "json" ? renderJsonBugReport(envelope) : renderPlainBugReport(envelope);

@@ -55,6 +55,7 @@ const unavailable = (providerId: string, operation: string) =>
     providerId,
     operation,
     message: `${providerId} ${operation} unavailable`,
+    remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 
 const moduleFor = (
@@ -88,7 +89,13 @@ const run = (
 ) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "podman" });
   const unsupported = (name: string) =>
-    Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
+    Effect.fail(
+      new PluginLoadError({
+        message: "unused",
+        pluginName: name,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    );
   const httpClient = HttpClient.make((request) =>
     Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
   );

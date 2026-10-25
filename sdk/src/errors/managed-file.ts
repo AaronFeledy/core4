@@ -15,7 +15,7 @@ export class ManagedFileError extends Schema.TaggedError<ManagedFileError>()("Ma
   operation: Schema.Literals(["plan", "apply", "remove", "status", "adopt", "release"]),
   path: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 /**
@@ -43,6 +43,8 @@ export class ManagedFileTransactionError extends Schema.TaggedError<ManagedFileT
     phase: Schema.Literals(["prepare", "commit", "inspect", "cleanup", "recover"]),
     path: Schema.String.pipe(Schema.check(Schema.isMaxLength(4096))),
     cause: Schema.Literals(["filesystem", "invariant", "interrupted-checkpoint"]),
-    remediation: Schema.String.pipe(Schema.check(Schema.isMaxLength(256))),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+      Schema.check(Schema.isMaxLength(256)),
+    ),
   },
 ) {}

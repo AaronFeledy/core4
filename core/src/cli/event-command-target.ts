@@ -101,6 +101,7 @@ const loadPluginSpec = (
             pluginName,
             message: `Plugin ${pluginName} command loader ${id} failed.`,
             cause,
+            remediation: `Repair plugin ${pluginName} so command loader ${id} succeeds.`,
           }),
   });
 

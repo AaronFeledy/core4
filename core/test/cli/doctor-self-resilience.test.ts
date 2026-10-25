@@ -210,7 +210,12 @@ describe("isolateDoctorSection", () => {
     const outcome = await Effect.runPromise(
       isolateDoctorSection({
         section: "unit",
-        effect: Effect.fail(new ConfigError({ message: "bad config" })),
+        effect: Effect.fail(
+          new ConfigError({
+            message: "bad config",
+            remediation: "Injected failure for doctor self fixture.",
+          }),
+        ),
         fallback: "fallback",
       }),
     );

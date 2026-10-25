@@ -54,6 +54,7 @@ export const ensureScopedAppFeature = (
         new PluginLoadError({
           message: `App feature ${feature.id} declares neither activatedBy nor selectors; it must declare at least one.`,
           pluginName: "@lando/core",
+          remediation: `Declare activatedBy or selectors on app feature ${feature.id}.`,
         }),
       );
 

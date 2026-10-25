@@ -70,9 +70,15 @@ test("preserves ConfigError path when its cause is excluded", () => {
     message: "Invalid config",
     path: "proxy.domain",
     cause: { token: "private" },
+    remediation: "Set proxy.domain to a valid hostname.",
   });
   const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
-  expect(envelope.error).toEqual({ _tag: "ConfigError", message: "Invalid config", path: "proxy.domain" });
+  expect(envelope.error).toEqual({
+    _tag: "ConfigError",
+    message: "Invalid config",
+    path: "proxy.domain",
+    remediation: "Set proxy.domain to a valid hostname.",
+  });
 });
 
 test("omits entire unsafe fields when projecting an error", () => {
@@ -229,6 +235,8 @@ test("preserves declared service context on non-start execution errors", () => {
     operation: "exec",
     service: "web",
     message: "exec failed",
+    remediation:
+      "Confirm service `web` is running and the exec command is valid inside that container, then retry.",
   });
   const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
   expect(envelope.error).toEqual({
@@ -237,6 +245,8 @@ test("preserves declared service context on non-start execution errors", () => {
     providerId: "lando",
     operation: "exec",
     service: "web",
+    remediation:
+      "Confirm service `web` is running and the exec command is valid inside that container, then retry.",
   });
   expect(envelope.error?.service).toBe("web");
 });
@@ -253,6 +263,8 @@ test("includes service and logTail on a ServiceStartError envelope", () => {
       truncated: false,
       exitCode: 1,
     },
+    remediation:
+      "Inspect `lando logs -s db`, fix the service configuration or image, and start the app again.",
   });
   const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
   expect(envelope.error).toEqual({
@@ -267,6 +279,8 @@ test("includes service and logTail on a ServiceStartError envelope", () => {
       truncated: false,
       exitCode: 1,
     },
+    remediation:
+      "Inspect `lando logs -s db`, fix the service configuration or image, and start the app again.",
   });
 });
 

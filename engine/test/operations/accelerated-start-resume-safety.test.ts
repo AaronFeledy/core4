@@ -62,6 +62,8 @@ test.each(["provider", "app", "corrupt"] as const)(
                     providerId: "lando",
                     operation: "ownership",
                     message: "corrupt manifest",
+                    remediation:
+                      "Install or start the `lando` provider and confirm it can perform `ownership`.",
                   }),
                 )
               : Effect.succeed({

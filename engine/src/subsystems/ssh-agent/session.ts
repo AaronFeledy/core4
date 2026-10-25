@@ -103,6 +103,8 @@ export const sidecarSocketCheck = (upstream: AgentRelayUpstream, probe = probeSs
                       ? ` ${causeMessage(cause.cause)}`
                       : ""),
                   cause,
+                  remediation:
+                    "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
                 }),
             }).pipe(Effect.as({ state: "ready" as const })),
     ),

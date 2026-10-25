@@ -207,6 +207,7 @@ const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown
       filePath,
       line: undefined,
       column: undefined,
+      remediation: `Export a module object from ${filePath} with a default Landofile value or factory.`,
     });
   }
   const exported = Predicate.hasProperty(module, "default") ? module.default : undefined;
@@ -216,6 +217,7 @@ const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown
       filePath,
       line: undefined,
       column: undefined,
+      remediation: `Add a default export of a Landofile value or (ctx) => Landofile factory in ${filePath}.`,
     });
   }
   if (typeof exported === "function") {
@@ -252,6 +254,7 @@ const evaluateImport = Effect.fnUntraced(function* (filePath: string) {
             filePath,
             line: undefined,
             column: undefined,
+            remediation: `Fix the TypeScript, imports, and default export in ${filePath} so the module evaluates successfully.`,
             cause,
           }),
   });

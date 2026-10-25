@@ -22,7 +22,7 @@ export class PluginLinkConflictError extends Schema.TaggedError<PluginLinkConfli
     commandId: Schema.Literal("meta:plugin:link"),
     pluginName: Schema.String,
     existingPath: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 

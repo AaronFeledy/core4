@@ -327,7 +327,11 @@ const makeLayer = (input: {
           selected === appliedPlan?.provider && appliedPlan !== undefined
             ? Effect.succeed({ kind: "applied" as const, plan: appliedPlan })
             : Effect.fail(
-                new AppResolveError({ message: "Two providers claim this root", reason: "ambiguous" }),
+                new AppResolveError({
+                  message: "Two providers claim this root",
+                  reason: "ambiguous",
+                  remediation: "Remove one of the conflicting providers or selector fields, then retry.",
+                }),
               ),
         );
       if (input.ownershipFailure !== undefined) return Effect.fail(input.ownershipFailure);
@@ -484,6 +488,8 @@ describe("applied-state teardown", () => {
           providerId: "docker",
           operation: "resource-ownership",
           message: "Other provider inventory is corrupt.",
+          remediation:
+            "Install or start the `docker` provider and confirm it can perform `resource-ownership`.",
         });
         const harness = makeLayer({ appliedPlan, ownershipFailure: failure });
         // When
@@ -548,6 +554,7 @@ describe("applied-state teardown", () => {
           providerId,
           operation: "list",
           message: "Cannot inventory containers.",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `list`.",
         }),
       });
       await Effect.runPromise(withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)));
@@ -562,6 +569,8 @@ describe("applied-state teardown", () => {
         providerId,
         operation: "removeObservedService",
         message: "Cannot remove stray container.",
+        remediation:
+          "Install or start the selected runtime provider and confirm it can perform `removeObservedService`.",
       });
       const harness = makeLayer({
         appliedPlan: planAt(root),
@@ -1207,6 +1216,7 @@ describe("applied-state teardown", () => {
         providerId: "lando",
         operation: "destroy",
         message: "runtime unavailable",
+        remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
       });
       const harness = makeLayer({ appliedPlan, destroy: () => Effect.fail(failure) });
 

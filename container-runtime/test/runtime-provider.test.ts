@@ -25,7 +25,7 @@ const plan = {
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-06T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
 } satisfies AppPlan;
-const ctx = { providerId: "test", remediation: "Run doctor." } as const;
+const ctx = { providerId: "test", remediation: "Run doctor.", env: {} } as const;
 
 const noPlanError = (missingApp: AppId, operation: string) =>
   new ProviderUnavailableError({

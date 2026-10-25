@@ -26,9 +26,10 @@ export const layer: Layer.Layer<Downloader, never, HttpClient.HttpClient> = Laye
     const http = yield* HttpClient.HttpClient;
     const eventService = yield* Effect.serviceOption(EventService);
     const service = yield* Effect.serviceOption(RedactionService);
+    const options = { sourceEnv: { ...process.env } };
     const redactor = Option.isSome(service)
-      ? yield* service.value.forProfile("secrets")
-      : createStandaloneRedactor("secrets");
+      ? yield* service.value.forProfile("secrets", options)
+      : createStandaloneRedactor("secrets", options);
     return Downloader.of(makeDownloaderService(http, makeDownloaderEvents(eventService, redactor)));
   }),
 );

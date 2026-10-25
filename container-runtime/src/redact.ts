@@ -3,28 +3,50 @@ import type { Redactor } from "@lando/sdk/secrets";
 import { Context, Effect, Option } from "effect";
 import type { ProviderErrorContext } from "./engine-api.ts";
 
-// Standalone callers get pattern masking only; runtime callers pass their retained redactor.
-const secretsRedactor = createStandaloneRedactor("secrets");
+/**
+ * Resolve the redactor for a provider error context: retained redactor wins,
+ * else a standalone built from the context's explicit env snapshot.
+ * Never reads process.env; callers must pass ctx.env.
+ */
+export const redactorFor = (ctx: ProviderErrorContext): Redactor =>
+  ctx.redactor ?? createStandaloneRedactor("secrets", { sourceEnv: ctx.env });
+
+/** Host-boundary standalone secrets redactor from an explicit env snapshot. Never reads process.env. */
+export const standaloneSecretsRedactor = (
+  sourceEnv: Readonly<Record<string, string | undefined>>,
+  options?: {
+    readonly authoritativeTokens?: Iterable<string>;
+    readonly redactionTokens?: Iterable<string>;
+  },
+): Redactor =>
+  createStandaloneRedactor("secrets", {
+    sourceEnv,
+    ...(options?.authoritativeTokens === undefined
+      ? {}
+      : { authoritativeTokens: options.authoritativeTokens }),
+    ...(options?.redactionTokens === undefined ? {} : { redactionTokens: options.redactionTokens }),
+  });
 
 export const runtimeDiagnosticContext = Effect.fnUntraced(function* (ctx: ProviderErrorContext) {
   const service = yield* Effect.serviceOption(RedactionService);
+  const options = { sourceEnv: ctx.env };
   const redactor = Option.isSome(service)
-    ? yield* service.value.forProfile("secrets")
-    : (ctx.redactor ?? secretsRedactor);
+    ? yield* service.value.forProfile("secrets", options)
+    : (ctx.redactor ?? createStandaloneRedactor("secrets", options));
   return { ...ctx, redactor };
 });
 
-// The engine supplies its canonical redactor without coupling container helpers to the secret store.
-export const StartFailureLogRedactor = Context.Reference<Redactor>(
+/**
+ * Engine-supplied start-failure log redactor. No default empty env: callers must
+ * provide via Effect.provideService, or captureServiceLogTail falls back to redactorFor(ctx).
+ */
+export class StartFailureLogRedactor extends Context.Service<StartFailureLogRedactor, Redactor>()(
   "@lando/container-runtime/StartFailureLogRedactor",
-  { defaultValue: () => secretsRedactor },
-);
+) {}
 
-export const redactString = (value: string, redactor: Redactor = secretsRedactor): string =>
-  redactor.redactString(value);
+export const redactString = (value: string, redactor: Redactor): string => redactor.redactString(value);
 
-export const redactDetails = (value: unknown, redactor: Redactor = secretsRedactor): unknown =>
-  redactor.redactValue(value);
+export const redactDetails = (value: unknown, redactor: Redactor): unknown => redactor.redactValue(value);
 
 export const httpResponseDetails = (response: {
   readonly status: number;
@@ -39,10 +61,10 @@ export const redactResponseDetails = (
     readonly status: number;
     readonly body: string;
   },
-  redactor?: Redactor,
+  redactor: Redactor,
 ): unknown => redactDetails(httpResponseDetails(response), redactor);
 
-const apiReasonFromBody = (details: unknown, redactor?: Redactor): string | undefined => {
+const apiReasonFromBody = (details: unknown, redactor: Redactor): string | undefined => {
   if (typeof details !== "object" || details === null || !("body" in details)) return undefined;
   const body = details.body;
   if (typeof body !== "string" || body.trim().length === 0) return undefined;
@@ -61,7 +83,7 @@ const apiReasonFromBody = (details: unknown, redactor?: Redactor): string | unde
   return reason === undefined ? undefined : redactString(reason, redactor);
 };
 
-export const withApiReason = (message: string, details: unknown, redactor?: Redactor): string => {
+export const withApiReason = (message: string, details: unknown, redactor: Redactor): string => {
   const reason = apiReasonFromBody(details, redactor);
   return reason === undefined ? message : `${message} ${reason}`;
 };

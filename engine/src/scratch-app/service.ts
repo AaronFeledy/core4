@@ -106,13 +106,43 @@ export const SCRATCH_DIR = "scratch";
 
 const retainedScratchIds = new Set<string>();
 
+const scratchRemediationFor = (operation: string): string => {
+  switch (operation) {
+    case "plan":
+    case "planCache":
+      return "Correct the scratch source Landofile, then retry `lando apps:scratch:start`.";
+    case "materialize":
+      return "Fix recipe answers and the source Landofile, then retry scratch acquisition.";
+    case "start":
+    case "acquire":
+      return "Run `lando doctor`, fix the reported provider or plan failure, then retry scratch start.";
+    case "ensureRoot":
+    case "paths":
+      return "Fix permissions on the Lando scratch directory under the user cache root, then retry.";
+    case "gc":
+      return "Fix permissions under the scratch cache directory, then retry `lando apps:scratch:gc`.";
+    case "run":
+      return "Pass a valid scratch id and tool command after `--`, e.g. `lando run -- composer install`.";
+    case "destroy":
+    case "cleanup":
+      return "Repair the failed provider or filesystem operation, then retry scratch destroy.";
+    default:
+      return `Resolve the scratch "${operation}" failure, then retry the scratch command.`;
+  }
+};
+
 const scratchAppError = (
   operation: string,
   message: string,
   cause: unknown,
   remediation?: string,
 ): ScratchAppError =>
-  new ScratchAppError({ message, operation, cause, ...(remediation === undefined ? {} : { remediation }) });
+  new ScratchAppError({
+    message,
+    operation,
+    cause,
+    remediation: remediation ?? scratchRemediationFor(operation),
+  });
 
 const scratchSourceLabel = (input: ScratchAcquireInput): string => {
   if (input.source === undefined) return "unresolved";

@@ -6,14 +6,19 @@ import { writeFileAtomicViaRename } from "../cache/atomic.ts";
 import { findDiscoveredLandofilePath } from "../services/landofile-live.ts";
 
 export const resolveAppConfigFile = Effect.fn("AppConfig.resolveFile")(function* (
-  cwd: string,
+  cwd: string | undefined,
   subcommand: string,
 ) {
   const discovered = yield* findDiscoveredLandofilePath(cwd);
   const typescript = join(discovered.appRoot, ".lando.ts");
   const exists = yield* Effect.tryPromise({
     try: () => Bun.file(typescript).exists(),
-    catch: (cause) => new ConfigError({ message: "Failed to inspect the canonical Landofile.", cause }),
+    catch: (cause) =>
+      new ConfigError({
+        message: "Failed to inspect the canonical Landofile.",
+        cause,
+        remediation: "Ensure the app root Landofile exists and is readable, then retry.",
+      }),
   });
   if (subcommand !== "validate" && exists)
     return yield* Effect.fail(
@@ -30,7 +35,13 @@ export const resolveAppConfigFile = Effect.fn("AppConfig.resolveFile")(function*
 export const readAppConfigFile = (file: string) =>
   Effect.tryPromise({
     try: async () => ((await Bun.file(file).exists()) ? Bun.file(file).text() : ""),
-    catch: (cause) => new ConfigError({ message: `Failed to read ${file}`, path: file, cause }),
+    catch: (cause) =>
+      new ConfigError({
+        message: `Failed to read ${file}`,
+        path: file,
+        cause,
+        remediation: `Fix permissions on ${file} or restore it from version control.`,
+      }),
   });
 
 export const readMutableAppConfigFile = (file: string, subcommand: string) =>
@@ -53,5 +64,11 @@ export const readMutableAppConfigFile = (file: string, subcommand: string) =>
 export const writeAppConfigFile = (file: string, content: string) =>
   Effect.tryPromise({
     try: () => writeFileAtomicViaRename(file, content),
-    catch: (cause) => new ConfigError({ message: `Failed to write ${file}`, path: file, cause }),
+    catch: (cause) =>
+      new ConfigError({
+        message: `Failed to write ${file}`,
+        path: file,
+        cause,
+        remediation: `Make ${file} and its parent directory writable, then retry.`,
+      }),
   });

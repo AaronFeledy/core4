@@ -125,7 +125,7 @@ export const resolveAppCommandHelpAliases = Effect.fnUntraced(function* (
   ReadonlyArray<readonly [string, string]> | undefined,
   CacheError | CommandAliasConflictError | CommandAliasTargetError
 > {
-  const appRoot = yield* findAppRoot(options.cwd ?? process.cwd());
+  const appRoot = yield* findAppRoot(options.cwd);
   if (appRoot === undefined) return undefined;
   const cache = yield* readFreshAppCommandCacheForCwd({
     cwd: appRoot,
@@ -163,7 +163,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   if (token.startsWith("-")) return { _tag: "not-tooling" } as const;
   const name = toolingName(token);
 
-  const appRoot = yield* findAppRoot(options.cwd ?? process.cwd());
+  const appRoot = yield* findAppRoot(options.cwd);
   if (appRoot === undefined) return { _tag: "not-tooling" } as const;
 
   const cache = yield* readFreshAppCommandCacheForCwd({

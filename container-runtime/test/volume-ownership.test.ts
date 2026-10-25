@@ -8,7 +8,7 @@ import { podmanVolumeCreationLabels } from "../src/podman/bring-up.ts";
 import { renderCompose } from "../src/podman/compose.ts";
 import { buildLandoVolumeFilters, volumeMatchesFilters } from "../src/podman/volume-prune.ts";
 
-const ctx = { providerId: "lando", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "lando", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appRoot = AbsolutePath.make("/srv/apps/ownership");
 const dataStore = { name: "ownership_database_data", scope: "app", kind: "data" } as const;
 const cacheStore = { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" } as const;

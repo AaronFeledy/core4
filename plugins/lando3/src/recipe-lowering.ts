@@ -285,7 +285,12 @@ export const recipeLayerOutputs: (
         Schema.encodeEffect(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
       ),
       Effect.mapError(
-        (cause) => new ConfigTranslateError({ message: `Invalid directive fragment at ${layer}.`, cause }),
+        (cause) =>
+          new ConfigTranslateError({
+            message: `Invalid directive fragment at ${layer}.`,
+            cause,
+            remediation: `Correct the recipe directive fragment for layer ${layer} so it validates as Landofile authoring.`,
+          }),
       ),
     );
     outputs.push({

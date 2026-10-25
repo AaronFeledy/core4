@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath } from "@lando/sdk/schema";
-import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect } from "effect";
 import { makeDataMoverService } from "../src/service.ts";
@@ -29,7 +28,7 @@ afterEach(async () => {
 
 const transfer = (source: string, target: string) => {
   const mover = makeDataMoverService(
-    TestRuntimeProvider,
+    Effect.die("Local transfers must not resolve a runtime provider"),
     { redactText: (text) => text, publish: () => Effect.void },
     { paths: { ...makeLandoPaths(), scratchDir: scratchRoot }, stateStore: makeTestStateStore().service },
   );

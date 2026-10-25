@@ -10,8 +10,10 @@ import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
 } from "@lando/container-runtime/podman/version-floor";
-import { redactDetails, redactString } from "@lando/container-runtime/redact";
+import { redactDetails, redactString, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
+
+const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
 import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
@@ -40,7 +42,7 @@ export {
   rejectIntelMacHost,
 } from "./host-support.ts";
 import { ensureManagedNft } from "./nft-provision.ts";
-import { LANDO_CTX } from "./provider-context.ts";
+import { providerContextForEnv } from "./provider-context.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { installRuntimeBundle } from "./runtime-extract.ts";
@@ -74,8 +76,12 @@ export class PodmanVersionUnsupportedError extends ProviderUnavailableError {
         `Podman version "${observedVersion}" (reported by ${
           source === "cli" ? "`podman --version`" : "the Podman API"
         }) does not satisfy the required minimum ${MINIMUM_PODMAN_VERSION}.`,
+        hostSecretsRedactor(),
       ),
-      details: redactDetails({ observedVersion, source, minimumVersion: MINIMUM_PODMAN_VERSION }),
+      details: redactDetails(
+        { observedVersion, source, minimumVersion: MINIMUM_PODMAN_VERSION },
+        hostSecretsRedactor(),
+      ),
       remediation: `Install or select Podman >= ${MINIMUM_PODMAN_VERSION} and rerun \`lando setup\`.`,
     });
   }
@@ -401,7 +407,10 @@ const machineFailure = (
     message:
       diagnostics.length === 0
         ? `Podman machine ${operation} failed.`
-        : redactString(`Podman machine ${operation} failed.\nPodman output:\n${diagnostics}`),
+        : redactString(
+            `Podman machine ${operation} failed.\nPodman output:\n${diagnostics}`,
+            hostSecretsRedactor(),
+          ),
     remediation: "Fix the Podman machine error and rerun `lando setup`.",
     cause,
   });
@@ -1402,7 +1411,9 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
 
     const api =
       options.podmanApi ??
-      (socketPath === undefined ? undefined : makeRuntimePodmanApiClient(socketPath, LANDO_CTX));
+      (socketPath === undefined
+        ? undefined
+        : makeRuntimePodmanApiClient(socketPath, providerContextForEnv({ ...process.env })));
 
     let info: unknown;
     if (probesSocket && socketStep !== undefined) {

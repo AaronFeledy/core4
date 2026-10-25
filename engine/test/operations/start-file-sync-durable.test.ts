@@ -108,6 +108,7 @@ describe("durable initial file-sync failure", () => {
         const failure = new FileSyncStartError({
           engineId: "mutagen",
           message: "second session readiness failed",
+          remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
         });
         const engine: FileSyncEngineShape = {
           ...state.engine,

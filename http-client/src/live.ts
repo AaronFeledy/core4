@@ -61,7 +61,8 @@ const resolveTrust = Effect.fnUntraced(function* (
         message: cause instanceof Error ? cause.message : "Could not resolve network trust",
         urlOrigin: "unknown",
         kind: "missing-custom-ca",
-        remediation: "Check network.ca.certs and LANDO_NETWORK_CA_CERTS.",
+        remediation:
+          "Check network.ca.certs, LANDO_NETWORK_CA_CERTS, and proxy trust settings (HTTPS_PROXY / network.proxy), then retry.",
         cause,
       }),
   });
@@ -107,6 +108,7 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
           const spanUrl = Option.isNone(canonical)
             ? safeUrl
             : (yield* canonical.value.forProfile("secrets", {
+                sourceEnv: env,
                 redactionTokens: policy.redactionTokens,
               })).redactString(safeUrl);
           yield* Effect.annotateCurrentSpan({ "http.request.method": request.method, "url.full": spanUrl });
@@ -205,7 +207,7 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
                         urlOrigin: url.origin,
                         kind: "missing-custom-ca",
                         remediation:
-                          "Supply the issuer CA through network.ca.certs or LANDO_NETWORK_CA_CERTS.",
+                          "Supply the issuer CA through network.ca.certs or LANDO_NETWORK_CA_CERTS, and verify HTTPS_PROXY / network.proxy are not intercepting TLS without that CA.",
                         cause,
                       })
                     : cause,

@@ -16,7 +16,7 @@ export class SetupFlagCollisionError extends Schema.TaggedError<SetupFlagCollisi
     pluginName: Schema.String,
     flagName: Schema.String,
     conflictsWith: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 

@@ -2,15 +2,15 @@ import { dirname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import {
-  type LandofileFormConflictError,
-  type LandofileLoadExpressionError,
+import type {
+  LandofileFormConflictError,
+  LandofileLoadExpressionError,
   LandofileNotFoundError,
-  type LandofileParseError,
-  type LandofileSandboxError,
-  type LandofileTimeoutError,
-  type LandofileValidationError,
-  type NotImplementedError,
+  LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
+  LandofileValidationError,
+  NotImplementedError,
 } from "@lando/sdk/errors";
 import type {
   ComposeKeyRejectedError,
@@ -23,11 +23,11 @@ import type {
 import type { StateStore } from "@lando/sdk/services";
 
 import { scopedLandofileRuntimeInputs, updateLandofileIncludes } from "@lando/engine/services/landofile-live";
-import { findLandofilePath } from "@lando/landofile/discovery";
 import { includeAcquisitionView } from "@lando/landofile/include-layer-overlays";
 import type { IncludeUpdateReport, LandofileIncludeDeps } from "@lando/landofile/includes";
 import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { prepareLandofileRootLayers, validatePreparedAuthoringLayers } from "@lando/landofile/root-compile";
+import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 
 export type {
   IncludeUpdateEntry,
@@ -90,16 +90,7 @@ export type AppIncludesUpdateError =
 export const appIncludesUpdate = Effect.fn("AppIncludesUpdate.update")(function* (
   options: AppIncludesUpdateOptions = {},
 ): Effect.fn.Return<IncludeUpdateReport, AppIncludesUpdateError, StateStore> {
-  const cwd = options.cwd ?? process.cwd();
-  const filePath = yield* findLandofilePath(cwd);
-  if (filePath === undefined) {
-    return yield* Effect.fail(
-      new LandofileNotFoundError({
-        message: "No .lando.yml or .lando.ts found. Run `lando init` to create one before updating includes.",
-        cwd,
-      }),
-    );
-  }
+  const { filePath } = yield* findDiscoveredLandofilePath(options.cwd);
   const appRoot = dirname(filePath);
   const includes = [];
   const composeIncludes: string[] = [];
