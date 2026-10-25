@@ -143,6 +143,30 @@ the same image, so a manually compiled extension can depend on the apt
 packages Lando already installed. A `build.artifact` edit changes the
 build key, so the next `lando start` rebuilds that image. Bare `restart` also stop/starts and applies it. Selected `lando restart -s` stays in place and refuses the drift.
 
+## See the security baseline
+
+Stock PHP services write `/usr/local/etc/php/conf.d/10-lando-baseline.ini` during the image build. Custom `image:` values skip that file.
+
+The current baseline sets `session.upload_progress.enabled = 0`. That follows the [php.net 23 Oct 2026 informational advisory](https://www.php.net/archive/2026.php#2026-10-23-1) for CVE-2026-115560. There is no patched PHP release yet, so Lando ships the mitigation on every stock Apache, FPM, and CLI image.
+
+What you lose: PHP session upload progress. Some apps use that feature for session-based upload progress bars. Those bars stop updating until you override the setting.
+
+To turn the feature back on, add a `conf.d` drop-in whose name sorts after `10-lando-baseline.ini`. Use the `mounts:` or `configs:` form in the next section. A name such as `zz-custom.ini` loads after `10-` and wins. Do not bind-mount a replacement `/usr/local/etc/php/php.ini` for this override. PHP loads that file before it scans `conf.d`, so the baseline still wins.
+
+Create `php.ini` in your app root:
+
+```ini
+session.upload_progress.enabled = 1
+```
+
+Start the app after you add the mount shown next, then confirm the value inside the service. Replace `app` with your PHP service name:
+
+```sh
+lando exec app -- php -r "echo ini_get('session.upload_progress.enabled'), PHP_EOL;"
+```
+
+The command prints `1` when your drop-in loaded after the baseline.
+
 ## Mount a custom php.ini
 
 Create `php.ini` in your app root with the settings you want to override, then add this `mounts:` entry to `.lando.yml`. It mounts the file into `/usr/local/etc/php/conf.d/` without rebuilding the image:
@@ -157,7 +181,7 @@ services:
         readOnly: true
 ```
 
-php.ini drop-ins are read alphabetically after the base `php.ini`. Name your custom file so it sorts after any recipe-provided drop-in you want to override. For example, `zz-custom.ini` loads after the Drupal CMS recipe default `50-lando-drupal-cms.ini` and after the `50-lando-wordpress.ini` that `framework: wordpress` builds into the image. Mark the mount read-only. The container never needs to write back to your source `php.ini`.
+php.ini drop-ins are read alphabetically after the base `php.ini`. Name your custom file so it sorts after any Lando-provided drop-in you want to override. For example, `zz-custom.ini` loads after the security baseline `10-lando-baseline.ini`, after the Drupal CMS recipe default `50-lando-drupal-cms.ini`, and after the `50-lando-wordpress.ini` that `framework: wordpress` builds into the image. Mark the mount read-only. The container never needs to write back to your source `php.ini`.
 
 ## Grant a php.ini with Compose configs
 

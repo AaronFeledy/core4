@@ -37,6 +37,7 @@ import {
   phpServingMode,
   resolvePhpVia,
 } from "./php-via.ts";
+import { phpBaselineBuildStep } from "./php-baseline.ts";
 import { PHP_WP_CLI_STEP } from "./php-wp-cli.ts";
 import {
   assertPhpXdebugSupported,
@@ -57,6 +58,13 @@ export {
 } from "./php-prerequisites.ts";
 
 export { PHP_COMPOSER_PACKAGES_STEP_ID } from "./php-composer-packages.ts";
+
+export {
+  PHP_BASELINE_INI_PATH,
+  PHP_BASELINE_STEP_ID,
+  PHP_SECURITY_BASELINE,
+  renderPhpBaselineIni,
+} from "./php-baseline.ts";
 
 export { PHP_FPM_LOG_SOURCES } from "./php-via.ts";
 
@@ -163,6 +171,8 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const xdebug = resolvePhpXdebug(service.xdebug);
   const composerRelease = resolvePhpComposer(service.composer);
   if (!customImage) {
+    const baseline = phpBaselineBuildStep();
+    if (baseline !== undefined) ctx.addBuildStep(baseline);
     for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
     if (service.framework === "wordpress") {
       ctx.addBuildStep(PHP_WP_CLI_STEP);

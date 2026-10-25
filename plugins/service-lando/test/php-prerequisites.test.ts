@@ -155,6 +155,7 @@ describe("stock PHP prerequisite plan", () => {
 
     expect(steps.map(({ id }) => id)).toEqual([
       "lando.boot:scaffold",
+      "service-lando.php:baseline",
       "service-lando.php:prerequisites",
       "service-lando.php:composer",
       "service-lando.php:apache-default-site",
@@ -185,6 +186,7 @@ describe("stock PHP prerequisite plan", () => {
 
     expect(steps.map(({ id }) => id)).toEqual([
       "lando.boot:scaffold",
+      "service-lando.php:baseline",
       "service-lando.php:prerequisites",
       "service-lando.php:apache-default-site",
       "service-lando.http-errors:pages",
@@ -253,6 +255,7 @@ describe("PHP Composer compatibility", () => {
 
     expect(steps.map(({ id }) => id)).toEqual([
       "lando.boot:scaffold",
+      "service-lando.php:baseline",
       "service-lando.php:prerequisites",
       "service-lando.php:apache-default-site",
       "service-lando.http-errors:pages",
