@@ -19,7 +19,10 @@ export class SshAgentUnavailableError extends Schema.TaggedError<SshAgentUnavail
       "bridge-failed",
     ]),
     socketPath: Schema.optional(Schema.String),
-    detail: Schema.optional(Schema.String),
+    detail: Schema.optional(Schema.String).annotate({
+      description:
+        "Redacted reason from the last sidecar readiness probe, when one failed with a concrete cause.",
+    }),
     remediation: Schema.String,
   },
 ) {}
