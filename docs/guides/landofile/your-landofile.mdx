@@ -101,7 +101,7 @@ Maps deep-merge and scalars use the later value. Collection rules come from each
 
 These are authored values: Lando merges before interpreting shorthand or adding defaults. A local `appMount: /site` replaces an inherited app-mount object, including its `excludes`. Changing `environment` or `labels` between a list and a map also replaces the earlier value. Use maps when you want individual keys to merge. Only literal `healthcheck: false` discards an inherited probe before later layers; disabled object spellings still participate in ordinary map merging.
 
-The same rule applies to tooling: `tooling.check: echo local`, `tooling.check: false`, or `tooling.check: disabled` replaces an inherited task wholesale, including its `service`, `cmds`, and flags. Lando interprets those shorthands only after composing the layers.
+The same rule applies to tooling: `tooling.check: echo local` or `tooling.check: false` replaces an inherited task wholesale, including its `service`, `cmds`, and flags. Lando interprets those shorthands only after composing the layers. The bare string `disabled` is rejected; use `false` to disable a task.
 
 Inspect the effective result with `lando app:config --format=json`. A bad local value carries its effective `issues[].path` plus `issues[].source` with the original file, layer, and authored path. The error's `remediation` is separate from those locations. Source coordinates appear only when the parser actually recorded them.
 
