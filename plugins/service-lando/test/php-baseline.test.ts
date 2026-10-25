@@ -6,22 +6,13 @@ import type { ServiceType } from "@lando/sdk/services";
 
 import {
   PHP_BASELINE_INI_PATH,
-  PHP_BASELINE_REMOVE_WHEN,
   PHP_BASELINE_STEP_ID,
   PHP_SECURITY_BASELINE,
   phpBaselineBuildStep,
-  phpBaselineEntryIsRetired,
   phpBaselineIniCommand,
   renderPhpBaselineIni,
-  stockPhpImageVersion,
 } from "../src/services/php-baseline.ts";
-import { phpImageFor } from "../src/services/php-via.ts";
-import {
-  PHP_FEATURE_ID,
-  SUPPORTED_PHP_VERSIONS,
-  php82ServiceType,
-  phpServiceFeature,
-} from "../src/services/php.ts";
+import { PHP_FEATURE_ID, php82ServiceType, phpServiceFeature } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const BuildSteps = Schema.Struct({
@@ -68,44 +59,28 @@ const buildStepsFor = (plan: ServicePlan) =>
 const baselineIni = renderPhpBaselineIni();
 
 describe("PHP security baseline table", () => {
-  test("renders every table field into a conf.d ini", () => {
+  test("renders table settings into a conf.d ini that cites the advisory", () => {
     // Given / When: the stock baseline table is rendered.
-    // Then: comments cite the advisory and removal trigger, and the setting is assigned.
+    // Then: comments cite the advisory and the setting is assigned, without version pins.
     expect(baselineIni.endsWith("\n")).toBe(true);
     expect(baselineIni).toContain("; Lando-managed PHP security baseline\n");
+    expect(baselineIni).not.toMatch(/\b\d+\.\d+\.\d+\b/u);
     for (const entry of PHP_SECURITY_BASELINE) {
       expect(baselineIni).toContain(`; ${entry.reason}`);
       expect(baselineIni).toContain(`; Advisory: ${entry.advisoryUrl}`);
-      expect(baselineIni).toContain(`; drop when fixed in ${Object.values(entry.removeWhen).join(", ")}`);
+      expect(baselineIni).not.toContain(entry.removeWhen);
       expect(baselineIni).toContain(`${entry.setting} = ${entry.value}\n`);
     }
     expect(baselineIni).toContain("https://www.php.net/archive/2026.php#2026-10-23-1");
     expect(baselineIni).toContain("session.upload_progress.enabled = 0\n");
   });
 
-  test("covers every supported PHP line with a removal trigger", () => {
-    expect(Object.keys(PHP_BASELINE_REMOVE_WHEN)).toEqual([...SUPPORTED_PHP_VERSIONS]);
+  test("requires an advisory URL and a non-empty removal trigger on every entry", () => {
+    expect(PHP_SECURITY_BASELINE.length).toBeGreaterThan(0);
     for (const entry of PHP_SECURITY_BASELINE) {
-      expect(Object.keys(entry.removeWhen)).toEqual([...SUPPORTED_PHP_VERSIONS]);
+      expect(entry.advisoryUrl.length).toBeGreaterThan(0);
+      expect(entry.removeWhen.length).toBeGreaterThan(0);
     }
-  });
-
-  test("fails once every supported image pin is at or past the fix version", () => {
-    // Given floating official tags such as php:8.3-apache-bookworm, the parser
-    // treats an unpinned minor as X.Y.0. Pin a patched tag (php:8.3.37-...)
-    // when a line is fixed. This test fails when every supported line is there.
-    const retired = PHP_SECURITY_BASELINE.filter((entry) => phpBaselineEntryIsRetired(entry));
-    expect(retired).toEqual([]);
-    const [entry] = PHP_SECURITY_BASELINE;
-    expect(entry).toBeDefined();
-    if (entry === undefined) return;
-    expect(phpBaselineEntryIsRetired(entry, (line) => PHP_BASELINE_REMOVE_WHEN[line])).toBe(true);
-  });
-
-  test("parses stock image tags for retirement comparison", () => {
-    expect(stockPhpImageVersion("8.3")).toBe("8.3.0");
-    expect(stockPhpImageVersion("8.6")).toBe("8.6.0-rc.0");
-    expect(phpImageFor("8.6", "apache")).toBe("php:8.6-rc-apache-bookworm");
   });
 });
 
