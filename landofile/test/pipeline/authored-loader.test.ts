@@ -26,6 +26,48 @@ const inputs = (root: string) => ({
 const load = (root: string) => loadLandofileLayers(root, join(root, ".lando.yml"), inputs(root));
 
 test.each([
+  ["false", { disabled: true }],
+  ["disabled", { disabled: true }],
+  ["echo local", { cmd: "echo local" }],
+])("a local YAML tooling shorthand %s replaces the inherited definition", async (higher, expected) => {
+  // Given
+  await withApp(
+    {
+      ".lando.yml": "name: forms\ntooling:\n  task:\n    service: web\n    cmds:\n      - echo inherited\n",
+      ".lando.local.yml": `tooling:\n  task: ${higher}\n`,
+    },
+    async (root) => {
+      // When
+      const result = await Effect.runPromise(load(root));
+      // Then
+      expect(result.document.tooling?.task).toEqual(expected);
+    },
+  );
+});
+
+test("TypeScript Landofiles accept tooling shorthands", async () => {
+  // Given
+  await withApp(
+    {
+      ".lando.ts":
+        "export default { name: 'forms', tooling: { off: false, retired: 'disabled', greet: 'echo hi' } }",
+    },
+    async (root) => {
+      // When
+      const result = await Effect.runPromise(
+        loadLandofileLayers(root, join(root, ".lando.ts"), inputs(root)),
+      );
+      // Then
+      expect(result.document.tooling).toEqual({
+        off: { disabled: true },
+        retired: { disabled: true },
+        greet: { cmd: "echo hi" },
+      });
+    },
+  );
+});
+
+test.each([
   ["environment", { KEEP: "lower" }, ["WIN=upper"], { WIN: "upper" }],
   ["environment", ["KEEP=lower"], { WIN: "upper" }, { WIN: "upper" }],
   ["labels", { KEEP: "lower" }, ["WIN=upper"], { WIN: "upper" }],
