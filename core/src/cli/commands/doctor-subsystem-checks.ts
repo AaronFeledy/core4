@@ -1,9 +1,11 @@
 import { AgentSocketDelivery } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Result, Schema } from "effect";
 
 import { redactString } from "../redact";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 import { DoctorSeveritySchema, passCheckNamed, warnCheck } from "./doctor-check-builders";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 /**
  * Whether a degraded subsystem can be recovered automatically by re-running its
@@ -214,12 +216,12 @@ export const subsystemFailureDiagnostic = (
   });
 };
 
-const errorMessage = (cause: unknown): string => {
+const errorMessage = (cause: unknown, redactor: Redactor): string => {
   if (typeof cause === "object" && cause !== null && "message" in cause) {
     const message = cause.message;
-    if (typeof message === "string" && message.length > 0) return redactString(message);
+    if (typeof message === "string" && message.length > 0) return redactString(message, redactor);
   }
-  return redactString(String(cause));
+  return redactString(String(cause), redactor);
 };
 
 export const passCheck = (spec: SubsystemSpec, context: Record<string, string>): DoctorSubsystemCheck =>
@@ -236,6 +238,7 @@ export const buildDegradedCheck = Effect.fnUntraced(function* (
   cause?: unknown,
   refreshContext?: () => Effect.Effect<Record<string, string>, never>,
 ): Effect.fn.Return<DoctorSubsystemCheck, never> {
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
   const serviceId = baseContext.subsystemId ?? "unknown";
 
   if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
@@ -260,7 +263,7 @@ export const buildDegradedCheck = Effect.fnUntraced(function* (
         fixOutcome: "failed",
         fixCommand,
         fixExitCode: "1",
-        fixError: errorMessage(result.failure),
+        fixError: errorMessage(result.failure, redactor),
       },
       solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
     });

@@ -122,7 +122,10 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly render?: (value: A, ctx: RenderContext) => string | undefined;
   readonly successExitCode?: (value: A) => number | undefined;
   readonly failureExitCode?: (error: unknown) => number | undefined;
-  readonly formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) => string;
+  readonly formatError: (
+    failure: import("@lando/sdk/command-result").ProjectedFailure,
+    redactor: import("@lando/sdk/secrets").Redactor,
+  ) => string;
   readonly setExitCode?: (code: number) => void;
   /**
    * Records the command's spans with this tracer. Without one, the CLI keeps
@@ -178,12 +181,11 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   options: RunWithRendererHandlingOptions<A, R, RE>,
 ): Promise<void> => {
   const owner = makeRedactionOwner();
+  const sourceEnv = { ...(options.sourceEnv ?? process.env) };
   try {
-    await runWithInvocationRedaction(effect, options, owner.service);
+    await runWithInvocationRedaction(effect, { ...options, sourceEnv }, owner.service);
   } catch (cause) {
-    const redactor = await Effect.runPromise(
-      owner.service.forProfile("secrets", { sourceEnv: options.sourceEnv ?? process.env }),
-    );
+    const redactor = await Effect.runPromise(owner.service.forProfile("secrets", { sourceEnv }));
     throw new Error(redactor.redactString(String(cause)));
   } finally {
     owner.dispose();
@@ -345,18 +347,10 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         yield* setFailureExitCode(cause);
         return;
       }
-      let message = options.formatError({ error, additionalErrors });
+      const redactor = yield* redaction.forProfile("secrets", { sourceEnv, redactionTokens: extraTokens });
+      let message = redactor.redactString(options.formatError({ error, additionalErrors }, redactor));
       // Failure notices (for example what an incomplete start left in place) follow the error.
-      let notices = yield* commandWarnings.failureNotices;
-      const redaction = yield* Effect.serviceOption(RedactionService);
-      if (redaction._tag === "Some") {
-        const redactor = yield* redaction.value.forProfile("secrets", {
-          sourceEnv,
-          redactionTokens: extraTokens,
-        });
-        message = redactor.redactString(message);
-        notices = notices.map((notice) => redactor.redactString(notice));
-      }
+      const notices = (yield* commandWarnings.failureNotices).map((notice) => redactor.redactString(notice));
       if (options.rendererMode === "lando" && io.isTTY === true) message = dimBugReportDetails(message);
       yield* writeDiagnosticLine(message);
       const renderer = yield* Renderer;
