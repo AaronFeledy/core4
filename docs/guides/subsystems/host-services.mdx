@@ -1,0 +1,177 @@
+---
+id: host-services
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, subsystems, networking, host, compose]
+---
+
+# Reach host services and sibling stacks
+
+Your app container needs something that runs outside Lando: an API on your host, a name from your host's `/etc/hosts`, or a service in another Compose project. `localhost` inside a container is the container itself, so point the app at the host gateway instead.
+
+You need Lando 4 with a ready provider. Run these commands from a new app directory, then merge the keys into your own Landofile.
+
+## Configure the app
+
+Save this as `.lando.yml`:
+
+```yaml
+name: host-reach-demo
+services:
+  web:
+    type: compose
+    image: alpine:3
+    command: ["sleep", "infinity"]
+    home: false
+    primary: true
+    extra_hosts:
+      - "api.test:host-gateway"
+```
+
+- `web` is a small Alpine container with `wget`, standing in for your app service.
+- `extra_hosts` maps `api.test` to the host gateway for this service. The host's `/etc/hosts` doesn't apply inside containers, so each name your app expects on the host needs an entry here, on each service that uses it.
+
+Lando adds `host.lando.internal` to every service and sets `LANDO_HOST_IP=host.lando.internal` when the provider can reach the host. You don't configure either one.
+
+```sh
+lando start
+```
+
+## Bind the host service to 0.0.0.0
+
+Start a demo HTTP server on the host, listening on all interfaces:
+
+```sh
+python3 -m http.server 8000 --bind 0.0.0.0 &
+```
+
+Check its bind address on the host:
+
+```sh
+ss -ltn 'sport = :8000'                # Linux
+lsof -nP -iTCP:8000 -sTCP:LISTEN       # macOS
+netstat -an | findstr :8000            # Windows
+```
+
+The local address must be `0.0.0.0:8000` or `*:8000`, not `127.0.0.1:8000`. On native Linux, a server bound only to `127.0.0.1` refuses connections from containers, because container traffic arrives on the host's bridge interface, not on loopback. Change the server's listen address to `0.0.0.0`, or to the host's bridge IP if you don't want it on the LAN.
+
+A `0.0.0.0` bind also exposes the server to your network wherever the host firewall allows it. Stop the demo server when you finish.
+
+## Reach the host from the container
+
+Wait for the server, then request it through the host alias:
+
+```sh
+lando exec web -- timeout 30 sh -c 'until wget -q -O /dev/null http://host.lando.internal:8000/; do sleep 1; done'
+lando exec web -- wget -qO- http://host.lando.internal:8000/
+lando exec web -- sh -c 'echo $LANDO_HOST_IP'
+```
+
+The first command returns once the container can connect to the host server. The second prints the directory listing the server returns, which proves the request crossed from the container to your host. The third prints `host.lando.internal`; read the variable in app config instead of hard-coding the name.
+
+## Use a host name from extra_hosts
+
+```sh
+lando exec web -- getent hosts api.test host.lando.internal
+lando exec web -- wget -qO- http://api.test:8000/
+```
+
+Both names resolve to the same gateway address, and the request to `api.test` reaches the same host server. Use `http://api.test:8000` as the base URL when the host service checks the `Host` header.
+
+## Reach a sibling Compose stack
+
+Another Compose project, such as a shared mail catcher, runs on its own network that Lando services don't join. Publish its ports on the host and reach them through the host alias. Save this as `compose.yaml` in a separate directory:
+
+```yaml
+name: mailstack
+services:
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+```
+
+Start it from that directory, then call it from the app:
+
+```sh
+docker compose up -d --wait
+lando exec web -- wget -qO- http://host.lando.internal:8025/api/v1/info
+```
+
+`--wait` returns once the container reports healthy. The JSON response proves the app container reached the sibling stack's published port. Point your app's SMTP settings at `host.lando.internal` port `1025`. Publish without a `127.0.0.1:` prefix; on native Linux a loopback-only publication is not reachable from Lando services.
+
+Stop the sibling stack from its directory when you finish:
+
+```sh
+docker compose down
+```
+
+## Fold the stack into the Landofile
+
+When only this app uses the other stack, move its services into the Landofile instead. They join the app network and resolve by service key, so nothing goes through the host. Add the service next to `web`:
+
+```yaml
+services:
+  mailpit:
+    type: compose
+    image: axllent/mailpit:v1.27
+    home: false
+    appMount: false
+```
+
+If the stack brought its own database, leave that service out and point the moved service at your app's database service by its key.
+
+Apply the change and wait for the service:
+
+```sh
+lando start
+lando exec web -- timeout 30 sh -c 'until wget -q -O /dev/null http://mailpit:8025/api/v1/info; do sleep 1; done'
+lando exec web -- wget -qO- http://mailpit:8025/api/v1/info
+```
+
+The response proves `mailpit` answers on the app network under its service key, with no host port published.
+
+## Check the Lando configuration
+
+These checks confirm the app starts and keeps the `extra_hosts` entry. They don't start a host server; use the steps above for that:
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="host-reach-demo" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\\.test\":\\s*\"host-gateway\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Clean up
+
+```sh
+lando destroy -y
+kill %1
+```
+
+`kill %1` stops the demo server you started in the background from this shell.
+
+## Next
+
+- [Reach services by name](./service-dns.mdx) for app and cross-app service names
+- [Reach an app from another device](./external-access.mdx) for the reverse direction
+- [Paste a Compose service into a Landofile](../config/compose-service-block.mdx) for other Compose keys
+- [Add Mailpit](../services/mailpit.mdx) for a built-in mail catcher
