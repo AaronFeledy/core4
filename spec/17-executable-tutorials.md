@@ -66,6 +66,8 @@ Prop schemas live in `@lando/sdk/docs/components`; implementations and AST helpe
 
 `MatcherSchema` is the assertion vocabulary for `<Verify>` and `<Inspect>`. It supports deep-equal scalars, partial objects by default, and the named operators `exact`, `partial`, `regex`, `schema`, `anyOf`, `allOf`, `oneOf`, and `not`. Other assertions require justified `<Inline>`.
 
+`<Run command>` and `<Verify command>` accept an optional integer `expectExit`, defaulting to zero. Command verification MUST enforce that exit code before checking output matchers; `expectExit` is invalid on other verification targets. A negative lint report therefore uses explicit exit 1 in every format while retaining its report assertions, without a shell wrapper that hides the status.
+
 `<Hidden>` MUST NOT define distinct product behavior. `<Inline>` MUST remain exceptional. `<Variable>` display values MUST be short substitutions, never explanatory sentences.
 
 ### 19.4 The ScenarioContext

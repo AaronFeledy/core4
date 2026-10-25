@@ -2,13 +2,14 @@
 import { createConnection, isIP } from "node:net";
 import { type ConnectionOptions, connect as createTlsConnection } from "node:tls";
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { Effect, Stream } from "effect";
+import { Effect } from "effect";
 import type {
   EngineApiClient,
   EngineHttpRequest,
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
+import { engineByteStream } from "../engine-byte-stream.ts";
 import { engineApiFailure } from "../engine-errors.ts";
 import { tryParseJson } from "../engine-json.ts";
 import { httpResponseDetails, redactDetails, redactString, redactorFor, withApiReason } from "../redact.ts";
@@ -392,11 +393,12 @@ export const makeUnixDockerApiClient = (
 
   return {
     stream: (input) =>
-      Stream.fromAsyncIterable(
-        (async function* () {
+      engineByteStream(
+        input,
+        async function* (input) {
           const used = initialPrefix(session, ctx);
           yield* streamUnixSocketRequest(socketPath, input, used.prefix);
-        })(),
+        },
         (cause) => dockerApiFailure(ctx)(input, cause),
       ),
     request: Effect.fn("DockerApiClient.request")(function* (input) {
@@ -447,11 +449,12 @@ export const makeNamedPipeDockerApiClient = (
   const clientFor = (prefix: string) => makeNamedPipeTransportClient(pipePath, connect, prefix);
   return {
     stream: (input) =>
-      Stream.fromAsyncIterable(
-        (async function* () {
+      engineByteStream(
+        input,
+        async function* (input) {
           const used = initialPrefix(session, ctx);
           yield* clientFor(used.prefix).stream(input);
-        })(),
+        },
         (cause) => dockerApiFailure(ctx)(input, cause),
       ),
     request: (input) =>
@@ -474,11 +477,12 @@ export const makeHttpDockerApiClient = (
   const clientFor = (prefix: string) => makeTcpTransportClient(baseUrl, undefined, prefix);
   return {
     stream: (input) =>
-      Stream.fromAsyncIterable(
-        (async function* () {
+      engineByteStream(
+        input,
+        async function* (input) {
           const used = initialPrefix(session, ctx);
           yield* streamHttpRequest(baseUrl, input, ctx, used.prefix);
-        })(),
+        },
         (cause) => dockerApiFailure(ctx)(input, cause),
       ),
     request: (input) =>

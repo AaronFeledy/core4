@@ -480,7 +480,13 @@ test("Given separate failing tasks, when routed, then both dispatchers propagate
     expect(compiledResult.exitCode, compiledResult.stderr).toBe(7);
     const expectedFailure = {
       command: "app:fail",
-      ok: true,
+      ok: false,
+      error: {
+        _tag: "LandoCommandError",
+        commandId: "app:fail",
+        exitCode: 7,
+        remediation: expect.any(String),
+      },
       result: {
         service: ":host",
         exitCode: 7,

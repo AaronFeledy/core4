@@ -12,7 +12,7 @@
  * (a normal result), not an MCP-level error. MCP-level errors are limited to
  * allowlist rejection and input-schema rejection.
  */
-import { Cause, Clock, Effect, Option, Predicate } from "effect";
+import { Cause, Clock, Effect, Option, Predicate, Schema } from "effect";
 
 import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
@@ -24,9 +24,9 @@ import {
   failureOutcomeFromCause,
 } from "@lando/sdk/command-result";
 import { Logger } from "@lando/sdk/services";
-import { Schema } from "effect";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
 import { boundedEventString, postEvent, preEvent } from "./call-events";
+import { OutputCapture } from "./output-capture";
 import { encodeProgressFrame } from "./progress";
 import { type McpCommandEntry, type McpToolInput, validateToolInput } from "./registry";
 import { inspectMcpCommandOutcome } from "./result-inspector";
@@ -49,6 +49,7 @@ export interface McpProgressFrame {
   readonly _tag: "stdout" | "stderr";
   readonly chunk: string;
   readonly service?: string;
+  readonly source?: string;
 }
 
 export type McpNotify = (frame: unknown) => Effect.Effect<void, McpTransportError>;
@@ -82,6 +83,7 @@ export interface McpDispatchDeps {
   readonly publish?: (event: LandoEvent) => Effect.Effect<void, unknown>;
   readonly now?: () => number;
   readonly rejection?: McpDispatchError;
+  readonly capture?: OutputCapture;
 }
 
 const nowMs = (deps: McpDispatchDeps) =>
@@ -151,12 +153,6 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
     );
   });
 
-  const interruptedError = (): McpTransportError =>
-    new McpTransportError({
-      message: `MCP tool call ${request.toolId} was interrupted before completion.`,
-      remediation: "Retry the MCP tool call if the cancellation was unintended.",
-    });
-
   const run: Effect.Effect<McpDispatchResult, McpDispatchError> = Effect.gen(function* () {
     if (deps.rejection !== undefined) return yield* Effect.fail(deps.rejection);
     const rejectNotAllowed = (): McpToolNotAllowedError =>
@@ -205,11 +201,13 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
 
     const rawOutcome = yield* deps.execute(entry, runInput);
     const outcome = yield* inspectMcpCommandOutcome(rawOutcome);
-    const redactor = yield* deps.resultRedactor(
-      outcome._tag === "success" ? (entry.spec.redactionTokens?.(outcome.value) ?? []) : [],
-    );
-    if (outcome._tag === "success") {
+    const tokens = Object.hasOwn(outcome, "value") ? (entry.spec.redactionTokens?.(outcome.value) ?? []) : [];
+    const redactor = yield* deps.resultRedactor(tokens);
+    const capture = deps.capture ?? new OutputCapture();
+    capture.redactValues(tokens);
+    if (Object.hasOwn(outcome, "value")) {
       for (const frame of entry.spec.streamFrames?.(outcome.value) ?? []) {
+        yield* encodeProgressFrame(frame, redactor, capture);
         yield* emitProgressFrame(deps, frame, redactor);
       }
     }
@@ -219,9 +217,27 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
       outcome,
       redactor,
     });
-    const envelope = yield* redactBoundedJsonValue(encodedEnvelope, redactor, "MCP tool result");
+    const safeEnvelope = yield* redactBoundedJsonValue(encodedEnvelope, redactor, "MCP tool result");
+    if (!Predicate.isObject(safeEnvelope))
+      return yield* Effect.fail(
+        new McpTransportError({
+          message: "MCP command encoding did not produce an object envelope.",
+          remediation: "Return a schema-valid command result.",
+        }),
+      );
+    const withOutput = yield* Effect.try({
+      try: () => capture.fitEnvelope(safeEnvelope, redactor),
+      catch: (error) =>
+        error instanceof McpTransportError
+          ? error
+          : new McpTransportError({
+              message: "MCP final output could not be bounded safely.",
+              remediation: "Return schema-valid bounded command data.",
+            }),
+    });
+    const text = yield* stringifyBoundedJson(withOutput, "MCP tool result");
+    const envelope: Schema.Json = JSON.parse(text);
     const ok = Predicate.isObject(envelope) && envelope.ok === true;
-    const text = yield* stringifyBoundedJson(envelope, "MCP tool result");
     yield* stringifyBoundedJson(
       { content: [{ type: "text", text }], structuredContent: envelope, isError: !ok },
       "MCP tool result frame",
@@ -236,7 +252,7 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
   if (exit._tag === "Success") return exit.value;
   if (Cause.hasInterruptsOnly(exit.cause)) {
     yield* emitPost("failure", "Interrupted");
-    return yield* Effect.fail(interruptedError());
+    return yield* Effect.interrupt;
   }
   const failure = Cause.findErrorOption(exit.cause);
   if (Option.isSome(failure)) {

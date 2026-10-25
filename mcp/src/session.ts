@@ -30,6 +30,7 @@ interface McpSession {
   readonly deps: Omit<McpDispatchDeps, "execute" | "notify">;
   readonly executor: McpCommandExecutorShape;
   readonly redactor: Redactor;
+  readonly payloadValues: () => Iterable<string>;
   readonly handleMemoryPressure: (level: MemoryPressureLevel) => void;
 }
 
@@ -93,11 +94,8 @@ export const serveSession = Effect.fnUntraced(
           const callContext = Option.isSome(prompt)
             ? Context.add(runtimeContext, ConfirmationPrompt, prompt.value)
             : runtimeContext;
-          const nested = makeNestedExecute(
-            callContext,
-            makeStreamFrameSink(notify, session.redactor),
-            session.executor,
-          );
+          const output = makeStreamFrameSink(notify, session.redactor, session.payloadValues);
+          const nested = makeNestedExecute(callContext, output, session.executor);
           const execute: McpDispatchDeps["execute"] = (entry, runInput) =>
             semaphore.withPermits(1)(nested(entry, runInput));
           return yield* dispatchTool(
@@ -106,6 +104,7 @@ export const serveSession = Effect.fnUntraced(
               ...session.deps,
               execute,
               notify,
+              capture: output.capture,
               ...(busy ? { rejection: stdioTransportError("Server busy") } : {}),
             },
           ).pipe(Effect.flatMap(commandResult));

@@ -45,7 +45,7 @@ export const runMetaUninstall = async (argv: ReadonlyArray<string>): Promise<voi
   );
 };
 
-export const runMetaMcp = async (argv: ReadonlyArray<string>): Promise<void> => {
+export const runMetaMcp = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
   if (await rejectInvalidInvocation("meta:mcp", argv)) return;
   const input = compiledCommandInputFromArgv("meta:mcp", argv);
   const flags = mcpFlagsFromParsed(input.flags);
@@ -62,6 +62,7 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>): Promise<void> => 
   ).pipe(Layer.orDie) as Layer.Layer<unknown>;
   return dispatchMcpCommand({
     flags,
+    ...(signal === undefined ? {} : { signal }),
     commandRuntime,
     retainedRuntime,
     rendererMode: activeRendererMode,

@@ -464,7 +464,7 @@ const renderVerify = (
     const command = component.props.command;
     return [
       `    const verifyRun = yield* context.runCli(${quote(interpolate(command, variables))});`,
-      "    expect(verifyRun.exitCode, `stdout:\\n${verifyRun.stdout}\\nstderr:\\n${verifyRun.stderr}`).toBe(0);",
+      `    expect(verifyRun.exitCode, \`stdout:\\n\${verifyRun.stdout}\\nstderr:\\n\${verifyRun.stderr}\`).toBe(${component.props.expectExit ?? 0});`,
       ...(expected === undefined
         ? []
         : [
@@ -1087,7 +1087,9 @@ const verifyResultSummary = (props: VerifyProps, variables: ReadonlyMap<string, 
   if (props.file !== undefined)
     return `file ${quote(interpolate(props.file, variables))} matches expectation`;
   if (props.command !== undefined) {
-    return `command ${quote(interpolate(props.command, variables))} succeeds`;
+    return props.expectExit === undefined || props.expectExit === 0
+      ? `command ${quote(interpolate(props.command, variables))} succeeds`
+      : `expected exit ${props.expectExit}`;
   }
   return `error tag ${quote(props.errorTag ?? "")} observed`;
 };

@@ -475,6 +475,7 @@
     "./command-result": [
       "FailureRoleAnnotation",
       "buildCommandResultEnvelope",
+      "commandCompletionFromExitCode",
       "commandFailureCause",
       "encodeCommandResult",
       "encodeStreamEventFrame",
@@ -488,6 +489,7 @@
       "listSelectableResultKeys",
       "primaryFailureReason",
       "projectEncodedResult",
+      "resolveCommandCompletion",
       "taggedErrorJson"
     ],
     "./database-creds": [
@@ -1172,6 +1174,9 @@
       "ChoicesFrom",
       "CleanupProps",
       "CommandAliasesShape",
+      "CommandCompletion",
+      "CommandOutput",
+      "CommandOutputChunk",
       "CommandResultEnvelope",
       "CommandResultFormat",
       "CommandSpec",

@@ -921,7 +921,7 @@
     "surface": "schema:StreamFrame",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "The terminal result member's embedded error envelope admits optional reason, SQL confirmation service and steps, JSON-safe own error fields, and authored validation issue sources. P2b intentionally narrows that embedded envelope before v4 ships: primary and additional error remediation is now required and nonblank, matching standalone CommandResultEnvelope. No frame discriminator or transport shape changes. Cause, stack, private redaction metadata, cyclic, over-depth, and non-JSON-safe fields remain excluded; defects normalize to LandoInternalError."
+    "justification": "The terminal result member admits optional reason, SQL confirmation service/steps, JSON-safe error fields, validation source provenance, and bounded redacted output: { chunks, truncated }. P2b intentionally requires nonblank remediation on primary and additional errors before v4 ships, matching standalone CommandResultEnvelope; defects normalize to LandoInternalError. Frame discriminators are unchanged. Causes, stacks, private redaction metadata, cyclic, over-depth, and non-JSON-safe fields remain excluded."
   },
   {
     "surface": "command:meta:doctor",

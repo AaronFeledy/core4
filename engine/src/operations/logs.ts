@@ -326,6 +326,7 @@ const drainLogFollow = Effect.fnUntraced(function* (
     (chunk: LogChunk) =>
       Option.isSome(sink)
         ? sink.value.emit({
+            kind: "record",
             _tag: chunk.stream,
             chunk: chunk.line,
             service: String(chunk.service),

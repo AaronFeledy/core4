@@ -1,5 +1,5 @@
 import { createConnection } from "node:net";
-import { Effect, Stream } from "effect";
+import { Effect } from "effect";
 
 import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 
@@ -10,6 +10,7 @@ import {
   type ProviderErrorContext,
   isSuccessStatus,
 } from "../engine-api.ts";
+import { engineByteStream } from "../engine-byte-stream.ts";
 import { engineApiFailure } from "../engine-errors.ts";
 import { tryParseJson } from "../engine-json.ts";
 import { redactResponseDetails, redactString, redactorFor } from "../redact.ts";
@@ -62,9 +63,7 @@ export const makePodmanApiClient = (endpoint: string, ctx: ProviderErrorContext)
       catch: (cause) => engineApiFailure(ctx, "podman-api", input, cause),
     });
   const stream = (input: EngineHttpRequest) =>
-    Stream.fromAsyncIterable(client.stream(input), (cause) =>
-      engineApiFailure(ctx, "podman-api", input, cause),
-    );
+    engineByteStream(input, client.stream, (cause) => engineApiFailure(ctx, "podman-api", input, cause));
   const infoRequest = { method: "GET", path: "/libpod/info" } as const;
   const pingRequest = { method: "GET", path: "/libpod/_ping" } as const;
 

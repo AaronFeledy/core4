@@ -29,7 +29,7 @@ describe("RendererOutput.layerStreamFrameSink raw frames", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: "Downloading 12%\r", raw: true });
+        yield* sink.emit({ _tag: "stdout", chunk: "Downloading 12%\r", kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
 
@@ -46,7 +46,7 @@ describe("RendererOutput.layerStreamFrameSink raw frames", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stderr", chunk: "warning: lock\n", raw: true });
+        yield* sink.emit({ _tag: "stderr", chunk: "warning: lock\n", kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
 

@@ -6,7 +6,11 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
 import { Effect, Exit, Layer, Queue, Stream } from "effect";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
+import {
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
+  createCollectingStreamFrameSink,
+} from "../../src/operations/stream-frame-sink.ts";
 import { landoLauncher } from "../../src/services/bun-command-env.ts";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
 
@@ -238,10 +242,10 @@ test.skipIf(process.platform === "win32").each([
   },
 );
 
-test("forwards flush from the live stream sink after script output", async () => {
+test("leaves a supplied stream sink open after script output", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-shell-flush-"));
-  let flushed = 0;
+  const output = createCollectingStreamFrameSink();
   const shellLayer = BunShellRunner.layer(() => {
     throw new TypeError("unused interactive IO");
   });
@@ -252,22 +256,12 @@ test("forwards flush from the live stream sink after script output", async () =>
     await Effect.runPromise(
       Effect.flatMap(ShellRunner, (shell) =>
         shell.runScript(script, { cwd: root, env: { PATH: root } }),
-      ).pipe(
-        Effect.provide(shellLayer),
-        Effect.provideService(
-          StreamFrameSink,
-          StreamFrameSink.of({
-            emit: () => Effect.void,
-            flush: () =>
-              Effect.sync(() => {
-                flushed += 1;
-              }),
-          }),
-        ),
-      ),
+      ).pipe(Effect.provide(shellLayer), Effect.provideService(StreamFrameSink, output.sink)),
     );
     // Then
-    expect(flushed).toBe(1);
+    await Effect.runPromise(output.sink.emit({ kind: "bytes", _tag: "stdout", chunk: "later" }));
+    await Effect.runPromise(output.finish());
+    expect(output.result().stdout).toBe("abclater");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -405,12 +399,7 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
           Effect.sync(() => {
             const bytes =
               typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk;
-            frames.push({ ...frame, chunk: payloads[frame._tag].write(bytes) });
-          }),
-        flush: () =>
-          Effect.sync(() => {
-            for (const tag of ["stdout", "stderr"] as const)
-              frames.push({ _tag: tag, chunk: payloads[tag].flush() });
+            frames.push({ ...frame, kind: "bytes", chunk: payloads[frame._tag].write(bytes) });
           }),
       }),
     ),
@@ -438,7 +427,15 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
       BunShellRunner.withShellRedactionTokens(
         [secret],
         Effect.flatMap(ShellRunner, (shell) => shell.runScript(script, { cwd: root })),
-      ).pipe(Effect.provide(layer)),
+      ).pipe(
+        Effect.provide(layer),
+        Effect.ensuring(
+          Effect.sync(() => {
+            for (const tag of ["stdout", "stderr"] as const)
+              frames.push({ kind: "bytes", _tag: tag, chunk: payloads[tag].flush() });
+          }),
+        ),
+      ),
     );
     // Then
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });

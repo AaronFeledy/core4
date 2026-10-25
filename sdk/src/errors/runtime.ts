@@ -103,6 +103,7 @@ export class LandoRuntimeBootstrapError extends Schema.TaggedError<LandoRuntimeB
 
 export class LandoCommandError extends Schema.TaggedError<LandoCommandError>()("LandoCommandError", {
   message: Schema.String,
+  remediation: Schema.optionalKey(Schema.String),
   commandId: Schema.optional(Schema.String),
   exitCode: Schema.optional(Schema.Number),
   remediation: Remediation,

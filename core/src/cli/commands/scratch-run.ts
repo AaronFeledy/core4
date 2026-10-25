@@ -234,6 +234,3 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
     }),
   );
 });
-
-export const scratchRunSuccessExitCode = (result: ScratchRunResult): number | undefined =>
-  result.exitCode === 0 ? undefined : result.exitCode;

@@ -68,6 +68,7 @@ for (const kind of ["cmd", "task"] as const) {
         Effect.gen(function* () {
           const events = yield* EventService;
           yield* runAppEvent(plan, "post-start");
+          yield* payload.finish();
           return yield* events.query("task.detail");
         }).pipe(Effect.provide(layer)),
       );

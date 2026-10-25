@@ -348,6 +348,26 @@ Set `LANDO_TEST_ARTIFACT_ROOT` to an existing caller-owned directory to retain
 sanitized per-command evidence after app teardown; remove that directory after
 review.
 
+### Run the MCP completion spot check
+
+With the same prepared roots and explicit managed socket, exercise the compiled
+CLI rather than a synthetic producer:
+
+```bash
+LANDO_TEST_USE_REAL_ROOTS=1 \
+LANDO_GUIDE_E2E=1 \
+LANDO_SCENARIO_E2E_BINARY="$PWD/dist/lando" \
+bun test core/test/live/mcp-command-completion-live.integration.test.ts
+```
+
+Require a positive passing test count. The journey covers final output with and
+without progress subscriptions, exact exec arguments, process failure status,
+redaction, bounded output tails, and quiet log followers canceled through the
+protocol, stdin EOF, and SIGTERM. Missing prerequisites fail this explicitly
+requested run. Tests create and destroy only their uniquely named app; they do
+not run setup or reset the host. `LANDO_TEST_ARTIFACT_ROOT` also retains sanitized
+protocol and shutdown evidence for this journey.
+
 `LANDO_TEST_PODMAN_SOCKET` rehearsal fallback: provider-port suites can target a
 different existing answering Podman socket with the override. This does not
 enable the managed-CLI suites under `core/test/live`:

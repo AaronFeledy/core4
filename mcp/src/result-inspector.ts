@@ -18,6 +18,7 @@ export interface McpProgressData {
   readonly _tag: "stdout" | "stderr";
   readonly chunk: string;
   readonly service?: string;
+  readonly source?: string;
 }
 
 export const projectMcpProgressFrame = (value: unknown): McpProgressData => {
@@ -29,12 +30,18 @@ export const projectMcpProgressFrame = (value: unknown): McpProgressData => {
   const tag = Object.getOwnPropertyDescriptor(value, "_tag")?.value;
   const chunk = Object.getOwnPropertyDescriptor(value, "chunk")?.value;
   const serviceDescriptor = Object.getOwnPropertyDescriptor(value, "service");
+  const sourceDescriptor = Object.getOwnPropertyDescriptor(value, "source");
   if ((tag !== "stdout" && tag !== "stderr") || typeof chunk !== "string") throw inspectionFailure(context);
   if (serviceDescriptor !== undefined && typeof serviceDescriptor.value !== "string")
     throw inspectionFailure(context);
-  return serviceDescriptor === undefined
-    ? { _tag: tag, chunk }
-    : { _tag: tag, chunk, service: serviceDescriptor.value };
+  if (sourceDescriptor !== undefined && typeof sourceDescriptor.value !== "string")
+    throw inspectionFailure(context);
+  return {
+    _tag: tag,
+    chunk,
+    ...(serviceDescriptor === undefined ? {} : { service: serviceDescriptor.value }),
+    ...(sourceDescriptor === undefined ? {} : { source: sourceDescriptor.value }),
+  };
 };
 
 const ownString = (value: object, key: string): string | undefined => {
@@ -94,6 +101,9 @@ export const inspectMcpCommandOutcome = (
         _tag: "failure",
         error: projectFailure(outcome.error),
         additionalErrors: inspectAdditionalFailures(outcome.additionalErrors),
+        ...(Object.hasOwn(outcome, "value")
+          ? { value: new BoundedDataInspector("MCP command result").inspect(outcome.value) }
+          : {}),
       } as const;
       const envelope = Effect.runSync(
         buildCommandResultEnvelope({

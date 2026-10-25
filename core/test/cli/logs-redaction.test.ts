@@ -240,8 +240,9 @@ describe("lando logs redaction boundary", () => {
       );
 
       const textOut = textIo.stdout();
-      expect(textOut).not.toContain(SECRET_VALUE);
-      expect(textOut).toContain("[redacted]");
+      expect(textOut).toBe("");
+      expect(textIo.stderr()).toBe("database stderr [slow-query]: query failed with password=[redacted]\n");
+      expect(textOut + textIo.stderr()).not.toContain(SECRET_VALUE);
 
       const jsonIo = createBufferedRendererIO({ isTTY: false });
       await runWithRendererHandling(
@@ -260,8 +261,19 @@ describe("lando logs redaction boundary", () => {
       );
 
       const jsonOut = jsonIo.stdout();
-      expect(jsonOut).not.toContain(SECRET_VALUE);
-      expect(jsonOut).toContain("[redacted]");
+      expect(jsonOut + jsonIo.stderr()).not.toContain(SECRET_VALUE);
+      expect(jsonIo.stderr()).toBe("");
+      expect(
+        jsonOut
+          .trim()
+          .split("\n")
+          .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line))),
+      ).toContainEqual({
+        _tag: "stderr",
+        chunk: "query failed with password=[redacted]\n",
+        service: "database",
+        source: "slow-query",
+      });
 
       const onDisk = await readFile(logFile, "utf8");
       expect(onDisk).toContain(SECRET_VALUE);
@@ -287,7 +299,8 @@ describe("lando logs redaction boundary", () => {
         formatError: ({ error }) => String(error),
       },
     );
-    expect(io.stdout()).toContain("value [redacted]");
+    expect(io.stdout()).toBe("");
+    expect(io.stderr()).toBe("database stderr [slow-query]: value [redacted]\n");
     expect(io.stdout() + io.stderr()).not.toContain(SECRET_VALUE);
   });
 });

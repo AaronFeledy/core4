@@ -223,7 +223,7 @@ test.each([
             },
           },
     );
-    expect(exits).toEqual(failApply ? [1] : []);
+    expect(exits).toEqual(failApply ? [1] : [0]);
     if (!failApply) {
       const execIo = createBufferedRendererIO({ isTTY: false });
       await runWithRendererHandling(execApp({ service: "web", command: ["printenv", "DISPLAY_VALUE"] }), {
@@ -243,7 +243,7 @@ test.each([
       expect(execIo.stdout()).toBe("[redacted]\n");
       expect(execIo.stderr()).not.toContain(value);
       expect(reads).toEqual([reference]);
-      expect(exits).toEqual([]);
+      expect(exits).toEqual([0, 0]);
     }
   },
 );

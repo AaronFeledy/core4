@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Effect, Layer, Schema } from "effect";
 
 import {
@@ -49,7 +50,7 @@ const ToolingResultSchema = Schema.Struct({
 const dynamicToolingOptions = {
   resultSchema: ToolingResultSchema,
   redactionTokens: runToolingRedactionTokens,
-  successExitCode: (result: RunToolingResult) => result.exitCode,
+  completion: (result: RunToolingResult) => commandCompletionFromExitCode(result.exitCode),
   failureExitCode: (error: unknown) => (error instanceof ToolingExecError ? error.exitCode : undefined),
 } as const;
 

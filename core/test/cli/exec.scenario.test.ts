@@ -20,6 +20,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/core/services";
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_KEYS } from "@lando/engine/config/agent-env";
+import { validateToolInput } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
@@ -269,6 +270,28 @@ const makeLayer = (options: {
   );
 
 describe("execApp — provider-exec scenarios (US-022)", () => {
+  test("executes the named MCP argument vector without shell reparsing", async () => {
+    // Given: a real command spec and a provider recording exact argument boundaries.
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "proof" }]);
+    const command = ["appserver", "--", "printf", "%s", "one argument", "--flag", ""];
+    const validated = validateToolInput(execSpec, { args: { command } });
+    // When: the canonical spec runs the decoded MCP input, without CLI argv.
+    const result = await Effect.runPromise(
+      execSpec
+        .run({
+          argv: [],
+          flags: validated.flags,
+          args: validated.args,
+          interaction: "non-interactive",
+        })
+        .pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
+    );
+    // Then: the service selector is peeled while every command argument remains intact.
+    expect(calls[0]?.command).toEqual(["printf", "%s", "one argument", "--flag", ""]);
+    expect(result.stdout).toBe("proof");
+  });
+
   test("returns verbatim exit code, stdout, and stderr from RuntimeProvider.exec", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 5, stdout: "ok-1\nok-2\n", stderr: "warn\n" }]);

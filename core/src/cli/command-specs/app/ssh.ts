@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 import { Args, Flags } from "../../spec/metadata";
 
@@ -63,7 +64,7 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
     const attached = attachExecHostIo({ ...base, tty: true, interactive });
     return withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));
   },
-  successExitCode: (result) => result.exitCode,
+  completion: (result) => commandCompletionFromExitCode(result.exitCode),
   render: (result) => renderExecAppResult(result as ExecAppResult),
 };
 

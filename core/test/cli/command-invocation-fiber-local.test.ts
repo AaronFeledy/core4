@@ -29,7 +29,8 @@ const lifecycle = Effect.fnUntraced(function* <A, E, R>(
   parent: CliInvocationSnapshot,
 ) {
   const exit = yield* runCommandLifecycle(work, { invocation: parent });
-  return yield* exit;
+  const completed = yield* exit;
+  return completed.value;
 });
 
 describe("command invocation fiber-local ancestry", () => {

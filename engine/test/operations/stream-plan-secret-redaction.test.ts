@@ -272,7 +272,9 @@ describe("live plan-secret redaction", () => {
 
     // Then: both log lines redact plan passwords, including the slash-bearing URL password.
     expect(io.stdout()).toContain("database stdout: [redacted]");
-    expect(io.stdout()).toContain("database stderr: postgresql://[redacted]@database:5432/app");
+    expect(io.stdout()).not.toContain("database stderr:");
+    expect(io.stderr()).toContain("database stderr: postgresql://[redacted]@database:5432/app");
+    expect(io.stderr()).not.toContain("database stdout:");
     expect(io.stdout() + io.stderr()).not.toContain(password);
     expect(io.stdout() + io.stderr()).not.toContain(slashPassword);
   });

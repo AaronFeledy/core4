@@ -302,7 +302,7 @@ describe("McpService.serve", () => {
     const streaming = spec("app:logs", () =>
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: `line-one ${secret}`, service: "web" });
+        yield* sink.emit({ kind: "record", _tag: "stdout", chunk: `line-one ${secret}`, service: "web" });
         return {};
       }),
     );
@@ -332,12 +332,16 @@ describe("McpService.serve", () => {
     expect(JSON.stringify(notifications[0])).not.toContain(secret);
   });
 
-  test("propagates an oversized live frame as a tagged command failure", async () => {
+  test("segments an oversized record and retains a bounded truncated final tail", async () => {
     // Given
     const streaming = spec("app:logs", () =>
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: "x".repeat(MAX_OUTBOUND_QUEUED_BYTES + 1) });
+        yield* sink.emit({
+          kind: "record",
+          _tag: "stdout",
+          chunk: "x".repeat(MAX_OUTBOUND_QUEUED_BYTES + 1),
+        });
         return {};
       }),
     );
@@ -356,8 +360,9 @@ describe("McpService.serve", () => {
     expect(replies).toHaveLength(1);
     expect(replies[0]).toMatchObject({
       ok: true,
-      result: { ok: false, envelope: { error: { _tag: "McpTransportError" } } },
+      result: { ok: true, envelope: { output: { truncated: true } } },
     });
+    expect(Buffer.byteLength(JSON.stringify(replies))).toBeLessThan(128 * 1024);
   });
 
   test("rejects a hostile live frame without invoking its getter", async () => {
@@ -367,6 +372,7 @@ describe("McpService.serve", () => {
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
         yield* sink.emit({
+          kind: "record",
           _tag: "stdout",
           get chunk(): string {
             getterCalls += 1;

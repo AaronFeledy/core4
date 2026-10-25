@@ -269,10 +269,10 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
       <UseFixture name="expressions-plan-time-typed-field" />
     </Step>
     <Step name="lint-plan-time-typed-field">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"primary\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^\"]*plan-time scopes" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"primary\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^\"]*plan-time scopes" } }} />
     </Step>
     <Step name="cleanup-plan-time-typed-field">
       <Cleanup />
@@ -288,9 +288,9 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
       <Verify errorTag="ConfigExpressionError" expect={{ regex: "Expression resolved to a missing value" }} />
     </Step>
     <Step name="lint-missing-value">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"tooling\",\\s*\"probe\",\\s*\"cmds\",\\s*0\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"tooling\",\\s*\"probe\",\\s*\"cmds\",\\s*0\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-missing-value">
       <Cleanup />
@@ -322,9 +322,9 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
       <Verify errorTag="ConfigExpressionError" expect={{ regex: "url\\.encodeComponent" }} />
     </Step>
     <Step name="lint-bound-password-helper">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"environment\",\\s*\"DB_PASSWORD_UPPER\"\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"environment\",\\s*\"DB_PASSWORD_UPPER\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-bound-password-helper">
       <Cleanup />
@@ -363,9 +363,9 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
       <Verify errorTag="LandofileValidationError" expect={{ regex: "services\\.app\\.environment\\.GREETING" }} />
     </Step>
     <Step name="lint-unescaped-shell">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"environment\",\\s*\"GREETING\"\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"environment\",\\s*\"GREETING\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-unescaped-shell">
       <Cleanup />
@@ -381,9 +381,9 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
       <Verify errorTag="ConfigExpressionError" expect={{ regex: "Expression resolved to a missing value" }} />
     </Step>
     <Step name="lint-missing-creds">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"environment\",\\s*\"DATABASE_URL\"\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"environment\",\\s*\"DATABASE_URL\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-missing-creds">
       <Cleanup />
