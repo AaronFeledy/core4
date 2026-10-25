@@ -1,8 +1,10 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
+import { AppId, AppPlan } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import type { DiscoveredApp } from "../operations/uninstall.ts";
-import { uninstallCleanupFailure } from "./uninstall-cleanup-error.ts";
+import { UninstallResourceCleanupError, uninstallCleanupFailure } from "./uninstall-cleanup-error.ts";
 import { assertManagedStorageResolved } from "./uninstall-managed-storage.ts";
 import { cleanupUninstallResources } from "./uninstall-resource-cleanup.ts";
 import {
@@ -12,6 +14,10 @@ import {
   runUninstallRuntime,
 } from "./uninstall-runtime.ts";
 import { assertUninstallSyncSafe } from "./uninstall-sync-preflight.ts";
+
+const AppliedPlanRecord = Schema.fromJsonString(
+  Schema.Struct({ version: Schema.Literal(1), data: Schema.Record(AppId, AppPlan) }),
+);
 
 const assertNoRecordedUserApps = async (userDataRoot: string): Promise<void> => {
   const plugins = makeLandoPaths({ userDataRoot }).pluginsDir;
@@ -24,10 +30,25 @@ const assertNoRecordedUserApps = async (userDataRoot: string): Promise<void> => 
       if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") continue;
       throw cause;
     }
-    for (const provider of providers.filter((name) => name.startsWith("provider-")))
+    for (const provider of providers.filter((name) => name.startsWith("provider-"))) {
       directories.push(
         join(base, provider, base === join(userDataRoot, "providers") ? "apps" : "applied-plans"),
       );
+      if (base !== join(plugins, "@lando")) continue;
+      const recordPath = join(base, provider, "applied-plans.json");
+      let contents: string;
+      try {
+        contents = await readFile(recordPath, "utf8");
+      } catch (cause) {
+        if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") continue;
+        throw cause;
+      }
+      const record = Schema.decodeUnknownSync(AppliedPlanRecord)(contents);
+      if (Object.entries(record.data).some(([id, plan]) => id !== "global" || plan.id !== "global"))
+        throw uninstallCleanupFailure(
+          `No runtime is available to verify recorded Lando apps in ${recordPath}; preserve their state and restore the runtime.`,
+        );
+    }
   }
   for (const directory of directories) {
     let entries: readonly string[];
@@ -55,13 +76,25 @@ export const makeListDiscoveredApps =
   (exec: RuntimeExec = defaultRuntimeExec, platform: NodeJS.Platform = process.platform) =>
   async (userDataRoot: string, _userCacheRoot: string): Promise<readonly DiscoveredApp[]> => {
     const runtimes = await availableUninstallRuntimes({ userDataRoot, platform, exec });
-    if (runtimes.length === 0) await assertNoRecordedUserApps(userDataRoot);
+    if (runtimes.length === 0)
+      await assertNoRecordedUserApps(userDataRoot).catch((cause: unknown) => {
+        if (cause instanceof UninstallResourceCleanupError) throw cause;
+        throw uninstallCleanupFailure(
+          `Cannot inspect recorded Lando apps under ${userDataRoot}; preserve their state and restore access.`,
+          cause,
+        );
+      });
     const apps: DiscoveredApp[] = [];
     for (const runtime of runtimes) {
       const ids = new Set<string>();
       for (const label of ["dev.lando.app", "com.lando.app"]) {
         const result = await runUninstallRuntime(exec, runtime, {
           args: ["ps", "--filter", `label=${label}`, "--format", `{{.Label "${label}"}}`],
+        }).catch((cause: unknown) => {
+          throw uninstallCleanupFailure(
+            `Cannot discover Lando apps with runtime ${runtime.cmd} (${runtime.providerId}, label=${label}); preserve state and restore runtime access.`,
+            cause,
+          );
         });
         for (const id of result.stdout.split(/\r?\n/u).filter(Boolean)) ids.add(id);
       }
