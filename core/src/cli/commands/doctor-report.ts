@@ -41,6 +41,7 @@ import {
   certsOutcome,
   checksOutcome,
   deprecationsOutcome,
+  doctorSections,
   doctorTreeSummary,
   makeDoctorTree,
   selfCheckOutcome,
@@ -202,6 +203,7 @@ export interface CollectDoctorReportInput<R> {
   readonly subsystems?: (options: SubsystemDoctorOptions) => Effect.Effect<SubsystemDoctorResult, never, R>;
   /** Self checks recorded before collection started (e.g. bootstrap failure). */
   readonly initialSelfChecks?: ReadonlyArray<DoctorSelfCheck>;
+  readonly skipped?: DoctorReport["skipped"];
 }
 
 export const collectDoctorReport = Effect.fn("Doctor.collectReport")(
@@ -226,6 +228,11 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   const budgetMs = doctorSectionBudgetMs(sourceEnv);
   const selfChecks: DoctorSelfCheck[] = [...(input.initialSelfChecks ?? [])];
   yield* tree.start;
+  for (const skipped of input.skipped ?? []) {
+    if (!doctorSections(options).some(({ id }) => id === skipped.section)) continue;
+    yield* tree.startTask(skipped.section);
+    yield* tree.infoTask(skipped.section, `${skipped.section} · skipped · ${skipped.reason}`);
+  }
 
   // Each section is one task in the live tree: it spins while the section
   // probes and settles as ✓ or ✗ from the section value, or as ✗ from the
@@ -235,8 +242,9 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     effect: Effect.Effect<A, E, SR>,
     fallback: A,
     outcome: (value: A) => DoctorSectionOutcome,
-  ): Effect.Effect<A, never, SR> =>
-    tree.startTask(name).pipe(
+  ): Effect.Effect<A, never, SR> => {
+    if (input.skipped?.some((entry) => entry.section === name)) return Effect.succeed(fallback);
+    return tree.startTask(name).pipe(
       Effect.andThen(isolateDoctorSection({ section: name, effect, fallback, budgetMs, redact })),
       Effect.flatMap((isolated) => {
         if (isolated.self !== undefined) selfChecks.push(isolated.self);
@@ -245,6 +253,7 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
         return settleDoctorSection(tree, name, settled).pipe(Effect.as(isolated.value));
       }),
     );
+  };
 
   // A provider sub-probe doctor could not run (e.g. a status timeout) fails
   // the row the same way a whole-section self check does.
@@ -269,7 +278,6 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   const subsystemOptions: SubsystemDoctorOptions = {
     fix: options.fix === true,
     certs,
-    ...(networkTrust === undefined ? {} : { networkTrust }),
   };
   const subsystems = yield* section(
     "subsystems",
@@ -298,7 +306,7 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
         )
       : undefined;
   const deprecations =
-    options.deprecations === true
+    options.deprecations === true && !input.skipped?.some((entry) => entry.section === "deprecations")
       ? yield* section("deprecations", input.deprecations, { entries: [] }, deprecationsOutcome)
       : undefined;
   const appConfig =
@@ -315,7 +323,9 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   if (accelerated.self !== undefined) selfChecks.push(accelerated.self);
   const missingRoots = yield* isolateDoctorSection({
     section: "missing-app-roots",
-    effect: missingAppRootsDoctor(redact),
+    effect: input.skipped?.some((entry) => entry.section === "missing-app-roots")
+      ? Effect.succeed([])
+      : missingAppRootsDoctor(redact),
     fallback: [],
     budgetMs,
     redact,
@@ -323,7 +333,9 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   if (missingRoots.self !== undefined) selfChecks.push(missingRoots.self);
   const orphanedSnapshots = yield* isolateDoctorSection({
     section: "orphaned-volume-snapshots",
-    effect: orphanedSnapshotsDoctor(redact),
+    effect: input.skipped?.some((entry) => entry.section === "orphaned-volume-snapshots")
+      ? Effect.succeed([])
+      : orphanedSnapshotsDoctor(redact),
     fallback: [],
     budgetMs,
     redact,
@@ -347,10 +359,12 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   if (filesystemWatch.self !== undefined) selfChecks.push(filesystemWatch.self);
   const report: DoctorReport = {
     version: CORE_VERSION,
+    ...(input.skipped === undefined ? {} : { skipped: input.skipped }),
     provider: { checks: provider.checks },
     subsystems: {
       checks: [
         ...subsystems.checks,
+        ...(networkTrust === undefined ? [] : [networkTrust]),
         ...accelerated.value,
         ...missingRoots.value,
         ...orphanedSnapshots.value,
