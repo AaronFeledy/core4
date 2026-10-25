@@ -72,7 +72,8 @@ const unsupportedProviderOperation = (operation: string) =>
     providerId: "stub",
     operation,
     message: `runtime provider stub cannot ${operation}`,
-    remediation: "Install or start the `stub` provider, then re-run the failed command.",
+    remediation:
+      "Run lando setup --provider=docker to select a real runtime provider. Embedding hosts must provide the selected RuntimeProvider layer instead of the bootstrap stub.",
   });
 
 export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvider> = RuntimeProvider.of({
