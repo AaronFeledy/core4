@@ -58,6 +58,34 @@ test("preserves connection addresses when info crosses the SDK boundary", () => 
   expect(encoded).toEqual(service);
 });
 
+test("round trips storage lifetime and the full resolved application mount", () => {
+  const input = {
+    ...service,
+    mounts: [
+      {
+        type: "volume",
+        target: "/data",
+        source: "database",
+        readOnly: false,
+        origin: "planned",
+        observation: "present",
+        lifetime: "retained",
+      },
+      { type: "unknown", target: "/unknown", origin: "runtime", observation: "present", lifetime: "unknown" },
+    ],
+    appMount: {
+      source: "/host/app",
+      target: "/app",
+      readOnly: false,
+      realization: "accelerated",
+      includes: [".git"],
+      excludes: ["node_modules"],
+    },
+  } as const;
+  const result = Schema.encodeSync(ServiceInfo)(Schema.decodeUnknownSync(ServiceInfo)(input));
+  expect(result).toEqual(input);
+});
+
 test("preserves display credentials alongside scoped connections", () => {
   // Given
   const input = {

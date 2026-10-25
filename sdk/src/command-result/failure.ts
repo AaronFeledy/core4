@@ -48,3 +48,38 @@ export const commandFailureCause = (cause: Cause.Cause<unknown>): Cause.Cause<un
       return Cause.makeFailReason(reason.defect).annotate(Cause.reasonAnnotations(reason));
     }),
   );
+
+const annotateReason = <E>(reason: Cause.Reason<E>, role: FailureRole): Cause.Reason<E> => {
+  if (Cause.isInterruptReason(reason)) return reason;
+  const existing = roleOf(reason);
+  switch (existing) {
+    case undefined:
+    case "peer":
+      return reason.annotate(Context.make(FailureRoleAnnotation, role), { overwrite: true });
+    case "rollback":
+    case "cleanup":
+      return reason;
+    default:
+      return existing satisfies never;
+  }
+};
+
+/** Annotate reasons that do not already carry a more specific role. Interrupt reasons stay interrupts. */
+export const annotateFailureRole = <E>(cause: Cause.Cause<E>, role: FailureRole): Cause.Cause<E> =>
+  Cause.fromReasons(cause.reasons.map((reason) => annotateReason(reason, role)));
+
+/** Keep `primary` unscoped and first. Secondary reasons take `role` unless they already have a more specific one. */
+export const mergeFailure = <E, E2>(
+  primary: Cause.Cause<E>,
+  secondary: Cause.Cause<E2>,
+  role: FailureRole,
+): Cause.Cause<E | E2> => Cause.combine(primary, annotateFailureRole(secondary, role));
+
+/** Typed failures become defects so an infallible finalizer can still surface them. */
+export const failureDefectCause = <E>(cause: Cause.Cause<E>): Cause.Cause<never> =>
+  Cause.fromReasons(
+    cause.reasons.map((reason) => {
+      if (!Cause.isFailReason(reason)) return reason;
+      return Cause.makeDieReason(reason.error).annotate(Cause.reasonAnnotations(reason));
+    }),
+  );

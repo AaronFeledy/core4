@@ -151,6 +151,7 @@ export * from "./keymap.ts";
 export * from "./keymap-conflict.ts";
 export * from "./subscriber.ts";
 export * from "./service-info.ts";
+export * from "./service-mount.ts";
 export * from "./service-connection.ts";
 export * from "./service-dependency.ts";
 export * from "./services/index.ts";
