@@ -292,20 +292,9 @@ describe("LandofileService layer", () => {
           expect(error).toBeInstanceOf(LandofileNotFoundError);
           if (error._tag === "LandofileNotFoundError") {
             expect(error.cwd).toBe(join(dir, "nested"));
-            expect(error.message).toStartWith("No .lando.yml or .lando.ts found. Searched:");
-            for (const root of [join(dir, "nested"), dir]) {
-              for (const basename of [
-                ".lando.base",
-                ".lando.dist",
-                ".lando.upstream",
-                ".lando",
-                ".lando.local",
-                ".lando.user",
-              ]) {
-                expect(error.message).toContain(join(root, `${basename}.yml`));
-                expect(error.message).toContain(join(root, `${basename}.ts`));
-              }
-            }
+            expect(error.message).toContain(`Searched from ${join(dir, "nested")} through`);
+            expect(error.message).toContain("stopped at the filesystem root");
+            expect(error.remediation).toContain("lando init");
           }
         }
       }

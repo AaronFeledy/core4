@@ -53,6 +53,27 @@ services:
 
 Top-level `proxy:` is the other spelling: a map of service name to the same route list. Set `routes: []` to give a service no hostname at all.
 
+## Stop discovery at a directory
+
+Run app commands from your app directory or any directory below it. Lando checks
+the current directory, then up to 64 parents, and uses the first directory with
+any Landofile layer. It never combines layers from different directories.
+
+To keep a workspace from picking up a Landofile above it, put an empty
+`.lando.stop` file at the workspace boundary:
+
+```sh
+touch .lando.stop
+lando app:config --format=json
+```
+
+Lando still checks that directory for a Landofile before stopping. Its own
+Landofile wins, and apps nested below it work normally. With no Landofile below
+or at the boundary, the command reports `LandofileNotFoundError`, the searched
+range, and the marker location. Run `lando init` to create an app, or move/remove
+the marker if you meant to use a parent app. Without a marker, discovery stops at
+the filesystem root or the 64-parent limit.
+
 ## Write maps as block YAML
 
 Indent every map, and put a value that contains `#` in YAML quotes:
@@ -237,6 +258,14 @@ lando info
 `app:config` prints the resolved Landofile. `info` prints URLs and connection details.
 
 <Guide>
+  <Scenario id="discovery-stop-marker" render>
+    <Step name="set-workspace-boundary">
+      <UseFixture name="discovery-stop-marker" />
+      <Run command="lando app:config --format=json" expectExit={1} />
+      <Verify errorTag="LandofileNotFoundError" expect={{ regex: "\\.lando\\.stop" }} />
+      <Verify errorTag="LandofileNotFoundError" expect={{ regex: "Searched from" }} />
+    </Step>
+  </Scenario>
   <Scenario id="landofile-shape" render>
     <Step name="scaffold">
       <UseFixture name="your-landofile-demo" />

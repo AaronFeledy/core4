@@ -68,7 +68,7 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
   switch (source) {
     case "raw":
     case "merged": {
-      const { appRoot } = yield* findDiscoveredLandofilePath(options.cwd ?? process.cwd());
+      const { appRoot } = yield* findDiscoveredLandofilePath(options.cwd);
       const inputs = yield* scopedLandofileRuntimeInputs;
       if (source === "raw") {
         const acquired = yield* acquireLandofileRootLayers(appRoot, inputs);

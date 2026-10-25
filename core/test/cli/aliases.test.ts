@@ -100,9 +100,8 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
           expect(aliasResult.stdout, alias).toBe(appIdResult.stdout);
           expect(aliasResult.stderr, alias).toBe(appIdResult.stderr);
           expect(aliasResult.exitCode, alias).not.toBe(0);
-          expect(aliasResult.stderr, alias).toContain(
-            "Run `lando init --full --name=<name>` to scaffold an app.",
-          );
+          expect(aliasResult.stderr, alias).toContain(`Run lando init in ${cwd} to create an app.`);
+          expect(aliasResult.stderr, alias).toContain("stopped at the filesystem root");
         }
       } finally {
         await rm(cwd, { recursive: true, force: true });

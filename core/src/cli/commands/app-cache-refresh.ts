@@ -29,6 +29,7 @@ import {
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { findAppRoot } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 
 export interface AppCacheRefreshOptions {
   readonly cwd?: string;
@@ -86,7 +87,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const capabilities = yield* registry.capabilities;
   const plan = yield* planner.plan(landofile, capabilities);
 
-  const cwd = options.cwd ?? process.cwd();
+  const cwd = options.cwd ?? (yield* discoveryCwd());
   const scripts = yield* discoverScripts(cwd);
   const entries = yield* Effect.try({
     try: () => compileAppCommands(landofile.document, scripts, effectiveToolingForPlan(plan)),

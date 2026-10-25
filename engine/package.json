@@ -29,7 +29,6 @@
     "./cache/command-compiler": "./src/cache/command-compiler.ts",
     "./cache/command-index": "./src/cache/command-index.ts",
     "./cache/command-index-writer": "./src/cache/command-index-writer.ts",
-    "./cache/cwd-app-map": "./src/cache/cwd-app-map.ts",
     "./cache/paths": "./src/cache/paths.ts",
     "./cache/service": "./src/cache/service.ts",
     "./composition": "./src/composition.ts",

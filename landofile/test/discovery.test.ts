@@ -55,3 +55,17 @@ test("fails with typed NotFound when no layer exists", async () => {
   // Then
   expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileNotFoundError", cwd: root } });
 });
+
+test("not-found reports the stop marker, searched range, and marker remediation", async () => {
+  const nested = join(root, "nested");
+  await mkdir(nested);
+  await writeFile(join(root, ".lando.stop"), "");
+  const result = await Effect.runPromise(findDiscoveredLandofilePath(nested).pipe(Effect.result));
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure") {
+    expect(result.failure).toMatchObject({ _tag: "LandofileNotFoundError", cwd: nested });
+    expect(result.failure.message).toContain(`from ${nested} through ${root}`);
+    expect(result.failure.message).toContain(`.lando.stop at ${root}`);
+    expect(result.failure.remediation).toContain(`move/remove the .lando.stop at ${root}`);
+  }
+});

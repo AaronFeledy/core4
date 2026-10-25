@@ -6,7 +6,7 @@ import { writeFileAtomicViaRename } from "../cache/atomic.ts";
 import { findDiscoveredLandofilePath } from "../services/landofile-live.ts";
 
 export const resolveAppConfigFile = Effect.fn("AppConfig.resolveFile")(function* (
-  cwd: string,
+  cwd: string | undefined,
   subcommand: string,
 ) {
   const discovered = yield* findDiscoveredLandofilePath(cwd);

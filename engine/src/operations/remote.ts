@@ -6,7 +6,7 @@ import { RedactionService, createStandaloneRedactor } from "@lando/redaction/ser
 import type { AppPlanResolutionError, PullAppError, PushAppError, RemoteSyncError } from "@lando/sdk/app";
 import {
   type LandofileFormConflictError,
-  LandofileNotFoundError,
+  type LandofileNotFoundError,
   LandofileParseError,
   RemoteDatasetUnsupportedError,
   RemoteError,
@@ -40,8 +40,9 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { findLandofilePath } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { parseLandofile } from "@lando/landofile/parser";
+import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
 
 export const RemoteEntrySchema = Schema.Struct({ name: Schema.String, config: RemoteConfig });
@@ -157,20 +158,12 @@ const redactSyncResult = (result: SyncResultType) =>
   outputRedactor("telemetry").pipe(Effect.map((redactor) => redactor.redactValue(result) as SyncResultType));
 
 const loadRemoteLandofile = Effect.fnUntraced(function* (
-  cwd = process.cwd(),
+  cwd?: string,
 ): Effect.fn.Return<
   LoadedRemoteLandofile,
   LandofileNotFoundError | LandofileParseError | LandofileFormConflictError
 > {
-  const file = yield* findLandofilePath(cwd);
-  if (file === undefined) {
-    return yield* Effect.fail(
-      new LandofileNotFoundError({
-        message: "No .lando.yml found. Run `lando init` before configuring remotes.",
-        cwd,
-      }),
-    );
-  }
+  const { filePath: file } = yield* findDiscoveredLandofilePath(cwd);
   const root = dirname(file);
   const content = yield* Effect.tryPromise({
     try: () => Bun.file(file).text(),
@@ -249,7 +242,7 @@ const resolvePlan = Effect.fnUntraced(function* (
   const landofileService = yield* LandofileService;
   const registry = yield* RuntimeProviderRegistry;
   const planner = yield* AppPlanner;
-  const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? process.cwd());
+  const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? (yield* discoveryCwd()));
   const capabilities = yield* registry.capabilities;
   return yield* planner.plan(landofile, capabilities);
 });

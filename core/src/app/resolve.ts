@@ -24,6 +24,7 @@ import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { runtimeServiceContext } from "@lando/engine/runtime/observability";
 import { scopedLandofileRuntimeInputs } from "@lando/engine/services/landofile-live";
 import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
+import { withAppDiscovery } from "@lando/landofile/operation-discovery";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
@@ -272,6 +273,7 @@ export const resolveApp = Effect.fn("LandoRuntime.resolveApp")(function* (
   selector?: AppSelector,
 ): Effect.fn.Return<App, AppResolveError, AppHandleRuntimeServices | RuntimeCwd | Scope.Scope> {
   const normalized = yield* Effect.fromResult(normalizeAppSelector(selector));
-  const target = yield* resolveTarget(normalized);
+  const cwd = yield* RuntimeCwd;
+  const target = yield* withAppDiscovery(cwd, resolveTarget(normalized));
   return yield* buildAppHandle(target);
 });

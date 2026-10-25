@@ -19,6 +19,7 @@ import {
 } from "effect";
 
 import { findAppRoot } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { isPathWithin } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import {
@@ -411,7 +412,7 @@ const snapshotStoreIdentity = (persistence: SnapshotPersistence) =>
   );
 
 const resolveAppRoot = Effect.fnUntraced(function* (paths: ReadonlyArray<string>) {
-  const cwdRoot = yield* findAppRoot(process.cwd());
+  const cwdRoot = yield* findAppRoot();
   if (cwdRoot !== undefined) return cwdRoot;
 
   for (const path of paths) {
@@ -419,7 +420,7 @@ const resolveAppRoot = Effect.fnUntraced(function* (paths: ReadonlyArray<string>
     if (endpointRoot !== undefined) return endpointRoot;
   }
 
-  return process.cwd();
+  return yield* discoveryCwd();
 });
 
 const ensureInsideRoot = Effect.fnUntraced(function* (path: string, root: string) {
