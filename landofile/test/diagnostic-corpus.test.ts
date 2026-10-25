@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { LandofileAuthoringFragmentNative, LandofileShape } from "@lando/sdk/schema";
+import { LandofileAuthoringFragmentNative, LandofileShape, schemaIssueLeaves } from "@lando/sdk/schema";
 import { Result, Schema, type SchemaAST } from "effect";
 import { landofileIssuesFromSchema } from "../src/validation-suggestions.ts";
 import { diagnosticCorpus } from "./diagnostic-corpus.ts";
@@ -49,12 +49,17 @@ const identifiers = new Set([
 ]);
 const issues = (schema: Schema.ConstraintDecoder<unknown, never>, input: unknown) => {
   const result = Schema.decodeUnknownResult(schema)(input, options);
-  return Result.isFailure(result) ? landofileIssuesFromSchema(result.failure.issue, input) : [];
+  return Result.isFailure(result)
+    ? {
+        diagnostics: landofileIssuesFromSchema(result.failure.issue, input),
+        missing: schemaIssueLeaves(result.failure.issue).some((leaf) => leaf._tag === "Missing"),
+      }
+    : { diagnostics: [], missing: false };
 };
 
 test("generated Landofile defects have plain messages and unchanged-scope parity", () => {
   // Given one-site mutations in valid witnesses, not a Cartesian product.
-  expect(corpus.cases.length).toBeGreaterThan(0);
+  expect(corpus.cases.length).toBeGreaterThan(3000);
   expect(corpus.uncovered.size).toBe(0);
   expect(Object.fromEntries(corpus.inventory)).toMatchObject({
     Objects: expect.any(Number),
@@ -62,6 +67,7 @@ test("generated Landofile defects have plain messages and unchanged-scope parity
     Arrays: expect.any(Number),
     Declaration: expect.any(Number),
   });
+  for (const count of corpus.inventory.values()) expect(count).toBeGreaterThan(0);
   console.log(
     "Landofile diagnostic corpus",
     corpus.cases.length,
@@ -73,13 +79,18 @@ test("generated Landofile defects have plain messages and unchanged-scope parity
   const exceptions = new Map<string, number>();
   let compared = 0;
   let tagged = 0;
+  let accepted = 0;
+  let suggested = 0;
   // When
   for (const sample of corpus.cases) {
-    const effective = issues(LandofileShape, sample.value);
-    const fragment = issues(LandofileAuthoringFragmentNative, sample.value);
+    const effectiveResult = issues(LandofileShape, sample.value);
+    const fragmentResult = issues(LandofileAuthoringFragmentNative, sample.value);
+    const effective = effectiveResult.diagnostics;
+    const fragment = fragmentResult.diagnostics;
     for (const issue of [...effective, ...fragment]) {
       if (
         issue.message.includes("Symbol(") ||
+        issue.message.includes("Authoring") ||
         issue.message.includes("authoring site: Expected an expression, not plain text") ||
         [...identifiers].some((id) => issue.message.includes(id))
       ) {
@@ -87,16 +98,17 @@ test("generated Landofile defects have plain messages and unchanged-scope parity
       }
     }
     // Exceptions: partial fragments omit required keys (including object-shaped
-    // wrong values); unmatched discriminators have no selected member; dependsOn
-    // normalizes map/list spellings at an encoding boundary. No expressions are
+    // wrong values); dependsOn normalizes map/list spellings at an encoding boundary.
+    // Type-side transform constraints do not run on authored inputs. No expressions are
     // generated here; their intentional asymmetry is covered by SDK slot tests.
-    const unchanged = (list: typeof effective) => list.filter((issue) => issue.message !== "Missing key");
+    if (effective.length === 0 && fragment.length === 0) {
+      accepted++;
+      continue;
+    }
     const exception =
-      sample.partial || effective.some((issue) => issue.message === "Missing key")
+      sample.partial || effectiveResult.missing
         ? "partial missing keys"
-        : sample.discriminator === true
-          ? "unmatched discriminator"
-          : sample.path[0] === "services" && sample.path[2] === "dependsOn"
+        : sample.path[0] === "services" && sample.path[2] === "dependsOn"
             ? "dependsOn input transform"
             : sample.transformed === true && (effective.length === 0 || fragment.length === 0)
               ? "transform-only constraint"
@@ -105,17 +117,24 @@ test("generated Landofile defects have plain messages and unchanged-scope parity
     else {
       compared++;
       if (sample.tagged === true) tagged++;
+      if (effective.some((issue) => issue.suggestion !== undefined)) suggested++;
     }
     if (
       exception === undefined &&
-      JSON.stringify(unchanged(effective)) !== JSON.stringify(unchanged(fragment))
+      JSON.stringify(effective) !== JSON.stringify(fragment)
     ) {
       failures.push({ path: sample.path, value: sample.value, effective, fragment });
     }
   }
   // Then
-  console.log("Parity coverage", { compared, tagged, exceptions: Object.fromEntries(exceptions) });
-  expect(compared).toBeGreaterThan(0);
-  expect(tagged).toBeGreaterThan(0);
+  console.log("Parity coverage", { compared, tagged, accepted, suggested, exceptions: Object.fromEntries(exceptions) });
+  expect(compared).toBeGreaterThan(2500);
+  expect(tagged).toBeGreaterThan(100);
+  expect(suggested).toBeGreaterThan(0);
+  expect([...exceptions.keys()].sort()).toEqual([
+    "dependsOn input transform",
+    "partial missing keys",
+    "transform-only constraint",
+  ]);
   expect(failures.slice(0, 12)).toEqual([]);
 });

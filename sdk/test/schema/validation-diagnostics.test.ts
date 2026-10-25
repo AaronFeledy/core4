@@ -9,7 +9,7 @@ import {
   deriveAuthoringAst,
   validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
-import { Result, Schema } from "effect";
+import { Result, Schema, SchemaAST, SchemaIssue } from "effect";
 
 const issues = (schema: Schema.ConstraintDecoder<unknown, never>, input: unknown) => {
   const result = Schema.decodeUnknownResult(schema)(input, { errors: "all", onExcessProperty: "error" });
@@ -95,6 +95,7 @@ test.each([
   { type: "requestHeader", header: "X-Test", value: 5 },
   { type: "responseHeader", header: "X-Test", value: 5 },
   { type: "redirect", to: 5 },
+  { type: "noSuchFilter" },
 ])("reports only the selected route-filter member for %j", (filter) => {
   // Given
   const input = { services: { web: { routes: [{ hostname: "web.test", filters: [filter] }] } } };
@@ -103,4 +104,42 @@ test.each([
   // Then
   expect(messages).toEqual(issues(LandofileShape, input));
   expect(messages).toHaveLength(1);
+});
+
+test.each([
+  [Schema.Literal("web"), 'Expected "web"'],
+  [Schema.Enum({ web: "web", worker: "worker" }), 'Expected "web" | "worker"'],
+  [
+    Schema.Union([Schema.TemplateLiteral(["x-", Schema.String]), Schema.Boolean]),
+    "Expected a matching string | boolean",
+  ],
+  [Schema.suspend(() => Schema.String), "Expected string"],
+  [
+    Schema.Union([Schema.NumberFromString, Schema.Boolean]),
+    "Expected a string that will be decoded as a number | boolean",
+  ],
+  [
+    Schema.declare((value): value is string => typeof value === "string", {
+      identifier: "OpaqueName",
+      expected: "an opaque token",
+    }),
+    "Expected an opaque token",
+  ],
+] as const)("renders structural expectations for %j", (schema, message) => {
+  // Given / When
+  const messages = issues(schema, null);
+  // Then
+  expect(messages).toEqual([{ path: [], message }]);
+});
+
+test("bounds a suspended expectation cycle without leaking its identifier", () => {
+  // Given a diagnostic AST rather than a decoder that cannot terminate.
+  const recursive: SchemaAST.Suspend = new SchemaAST.Suspend(() => recursive, {
+    identifier: "RecursiveName",
+  });
+  const issue = new SchemaIssue.InvalidType(recursive, null);
+  // When
+  const messages = validationIssuesFromSchemaIssue(issue);
+  // Then
+  expect(messages).toEqual([{ path: [], message: "Expected a value" }]);
 });
