@@ -62,7 +62,7 @@ const execFailure = (
     operation: "exec",
     service: session.service.name,
     message: failure.message,
-    details: redactDetails(failure.details),
+    details: redactDetails(failure.details, session.ctx.redactor),
   });
 
 const execStartHttpStatus = (error: ExecError): number | undefined => {

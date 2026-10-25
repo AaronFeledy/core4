@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 
+import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
+import { PortNumber } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
+import { familyFromServiceType } from "../../src/families.ts";
 
 import {
   SnapshotAmbiguousError,
@@ -62,6 +65,18 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     database: {
       name: "database",
       type: options.type ?? "mysql:8.0",
+      connection: options.connection ?? {
+        family: familyFromServiceType(options.type ?? "mysql:8.0") ?? "mysql",
+        port: PortNumber.make(
+          DATABASE_FAMILY_DEFAULT_PORTS[familyFromServiceType(options.type ?? "mysql:8.0") ?? "mysql"],
+        ),
+        creds: {
+          user: options.type?.startsWith("mssql") ? "sa" : "lando",
+          database: "sql-app",
+          password: options.password,
+          ...(options.rootPassword === undefined ? {} : { rootPassword: options.rootPassword }),
+        },
+      },
       environment: options.environment ?? {
         MYSQL_USER: "lando",
         MYSQL_PASSWORD: options.password,
@@ -116,6 +131,21 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     landofile,
     plan,
     providerId: "test",
+    environmentResolver: {
+      openSession: () =>
+        Effect.succeed({
+          resolveEnvironment: (environment) =>
+            Effect.sync(() =>
+              Object.fromEntries(
+                Object.entries(environment).map(([key, value]) => {
+                  if (typeof value !== "string")
+                    throw new Error("Fixture resolver requires an explicit binding implementation");
+                  return [key, value];
+                }),
+              ),
+            ),
+        }),
+    },
     ...(options.appliedPlans === undefined ? {} : { appliedPlans: options.appliedPlans }),
     inspectSource:
       options.inspectSource ??
@@ -240,19 +270,19 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         joined.includes("db.getCollectionNames().length");
       if (isVersion) {
         execs.push({ command, ...(env === undefined ? {} : { env }) });
-        return Effect.succeed({ ok: true, stdout: options.observedVersion ?? "8.0" });
+        return Effect.succeed({ exitCode: 0, stdout: options.observedVersion ?? "8.0", stderr: "" });
       }
       if (isCount) {
         return Effect.sync(() => {
           countAttempts += 1;
           if (options.countFails === true || countAttempts <= (options.countFailuresBeforeSuccess ?? 0)) {
-            return { ok: false, stdout: "" };
+            return { exitCode: 1, stdout: "", stderr: "" };
           }
-          return { ok: true, stdout: options.countStdout ?? "0" };
+          return { exitCode: 0, stdout: options.countStdout ?? "0", stderr: "" };
         });
       }
       execs.push({ command, ...(env === undefined ? {} : { env }) });
-      return Effect.succeed({ ok: options.execFails !== true, stdout: "" });
+      return Effect.succeed({ exitCode: options.execFails === true ? 1 : 0, stdout: "", stderr: "" });
     },
     confirm: () => Effect.succeed(false),
     resume: Effect.fnUntraced(function* () {

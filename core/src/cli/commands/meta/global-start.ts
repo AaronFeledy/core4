@@ -1,15 +1,11 @@
 import { DateTime, Effect, Schema } from "effect";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
+import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
-import { publishGlobalRoutes } from "@lando/engine/operations/global-routes";
 
-import {
-  applyGlobalServiceGroups,
-  globalServiceGroupError,
-  waitForGlobalServiceGroups,
-} from "@lando/engine/operations/global-service-groups";
+import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import type {
   GlobalAppError,
@@ -83,6 +79,7 @@ export type GlobalStartError =
   | ToolingExecError;
 
 export type GlobalStartServices =
+  | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -167,19 +164,14 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
         },
         (plan) => withBuildProvider(builds.build(plan), provider),
       );
-      const outcome = yield* waitForGlobalServiceGroups(provider, applied, options.signal);
-      const partialError = globalServiceGroupError("start", outcome);
-      const selectedNames = new Set(outcome.services.map((service) => service.name));
-      const failedNames = new Set(outcome.failures.flatMap((failure) => failure.names));
-      const applyRoutes = publishGlobalRoutes(router, provider, loaded.plan, {
-        started: selectedNames,
-        failed: failedNames,
+      const outcome = yield* completeStartup({
+        policy: "global-groups",
+        operation: "start",
+        provider,
+        router,
+        outcome: applied,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
       });
-      if (partialError !== undefined) {
-        yield* Effect.result(applyRoutes);
-        return yield* Effect.fail(partialError);
-      }
-      yield* applyRoutes;
       const servicesStarted = startedServices(
         yield* collectObservedConnections(outcome.builtPlan, outcome.ready),
       );

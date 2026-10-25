@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { satisfies, subset, valid, validRange } from "semver";
 
 import { causeMessage } from "@lando/sdk/errors";
@@ -17,7 +17,7 @@ import {
 } from "./_feature-helpers.ts";
 
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
@@ -270,8 +270,6 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("PORT", String(port));
   applyAuthoredProcessFields(ctx, ["user"]);
 
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
-
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
   const globals = normalizeNpmGlobals(service.globals);
   if (globals.length > 0) {
@@ -289,6 +287,10 @@ export const nodeServiceFeature: ServiceFeatureDefinition = {
   id: NODE_FEATURE_ID,
   schema: NodeFeatureConfigSchema as Schema.Codec<unknown>,
   priority: NODE_FEATURE_PRIORITY,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+    ),
   apply: serviceFeatureApply(NODE_FEATURE_ID, "service-lando.node failed to apply", applyNodeFeature),
 };
 

@@ -1,10 +1,13 @@
 import { LandofileParseError } from "@lando/sdk/errors";
 import { isPlainRecord, mergeValuesWithOrigins, valueOriginAt, withValueOrigins } from "@lando/sdk/landofile";
-import { LandofileShape } from "@lando/sdk/schema";
+import { AbsolutePath, LandofileShape, LoadScopedLandofile, type ParsedPendingSite } from "@lando/sdk/schema";
 import type { Logger } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
+import { captureCompilationContext, composedCarrier } from "../compilation.ts";
+import { survivingSites } from "../compiled-sites.ts";
 import { composeKeyRejectedError, firstComposeRejection } from "../compose/rejections.ts";
 import { copyLandofileProvenance } from "../copy-provenance.ts";
+import { decodedPendingSites } from "../decoded-sites.ts";
 import type { LandofileRelaxedRead } from "../include-context.ts";
 import { includeAcquisitionView } from "../include-layer-overlays.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "../include-provenance.ts";
@@ -41,16 +44,31 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   document: Record<string, unknown>,
   context: {
     readonly appRoot: string;
-    readonly env?: Readonly<Record<string, string>>;
+    readonly pendingSites?: ParsedPendingSite[] | undefined;
+    readonly env?: Readonly<Record<string, string>> | undefined;
     readonly scope?: LandofileLoadScope;
     readonly loadPolicy?: LandofileLoadPolicy;
     readonly onRelaxedRead?: (read: LandofileRelaxedRead) => Effect.Effect<void>;
     readonly logger?: Context.Service.Shape<typeof Logger> | undefined;
   },
 ) {
-  const scope = context.scope ?? (yield* buildLandofileLoadScope([{ file, value: document }], context.env));
-  const materialized = yield* materializeLandofileLayer(file, document, scope);
-  const value = isPlainRecord(materialized) ? copyLandofileProvenance(document, materialized) : document;
+  const scope =
+    context.scope ??
+    (yield* buildLandofileLoadScope([{ file, value: document }], context.env, context.pendingSites));
+  const constraintScope = { ...scope, pendingSites: [...(scope.pendingSites ?? [])] };
+  const composed = yield* Effect.try({
+    try: () =>
+      composedCarrier({
+        document,
+        pendingSites: context.pendingSites ?? scope.pendingSites ?? [],
+        context: captureCompilationContext(context.appRoot, scope.env),
+      }),
+    catch: (cause) => validationErrorFromCause(file, document, cause),
+  });
+  const materialized = yield* materializeLandofileLayer(file, composed.document, scope);
+  if (!isPlainRecord(materialized))
+    return yield* Effect.fail(validationErrorFromCause(file, materialized, undefined));
+  const value = materialized;
   const acquisition = yield* Effect.try({
     try: () => includeAcquisitionView(value),
     catch: (cause) => validationErrorFromCause(file, value, cause),
@@ -161,7 +179,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     const resolved = yield* materializeLandofileLayer(
       entry.source,
       rememberOrigins(authored, origins),
-      scope,
+      constraintScope,
     );
     const range = isPlainRecord(resolved) ? resolved.lando : undefined;
     if (typeof range !== "string" || !isValidSemverRange(range))
@@ -177,5 +195,16 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   }
   rememberVersionConstraintEntries(assembled, constraints);
   const decoded = yield* validateLandofile(file, assembled);
-  return copyLandofileProvenance(assembled, decoded);
+  const compiled = LoadScopedLandofile.make({
+    stage: "load-scoped",
+    document: decoded,
+    pendingSites: decodedPendingSites(
+      assembled,
+      decoded,
+      survivingSites(effectiveOrigins, scope.pendingSites ?? []),
+    ),
+    context: { appRoot: AbsolutePath.make(context.appRoot), env: scope.env },
+  });
+  copyLandofileProvenance(assembled, compiled.document);
+  return copyLandofileProvenance(assembled, compiled);
 });

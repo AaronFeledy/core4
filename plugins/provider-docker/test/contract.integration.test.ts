@@ -125,6 +125,7 @@ const makeService = (overrides: Partial<Pick<ServicePlan, "command" | "entrypoin
 });
 
 const makePlan = (service = makeService()): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "My App",
   slug: "myapp",
@@ -140,6 +141,7 @@ const makePlan = (service = makeService()): AppPlan => ({
 });
 
 const makeAliasProbePlan = (): AppPlan => ({
+  valueModel: 1,
   id: AppId.make("windows-host-alias-docker"),
   name: "Windows Host Alias Docker",
   slug: "windows-host-alias-docker",
@@ -1011,6 +1013,7 @@ const makeDbService = (): ServicePlan => ({
 });
 
 const makeMultiServicePlan = (opts: { includeStores?: boolean } = {}): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "My App",
   slug: "myapp",
@@ -1291,6 +1294,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       { Name: "lando_bridge_network", Driver: "bridge" },
     ]);
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "GET /containers/lando-myapp-web/json",
       "GET /networks/lando-myapp",
       "POST /networks/create",
       "GET /networks/lando_bridge_network",
@@ -1816,6 +1820,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       })),
     );
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "GET /containers/lando-myapp-web/json",
       "GET /networks/lando-myapp",
       "POST /networks/create",
       "GET /networks/lando_bridge_network",

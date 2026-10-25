@@ -2,6 +2,7 @@ import { Effect } from "effect";
 
 import { RecipeManifestParseError } from "@lando/sdk/errors";
 import { flowMappingRemediation } from "@lando/sdk/landofile/flow-mapping-remediation";
+import { stripYamlLineComment } from "@lando/sdk/yaml";
 
 export interface RecipeYamlParseOptions {
   readonly source: string;
@@ -21,7 +22,10 @@ const parseError = (
   column?: number,
 ): RecipeManifestParseError => new RecipeManifestParseError({ message, source, line, column });
 
-const stripComment = (line: string): string => line.replace(/\s+#.*$/, "");
+const stripComment = (line: string): string => {
+  const prefix = line.match(/^ *(?:- )?(?:[A-Za-z0-9_-]+:\s*)?/)?.[0] ?? "";
+  return prefix + stripYamlLineComment(line.slice(prefix.length));
+};
 
 const guardKey = (source: string, key: string, line: number): void => {
   if (key === "__proto__") {

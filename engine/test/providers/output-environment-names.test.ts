@@ -1,9 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  RedactionService,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
 import { HOST_PROXY_CREDENTIAL_ENV_NAMES } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -91,7 +87,6 @@ test("invalid and embedded references never expand the generic environment read"
 });
 
 test("registration filters applied plans by app and masks values for removed references", async () => {
-  resetRegisteredRedactionValuesForTesting();
   const desired = {
     ...planWith({ CURRENT: "${secret:current}", REMOVED: "literal" }),
     root: AbsolutePath.make("/"),
@@ -99,34 +94,25 @@ test("registration filters applied plans by app and masks values for removed ref
   const applied = planWith({ REMOVED: "${secret:old}" });
   const foreign = { ...planWith({ FOREIGN: "${secret:foreign}" }), id: AppId.make("foreign") };
   const requested: Readonly<Record<string, ReadonlyArray<string>>>[] = [];
-  const redaction = makeRedactionService({
-    id: "empty",
-    list: Effect.succeed([]),
-    has: () => Effect.succeed(false),
-    get: () => Effect.die("must not resolve"),
-  });
-  try {
-    const output = await Effect.runPromise(
-      Effect.gen(function* () {
-        yield* registerProviderOutput({
-          target: { app: desired.id, plan: desired },
-          appliedPlans: [applied, foreign],
-          provider: {
-            ...TestRuntimeProvider,
-            readAppEnvironment: (_target, names) =>
-              Effect.sync(() => {
-                expect(_target.plan).toBeUndefined();
-                requested.push(names);
-                return [Redacted.make("removed-applied-private")];
-              }),
-          },
-        });
-        return (yield* redaction.forProfile("secrets")).redactString("removed-applied-private");
-      }).pipe(Effect.provideService(RedactionService, redaction)),
-    );
-    expect(requested).toEqual([{ web: ["CURRENT", "REMOVED"] }]);
-    expect(output).toBe("[redacted]");
-  } finally {
-    resetRegisteredRedactionValuesForTesting();
-  }
+  const redaction = makeRedactionService();
+  const output = await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* registerProviderOutput({
+        target: { app: desired.id, plan: desired },
+        appliedPlans: [applied, foreign],
+        provider: {
+          ...TestRuntimeProvider,
+          readAppEnvironment: (_target, names) =>
+            Effect.sync(() => {
+              expect(_target.plan).toBeUndefined();
+              requested.push(names);
+              return [Redacted.make("removed-applied-private")];
+            }),
+        },
+      });
+      return (yield* redaction.forProfile("secrets")).redactString("removed-applied-private");
+    }).pipe(Effect.provideService(RedactionService, redaction)),
+  );
+  expect(requested).toEqual([{ web: ["CURRENT", "REMOVED"] }]);
+  expect(output).toBe("[redacted]");
 });

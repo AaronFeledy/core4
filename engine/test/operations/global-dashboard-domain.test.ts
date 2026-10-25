@@ -50,7 +50,7 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
     );
     const initial = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(layer)));
     if (!initial.materialized) throw new Error("Global app was not materialized");
-    expect(initial.landofile.services?.[mail]?.routes).toEqual([
+    expect(initial.landofile.document.services?.[mail]?.routes).toEqual([
       { hostname: "mailpit.{{ proxy.defaultDomain }}", endpoint: 8025 },
     ]);
     expect(initial.plan.routes.map((route) => route.hostname)).toEqual(["mailpit.lndo.site"]);

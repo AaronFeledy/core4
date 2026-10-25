@@ -27,8 +27,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
+import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
@@ -66,14 +65,7 @@ const landofileRuntimeInputs = {
 const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
 const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
-const redactionLive = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createRedactor("secrets")),
-  }),
-);
+const redactionLive = RedactionService.layer;
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -224,6 +216,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
           }),
         );
   const scratchDeps = Layer.mergeAll(
+    environmentResolverLayer(),
     LandoEventService.layer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
@@ -414,3 +407,4 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
     });
   });
 });
+import { environmentResolverLayer } from "../_support/value-contracts.ts";

@@ -6,6 +6,7 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lan
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("creation"),
   name: "creation",
   slug: "creation",

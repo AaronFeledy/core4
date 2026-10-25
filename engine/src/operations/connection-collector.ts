@@ -43,6 +43,7 @@ export const collectObservedConnections = Effect.fn("Connections.collectObserved
               )
             : []
           : projectServiceConnections({
+              plan,
               service,
               state: row.state,
               publications: row.runtime.publications,

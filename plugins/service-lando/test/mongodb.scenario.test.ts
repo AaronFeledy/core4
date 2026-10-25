@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
+import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -8,7 +9,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   LandofileShape,
   type ProviderCapabilities,
   ProviderId,
@@ -117,9 +118,9 @@ const makeProvider = (
   return { provider, calls };
 };
 
-const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
+const planLandofile = (landofile: LandofileShape): Promise<CurrentExecutableAppPlan> =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(compileTestLandofile(landofile), capabilities)).pipe(
       Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
       Effect.provide(PluginRegistryLayer.layer),
     ),
@@ -127,13 +128,13 @@ const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
 
 const makeToolingLayer = (options: {
   readonly landofile: LandofileShape;
-  readonly plan: AppPlan;
+  readonly plan: CurrentExecutableAppPlan;
   readonly provider: RuntimeProviderShape;
 }) => {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: Effect.sync(() => compileTestLandofile(options.landofile)),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -155,11 +156,12 @@ const makeToolingLayer = (options: {
   );
   return Layer.mergeAll(
     PrivateFileAccessService.layer,
+    toolingValueResolverLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
     LandoEventService.layer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provide(toolingValueResolverLayer)),
     emptyConfigServiceLayer,
   );
 };
@@ -184,11 +186,34 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     expect(db.storage[0]?.store).toBe("myapp-mongodb-data");
     expect(String(db.storage[0]?.target)).toBe("/data/db");
     expect(db.healthcheck?.kind).toBe("command");
-    expect(db.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/27017"]);
+    expect(db.healthcheck?.target?.port).toBe(27017);
+    expect(db.readiness?.target?.port).toBe(27017);
+    expect(db.environment.HOME).toBeUndefined();
     expect(db.environment.LANDO_SERVICE_TYPE).toBe("mongodb");
     expect(db.environment.MONGO_INITDB_ROOT_USERNAME).toBe("lando");
     expect(db.environment.MONGO_INITDB_ROOT_PASSWORD).toBe("lando");
     expect(db.environment.MONGO_INITDB_DATABASE).toBe("myapp");
+  });
+
+  test.each([
+    {
+      healthcheck: { kind: "command", command: ["custom-mongo-check"], timeoutSeconds: 9 },
+      expected: { kind: "command", command: ["custom-mongo-check"], timeoutSeconds: 9 },
+    },
+    { healthcheck: false, expected: { kind: "none" } },
+  ])("replaces both default probes with authored $healthcheck", async ({ healthcheck, expected }) => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "custom-probe",
+      services: { db: { type: "mongodb", home: false, healthcheck } },
+    });
+    // When
+    const plan = await planLandofile(landofile);
+    // Then
+    const service = plan.services[ServiceName.make("db")];
+    expect(service?.healthcheck).toMatchObject(expected);
+    expect(service?.readiness).toEqual(service?.healthcheck);
+    expect(service?.readiness?.target).toBeUndefined();
   });
 
   test("`lando mongosh` tooling alias routes through provider.exec to the mongodb service", async () => {

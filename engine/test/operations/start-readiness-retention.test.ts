@@ -205,12 +205,12 @@ for (const phase of phases) {
             plan: planned,
             root: planned.root,
             app,
-            landofile: {
+            landofile: literalTestLandofile({
               name: planned.name,
               services: {},
               sshAgent: { sidecar: false },
               gpgAgent: { forward: true },
-            },
+            }),
           },
           { scope },
         ).pipe(
@@ -329,3 +329,4 @@ test.each(["restart", "rebuild"] as const)(
     expect(cleanupAfterApply).toBe(0);
   },
 );
+import { literalTestLandofile } from "../compiled-landofile.ts";

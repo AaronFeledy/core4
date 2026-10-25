@@ -5,11 +5,11 @@ import { join } from "node:path";
 
 import { Effect, Layer, Schema } from "effect";
 
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
 import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
@@ -40,10 +40,7 @@ const plan = (input: {
   const planner = AppPlannerLayer.layer.pipe(Layer.provide(dependencies));
   return Effect.runPromise(
     Effect.flatMap(AppPlanner, (service) =>
-      service.plan(
-        rememberLandofileAppRoot(input.landofile, input.appRoot),
-        TestRuntimeProvider.capabilities,
-      ),
+      service.plan(literalTestLandofile(input.landofile, input.appRoot), TestRuntimeProvider.capabilities),
     ).pipe(Effect.provide(planner)),
   );
 };

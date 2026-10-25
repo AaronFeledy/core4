@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
 import { CapabilityError, ComposeKeyRejectedError } from "@lando/core/errors";
 import {
@@ -11,7 +11,7 @@ import {
   ComposeProjectFieldKey,
   ComposeServiceFieldKey,
   ComposeServiceKnobKey,
-  type LandofileShape,
+  LandofileShape,
   type ProviderCapabilities,
   ServiceName,
 } from "@lando/core/schema";
@@ -20,15 +20,16 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
-import { loadLandofileFile } from "@lando/engine/services/landofile-live";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { getLandofileAppRoot, rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import {
   type ComposeDispositionMatch,
   analyzeComposeDispositions,
 } from "@lando/landofile/compose/rejections";
 import { parseLandofile } from "@lando/landofile/parser";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { loadLandofileFile } from "@lando/landofile/service";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
 import { COMPOSE_FIXTURE_ASSERTIONS } from "./compose-fixture-assertion-metadata.ts";
 import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";
@@ -120,24 +121,30 @@ const loadYamlExit = async (dir: string, content: string) => {
   return {
     source,
     exit: await Effect.runPromiseExit(
-      loadLandofileFile(source).pipe(Effect.provide(makeTestStateStore().layer)),
+      loadLandofileFile(source).pipe(
+        Effect.map((compiled) => compiled.document),
+        Effect.provide(makeTestStateStore().layer),
+      ),
     ),
   };
 };
 
-const planLandofile = (landofile: LandofileShape, capabilities: ProviderCapabilities = nativeCapabilities) =>
-  Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-    Effect.provide(plannerLayer),
-    Effect.provide(registryLayer),
-    Effect.runPromise,
+const compileFixture = (landofile: LandofileShape) => {
+  const root = getLandofileAppRoot(landofile) ?? process.cwd();
+  return loadAuthoredDocuments(
+    [{ file: join(root, ".lando.yml"), value: Schema.encodeSync(LandofileShape)(landofile) }],
+    { appRoot: root, file: join(root, ".lando.yml") },
   );
+};
+const planLandofile = (landofile: LandofileShape, capabilities: ProviderCapabilities = nativeCapabilities) =>
+  Effect.flatMap(compileFixture(landofile), (compiled) =>
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(compiled, capabilities)),
+  ).pipe(Effect.provide(plannerLayer), Effect.provide(registryLayer), Effect.runPromise);
 
 const planLandofileExit = (landofile: LandofileShape, capabilities: ProviderCapabilities) =>
-  Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-    Effect.provide(plannerLayer),
-    Effect.provide(registryLayer),
-    Effect.runPromiseExit,
-  );
+  Effect.flatMap(compileFixture(landofile), (compiled) =>
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(compiled, capabilities)),
+  ).pipe(Effect.provide(plannerLayer), Effect.provide(registryLayer), Effect.runPromiseExit);
 
 const asComposeLandofile = (landofile: LandofileShape, dir: string): LandofileShape =>
   rememberLandofileAppRoot<LandofileShape>(

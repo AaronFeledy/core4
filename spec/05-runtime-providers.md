@@ -1,6 +1,6 @@
 # Lando v4: Runtime Provider API
 
-> **Part 5 of 19** · [Index](./README.md)
+> **Part 5 of 20** · [Index](./README.md)
 > **Read next:** [06 Services](./06-services.md)
 
 A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service instances. The Lando-managed runtime is the default; system Docker and system Podman are bundled opt-in providers.
@@ -137,7 +137,7 @@ Ordinary `start` and explicit `global:start` plan and build with the default cac
 | Per-session credentials, allocations, and timestamps | Excluded from identity. |
 | Host-proxy session (`dev.lando.host-proxy-session`) | Excluded from identity. A changed session recreates eligible services through the host-proxy session rule (§10.10.1), never as config drift, so selected restart is unaffected. |
 
-The label value is `v1:` plus one SHA-256 digest of the desired create configuration. It stores no raw values and no per-value hashes. A `${secret:...}` input contributes the reference text, not the resolved SecretStore value. Literal env-file and YAML config, including a literal password, is desired configuration and is inside that single outer digest. The digest does not prevent dictionary inference and MUST NOT be described as proof that no secret was hashed.
+The label value is `v2:` plus one SHA-256 digest of the desired create configuration, including both authored artifact provenance and the realized artifact reference and digest. It stores no raw values and no per-value hashes. Selected restart projects the current desired services onto ownership-matched applied artifacts before inspection and forbid-recreate apply, so an unchanged built service can restart without rebuilding or resolving creation secrets. Environment values enter the digest as their descriptors (§7.3.1): a literal string as its bytes, a `SecretRef` or `BoundText` as its reference identifiers, part order, and encodings, never as resolved SecretStore values. A literal `${secret:...}` string and a `SecretRef` to the same reference therefore have different identities. Literal env-file and YAML config, including a literal password, is desired configuration and is inside that single outer digest. The digest does not prevent dictionary inference and MUST NOT be described as proof that no secret was hashed.
 
 Explicit `rebuild` remains the forced artifact refresh and explicit recreate (§6.15). It is not required to apply create-config drift.
 
@@ -212,7 +212,10 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `name`, `type`, `provider`, `primary` | Service identity, resolved type, provider, and primary marker. |
 | `artifact` | Existing artifact reference or build specification. |
 | `command`, `entrypoint` | Planned process invocation. |
-| `environment`, `user`, `workingDirectory` | Runtime process environment and identity. |
+| `environment`, `user`, `workingDirectory` | Runtime process environment and identity. `environment` is one map of `EnvironmentValue` descriptors (§7.3.1): a literal string, a `SecretRef`, or flat `BoundText`. A literal is final bytes and is never rescanned; a descriptor is resolved by the operation's `EnvironmentValueResolver` session immediately before the provider request (§5.5.2). |
+| `connection` | Optional `DatabaseConnection` resolved once by a database service type: `family`, typed `creds` (`user`, `database` literal; `password`, `rootPassword` as `EnvironmentValue`), and the planned `port` (§6.12.4). Clients, info, SQL operations, and `services.<name>.*` expression scopes read this, never the environment map. |
+| `serviceTypeId` | Optional nonempty canonical registry ID of the effective service-type declaration, including its composed inheritance chain. Fresh plans stamp every resolved service independently of tooling winners; `type` retains its normalized-family meaning. Missing historical declaration identity is not inferred from that normalized type. |
+| `nonSqlCreds` | Optional typed `ServiceCreds` published by a non-SQL service type, such as password-protected Redis, for credential expression scopes. Mutually exclusive with `connection`; it survives plan serialization and never duplicates database connection credentials. |
 | `appMount`, `mounts`, `storage` | App source, mount, and persistent-store intent. |
 | `endpoints`, `routes` | Service listeners and references to app routes. |
 | `dependsOn` | Planned service dependencies. |
@@ -222,6 +225,7 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 
 | `AppPlan` field | Meaning |
 |---|---|
+| `valueModel` | Optional literal `1`. Planners always write it. Observed plans decoded from applied state MAY lack it; no decoder invents it (§5.5.2). |
 | `id`, `name`, `slug`, `root` | Stable app identity and authoritative root. |
 | `provider` | Selected provider id. |
 | `services` | Planned services keyed by service name. |
@@ -237,6 +241,12 @@ Providers MAY translate plans into native representations, but MUST consume reso
 #### 5.5.1 Supported Compose input at the boundary
 
 The Landofile accepts the supported Compose subset in §7.4, but a raw Compose document never becomes the provider source of truth. Core parses and validates input, normalizes portable intent into plan fields, preserves accepted native intent in namespaced extensions, capability-checks preserved runtime semantics, and rejects unsupported keys with remediation. The §7.4 disposition matrix owns normalize/preserve/reject classification.
+
+#### 5.5.2 Environment resolution and execution eligibility
+
+`CurrentExecutableAppPlan` is `AppPlan` with `valueModel: 1` required. Before creating or recreating any container, a provider MUST decode the incoming plan as `CurrentExecutableAppPlan`; a plan without the marker fails with tagged `PlanReplanRequiredError` before any removal or resource allocation, regardless of what its strings look like. Observation, logs, stop, and teardown accept historical plans without the marker. Restart or reuse of an existing container never resolves creation values. A partial plan merge MUST NOT grant retained legacy services the incoming plan's marker. The applied-state envelope stays at version 1 and historical plans whose environments are plain strings remain decodable as observed plans.
+
+`ApplyOptions.resolveServiceEnvironment` is the only path from descriptors to bytes at the provider boundary. The engine supplies it from a Scope-owned `EnvironmentValueResolver` session: each reference is read once per operation, every raw value, URI-encoded component, and secret-bearing composite is registered with the redactor before dispatch, and the resulting `Record<string, string>` reaches `CommandSpec.env` and container create requests only. Providers MUST call it only for a service they are about to create or recreate, before destructive replacement, and MUST NOT stringify or omit an unresolved descriptor. Resolved maps never enter applied state, caches, plans, or argv.
 
 ### 5.6 Provider extensions
 
@@ -258,7 +268,7 @@ Provider-specific intent MAY appear only under `providers.<id>`. Such intent is 
 | `ServiceCopyError` | Service file transfer failed. |
 | `ArtifactTransferError` | Artifact export or import failed. |
 
-Every provider error MUST include `providerId`, `operation`, a user-facing `message`, redacted `details` when present, optional `remediation`, and an optional original `cause` for debug logs. `message` and `details` MUST already be redacted with the live value set when the error is returned, so library callers see the same masking as CLI output.
+Provider-owned errors MUST include `providerId`, `operation`, a user-facing `message`, redacted `details` when present, optional `remediation`, and an optional original `cause` for debug logs. Lazy environment-resolution failures also travel through the provider error channel: `SecretStoreError` and `EnvironmentValueResolutionError` retain their own tagged shapes rather than being wrapped as provider outages. Messages and details MUST already be redacted with the owning runtime's live value set when an error is returned, so library callers see the same masking as CLI output.
 
 The runtime provider registry MUST enforce redaction on failures from every Effect and Stream member, provider construction, and contribution callback, including applied-plan and resource-ownership reads. It MUST reconstruct canonical error classes with redacted `message`, deep-redacted `details`, `remediation`, and other exposed text fields while preserving tags, schema encoding, yieldability, and the original debug-only `cause`. Defects and interruption are unchanged. Providers MUST still redact errors at construction as defense in depth.
 

@@ -1,6 +1,6 @@
 # Lando v4: Appendices
 
-> **Part 14 of 19** · [Index](./README.md)
+> **Part 14 of 20** · [Index](./README.md)
 > **Read next:** [15 Binary Build and Release Engineering](./15-binary-build-and-release.md)
 
 This part is reference material, not workflow. Keep it open while reading the other parts.
@@ -86,12 +86,18 @@ The implementation must satisfy every item below; binary-shipping criteria remai
 - Scratch global storage rewrites to app scope unless `--share-global-storage`; routes use `ScratchHostnameSuffix` unless overridden. Foreground scope interruption destroys all scratch state; detached state persists in `<userCacheRoot>/scratch/registry.bin` and GC reconciles provider labels.
 - `apps:poweroff` destroys scratches unless `--keep-scratch`; keep flags compose. Scratch ids and user slugs are separate namespaces keyed by `AppRef.kind`; every consumer considers both kind and id.
 - Library scratch acquisition finalizes on scope close and remains steady-state under runtime reuse. The scratch contract suite covers copy, recipes, isolation, storage rewrite, routes, finalization, registry concurrency, and orphan GC.
+- Programmable execution remains opt-in and local-development-first: minimal host work needs no app/provider, borrowed apps survive closure, config-backed scratch retains its source, admission survives captured-context delegation, process outcomes remain truthful, and artifacts follow explicit lifetime ownership. Existing commands/hooks/budgets are unchanged (§22).
 
 ### D. Why OCLIF (and not `@effect/cli`) — historical decision
 
 OCLIF was originally selected for its mature plugin manifest, lazy-loading, install, and update ecosystem despite adapter costs around Effect and typed flags. Compiled Bun binaries later proved unable to use supported OCLIF dispatch because root discovery and runtime module loading require adjacent filesystem packages. The normative architecture is now one native registry and dispatcher for source and compiled modes (§8.4.1); registry completeness, machine-output conformance, and relocated-binary smoke replace the retired dual-dispatch parity design.
 
 ### E. Glossary
+
+- **Execution session**: In-process, scope-owned composition context over a retained runtime, not another runtime, app kind, or daemon (§22).
+- **Execution environment**: A borrowed App binding or session-owned scratch with explicit lifetime ownership (§22.3).
+- **Execution operation**: Typed work composed through existing Effect services, not a mandatory serialized job or workflow step (§22.5).
+- **Execution artifact**: Explicitly captured private file bytes and a metadata reference, distinct from a runnable provider artifact (§22.8).
 
 - **Adapter** — Plugin Layer implementing a port.
 - **AppPlan** — Provider-neutral, schema-validated desired state for one app.

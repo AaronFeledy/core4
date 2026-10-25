@@ -127,114 +127,134 @@ const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   return out;
 };
 
-export const layerStreamFrameSink = (
-  format: CommandResultFormat,
-): Layer.Layer<StreamFrameSink, never, Renderer | RedactionService> =>
+export const makeStreamFrameSink = Effect.fnUntraced(function* (format: CommandResultFormat) {
+  const renderer = yield* Renderer;
+  const redaction = yield* RedactionService;
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const values = yield* redaction.payloadValues({ sourceEnv: process.env });
+  const encoder = new TextEncoder();
+  const states = new Map<
+    string,
+    {
+      readonly frame: StreamFrameSinkFrame;
+      readonly payload: ReturnType<typeof createPayloadRedactor>;
+      readonly decoder: TextDecoder;
+      pending: Uint8Array;
+    }
+  >();
+  const write = Effect.fnUntraced(function* (
+    state: NonNullable<ReturnType<typeof states.get>>,
+    bytes: Uint8Array,
+    final = false,
+  ): Effect.fn.Return<void> {
+    if (bytes.length === 0 && !final) return;
+    const frame = state.frame;
+    if (format === "json") {
+      const textChunk = state.decoder.decode(bytes, { stream: !final });
+      if (textChunk.length === 0) return;
+      const streamFrameOptions = {
+        chunk: textChunk,
+        ...(frame.service === undefined ? {} : { service: frame.service }),
+        ...(frame.source === undefined ? {} : { source: frame.source }),
+        redactor,
+      };
+      const line =
+        frame._tag === "stdout"
+          ? yield* encodeStreamStdoutFrame(streamFrameOptions)
+          : yield* encodeStreamStderrFrame(streamFrameOptions);
+      yield* renderer.output.stdout(`${line}\n`);
+      return;
+    }
+    if (format === "yaml") return;
+    if (frame.kind === "bytes") {
+      yield* frame._tag === "stderr" ? renderer.output.stderr(bytes) : renderer.output.stdout(bytes);
+      return;
+    }
+    const chunk = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+    const text =
+      frame.service === undefined
+        ? chunk
+        : frame.source === undefined
+          ? `${frame.service} ${frame._tag}: ${chunk}`
+          : `${frame.service} ${frame._tag} [${frame.source}]: ${chunk}`;
+    yield* frame._tag === "stderr"
+      ? renderer.output.stderr(`${text}\n`)
+      : renderer.output.stdout(`${text}\n`);
+  });
+  const deliver = Effect.fnUntraced(function* (
+    state: NonNullable<ReturnType<typeof states.get>>,
+    bytes: Uint8Array,
+    final = false,
+  ): Effect.fn.Return<void> {
+    if (format !== "json") {
+      yield* write(state, bytes);
+      return;
+    }
+    let offset = 0;
+    while (offset < bytes.length) {
+      const remaining = 65536 - state.pending.length;
+      const newline = bytes.indexOf(10, offset);
+      const end = Math.min(bytes.length, offset + remaining, newline < 0 ? bytes.length : newline + 1);
+      state.pending = concatBytes(state.pending, bytes.subarray(offset, end));
+      offset = end;
+      if (state.pending.length === 65536 || state.pending.at(-1) === 10) {
+        yield* write(state, state.pending);
+        state.pending = new Uint8Array(0);
+      }
+    }
+    if (final) {
+      yield* write(state, state.pending, true);
+      state.pending = new Uint8Array(0);
+    }
+  });
+  let finished = false;
+  const emit = Effect.fnUntraced(function* (frame: StreamFrameSinkFrame): Effect.fn.Return<void> {
+    if (finished) return yield* Effect.die(new Error("Command output is already finished."));
+    const key = JSON.stringify([frame._tag, frame.service, frame.source]);
+    let state = states.get(key);
+    if (state === undefined) {
+      state = {
+        frame: { ...frame, chunk: "" },
+        payload: createPayloadRedactor(values),
+        decoder: new TextDecoder("utf-8", { ignoreBOM: true }),
+        pending: new Uint8Array(0),
+      };
+      states.set(key, state);
+    }
+    const bytes = typeof frame.chunk === "string" ? encoder.encode(frame.chunk) : frame.chunk;
+    if (frame.kind === "record") {
+      yield* deliver(state, state.payload.flush(), true);
+      states.delete(key);
+      const record = {
+        ...state,
+        frame,
+        decoder: new TextDecoder("utf-8", { ignoreBOM: true }),
+        pending: new Uint8Array(0),
+      };
+      const bytes = encoder.encode(redactor.redactString(`${frame.chunk}${format === "json" ? "\n" : ""}`));
+      if (format === "json") yield* deliver(record, bytes, true);
+      else yield* write(record, bytes);
+      return;
+    }
+    yield* deliver(state, state.payload.write(bytes));
+  });
+  const finish = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
+    if (finished) return;
+    finished = true;
+    for (const state of states.values()) {
+      yield* deliver(state, state.payload.flush(), true);
+    }
+    states.clear();
+  });
+  return { sink: StreamFrameSink.of({ emit }), finish };
+});
+
+export const layerStreamFrameSink = (format: CommandResultFormat) =>
   Layer.effect(
     StreamFrameSink,
     Effect.gen(function* () {
-      const renderer = yield* Renderer;
-      const redaction = yield* RedactionService;
-      const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-      const values = yield* redaction.payloadValues({ sourceEnv: process.env });
-      const encoder = new TextEncoder();
-      const states = new Map<
-        string,
-        {
-          readonly frame: StreamFrameSinkFrame;
-          readonly payload: ReturnType<typeof createPayloadRedactor>;
-          readonly decoder: TextDecoder;
-          pending: Uint8Array;
-        }
-      >();
-      const write = Effect.fnUntraced(function* (
-        state: NonNullable<ReturnType<typeof states.get>>,
-        bytes: Uint8Array,
-        final = false,
-      ): Effect.fn.Return<void> {
-        if (bytes.length === 0 && !final) return;
-        const frame = state.frame;
-        if (format === "json") {
-          const textChunk = state.decoder.decode(bytes, { stream: !final });
-          if (textChunk.length === 0) return;
-          const streamFrameOptions = {
-            chunk: textChunk,
-            ...(frame.service === undefined ? {} : { service: frame.service }),
-            ...(frame.source === undefined ? {} : { source: frame.source }),
-            redactor,
-          };
-          const line =
-            frame._tag === "stdout"
-              ? yield* encodeStreamStdoutFrame(streamFrameOptions)
-              : yield* encodeStreamStderrFrame(streamFrameOptions);
-          yield* renderer.output.stdout(`${line}\n`);
-          return;
-        }
-        if (format === "yaml") return;
-        if (frame.raw === true) {
-          yield* frame._tag === "stderr" ? renderer.output.stderr(bytes) : renderer.output.stdout(bytes);
-          return;
-        }
-        const chunk = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
-        const text =
-          frame.service === undefined
-            ? chunk
-            : frame.source === undefined
-              ? `${frame.service} ${frame._tag}: ${chunk}`
-              : `${frame.service} ${frame._tag} [${frame.source}]: ${chunk}`;
-        yield* renderer.output.stdout(`${text}\n`);
-      });
-      const deliver = Effect.fnUntraced(function* (
-        state: NonNullable<ReturnType<typeof states.get>>,
-        bytes: Uint8Array,
-        final = false,
-      ): Effect.fn.Return<void> {
-        if (format !== "json") {
-          yield* write(state, bytes);
-          return;
-        }
-        let offset = 0;
-        while (offset < bytes.length) {
-          const remaining = 65536 - state.pending.length;
-          const newline = bytes.indexOf(10, offset);
-          const end = Math.min(bytes.length, offset + remaining, newline < 0 ? bytes.length : newline + 1);
-          state.pending = concatBytes(state.pending, bytes.subarray(offset, end));
-          offset = end;
-          if (state.pending.length === 65536 || state.pending.at(-1) === 10) {
-            yield* write(state, state.pending);
-            state.pending = new Uint8Array(0);
-          }
-        }
-        if (final) {
-          yield* write(state, state.pending, true);
-          state.pending = new Uint8Array(0);
-        }
-      });
-      const emit = Effect.fnUntraced(function* (frame: StreamFrameSinkFrame): Effect.fn.Return<void> {
-        const key = JSON.stringify([frame._tag, frame.service, frame.source, frame.raw]);
-        let state = states.get(key);
-        if (state === undefined) {
-          state = {
-            frame: { ...frame, chunk: "" },
-            payload: createPayloadRedactor(values),
-            decoder: new TextDecoder("utf-8", { ignoreBOM: true }),
-            pending: new Uint8Array(0),
-          };
-          states.set(key, state);
-        }
-        const bytes = typeof frame.chunk === "string" ? encoder.encode(frame.chunk) : frame.chunk;
-        if (frame.raw !== true) {
-          yield* write(state, encoder.encode(redactor.redactString(new TextDecoder().decode(bytes))));
-          return;
-        }
-        yield* deliver(state, state.payload.write(bytes));
-      });
-      const flush = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
-        for (const state of states.values()) {
-          yield* deliver(state, state.payload.flush(), true);
-        }
-        states.clear();
-      });
-      return StreamFrameSink.of({ emit, flush });
+      const owner = yield* makeStreamFrameSink(format);
+      yield* Effect.addFinalizer(owner.finish);
+      return owner.sink;
     }),
   );

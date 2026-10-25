@@ -235,9 +235,17 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
         } else {
           const envelope = format === "json" ? JSON.parse(stdout) : Bun.YAML.parse(stdout);
           expect(envelope).toMatchObject({
-            ok: true,
+            ok: scriptExitCode === 0,
             result: { exitCode: scriptExitCode, stdout: scriptStdout, stderr: "diagnostic\n" },
           });
+          if (scriptExitCode === 0) expect(envelope.error).toBeUndefined();
+          else
+            expect(envelope.error).toMatchObject({
+              _tag: "LandoCommandError",
+              commandId: "app:probe",
+              exitCode: scriptExitCode,
+              remediation: expect.any(String),
+            });
         }
       } finally {
         await rm(root, { recursive: true, force: true });

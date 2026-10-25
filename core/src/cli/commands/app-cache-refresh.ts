@@ -89,21 +89,21 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const cwd = options.cwd ?? process.cwd();
   const scripts = yield* discoverScripts(cwd);
   const entries = yield* Effect.try({
-    try: () => compileAppCommands(landofile, scripts, effectiveToolingForPlan(plan)),
+    try: () => compileAppCommands(landofile.document, scripts, effectiveToolingForPlan(plan)),
     catch: (cause) => {
       if (cause instanceof ToolingCompileError) return cause;
       throw cause;
     },
   });
   const aliasError = commandAliasRegistrationError(
-    landofile.commandAliases,
+    landofile.document.commandAliases,
     entries.map((entry) => entry.id),
     entries,
   );
   if (aliasError !== undefined) yield* Effect.fail(aliasError);
 
   const appCachePath = yield* writeAppCommandCacheStrict({
-    landofile,
+    landofile: landofile.document,
     entries,
     cwd,
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),

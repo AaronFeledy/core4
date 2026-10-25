@@ -2,13 +2,14 @@
 import { createConnection, isIP } from "node:net";
 import { type ConnectionOptions, connect as createTlsConnection } from "node:tls";
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { Effect, Stream } from "effect";
+import { Effect } from "effect";
 import type {
   EngineApiClient,
   EngineHttpRequest,
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
+import { engineByteStream } from "../engine-byte-stream.ts";
 import { engineApiFailure } from "../engine-errors.ts";
 import { tryParseJson } from "../engine-json.ts";
 import { httpResponseDetails, redactDetails, redactString, withApiReason } from "../redact.ts";
@@ -64,8 +65,8 @@ const unavailable = (ctx: ProviderErrorContext) => (operation: string, message: 
   new ProviderUnavailableError({
     providerId: ctx.providerId,
     operation,
-    message: redactString(withApiReason(message, details)),
-    ...(details === undefined ? {} : { details: redactDetails(details) }),
+    message: redactString(withApiReason(message, details, ctx.redactor), ctx.redactor),
+    ...(details === undefined ? {} : { details: redactDetails(details, ctx.redactor) }),
   });
 
 const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) =>
@@ -80,7 +81,7 @@ const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) 
             message: "Docker API returned malformed info JSON.",
             capability: "docker-info",
             requiredValue: "valid JSON Docker info response",
-            actualValue: redactString(response.body),
+            actualValue: redactString(response.body, ctx.redactor),
             cause,
           }),
       );
@@ -389,11 +390,12 @@ export const makeUnixDockerApiClient = (
 
   return {
     stream: (input) =>
-      Stream.fromAsyncIterable(
-        (async function* () {
+      engineByteStream(
+        input,
+        async function* (input) {
           const used = initialPrefix(session, ctx);
           yield* streamUnixSocketRequest(socketPath, input, used.prefix);
-        })(),
+        },
         (cause) => dockerApiFailure(ctx)(input, cause),
       ),
     request: Effect.fn("DockerApiClient.request")(function* (input) {
@@ -418,7 +420,7 @@ export const makeUnixDockerApiClient = (
                 providerId: ctx.providerId,
                 operation: "docker-api",
                 message: "Docker API response did not include an HTTP status code.",
-                details: redactString(spawned.stdout),
+                details: redactString(spawned.stdout, ctx.redactor),
               });
             }
             return parsed;
@@ -442,11 +444,12 @@ export const makeNamedPipeDockerApiClient = (
   const clientFor = (prefix: string) => makeNamedPipeTransportClient(pipePath, connect, prefix);
   return {
     stream: (input) =>
-      Stream.fromAsyncIterable(
-        (async function* () {
+      engineByteStream(
+        input,
+        async function* (input) {
           const used = initialPrefix(session, ctx);
           yield* clientFor(used.prefix).stream(input);
-        })(),
+        },
         (cause) => dockerApiFailure(ctx)(input, cause),
       ),
     request: (input) =>
@@ -469,11 +472,12 @@ export const makeHttpDockerApiClient = (
   const clientFor = (prefix: string) => makeTcpTransportClient(baseUrl, undefined, prefix);
   return {
     stream: (input) =>
-      Stream.fromAsyncIterable(
-        (async function* () {
+      engineByteStream(
+        input,
+        async function* (input) {
           const used = initialPrefix(session, ctx);
           yield* streamHttpRequest(baseUrl, input, ctx, used.prefix);
-        })(),
+        },
         (cause) => dockerApiFailure(ctx)(input, cause),
       ),
     request: (input) =>

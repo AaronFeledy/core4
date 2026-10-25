@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Option, Schema } from "effect";
 
 import { AppFeatureSelectorMatchedNothingError, PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
-import { LandofileShape, ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import {
+  type Environment,
+  type EnvironmentValue,
+  LandofileShape,
+  ServiceConfig,
+  ServiceName,
+} from "@lando/sdk/schema";
 import { PhpMyAdminServiceConfig } from "@lando/sdk/schema/services/phpmyadmin";
 import type {
   AppFeatureContext,
@@ -11,6 +17,8 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
+import { mariadbServiceType } from "../src/services/mariadb.ts";
+import { mysqlServiceType } from "../src/services/mysql.ts";
 import {
   PHPMYADMIN_FEATURE_ID,
   phpMyAdminWireFeature,
@@ -69,9 +77,9 @@ const unusedMutators = {
   setAppMount: () => undefined,
   addBuildStep: () => undefined,
   addStorage: () => undefined,
-  addEndpoint: () => undefined,
   addHostAlias: () => undefined,
   setHealthcheck: () => undefined,
+  setReadiness: () => undefined,
   setCerts: () => undefined,
   setEntrypoint: () => undefined,
   setCommand: () => undefined,
@@ -81,7 +89,7 @@ const unusedMutators = {
 } satisfies Omit<AppFeatureServiceMutators, "service" | "addEnv" | "addDependency">;
 
 type WireCapture = {
-  readonly env: Record<string, string>;
+  readonly env: Record<string, EnvironmentValue>;
   readonly deps: Array<{ readonly service: string; readonly condition: string; readonly required: boolean }>;
 };
 
@@ -89,23 +97,48 @@ const viewOf = (input: {
   readonly serviceName: string;
   readonly serviceType: string;
   readonly hosts?: string | ReadonlyArray<string>;
-  readonly environment?: Readonly<Record<string, string>>;
-  readonly creds?: { readonly user?: string; readonly password?: string; readonly database?: string };
+  readonly environment?: Environment;
+  readonly creds?: {
+    readonly user?: string;
+    readonly password?: EnvironmentValue;
+    readonly database?: string;
+  };
   readonly healthcheck?: ServiceConfig["healthcheck"];
-}): AppFeatureServiceView => ({
-  serviceName: input.serviceName,
-  serviceType: input.serviceType,
-  base: "lando",
-  primary: false,
-  featureIds: [],
-  normalizedConfig: Schema.decodeUnknownSync(ServiceConfig)({
+}): AppFeatureServiceView => {
+  const normalizedConfig = Schema.decodeUnknownSync(ServiceConfig)({
     type: input.serviceType,
     ...(input.hosts === undefined ? {} : { hosts: input.hosts }),
     ...(input.environment === undefined ? {} : { environment: input.environment }),
     ...(input.creds === undefined ? {} : { creds: input.creds }),
     ...(input.healthcheck === undefined ? {} : { healthcheck: input.healthcheck }),
-  }),
-});
+  });
+  const type = input.serviceType.startsWith("mysql")
+    ? mysqlServiceType
+    : input.serviceType === "mariadb"
+      ? mariadbServiceType
+      : undefined;
+  const resolution =
+    type === undefined
+      ? undefined
+      : Effect.runSync(
+          type.resolve({
+            name: input.serviceName,
+            service: normalizedConfig,
+            appRoot: "/srv/apps/myapp",
+            appName: "myapp",
+            metadata,
+          }),
+        );
+  return {
+    serviceName: input.serviceName,
+    serviceType: input.serviceType,
+    base: "lando",
+    primary: false,
+    featureIds: [],
+    normalizedConfig,
+    connection: resolution?.connection,
+  };
+};
 
 const applyWire = (views: ReadonlyArray<AppFeatureServiceView>) => {
   const captures = new Map<string, WireCapture>();
@@ -307,14 +340,14 @@ describe("phpMyAdmin AppFeature", () => {
     });
   });
 
-  test("prefers authored creds over MYSQL_* environment for the single-db case", async () => {
+  test("copies agreed authored creds and MYSQL_* environment for the single-db case", async () => {
     const { context, captures } = applyWire([
       viewOf({ serviceName: "pma", serviceType: "phpmyadmin" }),
       viewOf({
         serviceName: "database",
         serviceType: "mysql",
         creds: { user: "dbuser", password: "dbpass", database: "app" },
-        environment: { MYSQL_USER: "alice", MYSQL_PASSWORD: "s3cret" },
+        environment: { MYSQL_USER: "dbuser", MYSQL_PASSWORD: "dbpass" },
       }),
     ]);
 

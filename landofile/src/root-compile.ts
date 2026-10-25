@@ -1,6 +1,7 @@
 import { LandofileFormConflictError, LandofileParseError } from "@lando/sdk/errors";
 import { LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
+import { captureCompilationContext } from "./compilation.ts";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { LANDOFILE_LAYER_POSITIONS, type PresentLandofileLayer, presentLandofileLayers } from "./layers.ts";
 import { type LandofileLoadContext, ensureConsistentRoot, loadContext } from "./load-context.ts";
@@ -33,7 +34,7 @@ export const acquireLandofileRootLayers = Effect.fn("Landofile.acquireLayers")(f
   inputs?: Pick<LandofileRuntimeInputs, "templates" | "transactionGuard">,
 ) {
   yield* ensureConsistentRoot(appRoot, inputs);
-  const runtime = yield* loadContext(appRoot);
+  const runtime = yield* loadContext(appRoot, inputs?.templates.context?.env);
   const layers = yield* Effect.tryPromise({
     try: () => presentLandofileLayers(appRoot),
     catch: (cause) =>
@@ -124,16 +125,27 @@ export const loadLandofileContentLayers = Effect.fn("Landofile.loadContentLayers
   runtime: Omit<LandofileLoadContext, "layer">,
   final: { readonly file: string; readonly forced?: Readonly<Record<string, unknown>> },
 ) {
+  const pendingSites = runtime.pendingSites ?? [];
+  const compilationContext = runtime.compilationContext ?? captureCompilationContext(runtime.appRoot);
   const prepared = yield* Effect.forEach(layers, (layer) =>
-    prepareLandofileContent(layer.filePath, layer.content, { ...runtime, layer: layer.layer }).pipe(
-      Effect.map(({ value }) => ({ layer, landofile: value })),
-    ),
+    prepareLandofileContent(layer.filePath, layer.content, {
+      ...runtime,
+      compilationContext,
+      pendingSites,
+      layer: layer.layer,
+    }).pipe(Effect.map(({ value }) => ({ layer, landofile: value }))),
   );
-  const document = yield* composePreparedLayers(prepared, runtime);
+  const document = yield* composePreparedLayers(prepared, { ...runtime, pendingSites });
   return yield* finalizeLandofile(
     final.file,
     copyLandofileProvenance(document, { ...document, ...final.forced }),
-    { appRoot: runtime.appRoot, loadPolicy: runtime.policy, logger: runtime.logger },
+    {
+      appRoot: runtime.appRoot,
+      env: compilationContext.env,
+      pendingSites,
+      loadPolicy: runtime.policy,
+      logger: runtime.logger,
+    },
   );
 });
 
@@ -144,7 +156,10 @@ export const loadAuthoredDocuments = Effect.fn("Landofile.loadDocuments")(functi
     readonly file: string;
     readonly forced?: Readonly<Record<string, unknown>>;
   },
+  inputs?: LandofileRuntimeInputs,
 ) {
+  const pendingSites: import("@lando/sdk/schema").ParsedPendingSite[] = [];
+  const compilationContext = captureCompilationContext(context.appRoot, inputs?.templates.context?.env);
   const prepared = yield* Effect.forEach(sources, (source) => {
     const position =
       LANDOFILE_LAYER_POSITIONS.find(
@@ -158,16 +173,27 @@ export const loadAuthoredDocuments = Effect.fn("Landofile.loadDocuments")(functi
     };
     return prepareLandofileValue({
       ...source,
-      context: { appRoot: context.appRoot, layer: layer.layer, policy: DEFAULT_LANDOFILE_LOAD_POLICY },
+      context: {
+        appRoot: context.appRoot,
+        compilationContext,
+        pendingSites,
+        layer: layer.layer,
+        policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+      },
     }).pipe(Effect.map(({ value }) => ({ layer, landofile: value })));
   });
-  const document = yield* composePreparedLayers(prepared, {
-    appRoot: context.appRoot,
-    policy: DEFAULT_LANDOFILE_LOAD_POLICY,
-  });
+  const document = yield* composePreparedLayers(
+    prepared,
+    {
+      appRoot: context.appRoot,
+      pendingSites,
+      policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+    },
+    inputs,
+  );
   return yield* finalizeLandofile(
     context.file,
     copyLandofileProvenance(document, { ...document, ...context.forced }),
-    context,
+    { ...context, env: compilationContext.env, pendingSites },
   );
 });

@@ -10,7 +10,7 @@ import type {
 import { commandHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "opensearchproject/opensearch:2";
@@ -44,7 +44,6 @@ const applyOpenSearchFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(
     commandHealthcheck(["bash", "-c", `curl -sf http://localhost:${port}/_cluster/health`], 90, {
       intervalSeconds: 15,
@@ -59,6 +58,10 @@ export const opensearchServiceFeature: ServiceFeatureDefinition = {
   id: OPENSEARCH_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+    ),
   apply: serviceFeatureApply(
     OPENSEARCH_FEATURE_ID,
     "opensearch service feature failed to apply",

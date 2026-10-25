@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 import { DateTime, Duration, Effect, Stream } from "effect";
 
 import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
@@ -17,10 +17,18 @@ import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../sr
 import { exec, execStream } from "../src/podman/exec.ts";
 import { ContainerTransportError } from "../src/transport.ts";
 
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = {
+  providerId: "podman",
+  remediation: "Run `lando setup` and retry.",
+  get redactor() {
+    return Effect.runSync(fixtureRedaction.forProfile("secrets"));
+  },
+} as const;
 
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
+let fixtureRedaction = makeRedactionService();
+beforeEach(() => {
+  fixtureRedaction = makeRedactionService();
+});
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("exec-stdin-app");
 const serviceName = ServiceName.make("web");
@@ -129,7 +137,7 @@ describe("podman exec start errors", () => {
   test("redacts runtime-registered values in a failed exec create response", async () => {
     // Given
     const canary = "opaque-exec-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
+    Effect.runSync(fixtureRedaction.registerValues([canary]));
     const api: EngineHttpApi = {
       request: () =>
         Effect.succeed({ status: 500, body: JSON.stringify({ message: `engine said ${canary}` }) }),
@@ -415,7 +423,7 @@ describe("podman exec error context", () => {
 
     // Then
     expect(error).toBeInstanceOf(ProviderUnavailableError);
-    expect(error.providerId).toBe("podman");
+    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
     expect(error.message).toContain("provider-podman");
     expect(error.remediation).toBe(ctx.remediation);
   });

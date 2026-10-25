@@ -8,9 +8,11 @@ import { ComposeProjectFieldCapabilities } from "./compose-project-field-capabil
 import { ComposeServiceFieldCapabilities } from "./compose-service-field-capabilities.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
 import { RouteHostname, RoutePathPrefix } from "./hostname.ts";
-import { AbsolutePath, CommandSpec, PortNumber, ServiceName } from "./primitives.ts";
+import { AbsolutePath, PortNumber, ServiceName } from "./primitives.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
+
+export { HealthcheckPlan } from "./healthcheck-plan.ts";
 
 const HOST_PROXY_GATEWAY_HOSTNAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/u;
 
@@ -87,28 +89,6 @@ export const RoutePlan = Schema.Struct({
   }).annotateKey({ description: "Planner-resolved service endpoint consumed by the route provider." }),
 });
 export type RoutePlan = typeof RoutePlan.Type;
-
-/**
- * Healthcheck — provider-realized health probe.
- */
-export const HealthcheckPlan = Schema.Struct({
-  kind: Schema.Literals(["command", "http", "tcp", "none"]),
-  /** Command to run inside the container (kind = `command`). */
-  command: Schema.optionalKey(CommandSpec),
-  /** URL (kind = `http`). */
-  url: Schema.optionalKey(Schema.String),
-  /** Port (kind = `tcp`). */
-  port: Schema.optionalKey(Schema.Number),
-  /** Interval, seconds. */
-  intervalSeconds: Schema.Number,
-  /** Per-attempt timeout, seconds. */
-  timeoutSeconds: Schema.Number,
-  /** Maximum attempts after the start period (at least one); first success is healthy. */
-  retries: Schema.Number,
-  /** Probing starts immediately; failures during this grace period do not count against retries, seconds. */
-  startPeriodSeconds: Schema.optionalKey(Schema.Number),
-});
-export type HealthcheckPlan = typeof HealthcheckPlan.Type;
 
 export const ScannerConfig = Schema.Union([
   Schema.Literal(false),

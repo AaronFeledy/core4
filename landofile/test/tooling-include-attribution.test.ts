@@ -253,7 +253,7 @@ describe("tooling include attribution", () => {
       // When
       const result = await Effect.runPromise(load());
       // Then
-      expect(Object.keys(result.tooling ?? {})).toEqual(tasks);
+      expect(Object.keys(result.document.tooling ?? {})).toEqual(tasks);
       expect(getSourceDocuments(result).find(({ file }) => file === join(root, "b.yml"))?.layer).toBe(layer);
     });
   }
@@ -314,7 +314,7 @@ describe("tooling include attribution", () => {
     // When
     const result = await Effect.runPromise(load());
     // Then
-    expect(Object.keys(result.tooling ?? {})).toEqual(["a:task", "b:task"]);
+    expect(Object.keys(result.document.tooling ?? {})).toEqual(["a:task", "b:task"]);
     expect(
       getSourceDocuments(result)
         .filter(({ file }) => file === join(root, "tasks.yml"))

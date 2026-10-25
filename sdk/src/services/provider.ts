@@ -5,7 +5,9 @@ import type {
   AppResolveError,
   ArtifactBuildError,
   ArtifactTransferError,
+  EnvironmentValueResolutionError,
   NoProviderInstalledError,
+  PlanReplanRequiredError,
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
@@ -14,6 +16,7 @@ import type {
   ProviderSetupProvisioningError,
   ProviderSetupUnsupportedHostError,
   ProviderUnavailableError,
+  SecretStoreError,
   ServiceCopyError,
   ServiceExecError,
   ServiceNotFoundError,
@@ -48,6 +51,7 @@ import type {
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
   ServiceName,
+  ServicePlan,
   VolumeFilter,
   VolumeIdentity,
   VolumeInfo,
@@ -61,6 +65,9 @@ import type {
 import type { PrivilegeService } from "./process.ts";
 
 export type ProviderError =
+  | PlanReplanRequiredError
+  | EnvironmentValueResolutionError
+  | SecretStoreError
   | ArtifactBuildError
   | ProviderCapabilityError
   | ProviderConfigError
@@ -137,7 +144,9 @@ export interface ApplyOptions {
   /** Full dependency graph for completion-intent classification during partial apply; not recorded state. */
   readonly completionPlan?: AppPlan;
   readonly signal?: AbortSignal;
-  readonly serviceEnvironment?: ServiceEnvironmentOverrides;
+  readonly resolveServiceEnvironment?: (
+    service: ServicePlan,
+  ) => Effect.Effect<Readonly<Record<string, string>>, ProviderError>;
   /** Await each verified creation before starting services; failure aborts apply. Never called for adoption. */
   readonly onVolumeCreated?: (
     fact: import("../schema/volume-initialization.ts").VolumeCreationFact,
@@ -150,15 +159,6 @@ export interface ApplyOptions {
    */
   readonly forbidRecreate?: boolean;
 }
-
-/**
- * Resolved secret values keyed by service and environment variable.
- * Providers merge them over the applied plan's service environment, never use
- * them as a replacement environment.
- */
-export type ServiceEnvironmentOverrides = Readonly<
-  Partial<Record<ServiceName, Readonly<Record<string, string>>>>
->;
 
 export interface ApplyResult {
   readonly changed: boolean;

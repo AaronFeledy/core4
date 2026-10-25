@@ -1,0 +1,7 @@
+name: unescaped-shell
+services:
+  app:
+    type: "node:22"
+    primary: true
+    environment:
+      GREETING: "${HOME}"

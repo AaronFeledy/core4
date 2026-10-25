@@ -1,13 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import {
-  RedactionService,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, AppPlan } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -15,8 +11,6 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { Effect, Schema } from "effect";
 import { registerProviderOutput } from "../../src/providers/output-redaction.ts";
 import { sshAgentSessionPaths } from "../../src/subsystems/ssh-agent/session.ts";
-
-afterEach(resetRegisteredRedactionValuesForTesting);
 
 test.each([
   ["ssh", false],
@@ -62,12 +56,7 @@ test.each([
       }),
       { mode: 0o600 },
     );
-    const redaction = makeRedactionService({
-      id: "empty",
-      list: Effect.succeed([]),
-      get: () => Effect.die("No secret-store lookup expected"),
-      has: () => Effect.succeed(false),
-    });
+    const redaction = makeRedactionService();
     try {
       const output = await Effect.runPromise(
         Effect.gen(function* () {

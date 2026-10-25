@@ -17,6 +17,7 @@ import { privateNetworkLabels } from "../src/resource-cleanup.ts";
 const metadata = { source: "ownership-test", runtime: 4 as const, resolvedAt: DateTime.makeUnsafe(0) };
 const web = ServiceName.make("web");
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("owned"),
   name: "owned",
   slug: "owned",

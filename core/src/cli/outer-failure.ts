@@ -16,8 +16,6 @@ export const safeOuterFailure = async (
   try {
     redaction = await loadRedaction();
   } catch {
-    // Registered values live in the redaction module, so a process that cannot load it has
-    // registered none. Keep the failure diagnosable: this is how broken installs surface.
     return describe(error);
   }
   try {

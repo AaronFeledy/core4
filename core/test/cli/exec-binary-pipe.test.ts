@@ -4,15 +4,11 @@ import { Context, DateTime, Effect, Layer, Stream } from "effect";
 import { TestRuntimeProvider, makeTestRuntime } from "@lando/core/testing";
 import { execApp } from "@lando/engine/operations/exec";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, type RuntimeProviderShape } from "@lando/sdk/services";
 
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
@@ -21,7 +17,9 @@ import { attachExecHostIo } from "../../src/cli/exec-host-io.ts";
 const payload = new Uint8Array([0x1f, 0x8b, 0x08, 0x00, 0xff, 0x00, 0x80, 0xfe, 0x7f, 0x00]);
 const providerId = ProviderId.make("test");
 const serviceName = ServiceName.make("appserver");
-const plan: AppPlan = {
+import type { CurrentExecutableAppPlan } from "@lando/sdk/schema";
+const plan: CurrentExecutableAppPlan = {
+  valueModel: 1,
   id: AppId.make("exec-binary-pipe"),
   name: "exec-binary-pipe",
   slug: "exec-binary-pipe",
@@ -199,14 +197,7 @@ describe("piped exec binary archives", () => {
   test("writes raw binary frames to redirected stdout without UTF-8 replacement", async () => {
     // Given
     const io = createBufferedRendererIO();
-    const redaction = Layer.succeed(
-      RedactionService,
-      RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
-      }),
-    );
+    const redaction = Layer.succeed(RedactionService, makeRedactionService());
     const layer = RendererOutput.layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redaction)),
     );
@@ -215,7 +206,7 @@ describe("piped exec binary archives", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: payload, raw: true });
+        yield* sink.emit({ _tag: "stdout", chunk: payload, kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
 

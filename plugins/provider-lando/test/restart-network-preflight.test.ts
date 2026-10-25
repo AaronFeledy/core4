@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import {
+  CREATE_CONFIG_LABEL,
+  retainCreateArtifactIdentity,
+} from "@lando/container-runtime/create-fingerprint";
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { commonContainerLabels } from "@lando/container-runtime/plan";
 import { bringUpRecreateReasons } from "@lando/container-runtime/podman/bring-up-recreate";
@@ -21,7 +25,7 @@ const metadata = {
   source: "test",
   runtime: 4 as const,
 };
-const service: ServicePlan = {
+const declared: ServicePlan = {
   name: ServiceName.make("web"),
   type: "web",
   provider: ProviderId.make("lando"),
@@ -37,6 +41,10 @@ const service: ServicePlan = {
   metadata,
   extensions: {},
 };
+const service = retainCreateArtifactIdentity(declared, {
+  ...declared,
+  artifact: { kind: "ref", ref: "lando-build-web", digest: "sha256:built" },
+});
 const plan: AppPlan = {
   id: AppId.make("restart-network"),
   name: "Restart Network",
@@ -58,6 +66,9 @@ const plan: AppPlan = {
 
 test.each([
   { scenario: "unchanged networks", missing: false, changed: false },
+  { scenario: "missing physical label", missing: false, changed: false, proof: "missing" },
+  { scenario: "stale physical label", missing: false, changed: false, proof: "stale" },
+  { scenario: "old fingerprint version", missing: false, changed: false, proof: "old" },
   { scenario: "logical labels without physical proof", missing: false, changed: false, logicalLabels: true },
   { scenario: "missing network", missing: true, changed: false },
   {
@@ -65,7 +76,7 @@ test.each([
     missing: false,
     changed: true,
   },
-])("Windows restart preflight: $scenario", async ({ missing, changed, logicalLabels }) => {
+])("Windows restart preflight: $scenario", async ({ missing, changed, logicalLabels, proof }) => {
   // Given a container attached to the current machine's physical networks.
   const createdAt = "2026-10-09T00:00:00Z";
   const physical = windowsMachineNetworkPlan(plan, createdAt);
@@ -77,6 +88,15 @@ test.each([
     physical.networking?.perAppBridge?.name,
     physical.networking?.sharedNetworkMembership?.name,
   ].filter((name): name is string => name !== undefined);
+  const labels = { ...commonContainerLabels(logicalLabels ? plan : physical, physicalService) };
+  if (proof === "missing") delete labels[CREATE_CONFIG_LABEL];
+  if (proof === "stale") labels[CREATE_CONFIG_LABEL] = "v2:stale";
+  if (proof === "old") {
+    labels[CREATE_CONFIG_LABEL] = labels[CREATE_CONFIG_LABEL]?.replace(/^v\d+:/, "v2:") ?? "v2:old";
+    expect(labels[CREATE_CONFIG_LABEL]).not.toBe(
+      commonContainerLabels(physical, physicalService)[CREATE_CONFIG_LABEL],
+    );
+  }
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.void,
@@ -85,7 +105,7 @@ test.each([
         status: 200,
         body: JSON.stringify({
           Id: "existing-web",
-          Config: { Labels: commonContainerLabels(logicalLabels ? plan : physical, physicalService) },
+          Config: { Labels: labels },
           State: { Running: true },
           Mounts: [],
           HostConfig: { PortBindings: {} },
@@ -118,6 +138,6 @@ test.each([
   );
   // Then physical naming alone is not drift, but a missing attachment is.
   expect(bringUpRecreateReasons(desired, desiredService, runtime, { skipAbsentFields: true })).toEqual(
-    changed || logicalLabels ? ["config"] : missing ? ["network"] : [],
+    changed || logicalLabels || proof !== undefined ? ["config"] : missing ? ["network"] : [],
   );
 });

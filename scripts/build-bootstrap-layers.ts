@@ -209,7 +209,7 @@ const renderApp = (): string =>
     "    providerBase,",
     "    buildOrchestratorLayer,",
     "    AppPlannerLayer.layer.pipe(Layer.provide(providerBase)),",
-    "    ProviderExecToolingEngine.layer,",
+    "    ProviderExecToolingEngine.layer.pipe(Layer.provide(providerBase)),",
     "    BunShellRunner.layerWithPrivateFileAccess(makeProcessShellReplIO).pipe(Layer.provide(providerBase)),",
     "    BundledFileSyncEngine.layerWith(bundledPluginModules()).pipe(Layer.provide(providerBase)),",
     "  );",

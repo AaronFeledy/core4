@@ -2,8 +2,11 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import { makeLandoPaths } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
+import { CurrentExecutableAppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import {
   Cause,
   Clock,
@@ -30,7 +33,7 @@ import {
 import {
   AbsolutePath,
   AppId,
-  AppPlan,
+  type AppPlan,
   type FileSyncSessionInfo,
   FileSyncSessionRef,
   GlobalConfig,
@@ -48,6 +51,7 @@ import {
   CommandRegistry,
   ConfigService,
   DeprecationService,
+  type EnvironmentValueResolver,
   type EventFor,
   EventService,
   type EventWaitSpec,
@@ -170,6 +174,7 @@ type MinimalTestRuntimeServices =
   | FileSystem
   | PrivilegeService
   | SecretStore
+  | EnvironmentValueResolver
   | ProcessRunner
   | PrivateFileAccessService;
 type ProviderTestRuntimeServices =
@@ -295,9 +300,10 @@ const makeAppPlan = (input: {
   readonly name: string;
   readonly root: string;
   readonly providerId: ProviderId;
-}): AppPlan => {
+}): CurrentExecutableAppPlan => {
   const service = makeServicePlan(input.providerId);
-  return Schema.decodeUnknownSync(AppPlan)({
+  return Schema.decodeUnknownSync(CurrentExecutableAppPlan)({
+    valueModel: 1,
     id: AppId.make(slugFromName(input.name)),
     name: input.name,
     slug: slugFromName(input.name),
@@ -813,15 +819,22 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     plan: (landofile) =>
       Effect.succeed(
         makeAppPlan({
-          name: landofile.name ?? "test-runtime-app",
+          name: landofile.document.name ?? "test-runtime-app",
           root: "/test-runtime/app",
-          providerId: landofile.provider ?? providerId,
+          providerId: landofile.document.provider ?? providerId,
         }),
       ),
   });
 
   const landofileService = LandofileService.of({
-    discover: Effect.succeed(makeLandofile(providerId)),
+    discover: Effect.succeed(
+      LoadScopedLandofile.make({
+        stage: "load-scoped",
+        document: makeLandofile(providerId),
+        pendingSites: [],
+        context: { appRoot: AbsolutePath.make("/test-runtime/app"), env: {} },
+      }),
+    ),
   });
 
   const scratchPaths = (id: string) => {
@@ -1001,6 +1014,8 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     streamEvents: () => Stream.empty,
   });
 
+  const secretStoreLayer = Layer.succeed(SecretStore, secretStoreService);
+  const redactionLayer = RedactionService.layer;
   const minimalLayer: Layer.Layer<MinimalTestRuntimeServices> = Layer.mergeAll(
     Layer.succeed(Logger, loggerService),
     Layer.succeed(Renderer, rendererService),
@@ -1013,6 +1028,8 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     Layer.succeed(FileSystem, fileSystemService),
     Layer.succeed(PrivilegeService, privilegeService),
     Layer.succeed(SecretStore, secretStoreService),
+    redactionLayer,
+    EnvironmentValueResolverLayer.layer.pipe(Layer.provide(Layer.mergeAll(secretStoreLayer, redactionLayer))),
     Layer.succeed(ProcessRunner, processRunnerService),
     PrivateFileAccessService.layer,
   );

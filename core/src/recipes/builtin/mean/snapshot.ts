@@ -6,7 +6,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "./scaffold.ts";
 
 export const MEAN_RECIPE_VERSION = "0.1.0";
-export const MEAN_CONTENT_DIGEST = "sha256:d7e6de6d2b9c54794877b71e73e6b520ada7c6f8b9bbf196621934378eeb3fc0";
+export const MEAN_CONTENT_DIGEST = "sha256:32b53b5bcf4b6deb9060cd5a7656e847ffab4b6d28e77edf9b26a037f9398186";
 export const meanProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-mean",
@@ -24,7 +24,12 @@ const environment = (redis: boolean): ExpressionNode =>
   obj([
     ["NODE_ENV", lit("development")],
     ["PORT", lit(3000)],
-    ["MONGO_URL", lit("mongodb://lando:lando@database:27017/{{ app.name }}?authSource=admin")],
+    [
+      "MONGO_URL",
+      lit(
+        "mongodb://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?authSource=admin",
+      ),
+    ],
     ...(redis ? [["REDIS_URL", lit("redis://cache:6379")] as const] : []),
   ]);
 const services = (redis: boolean): ExpressionNode =>

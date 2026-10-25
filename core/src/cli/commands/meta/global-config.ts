@@ -216,7 +216,7 @@ const globalConfigView = Effect.fnUntraced(function* (): Effect.fn.Return<
 > {
   const loaded = yield* readGlobalLandofile();
   const { paths } = loaded;
-  const landofile = loaded.materialized ? loaded.landofile : emptyGlobalLandofile;
+  const landofile = loaded.materialized ? loaded.landofile.document : emptyGlobalLandofile;
 
   return {
     app: landofile.name ?? "global",

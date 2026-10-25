@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import { type AppPlacementError, GlobalAppError, type LandofileParseError } from "@lando/sdk/errors";
-import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
+import type { AppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import {
   AppPlanner,
   type AppPlannerError,
@@ -28,7 +28,7 @@ export interface MissingGlobalPlanResult {
 export interface LoadedGlobalPlanResult {
   readonly materialized: true;
   readonly paths: GlobalAppPaths;
-  readonly landofile: LandofileShape;
+  readonly landofile: LoadScopedLandofile;
   readonly plan: AppPlan;
 }
 
@@ -49,7 +49,7 @@ export const decodeGlobalLandofile = (input: {
   readonly file: string;
   readonly content: string;
   readonly cwd: string;
-}): Effect.Effect<LandofileShape, LandofileCompileError> =>
+}): Effect.Effect<LoadScopedLandofile, LandofileCompileError> =>
   loadLandofileContentLayers(
     [
       {
@@ -129,7 +129,7 @@ export const loadGlobalPlan = Effect.fnUntraced(function* (): Effect.fn.Return<
   if (!loaded.materialized) return loaded;
   const { paths, landofile } = loaded;
   const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(landofile.provider);
+  const provider = yield* registry.select(landofile.document.provider);
   const planner = yield* AppPlanner;
   const plan = yield* withProcessCwd(paths.root, () => planner.plan(landofile, provider.capabilities));
 

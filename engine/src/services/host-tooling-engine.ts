@@ -10,6 +10,7 @@ import {
 } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import {
+  EnvironmentValueResolver,
   type RuntimeProviderShape,
   type ShellCommandOptions,
   type ShellRunner,
@@ -108,6 +109,8 @@ const hostRun = Effect.fn("ToolingEngine.run")(function* (
   _provider: RuntimeProviderShape,
 ) {
   const steps = resolveHostSteps(invocation);
+  const session = yield* (yield* EnvironmentValueResolver).openSession();
+  const env = invocation.env === undefined ? undefined : yield* session.resolveEnvironment(invocation.env);
   if (steps.length === 0) return yield* Effect.fail(missingHostStepsError(invocation.tool));
   let exitCode = 0;
   let stdout = "";
@@ -116,7 +119,7 @@ const hostRun = Effect.fn("ToolingEngine.run")(function* (
     const command = yield* hostStepCommand(invocation.tool, step);
     const options: ShellCommandOptions = {
       ...(invocation.cwd === undefined ? {} : { cwd: invocation.cwd }),
-      ...(invocation.env === undefined ? {} : { env: invocation.env }),
+      ...(env === undefined ? {} : { env }),
       argv: command.argv,
       ...(invocation.stdinStream === undefined ? {} : { stdinStream: invocation.stdinStream }),
       ...(invocation.signal === undefined ? {} : { signal: invocation.signal }),
@@ -145,28 +148,33 @@ const hostRun = Effect.fn("ToolingEngine.run")(function* (
     stderr,
   };
   return out;
-});
+}, Effect.scoped);
 
 export const runHostToolingWith = (
   shell: Context.Service.Shape<typeof ShellRunner>,
   invocation: ToolingInvocation,
   plan: AppPlan,
   provider: RuntimeProviderShape,
-): Effect.Effect<ToolingEngineResult, ToolingCompileError | ToolingExecError> =>
-  hostRun(shell, invocation, plan, provider);
+) => hostRun(shell, invocation, plan, provider);
 
-const makeHostToolingEngine = (shell: Context.Service.Shape<typeof ShellRunner>) =>
+const makeHostToolingEngine = (
+  shell: Context.Service.Shape<typeof ShellRunner>,
+  resolver: Context.Service.Shape<typeof EnvironmentValueResolver>,
+) =>
   ToolingEngine.of({
     id: "host",
     run: (invocation: ToolingInvocation, plan: AppPlan, provider: RuntimeProviderShape) =>
-      hostRun(shell, invocation, plan, provider),
+      hostRun(shell, invocation, plan, provider).pipe(
+        Effect.provideService(EnvironmentValueResolver, resolver),
+      ),
   });
 
 export const layer = Layer.effect(
   ToolingEngine,
-  Effect.map(PrivateFileAccessService, (privateFileAccess) =>
-    makeHostToolingEngine(makeHostShellRunner(privateFileAccess)),
-  ),
+  Effect.gen(function* () {
+    const privateFileAccess = yield* PrivateFileAccessService;
+    return makeHostToolingEngine(makeHostShellRunner(privateFileAccess), yield* EnvironmentValueResolver);
+  }),
 );
 
 const normalizeRoot = async (root: string): Promise<string> => {

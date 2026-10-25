@@ -152,9 +152,9 @@ TestRuntimeProvider implements the data-plane methods in memory so contract test
 
 runServiceCompositionContract replays service type resolution and requires stable base and normalizedConfig output.
 
-runServiceFeatureContract validates service feature requires entries, deterministic drafts, and storage, endpoint, mount, and extension intents without realization decisions.
+runServiceFeatureContract validates service feature requires entries, deterministic drafts and endpoint declarations, and storage, mount, and extension intents without realization decisions. Endpoint declarations run through `declareEndpoints` with immutable facts, not application mutators.
 
-runAppFeatureContract validates app feature global service requirements and proves activatedBy misses are no-op paths when expectNoActivation is set.
+runAppFeatureContract validates app feature global service requirements, deterministic endpoint declarations limited to selected services, and proves activatedBy misses are no-op paths when expectNoActivation is set.
 
 runHttpClientContract accepts an optional timeout probe so HttpClient implementations prove timeoutMs aborts and reaps hung request or stream connections without leaking sockets.
 

@@ -1,6 +1,6 @@
 # Lando v4: Binary Build and Release Engineering
 
-> **Part 15 of 19** · [Index](./README.md)
+> **Part 15 of 20** · [Index](./README.md)
 > **Read next:** [16 Deprecation and Surface Evolution](./16-deprecation-and-surface-evolution.md)
 
 This part specifies how the §13 distribution artifacts are built, signed, published, installed, and updated.

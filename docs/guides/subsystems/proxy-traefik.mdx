@@ -21,6 +21,21 @@ Open the URL `lando info` prints. Hostnames look like `web.myapp.lndo.site`. App
 and path. Use distinct route identities for different backends; sharing a listener
 does not prevent hostname conflicts.
 
+Before `start` or `restart` reports success, Lando confirms that Traefik loaded
+the app's complete route configuration. Unchanged routes are checked immediately,
+without rewriting their files or reissuing current certificates. This confirms
+routing configuration, not the HTTP status your app returns.
+
+If Traefik cannot confirm the routes within 30 seconds, the command fails with
+`ProxyApplyError` instead of claiming readiness. The app stays available for
+diagnosis. Inspect the router before retrying:
+
+```sh
+lando global:logs --service=traefik --tail=100
+lando global:info
+lando doctor
+```
+
 The Traefik dashboard is at `traefik.lndo.site/dashboard/` over HTTP and HTTPS, and global Mailpit is at `https://mailpit.lndo.site`. Both follow global `proxy.defaultDomain`. Add the selected port when it is not 80 or 443.
 
 When 80 and 443 are free, those URLs omit the port. When something else owns them, start prints `Port 80 is in use` or `Port 443 is in use`, names the holder if it can, and says `using 8080.` or `using 8443.` Then `lando info` prints the bound URLs, like `http://app.myapp.lndo.site:8080` and `https://app.myapp.lndo.site:8443`.

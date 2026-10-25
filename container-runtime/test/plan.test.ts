@@ -15,6 +15,7 @@ import { AbsolutePath, type AppPlan, PortablePath, ServiceName, type ServicePlan
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 
 const plan = {
+  valueModel: 1,
   id: "app-id",
   name: "myapp",
   slug: "myapp",
@@ -211,7 +212,7 @@ describe("container plan helpers", () => {
       "dev.lando.app": "app-id",
       "dev.lando.service": "web",
       "dev.lando.scratch": "TRUE",
-      [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v1:[a-f0-9]{64}$/u),
+      [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
     });
 
     expect(containerHostConfigFragment(plan, service)).toEqual({
@@ -347,7 +348,7 @@ describe("container plan helpers", () => {
       Entrypoint: ["docker-entrypoint.sh"],
       WorkingDir: "/app",
       Healthcheck: {
-        Test: ["CMD-SHELL", "curl --fail http://localhost:8080/health || exit 1"],
+        Test: ["CMD", "sh", "-c", "curl --fail http://localhost:8080/health || exit 1"],
         Interval: 30_000_000_000,
         Timeout: 5_000_000_000,
         Retries: 3,
@@ -358,7 +359,7 @@ describe("container plan helpers", () => {
         "dev.lando.app": "app-id",
         "dev.lando.app-root": undefined,
         "dev.lando.service": "web",
-        [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v1:[a-f0-9]{64}$/u),
+        [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
       },
       HostConfig: {
         PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },

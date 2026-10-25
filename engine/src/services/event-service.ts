@@ -85,13 +85,17 @@ const redactForHistory = (
   const options = historyRedactionOptions();
   return Option.match(redaction, {
     onNone: () =>
-      Effect.sync(
-        () => createStandaloneRedactor(HISTORY_REDACTION_PROFILE, options).redactValue(event) as LandoEvent,
-      ),
+      Effect.sync(() => ({
+        ...(createStandaloneRedactor(HISTORY_REDACTION_PROFILE, options).redactValue(event) as LandoEvent),
+        timestamp: event.timestamp,
+      })),
     onSome: (service) =>
-      service
-        .forProfile(HISTORY_REDACTION_PROFILE, options)
-        .pipe(Effect.map((redactor) => redactor.redactValue(event) as LandoEvent)),
+      service.forProfile(HISTORY_REDACTION_PROFILE, options).pipe(
+        Effect.map((redactor) => ({
+          ...(redactor.redactValue(event) as LandoEvent),
+          timestamp: event.timestamp,
+        })),
+      ),
   });
 };
 
@@ -204,14 +208,20 @@ const makeEventService = (
             const registration = getDispatch();
             const hasManifest = registration.hasSubscribers(eventName);
             if (!hasManifest && subscribers.size === 0 && queueSubscribers.size === 0)
-              return appendHistory(event).pipe(Effect.andThen(observePublication(event)));
+              return redactForHistory(redaction, event).pipe(
+                Effect.flatMap((safe) => appendHistory(safe).pipe(Effect.andThen(observePublication(safe)))),
+              );
             return Effect.sync(() => instrumentation.onPayloadDecode?.()).pipe(
               Effect.andThen(decodeDeliverableEvent(event, eventName)),
               Effect.flatMap((decoded) =>
-                publishToBus(decoded).pipe(
-                  Effect.andThen(appendHistory(decoded)),
-                  Effect.andThen(observePublication(decoded)),
-                  Effect.andThen(hasManifest ? registration.dispatch(decoded) : Effect.void),
+                redactForHistory(redaction, decoded).pipe(
+                  Effect.flatMap((safe) =>
+                    publishToBus(safe).pipe(
+                      Effect.andThen(appendHistory(safe)),
+                      Effect.andThen(observePublication(safe)),
+                      Effect.andThen(hasManifest ? registration.dispatch(safe) : Effect.void),
+                    ),
+                  ),
                 ),
               ),
             );
@@ -245,6 +255,7 @@ const makeEventService = (
         return Effect.succeed(EMPTY_HISTORY as ReadonlyArray<EventFor<Name>>);
       }
       return Ref.get(history).pipe(
+        Effect.flatMap((events) => Effect.forEach(events, (event) => redactForHistory(redaction, event))),
         Effect.map((events) =>
           events.filter(
             (event): event is EventFor<Name> =>

@@ -9,6 +9,9 @@ export class DataTransferError extends Schema.TaggedError<DataTransferError>()("
   fromEndpoint: Schema.optional(Schema.String),
   toEndpoint: Schema.optional(Schema.String),
   operation: Schema.optional(Schema.String),
+  exitCode: Schema.optional(Schema.Number),
+  stderrTail: Schema.optional(Schema.String),
+  recoverySnapshotId: Schema.optional(Schema.String),
   remediation: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
 }) {}

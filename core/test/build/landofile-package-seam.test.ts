@@ -147,10 +147,10 @@ describe("Landofile package seam", () => {
     expect(shimSource).not.toMatch(/from "@lando\/sdk\/landofile"/u);
   });
 
-  test("keeps the core serializer entry point export-identical to the sdk source", async () => {
+  test("keeps the core serializer entry point export-identical to its canonical source", async () => {
     // Given / When
     const coreModule: unknown = await import("@lando/core/landofile");
-    const sdkModule: unknown = await import("@lando/sdk/landofile");
+    const sdkModule: unknown = await import("@lando/landofile/serializer");
 
     // Then
     if (!Predicate.isObject(coreModule) || !Predicate.isObject(sdkModule)) {
@@ -170,6 +170,7 @@ describe("Landofile package seam", () => {
         "LandofileReset",
         "assertLayerMergeCompleteness",
         "compareKeyPaths",
+        "compiledLandofileSource",
         "composeServiceDispositions",
         "composeTagDispositions",
         "composeTopLevelDispositions",
@@ -178,6 +179,7 @@ describe("Landofile package seam", () => {
         "decodeLandofileLayer",
         "detectLandofileTags",
         "directivePathProblem",
+        "emitCompiledLandofileYaml",
         "emitLandofileYaml",
         "emitLandofileYamlEither",
         "encodeLandofileSourceValue",

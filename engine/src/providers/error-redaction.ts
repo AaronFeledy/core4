@@ -1,6 +1,8 @@
 import {
   ArtifactBuildError,
   ArtifactTransferError,
+  EnvironmentValueResolutionError,
+  PlanReplanRequiredError,
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
@@ -9,6 +11,9 @@ import {
   ProviderSetupProvisioningError,
   ProviderSetupUnsupportedHostError,
   ProviderUnavailableError,
+  SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreUnavailableError,
   ServiceCopyError,
   ServiceExecError,
   ServiceNotFoundError,
@@ -54,6 +59,42 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
 export function redactProviderError(error: ProviderError, redactor: Redactor): ProviderError {
   // Reconstruct, never clone: TaggedError serialization retains its constructor arguments.
   switch (error._tag) {
+    case "SecretNotFoundError":
+      return new SecretNotFoundError({
+        ...error,
+        message: redactor.redactString(error.message),
+        secret: redactor.redactString(error.secret),
+        remediation: error.remediation === undefined ? undefined : redactor.redactString(error.remediation),
+      });
+    case "SecretReferenceInvalidError":
+      return new SecretReferenceInvalidError({
+        ...error,
+        message: redactor.redactString(error.message),
+        reference: redactor.redactString(error.reference),
+        remediation: redactor.redactString(error.remediation),
+      });
+    case "SecretStoreUnavailableError":
+      return new SecretStoreUnavailableError({
+        ...error,
+        message: redactor.redactString(error.message),
+        storeId: redactor.redactString(error.storeId),
+        remediation: redactor.redactString(error.remediation),
+      });
+    case "EnvironmentValueResolutionError":
+      return new EnvironmentValueResolutionError({
+        ...error,
+        message: redactor.redactString(error.message),
+        ...(error.variable === undefined ? {} : { variable: redactor.redactString(error.variable) }),
+        ...(error.reference === undefined ? {} : { reference: redactor.redactString(error.reference) }),
+        remediation: redactor.redactString(error.remediation),
+      });
+    case "PlanReplanRequiredError":
+      return new PlanReplanRequiredError({
+        ...error,
+        message: redactor.redactString(error.message),
+        app: redactor.redactString(error.app),
+        remediation: redactor.redactString(error.remediation),
+      });
     case "ProviderUnavailableError":
       return new ProviderUnavailableError(baseFields(error, redactor));
     case "ProviderCapabilityError":

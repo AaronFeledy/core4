@@ -1,12 +1,21 @@
 import { Effect, Predicate, Result } from "effect";
 
 import {
+  ConfigExpressionError,
   LandofileExpressionEvalError,
   LandofileExpressionForbiddenError,
   LandofileLoadLimitError,
   LandofileLoadOutsideRootError,
 } from "../errors/index.ts";
+import { type EnvironmentValue, normalizeEnvironmentValue } from "../schema/environment-value.ts";
 import type { ExpressionNode, ExpressionTemplate, PathSegment, ShellParamSegment } from "./ast.ts";
+import {
+  bindingExpressionError,
+  concatenateEnvironmentValues,
+  containsReservedBinding,
+  encodeEnvironmentComponent,
+  isEnvironmentBinding,
+} from "./bindings.ts";
 import type { ExpressionContext } from "./context.ts";
 
 /** Opt-in limits for one evaluation, shared across all template interpolations. */
@@ -22,6 +31,8 @@ export interface EvaluationBudget {
 }
 
 export interface EvaluateExpressionOptions {
+  readonly path?: string | undefined;
+  readonly expression?: string | undefined;
   readonly filePath?: string | undefined;
   readonly helperOverrides?: Readonly<Record<string, ExpressionHelperOverride>> | undefined;
   readonly budget?: EvaluationBudget;
@@ -33,6 +44,7 @@ export type ExpressionHelperOverride = (
 ) => unknown;
 
 export type LandofileExpressionEvaluationError =
+  | ConfigExpressionError
   | LandofileExpressionForbiddenError
   | LandofileExpressionEvalError
   | LandofileLoadLimitError
@@ -94,6 +106,7 @@ const checkCollections = (value: unknown, state: EvaluationState): unknown => {
 };
 
 const checkOutput = (value: unknown, state: EvaluationState): unknown => {
+  checkCollections(value, state);
   if (state.budget !== undefined) {
     const encoded = encodeJson(value, state);
     checkBudget("maxOutputBytes", new TextEncoder().encode(encoded).length, state);
@@ -171,6 +184,7 @@ const unsupportedDecoderError = (
   evalError(`Decoder "${helper}" is not supported in the sandboxed evaluator.`, options);
 
 const isEvaluationError = (cause: unknown): cause is LandofileExpressionEvaluationError =>
+  cause instanceof ConfigExpressionError ||
   cause instanceof LandofileExpressionForbiddenError ||
   cause instanceof LandofileExpressionEvalError ||
   cause instanceof LandofileLoadLimitError ||
@@ -313,6 +327,16 @@ const resolvePath = (
   state: EvaluationState,
 ): ResolvedValue => {
   const head = readOwnEnumerable(state.context, node.head, state);
+  if (
+    node.head !== "service" &&
+    node.head !== "services" &&
+    node.head !== "secrets" &&
+    containsReservedBinding(head)
+  )
+    throw bindingExpressionError(
+      "Untrusted expression scopes cannot supply reserved binding tags.",
+      state.options,
+    );
   return resolveSegments(head, node.segments, state);
 };
 
@@ -325,6 +349,8 @@ const resolveObjectLiteral = (
     ensureAllowedKey(entry.key, state);
     output[entry.key] = requireResolved(resolveNode(entry.value, state), state);
   }
+  if (containsReservedBinding(output))
+    throw bindingExpressionError("Object literals cannot construct reserved binding tags.", state.options);
   return output;
 };
 
@@ -366,6 +392,8 @@ const resolveNodeValue = (node: ExpressionNode, state: EvaluationState): Resolve
         state,
         "Conditional test resolved to a missing value.",
       );
+      if (containsReservedBinding(test))
+        throw bindingExpressionError("Conditional tests cannot consume bindings.", state.options);
       return resolveNode(isTruthy(test) ? node.consequent : node.alternate, state);
     }
   }
@@ -376,13 +404,19 @@ const evaluateCall = (
   nodes: ReadonlyArray<ExpressionNode>,
   state: EvaluationState,
 ): ResolvedValue => {
+  const argumentsHaveBindings = (args: readonly unknown[]): void => {
+    if (args.some(containsReservedBinding))
+      throw bindingExpressionError(`Helper "${callee}" cannot consume a binding.`, state.options);
+  };
   const overrides = state.options.helperOverrides;
   const override = overrides?.[callee];
   if (override !== undefined && overrides !== undefined && Object.hasOwn(overrides, callee)) {
-    return override(
-      nodes.map((node) => requireResolved(resolveNode(node, state), state)),
-      state.options,
-    );
+    const args = nodes.map((node) => requireResolved(resolveNode(node, state), state));
+    argumentsHaveBindings(args);
+    const result = override(args, state.options);
+    if (containsReservedBinding(result))
+      throw bindingExpressionError("Helper results cannot construct reserved binding tags.", state.options);
+    return result;
   }
   if (callee === "fs" || callee.startsWith("fs.")) {
     throw forbiddenError(callee, state.options);
@@ -402,27 +436,38 @@ const evaluateCall = (
   if (callee === "default") {
     assertArgCount("default", nodes, state, 2);
     const value = resolveNode(callNodeArg("default", nodes, state, 0), state);
-    return isUnavailable(value)
+    argumentsHaveBindings([value]);
+    const result = isUnavailable(value)
       ? requireResolved(resolveNode(callNodeArg("default", nodes, state, 1), state), state)
       : value;
+    argumentsHaveBindings([result]);
+    return result;
   }
 
   if (callee === "and") {
     assertArgCount("and", nodes, state, 2);
     const left = requireResolved(resolveNode(callNodeArg("and", nodes, state, 0), state), state);
-    return isTruthy(left) ? resolveNode(callNodeArg("and", nodes, state, 1), state) : left;
+    argumentsHaveBindings([left]);
+    const result = isTruthy(left) ? resolveNode(callNodeArg("and", nodes, state, 1), state) : left;
+    argumentsHaveBindings([result]);
+    return result;
   }
 
   if (callee === "or") {
     assertArgCount("or", nodes, state, 2);
     const left = requireResolved(resolveNode(callNodeArg("or", nodes, state, 0), state), state);
-    return isTruthy(left) ? left : resolveNode(callNodeArg("or", nodes, state, 1), state);
+    argumentsHaveBindings([left]);
+    const result = isTruthy(left) ? left : resolveNode(callNodeArg("or", nodes, state, 1), state);
+    argumentsHaveBindings([result]);
+    return result;
   }
 
-  return helper(
-    nodes.map((node) => resolveNode(node, state)),
-    state,
-  );
+  const args = nodes.map((node) => resolveNode(node, state));
+  if (callee !== "concat" && callee !== "url.encodeComponent") argumentsHaveBindings(args);
+  const result = helper(args, state);
+  if (callee !== "concat" && callee !== "url.encodeComponent" && containsReservedBinding(result))
+    throw bindingExpressionError("Helper results cannot construct reserved binding tags.", state.options);
+  return result;
 };
 
 const callHelperByName = (
@@ -439,6 +484,8 @@ const callHelperValue = (
   args: ReadonlyArray<ResolvedValue>,
   state: EvaluationState,
 ): ResolvedValue => {
+  if (args.some(containsReservedBinding))
+    throw bindingExpressionError(`Helper "${helperName}" cannot consume a binding.`, state.options);
   const overrides = state.options.helperOverrides;
   const override = overrides?.[helperName];
   if (override !== undefined && overrides !== undefined && Object.hasOwn(overrides, helperName)) {
@@ -457,7 +504,10 @@ const callHelperValue = (
   if (helper === undefined) {
     throw evalError(`Unknown expression helper "${helperName}".`, state.options);
   }
-  return helper(args, state);
+  const result = helper(args, state);
+  if (containsReservedBinding(result))
+    throw bindingExpressionError("Helper results cannot construct reserved binding tags.", state.options);
+  return result;
 };
 
 const isTruthy = (value: unknown): boolean => Boolean(value);
@@ -674,6 +724,11 @@ const stringifyForTemplate = (value: ResolvedValue, state: EvaluationState): str
     throw evalError("Expression resolved to a missing value.", state.options);
   }
   rejectUnsafeValue(value, state);
+  if (containsReservedBinding(value))
+    throw bindingExpressionError(
+      "Structured bindings cannot be implicitly serialized into text.",
+      state.options,
+    );
   if (value === null) return "";
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint")
@@ -969,6 +1024,21 @@ const semverSatisfies = (versionSource: string, rangeSource: string, state: Eval
 };
 
 const HELPERS: Record<string, Helper> = {
+  concat: (args, state) =>
+    concatenateEnvironmentValues(
+      args.map((value) => (isEnvironmentBinding(value) ? value : asString("concat", value, state))),
+    ),
+  "url.encodeComponent": (args, state) => {
+    assertArgCount("url.encodeComponent", args, state, 1);
+    try {
+      return encodeEnvironmentComponent(
+        isEnvironmentBinding(args[0]) ? args[0] : asString("url.encodeComponent", args[0], state),
+      );
+    } catch (cause) {
+      if (cause instanceof ConfigExpressionError) throw bindingExpressionError(cause.message, state.options);
+      throw cause;
+    }
+  },
   default: (args, state) => {
     assertArgCount("default", args, state, 2);
     return isUnavailable(args[0]) ? requireResolved(args[1], state) : args[0];
@@ -1317,33 +1387,45 @@ const evaluateTemplateSync = (
     return checkOutput(requireResolved(resolveNode(onlySegment.expression, state), state), state);
   }
 
-  let output = "";
+  let output: EnvironmentValue = "";
   let trimNextLiteral = false;
   for (const segment of template.segments) {
     if (segment.kind === "LiteralSegment") {
       const text = trimNextLiteral ? segment.text.replace(/^\s+/, "") : segment.text;
-      output += text;
+      output = concatenateEnvironmentValues([output, text]);
       trimNextLiteral = false;
       continue;
     }
 
     if (segment.kind === "InterpolationSegment") {
       trimNextLiteral = false;
-      if (segment.trimLeft) output = output.replace(/\s+$/, "");
-      output += stringifyForTemplate(resolveNode(segment.expression, state), state);
+      if (segment.trimLeft) {
+        if (typeof output === "string") output = output.replace(/\s+$/, "");
+        else if (output._tag === "BoundText") {
+          const parts = [...output.parts];
+          const last = parts[parts.length - 1];
+          if (typeof last === "string") parts[parts.length - 1] = last.replace(/\s+$/, "");
+          output = normalizeEnvironmentValue({ _tag: "BoundText", parts });
+        }
+      }
+      const value = resolveNode(segment.expression, state);
+      output = concatenateEnvironmentValues([
+        output,
+        isEnvironmentBinding(value) ? value : stringifyForTemplate(value, state),
+      ]);
       if (segment.trimRight) trimNextLiteral = true;
       continue;
     }
 
     if (segment.kind === "ShellParamSegment") {
       trimNextLiteral = false;
-      output += renderShellParam(segment, state);
+      output = concatenateEnvironmentValues([output, renderShellParam(segment, state)]);
       continue;
     }
 
     if (segment.kind === "SecretRefSegment") {
       trimNextLiteral = false;
-      output += renderSecretRef(segment.name, state);
+      output = concatenateEnvironmentValues([output, renderSecretRef(segment.name, state)]);
     }
   }
   return checkOutput(output, state);
@@ -1366,12 +1448,12 @@ const renderShellParam = (segment: ShellParamSegment, state: EvaluationState): s
   return stringValue;
 };
 
-const renderSecretRef = (name: string, state: EvaluationState): string => {
+const renderSecretRef = (name: string, state: EvaluationState): EnvironmentValue => {
   const value = readOwnEnumerable(state.context.secrets ?? {}, name, state);
   if (isUnavailable(value)) {
     throw evalError(`Secret "${name}" is not available in the expression context.`, state.options);
   }
-  return asString("secret", value, state);
+  return isEnvironmentBinding(value) ? value : asString("secret", value, state);
 };
 
 /**

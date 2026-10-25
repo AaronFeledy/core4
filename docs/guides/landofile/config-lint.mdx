@@ -16,7 +16,7 @@ lando app:config:lint
 
 Lint checks each retained root and include fragment against its authoring schema, then validates their effective composition and resolves every service type. It runs the same resolved-Landofile validation stage as `lando start` and `lando app:cache:refresh`, including event names and conflicts between tooling names and built-in commands.
 
-It does not run doctor checks, probe a provider, or start a container runtime. A clean Landofile exits `0`. In JSON output, inspect `result.valid` and the violations list; successful command execution is not itself a clean-lint verdict.
+It does not run doctor checks, probe a provider, or start a container runtime. Every output format exits `1` when lint finds errors and `0` when it does not. JSON and YAML still return a successful report with `ok: true`: inspect `result.valid` and the violations list. Successful report generation is not itself a clean-lint verdict.
 
 Lint resolves `{{ recipe.<option> }}` and `{{ env.* }}` expressions the same way `lando start` does, before validation, so a whole-value expression like `primary: "{{ recipe.flag }}"` or `httpPort: "{{ number(default(env.PORT, '8080')) }}"` lints as the boolean or number it resolves to. An unset env var with no `default()` is a violation at that path, reported against the layer file that wrote it. Planner-owned expressions (`app.*`, `proxy.*`, `services.<name>.creds.*`) evaluate too, so a route hostname built from `{{ app.name }}` is checked as the string it becomes. See [Landofile expressions](./expressions.mdx#whole-value-expressions-keep-their-type).
 
@@ -24,7 +24,7 @@ Lint retains each acquired source once. It can report a bad lower fragment even 
 
 ## What lint catches
 
-Lint collects the findings from every check in one run, so you fix the whole list instead of replaying start after each edit.
+After expression materialization succeeds, lint collects independent findings from the completed resolve pass in one run. An unresolved expression stops materialization at its first error. Lint retains earlier fragment findings, but cannot report checks that depend on the unfinished resolve pass.
 
 | Rule | What it checks | Example path |
 | --- | --- | --- |
@@ -33,7 +33,7 @@ Lint collects the findings from every check in one run, so you fix the whole lis
 | `landofile.expression` | Unresolvable `{{ }}` sites, type mismatches after evaluation | `tooling.t.cmd` |
 | `landofile.service` | Service-type configuration: native port vars, reserved ports, unsupported versions, storage scopes, duplicate log source ids, `appMount`, `webroot` on a type without support | `services.db.environment.PGPORT` |
 | `landofile.hostname` | Each `services.<name>.hostnames:` entry is a plain DNS name after evaluation | `services.web.hostnames[0]` |
-| `landofile.route` | `hostname`, `pathPrefix`, and shorthand in `routes:` after evaluation | `services.web.routes[1].pathPrefix` |
+| `landofile.route` | Route syntax and authored HTTP endpoint selection in service `routes:` and top-level `proxy:` after evaluation | `services.web.routes[1]`, `proxy.web[0]` |
 | `landofile.healthcheck` | Authored `kind: http` or `kind: tcp` | `services.web.healthcheck.kind` |
 | `landofile.event` | Each key under `events:` is a lifecycle event or the `pre-`/`post-` bracket of a tooling task | `events.pre-buidl` |
 | `landofile.tooling` | No tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-`/`post-` events are reserved, such as `start` or `pull` | `tooling.run` |
@@ -45,14 +45,47 @@ An include failure points at the entry that declared it: `path` is `["includes",
 
 ## What only planning catches
 
-`lando start` and `lando app:cache:refresh` run the same checks, event and tooling names included, and fail with one `LandofileValidationError` listing the same issues: same `rule`, `path`, `message`, `suggestion`, and `source`. Planning then goes further than lint can without a provider or an assembled plan:
+When the resolve pass completes, `lando start` and `lando app:cache:refresh` run the same shared checks, event and tooling names included, and fail with one `LandofileValidationError` listing the same issues: same `rule`, `path`, `message`, `suggestion`, and `source`. Planning then goes further than lint can without a provider or an assembled plan:
 
 - provider capability checks and anything resolved from capabilities
 - feature application
-- route-to-endpoint resolution and route conflicts (`RouteInputError`)
+- automatic route selection and route conflicts (`RouteInputError`)
 - `dependsOn` checks
 
 A Landofile that lints clean can still fail there.
+
+## Fix a route's HTTP endpoint
+
+Declare the listener your service actually runs. A raw Compose image, `ports:`,
+`expose:`, or a TCP endpoint's `appProtocol: http` does not declare an HTTP listener:
+
+```yaml
+services:
+  web:
+    type: compose
+    image: nginx:alpine
+    endpoints:
+      - _tag: internal
+        protocol: http
+        port: 80
+    routes:
+      - web.lndo.site
+```
+
+Lint checks authored routes against service and app features' endpoint declarations,
+without applying those features, issuing certificates, or writing a plan cache.
+An explicit `endpoints:` list replaces those declarations; `endpoints: []` removes
+them all. With multiple HTTP listeners, select one by name or port in the route,
+or mark one listener `primary: true`. A primary TCP listener does not hide the
+service's only HTTP listener.
+
+A missing listener, unmatched selector, or ambiguous selection is an indexed
+`landofile.route` finding. Start and cache refresh reject the same entries. Lint
+also rejects a top-level `proxy:` route whose target service is not declared.
+Correct the proxy key or declare the target under `services:`.
+It cannot check bindings whose service or endpoint declarations are unavailable; it
+reports the underlying failure instead. It does not contact the service to prove
+that the declared listener is serving HTTP.
 
 ## Print JSON
 
@@ -122,6 +155,31 @@ tooling:
 Your editor can catch the structural problems (unknown keys, wrong literal types, an expression where none belongs) before you run anything; lint still owns resolving expressions. See [Validate a Landofile in your editor](./editor-validation.mdx) for the one-line modeline.
 
 <Guide>
+  <Scenario id="reject-missing-http-binding" render>
+    <Step name="lint-missing-http">
+      <UseFixture name="route-missing-http" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.route\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"routes\",\\s*0\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"proxy\",\\s*\"typo\",\\s*0\\s*\\]" } }} />
+    </Step>
+    <Step name="refresh-missing-http">
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "does not resolve to an HTTP endpoint" }} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "targets undeclared service typo" }} />
+    </Step>
+    <Step name="cleanup-missing-http"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="accept-declared-http-binding" render>
+    <Step name="lint-declared-http">
+      <UseFixture name="route-declared-http" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="refresh-declared-http"><Run command="lando app:cache:refresh --format=json" /></Step>
+    <Step name="cleanup-declared-http"><Cleanup /></Step>
+  </Scenario>
   <Scenario id="clean-landofile" render>
     <Step name="lint">
       <UseFixture name="config-lint-demo" />
@@ -134,13 +192,13 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
       <UseFixture name="config-lint-invalid" />
     </Step>
     <Step name="lint-invalid">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"imgae\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^,}]*image" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"home\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"ports\",\\s*0,\\s*\"target\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { not: { regex: "suggestedFix" } } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"imgae\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^,}]*image" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"home\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"ports\",\\s*0,\\s*\"target\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { not: { regex: "suggestedFix" } } }} />
     </Step>
     <Step name="cleanup-invalid">
       <Cleanup />
@@ -151,12 +209,12 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
       <UseFixture name="config-lint-pgport" />
     </Step>
     <Step name="lint-pgport">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.service\"" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"db\",\\s*\"environment\",\\s*\"PGPORT\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "PGPORT is 5433, but the service listens on 5432" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"suggestion\":\\s*\"Set port: 5433 instead" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.service\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"db\",\\s*\"environment\",\\s*\"PGPORT\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "PGPORT is 5433, but the service listens on 5432" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"suggestion\":\\s*\"Set port: 5433 instead" } }} />
     </Step>
     <Step name="refresh-rejects-pgport">
       <Run command="lando app:cache:refresh --format=json" expectExit={1} />
@@ -170,13 +228,13 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
   <Scenario id="event-and-tooling-findings" render>
     <Step name="lint-event-tooling">
       <UseFixture name="config-lint-event-tooling" />
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"events\",\\s*\"pre-buidl\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "Did you mean .{1,2}pre-build" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"tooling\",\\s*\"run\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.hostname\"" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"events\",\\s*\"pre-buidl\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "Did you mean .{1,2}pre-build" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"tooling\",\\s*\"run\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.hostname\"" } }} />
     </Step>
     <Step name="refresh-event-tooling">
       <Run command="lando app:cache:refresh --format=json" expectExit={1} />
@@ -191,9 +249,9 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
   <Scenario id="tooling-include-points-at-entry" render>
     <Step name="lint-tooling-include">
       <UseFixture name="config-lint-tooling-include" />
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.load\"" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"includes\",\\s*0\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.load\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"includes\",\\s*0\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-tooling-include">
       <Cleanup />

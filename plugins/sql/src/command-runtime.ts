@@ -2,11 +2,11 @@ import { realpath } from "node:fs/promises";
 
 import { Effect } from "effect";
 
-import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
+import { PlanReplanRequiredError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import {
-  AppPlanner,
   DataMover,
+  EnvironmentValueResolver,
   EventService,
   InteractionService,
   LandofileService,
@@ -16,31 +16,41 @@ import {
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
 
+import { providerSqlExec } from "./dispatch.ts";
 import { type DbCommandInput, executeDbCommand } from "./execute.ts";
 import { resolveSqlTarget } from "./target.ts";
-import { sqlPlanFromLandofile, toSqlLandofile, toSqlPlan } from "./views.ts";
+import { toSqlLandofile, toSqlPlan } from "./views.ts";
 
 export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCommandInput) {
   const landofiles = yield* LandofileService;
-  const planner = yield* AppPlanner;
+  const environmentResolver = yield* EnvironmentValueResolver;
   const registry = yield* RuntimeProviderRegistry;
   const mover = yield* DataMover;
   const interaction = yield* InteractionService;
   const events = yield* EventService;
   const stateStore = yield* StateStore;
   const landofile = yield* landofiles.discover;
-  const authored = toSqlLandofile(landofile);
-  const prePlan = sqlPlanFromLandofile(authored);
-  const earlyTarget = resolveSqlTarget(prePlan, input.service);
-  if (earlyTarget._tag === "Failure") return yield* Effect.fail(earlyTarget.failure);
-  const capabilities = yield* registry.capabilities;
-  const planned = yield* planner.plan(landofile, capabilities);
-  const provider = yield* registry.select(planned);
+  const authored = toSqlLandofile(landofile.document);
+  const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot);
+  if (planned === undefined)
+    return yield* Effect.fail(
+      new PlanReplanRequiredError({
+        app: landofile.document.name ?? landofile.context.appRoot,
+        providerId: "unobserved",
+        operation: "database connection",
+        message: "No applied database plan is available for this app.",
+        remediation: "Run `lando start` to apply the database plan, then retry.",
+      }),
+    );
   const plan = toSqlPlan(planned);
+  const earlyTarget = resolveSqlTarget(plan, input.service);
+  if (earlyTarget._tag === "Failure") return yield* Effect.fail(earlyTarget.failure);
+  const provider = yield* registry.select(planned);
   return yield* executeDbCommand(
     {
       landofile: authored,
       plan,
+      environmentResolver,
       transfer: (spec) => Effect.scoped(mover.transfer(spec)),
       snapshot: (store, opts) => Effect.scoped(mover.snapshot(store, opts)),
       restore: (handle, store, opts) => Effect.scoped(mover.restore(handle, store, opts)),
@@ -61,13 +71,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
               remediation: "Pass an existing app root with --from-path.",
             }),
         }).pipe(Effect.map(AbsolutePath.make)),
-      exec: (service, command, env) =>
-        provider
-          .exec(
-            { app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned },
-            { command, ...(env === undefined ? {} : { env }) },
-          )
-          .pipe(Effect.map((result) => ({ ok: result.exitCode === 0, stdout: result.stdout }))),
+      exec: providerSqlExec(provider, planned),
       resume: (service, identity) => {
         const resume = provider.resume;
         return resume === undefined

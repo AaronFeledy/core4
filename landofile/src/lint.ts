@@ -6,6 +6,7 @@ import {
   type ConfigLintViolation,
   LandofileAuthoringFragmentNative,
   type LandofileShape,
+  type LoadScopedLandofile,
   type ValidationIssue,
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
@@ -61,7 +62,7 @@ export interface LintLandofileOptions {
 export interface LandofileLintSnapshot {
   readonly result: ConfigLintResult;
   readonly landofilePath: string;
-  readonly resolved?: LandofileShape;
+  readonly resolved?: LoadScopedLandofile;
 }
 
 const fragmentIssues = (source: SourceDocument): readonly ConfigLintViolation[] => {
@@ -152,6 +153,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     violations.push(...healthcheckWarnings(merged, documents));
     const effective = yield* finalizeLandofile(file, merged, {
       appRoot: dirname(file),
+      pendingSites: acquired.runtime.pendingSites,
       loadPolicy: acquired.runtime.policy,
       logger: acquired.runtime.logger,
       ...(templates?.context?.env === undefined ? {} : { env: templates.context.env }),
@@ -171,7 +173,15 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     if (error._tag === "LandofileValidationError")
       violations.push(...error.issues.map((issue) => attributeLintIssue(issue, "effective", documents)));
     else {
-      const path = error._tag === "LandofileIncludeError" ? (error.path ?? []) : [];
+      const path =
+        error._tag === "LandofileIncludeError"
+          ? (error.path ?? [])
+          : error._tag === "ConfigExpressionError"
+            ? error.path
+                .split(".")
+                .filter(Boolean)
+                .map((key) => (/^\d+$/.test(key) ? Number(key) : key))
+            : [];
       let errorFile = file;
       if (error._tag === "LandofileIncludeError" && error.file !== undefined) {
         errorFile = error.file;
@@ -210,7 +220,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   }
   const unique = mergeLintFindings(violations);
   const app = Result.isSuccess(finalized)
-    ? (finalized.success.name ?? "")
+    ? (finalized.success.document.name ?? "")
     : (documents.map((source) => appNameOf(source.document)).find((name) => name !== "") ?? "");
   const primarySource = unique[0]?.source;
   const primary = primarySource !== undefined && "file" in primarySource ? primarySource.file : file;

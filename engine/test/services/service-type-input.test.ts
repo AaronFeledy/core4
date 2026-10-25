@@ -54,7 +54,20 @@ describe("service type resolve input", () => {
 
     // When
     await Effect.runPromise(
-      planApp(pluginRegistry, undefined, undefined, undefined, undefined, undefined, landofile, capabilities),
+      compileTestLandofile(landofile).pipe(
+        Effect.flatMap((compiled) =>
+          planApp(
+            pluginRegistry,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            compiled,
+            capabilities,
+          ),
+        ),
+      ),
     );
 
     // Then
@@ -63,3 +76,4 @@ describe("service type resolve input", () => {
     expect(captured[0]?.capabilities).toBe(capabilities);
   });
 });
+import { compileTestLandofile } from "../compiled-landofile.ts";

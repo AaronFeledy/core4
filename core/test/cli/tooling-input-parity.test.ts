@@ -3,7 +3,7 @@ import { compileToolingCommands } from "@lando/engine/cache/command-compiler";
 import { runTooling } from "@lando/engine/operations/tooling";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { dispatchTool } from "@lando/mcp/dispatch";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { AbsolutePath, AppId, type AppPlan, LandofileShape, ProviderId } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -21,6 +21,7 @@ import { Context, DateTime, Effect, Layer, Result, Schema } from "effect";
 import { mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+import { currentTestPlan, environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const planFor = (landofile: LandofileShape): AppPlan =>
@@ -53,12 +54,16 @@ const harnessLayer = (input: {
   readonly exitCode: number;
 }) =>
   Layer.mergeAll(
+    environmentResolverLayer(),
     Layer.succeed(
       Context.Service<unknown>("parity-runtime"),
       Context.Service<unknown>("parity-runtime").of({}),
     ),
-    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(input.landofile) })),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(input.plan) })),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed(literalLandofile(input.landofile, input.plan.root)) }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(input.plan)) })),
     Layer.succeed(
       Renderer,
       Renderer.of({
@@ -96,14 +101,7 @@ const harnessLayer = (input: {
           }),
       }),
     ),
-    Layer.succeed(
-      RedactionService,
-      RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: () => Effect.succeed(createRedactor("secrets")),
-      }),
-    ),
+    Layer.succeed(RedactionService, makeRedactionService()),
     Layer.succeed(PrivateFileAccessService, PrivateFileAccessService.of(ownerOnlyFileAccess)),
     emptyConfigServiceLayer,
   );

@@ -133,11 +133,12 @@ describe("composeService", () => {
     const feature: ServiceFeatureDefinition = {
       id: "feature.deterministic",
       priority: 100,
+      declareEndpoints: () =>
+        Effect.succeed([{ _tag: "internal", name: "http", protocol: "http", port: 80 }]),
       apply: (ctx) =>
         Effect.sync(() => {
           ctx.addEnv("B", "2");
           ctx.addEnv("A", "1");
-          ctx.addEndpoint({ _tag: "internal", name: "http", protocol: "http", port: 80 });
         }),
     };
 

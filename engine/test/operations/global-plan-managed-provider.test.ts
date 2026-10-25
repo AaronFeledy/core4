@@ -84,13 +84,16 @@ describe("loadGlobalPlan host provider", () => {
           AppPlanner.of({
             plan: (landofile) =>
               Effect.sync(() => {
-                planned.push(landofile.provider === undefined ? undefined : String(landofile.provider));
+                planned.push(
+                  landofile.document.provider === undefined ? undefined : String(landofile.document.provider),
+                );
                 return {
                   id: AppId.make("global"),
                   name: "global",
                   slug: "global",
                   root: AbsolutePath.make(globalRoot),
-                  provider: landofile.provider ?? ProviderId.make("docker"),
+                  provider: landofile.document.provider ?? ProviderId.make("docker"),
+                  valueModel: 1 as const,
                   services: {},
                   routes: [],
                   networks: [],
@@ -117,7 +120,7 @@ describe("loadGlobalPlan host provider", () => {
       expect(loaded.materialized).toBe(true);
       if (loaded.materialized) {
         expect(String(loaded.plan.provider)).toBe("docker");
-        expect(String(loaded.landofile.provider)).toBe("docker");
+        expect(String(loaded.landofile.document.provider)).toBe("docker");
       }
       expect(selected).toEqual(["docker"]);
       expect(planned).toEqual(["docker"]);

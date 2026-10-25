@@ -26,6 +26,7 @@ export type FlagDefinitions = Readonly<Record<string, FlagDefinition>>;
 export type ArgConfig = {
   readonly description?: string;
   readonly ignoreStdin?: boolean;
+  readonly multiple?: boolean;
   readonly name?: string;
   readonly required?: boolean;
 };

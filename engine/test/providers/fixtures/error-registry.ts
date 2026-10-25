@@ -48,7 +48,7 @@ export const errorFields = {
 
 interface RegistryOptions {
   readonly contribution?: Partial<RuntimeProviderContribution>;
-  readonly redaction?: RedactionServiceShape | null;
+  readonly redaction?: RedactionServiceShape;
 }
 
 export const registryLayer = (provider: RuntimeProviderShape, options: RegistryOptions = {}) => {
@@ -102,21 +102,9 @@ export const registryLayer = (provider: RuntimeProviderShape, options: RegistryO
       HttpClient.make((request) => Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null)))),
     ),
   );
-  const redaction =
-    options.redaction === null
-      ? Layer.empty
-      : Layer.succeed(
-          RedactionService,
-          options.redaction ??
-            makeRedactionService({
-              id: "empty",
-              list: Effect.succeed([]),
-              get: () => Effect.die("unused secret store"),
-              has: () => Effect.succeed(false),
-            }),
-        );
+  const redaction = Layer.succeed(RedactionService, options.redaction ?? makeRedactionService());
   return makeRuntimeProviderRegistry(modules, {
     enforce: async () => undefined,
     verify: async () => undefined,
-  }).pipe(Layer.provide(Layer.merge(dependencies, redaction)));
+  }).pipe(Layer.provide(dependencies), Layer.provideMerge(redaction));
 };

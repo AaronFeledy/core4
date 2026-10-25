@@ -125,7 +125,6 @@ test("a supervised crash loop stops its healthcheck wait on the first exit", asy
     ...plannedApp,
     services: {
       [web.name]: {
-        ...plannedApp.services[web.name],
         ...web,
         extensions: { compose: { restart: "unless-stopped" } },
         healthcheck: {

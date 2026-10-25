@@ -287,7 +287,7 @@ The managed runtime resolves its OCI runtime from the default system search list
 
 The job additionally provisions the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, `fuse-overlayfs` for rootless overlay storage on AppArmor-constrained Linux runners, cgroups v2 delegation, and unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, sets `CONTAINERS_STORAGE_CONF` so Podman uses the staged `fuse-overlayfs` helper instead of kernel overlay, and runs `dist/lando setup --yes --provider=lando`.
 
-Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`; the integration and contract suites resolve that managed socket from Paths/setup state instead of an exported env var, and teardown is `dist/lando poweroff`.
+Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`. Managed-CLI live suites require an explicit, answering `LANDO_TEST_PODMAN_SOCKET` that matches their Paths-resolved managed socket; a different socket does not enable them. Teardown is `dist/lando poweroff`.
 
 To reproduce the setup-driven provider preparation locally (requires a local Podman >= 6.0.0 on PATH, e.g. `brew install podman`; set `LANDO_CI_PODMAN_HELPER_DIR="$(brew --prefix)/opt/podman/libexec/podman"` so the Homebrew helper directory is staged):
 
@@ -325,14 +325,59 @@ bun test plugins/provider-docker/test --filter=integration
 bun test plugins/service-lando/test --filter=integration
 ```
 
-`LANDO_TEST_PODMAN_SOCKET` rehearsal fallback: in local or sandbox environments where rootless service launch is unavailable, point an existing Podman socket at the suites with the documented override; it takes precedence over the Paths-resolved managed socket:
+### Run the database journey spot checks
+
+After setup, retain the prepared runtime's Lando roots and opt in to its managed
+socket. Use the same compiled binary that performed setup; the example uses the
+integration job's `dist/lando` artifact:
+
+```bash
+export LANDO_TEST_PODMAN_SOCKET="$(bun -e 'import { makeLandoPaths } from "@lando/paths"; console.log(makeLandoPaths().providerSocketPath)')"
+LANDO_TEST_USE_REAL_ROOTS=1 \
+LANDO_SCENARIO_E2E_BINARY="$PWD/dist/lando" \
+bun test core/test/live/mssql-transfer-roundtrip-live.integration.test.ts \
+  core/test/live/mssql-transfer-failure-live.integration.test.ts \
+  core/test/live/postgres-transfer-gzip-live.integration.test.ts
+```
+
+Require five passing scenarios, not a skipped run. They cover SQL Server 2019
+and 2022, projected consumer credentials, gzip roundtrips, immediate warm reads,
+creation records, failure receipts, and PostgreSQL authentication/export
+atomicity. Each scenario purges only its unique app's volumes and snapshots.
+Set `LANDO_TEST_ARTIFACT_ROOT` to an existing caller-owned directory to retain
+sanitized per-command evidence after app teardown; remove that directory after
+review.
+
+### Run the MCP completion spot check
+
+With the same prepared roots and explicit managed socket, exercise the compiled
+CLI rather than a synthetic producer:
+
+```bash
+LANDO_TEST_USE_REAL_ROOTS=1 \
+LANDO_GUIDE_E2E=1 \
+LANDO_SCENARIO_E2E_BINARY="$PWD/dist/lando" \
+bun test core/test/live/mcp-command-completion-live.integration.test.ts
+```
+
+Require a positive passing test count. The journey covers final output with and
+without progress subscriptions, exact exec arguments, process failure status,
+redaction, bounded output tails, and quiet log followers canceled through the
+protocol, stdin EOF, and SIGTERM. Missing prerequisites fail this explicitly
+requested run. Tests create and destroy only their uniquely named app; they do
+not run setup or reset the host. `LANDO_TEST_ARTIFACT_ROOT` also retains sanitized
+protocol and shutdown evidence for this journey.
+
+`LANDO_TEST_PODMAN_SOCKET` rehearsal fallback: provider-port suites can target a
+different existing answering Podman socket with the override. This does not
+enable the managed-CLI suites under `core/test/live`:
 
 ```bash
 podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
 export LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock
-LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
+LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test plugins/service-lando/test/postgres-config.integration.test.ts
 ```
 
 Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (35 minutes for the live linux-x64 job, 25 minutes for linux-arm64, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
@@ -393,7 +438,7 @@ podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
 LANDO_GUIDE_E2E=1 LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\[e2e\]"
-bun test core/test/live
+LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
 ```
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.

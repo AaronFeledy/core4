@@ -78,6 +78,7 @@ const database = servicePlan("database");
 const node = servicePlan("node");
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Inspect App",
   slug: "inspectapp",

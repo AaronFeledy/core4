@@ -3,11 +3,7 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
-import {
-  RedactionService,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { type Context, DateTime, Effect, Layer, Redacted, Stream } from "effect";
 
 import { shellApp } from "@lando/core/cli/operations";
@@ -181,8 +177,11 @@ const layer = (
   shellRunner = shellRunnerLayer(),
 ) =>
   Layer.mergeAll(
-    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed(literalLandofile(landofile, plan.root)) }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -211,9 +210,11 @@ const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
   Layer.mergeAll(
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: "shell-scenario" }) }),
+      LandofileService.of({
+        discover: Effect.succeed(literalLandofile({ name: "shell-scenario" }, appPlan.root)),
+      }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(appPlan) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(appPlan)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -435,7 +436,6 @@ describe("shellApp — shell modes", () => {
   });
 
   test("service mode masks fresh provider values split across independent output streams", async () => {
-    resetRegisteredRedactionValuesForTesting();
     const secret = "fresh-shell-private-value";
     let stdout = "";
     let stderr = "";
@@ -450,39 +450,26 @@ describe("shellApp — shell modes", () => {
           { exitCode: 0 },
         ]),
     });
-    const redaction = makeRedactionService({
-      id: "empty",
-      list: Effect.succeed([]),
-      get: () => Effect.die("No secret-store access expected"),
-      has: () => Effect.succeed(false),
-    });
-    try {
-      await Effect.runPromise(
-        shellApp({
-          service: "web",
-          io: {
-            writeStdout: (text) => {
-              stdout += typeof text === "string" ? text : new TextDecoder().decode(text);
-            },
-            writeStderr: (text) => {
-              stderr += typeof text === "string" ? text : new TextDecoder().decode(text);
-            },
+    const redaction = makeRedactionService();
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        io: {
+          writeStdout: (text) => {
+            stdout += typeof text === "string" ? text : new TextDecoder().decode(text);
           },
-        }).pipe(
-          Effect.provide(layer(undefined, provider)),
-          Effect.provideService(RedactionService, redaction),
-        ),
-      );
-      expect(stdout).toBe("[redacted]!");
-      expect(stderr).toBe("[redacted]?");
-    } finally {
-      resetRegisteredRedactionValuesForTesting();
-    }
+          writeStderr: (text) => {
+            stderr += typeof text === "string" ? text : new TextDecoder().decode(text);
+          },
+        },
+      }).pipe(Effect.provide(layer(undefined, provider)), Effect.provideService(RedactionService, redaction)),
+    );
+    expect(stdout).toBe("[redacted]!");
+    expect(stderr).toBe("[redacted]?");
   });
 
   test("service mode preserves invalid UTF-8 bytes while masking a secret split across chunks", async () => {
     // Given: binary output on both streams surrounding a provider secret split across frames.
-    resetRegisteredRedactionValuesForTesting();
     const secret = "binary-shell-private-value";
     const output = { stdout: [] as number[], stderr: [] as number[] };
     const encoder = new TextEncoder();
@@ -501,34 +488,22 @@ describe("shellApp — shell modes", () => {
           { exitCode: 0 },
         ]),
     });
-    const redaction = makeRedactionService({
-      id: "empty",
-      list: Effect.succeed([]),
-      get: () => Effect.die("No secret-store access expected"),
-      has: () => Effect.succeed(false),
-    });
-    try {
-      // When: the service shell streams and flushes both payload redactors.
-      await Effect.runPromise(
-        shellApp({
-          service: "web",
-          io: {
-            writeStdout: (chunk) =>
-              output.stdout.push(...(typeof chunk === "string" ? encoder.encode(chunk) : chunk)),
-            writeStderr: (chunk) =>
-              output.stderr.push(...(typeof chunk === "string" ? encoder.encode(chunk) : chunk)),
-          },
-        }).pipe(
-          Effect.provide(layer(undefined, provider)),
-          Effect.provideService(RedactionService, redaction),
-        ),
-      );
-      // Then: only the secret bytes change; invalid and incomplete UTF-8 survives exactly.
-      expect(output.stdout).toEqual([0xff, 0xc3, 0x28, ...encoder.encode("[redacted]"), 0xe2]);
-      expect(output.stderr).toEqual([0x80, ...encoder.encode("[redacted]"), 0xfe]);
-    } finally {
-      resetRegisteredRedactionValuesForTesting();
-    }
+    const redaction = makeRedactionService();
+    // When: the service shell streams and flushes both payload redactors.
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        io: {
+          writeStdout: (chunk) =>
+            output.stdout.push(...(typeof chunk === "string" ? encoder.encode(chunk) : chunk)),
+          writeStderr: (chunk) =>
+            output.stderr.push(...(typeof chunk === "string" ? encoder.encode(chunk) : chunk)),
+        },
+      }).pipe(Effect.provide(layer(undefined, provider)), Effect.provideService(RedactionService, redaction)),
+    );
+    // Then: only the secret bytes change; invalid and incomplete UTF-8 survives exactly.
+    expect(output.stdout).toEqual([0xff, 0xc3, 0x28, ...encoder.encode("[redacted]"), 0xe2]);
+    expect(output.stderr).toEqual([0x80, ...encoder.encode("[redacted]"), 0xfe]);
   });
 
   test("service mode enables raw stdin for interactive TTY and restores it on exit", async () => {
@@ -953,3 +928,4 @@ describe("lando shell — CLI argv parsing", () => {
     });
   }, 30_000);
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

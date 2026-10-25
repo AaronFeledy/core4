@@ -33,11 +33,7 @@ import { makeTestStateStore } from "@lando/core/testing";
 import * as BunDataMover from "@lando/data-mover/service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope, SnapshotInfo, appIdentityKey } from "@lando/sdk/schema";
 import { DataMover, RuntimeProvider, StateStore } from "@lando/sdk/services";
@@ -364,7 +360,9 @@ const makeDestroyLayer = (
     stateStore.layer,
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
+      LandofileService.of({
+        discover: Effect.succeed(literalLandofile({ name: "test-destroy", services: {} }, testAppRoot)),
+      }),
     ),
     Layer.succeed(
       PathsService,
@@ -377,7 +375,7 @@ const makeDestroyLayer = (
         platform: "linux",
       }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plannedApp)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -493,14 +491,7 @@ const makeDestroyLayer = (
       Layer.mergeAll(
         baseCommandLayer,
         eventLayer,
-        Layer.succeed(
-          RedactionService,
-          RedactionService.of({
-            registerValues: registerRedactionValues,
-            payloadValues: () => Effect.succeed(() => []),
-            forProfile: (profile) => Effect.succeed(createStandaloneRedactor(profile)),
-          }),
-        ),
+        Layer.succeed(RedactionService, makeRedactionService()),
         Layer.succeed(RuntimeProvider, provider),
         DiskStateStore.layer,
       ),
@@ -1596,3 +1587,4 @@ describe("lando destroy", () => {
     expect(harness.destroyCalls).toHaveLength(1);
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

@@ -16,11 +16,11 @@ import type {
   NpmIncludeRecipeSource,
   ResolveIncludesError,
 } from "../src/includes.ts";
-import { loadLandofileLayers } from "../src/service.ts";
 import {
   authoredRecipe,
   resolveAuthoredIncludes as resolveLandofileIncludesPackage,
 } from "./include-pipeline.ts";
+import { loadTestLandofileLayers as loadLandofileLayers } from "./support.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const resolveLandofileIncludes = (options: Parameters<typeof resolveLandofileIncludesPackage>[0]) =>

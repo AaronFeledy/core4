@@ -71,7 +71,8 @@ const plan = async (
   calls.length = 0;
   const appPlan = await Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
-      planner.plan(
+      planTestLandofile(
+        planner,
         {
           name: "mysql-adoption",
           runtime: 4,
@@ -150,3 +151,4 @@ describe("MySQL volume adoption through the real planner", () => {
     expect(appPlan.stores.map((store) => store.name)).toEqual([scoped]);
   });
 });
+import { planTestLandofile } from "../compiled-landofile.ts";
