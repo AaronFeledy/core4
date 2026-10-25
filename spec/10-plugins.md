@@ -1,6 +1,6 @@
 # Lando v4: Plugin Specification
 
-> **Part 10 of 19** · [Index](./README.md)
+> **Part 10 of 20** · [Index](./README.md)
 > **Read next:** [11 Subsystems](./11-subsystems.md)
 
 A plugin is a Bun-loadable package whose manifest declares its public contribution surface. The pluggable abstractions themselves are cataloged in §4.
@@ -115,6 +115,8 @@ Command ids MUST be canonical and namespaced. `namespace` MUST equal the id pref
 | `messages`, `subscribers` | Lifecycle service | Produces messages or handles bounded events. |
 
 There are no legacy autoload directories; every contribution enters through the manifest.
+
+Trusted command/tooling Effects may consume `ExecutionSessionService` through declared SDK requirements (§22), not core or private engine imports. Manifest and trust rules remain unchanged.
 
 Contribution invariants:
 

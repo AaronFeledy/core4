@@ -1,6 +1,6 @@
 # Lando v4: Mission, Tenets, and Non-Goals
 
-> **Part 1 of 19** · [Index](./README.md)
+> **Part 1 of 20** · [Index](./README.md)
 > **Read next:** [02 Toolchain](./02-toolchain.md)
 
 This part states the mission, non-negotiable tenets, core boundaries, default distribution, non-goals, and open decisions. Release stages and sequencing live only in the [ROADMAP](./ROADMAP.md).
@@ -14,6 +14,8 @@ This part states the mission, non-negotiable tenets, core boundaries, default di
 ### 1.1 What Lando v4 is
 
 Lando v4 is a declarative local-development toolchain. A committed Landofile produces an identical networked environment with one command. The user promise continues; the implementation is a hard reset.
+
+Local development remains primary. Programmable execution (§22) exposes the same environments and operations to advanced consumers without changing ordinary commands, defaults, or performance. External automation platforms are optional consumers, not prerequisites.
 
 1. **Provider-neutral.** Runtime providers are plugins; core has no Docker dependency.
 2. **Bun-native.** Bun is the runtime, package manager, test runner, process and shell substrate, file layer, and bundler. `ProcessRunner` owns argv-precise work and `ShellRunner` owns shell-shaped work (§3.4, §4.2).
@@ -53,6 +55,7 @@ Core owns:
 - The native command registry, routing, help/manifest generation, and CLI-to-Effect boundary (§8.4.1).
 - Provider-neutral planning, app lifecycle orchestration, provider selection, subsystem contracts, and caches (§3–§12).
 - The public embedding API, including runtime factories, services, schemas, errors, and event payloads (§16).
+- Opt-in composition of environments, operations, and explicit lifetime ownership (§22).
 - Global-app identity, lifecycle, CLI, plugin enablement, and required-service integration; plugins own contributed services (§20).
 - Scratch-app identity, scoped lifecycle, isolation transforms, registry, and orphan cleanup; plugins MAY contribute inputs, not scratch ownership (§21).
 - The embedded Bun user surface, its allowed verbs, redaction, recursion, and host-proxy policy (§2.1, §8.2.4, §8.8.8, §10.10).
@@ -111,6 +114,7 @@ The forms ship from the same source at the same version and MUST NOT drift.
 - Built-in Kubernetes, plugin sandboxing, registry push workflows, or core SQL helpers.
 - File-sync engines beyond passthrough and bundled Mutagen, or file-sync-owned TCP/UDP forwarding (§10.6).
 - Copy-on-write scratch isolation, scratch fleets, fork-source hot reload, or scratch apps as expression sources (§21.15).
+- Foreign automation dialects/protocols and the execution-platform features excluded by §22.1.
 
 ### 14.2 Open decisions
 

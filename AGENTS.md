@@ -98,7 +98,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 ## Guides and Docs-as-Tests
 
-- Before writing or editing docs, guides, recipe READMEs, or other user-facing prose, load the `lando-write-docs` skill (`.agents/skills/lando-write-docs/SKILL.md`). It owns voice, page shape, and prose-first executable-guide rules.
+- Load `lando-write-docs` (`.agents/skills/lando-write-docs/SKILL.md`) for reader-facing documentation, executable guides, and recipe READMEs. Not for normative specifications, RFCs/ADRs, implementation plans, issue/PR descriptions, changelogs, or marketing. In mixed tasks, apply per artifact; reader-facing architecture explanations still count as documentation.
 - Executable guides are prose-first MDX: Markdown is the reader surface; `<Run>`/`<Verify>` wrap real harness execution only. No documentation-only `<Variable>` scenarios.
 - Object-valued guide props (`expect={{ ... }}`) are parsed by converting the expression to JSON, which replaces every `'` with `"`. A regex or string inside one must contain no single quote; match it with `.` or a character class instead.
 - A guide page gets one `<Guide>` element. The parser takes the first and silently ignores any later block: no lint error, no transcript, no generated test. Put every `<Scenario>` in that one block and confirm the scenario count rose.

@@ -1,6 +1,6 @@
 # Lando v4: CLI, Tasks, and Tooling
 
-> **Part 8 of 19** · [Index](./README.md)
+> **Part 8 of 20** · [Index](./README.md)
 > **Read next:** [09 Embedding and Library Use](./09-embedding.md)
 
 This part defines the CLI, tooling, recipe, renderer, interaction, and machine-output contracts. One native command registry and dispatcher own source and compiled operation; command execution crosses into Effect at `run()` and does not return to an imperative command body.
@@ -414,6 +414,8 @@ Top comment front matter validates as `BunShellScriptFrontMatter` and MAY carry 
 Default service is `:host`. Scripts run through `ShellRunner.runScript`; realpaths MUST remain under the app or permitted recipe cache, else `ShellScriptOutsideRootError`. They MUST NOT require host Node.js. Inputs are available through `LANDO_FLAG_<NAME>`, `LANDO_ARG_<NAME>`, and serialized `LANDO_INPUT: CommandInput`. Script checksum participates in freshness. `runScript` runs the file on the embedded Bun (`process.execPath` with `BUN_BE_BUN=1`), and Bun Shell exports that switch and `BUN_FEATURE_FLAG_NO_ORPHANS` to every command. A bare `lando` command in a script MUST run as Lando with neither variable set, so it neither falls into Bun nor reaps a nested `lando start`'s detached workers; it resolves to the `lando` on the script's `PATH`, else the running compiled CLI. Other commands keep both variables so Bun Shell's `bun` fallback still reaches the embedded Bun. A path-qualified call to a Lando binary is outside this guarantee.
 
 ### 8.6 The `ToolingEngine` abstraction
+
+Sessions use this tooling executor under §22.6 admission. Aliases, authoring eligibility, hooks, and IO remain unchanged; §22 adds no command or workflow language.
 
 The Effect service tag `ToolingEngine` has `id`, `canHandle(ToolingSpec)`, `compile(ToolingSpec) -> ToolingProgram | ToolingCompileError`, and `execute(ToolingProgram, CommandInput) -> ExecResult | ToolingExecError` with provider/process/shell requirements.
 

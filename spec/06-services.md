@@ -1,6 +1,6 @@
 # Lando v4: Service Specification
 
-> **Part 6 of 19** · [Index](./README.md)
+> **Part 6 of 20** · [Index](./README.md)
 > **Read next:** [07 Landofile and Configuration](./07-landofile-and-config.md)
 
 This part defines the provider-neutral service model, its composition contracts, canonical service types, build lifecycle, and log sources.

@@ -1,6 +1,6 @@
 # Lando v4: Testing, Distribution, and Quality Gates
 
-> **Part 13 of 19** · [Index](./README.md)
+> **Part 13 of 20** · [Index](./README.md)
 > **Read next:** [14 Appendices](./14-appendices.md)
 
 This part defines the release quality bar, test architecture, distribution forms, CI cadences, and release channels.
@@ -19,6 +19,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Effect service | Services run with test Layers, `TestClock`, `TestRandom`, and deterministic Streams rather than patched globals. |
 | CLI | The native registry and dispatcher own parsing, routing, exit codes, help, and source/compiled conformance. |
 | Library API | `@lando/core/testing` exercises embedding surfaces, service availability, lifecycle events, isolation, and finalization. |
+| Programmable execution | Public library and SDK-only plugin fixtures prove the §22 contracts and the regression cases below. |
 | Provider contract | Every `RuntimeProvider` plugin passes the shared `@lando/sdk/test` suite. |
 | Service composition contract | Every `ServiceType` declares a base and resolves through deterministic, provider-neutral core composition. Verify per-kind `sync` inheritance, child Dataset-id replacement, whole-list postApply replacement/empty-list clearing, explicit binding precedence, and no ancestor task duplication (§6.11.1). |
 | Service feature contract | Every `ServiceFeature` is deterministic, idempotent, priority-ordered, capability-declared, and conflict-safe. Optional endpoint declarations consume immutable original decoded facts, return typed endpoint intent, and expose no apply mutators (§6.11). |
@@ -90,6 +91,8 @@ Start-failure coverage MUST prove retention at every phase (apply, dependency ga
 **Command registry contract:** implemented and deferred command ids MUST partition the canonical registry. Every implemented id is reachable, every deferred id yields the catalogued `NotImplementedError`, and relocated compiled smoke tests MUST validate representative exit codes, tagged errors, and machine envelopes. Dual-dispatch parity is not a test layer.
 
 The compiled MCP completion journey MUST cover real container stdout/stderr, split Unicode and registered secrets, final unterminated output, no-token final capture, nonzero process status, truthful truncation, and a quiet log follower released by cancellation, EOF, and SIGTERM without another log line. Each process shutdown has a bounded test deadline and unconditional owned-resource teardown. A synthetic `Effect.never` producer is useful unit coverage but MUST NOT substitute for the real provider-read acceptance. Live runs require an explicit answering provider socket and preserve installed roots; missing prerequisites skip local runs and fail explicitly requested end-to-end runs.
+
+**Programmable execution proof:** cover minimal host work without app/provider/elevation/network calls; borrowed-app preservation and owned-scratch lifetime; rejection of non-`false` session `detached` before mutation; authoritative config despite absent/conflicting copied Landofiles; transitive hook/secret denial through captured handles; canonical root and path-base rules; bounded output with explicit gaps, single-reader enforcement, repeatable awaits, real child cancellation, and host-PTY refusal. Test exact-id artifact read/remove grants, retention across fresh runtimes, retention/closure and publication races, and unchanged §2.1 budgets with bounded listeners/scopes/history. Live provider evidence must prove child absence, not merely CLI exit.
 
 **Scenario, recipe, and e2e conventions:** scenarios live as TypeScript under `test/scenarios/`, use public APIs and isolated fixtures, and rely on Scope finalizers. Recipe tests scaffold every `recipes/<id>/` source but do not start apps. E2E tests use the compiled binary, real providers, structured assertions, isolated working directories, and unconditional cleanup. User-facing flows belong in recipes or executable guides; internal regressions belong in test fixtures. The Lando 3 Leia format, bash-block parsing, grep assertions, and its heading grammar are retired with no conversion path.
 
