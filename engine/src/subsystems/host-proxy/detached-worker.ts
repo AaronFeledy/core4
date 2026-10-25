@@ -6,7 +6,7 @@ import { AppPlan, type AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths } from "@lando/paths";
-import { createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { hostProxyWorkerEntry } from "../../composition.ts";
 import { DetachedWorkerLogError } from "../detached-worker/log.ts";
@@ -57,6 +57,11 @@ export const startDetachedHostProxyWorker = (
     options.app,
     options.paths,
     Effect.gen(function* () {
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      const redactor =
+        redaction._tag === "Some"
+          ? yield* redaction.value.forProfile("secrets")
+          : createStandaloneRedactor("secrets");
       const landoPaths = makeLandoPaths(options.paths);
       const publish = options.publish ?? (() => Effect.void);
       const input = {
@@ -90,6 +95,7 @@ export const startDetachedHostProxyWorker = (
           return yield* Effect.tryPromise({
             try: async () =>
               spawnWorker({
+                redactor,
                 argv: hostProxyWorkerArgv({ ...hostProxyWorkerEntry(), appId: options.app.id }),
                 logsDir: makeLandoPaths(options.paths).logsDir,
                 privateFileAccess: options.privateFileAccess,
@@ -178,7 +184,7 @@ export const startDetachedHostProxyWorker = (
               cause instanceof HostProxyTransportUnavailableError
                 ? cause
                 : new HostProxyTransportUnavailableError({
-                    message: createStandaloneRedactor("secrets").redactString(causeMessage(cause)),
+                    message: redactor.redactString(causeMessage(cause)),
                     socketPath: workerStatePath(options.app, options.paths),
                     remediation: `Inspect ${worker.logPath} for the worker crash.`,
                   }),

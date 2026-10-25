@@ -92,3 +92,9 @@ Post-GA minors. Out of 4.0:
 - Deferred meta commands: `meta:plugin:login`, `meta:plugin:logout`, `meta:events:follow`
 
 Later 4.x work (distro packages, persistent agent, multi-provider apps, and the rest of the §14.2 deferrals) stays post-GA.
+
+## Programmable execution: authored, not scheduled
+
+§22 is planned local-development functionality with no assigned release, Alpha exit commitment, or Beta feature exception. Implementation remains blocked until the contract changes merge and the merge gate records the verified PR and commit.
+
+Order: contracts and retained runtime; configuration-backed scratch and admission; environment/process/artifact integration; public access, guides, and performance proof. Reuse existing prerequisite fixes rather than duplicate them. Each slice includes its tests. Platform integrations and detached/distributed execution remain outside this work.

@@ -38,17 +38,18 @@ import {
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp } from "../config/router-config.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
-import { applyAppRoutes } from "../lifecycle/routes.ts";
+import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { verifyPendingStartResume } from "./accelerated-start-resume.ts";
 import { collectPlanConnections, observeService, startedServices } from "./connection-collector.ts";
@@ -62,7 +63,7 @@ import {
 import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
-import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
+import { inspectAppliedService } from "./service-readiness.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
@@ -72,11 +73,7 @@ import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
 import { withStartedSshAgent } from "./start-ssh-agent.ts";
 import type { StopAppPreflight } from "./stop-internal.ts";
 
-import {
-  withApplyProgress,
-  withGlobalStartProgress,
-  withRoutesStartProgress,
-} from "./start-progress-phases.ts";
+import { withApplyProgress, withGlobalStartProgress } from "./start-progress-phases.ts";
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
@@ -89,6 +86,7 @@ export const StartAppResultSchema = Schema.Struct({
 });
 
 type StartAppServices =
+  | EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -257,7 +255,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
   const neededGlobalServices = requiredGlobalServicesForPlan(plan);
   if (plan.routes.length > 0 && neededGlobalServices.includes(proxy.id) && proxy.prepare !== undefined) {
     const defaultDomain = yield* resolveProxyDefaultDomain;
-    const { router, routerPin } = yield* resolveRouterConfigForApp(target.landofile?.router);
+    const { router, routerPin } = yield* resolveRouterConfigForApp(target.landofile?.document.router);
     yield* proxy.prepare({ defaultDomain, router, routerPin });
   }
   if (neededGlobalServices.length > 0) {
@@ -303,7 +301,6 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 builds.build(applyPlan, execution.buildOptions),
                 provider,
               );
-              const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
               const serviceList = Object.values(builtPlan.services);
               const { pendingStart } = yield* prepareAcceleratedStart(builtPlan, provider, {
                 app: ref,
@@ -320,9 +317,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 yield* verifyActiveVolumeCoordination(provider);
                 if (pendingStart !== undefined) yield* pendingStart.advance("apply-intent");
                 yield* Effect.scoped(
-                  provider.apply(builtPlan, {
+                  applyWithResolvedEnvironment(provider, builtPlan, {
                     reconcile: resolvedOptions.reconcile ?? false,
-                    serviceEnvironment,
                     onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
                     ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
                   }),
@@ -345,19 +341,15 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 work: applyAndInspect,
               });
 
-              yield* withBuildProvider(
-                builds.buildApp(builtPlan, {
-                  ...(execution.forceAppBuild === true ? { force: true } : {}),
-                  ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-                }),
-                provider,
-              );
-
-              const applyRoutes = applyAppRoutes(proxy, builtPlan, target.landofile?.router);
-              yield* builtPlan.routes.length === 0
-                ? applyRoutes
-                : withRoutesStartProgress({ events, plan, work: applyRoutes });
-              const readyServices = yield* waitForServiceReadiness({
+              const readyServices = yield* completeStartup({
+                policy: "user-start",
+                builds,
+                router: proxy,
+                events,
+                ...(target.landofile?.document.router === undefined
+                  ? {}
+                  : { landofileRouter: target.landofile.document.router }),
+                ...(execution.forceAppBuild === undefined ? {} : { forceAppBuild: execution.forceAppBuild }),
                 provider,
                 plan: builtPlan,
                 services: serviceList.map((service) => service.name),

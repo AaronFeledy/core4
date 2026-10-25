@@ -10,7 +10,7 @@ import type {
 import { commandHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "docker.elastic.co/elasticsearch/elasticsearch:8.17.0";
@@ -35,7 +35,6 @@ const applyElasticsearchFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   ctx.setHealthcheck(
     commandHealthcheck(["bash", "-c", `curl -sf http://localhost:${port}/_cluster/health`], 90, {
       intervalSeconds: 15,
@@ -50,6 +49,10 @@ export const elasticsearchServiceFeature: ServiceFeatureDefinition = {
   id: ELASTICSEARCH_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "tcp" }),
+    ),
   apply: serviceFeatureApply(
     ELASTICSEARCH_FEATURE_ID,
     "elasticsearch service feature failed to apply",

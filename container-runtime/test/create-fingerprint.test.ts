@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -37,6 +37,7 @@ const service: ServicePlan = {
   extensions: {},
 };
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("fingerprint"),
   name: "Fingerprint",
   slug: "fingerprint",
@@ -53,10 +54,25 @@ const plan: AppPlan = {
 const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
   commonContainerLabels(app, value)[CREATE_CONFIG_LABEL];
 
-afterEach(resetRegisteredRedactionValuesForTesting);
+const fixtureRedaction = makeRedactionService();
 
 describe("desired immutable create config", () => {
-  const changes: ReadonlyArray<readonly [string, Partial<ServicePlan>]> = [
+  test("distinguishes literal, reference, raw composite, and encoded composite identities", () => {
+    // Given
+    const values = [
+      "${secret:TOKEN}",
+      { _tag: "SecretRef", reference: "TOKEN" },
+      { _tag: "BoundText", parts: ["prefix", { reference: "TOKEN", encoding: "raw" }] },
+      { _tag: "BoundText", parts: ["prefix", { reference: "TOKEN", encoding: "uri-component" }] },
+    ] as const;
+    // When
+    const fingerprints = values.map((value) => fingerprint({ ...service, environment: { TOKEN: value } }));
+    // Then
+    expect(new Set(fingerprints).size).toBe(values.length);
+  });
+
+  type FingerprintChange = Partial<Omit<ServicePlan, "connection" | "nonSqlCreds">>;
+  const changes: ReadonlyArray<readonly [string, FingerprintChange]> = [
     ["environment", { environment: { MODE: "after" } }],
     ["command", { command: ["sleep", "60"] }],
     ["entrypoint", { entrypoint: ["/entrypoint"] }],
@@ -113,7 +129,7 @@ describe("desired immutable create config", () => {
     const actual = fingerprint(updated);
     // Then drift is visible without putting configuration bytes in labels.
     expect(actual).not.toBe(fingerprint(service));
-    expect(actual).toMatch(/^v1:[a-f0-9]{64}$/u);
+    expect(actual).toMatch(/^v3:[a-f0-9]{64}$/u);
   });
 
   test("normalizes command and entrypoint representations without sorting argv", () => {
@@ -153,12 +169,12 @@ describe("desired immutable create config", () => {
       environment: { PASSWORD: "${secret:db/password}", LITERAL: "credential-canary" },
     };
     const before = fingerprint(desired);
-    Effect.runSync(registerRedactionValues(["credential-canary", "${secret:db/password}"]));
+    Effect.runSync(fixtureRedaction.registerValues(["credential-canary", "${secret:db/password}"]));
     // When registered redaction values change before another label emission.
     const after = fingerprint(desired);
     // Then redaction cannot collapse distinct desired values or expose raw values in the label.
     expect(after).toBe(before);
-    expect(after).toMatch(/^v1:[a-f0-9]{64}$/u);
+    expect(after).toMatch(/^v3:[a-f0-9]{64}$/u);
     expect(after).not.toContain("credential-canary");
     expect(after).not.toBe(
       fingerprint({ ...desired, environment: { ...desired.environment, PASSWORD: "${secret:db/other}" } }),

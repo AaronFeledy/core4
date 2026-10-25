@@ -1,6 +1,7 @@
 import { Effect, Ref, Result } from "effect";
 
 import { runHealthcheckProbe } from "@lando/container-runtime/healthcheck-probe";
+import { compileServiceProbe } from "@lando/container-runtime/service-probe";
 import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import type { ProbeResult } from "@lando/sdk/probe";
 import type { HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
@@ -18,7 +19,7 @@ import { RedactionService, createStandaloneRedactor } from "@lando/redaction/ser
 
 type AttemptStatus =
   | { readonly _tag: "ok" }
-  | { readonly _tag: "exit"; readonly code: number }
+  | { readonly _tag: "exit"; readonly code: number; readonly stderr: string }
   | { readonly _tag: "provider"; readonly message: string }
   | { readonly _tag: "timeout" };
 
@@ -51,11 +52,6 @@ const missingCommand = (service: ServiceName): HealthcheckError =>
     service: String(service),
   });
 
-const normalizeCommand = (command: NonNullable<HealthcheckPlan["command"]>) => {
-  if (typeof command === "string") return { provider: { command: ["sh", "-c", command] }, rendered: command };
-  return { provider: { command: [...command] }, rendered: command.join(" ") };
-};
-
 const providerMessage = (error: ProviderError): string => error.message;
 
 const resolveRedactor = Effect.gen(function* () {
@@ -77,7 +73,11 @@ const makeAttempt = Effect.fnUntraced(function* (context: AttemptContext): Effec
     return "green";
   }
 
-  yield* Ref.set(context.status, { _tag: "exit", code: completed.success.exitCode });
+  yield* Ref.set(context.status, {
+    _tag: "exit",
+    code: completed.success.exitCode,
+    stderr: completed.success.stderr,
+  });
   return "red";
 });
 
@@ -103,7 +103,11 @@ const timeoutError = (context: TimeoutContext): HealthcheckTimeoutError => {
     ),
     service: String(context.service),
     probe: context.redactor.redactValue(probe),
-    lastStatus: `timeout after ${context.timeoutSeconds}s`,
+    lastStatus: context.redactor
+      .redactString(
+        `timeout after ${context.timeoutSeconds}s; ${context.result.outcome}; attempts ${context.result.attempts}; elapsed ${context.result.elapsedMs}ms; ${context.renderedCommand}`,
+      )
+      .slice(0, 2048),
   });
 };
 
@@ -113,7 +117,7 @@ export const makeHealthcheckRunner: (deps: {
 }) => HealthcheckRunnerShape = (deps) =>
   HealthcheckRunner.of({
     id: "provider-exec",
-    run: Effect.fn("HealthcheckRunner.run")(function* (plan, appId, service) {
+    run: Effect.fn("HealthcheckRunner.run")(function* (plan, appId, service, appPlan) {
       switch (plan.kind) {
         case "none":
           return { healthy: true, service, attempts: 0, lastStatus: "skipped" };
@@ -126,18 +130,29 @@ export const makeHealthcheckRunner: (deps: {
 
       if (plan.command === undefined) return yield* Effect.fail(missingCommand(service));
 
-      const normalized = normalizeCommand(plan.command);
+      const compiled = yield* Effect.try({
+        try: () => compileServiceProbe(plan, appPlan, appPlan?.services[service]),
+        catch: (cause) => toProbeError(service, cause),
+      });
+      if (compiled === undefined) return yield* Effect.fail(missingCommand(service));
       const command = {
-        ...normalized.provider,
+        command: [...compiled],
         ...(deps.signal === undefined ? {} : { signal: deps.signal }),
       };
-      const rendered = normalized.rendered;
+      const rendered = compiled.join(" ");
       const target: ExecTarget = { app: appId, service };
       const status = yield* Ref.make<AttemptStatus>({
         _tag: "provider",
         message: "Healthcheck command did not run",
       });
       const redactor = yield* resolveRedactor;
+      const renderedTarget =
+        plan.target === undefined
+          ? "custom probe"
+          : compiled
+              .slice(1, 3)
+              .map((value) => redactor.redactString(value).slice(0, 192))
+              .join(" ");
 
       const result = yield* runHealthcheckProbe(
         { id: `healthcheck:${service}`, plan },
@@ -165,14 +180,16 @@ export const makeHealthcheckRunner: (deps: {
             healthy: false,
             service,
             attempts: result.attempts,
-            lastStatus: redactor.redactString(`exit ${finalStatus.code}`),
+            lastStatus: redactor.redactString(
+              `exit ${finalStatus.code}; ${result.outcome}; attempts ${result.attempts}; elapsed ${result.elapsedMs}ms; ${renderedTarget}; ${redactor.redactString(finalStatus.stderr).slice(-1536)}`,
+            ),
           };
         case "provider":
           return {
             healthy: false,
             service,
             attempts: result.attempts,
-            lastStatus: redactor.redactString(finalStatus.message),
+            lastStatus: `provider failure; ${result.outcome}; attempts ${result.attempts}; elapsed ${result.elapsedMs}ms; ${renderedTarget}; ${redactor.redactString(finalStatus.message).slice(-1536)}`,
           };
         case "ok":
           return { healthy: false, service, attempts: result.attempts, lastStatus: "ok" };

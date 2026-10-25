@@ -176,12 +176,19 @@ const resolveEntries = Effect.fnUntraced(function* (
             );
           }
           tasks.set(id, withIncludeVars(task, entry.vars));
-          origins.set(
-            id,
+          const taskOrigins =
             fragment.origins.children.get("tooling")?.children.get(name) ??
-              nested.origins.get(name) ??
-              fragment.origins,
-          );
+            nested.origins.get(name) ??
+            fragment.origins;
+          const children = new Map(taskOrigins.children);
+          if (entry.varOrigins !== undefined && Predicate.isObject(task)) {
+            const ownVars = taskOrigins.children.get("vars");
+            children.set("vars", {
+              ...entry.varOrigins,
+              children: new Map([...entry.varOrigins.children, ...(ownVars?.children ?? [])]),
+            });
+          }
+          origins.set(id, { ...taskOrigins, children });
           if (entry.internal || (!Object.hasOwn(localNames, name) && nested.internal.has(name))) {
             internal.add(id);
           }

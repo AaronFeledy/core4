@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -47,7 +48,10 @@ const registryLayer = Layer.merge(services, PluginRegistryLayer.layer);
 const planFor = (landofile: LandofileShape, provider: "lando" | "docker") =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
-      planner.plan({ ...landofile, provider: ProviderId.make(provider) }, providerLandoCapabilities),
+      planner.plan(
+        compileTestLandofile({ ...landofile, provider: ProviderId.make(provider) }),
+        providerLandoCapabilities,
+      ),
     ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(registryLayer)),
   );
 

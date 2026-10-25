@@ -471,14 +471,15 @@ describe("resolveApp", () => {
 
   test("a decoded Landofile selector rejects the reserved global app id", async () => {
     await withTempApp(async (dir) => {
-      const exit = await Effect.runPromiseExit(
-        resolveApp({ landofile: { name: "global" }, root: dir as never } as never).pipe(
+      const error = await Effect.runPromise(
+        resolveApp({ landofile: { name: "global" }, root: AbsolutePath.make(dir) }).pipe(
           Effect.scoped,
           Effect.provide(appLayer()),
+          Effect.flip,
         ),
       );
 
-      expect(exit._tag).toBe("Failure");
+      expect(error).toMatchObject({ _tag: "AppResolveError", reason: "not-found", detail: "reserved-id" });
     });
   });
 

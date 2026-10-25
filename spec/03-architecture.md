@@ -1,6 +1,6 @@
 # Lando v4: Architecture, Lifecycle, and Events
 
-> **Part 3 of 19** · [Index](./README.md)
+> **Part 3 of 20** · [Index](./README.md)
 > **Read next:** [04 Pluggability](./04-pluggability.md)
 
 This part defines the runtime structure, bootstrap levels, core services, lifecycle taxonomy, event bus, and imperative shells.
@@ -31,7 +31,7 @@ Levels form a chain `none` → `minimal` → `plugins` → `commands`; `tooling`
 | Level | Meaning | Service membership |
 |---|---|---|
 | `none` | Command-base depth with no prebuilt runtime; dispatcher-routed commands receive the internal runtime-factory and captured-config-source ports but no decoded configuration or minimal runtime; the static fast-path subset skips dispatcher and Effect entirely and constructs no services | none |
-| `minimal` | Host configuration and safe local primitives | eager: `PathsService`, `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `StateStore`, `EventService`, `DeprecationService`, `RedactionService`, `TemplateEngineRegistry`, `TemplateRenderer`, `HttpClient`, `Downloader`; lazy: `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `BunSelfRunner`, `InteractionService`, `ManagedFileService` |
+| `minimal` | Host configuration and safe local primitives | eager: `PathsService`, `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `StateStore`, `EventService`, `DeprecationService`, `RedactionService`, `TemplateEngineRegistry`, `TemplateRenderer`, `HttpClient`, `Downloader`; lazy: `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `BunSelfRunner`, `InteractionService`, `ManagedFileService`, `ExecutionSessionService` |
 | `plugins` | Plugin discovery, manifest validation, and contribution graph | `minimal` + eager `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`, `FileSyncEngineRegistry`; lazy `PrivilegeService`; plugin implementations register here |
 | `commands` | Complete native command registry and command-cache refresh | `plugins` + `CommandRegistry` |
 | `tooling` | Command services plus cache-only `ToolingProgram` and app-plan access | `commands` + lazy selected `ToolingEngine`; no live provider or full planner |
@@ -45,6 +45,8 @@ The `LandoCommandSpec` registry is canonical for command-to-level assignment (§
 **Level-`none` fast path:** `bin/lando.ts` MUST recognize only the fixed static version, top-level help, shellenv, and recipe-list argv shapes before importing the dispatcher, Effect, service tags, or plugin code. It MUST use embedded constants, perform no file or network IO, construct no service, and meet §2.1 budgets. Unrecognized flags MUST fall through to normal dispatch. Dispatcher-routed `none` commands MAY construct their own runtime and then emit events, but MUST NOT rely on command-base bootstrap; load-bearing safe-mode commands such as `meta:doctor` MUST remain exempt from bootstrap promotion.
 
 Bootstrap levels are sequential. Independent IO-bound work within a level MUST run concurrently with Effect concurrency primitives; sequential work is a performance defect unless required by data dependency (§2.4). Tooling routing uses cached command indexes and `ToolingProgram`; provider initialization occurs only when a provider-backed step executes (§12.2, §12.5).
+
+Execution sessions honor the requested runtime tier and caller context; host-only work MUST NOT implicitly construct app, scratch, or provider services (§22.2).
 
 ### 3.3 Source layout
 
@@ -112,6 +114,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `McpService` | Retained-runtime MCP projection and dispatch (§10.14); not plugin-replaceable |
 | `GlobalAppService` | Global app regeneration, planning, lifecycle, and auto-start (§20) |
 | `ScratchAppService` | Scoped scratch app acquisition, lifecycle, registry, and reap (§21) |
+| `ExecutionSessionService` | Opt-in in-process ownership, admission, observations, process handles, and local artifact access over existing services (§22); not plugin-replaceable |
 | `Telemetry` | Non-blocking usage telemetry (§2.4) |
 | `RedactionService` | Canonical secret and PII masking (§3.7); never plugin-replaceable |
 | `AppOutputRedaction` | Plugin-facing app-output preparation backed by the engine's shared registration step; reads current provider and trusted worker credentials, never resolves or persists secret-store values (§3.7) |
@@ -147,6 +150,7 @@ Events are typed, schema-validated, and drawn from a closed registry. Plugin sub
 | Sync | `pre-pull`, `post-pull`, `pre-push`, `post-push`, `pre-switch`, `post-switch`, `pre-code-sync`, `post-code-sync`, `pre-remote-setup`, `post-remote-setup`, `pre-dataset-fetch`, `post-dataset-fetch`, `pre-dataset-apply`, `post-dataset-apply`, `pre-dataset-capture`, `post-dataset-capture`, `pre-dataset-send`, `post-dataset-send`, `pre-tunnel-open`, `post-tunnel-open`, `pre-tunnel-close`, `post-tunnel-close`, `pre-tether`, `post-tether`, `pre-remote-operation`, `post-remote-operation` |
 | Config refresh | `pre-config-refresh`, `post-config-refresh`, `config-source-drift` |
 | Init source | `pre-init-source-auth`, `post-init-source-auth`, `pre-init-source-acquire`, `post-init-source-acquire` |
+| Execution | `execution-session-opened`, `execution-session-closing`, `execution-session-closed`, `execution-operation-started`, `execution-operation-finished` |
 | Cross-cutting | `deprecation-used` |
 
 `pre-destroy` and `post-destroy` bracket one user-app destroy invocation. Each recorded app identity the teardown addresses (applied plan, orphan groups, ownership inventory, purged snapshots) gets one pair, and a teardown that finds nothing publishes neither. `evidence` names the primary resolution basis: `applied` (recorded applied plan), `retained` (an unfinished accelerated start, §10.6.3), `orphans`, `inventory` (ownership hints alone), or `snapshots` (`--purge` with only catalogued snapshots). Read-only resolution and validation run before the bracket. `pre-destroy` fires before any destructive step, including retained-writer quiescence. `post-destroy` fires only after every step succeeds, including inventory cleanup, journal completion, cache cleanup, and the `--root` follow-up orphan sweep, and carries the invocation's aggregate `outcome` (`destroyed` or `unchanged`). A failure after `pre-destroy` publishes no `post-destroy`. Authored Landofile and `hostEvents` destroy steps run only for `evidence: applied` (§8.5.7); a resumed file-sync disposal skips the `pre-destroy` steps. Other evidence publishes the bus events without authored steps, because only a recorded applied plan gives them a trustworthy execution topology; retained attempts and orphans may still have running containers.
@@ -158,6 +162,8 @@ Remote lifecycle publishers MUST be core orchestration wrappers, including datas
 CLI payloads carry `CommandInvocationCorrelation`: an outer invocation has a unique `invocationId` and no parent; nested canonical dispatch has its own id and the enclosing `parentInvocationId`. All phases of one invocation share the pair. Only the outer invocation is eligible for foreground notification, though nested terminal events remain observable.
 
 `cli-<canonical-id>-error` carries the projected primary `failureTag` and optional non-empty `additionalFailures: [{ failureTag, role }]`. Roles are `rollback`, `cleanup`, or `peer`, read from reason annotations through the same projection as command envelopes (§8.11.1). Interruptions are excluded from additional failures. Error identities are redacted before event publication.
+
+Execution event payloads follow §22.7. Inner lifecycle events remain intact; only the outer invocation may produce foreground completion notification.
 
 ### 3.6 Imperative shells
 
@@ -185,9 +191,11 @@ Redacting already-redacted text with the `secrets` profile MUST return it unchan
 | `telemetry` | `secrets` plus low-cardinality normalization placeholders |
 | `transcript` | `secrets` plus deterministic `<HOME>`, `<TMP>`, `<PORT>`, `<CONTAINER_ID>`, `<DIGEST>`, `<PROVIDER_ID>`, `<USER>`, and `<HOST>` placeholders |
 
-`@lando/sdk/secrets` owns the pure `createSecretRedactor`, `createRedactor`, pattern catalog, profiles, `REDACTED`, deep `redactValue`, and the `redactString`, optional bounded-string, and structured-value operations. A consumer requiring bounded output MUST fail closed when bounded redaction is unavailable. `RedactionService` supplies the live value set and profile redactors without network, provider, or plugin access and is eager at `minimal`. Pure helpers that build output outside an Effect context, such as CLI diagnostics and `container-runtime` provider errors, use the standalone redactor from `@lando/redaction`. It applies the same profiles and every value registered so far, never resolves the secret store, and accepts caller tokens (for example build arguments) into the same value layer.
+`@lando/sdk/secrets` owns the pure `createSecretRedactor`, `createRedactor`, pattern catalog, profiles, `REDACTED`, deep `redactValue`, and the `redactString`, optional bounded-string, and structured-value operations. A consumer requiring bounded output MUST fail closed when bounded redaction is unavailable. Each runtime owns an independent `RedactionService` registry that supplies the live value set and profile redactors and is eager at `minimal`. Profile and payload creation MUST NOT enumerate or read a SecretStore, contact a provider, or load a plugin. Explicit resolvers and credential readers register values before exposing them. Pure helpers that build output outside an Effect context, such as CLI diagnostics and `container-runtime` provider errors, use the standalone redactor from `@lando/redaction`. It applies the same patterns and caller-supplied values only, including caller tokens such as build arguments, in the same value layer; it MUST NOT resolve the secret store or inherit registrations from another runtime or a module-global registry.
 
-`createPayloadRedactor(getValues)` is the value-only byte-stream primitive for human tool and exec stdout and stderr, including container tooling, `:host`, `.bun.sh`, `app:exec`, and `apps:scratch:run`. It matches eligible resolved-secret values, registered tokens, and plan tokens on raw bytes under the same overlapping-union rule. It retains only a trailing possible-secret prefix, at most the longest value minus one byte, flushes that tail at logical end of stream, and MUST NOT UTF-8-decode or apply pattern classes. Terminal state and UTF-8 validity MUST NOT choose redaction behavior. `getValues` is a live getter: `RedactionService.payloadValues` snapshots the secret store once and returns a getter that rebuilds when process registrations change by generation. Forwarded `agentEnv` markers identify the client, not a credential, so they MUST NOT be registered as redaction values. Registrations apply only prospectively, including to the held tail, and MUST NOT retract bytes already delivered.
+The CLI's registry owner spans bootstrap, execution, buffered rendering, event delivery, payload flush, trace export, and producer finalizers. Those paths MUST share the same service instance, including bootstrap and teardown failures. An inner operation scope may release its lookup memo without releasing output protection. Runtime registrations are cleared only after owned output and diagnostics finish; an escaping failure is sanitized before disposal. Separate embedding runtimes and standalone workers own separate registries. These registrations protect output and are not a cache used to satisfy later secret lookups.
+
+`createPayloadRedactor(getValues)` is the value-only byte-stream primitive for human tool and exec stdout and stderr, including container tooling, `:host`, `.bun.sh`, `app:exec`, and `apps:scratch:run`. It matches eligible resolved-secret values, registered tokens, and plan tokens on raw bytes under the same overlapping-union rule. It retains only a trailing possible-secret prefix, at most the longest value minus one byte, flushes that tail at logical end of stream, and MUST NOT UTF-8-decode or apply pattern classes. Terminal state and UTF-8 validity MUST NOT choose redaction behavior. `getValues` is a live getter: `RedactionService.payloadValues` combines its explicit options with its owning runtime's registrations and rebuilds by generation when that registry changes. It never reads a secret store. Forwarded `agentEnv` markers identify the client, not a credential, so they MUST NOT be registered as redaction values. Registrations apply only prospectively, including to the held tail, and MUST NOT retract bytes already delivered.
 
 After redaction, the sink MUST deliver human payload bytes only through `Renderer.output.stdout` or `stderr` (§8.9). The renderer owns fd selection and live-region suspension; the sink MUST NOT write raw IO directly.
 

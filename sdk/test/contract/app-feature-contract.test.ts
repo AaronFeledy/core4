@@ -4,6 +4,8 @@ import { Cause, Effect } from "effect";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 import { type AppFeatureContractHarness, ContractFailure, runAppFeatureContract } from "@lando/sdk/test";
 
+type DeclareEndpoints = NonNullable<AppFeatureDefinition["declareEndpoints"]>;
+
 const services: AppFeatureContractHarness["services"] = [
   { serviceName: "php", serviceType: "php", framework: "drupal" },
   { serviceName: "node", serviceType: "node" },
@@ -27,7 +29,147 @@ const expectAppFeatureFailure = async (
   expect(reason.error.assertion).toBe(assertion);
 };
 
+const expectDeclarationFailure = (declareEndpoints: DeclareEndpoints, assertion: string) =>
+  expectAppFeatureFailure(
+    {
+      feature: {
+        id: "declaration",
+        priority: 100,
+        selectors: { types: ["php"] },
+        declareEndpoints,
+        apply: () => Effect.void,
+      },
+      services: [
+        {
+          serviceName: "php",
+          serviceType: "php",
+          connection: {
+            family: "postgres",
+            port: 5432,
+            creds: { user: "app", password: "secret", database: "app" },
+          },
+        },
+        { serviceName: "node", serviceType: "node" },
+      ],
+    },
+    assertion,
+  );
+
 describe("runAppFeatureContract", () => {
+  test.each(["config", "normalizedConfig", "connection", "primary", "featureIds"] as const)(
+    "rejects declaration mutation of %s",
+    async (field) => {
+      // Given
+      const declare: DeclareEndpoints = (ctx) =>
+        Effect.sync(() => {
+          const service = ctx.selected[0];
+          if (service === undefined) throw new Error("Missing selected fixture service");
+          switch (field) {
+            case "config":
+              Reflect.set(ctx.config, "port", 9000);
+              break;
+            case "normalizedConfig":
+              Reflect.set(service.normalizedConfig, "port", 9000);
+              break;
+            case "connection":
+              if (service.connection === undefined) throw new Error("Missing fixture connection");
+              Reflect.set(service.connection.creds, "user", "changed");
+              break;
+            case "primary":
+              Reflect.set(service, "primary", true);
+              break;
+            case "featureIds":
+              Reflect.set(service.featureIds, "0", "changed");
+              break;
+            default:
+              field satisfies never;
+          }
+          return { php: [{ _tag: "internal" as const, protocol: "http" as const, port: 8080 }] };
+        });
+      // When / Then
+      await expectDeclarationFailure(declare, "app feature endpoint declaration facts are immutable");
+    },
+  );
+
+  test("rejects input mutation on the repeated declaration invocation", async () => {
+    // Given
+    let invocation = 0;
+    const declare: DeclareEndpoints = (ctx) =>
+      Effect.sync(() => {
+        if (++invocation === 2) Reflect.set(ctx.config, "port", 9000);
+        return { php: [{ _tag: "internal" as const, protocol: "http" as const, port: 8080 }] };
+      });
+    // When / Then
+    await expectDeclarationFailure(declare, "app feature endpoint declaration facts are immutable");
+  });
+
+  test("rejects schema-invalid app endpoint publication", async () => {
+    // Given
+    const declare: DeclareEndpoints = () =>
+      Effect.succeed({
+        php: [{ _tag: "published", protocol: "http", port: 8080, publication: { hostPort: 0 } }],
+      });
+    // When / Then
+    await expectDeclarationFailure(declare, "app feature endpoint declarations match EndpointPlan");
+  });
+
+  test("rejects app declaration realization metadata", async () => {
+    // Given
+    const declare: DeclareEndpoints = () =>
+      Effect.succeed({ php: [{ _tag: "internal", protocol: "http", port: 8080, realization: "host" }] });
+    // When / Then
+    await expectDeclarationFailure(
+      declare,
+      "app feature emits endpoint intent without realization decisions",
+    );
+  });
+
+  test.each(["throw", "defect"] as const)(
+    "reports an app declaration %s as ContractFailure",
+    async (failure) => {
+      // Given
+      const declare: DeclareEndpoints = () => {
+        if (failure === "throw") throw new Error("Declaration fixture failure");
+        return Effect.die("Declaration fixture defect");
+      };
+      // When / Then
+      await expectDeclarationFailure(declare, "endpoint declaration succeeds");
+    },
+  );
+  test("accepts declaration-only app features without application mutators", async () => {
+    // Given
+    const feature: AppFeatureDefinition = {
+      id: "declared-listener",
+      priority: 100,
+      selectors: { types: ["php"] },
+      declareEndpoints: (ctx) => {
+        expect("forEachSelected" in ctx).toBe(false);
+        return Effect.succeed({ php: [{ _tag: "internal", protocol: "http", port: 8080 }] });
+      },
+      apply: () => Effect.void,
+    };
+    // When
+    const result = await Effect.runPromiseExit(runAppFeatureContract({ feature, services }));
+    // Then
+    expect(result._tag).toBe("Success");
+  });
+
+  test("rejects unstable app endpoint declarations", async () => {
+    // Given
+    let port = 8080;
+    const declare: DeclareEndpoints = () =>
+      Effect.sync(() => ({ php: [{ _tag: "internal", protocol: "http", port: port++ }] }));
+    // When / Then
+    await expectDeclarationFailure(declare, "app feature endpoint declarations are deterministic");
+  });
+
+  test("rejects app endpoint declarations for unselected services", async () => {
+    // Given
+    const declare: DeclareEndpoints = () =>
+      Effect.succeed({ node: [{ _tag: "internal", protocol: "http", port: 8080 }] });
+    // When / Then
+    await expectDeclarationFailure(declare, "app feature declares endpoints only for selected services");
+  });
   test("passes for a Mailpit-style feature selecting php and injecting SMTP env", async () => {
     const mailpit: AppFeatureDefinition = {
       id: "mailpit.smtp",

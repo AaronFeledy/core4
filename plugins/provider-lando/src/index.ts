@@ -7,6 +7,7 @@ import type {
   EngineHttpRequest,
   EngineHttpResponse,
   PodmanApiClient,
+  ProviderErrorContext,
 } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
@@ -125,6 +126,7 @@ import {
   windowsSyncPermissionsForUser,
 } from "./windows-sync-targets.ts";
 
+import { runtimeDiagnosticContext } from "@lando/container-runtime/redact";
 import {
   inspectAppliedPlan,
   listAppliedPlans,
@@ -551,7 +553,12 @@ type RuntimeProviderWithContainerEvents = RuntimeProviderWithServiceControls & {
   readonly getContainerDiedEvents: ReturnType<typeof getContainerDiedEvents>;
 };
 
-export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
+export const makeRuntimeProvider = Effect.fnUntraced(function* (options: ProviderLayerOptions) {
+  const ctx = yield* runtimeDiagnosticContext(LANDO_CTX);
+  return yield* makeRuntimeProviderWithContext(options, ctx);
+});
+
+const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX: ProviderErrorContext) => {
   const providerId = ProviderId.make("lando");
   const platform = options.platform;
   const family = hostPlatformFamily(platform);
@@ -565,7 +572,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   const socketPath = externalSocketPath ?? managedSocketPath;
   const podmanApi =
     options.podmanApi ??
-    (socketPath === undefined ? undefined : (options.podmanApiFactory ?? makePodmanApiClient)(socketPath));
+    (socketPath === undefined
+      ? undefined
+      : options.podmanApiFactory === undefined
+        ? makeRuntimePodmanApiClient(socketPath, LANDO_CTX)
+        : options.podmanApiFactory(socketPath));
   const stateDir = options.stateDir;
   const runtimeBinDir = options.runtimeBinDir;
   const shouldManageRuntime = externalSocketPath === undefined && managedSocketPath !== undefined;
@@ -744,6 +755,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
     const { capabilities: resolvedCapabilities, logSourceBinding } = yield* capabilities.pipe(
       Effect.map((resolved) => {
         const logSourceBinding = makeProviderLogSourceBinding({
+          ...(LANDO_CTX.redactor === undefined ? {} : { redactor: LANDO_CTX.redactor }),
           providerId: LANDO_CTX.providerId,
           logFileAccess: options.logFileAccess,
           helperTarget: resolved.hostProxy?.containerTargets[0],
@@ -777,7 +789,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         ? {}
         : { endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath }),
       capabilities: resolvedCapabilities,
-      redactDetails,
+      redactDetails: (value) => redactDetails(value, LANDO_CTX.redactor),
       volumeCreationLabels: podmanVolumeCreationLabels,
       providerId,
       providerName: "provider-lando",
@@ -1600,9 +1612,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               ...(socketPath === undefined ? {} : { daemonUrl: socketPath }),
               ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
               ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
-              ...(applyOptions.serviceEnvironment === undefined
+              ...(applyOptions.resolveServiceEnvironment === undefined
                 ? {}
-                : { serviceEnvironment: applyOptions.serviceEnvironment }),
+                : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
               reconcile: applyOptions.reconcile,
               onVolumeCreated: applyOptions.onVolumeCreated,
               ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),

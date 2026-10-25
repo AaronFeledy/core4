@@ -17,6 +17,7 @@ import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
@@ -45,9 +46,9 @@ test("Given a cached plan with networks, when support is omitted, then the cache
   );
   const runPlan = (capabilities: ProviderCapabilities) =>
     Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-        Effect.provide(plannerLayer),
-      ),
+      Effect.flatMap(AppPlanner, (planner) =>
+        planner.plan(literalLandofile(landofile, appRoot), capabilities),
+      ).pipe(Effect.provide(plannerLayer)),
     );
 
   try {

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 
-import { SqlRecoveryOperationError } from "@lando/sdk/errors";
+import { SqlCommandFailedError, SqlRecoveryOperationError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { AppId, type PrunePolicy, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 
@@ -93,12 +93,15 @@ describe("automatic SQL recovery retention", () => {
       expect(Exit.isFailure(outcome.exit)).toBe(true);
       if (!Exit.isFailure(outcome.exit)) throw new Error("expected mutation failure");
       const error = Option.getOrUndefined(Cause.findErrorOption(outcome.exit.cause));
-      expect(error).toBeInstanceOf(SqlRecoveryOperationError);
-      if (!(error instanceof SqlRecoveryOperationError)) throw new Error("expected recovery error");
-      expect(fixture.captured).toEqual([error.recoverySnapshotId]);
+      expect(error).toBeInstanceOf(action === "reset" ? SqlCommandFailedError : SqlRecoveryOperationError);
+      if (!(error instanceof SqlRecoveryOperationError || error instanceof SqlCommandFailedError))
+        throw new Error("expected recovery error");
+      const recoverySnapshotId = error.recoverySnapshotId;
+      if (recoverySnapshotId === undefined) throw new Error("expected recovery snapshot id");
+      expect(fixture.captured).toEqual([recoverySnapshotId]);
       expect(fixture.removed).toEqual([]);
       expect(outcome.listed.map((snapshot) => snapshot.id).sort()).toEqual(
-        [...outcome.old, outcome.restoreSource.id, error.recoverySnapshotId].sort(),
+        [...outcome.old, outcome.restoreSource.id, recoverySnapshotId].sort(),
       );
     });
   }

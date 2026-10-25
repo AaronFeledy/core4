@@ -1,12 +1,16 @@
 import { expect, test } from "bun:test";
-import { registerRedactionValues } from "@lando/redaction/service";
-import { Effect } from "effect";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import { safeOuterFailure } from "../../src/cli/outer-failure.ts";
 
 test("outer failures redact registered values and secret patterns", async () => {
   const secret = "outer-catch-registered-value";
-  await Effect.runPromise(registerRedactionValues([secret]));
-  const output = await safeOuterFailure(new Error(`${secret} https://user:private-password@example.com`));
+  const output = await safeOuterFailure(
+    new Error(`${secret} https://user:private-password@example.com`),
+    async () => ({
+      ...(await import("@lando/redaction/service")),
+      createStandaloneRedactor: () => createStandaloneRedactor("secrets", { authoritativeTokens: [secret] }),
+    }),
+  );
   expect(output).not.toContain(secret);
   expect(output).not.toContain("private-password");
   expect(output).toContain("[redacted]");

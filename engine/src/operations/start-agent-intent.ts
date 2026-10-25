@@ -45,7 +45,8 @@ export const resolveStartAgentIntent = <Extension, Intent, Error>(
         : undefined);
     const extension = agentLandofile === undefined ? config.planExtension(plan) : undefined;
     return config.resolveIntent({
-      landofile: agentLandofile ?? (extension === undefined ? {} : config.fallbackLandofile(extension)),
+      landofile:
+        agentLandofile?.document ?? (extension === undefined ? {} : config.fallbackLandofile(extension)),
       globalConfig: Option.isSome(global) && eligible ? yield* global.value.load : undefined,
     });
   });

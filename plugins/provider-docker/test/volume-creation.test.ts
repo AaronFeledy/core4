@@ -5,6 +5,7 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("creation"),
   name: "creation",
   slug: "creation",

@@ -12,6 +12,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 const composeServiceFieldCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -37,7 +38,9 @@ const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
 
 const plan = (landofile: typeof LandofileShape.Type) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, composeServiceFieldCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) =>
+      planner.plan(literalLandofile(landofile, process.cwd()), composeServiceFieldCapabilities),
+    ).pipe(
       Effect.provide(
         AppPlannerLayer.layer.pipe(
           Layer.provide(Layer.mergeAll(BunFileSystem.layer, PluginRegistryLayer.layer)),

@@ -70,6 +70,7 @@ const service: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Ensure Runtime App",
   slug: "ensureapp",

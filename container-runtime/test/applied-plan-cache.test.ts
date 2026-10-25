@@ -7,6 +7,7 @@ import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
 import { makeAppliedPlanCache } from "../src/applied-plan-cache.ts";
+import { plan as valuePlan } from "./fixtures/environment-values.ts";
 
 const appId = AppId.make("app");
 
@@ -33,6 +34,39 @@ const stateStore = (lockFails: boolean): PluginStateStore => ({
 });
 
 describe("applied plan cache", () => {
+  test.each([false, true])(
+    "projects hooks before memory caching with persistent state=%s",
+    async (persistent) => {
+      const desired: AppPlan = {
+        ...valuePlan,
+        events: { "pre-stop": [{ step: "stale", source: "project", sourceIndex: 0, status: "active" }] },
+        extensions: { eventSites: ["stale"], retainedTooling: { task: "cleanup" } },
+      };
+      const written: AppPlan[] = [];
+      const cache = makeAppliedPlanCache({
+        providerId: desired.provider,
+        providerName: "test",
+        ...(persistent ? { appliedPlanState: stateStore(false) } : {}),
+        sanitizeAppliedPlan: (input) => {
+          const { eventSites: _sites, ...extensions } = input.extensions;
+          return { ...input, extensions };
+        },
+        load: () => Effect.succeed(undefined),
+        persist: (_state, input) =>
+          Effect.sync(() => {
+            written.push(input);
+          }),
+        remove: () => Effect.void,
+      });
+      await Effect.runPromise(cache.rememberPlan(desired, true));
+      const observed = await Effect.runPromise(cache.resolvePlan(desired.id));
+      const { events: _events, ...record } = desired;
+      const expected = { ...record, extensions: { retainedTooling: { task: "cleanup" } } };
+      expect(observed).toEqual(expected);
+      expect(written).toEqual(persistent ? [expected] : []);
+      expect(desired.events?.["pre-stop"]).toHaveLength(1);
+    },
+  );
   test("loads a plan once for two lookups", async () => {
     const stored = new Map<AppId, AppPlan>([[appId, appPlan("stored", ["db"])]]);
     let loads = 0;

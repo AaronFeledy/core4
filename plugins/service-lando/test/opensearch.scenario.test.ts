@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
+import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -8,7 +9,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   LandofileShape,
   type ProviderCapabilities,
   ProviderId,
@@ -117,9 +118,9 @@ const makeProvider = (
   return { provider, calls };
 };
 
-const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
+const planLandofile = (landofile: LandofileShape): Promise<CurrentExecutableAppPlan> =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(compileTestLandofile(landofile), capabilities)).pipe(
       Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
       Effect.provide(PluginRegistryLayer.layer),
     ),
@@ -127,13 +128,13 @@ const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
 
 const makeToolingLayer = (options: {
   readonly landofile: LandofileShape;
-  readonly plan: AppPlan;
+  readonly plan: CurrentExecutableAppPlan;
   readonly provider: RuntimeProviderShape;
 }) => {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: Effect.sync(() => compileTestLandofile(options.landofile)),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -155,11 +156,12 @@ const makeToolingLayer = (options: {
   );
   return Layer.mergeAll(
     PrivateFileAccessService.layer,
+    toolingValueResolverLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
     LandoEventService.layer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provide(toolingValueResolverLayer)),
     emptyConfigServiceLayer,
   );
 };
@@ -205,7 +207,7 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
       tooling: {
         "os-cli": {
           service: "search",
-          cmd: ["sh", "-c", 'path=${1:-/}; curl -sf -- "http://localhost:9200${path}"', "os-cli"],
+          cmd: ["sh", "-c", 'path=$${1:-/}; curl -sf -- "http://localhost:9200$${path}"', "os-cli"],
         },
       },
     });
@@ -240,7 +242,7 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
       tooling: {
         "os-cli": {
           service: "search",
-          cmd: ["sh", "-c", 'path=${1:-/}; curl -sf -- "http://localhost:9200${path}"', "os-cli"],
+          cmd: ["sh", "-c", 'path=$${1:-/}; curl -sf -- "http://localhost:9200$${path}"', "os-cli"],
         },
       },
     });

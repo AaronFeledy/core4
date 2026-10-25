@@ -53,7 +53,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
     ? yield* loadUserLandofile(landofiles.value).pipe(Effect.catch(() => Effect.succeed(undefined)))
     : undefined;
   const intent = resolveSshAgentIntent({
-    landofile: landofile ?? {},
+    landofile: landofile?.document ?? {},
     globalConfig: sshAgent === undefined ? undefined : { sshAgent },
   });
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
@@ -76,7 +76,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         const socket = yield* input.sshService.getAgentSocket(AppId.make("global"));
         const provider =
           socket.runtimeVolume !== undefined && Option.isSome(registry)
-            ? yield* registry.value.select(landofile?.provider)
+            ? yield* registry.value.select(landofile?.document.provider)
             : undefined;
         const globalApp = yield* Effect.serviceOption(GlobalAppService);
         const globalProvider = Option.isSome(globalApp) ? yield* globalApp.value.providerId : undefined;
@@ -185,7 +185,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
       ? yield* config.value.get("gpgAgent").pipe(Effect.catch(() => Effect.succeed(undefined)))
       : input.globalConfig?.gpgAgent;
   const gpg = yield* gpgAgentPostureDetail({
-    landofile: landofile ?? {},
+    landofile: landofile?.document ?? {},
     ...(configuredGpg === undefined ? {} : { globalGpg: configuredGpg }),
     ...(input.gpgRunner === undefined ? {} : { runner: input.gpgRunner }),
     ...(input.discovery?.exists === undefined ? {} : { exists: input.discovery.exists }),

@@ -1,6 +1,6 @@
 # Lando v4: Caches and Persistence
 
-> **Part 12 of 19** · [Index](./README.md)
+> **Part 12 of 20** · [Index](./README.md)
 > **Read next:** [13 Testing and Distribution](./13-testing-and-distribution.md)
 
 This part defines Lando-owned caches, durable state, on-disk artifacts, atomicity, hot-path budgets, and offline behavior.
@@ -19,7 +19,7 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `cwd-app-map` | `<userCacheRoot>/cwd-app-map.bin` | binary | Bounded CWD-to-app-root index with Landofile freshness metadata; stale entries fall back to discovery. |
 | `plugin` | `<userCacheRoot>/plugin-cache.json` | JSON | Resolved manifests, dependency graph, and contribution index. |
 | `app-plugin` | `<userCacheRoot>/apps/<app-id>/plugins.json` | JSON | App plugin lock resolution and local install metadata. |
-| `app-plan` | `<userCacheRoot>/apps/<app-id>/plan.bin` | Effect Schema binary | Frozen `AppPlan`, provider id, compiled tooling graphs, expression ASTs, and fingerprints, plus the host-path shadow eligibility verdicts behind its storage shadows; a changed verdict invalidates the entry. The key includes the environment dependencies of app-feature `fromConfig` selectors, captured once for both key derivation and selector evaluation: statically referenced names, with unset values distinct from strings, or the complete captured environment when a selector reads it whole or by computed member. The key MUST also include §7.4.2 input/metadata/translator/context fingerprints and generated-output digests; changed fingerprints invalidate it. No session secrets or live endpoints. |
+| `app-plan` | `<userCacheRoot>/apps/<app-id>/plan.bin` | Effect Schema binary | Frozen `AppPlan`, provider id, compiled tooling graphs, expression ASTs, and fingerprints, plus the host-path shadow eligibility verdicts behind its storage shadows; a changed verdict invalidates the entry. The key includes the environment dependencies of app-feature `fromConfig` selectors, captured once for both key derivation and selector evaluation: statically referenced names, with unset values distinct from strings, or the complete captured environment when a selector reads it whole or by computed member. The key MUST also include §7.4.2 input/metadata/translator/context fingerprints and generated-output digests; changed fingerprints invalidate it. Environment and credential values are stored as `EnvironmentValue` descriptors (§7.3.1); the key and record hash descriptors, never resolved bytes. No session secrets or live endpoints. |
 | `remote-metadata` | `<userCacheRoot>/apps/<app-id>/remote-metadata.bin` | Effect Schema binary | Nonsecret translation snapshots keyed by source/config identity, resolved remote, environment, branch, and schema version, carrying revision/content digest (§7.4.2). Only explicit translation refresh, the initial refresh of pull-with-code or switch, and §8.8.13 init materialization MAY fetch and populate it, always under the final app identity; no TTL network refresh on routine lifecycle commands. |
 | `global-app-plan` | `<userCacheRoot>/global/plan.bin` | Effect Schema binary | Cross-app-readable global `AppPlan` (§20.5), invalidated by global layers/config/contributions or lifecycle changes. |
 | `global-app-info` | `<userCacheRoot>/global/info.json` | JSON | Last known global `ServiceInfo[]`. |
@@ -51,11 +51,15 @@ Every cache is versioned. Binary files carry a cache identity, schema/Lando vers
 
 Tooling caches MUST contain only expression ASTs and static redacted metadata. They MUST NOT contain dynamic shell-variable results, decrypted secrets, host output, provider connection state, or status/precondition results.
 
+Execution observations are bounded in-memory metadata (§22.7), not replay journals. They do not change build-cache eligibility or permit caching resolved secrets and arbitrary Effect values.
+
 ### 12.3 Atomicity
 
 `CacheService.writeAtomic` encodes before mutation, writes and syncs a sibling temporary file, then atomically renames it. In-process read/modify/write uses an Effect `Ref`. Crashes MUST leave either the prior complete cache or a regenerable invalid file, never a partial live value.
 
 ### 12.4 Persistent artifacts
+
+Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests. Session captures follow their scope; explicitly retained private bytes live under the user-data root until authorized removal. They are distinct from runnable provider artifacts, build caches, and public transcripts.
 
 | Location | Artifact class |
 |---|---|

@@ -29,6 +29,8 @@ lando app:config --format=json
 
 Start waits for the probe to exit successfully. If its attempts run out, start reports a readiness failure. `app:config --format=json` shows the effective healthcheck configuration.
 
+Writing `healthcheck:` on a typed service replaces that type's default probe. When the type runs a stronger startup check than its ongoing healthcheck, yours replaces both: start waits for your command, and nothing stronger runs underneath it.
+
 ## Write the probe as a string or a list
 
 A string runs through `sh -c`. The shell splits `curl -fsS http://localhost:3000/`.
@@ -101,7 +103,7 @@ Probe HTTP through a command such as `curl`. The bundled runner executes command
 
 ## Turn the probe off
 
-`healthcheck: false` drops the probe. That includes one you wrote and a service type's default, such as MySQL's `mysqladmin ping`. Running-state checks remain in place; start no longer waits for an application probe.
+`healthcheck: false` drops the probe. That includes one you wrote and a service type's default, such as MySQL's `mysqladmin ping`. A type that runs a stronger check at startup than it does afterwards, such as [MongoDB](./mongodb.mdx#what-ready-checks-and-what-it-doesnt), loses both. Running-state checks remain in place; start no longer waits for an application probe.
 
 Put the override in `.lando.local.yml` when only this machine should skip the probe. `false` replaces the base value. It doesn't merge with it. A later layer that sets an object doesn't bring the old probe back. It starts from the service type's default, or from nothing when the type has none.
 

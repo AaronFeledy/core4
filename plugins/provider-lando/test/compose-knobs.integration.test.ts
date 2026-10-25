@@ -51,6 +51,7 @@ const web: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Compose Knobs App",
   slug: "composeknobsapp",

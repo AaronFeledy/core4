@@ -14,6 +14,8 @@ export const mergeLandofileRootLayers = Effect.fnUntraced(function* (
   const { merged, runtime } = yield* composeLandofileRootLayers(appRoot, inputs);
   const landofile = yield* finalizeLandofile(canonicalPath, merged, {
     appRoot,
+    pendingSites: runtime.pendingSites,
+    env: runtime.compilationContext?.env,
     loadPolicy: runtime.policy,
     logger: runtime.logger,
     ...(inputs?.templates.context?.env === undefined ? {} : { env: inputs.templates.context.env }),

@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
-import { LandofileShape } from "@lando/sdk/schema";
 import { PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import { planApp } from "../../src/planner/assemble.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import { compileTestLandofile } from "../compiled-landofile.ts";
 
 for (const type of ["nginx", "node:22"]) {
   test.each([
@@ -14,10 +14,15 @@ for (const type of ["nginx", "node:22"]) {
     { scenario: "publications are explicitly empty", ports: [] },
   ])(`${type} default route targets the primary listener when $scenario`, async ({ ports }) => {
     // Given
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "primary-port",
-      services: { web: { type, port: 3187, ports, home: false } },
-    });
+    const landofile = await Effect.runPromise(
+      compileTestLandofile(
+        {
+          name: "primary-port",
+          services: { web: { type, port: 3187, ports, home: false } },
+        },
+        "/srv/apps/primary-port",
+      ),
+    );
     // When
     const plan = await Effect.runPromise(
       Effect.gen(function* () {

@@ -1,14 +1,14 @@
 import { parseLandofile } from "@lando/landofile/parser";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { ScratchAppError } from "@lando/sdk/errors";
-import type { LandofileShape } from "@lando/sdk/schema";
+import type { LoadScopedLandofile } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 export const decodeScratchLandofile = (
   file: string,
   content: string,
   cwd: string,
-): Effect.Effect<LandofileShape, ScratchAppError> =>
+): Effect.Effect<LoadScopedLandofile, ScratchAppError> =>
   parseLandofile({ file, content, cwd }).pipe(
     Effect.mapError(
       (cause) =>

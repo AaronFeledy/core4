@@ -1,8 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { causeMessage } from "@lando/sdk/errors";
-import { DateTime, Effect } from "effect";
+import type { Redactor } from "@lando/sdk/secrets";
+import { DateTime, Effect, Option } from "effect";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { redactString } from "../redact";
@@ -53,6 +55,10 @@ export const writeSetupReadiness = Effect.fnUntraced(function* (
   runtimeService?: SetupReadinessRuntimeService | null,
 ): Effect.fn.Return<void, never> {
   if (userDataRoot === undefined) return;
+  const service = yield* Effect.serviceOption(RedactionService);
+  const redactor = Option.isSome(service)
+    ? yield* service.value.forProfile("secrets")
+    : createStandaloneRedactor("secrets");
   const existing = yield* readSetupReadinessRaw(userDataRoot);
   const runtimeServiceBlock =
     runtimeService === undefined
@@ -66,7 +72,11 @@ export const writeSetupReadiness = Effect.fnUntraced(function* (
     status: summaryStatus(steps),
     providerId,
     updatedAt: DateTime.formatIso(yield* DateTime.now),
-    steps,
+    steps: steps.map((step) => ({
+      ...step,
+      evidence: redactor.redactString(step.evidence),
+      ...(step.remediation === undefined ? {} : { remediation: redactor.redactString(step.remediation) }),
+    })),
     ...runtimeServiceBlock,
   };
   yield* Effect.promise(() =>
@@ -79,7 +89,16 @@ export const readSetupReadiness = (
 ): Effect.Effect<SetupReadinessSummary | undefined, never> => {
   if (userDataRoot === undefined) return Effect.succeed(undefined);
   return readSetupReadinessRaw(userDataRoot).pipe(
-    Effect.map((summary) => (summary === undefined ? undefined : redactSetupReadinessSummary(summary))),
+    Effect.flatMap((summary) =>
+      Effect.gen(function* () {
+        if (summary === undefined) return undefined;
+        const service = yield* Effect.serviceOption(RedactionService);
+        const redactor = Option.isSome(service)
+          ? yield* service.value.forProfile("secrets")
+          : createStandaloneRedactor("secrets");
+        return redactSetupReadinessSummary(summary, redactor);
+      }),
+    ),
   );
 };
 
@@ -94,26 +113,36 @@ const readSetupReadinessRaw = (
   }).pipe(Effect.catch(() => Effect.succeed(undefined)));
 };
 
-const redactSetupReadinessSummary = (summary: SetupReadinessSummary): SetupReadinessSummary => ({
+const redactSetupReadinessSummary = (
+  summary: SetupReadinessSummary,
+  redactor: Redactor,
+): SetupReadinessSummary => ({
   ...summary,
+  providerId: redactor.redactString(summary.providerId),
   ...(summary.runtimeService === undefined
     ? {}
     : {
         runtimeService: {
           ...summary.runtimeService,
-          socketPath: redactString(summary.runtimeService.socketPath),
+          socketPath: redactor.redactString(summary.runtimeService.socketPath),
+          ...(summary.runtimeService.runtimeVersion === undefined
+            ? {}
+            : { runtimeVersion: redactor.redactString(summary.runtimeService.runtimeVersion) }),
         },
       }),
   steps: summary.steps.map((step) => ({
     ...step,
-    evidence: redactString(step.evidence),
-    ...(step.remediation === undefined ? {} : { remediation: redactString(step.remediation) }),
+    id: redactor.redactString(step.id),
+    evidence: redactor.redactString(step.evidence),
+    ...(step.remediation === undefined ? {} : { remediation: redactor.redactString(step.remediation) }),
   })),
 });
 
-export const setupFailureEvidence = (stepId: string, cause: unknown): string => {
+export const setupFailureEvidence = (stepId: string, cause: unknown, redactor?: Redactor): string => {
   const message = causeMessage(cause);
-  return redactString(`${stepId} setup failed: ${message}`);
+  return redactor === undefined
+    ? redactString(`${stepId} setup failed: ${message}`)
+    : redactor.redactString(`${stepId} setup failed: ${message}`);
 };
 
 const setupFailurePlatformHint = (stepId: string): string => {
@@ -127,5 +156,9 @@ const setupFailurePlatformHint = (stepId: string): string => {
   }
 };
 
-export const setupFailureRemediation = (stepId: string, cause: unknown): string =>
-  redactString(`${setupFailurePlatformHint(stepId)} Last failure: ${causeMessage(cause)}`);
+export const setupFailureRemediation = (
+  stepId: string,
+  cause: unknown,
+  redactor: Pick<Redactor, "redactString"> = { redactString },
+): string =>
+  redactor.redactString(`${setupFailurePlatformHint(stepId)} Last failure: ${causeMessage(cause)}`);

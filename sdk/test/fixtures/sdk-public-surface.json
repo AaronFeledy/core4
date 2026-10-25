@@ -1,6 +1,7 @@
 {
   "landofileServiceErrorTags": [
     "ComposeKeyRejectedError",
+    "ConfigExpressionError",
     "Lando3LandofileDetected",
     "LandofileDialectMixError",
     "LandofileFormConflictError",
@@ -35,9 +36,13 @@
     "writeStderr"
   ],
   "rendererOutputIOMembers": ["stdoutColumns", "stdoutIsTTY", "writeStderr", "writeStdout"],
+  "featureEndpointDeclarations": {
+    "ServiceFeatureDefinition": "readonly declareEndpoints?: (ctx: ServiceEndpointContext) => Effect.Effect<readonly EndpointPlan[], ServiceFeatureError>",
+    "AppFeatureDefinition": "readonly declareEndpoints?: (ctx: AppEndpointDeclarationContext) => Effect.Effect<Readonly<Record<string, readonly EndpointPlan[]>>, AppFeatureError>"
+  },
   "serviceTags": {
     "AppPlanner": [
-      "plan:(landofile:LandofileShape,providerCapabilities:ProviderCapabilities) => Effect.Effect<AppPlan,AppPlannerError>"
+      "plan:(landofile:LoadScopedLandofile,providerCapabilities:ProviderCapabilities) => Effect.Effect<CurrentExecutableAppPlan,AppPlannerError>"
     ],
     "AppPlanSanitizer": ["sanitizeForPersistence:(plan:AppPlan) => AppPlan"],
     "BuildOrchestrator": [
@@ -165,7 +170,7 @@
     ],
     "HealthcheckRunner": [
       "id:string",
-      "run:(plan:HealthcheckPlan,appId:AppId,service:ServiceName) => Effect.Effect<HealthcheckResult,HealthcheckRunError>"
+      "run:(plan:HealthcheckPlan,appId:AppId,service:ServiceName,appPlan?:AppPlan) => Effect.Effect<HealthcheckResult,HealthcheckRunError>"
     ],
     "HostProxyService": [
       "id:string",
@@ -182,7 +187,10 @@
       "secret:(spec:SecretSpec) => Effect.Effect<Redacted.Redacted<string>,InteractionError,Scope.Scope>",
       "select:<A extends PromptScalar>(spec:SelectSpec<A>) => Effect.Effect<A,InteractionError,Scope.Scope>"
     ],
-    "LandofileService": ["discover:Effect.Effect<LandofileShape,LandofileServiceError>"],
+    "LandofileService": ["discover:Effect.Effect<LoadScopedLandofile,LandofileServiceError>"],
+    "EnvironmentValueResolver": [
+      "openSession:() => Effect.Effect<EnvironmentValueResolverSession,never,Scope.Scope>"
+    ],
     "Logger": [
       "debug:(message:string,data?:Readonly<Record<string,unknown>>) => Effect.Effect<void,EventError>",
       "error:(message:string,data?:Readonly<Record<string,unknown>>) => Effect.Effect<void,EventError>",
@@ -447,6 +455,7 @@
     "./command-result": [
       "FailureRoleAnnotation",
       "buildCommandResultEnvelope",
+      "commandCompletionFromExitCode",
       "commandFailureCause",
       "encodeCommandResult",
       "encodeStreamEventFrame",
@@ -457,16 +466,14 @@
       "identityRedactor",
       "listSelectableResultKeys",
       "primaryFailureReason",
-      "projectEncodedResult"
+      "projectEncodedResult",
+      "resolveCommandCompletion"
     ],
     "./database-creds": [
       "DATABASE_FAMILY_DEFAULT_PORTS",
       "DATABASE_FAMILY_ENV_KEYS",
       "DATABASE_PORT_ENV_KEY",
-      "LANDO_DB_ENV_KEYS",
-      "databaseEnvCreds",
-      "databaseEnvPort",
-      "firstEnv"
+      "LANDO_DB_ENV_KEYS"
     ],
     "./digest": ["canonicalJson", "sha256Hex"],
     "./docs/components": [
@@ -576,6 +583,7 @@
       "DownloadSizeMismatchError",
       "DownloadSourceForbiddenError",
       "DownloaderUnavailableError",
+      "EnvironmentValueResolutionError",
       "EventError",
       "FileIoError",
       "FileNotFoundError",
@@ -656,6 +664,7 @@
       "NotImplementedError",
       "OpenTargetUnresolvedError",
       "PhpMyAdminHostsCredsError",
+      "PlanReplanRequiredError",
       "PluginDescriptorMismatchError",
       "PluginLoadError",
       "PluginManifestError",
@@ -921,6 +930,10 @@
       "SecretRefSegment",
       "ShellParamOperator",
       "ShellParamSegment",
+      "bindingExpressionError",
+      "concatenateEnvironmentValues",
+      "containsReservedBinding",
+      "encodeEnvironmentComponent",
       "evaluateExpression",
       "evaluateExpressionEither",
       "evaluateTemplate",
@@ -928,6 +941,7 @@
       "expressionInterpolationsTouchOnlyScopes",
       "expressionScopeMembers",
       "expressionTouchesOnlyScopes",
+      "isEnvironmentBinding",
       "parseExpression",
       "parseExpressionEither"
     ],
@@ -1033,6 +1047,7 @@
       "recipeFamilyKey",
       "recipeMigratability",
       "recipeVersionedKey",
+      "renderCompiledRecipeSnapshot",
       "renderRecipeSnapshot",
       "sameRecipeFamily",
       "sameRecipeVersion",
@@ -1111,6 +1126,8 @@
       "BOOTSTRAP_RANK",
       "BindAddress",
       "BootstrapLevel",
+      "BoundText",
+      "BoundTextReference",
       "BuildBlock",
       "BuildPhase",
       "BuildPlan",
@@ -1133,12 +1150,17 @@
       "ChoicesFrom",
       "CleanupProps",
       "CommandAliasesShape",
+      "CommandCompletion",
+      "CommandOutput",
+      "CommandOutputChunk",
       "CommandResultEnvelope",
       "CommandResultFormat",
       "CommandSpec",
       "CommandTrace",
       "CommandTraceSpan",
       "CommandWarning",
+      "CompilationContext",
+      "CompiledLandofile",
       "ComponentId",
       "ComposeBooleanOrStringField",
       "ComposeByteSizeField",
@@ -1184,6 +1206,7 @@
       "ComposeTmpfsField",
       "ComposeUlimit",
       "ComposeUlimitsField",
+      "ComposedCompiledLandofile",
       "ConfigLintResult",
       "ConfigLintViolation",
       "ConfigTranslateAnswerValue",
@@ -1215,6 +1238,7 @@
       "ContainerUser",
       "ContentSource",
       "ContributionRef",
+      "CurrentExecutableAppPlan",
       "DEFAULT_KEYMAP_BINDINGS",
       "DEFAULT_ROUTER_HTTPS_PORTS",
       "DEFAULT_ROUTER_HTTP_PORTS",
@@ -1225,6 +1249,7 @@
       "DataTransferProgress",
       "DataTransferResult",
       "DataTransferSpec",
+      "DatabaseConnection",
       "DatasetApplyOptions",
       "DatasetApplyResult",
       "DatasetArtifactFormat",
@@ -1259,6 +1284,8 @@
       "EndpointPlan",
       "EndpointPublication",
       "EndpointRef",
+      "Environment",
+      "EnvironmentValue",
       "EventCmdStep",
       "EventCommandInputValue",
       "EventCommandStep",
@@ -1320,6 +1347,7 @@
       "HostTerminal",
       "HttpClientContribution",
       "HttpEndpointSelection",
+      "IdentityScopedLandofile",
       "ImportRef",
       "IncludeEntry",
       "InlineProps",
@@ -1360,6 +1388,7 @@
       "LandofileSourceValue",
       "LayerMergeRule",
       "LifecycleCommandId",
+      "LoadScopedLandofile",
       "LocalStackServiceConfig",
       "LogSource",
       "LogSourceId",
@@ -1402,6 +1431,7 @@
       "ObservedPublication",
       "OwnedResourcesCleanupResult",
       "PanelView",
+      "ParsedPendingSite",
       "PerAppBridgePlan",
       "PhpComposerConfig",
       "PhpMyAdminServiceConfig",
@@ -1540,6 +1570,8 @@
       "ScenarioProps",
       "SchemaDeprecationAnnotationId",
       "SchemaLayerMergeAnnotationId",
+      "SecretRef",
+      "SecretReference",
       "SecretStoreContribution",
       "ServiceConfig",
       "ServiceConfigInput",
@@ -1547,6 +1579,7 @@
       "ServiceCopyInSpec",
       "ServiceCopyOutSpec",
       "ServiceCreds",
+      "ServiceCredsDisplay",
       "ServiceDependency",
       "ServiceDependencyCondition",
       "ServiceFileConfig",
@@ -1554,6 +1587,7 @@
       "ServiceInfoLogSource",
       "ServiceName",
       "ServicePlan",
+      "ServiceScopedLandofile",
       "ServiceState",
       "SharedNetworkMembershipPlan",
       "SkipProps",
@@ -1567,6 +1601,7 @@
       "SnapshotMetadata",
       "SnapshotOptions",
       "SnapshotRestoreOptions",
+      "SourceCompiledLandofile",
       "SshAgentConfig",
       "SshServiceContribution",
       "StartedService",
@@ -1661,6 +1696,8 @@
       "deprecateField",
       "deprecateSchema",
       "deriveAuthoringAst",
+      "effectiveReadiness",
+      "encodeUriComponent",
       "endpointInvariantIssues",
       "fileSyncVolumeName",
       "formatDeprecationNotice",
@@ -1693,6 +1730,7 @@
       "landoSharedNetworkName",
       "layerMerge",
       "logicalEndpointIdentity",
+      "normalizeEnvironmentValue",
       "override",
       "parseContainerDestination",
       "parseShortVolume",
@@ -1713,6 +1751,7 @@
       "schemaArtifactFilename",
       "schemaDeprecationsFromJsonSchema",
       "selectHttpEndpoint",
+      "serviceListenerTarget",
       "snapshotHandle",
       "structuralDeprecationKey",
       "suggestionForUnknownKey",
@@ -1795,6 +1834,7 @@
       "Dataset",
       "DeprecationService",
       "Downloader",
+      "EnvironmentValueResolver",
       "EventService",
       "FileSyncEngine",
       "FileSystem",
@@ -1956,6 +1996,7 @@
       "emitYamlDocument",
       "isYamlPlainSafe",
       "quoteYamlScalar",
+      "stripYamlLineComment",
       "yamlMappingKeyText",
       "yamlScalarText"
     ]

@@ -18,6 +18,8 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
+    "./compiled-sites": "./src/compiled-sites.ts",
+    "./compiled-loader": "./src/compiled-loader.ts",
     ".": "./src/index.ts",
     "./app-resolution": "./src/app-resolution.ts",
     "./app-root-provenance": "./src/app-root-provenance.ts",

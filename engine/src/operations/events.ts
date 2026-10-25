@@ -1,3 +1,4 @@
+import { EnvironmentValueResolver } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
@@ -21,6 +22,7 @@ import {
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
+import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import {
   collectAppPlanPublicCredentialValues,
   collectAppPlanRedactionTokens,
@@ -60,7 +62,9 @@ const redactionValuesForStep = (
   return env === undefined
     ? []
     : collectSecretEnvValues(
-        Object.fromEntries(Object.entries(env).map(([name, value]) => [name, String(value)])),
+        Object.fromEntries(
+          Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        ),
         publicValues,
       );
 };
@@ -231,7 +235,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           if (record === undefined) return [];
           return Object.entries(record).flatMap(([name, value]) =>
             (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
-              collect({ [name]: String(occurrence) }, publicValues),
+              typeof occurrence === "string" ? collect({ [name]: occurrence }, publicValues) : [],
             ),
           );
         });
@@ -280,9 +284,18 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
       const program = yield* compileEventStepProgram(
         runnable.map((entry) => entry.step),
         validateCommand,
-        runnable.map((entry) => ({ authoredIndex: entry.sourceIndex, source: entry.source })),
+        runnable.map((entry) => ({
+          authoredIndex: entry.sourceIndex,
+          source: entry.source,
+          invocationSites: sitesUnder(invocationAuthorityForPlan(plan)?.sites ?? [], [
+            entry.source === "host" ? "hostEvents" : "events",
+            event,
+            entry.sourceIndex,
+          ]),
+        })),
       ).pipe(mapFailureErrors((error) => eventError(error, event, first.step, redactor, first.source)));
       const context: ExpressionContext = payload === undefined ? {} : { event: payload };
+      const environmentResolver = yield* Effect.serviceOption(EnvironmentValueResolver);
       yield* runToolingStepProgram(
         program,
         context,
@@ -291,6 +304,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           event,
           events: eventsOption.value,
           privateFileAccess: privateFileAccess.value,
+          environmentResolver,
           ...(Option.isSome(shellRunner) ? { hostRunner: shellRunner.value } : {}),
           redactor,
           redactorFor,

@@ -210,7 +210,9 @@ describe("mariadb ServiceType", () => {
       command: [
         "sh",
         "-c",
-        'mariadb-admin ping -h 127.0.0.1 -P 3306 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
+        'MYSQL_PWD="$MYSQL_PASSWORD" exec mariadb-admin ping -h 127.0.0.1 -P "$1" -u "$MYSQL_USER" --silent',
+        "mariadb-healthcheck",
+        "3306",
       ],
       intervalSeconds: 10,
       timeoutSeconds: 5,

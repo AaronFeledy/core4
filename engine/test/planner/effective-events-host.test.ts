@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 
+import { authoredInvocationSites } from "@lando/landofile/compiled-sites";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { DateTime } from "effect";
 import {
@@ -27,6 +28,38 @@ const plan = (): AppPlan => ({
 });
 
 describe("compileEffectiveEvents host steps", () => {
+  test("keeps equal step bytes when their parsed authority differs", () => {
+    const step = { cmd: "{{ event.value }}", service: ":host" };
+    const sites = authoredInvocationSites({ "post-start": [step] }, "<host-events>").map((site) => ({
+      ...site,
+      path: ["hostEvents", ...site.path],
+    }));
+    const compiled = compileEffectiveEvents({
+      landofile: { events: { "post-start": [step] } },
+      hostEvents: { "post-start": [step] },
+      invocationSites: sites,
+    });
+    expect(compiled["post-start"]?.map((entry) => entry.status)).toEqual(["active", "active"]);
+  });
+
+  test("deduplicates equivalent programs despite different source coordinates", () => {
+    const step = { cmd: "{{ event.value }}", service: ":host" };
+    const sites = authoredInvocationSites({ "post-start": [step] }, "<host-events>");
+    const compiled = compileEffectiveEvents({
+      landofile: { events: { "post-start": [step] } },
+      hostEvents: { "post-start": [step] },
+      invocationSites: [
+        ...sites.map((site) => ({ ...site, path: ["hostEvents", ...site.path] })),
+        ...sites.map((site) => ({
+          ...site,
+          id: `project-${site.id}`,
+          source: { ...site.source, file: "/project/.lando.yml" },
+          path: ["events", ...site.path],
+        })),
+      ],
+    });
+    expect(compiled["post-start"]?.map((entry) => entry.status)).toEqual(["deduped", "active"]);
+  });
   test("returns host steps first and drops a canonical host duplicate", () => {
     const compiled = compileEffectiveEvents({
       landofile: { events: { "post-start": [{ cmd: "echo hi" }] } },

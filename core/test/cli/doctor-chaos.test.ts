@@ -4,7 +4,7 @@ import { TestClock } from "effect/testing";
 import { Cause, type Context, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
-import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
+import { TestRuntimeProvider } from "@lando/core/testing";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
@@ -264,8 +264,14 @@ describe("doctor chaos: plugin-contributed checks", () => {
         api: 4,
       }),
     };
-    const secretStore = makeTestSecretStore({ secrets: { DUPLICATE_DOCTOR_TOKEN: secret } });
-    const redactionLayer = RedactionService.layer.pipe(Layer.provide(secretStore.layer));
+    const redactionLayer = Layer.effect(
+      RedactionService,
+      Effect.gen(function* () {
+        const service = yield* RedactionService;
+        yield* service.registerValues([secret]);
+        return service;
+      }),
+    ).pipe(Layer.provide(RedactionService.layer));
     const layers = Layer.merge(layersFor(statusRegistry(TestRuntimeProvider.getStatus)), redactionLayer);
 
     // When

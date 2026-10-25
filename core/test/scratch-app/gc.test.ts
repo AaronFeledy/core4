@@ -197,6 +197,7 @@ const makeLayer = (
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    environmentResolverLayer(),
     BunFileSystem.layer,
     landofileServiceLayer,
     plannerLive,
@@ -386,3 +387,4 @@ describe("ScratchAppServiceLayer.layer gc", () => {
     });
   });
 });
+import { environmentResolverLayer } from "../_support/value-contracts.ts";

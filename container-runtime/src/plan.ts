@@ -7,13 +7,10 @@ import {
   fileSyncVolumeName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
+import { ContainerPlanError } from "./container-plan-error.ts";
 import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
-import {
-  ContainerPlanError,
-  containerHealthcheck,
-  normalizeCommand,
-  normalizeEntrypoint,
-} from "./create-values.ts";
+import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
+import { literalServiceEnvironment, requireCurrentCreationPlan } from "./environment-values.ts";
 import {
   APP_LABEL,
   APP_ROOT_LABEL,
@@ -38,10 +35,18 @@ export const mergeAppliedPlan = (
   previous: AppPlan | undefined,
   incoming: AppPlan,
   reconcile: boolean,
-): AppPlan =>
-  previous === undefined || reconcile || previous.id !== incoming.id
-    ? incoming
-    : { ...incoming, services: { ...previous.services, ...incoming.services } };
+): AppPlan => {
+  if (previous === undefined || reconcile || previous.id !== incoming.id) return incoming;
+  const merged = { ...incoming, services: { ...previous.services, ...incoming.services } };
+  if (
+    previous.valueModel !== 1 &&
+    Object.keys(previous.services).some((name) => !(name in incoming.services))
+  ) {
+    const { valueModel: _valueModel, ...observed } = merged;
+    return observed;
+  }
+  return merged;
+};
 
 /** Container name shared by every provider. `-` is in the allowed class, so sanitizing the joined name matches sanitizing slug and service separately. */
 export const serviceContainerName = (plan: Pick<AppPlan, "slug">, service: string): string =>
@@ -51,7 +56,7 @@ export const envArrayFromRecord = (environment: Readonly<Record<string, string>>
   Object.entries(environment).map(([key, value]) => `${key}=${value}`);
 
 export const serviceEnv = (service: ServicePlan): ReadonlyArray<string> =>
-  envArrayFromRecord(service.environment);
+  envArrayFromRecord(literalServiceEnvironment(service));
 
 export const mountSuffix = (readOnly: boolean): string => (readOnly ? ":ro" : "");
 
@@ -80,7 +85,7 @@ export const commonContainerLabels = (
     ...extra,
   };
   const session = service.environment.LANDO_HOST_PROXY_SESSION;
-  if (session === undefined) delete baseLabels[HOST_PROXY_SESSION_LABEL];
+  if (typeof session !== "string") delete baseLabels[HOST_PROXY_SESSION_LABEL];
   else baseLabels[HOST_PROXY_SESSION_LABEL] = sha256Hex(session).slice(0, 16);
   return { ...baseLabels, [CREATE_CONFIG_LABEL]: createConfigFingerprint(plan, service, baseLabels) };
 };
@@ -323,17 +328,18 @@ export const containerCreateBodyFragment = (
   service: ServicePlan,
   options: ContainerCreateBodyOptions = {},
 ): Record<string, unknown> => {
+  requireCurrentCreationPlan(plan);
   const artifact = service.artifact;
   if (artifact?.kind !== "ref") {
     return (options.onMissingArtifact ?? missingArtifact)(artifact);
   }
-  const healthcheck = containerHealthcheck(service.healthcheck);
+  const healthcheck = containerHealthcheck(service.healthcheck, plan, service);
   const exposedPorts = containerExposedPorts(service.endpoints);
 
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
     Image: artifact.ref,
-    Env: envArrayFromRecord(options.environment ?? service.environment),
+    Env: envArrayFromRecord(options.environment ?? literalServiceEnvironment(service)),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,

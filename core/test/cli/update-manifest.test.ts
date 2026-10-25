@@ -1439,11 +1439,11 @@ describe("update signed manifest", () => {
       ...cliSelfUpdate,
     });
     expect(
-      updateSpec.successExitCode?.(
+      updateSpec.completion?.(
         { updatedCore: false, updatedPlugins: [], hasFailures: true },
         { args: {}, flags: {}, argv: [] },
       ),
-    ).toBe(1);
+    ).toEqual({ ok: false, exitCode: 1 });
   });
 
   test("renders the update receipt through the command spec", () => {

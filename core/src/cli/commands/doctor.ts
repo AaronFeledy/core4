@@ -230,11 +230,15 @@ export const doctor = Effect.fn("Doctor.collect")(
       redact,
     });
     if (diedEventsOutcome.self !== undefined) selfChecks.push(diedEventsOutcome.self);
-    const oomChecks = collectOomDoctorChecks(diedEventsOutcome.value, {
-      provider,
-      providerKind: diagnosis.providerKind,
-      platform: options.platform ?? provider.platform,
-    });
+    const oomChecks = collectOomDoctorChecks(
+      diedEventsOutcome.value,
+      {
+        provider,
+        providerKind: diagnosis.providerKind,
+        platform: options.platform ?? provider.platform,
+      },
+      redactor,
+    );
     const hostProxyOutcome = yield* isolateDoctorSection({
       section: "host-proxy",
       effect: hostProxyTransportDoctorChecks({

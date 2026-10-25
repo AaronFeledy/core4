@@ -68,6 +68,7 @@ test("changes the cache key when only the resolved proxy default domain changes"
 });
 
 const runtimeAppPlan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("runtime-key"),
   name: "runtime-key",
   slug: "runtime-key",
@@ -89,7 +90,7 @@ const runtimeAppPlan: AppPlan = {
 const runWithCache = <A, E>(effect: Effect.Effect<A, E, import("@lando/sdk/services").CacheService>) =>
   Effect.runPromise(effect.pipe(Effect.provide(AppCacheService.layer)));
 
-test.each([6, 27])("ignores desired-plan revision %i without deleting it", async (revision) => {
+test.each([6, 27, 28, 31])("ignores desired-plan revision %i without deleting it", async (revision) => {
   // Given
   const cacheRoot = await mkdtemp(join(tmpdir(), `lando-app-plan-v${revision}-`));
   const appRoot = "/workspace/redirect-app";
@@ -102,6 +103,7 @@ test.each([6, 27])("ignores desired-plan revision %i without deleting it", async
     runtime: 4 as const,
   };
   const oldPlan = Schema.encodeSync(AppPlan)({
+    valueModel: 1,
     id: AppId.make(appName),
     name: appName,
     slug: appName,
@@ -151,6 +153,8 @@ test.each([6, 27])("ignores desired-plan revision %i without deleting it", async
     landoVersion: CORE_VERSION,
     key,
     versionConstraints: [],
+    shadowHostChecks: [],
+    gitHostChecks: [],
     generatedAtMs: 1,
     plan: oldPlan,
   });
@@ -184,7 +188,7 @@ test("includes the canonical fingerprint revision in the app-plan cache key", ()
   const key = deriveAppPlanCacheKey(input);
 
   // Then
-  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(28n);
+  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(35n);
   expect(key).not.toBe("52ac114b46244edd3741469e45ce9009aa2a3c67f99bc8c2983104e3f399b737");
   expect(key).not.toBe("b7ee8b58156c17f30d73e11f3560e06267bc1961746b424e033b7a4885f98487");
 });
@@ -269,6 +273,18 @@ test("misses plan.bin when the planning runtime fingerprint changes", async () =
   expect(nextKey).not.toBe(writtenKey);
   expect(read).toBeNull();
   expect((await readFile(cachePath)).length).toBeGreaterThan(0);
+});
+
+test("changes the app-plan cache key when only environment secret bindings change", () => {
+  // Given identical Landofile inputs that differ only in binding authority.
+  const literal = { ...runtimeLandofileInput, serviceInputs: { environment: { TOKEN: "${secret:TEST}" } } };
+  // When
+  const bound = {
+    ...runtimeLandofileInput,
+    serviceInputs: { environment: { TOKEN: { _tag: "SecretRef", reference: "TEST" } } },
+  };
+  // Then
+  expect(deriveAppPlanCacheKey(bound)).not.toBe(deriveAppPlanCacheKey(literal));
 });
 
 test("does not change the app-plan cache key for unrelated environment variables", () => {

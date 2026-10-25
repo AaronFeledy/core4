@@ -8,6 +8,38 @@ import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 
 test.each([
+  { endpoints: "", route: "missing.lndo.site", valid: false },
+  { endpoints: "    ports: [80]\n", route: "tcp.lndo.site", valid: false },
+  { endpoints: "    endpoints: []\n", route: "empty.lndo.site", valid: false },
+  {
+    endpoints:
+      "    endpoints:\n      - _tag: internal\n        name: web\n        protocol: http\n        port: 8080\n",
+    route: "valid.lndo.site",
+    valid: true,
+  },
+])("checks authored HTTP binding for $route", async ({ endpoints, route, valid }) => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-route-binding-lint-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: routes\nservices:\n  web:\n    type: compose\n    image: nginx:alpine\n${endpoints}    routes:\n      - ${route}\n`,
+    );
+    // When
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    // Then
+    expect(result.valid).toBe(valid);
+    expect(result.violations.map(({ rule, path }) => ({ rule, path }))).toEqual(
+      valid ? [] : [{ rule: "landofile.route", path: ["services", "web", "routes", 0] }],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
   { route: 'hostname: "{{ app.name }}.lndo.site:8080"', valid: false, field: "hostname" },
   { route: '"{{ app.name }}.lndo.site/x"', valid: true },
   { route: 'hostname: "{{ app.name }}.lndo.site"', valid: true },

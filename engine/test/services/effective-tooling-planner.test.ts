@@ -9,6 +9,7 @@ import {
   type LandofileShape,
   PluginManifest,
   PluginName,
+  PortNumber,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -31,7 +32,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import * as AppCacheService from "../../src/cache/service.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { effectiveEventsForPlan } from "../../src/planner/effective-events.ts";
-import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
+import { connectionClientsForPlan, effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as CommandRegistryLayer from "../../src/services/command-registry.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
@@ -95,9 +96,15 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
     name: "effective-tooling-test",
     base: "l337",
     schema: Schema.Unknown,
+    toolingForConnection: () => ({ inspect: { cmd: toolingCommand } }),
     resolve: (input) =>
       Effect.succeed({
         base: "l337" as const,
+        connection: {
+          family: "postgres" as const,
+          port: PortNumber.make(5432),
+          creds: { user: "app", password: "descriptor", database: "app" },
+        },
         normalizedConfig: input.service,
         features: [{ id: feature.id }],
         tooling: { inspect: { cmd: toolingCommand } },
@@ -136,11 +143,11 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
   try {
     await writeFile(
       join(appRoot, ".lando.yml"),
-      "name: effective-tooling-cache\nservices:\n  web:\n    type: effective-tooling-test\n    home: false\n",
+      "name: effective-tooling-cache\nservices:\n  web:\n    type: effective-tooling-test\n    home: false\nevents:\n  pre-start:\n    - echo event\n",
     );
     const runPlan = () =>
       Effect.runPromise(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) => planTestLandofile(planner, landofile, capabilities)).pipe(
           Effect.provide(plannerLayer),
         ),
       );
@@ -148,6 +155,8 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
     // When
     const fresh = await runPlan();
     const cacheHit = await runPlan();
+    expect(connectionClientsForPlan(fresh)).toEqual({ inspect: ServiceName.make("web") });
+    expect(connectionClientsForPlan(cacheHit)).toEqual({ inspect: ServiceName.make("web") });
     toolingCommand = "second";
     const changed = await runPlan();
 
@@ -162,12 +171,14 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
 
     let invocation: ToolingInvocation | undefined;
     const toolingLayer = Layer.mergeAll(
+      registryLayer,
+      testEnvironmentResolverLayer,
       Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(changed) })),
-      Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+      Layer.succeed(LandofileService, LandofileService.of({ discover: compileTestLandofile(landofile) })),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
-          appliedPlansFor: () => Effect.succeed([]),
+          appliedPlansFor: () => Effect.succeed([changed]),
           resolveAppliedPlan: () => Effect.succeed(undefined),
           resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
@@ -283,7 +294,9 @@ const withTempPlannerApp = async (yaml: string, run: () => Promise<void>): Promi
 };
 
 const planPhp = (landofile: LandofileShape, layer: ReturnType<typeof phpPlannerLayer>) =>
-  Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(Effect.provide(layer));
+  Effect.flatMap(AppPlanner, (planner) => planTestLandofile(planner, landofile, capabilities)).pipe(
+    Effect.provide(layer),
+  );
 
 const expectAliasConflict = (
   exit: Exit.Exit<unknown, unknown>,
@@ -371,8 +384,9 @@ test("fails runTooling reserved when a stale plan predates authored run", async 
         planPhp(phpLandofile("reserved-tooling-authored-run"), plannerLayer),
       );
       const toolingLayer = Layer.mergeAll(
+        testEnvironmentResolverLayer,
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
-        Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+        Layer.succeed(LandofileService, LandofileService.of({ discover: compileTestLandofile(landofile) })),
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
@@ -469,3 +483,5 @@ test("plans when the first service contributor disables a reserved name claimed 
     expect(effectiveToolingForPlan(plan)?.run).toMatchObject({ service: "a", disabled: true });
   });
 });
+import { compileTestLandofile, planTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

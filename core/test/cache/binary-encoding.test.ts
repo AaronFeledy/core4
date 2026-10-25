@@ -60,6 +60,7 @@ const pluginCommandPayload = {
 };
 
 const appPlanFixture: AppPlan = {
+  valueModel: 1,
   id: AppId.make("fixture-app"),
   name: "fixture-app",
   slug: "fixture-app",
@@ -197,7 +198,7 @@ describe("binary cache encoding policy", () => {
   }
 
   test("app-plan fixture matches the encoder output", async () => {
-    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v28.bin")));
+    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v35.bin")));
   });
 
   test("app-plan rejects the previous schema fixture", async () => {

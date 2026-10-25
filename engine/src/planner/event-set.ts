@@ -1,14 +1,27 @@
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { compileInvocationSites, compiledValueError } from "@lando/landofile/compiled-sites";
 import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { landofileValidationError } from "@lando/landofile/validation";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
-import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
+import {
+  LandofileShape,
+  type LoadScopedLandofile,
+  type ProviderCapabilities,
+  ServiceScopedLandofile,
+} from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Iterable, Result } from "effect";
+import { type Context, DateTime, Effect, Iterable, Result, Schema } from "effect";
 import { hostProviderIdFrom } from "../providers/host-provider.ts";
+import { resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
-import { compileEffectiveTooling } from "./effective-tooling.ts";
+import {
+  compileEffectiveTooling,
+  connectionClientOwners,
+  toolingBeforeDefaults,
+} from "./effective-tooling.ts";
+import { requireServiceProjection } from "./endpoint-availability.ts";
+import { projectEndpoints } from "./endpoint-projection.ts";
 import { validEventNames } from "./event-names.ts";
+import { effectiveInvocationSites } from "./invocation-authority.ts";
 import {
   deferredSiteKey,
   materializeLandofileScopes,
@@ -22,7 +35,7 @@ import { contributionId, resolveHostFacts } from "./service-types.ts";
 import { toolingAndEventIssues } from "./tooling-event-issues.ts";
 
 export interface KnownEventSetInput {
-  readonly landofile: LandofileShape;
+  readonly landofile: LoadScopedLandofile;
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
   readonly configService: Context.Service.Shape<typeof ConfigService> | undefined;
   readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
@@ -36,8 +49,8 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   input: KnownEventSetInput,
 ) {
   const { pluginRegistry, configService, fileSystem, pathsService } = input;
-  let landofile = input.landofile;
-  const appRoot = input.appRoot ?? getLandofileAppRoot(landofile) ?? process.cwd();
+  let landofile = input.landofile.document;
+  const appRoot = input.appRoot ?? input.landofile.context.appRoot;
   const landofilePath = input.file ?? `${appRoot}/.lando.yml`;
   const appName = landofile.name ?? "app";
   const host = resolveHostFacts();
@@ -47,7 +60,12 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     runtime: 4 as const,
   };
   const globalConfig = configService === undefined ? undefined : yield* configService.load;
-  const materialized = yield* materializeLandofileScopes({ landofile, appRoot, landofilePath, globalConfig });
+  const materialized = yield* materializeLandofileScopes({
+    landofile: input.landofile,
+    appRoot,
+    landofilePath,
+    globalConfig,
+  });
   const { appSlug, defaultDomain, deferredSites } = materialized;
   landofile = materialized.landofile;
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
@@ -66,6 +84,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   );
   const seeds = yield* resolveServiceSeeds({
     landofile,
+    context: materialized.context,
     landofilePath,
     appSlug,
     defaultDomain,
@@ -91,7 +110,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   // computed member cannot be analyzed, so it is held back too.
   const blocked = new Set<string>();
   if (seeds.unavailable.size > 0) {
-    for (const site of deferredSites) {
+    for (const site of seeds.pendingSites) {
       const references = referencedServices([], [site], landofilePath);
       if (
         Result.isFailure(references) ||
@@ -100,23 +119,59 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
         blocked.add(deferredSiteKey(site.path));
     }
   }
-  if (deferredSites.length > 0) {
+  let pendingSites = seeds.pendingSites;
+  landofile = copyLandofileProvenance(landofile, seeds.document);
+  if (pendingSites.length > 0) {
     const serviceScoped = yield* materializeServiceScopeSites({
       value: landofile,
       landofilePath,
       pathPrefix: [],
-      deferredSites: deferredSites.filter((site) => !blocked.has(deferredSiteKey(site.path))),
-      context: serviceScopeContext({ landofile, appSlug, defaultDomain, services: seeds.serviceCredsScope }),
+      deferredSites: pendingSites.filter((site) => !blocked.has(deferredSiteKey(site.path))),
+      context: serviceScopeContext({
+        landofile,
+        context: materialized.context,
+        appSlug,
+        defaultDomain,
+        services: seeds.serviceCredsScope,
+      }),
     });
-    if (serviceScoped !== landofile) {
-      copyLandofileProvenance(landofile, serviceScoped);
-      landofile = serviceScoped;
-    }
+    const decoded = yield* Schema.decodeUnknownEffect(Schema.toType(LandofileShape))(
+      serviceScoped.document,
+    ).pipe(Effect.mapError((cause) => compiledValueError(cause, { filePath: landofilePath, pendingSites })));
+    landofile = copyLandofileProvenance(landofile, decoded);
+    pendingSites = [
+      ...pendingSites.filter((site) => blocked.has(deferredSiteKey(site.path))),
+      ...serviceScoped.pendingSites,
+    ];
   }
   const validated = validateResolvedLandofile({ landofile, landofilePath, blocked });
-  const issues = [...seeds.issues, ...validated.issues];
+  const projection = yield* projectEndpoints({
+    services: seeds.services,
+    unavailable: seeds.unavailable,
+    landofile,
+    manifests,
+    pluginRegistry,
+    appName,
+    appRoot,
+    provider,
+    host,
+    env: materialized.context.env,
+    gpgForward: resolveGpgAgentIntent({ landofile, globalConfig }).forward,
+    routes: validated.routes,
+  });
+  const issues = [...seeds.issues, ...validated.issues, ...projection.issues];
   const resolution = {
     ...seeds,
+    endpointProjection: projection,
+    compiled: ServiceScopedLandofile.make({
+      stage: "service-scoped",
+      document: landofile,
+      pendingSites,
+      context: materialized.context,
+    }),
+    document: landofile,
+    pendingSites,
+    context: materialized.context,
     landofile,
     appSlug,
     defaultDomain,
@@ -142,21 +197,40 @@ export type ResolvedLandofile = Extract<
   { readonly _tag: "Resolved" }
 >["resolution"];
 
-const knownEventSetFrom = (resolution: ResolvedLandofile) => {
+const knownEventSetFrom = Effect.fnUntraced(function* (resolution: ResolvedLandofile) {
   const { landofile } = resolution;
+  const services = yield* Effect.forEach(resolution.services, (seed) =>
+    requireServiceProjection(resolution.endpointProjection.services, seed.name, resolution.appRoot).pipe(
+      Effect.map((projection) => ({ ...seed, ...projection })),
+    ),
+  );
   const toolingServices = resolution.services.map((entry) => ({
     name: entry.name,
     serviceTypeId: entry.serviceType.id,
     ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
+    connectionClientNames: entry.resolution.connectionClientNames ?? [],
   }));
   const effectiveTooling = compileEffectiveTooling({ landofile, services: toolingServices });
+  const invocationSites = effectiveInvocationSites({
+    landofile,
+    taskNames: Object.keys(effectiveTooling),
+    tasksBeforeDefaults: toolingBeforeDefaults({ landofile, services: toolingServices }),
+    sites: yield* compileInvocationSites(
+      resolution.pendingSites,
+      serviceScopeContext({ ...resolution, services: resolution.serviceCredsScope }),
+      landofile,
+    ),
+  });
   const knownEventNames = validEventNames(effectiveTooling);
   return {
     ...resolution,
+    services,
     effectiveTooling,
+    connectionClients: connectionClientOwners({ landofile, services: toolingServices }),
+    invocationSites,
     knownEventNames,
   };
-};
+});
 
 export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (input: KnownEventSetInput) {
   const result = yield* resolveLandofileForPlanning(input);
@@ -166,7 +240,7 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
   ];
   if (issues.length > 0)
     return yield* Effect.fail(landofileValidationError(result.resolution.landofilePath, issues));
-  return knownEventSetFrom(result.resolution);
+  return yield* knownEventSetFrom(result.resolution);
 });
 
 export type KnownEventSetResolution = Effect.Success<ReturnType<typeof resolveKnownEventSet>>;

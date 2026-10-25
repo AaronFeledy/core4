@@ -1,6 +1,6 @@
 # Lando v4: The Global App
 
-> **Part 18 of 19** · [Index](./README.md)
+> **Part 18 of 20** · [Index](./README.md)
 > **Read next:** [19 Scratch Apps](./19-scratch-apps.md)
 
 The **global app** is the reserved host-level Lando app for services shared across user apps. Plugins contribute those services through `globalServices:`, and `AppFeature` activations declare user-app dependencies on them (§6.11.4).

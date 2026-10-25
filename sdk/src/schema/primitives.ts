@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { ComposeEnvironmentInput } from "./environment-input.ts";
+
 export const AppId = Schema.String.pipe(Schema.brand("AppId"));
 export type AppId = typeof AppId.Type;
 
@@ -137,7 +139,7 @@ export type CommandSpec = typeof CommandSpec.Type;
 export const ToolingVarLiteral = Schema.Union([Schema.String, Schema.Number, Schema.Boolean]);
 export type ToolingVarLiteral = typeof ToolingVarLiteral.Type;
 
-export const ToolingEnvironment = Schema.Record(Schema.String, ToolingVarLiteral).annotate({
+export const ToolingEnvironment = ComposeEnvironmentInput.annotate({
   description: "Environment variables supplied to a tooling task as scalar values.",
 });
 export type ToolingEnvironment = typeof ToolingEnvironment.Type;

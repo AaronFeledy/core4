@@ -1,6 +1,7 @@
 import type {
   AppIdentity,
   DataTransferSpec,
+  DatabaseConnection,
   SnapshotFilter,
   SnapshotHandle,
   SnapshotMetadata,
@@ -12,6 +13,7 @@ import type { SqlCommandDeps } from "../../src/run.ts";
 export type ExtraSqlService = { readonly name: string; readonly type: string };
 export type SqlTestOptions = {
   readonly password: string;
+  readonly connection?: DatabaseConnection;
   readonly appliedPlans?: SqlCommandDeps["appliedPlans"];
   readonly inspectSource?: SqlCommandDeps["inspectSource"];
   readonly rootPassword?: string;

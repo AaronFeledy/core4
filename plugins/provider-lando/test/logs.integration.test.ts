@@ -56,6 +56,7 @@ const node: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Logs App",
   slug: "logsapp",

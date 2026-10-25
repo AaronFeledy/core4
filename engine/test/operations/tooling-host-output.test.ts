@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { RedactionService, createPayloadValues, makeRedactionService } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   GlobalConfig,
   type LandofileEvents,
   ProviderId,
@@ -34,7 +34,8 @@ const harness = (
   onFrame?: (frame: StreamFrameSinkFrame) => void,
 ) => {
   const frames: StreamFrameSinkFrame[] = [];
-  const basePlan: AppPlan = {
+  const basePlan: CurrentExecutableAppPlan = {
+    valueModel: 1,
     id: AppId.make("host-output"),
     name: "host-output",
     slug: "host-output",
@@ -51,6 +52,7 @@ const harness = (
   const plan = events === undefined ? basePlan : withProjectEvents(basePlan, events);
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
+    testEnvironmentResolverLayer,
     EventRuntime.layer,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
@@ -75,7 +77,7 @@ const harness = (
     ),
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: plan.name, tooling: { probe: task } }) }),
+      LandofileService.of({ discover: compileTestLandofile({ name: plan.name, tooling: { probe: task } }) }),
     ),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
     Layer.succeed(
@@ -104,48 +106,44 @@ const harness = (
         }),
     }),
   );
-  const redaction = Layer.succeed(
-    RedactionService,
-    makeRedactionService({
-      id: "empty",
-      list: Effect.succeed([]),
-      get: () => Effect.succeed(""),
-      has: () => Effect.succeed(false),
-    }),
-  );
+  const redactionService = makeRedactionService();
+  const redaction = Layer.succeed(RedactionService, redactionService);
   return {
     frames,
     run: (
       options: { readonly sink?: boolean; readonly redaction?: boolean; readonly payload?: boolean } = {},
-    ) => {
-      const values = createPayloadValues([]);
-      const payloads = { stdout: createPayloadRedactor(values), stderr: createPayloadRedactor(values) };
-      const protectedSink = Layer.succeed(StreamFrameSink, {
-        emit: (frame) =>
-          Effect.sync(() => {
-            const bytes =
-              typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk;
-            frames.push({ ...frame, chunk: payloads[frame._tag].write(bytes) });
-          }),
-        flush: () =>
-          Effect.sync(() => {
-            for (const tag of ["stdout", "stderr"] as const)
-              frames.push({ _tag: tag, chunk: payloads[tag].flush() });
-          }),
-      });
-      return Effect.runPromise(
-        runTooling({ name: "probe" }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              layer,
-              options.sink === false ? Layer.empty : options.payload === true ? protectedSink : sink,
-              options.redaction === false ? Layer.empty : redaction,
+    ) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const values = yield* redactionService.payloadValues();
+          const payloads = { stdout: createPayloadRedactor(values), stderr: createPayloadRedactor(values) };
+          const protectedSink = Layer.succeed(StreamFrameSink, {
+            emit: (frame) =>
+              Effect.sync(() => {
+                const bytes =
+                  typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk;
+                frames.push({ ...frame, kind: "bytes", chunk: payloads[frame._tag].write(bytes) });
+              }),
+          });
+          return yield* runTooling({ name: "probe" }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                layer,
+                options.sink === false ? Layer.empty : options.payload === true ? protectedSink : sink,
+                options.redaction === false ? Layer.empty : redaction,
+              ),
             ),
-          ),
-          Effect.result,
-        ),
-      );
-    },
+            Effect.result,
+            Effect.ensuring(
+              Effect.sync(() => {
+                if (options.payload === true)
+                  for (const tag of ["stdout", "stderr"] as const)
+                    frames.push({ kind: "bytes", _tag: tag, chunk: payloads[tag].flush() });
+              }),
+            ),
+          );
+        }),
+      ),
   };
 };
 
@@ -222,7 +220,7 @@ test("streams host channels through the sink without collecting the body", async
   // Then channels stream as authored and the collected result stays empty under a live sink.
   expect(joined(h.frames, "stdout")).toBe("split-host-secret");
   expect(joined(h.frames, "stderr")).toBe("split-host-secret");
-  expect(h.frames.every((frame) => frame.raw === true)).toBe(true);
+  expect(h.frames.every((frame) => frame.kind === "bytes")).toBe(true);
   expect(result).toMatchObject({
     _tag: "Success",
     success: { stdout: "", stderr: "", exitCode: 0 },
@@ -306,3 +304,5 @@ test.each([
   const hasHost = JSON.stringify(task).includes(":host");
   expect(joined(h.frames, "stdout")).toBe(hasHost ? "hostprovider" : "provider");
 });
+import { compileTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

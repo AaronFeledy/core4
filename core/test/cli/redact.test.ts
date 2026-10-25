@@ -1,33 +1,34 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 import { Effect } from "effect";
 
 import { redactDetails, redactString } from "../../src/cli/redact.ts";
 
+let service = makeRedactionService();
 beforeEach(() => {
-  resetRegisteredRedactionValuesForTesting();
-});
-
-afterEach(() => {
-  resetRegisteredRedactionValuesForTesting();
+  service = makeRedactionService();
 });
 
 describe("redactString", () => {
   test("redacts exact values registered after the shim is imported", () => {
     // Given
-    Effect.runSync(registerRedactionValues(["opaque-canary-1252"]));
+    Effect.runSync(service.registerValues(["opaque-canary-1252"]));
     // When
-    const out = redactString("provider failed with opaque-canary-1252; retry lando setup");
+    const out = redactString(
+      "provider failed with opaque-canary-1252; retry lando setup",
+      Effect.runSync(service.forProfile("secrets")),
+    );
     // Then
     expect(out).toBe("provider failed with [redacted]; retry lando setup");
   });
 
   test("observes exact values registered after its first use", () => {
     // Given
-    redactString("initial provider check");
-    Effect.runSync(registerRedactionValues(["later-canary-1252"]));
+    const redactor = Effect.runSync(service.forProfile("secrets"));
+    redactString("initial provider check", redactor);
+    Effect.runSync(service.registerValues(["later-canary-1252"]));
     // When
-    const out = redactString("provider failed with later-canary-1252");
+    const out = redactString("provider failed with later-canary-1252", redactor);
     // Then
     expect(out).toBe("provider failed with [redacted]");
   });
@@ -70,13 +71,17 @@ describe("redactString", () => {
 describe("redactDetails", () => {
   test("redacts late registered exact values in nested details without changing context", () => {
     // Given
-    redactDetails({ evidence: ["initial provider check"] });
-    Effect.runSync(registerRedactionValues(["nested-canary-1252"]));
+    const redactor = Effect.runSync(service.forProfile("secrets"));
+    redactDetails({ evidence: ["initial provider check"] }, redactor);
+    Effect.runSync(service.registerValues(["nested-canary-1252"]));
     // When
-    const out = redactDetails({
-      evidence: ["failed with nested-canary-1252", { detail: "nested-canary-1252" }],
-      context: { provider: "podman", retries: 2, available: false, detail: null },
-    });
+    const out = redactDetails(
+      {
+        evidence: ["failed with nested-canary-1252", { detail: "nested-canary-1252" }],
+        context: { provider: "podman", retries: 2, available: false, detail: null },
+      },
+      redactor,
+    );
     // Then
     expect(out).toEqual({
       evidence: ["failed with [redacted]", { detail: "[redacted]" }],

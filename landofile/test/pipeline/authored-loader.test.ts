@@ -49,7 +49,9 @@ test.each([
       // When
       const result = await Effect.runPromise(load(root));
       // Then
-      expect(Schema.encodeSync(LandofileShape)(result).services?.web).toEqual({ [String(field)]: expected });
+      expect(Schema.encodeSync(LandofileShape)(result.document).services?.web).toEqual({
+        [String(field)]: expected,
+      });
     },
   );
 });
@@ -95,7 +97,7 @@ test("one final runtime validation handles three layers and two partial fragment
         ).toMatchObject({ includes: ["second.yml"] });
         expect(spans.filter((name) => name === "Landofile.finalize")).toHaveLength(1);
         expect(spans.filter((name) => name.includes("decodeLayer"))).toHaveLength(0);
-        expect(result.services?.[ServiceName.make("web")]?.build).toEqual({
+        expect(result.document.services?.[ServiceName.make("web")]?.build).toEqual({
           context: "./site",
           target: "stage",
           args: { KEEP: "lower" },
@@ -122,7 +124,7 @@ test.each([false, { disable: true }])(
         // When
         const result = await Effect.runPromise(load(root));
         // Then
-        expect(result.services?.[ServiceName.make("web")]?.healthcheck).toEqual(
+        expect(result.document.services?.[ServiceName.make("web")]?.healthcheck).toEqual(
           middle === false ? { retries: 7 } : { kind: "command", command: "lower", retries: 7 },
         );
       },
@@ -150,9 +152,9 @@ test("whole-value expressions replace inherited objects without a second merge o
         }),
       );
       // Then
-      expect(result.services?.[ServiceName.make("web")]?.environment).toEqual({
+      expect(result.document.services?.[ServiceName.make("web")]?.environment).toEqual({
         WIN: "new",
-        LITERAL: "{{{{ env.NEVER }}",
+        LITERAL: "{{ env.NEVER }}",
       });
     },
   );

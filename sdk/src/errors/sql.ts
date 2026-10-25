@@ -42,6 +42,9 @@ export class SqlCommandFailedError extends Schema.TaggedError<SqlCommandFailedEr
     message: Schema.String,
     service: Schema.String,
     command: Schema.Array(Schema.String),
+    exitCode: Schema.optional(Schema.Number),
+    stderrTail: Schema.optional(Schema.String),
+    recoverySnapshotId: Schema.optional(Schema.String),
     remediation: Schema.String,
   },
 ) {}
@@ -79,7 +82,7 @@ export class SqlRecoveryOperationError extends Schema.TaggedError<SqlRecoveryOpe
   {
     message: Schema.String,
     service: Schema.String,
-    operation: Schema.Literals(["reset", "restore", "import"]),
+    operation: Schema.Literals(["reset", "restore", "import", "snapshot"]),
     recoverySnapshotId: Schema.String,
     cause: Schema.Unknown,
     remediation: Schema.String,

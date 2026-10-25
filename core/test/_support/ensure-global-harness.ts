@@ -30,14 +30,17 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import * as LandoConfigService from "@lando/engine/services/config";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { RedactionService } from "@lando/redaction/service";
 
 import { makeLegacyServiceTypeFake } from "./legacy-service-type.ts";
 
 export interface Harness {
   readonly dataRoot: string;
   readonly layer: Layer.Layer<
+    | import("@lando/sdk/services").EnvironmentValueResolver
     | AppPlanner
     | BuildOrchestrator
     | CacheService
@@ -49,7 +52,11 @@ export interface Harness {
     | RuntimeProviderRegistry,
     import("@lando/sdk/errors").ConfigError
   >;
-  readonly applyCalls: Array<{ readonly plan: AppPlan; readonly options: ApplyOptions }>;
+  readonly applyCalls: Array<{
+    readonly plan: AppPlan;
+    readonly options: ApplyOptions;
+    readonly environments: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  }>;
   readonly inspectCalls: Array<{ readonly target: ServiceSelector }>;
   readonly events: Array<LandoEvent>;
   readonly operations: Array<"build" | "apply">;
@@ -59,14 +66,21 @@ export interface Harness {
 const providerId = ProviderId.make("docker");
 const fakeServiceType = makeLegacyServiceTypeFake({
   id: "lando",
-  toServicePlan: ({ name, appRoot, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+  toServicePlan: ({
+    name,
+    service,
+    appRoot,
+    provider = ProviderId.make("lando"),
+    primary = false,
+    metadata,
+  }) =>
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "lando",
       provider,
       primary,
       artifact: { kind: "ref", ref: "lando-global-service:test" },
-      environment: { TOKEN: "${secret:GLOBAL_TOKEN}" },
+      environment: service.environment ?? {},
       workingDirectory: PortablePath.make("/app"),
       appMount: {
         source: AbsolutePath.make(appRoot),
@@ -118,9 +132,20 @@ export const makeHarness = async (
     id: String(providerId),
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
     apply: (plan, options) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         operations.push("apply");
-        applyCalls.push({ plan, options });
+        const resolve = options.resolveServiceEnvironment;
+        const environments = Object.fromEntries(
+          yield* Effect.forEach(Object.values(plan.services), (service) =>
+            (resolve === undefined
+              ? Effect.sync(() =>
+                  Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String))(service.environment),
+                )
+              : resolve(service)
+            ).pipe(Effect.map((environment) => [service.name, environment] as const)),
+          ),
+        );
+        applyCalls.push({ plan, options, environments });
         return { changed: true };
       }),
     inspect: (target) => {
@@ -216,5 +241,11 @@ export const makeHarness = async (
       ),
     ),
   );
-  return { dataRoot, layer, applyCalls, inspectCalls, events, operations, selectedProviders };
+  const resolvedLayer = Layer.mergeAll(
+    layer,
+    EnvironmentValueResolverLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(layer, RedactionService.layer.pipe(Layer.provide(layer)))),
+    ),
+  );
+  return { dataRoot, layer: resolvedLayer, applyCalls, inspectCalls, events, operations, selectedProviders };
 };

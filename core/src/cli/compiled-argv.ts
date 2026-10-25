@@ -37,6 +37,7 @@ export type OclifFlagDefinition = {
 
 export type OclifArgDefinition = {
   readonly required?: boolean;
+  readonly multiple?: boolean;
 };
 
 export const commandSpecForId = (commandId: string): CompiledCommand | undefined =>

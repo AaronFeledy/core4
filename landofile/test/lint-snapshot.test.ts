@@ -42,7 +42,7 @@ describe("retained lint snapshot", () => {
     expect(snapshot.result.valid).toBe(false);
     expect(snapshot.landofilePath).toBe(join(root, ".lando.yml"));
     expect(snapshot.result.file).toBe(join(root, "fragment.yml"));
-    expect(snapshot.resolved?.services?.[ServiceName.make("web")]?.primary).toBe(true);
+    expect(snapshot.resolved?.document.services?.[ServiceName.make("web")]?.primary).toBe(true);
     expect(snapshot.result.violations).toEqual([
       expect.objectContaining({
         scopes: ["fragment"],
@@ -132,7 +132,7 @@ describe("retained lint snapshot", () => {
     try {
       const snapshot = await lint();
       expect(snapshot.result.valid).toBe(true);
-      expect(snapshot.resolved?.name).toBe("snapshot");
+      expect(snapshot.resolved?.document.name).toBe("snapshot");
       expect(evaluate).toHaveBeenCalledTimes(1);
       expect(finalize).toHaveBeenCalledTimes(1);
     } finally {
@@ -177,7 +177,7 @@ describe("retained lint snapshot", () => {
 
       // Then explicit options win; otherwise the supplied runtime environment wins.
       expect(snapshot.result.valid).toBe(true);
-      expect(snapshot.resolved?.services?.[ServiceName.make("web")]?.primary).toBe(scenario.primary);
+      expect(snapshot.resolved?.document.services?.[ServiceName.make("web")]?.primary).toBe(scenario.primary);
     });
   }
 });

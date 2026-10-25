@@ -103,20 +103,24 @@ for (const scenario of [
       const runPlan = () =>
         Effect.runPromise(
           Effect.flatMap(PluginRegistry, (registry) =>
-            planApp(
-              registry,
-              {
-                ...cache,
-                writeAtomic: (path, bytes) =>
-                  cache.writeAtomic(path, bytes).pipe(Effect.tap(() => Effect.sync(() => writes++))),
-              },
-              undefined,
-              undefined,
-              undefined,
-              undefined,
-              landofile,
-              TestRuntimeProvider.capabilities,
-              root,
+            compileTestLandofile(landofile, root).pipe(
+              Effect.flatMap((compiled) =>
+                planApp(
+                  registry,
+                  {
+                    ...cache,
+                    writeAtomic: (path, bytes) =>
+                      cache.writeAtomic(path, bytes).pipe(Effect.tap(() => Effect.sync(() => writes++))),
+                  },
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  compiled,
+                  TestRuntimeProvider.capabilities,
+                  root,
+                ),
+              ),
             ),
           ).pipe(Effect.provide(PluginRegistryLayer.layerWith({ app: false, user: false }, [plugin]))),
         );
@@ -172,3 +176,4 @@ test("selector cache unions static env reads with absent values and shell parame
   expect(snapshot.bindings).toEqual({ MISSING: null, PAREN: null, SHELL_TARGET: null, TARGET: "web", Z: "" });
   expect(Object.keys(snapshot.bindings)).toEqual(["MISSING", "PAREN", "SHELL_TARGET", "TARGET", "Z"]);
 });
+import { compileTestLandofile } from "../compiled-landofile.ts";

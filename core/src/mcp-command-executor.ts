@@ -1,3 +1,4 @@
+import type { CompletedCommandResult } from "@lando/sdk/command-result";
 import { type Context, Effect, type Exit, Layer } from "effect";
 
 import { type McpCommandExecution, McpCommandExecutor, type McpCommandExecutorShape } from "@lando/mcp/port";
@@ -9,7 +10,7 @@ const executeNestedCommand = <A, E, R>(
   redaction: Context.Service.Shape<typeof RedactionService>,
   command: Effect.Effect<A, E, R>,
   execution: McpCommandExecution<A>,
-): Effect.Effect<Exit.Exit<A, E>, never, R> =>
+): Effect.Effect<Exit.Exit<CompletedCommandResult<A>, E>, never, R> =>
   makeNestedCommandInvocation(execution.commandId, {
     argv: execution.argv,
     args: execution.args,
@@ -19,7 +20,7 @@ const executeNestedCommand = <A, E, R>(
     Effect.flatMap((invocation) =>
       runCommandLifecycle(command, {
         invocation,
-        ...(execution.successExitCode === undefined ? {} : { successExitCode: execution.successExitCode }),
+        ...(execution.completion === undefined ? {} : { completion: execution.completion }),
       }),
     ),
     Effect.provideService(RedactionService, redaction),

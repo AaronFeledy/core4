@@ -70,11 +70,7 @@ import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/tran
 import { terminateOwnedHostProxyWorkersInRoot } from "@lando/engine/subsystems/host-proxy/worker";
 import { HostProxyWorkerRecord, probeWorker } from "@lando/engine/subsystems/host-proxy/worker-state";
 import { makeLandoPaths } from "@lando/paths";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -129,6 +125,15 @@ const metadata = {
 const servicePlan = (name: "web" | "database"): ServicePlan => ({
   name: ServiceName.make(name),
   type: name === "web" ? "node" : "postgres",
+  ...(name === "database"
+    ? {
+        connection: {
+          family: "postgres" as const,
+          port: 5432,
+          creds: { user: "lando", database: "postgres", password: "start-database-canary" },
+        },
+      }
+    : {}),
   provider: providerId,
   primary: name === "web",
   artifact: { kind: "ref", ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine" },
@@ -363,6 +368,7 @@ const emptyPluginRegistry = PluginRegistry.of({
 });
 
 const unusedGlobalServicesLayer = Layer.mergeAll(
+  environmentResolverLayer(),
   PrivateFileAccessService.layer,
   TestLandofileLayers.layerTransactionGuard,
   LandoConfigService.layer,
@@ -371,14 +377,7 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
     Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
   ),
   Layer.succeed(PluginRegistry, emptyPluginRegistry),
-  Layer.succeed(
-    RedactionService,
-    RedactionService.of({
-      registerValues: registerRedactionValues,
-      payloadValues: () => Effect.succeed(() => []),
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-    }),
-  ),
+  Layer.succeed(RedactionService, makeRedactionService()),
   Layer.succeed(RouterService, RouterService.of(TestRouterService)),
   BunShellRunner.layer(() => {
     throw new TypeError("Interactive shell IO is not used by start scenarios.");
@@ -593,17 +592,22 @@ const makeStartLayer = (
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({
-          name: "test-start",
-          services: {},
-          ...(effectiveEventsForPlan(plannedApp) === undefined
-            ? {}
-            : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
-        }),
+        discover: Effect.succeed(
+          literalLandofile(
+            {
+              name: "test-start",
+              services: {},
+              ...(effectiveEventsForPlan(plannedApp) === undefined
+                ? {}
+                : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
+            },
+            plannedApp.root,
+          ),
+        ),
       }),
     ),
     makeTestStateStore().layer,
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plannedApp)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -887,13 +891,18 @@ const makeAutoStartLayer = async (options: {
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({
-          name: options.userPlan.name,
-          services: {},
-          ...(effectiveEventsForPlan(options.userPlan) === undefined
-            ? {}
-            : { events: effectiveEventsForPlan(options.userPlan) ?? {} }),
-        }),
+        discover: Effect.succeed(
+          literalLandofile(
+            {
+              name: options.userPlan.name,
+              services: {},
+              ...(effectiveEventsForPlan(options.userPlan) === undefined
+                ? {}
+                : { events: effectiveEventsForPlan(options.userPlan) ?? {} }),
+            },
+            options.userPlan.root,
+          ),
+        ),
       }),
     ),
     makeTestStateStore().layer,
@@ -903,7 +912,7 @@ const makeAutoStartLayer = async (options: {
       AppPlanner.of({
         plan: (landofile) =>
           Effect.succeed(
-            (landofile as { readonly name?: string }).name === "global" ? plannedGlobal : options.userPlan,
+            currentTestPlan(landofile.document.name === "global" ? plannedGlobal : options.userPlan),
           ),
       }),
     ),
@@ -932,17 +941,10 @@ const makeAutoStartLayer = async (options: {
         query: () => Effect.succeed([]),
       }),
     ),
+    environmentResolverLayer(),
     Layer.succeed(PluginRegistry, pluginRegistry),
     Layer.succeed(RouterService, RouterService.of(TestRouterService)),
-    Layer.succeed(
-      RedactionService,
-      RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, redactionOptions) =>
-          Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
-      }),
-    ),
+    Layer.succeed(RedactionService, makeRedactionService()),
     Layer.succeed(
       ToolingEngine,
       ToolingEngine.of({
@@ -1089,10 +1091,12 @@ describe("lando start", () => {
   test("named task output narrates redacted details and retains redacted tagged failure output", async () => {
     // Given
     const secret = "named-event-task-token";
-    const plannedApp = withProjectEvents({ ...plan }, { "pre-start": [{ task: "secret-task" }] });
-    attachEffectiveTooling(plannedApp, {
-      "secret-task": { cmd: "fail named task", service: "web", env: { EVENT_TOKEN: secret } },
-    });
+    const plannedApp = attachEffectiveTooling(
+      withProjectEvents({ ...plan }, { "pre-start": [{ task: "secret-task" }] }),
+      {
+        "secret-task": { cmd: "fail named task", service: "web", env: { EVENT_TOKEN: secret } },
+      },
+    );
     const harness = makeStartLayer({
       plannedApp,
       eventResult: { exitCode: 9, stdout: secret, stderr: `${secret} failed` },
@@ -2325,11 +2329,18 @@ describe("lando start", () => {
       testStateStoreLayer,
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-start", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(
+            literalLandofile({ name: "test-start", services: {} }, planWithFileSync.root),
+          ),
+        }),
       ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync) })),
+      Layer.succeed(
+        AppPlanner,
+        AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync)) }),
+      ),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -2476,11 +2487,18 @@ describe("lando start", () => {
       testStateStoreLayer,
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-start", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(
+            literalLandofile({ name: "test-start", services: {} }, planWithFileSync.root),
+          ),
+        }),
       ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync) })),
+      Layer.succeed(
+        AppPlanner,
+        AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync)) }),
+      ),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -2618,11 +2636,18 @@ describe("lando start", () => {
       testStateStoreLayer,
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-start", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(
+            literalLandofile({ name: "test-start", services: {} }, planWithFileSync.root),
+          ),
+        }),
       ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync) })),
+      Layer.succeed(
+        AppPlanner,
+        AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync)) }),
+      ),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -2767,11 +2792,18 @@ describe("lando start", () => {
       testStateStoreLayer,
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-start", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(
+            literalLandofile({ name: "test-start", services: {} }, planWithFileSync.root),
+          ),
+        }),
       ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync) })),
+      Layer.succeed(
+        AppPlanner,
+        AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync)) }),
+      ),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -2927,11 +2959,18 @@ describe("lando start", () => {
       testStateStoreLayer,
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-start", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(
+            literalLandofile({ name: "test-start", services: {} }, planWithFileSync.root),
+          ),
+        }),
       ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync) })),
+      Layer.succeed(
+        AppPlanner,
+        AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync)) }),
+      ),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -3119,11 +3158,18 @@ describe("lando start", () => {
       testStateStoreLayer,
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-start", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(
+            literalLandofile({ name: "test-start", services: {} }, planWithFileSync.root),
+          ),
+        }),
       ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync) })),
+      Layer.succeed(
+        AppPlanner,
+        AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync)) }),
+      ),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -3289,11 +3335,18 @@ describe("lando start", () => {
       testStateStoreLayer,
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "test-start", services: {} }) }),
+        LandofileService.of({
+          discover: Effect.succeed(
+            literalLandofile({ name: "test-start", services: {} }, planWithFileSync.root),
+          ),
+        }),
       ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync) })),
+      Layer.succeed(
+        AppPlanner,
+        AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync)) }),
+      ),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
@@ -3334,3 +3387,4 @@ describe("lando start", () => {
     ]);
   });
 });
+import { currentTestPlan, environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";

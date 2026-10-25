@@ -54,6 +54,7 @@ const servicePlan: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Desktop App",
   slug: "desktop-app",

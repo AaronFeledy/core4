@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -113,7 +113,7 @@ const makeLayer = (provider: RuntimeProviderShape) => {
   const redaction = Layer.succeed(
     RedactionService,
     RedactionService.of({
-      registerValues: registerRedactionValues,
+      ...makeRedactionService(),
       payloadValues: (options) => Effect.succeed(() => ["topsecret", ...(options?.redactionTokens ?? [])]),
       forProfile: (profile, options) =>
         Effect.succeed(

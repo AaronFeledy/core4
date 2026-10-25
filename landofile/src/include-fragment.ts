@@ -44,6 +44,7 @@ export const parseFragment = (
         value: parsed,
         source: { appRoot: ctx.appRoot, sourcePath: fragment.filePath, sourceRoot: fragment.root, layer },
         policy: fragment.userOwned ? { ...ctx.loadPolicy, allowFileAccess: false } : ctx.loadPolicy,
+        pendingSites: ctx.pendingSites,
       }).pipe(
         Effect.map((resolved) => ({
           ...resolved,

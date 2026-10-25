@@ -33,6 +33,7 @@ import { rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
 import { validationErrorFromCause } from "./validation.ts";
 
 export type ToolingIncludeError =
+  | import("@lando/sdk/errors").ConfigExpressionError
   | ComposeKeyRejectedError
   | LandofileIncludeError
   | LandofileParseError
@@ -137,6 +138,7 @@ export const loadFragment = (
           layer: context.layer ?? "canonical",
         },
         policy: context.loadPolicy,
+        pendingSites: context.loadScope.pendingSites,
       }).pipe(
         Effect.map((resolved) => ({
           ...resolved,

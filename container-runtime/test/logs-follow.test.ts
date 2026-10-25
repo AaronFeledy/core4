@@ -209,7 +209,7 @@ describe("podman log followers", () => {
 
     // Then
     expect(error).toBeInstanceOf(ProviderUnavailableError);
-    expect(error.providerId).toBe("podman");
+    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
     expect(error.message).toContain("provider-podman");
     expect(error.remediation).toBe(ctx.remediation);
   });

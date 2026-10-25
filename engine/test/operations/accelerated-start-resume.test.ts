@@ -302,7 +302,7 @@ test.each(phases.flatMap((phase) => (["owned", "absent"] as const).map((evidence
       }),
     );
     const result = await Effect.runPromiseExit(
-      stopApp({}, { ...target, landofile: { name: "test-start", services: {} } }).pipe(
+      stopApp({}, { ...target, landofile: literalTestLandofile({ name: "test-start", services: {} }) }).pipe(
         Effect.provide(harness.layer),
       ),
     );
@@ -363,3 +363,4 @@ test("failed provider apply retains sessions and the next start resumes the same
   expect(after.pending).toMatchObject({ attemptId: before.pending?.attemptId, phase: "completed" });
   expect(harness.calls.filter((call) => /^(create|terminate):/.test(call))).toEqual([]);
 });
+import { literalTestLandofile } from "../compiled-landofile.ts";

@@ -5,22 +5,15 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
-import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, ProcessRunner } from "@lando/sdk/services";
 import type { LandoEvent } from "@lando/sdk/services";
 import * as BunProcessRunner from "../../src/services/process-runner";
 import { awaitSinkResult, resolveProcessCgroup } from "../../src/services/process-runner";
 
-const redactionLayer = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => ["topsecret"]),
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
-  }),
-);
+import { testRedactionLayer } from "../redaction.ts";
+
+const redactionLayer = testRedactionLayer(["topsecret"]);
 
 const captureEventsLayer = (events: LandoEvent[]) =>
   Layer.succeed(

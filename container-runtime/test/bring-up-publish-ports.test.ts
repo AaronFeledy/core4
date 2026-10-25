@@ -55,6 +55,7 @@ const planWithPublication = (publication: EndpointPublication): AppPlan => {
   };
   return {
     id: appId,
+    valueModel: 1,
     name: "Publish Ports",
     slug: "publish-ports",
     root: AbsolutePath.make("/tmp/lando-publish-ports"),
@@ -521,7 +522,10 @@ describe("create-body service publish ports", () => {
               {
                 method: "POST",
                 path: "/networks/lando_bridge_network/connect",
-                body: { Container: containerName, EndpointConfig: { Aliases: ["web.global.internal"] } },
+                body: {
+                  Container: containerName,
+                  EndpointConfig: { Aliases: ["web.publish-ports.internal", "web.global.internal"] },
+                },
               },
             ]
           : [],

@@ -14,6 +14,7 @@ import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
@@ -47,9 +48,9 @@ test("fails closed when a cached preserved path is unsupported by the current pr
   );
   const runPlan = (capabilities: ProviderCapabilities) =>
     Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-        Effect.provide(plannerLayer),
-      ),
+      Effect.flatMap(AppPlanner, (planner) =>
+        planner.plan(literalLandofile(landofile, appRoot), capabilities),
+      ).pipe(Effect.provide(plannerLayer)),
     );
   const supportedCapabilities: ProviderCapabilities = {
     ...TestRuntimeProvider.capabilities,

@@ -147,7 +147,7 @@ describe("nextjs decomposition", () => {
     expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(NEXTJS_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(nextjsSnapshot);
     expect(nextjsSnapshot.identity.contentDigest).toBe(
-      "sha256:7c5f2ae9767abdb59d083f3fd4f89270bc615442f969c10279c363ae72d730f9",
+      "sha256:b57459a49d467a39199b960f6b20a1181e1d4d4f70ba29c51cba47408277860f",
     );
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });

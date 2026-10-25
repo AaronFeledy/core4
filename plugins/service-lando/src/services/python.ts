@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { serviceFeatureApply } from "./_feature-helpers.ts";
 import { type LanguageFrameworkPreset, makeLanguageRuntime } from "./_language-runtime.ts";
@@ -42,7 +42,8 @@ const PythonFeatureConfigSchema = Schema.Struct({
   port: Schema.Number,
 });
 type PythonFeatureConfig = typeof PythonFeatureConfigSchema.Type;
-const configFor = (ctx: ServiceFeatureContext): PythonFeatureConfig => ctx.config as PythonFeatureConfig;
+const configFor = (ctx: { readonly config: Readonly<Record<string, unknown>> }): PythonFeatureConfig =>
+  ctx.config as PythonFeatureConfig;
 
 const runtime = makeLanguageRuntime({
   language: "python",

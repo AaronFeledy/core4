@@ -795,11 +795,12 @@ describe("LandofileShape — tooling: supported schema", () => {
     // Then
     expect(decoded.toolingDefaults).toEqual({
       ...input.toolingDefaults,
+      env: { APP_ENV: "development", DEBUG: "false" },
       dir: PortablePath.make("/app"),
     });
     expect(decoded.tooling?.build?.dir).toBe(PortablePath.make("/app/frontend"));
-    expect(decoded.tooling?.build?.env).toEqual({ APP_ENV: "test", CI: true });
-    expect(encoded).toEqual(input);
+    expect(decoded.tooling?.build?.env).toEqual({ APP_ENV: "test", CI: "true" });
+    expect(Schema.decodeUnknownSync(LandofileShape)(encoded, { onExcessProperty: "error" })).toEqual(decoded);
   });
 
   test("strict decoding rejects unknown tooling defaults fields", () => {

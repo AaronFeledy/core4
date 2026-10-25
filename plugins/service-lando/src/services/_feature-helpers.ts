@@ -1,7 +1,13 @@
 import { Effect } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
-import { type HealthcheckPlan, type ValidationIssuePath, formatValidationIssuePath } from "@lando/sdk/schema";
+import {
+  type Environment,
+  type EnvironmentValue,
+  type HealthcheckPlan,
+  type ValidationIssuePath,
+  formatValidationIssuePath,
+} from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
   ServiceFeatureDefinition,
@@ -67,8 +73,19 @@ export const serviceTypeResolve = <A>(
       }),
   });
 
-export const addEnvRecord = (ctx: ServiceFeatureContext, env: Readonly<Record<string, string>>): void => {
+export const addEnvRecord = (ctx: ServiceFeatureContext, env: Environment): void => {
   for (const [key, value] of Object.entries(env)) ctx.addEnv(key, value);
+};
+
+export const literalEnvironmentValue = (value: EnvironmentValue, path: ValidationIssuePath): string => {
+  if (typeof value !== "string") {
+    throw new ServiceConfigIssue(
+      path,
+      "This setting requires literal text at plan time.",
+      "Use a literal value rather than a secret binding.",
+    );
+  }
+  return value;
 };
 
 export const commandHealthcheck = (

@@ -1,12 +1,12 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { PHP_DEFAULT, PHP_VERSIONS, WEBROOT_PATTERN } from "../php-stack.ts";
-import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
+import { arr, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LARAVEL_RECIPE_VERSION = "0.1.0";
 export const LARAVEL_CONTENT_DIGEST =
-  "sha256:f802f44c9a2069153075b54283b83ef274a5725ef4ecbe2abfb21489dc506e88";
+  "sha256:d15ce7744f68e32c627a80173e634f299d272af2e5c0912eed63a14b7a5aaad4";
 export const laravelProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-laravel",
@@ -14,65 +14,45 @@ export const laravelProducer: RecipeProducer = {
   manifestVersion: LARAVEL_RECIPE_VERSION,
   contentDigest: LARAVEL_CONTENT_DIGEST,
 };
-const expression: ExpressionNode = obj([
-  ["runtime", lit(4)],
-  [
-    "services",
-    call(
-      "merge",
+const services = (worker: boolean) =>
+  obj([
+    [
+      "appserver",
       obj([
-        [
-          "appserver",
-          call(
-            "merge",
-            obj([
-              ["type", lit("php:{{ recipe.php }}")],
-              ["primary", lit(true)],
-              ["framework", lit("laravel")],
-              ["webroot", lit("{{ recipe.webroot }}")],
-              ["composer", lit("{{ recipe.composer }}")],
-              ["allowOverride", lit(true)],
-              ["port", lit(80)],
-              ["dependsOn", arr(lit("database"), lit("cache"))],
-              ["routes", arr(defaultRoute())],
-            ]),
-            cond(
-              call(
-                "eq",
-                { kind: "Path", head: "options", segments: [{ type: "prop", name: "worker" }] },
-                lit(true),
-              ),
-              obj([
-                [
-                  "appMount",
-                  obj([
-                    ["target", lit("/app")],
-                    ["includes", arr(lit("vendor"))],
-                  ]),
-                ],
-              ]),
-              obj([]),
-            ),
-          ),
-        ],
-        ["database", obj([["type", lit("{{ recipe.database }}")]])],
-        ["cache", obj([["type", lit("redis")]])],
-        [
-          "node",
-          obj([
-            ["type", lit("node:22")],
-            ["primary", lit(false)],
-            ["endpoints", arr()],
-          ]),
-        ],
+        ["type", lit("php:{{ recipe.php }}")],
+        ["primary", lit(true)],
+        ["framework", lit("laravel")],
+        ["webroot", lit("{{ recipe.webroot }}")],
+        ["composer", lit("{{ recipe.composer }}")],
+        ["allowOverride", lit(true)],
+        ["port", lit(80)],
+        ["dependsOn", arr(lit("database"), lit("cache"))],
+        ["routes", arr(defaultRoute())],
+        ...(worker
+          ? [
+              [
+                "appMount",
+                obj([
+                  ["target", lit("/app")],
+                  ["includes", arr(lit("vendor"))],
+                ]),
+              ] as const,
+            ]
+          : []),
       ]),
-      cond(
-        call(
-          "eq",
-          { kind: "Path", head: "options", segments: [{ type: "prop", name: "worker" }] },
-          lit(true),
-        ),
-        obj([
+    ],
+    ["database", obj([["type", lit("{{ recipe.database }}")]])],
+    ["cache", obj([["type", lit("redis")]])],
+    [
+      "node",
+      obj([
+        ["type", lit("node:22")],
+        ["primary", lit(false)],
+        ["endpoints", arr()],
+      ]),
+    ],
+    ...(worker
+      ? [
           [
             "worker",
             obj([
@@ -90,10 +70,18 @@ const expression: ExpressionNode = obj([
                 ]),
               ],
             ]),
-          ],
-        ]),
-        obj([]),
-      ),
+          ] as const,
+        ]
+      : []),
+  ]);
+const expression: ExpressionNode = obj([
+  ["runtime", lit(4)],
+  [
+    "services",
+    cond(
+      { kind: "Path", head: "options", segments: [{ type: "prop", name: "worker" }] },
+      services(true),
+      services(false),
     ),
   ],
   [

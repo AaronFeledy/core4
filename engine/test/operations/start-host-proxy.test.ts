@@ -20,11 +20,7 @@ import { PathsService, ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { installEngineComposition } from "../../src/composition.ts";
 import {
   startHostProxyRunLandoSession,
@@ -121,9 +117,7 @@ const runtimeLayer = Layer.mergeAll(
   Layer.succeed(
     RedactionService,
     RedactionService.of({
-      registerValues: registerRedactionValues,
-      payloadValues: () => Effect.succeed(() => []),
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+      ...makeRedactionService(),
     }),
   ),
   Layer.succeed(

@@ -15,6 +15,7 @@ test.each(["stopped", "completed", "paused", "error"] satisfies ServiceState[])(
       name: String(web.name),
       state,
       connections: projectServiceConnections({
+        plan: { slug: "test" },
         service,
         state,
         publications: {

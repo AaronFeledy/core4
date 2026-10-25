@@ -67,7 +67,7 @@ test("emits both output streams before the script can finish", async () => {
     // When: the child cannot exit until its first stdout/stderr lines release the server.
     const result = await Effect.runPromise(
       runBunShellTooling({ name: "probe", args: ["b c"] }, root).pipe(
-        Effect.provide(PrivateFileAccessService.layer),
+        Effect.provide(Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayer)),
         Effect.provideService(StreamFrameSink, sink),
         Effect.timeout("5 seconds"),
       ),
@@ -108,7 +108,9 @@ test("returns nonzero script exits with both output streams intact", async () =>
     );
     // When
     const result = await Effect.runPromise(
-      runBunShellTooling({ name: "probe" }, root).pipe(Effect.provide(PrivateFileAccessService.layer)),
+      runBunShellTooling({ name: "probe" }, root).pipe(
+        Effect.provide(Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayer)),
+      ),
     );
     // Then
     expect(result).toEqual({
@@ -137,10 +139,11 @@ test.each(["direct", "fallback"] as const)(
       );
       const options = { name: "probe", args: ["a", "b c", "$(echo injected)", "*.ts"], cwd: root };
       const fallbackLayer = Layer.mergeAll(
+        testEnvironmentResolverLayer,
         PrivateFileAccessService.layer,
         Layer.succeed(
           LandofileService,
-          LandofileService.of({ discover: Effect.succeed({ name: "script-args" }) }),
+          LandofileService.of({ discover: Effect.succeed(literalTestLandofile({ name: "script-args" })) }),
         ),
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.die("script must skip planning") })),
         Layer.succeed(
@@ -163,7 +166,9 @@ test.each(["direct", "fallback"] as const)(
       // When
       const result = await Effect.runPromise(
         path === "direct"
-          ? runBunShellTooling(options, root).pipe(Effect.provide(PrivateFileAccessService.layer))
+          ? runBunShellTooling(options, root).pipe(
+              Effect.provide(Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayer)),
+            )
           : runTooling(options).pipe(Effect.provide(fallbackLayer)),
       );
       // Then
@@ -188,7 +193,7 @@ test("reports an interrupted script as exit 130 instead of a tooling failure", a
     // When
     const result = await Effect.runPromise(
       runBunShellTooling({ name: "slow", signal: controller.signal }, root).pipe(
-        Effect.provide(PrivateFileAccessService.layer),
+        Effect.provide(Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayer)),
         Effect.timeout("5 seconds"),
       ),
     );
@@ -198,3 +203,5 @@ test("reports an interrupted script as exit 130 instead of a tooling failure", a
     await rm(root, { recursive: true, force: true });
   }
 });
+import { literalTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

@@ -4,17 +4,17 @@ import {
   type RoutePlan,
   ServiceName,
   type ServicePlan,
+  type ValidationIssue,
   selectHttpEndpoint,
   validationIssue,
 } from "@lando/sdk/schema";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 
-export const resolveRoute = Effect.fnUntraced(function* (
-  appRoot: string,
+export const bindRoute = (
   serviceName: string,
   endpoints: ServicePlan["endpoints"],
   route: NormalizedRoute,
-): Effect.fn.Return<RoutePlan, LandofileValidationError> {
+): Result.Result<RoutePlan, ValidationIssue> => {
   const selection = selectHttpEndpoint(endpoints, route.endpoint);
   switch (selection.status) {
     case "none":
@@ -23,17 +23,18 @@ export const resolveRoute = Effect.fnUntraced(function* (
         selection.status === "none"
           ? `Route ${route.hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`
           : `Route ${route.hostname} for service ${serviceName} is ambiguous between HTTP listeners: ${selection.candidates.map((endpoint) => `${endpoint.port}/${endpoint.transport}`).join(", ")}.`;
-      return yield* Effect.fail(
-        new LandofileValidationError({
-          message,
-          remediation: `Select a named or numeric HTTP endpoint for route ${route.hostname}, or mark one HTTP listener primary: true.`,
-          file: `${appRoot}/.lando.yml`,
-          issues: [validationIssue(["services", serviceName, "routes"], message)],
-        }),
-      );
+      const suggestion =
+        selectHttpEndpoint(endpoints).status === "none"
+          ? `Declare an HTTP endpoint for service ${serviceName} using protocol: http or https; publishing a TCP port does not declare HTTP.`
+          : `Select a named or numeric HTTP endpoint for route ${route.hostname}, or mark one HTTP listener primary: true.`;
+      return Result.fail({
+        ...validationIssue(route.source?.path ?? ["services", serviceName, "routes"], message),
+        suggestion,
+        ...(route.source?.provenance === undefined ? {} : { source: route.source.provenance }),
+      });
     }
     case "selected":
-      return {
+      return Result.succeed({
         priority: 2,
         hostname: route.hostname,
         scheme: route.scheme ?? "https",
@@ -46,8 +47,27 @@ export const resolveRoute = Effect.fnUntraced(function* (
           protocol: selection.endpoint.protocol,
           port: selection.endpoint.port,
         },
-      };
+      });
     default:
       return selection satisfies never;
   }
+};
+
+export const resolveRoute = Effect.fnUntraced(function* (
+  appRoot: string,
+  serviceName: string,
+  endpoints: ServicePlan["endpoints"],
+  route: NormalizedRoute,
+): Effect.fn.Return<RoutePlan, LandofileValidationError> {
+  return yield* Effect.fromResult(bindRoute(serviceName, endpoints, route)).pipe(
+    Effect.mapError(
+      (issue) =>
+        new LandofileValidationError({
+          message: issue.message,
+          remediation: issue.suggestion ?? "Declare or select an HTTP endpoint.",
+          file: route.source?.file ?? `${appRoot}/.lando.yml`,
+          issues: [issue],
+        }),
+    ),
+  );
 });

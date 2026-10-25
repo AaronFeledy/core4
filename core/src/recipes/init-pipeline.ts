@@ -2,16 +2,20 @@ import { join } from "node:path";
 import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
+import { compiledLandofileSource } from "@lando/landofile/serializer";
 import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { containsReservedBinding } from "@lando/sdk/expressions";
 import { mergeLandofiles } from "@lando/sdk/landofile";
-import { validateRecipeSecretPrompts } from "@lando/sdk/recipes";
+import { renderCompiledRecipeSnapshot, validateRecipeSecretPrompts } from "@lando/sdk/recipes";
 import {
+  AbsolutePath,
   type ConfigTranslateDiagnostic,
   ConfigTranslateRecipeRequestInput,
   LandofileAuthoringFragment,
   LandofileAuthoringFragmentNative,
   type RecipeManifest,
+  RecipeOptionValue,
 } from "@lando/sdk/schema";
 import { REDACTED } from "@lando/sdk/secrets";
 import {
@@ -158,6 +162,7 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
     secretAnswers: references,
   }).pipe(Effect.mapError(() => blocked("translate")));
   const service = yield* Effect.serviceOption(RedactionService);
+  if (Option.isSome(service)) yield* service.value.registerValues(raw);
   const options = { redactionTokens: raw };
   const base = Option.isSome(service)
     ? yield* service.value.forProfile("secrets", options)
@@ -192,7 +197,28 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
     Effect.flatMap(Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))),
     Effect.mapError(() => blocked("validate")),
   );
-  const context = mergeLandofiles([mapping, { name: request.appName }]);
+  const compilationContext = { appRoot: AbsolutePath.make(request.appRoot ?? process.cwd()), env: {} };
+  const snapshot = request.manifest.snapshot;
+  if (containsReservedBinding(mapping)) return yield* Effect.fail(blocked("validate"));
+  let source = mapping;
+  if (snapshot !== undefined) {
+    const compiled = yield* Effect.fromResult(
+      renderCompiledRecipeSnapshot(
+        snapshot,
+        yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, RecipeOptionValue))({
+          ...snapshot.defaults,
+          ...request.answers,
+        }).pipe(Effect.mapError(() => blocked("validate"))),
+        compilationContext,
+      ),
+    ).pipe(Effect.mapError(() => blocked("validate")));
+    const snapshotSource = yield* Effect.try({
+      try: () => compiledLandofileSource(compiled),
+      catch: () => blocked("encode"),
+    });
+    source = { ...snapshotSource, ...(mapping.recipe === undefined ? {} : { recipe: mapping.recipe }) };
+  }
+  const context = mergeLandofiles([source, { name: request.appName }]);
   yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(context, {
     onExcessProperty: "error",
   }).pipe(Effect.mapError(() => blocked("validate")));

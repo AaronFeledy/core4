@@ -69,6 +69,7 @@ import {
 } from "@lando/sdk/verified-stream";
 import { findRealpathAncestor, resolveStatePath } from "@lando/state-store/paths";
 import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
+import { checkedTransferCommand, serviceCommandFailure } from "./command-failure.ts";
 import { execStdoutStream } from "./exec-stream.ts";
 import { legacySnapshotReferences, orphanedSnapshotMethods } from "./orphaned-snapshots.ts";
 import {
@@ -360,14 +361,6 @@ const unarchivePayloadWithCap = (
 };
 
 export const __testOnlyUnarchivePayloadWithCap = unarchivePayloadWithCap;
-
-const serviceCommandFailure = (operation: string, cause: unknown): DataTransferError =>
-  new DataTransferError({
-    message: `Service command ${operation} failed during data transfer.`,
-    operation,
-    cause,
-    remediation: "Inspect the service command and retry after the service is healthy.",
-  });
 
 const providerCommandSpec = (
   command: string | ReadonlyArray<string>,
@@ -700,24 +693,7 @@ const streamFromEndpoint = (
                 mounts: [{ store: endpoint.store, target: helperTarget, readOnly: true }],
                 remove: true,
               }),
-              (exitCode) =>
-                new DataTransferError({
-                  message: "Generic helper-container data transfer failed.",
-                  operation: "runStream",
-                  cause: { exitCode },
-                  remediation: "Inspect provider logs and retry after the provider runtime is healthy.",
-                }),
-            ).pipe(
-              Stream.mapError((cause) =>
-                cause instanceof DataTransferError
-                  ? cause
-                  : new DataTransferError({
-                      message: "Generic helper-container data transfer failed.",
-                      operation: "runStream",
-                      cause,
-                      remediation: "Inspect provider logs and retry after the provider runtime is healthy.",
-                    }),
-              ),
+              (exitCode, stderrTail) => serviceCommandFailure("runStream", exitCode, stderrTail),
             ),
           ),
           Effect.mapError((cause) =>
@@ -745,11 +721,8 @@ const streamFromEndpoint = (
           { app: endpoint.app, service: endpoint.service },
           providerCommandSpec(endpoint.command, endpoint.env),
         ),
-        (exitCode) => serviceCommandFailure("execStream", { exitCode }),
-      ).pipe(
-        Stream.mapError((cause) =>
-          cause instanceof DataTransferError ? cause : serviceCommandFailure("execStream", cause),
-        ),
+        (exitCode, stderrTail) => serviceCommandFailure("execStream", exitCode, stderrTail),
+        endpoint.env,
       );
     case "stream":
       return Stream.fail(
@@ -881,25 +854,17 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           ),
         );
         const helperImage = yield* resolveDataHelperImage(provider);
-        const result = yield* provider
-          .run({
+        yield* checkedTransferCommand(
+          provider.run({
             owner: { app: target.app },
             image: helperImage,
             command: ["sh", "-c", `cat > ${helperPayload}`],
             mounts: [{ store: target.store, target: helperTarget, readOnly: false }],
             stdinStream: Bun.file(staged.path).stream(),
             remove: true,
-          })
-          .pipe(Effect.mapError((cause) => providerFailure("run", cause)));
-        if (result.exitCode !== 0) {
-          return yield* Effect.fail(
-            new DataTransferError({
-              message: "Generic helper-container import failed.",
-              operation: "run",
-              cause: result,
-            }),
-          );
-        }
+          }),
+          "run",
+        );
         return {
           accelerated: false,
           sizeBytes: staged.verified.sizeBytes,
@@ -954,18 +919,17 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         ),
       );
       const stdinStream = Bun.file(staged.path).stream();
-      const result = yield* provider
-        .exec(
+      yield* checkedTransferCommand(
+        provider.exec(
           { app: target.app, service: target.service },
           {
             ...providerCommandSpec(target.command, target.env),
             stdinStream,
           },
-        )
-        .pipe(Effect.mapError((cause) => serviceCommandFailure("exec", cause)));
-      if (result.exitCode !== 0) {
-        return yield* Effect.fail(serviceCommandFailure("exec", result));
-      }
+        ),
+        "exec",
+        target.env,
+      );
       return {
         accelerated: true,
         sizeBytes: staged.verified.sizeBytes,

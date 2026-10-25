@@ -9,12 +9,15 @@ import type {
 import type {
   AbsoluteContainerPath,
   ContainerUser,
+  DatabaseConnection,
   LogSource,
   PlanMetadata,
   PluginManifest,
   ProviderCapabilities,
   ProviderId,
   ServiceConfig,
+  ServiceCreds,
+  ServiceName,
   ToolingTaskShape,
 } from "../schema/index.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
@@ -103,6 +106,8 @@ export interface FeatureRef {
  * A service type MUST NOT hand-build a `ServicePlan`.
  */
 export interface ServiceTypeResolution {
+  readonly connection?: DatabaseConnection;
+  readonly nonSqlCreds?: ServiceCreds;
   readonly base: "l337" | "lando";
   readonly normalizedConfig: ServiceConfig;
   readonly features: ReadonlyArray<FeatureRef>;
@@ -113,6 +118,13 @@ export interface ServiceTypeResolution {
    * service/directory values and merge below environment/variable keys.
    */
   readonly tooling?: Readonly<Record<string, ToolingTaskShape>>;
+  /**
+   * Generated connection-client task names. Omission seeds from this declaration's
+   * own factory; an explicit array suppresses seeding. Inheritance retains parent
+   * claims except tasks explicitly contributed by a child, unless reauthorized.
+   * Composed resolutions always carry an explicit array, including empty claims.
+   */
+  readonly connectionClientNames?: readonly string[];
   readonly metadata?: Record<string, unknown>;
 }
 
@@ -144,6 +156,10 @@ export interface ServiceType {
   readonly extends?: string;
   readonly artifacts?: Readonly<Record<string, string>>;
   readonly identity?: ServiceImageIdentity;
+  readonly toolingForConnection?: (
+    name: ServiceName,
+    connection: DatabaseConnection,
+  ) => Readonly<Record<string, ToolingTaskShape>>;
   readonly projectFiles?: (service: ServiceConfig) => ReadonlyArray<ServiceTypeProjectFileDeclaration>;
   readonly schema: Schema.Codec<unknown, unknown>;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
