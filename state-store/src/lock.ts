@@ -145,13 +145,14 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
           if (!isErrnoCode(cause, "EEXIST")) throw cause;
           const identity = await lockIdentity(lockPath);
           if (identity === null) return "retry" as const;
+          // A lock this process may not safely reclaim blocks the operation like a live holder.
           if (
             !identity.isFile() ||
             identity.isSymbolicLink() ||
             identity.nlink !== 1 ||
             (process.getuid !== undefined && identity.uid !== process.getuid())
           )
-            return "retry" as const;
+            return "held" as const;
           await options.privateFileAccess.verify(lockPath);
           const staleByMtime = now - identity.mtimeMs > LOCK_STALE_MS;
           const current = await readLockRecord(lockPath).catch((error: unknown) => {
