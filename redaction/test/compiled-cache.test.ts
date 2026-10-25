@@ -52,3 +52,18 @@ test("disposing an owner drops its registrations from redactors built afterwards
     "disposed-value-5",
   );
 });
+
+test("disposing an owner invalidates retained matchers without dropping explicit values", () => {
+  // Given a retained redactor compiled with both owner registrations and explicit values.
+  const owner = makeRedactionOwner();
+  Effect.runSync(owner.service.registerValues(["disposed-registration-value"]));
+  const redactor = Effect.runSync(
+    owner.service.forProfile("secrets", { authoritativeTokens: ["explicit-retained-value"] }),
+  );
+  const text = "disposed-registration-value explicit-retained-value";
+  expect(redactor.redactString(text)).toBe("[redacted] [redacted]");
+  // When the owner is disposed.
+  owner.dispose();
+  // Then the retained redactor no longer masks registrations, but keeps its caller's values.
+  expect(redactor.redactString(text)).toBe("disposed-registration-value [redacted]");
+});

@@ -132,12 +132,7 @@ const makeRedactorOptions = (
   };
 };
 
-/**
- * Compiled matchers keyed by the exact profile and value set they were built from. Compiling is
- * the expensive step (about a millisecond per thousand values), and one command builds many
- * redactors from the same environment snapshot. A key always covers every value, so a cache hit
- * never hands a redactor values it was not given.
- */
+/** Key the profile and every value so cache hits cannot inherit another caller's secrets. */
 type CompiledRedactors = Map<string, Redactor>;
 
 const COMPILED_REDACTOR_LIMIT = 32;

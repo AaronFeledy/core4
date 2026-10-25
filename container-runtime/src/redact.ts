@@ -3,11 +3,7 @@ import type { Redactor } from "@lando/sdk/secrets";
 import { Context, Effect, Option } from "effect";
 import type { ProviderErrorContext } from "./engine-api.ts";
 
-/**
- * Resolve the redactor for a provider error context: retained redactor wins,
- * else a standalone built from the context's explicit env snapshot.
- * Never reads process.env; callers must pass ctx.env.
- */
+/** Prefer the retained redactor; otherwise use ctx.env, never process.env. */
 export const redactorFor = (ctx: ProviderErrorContext): Redactor =>
   ctx.redactor ?? createStandaloneRedactor("secrets", { sourceEnv: ctx.env });
 
@@ -32,7 +28,7 @@ export const runtimeDiagnosticContext = Effect.fnUntraced(function* (ctx: Provid
   const options = { sourceEnv: ctx.env };
   const redactor = Option.isSome(service)
     ? yield* service.value.forProfile("secrets", options)
-    : (ctx.redactor ?? createStandaloneRedactor("secrets", options));
+    : redactorFor(ctx);
   return { ...ctx, redactor };
 });
 

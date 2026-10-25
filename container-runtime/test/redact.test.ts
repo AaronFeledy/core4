@@ -144,6 +144,36 @@ describe("redactDetails", () => {
 
 describe("required redactor contract", () => {
   test.each([false, true])(
+    "runtime diagnostics prefer the service over a retained redactor (service=%s)",
+    (withService) => {
+      // Given distinct retained, registered, and environment secrets.
+      const retained = createStandaloneRedactor("secrets", {
+        authoritativeTokens: ["retained-secret-value"],
+      });
+      const service = makeRedactionService();
+      Effect.runSync(service.registerValues(["registered-secret-value"]));
+      const effect = runtimeDiagnosticContext({
+        providerId: "fixture",
+        remediation: "Repair the fixture provider.",
+        env: { API_TOKEN: "environment-secret-value" },
+        redactor: retained,
+      });
+      // When resolving diagnostics with or without the runtime service.
+      const { redactor } = Effect.runSync(
+        withService ? effect.pipe(Effect.provideService(RedactionService, service)) : effect,
+      );
+      // Then the service combines registrations and environment; the fallback keeps the retained policy.
+      expect(
+        redactor.redactString("retained-secret-value registered-secret-value environment-secret-value"),
+      ).toBe(
+        withService
+          ? "retained-secret-value [redacted] [redacted]"
+          : "[redacted] registered-secret-value environment-secret-value",
+      );
+    },
+  );
+
+  test.each([false, true])(
     "runtime diagnostics mask explicit environment values (service=%s)",
     (withService) => {
       const effect = runtimeDiagnosticContext({
