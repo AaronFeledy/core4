@@ -1,3 +1,4 @@
+import { getLandofileValueSource } from "@lando/landofile/validation";
 import { type AppPlan, type LandofileShape, ServiceName, ToolingTaskShape } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
@@ -21,7 +22,9 @@ const ToolingPlan = Schema.Struct({
   tasks: Schema.Record(Schema.String, ToolingTaskShape),
   internalNames: Schema.Array(Schema.String),
   connectionClients: Schema.optionalKey(Schema.Record(Schema.String, ServiceName)),
+  disabledSources: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
+const disabledSources = new WeakMap<EffectiveTooling, Readonly<Record<string, string>>>();
 
 export const compareOrdinal = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -50,10 +53,22 @@ export const compileEffectiveTooling = (input: {
   readonly landofile: Pick<LandofileShape, "tooling" | "toolingDefaults">;
   readonly services: ReadonlyArray<ToolingServiceContribution>;
 }): EffectiveTooling => {
-  return rememberInternalToolingTasks(
+  const tooling = rememberInternalToolingTasks(
     sortedTooling(applyToolingDefaults(toolingBeforeDefaults(input), input.landofile.toolingDefaults) ?? {}),
     getInternalToolingTasks(input.landofile),
   );
+  disabledSources.set(
+    tooling,
+    Object.fromEntries(
+      Object.entries(tooling).flatMap(([name, task]) => {
+        const source = task.disabled
+          ? getLandofileValueSource(input.landofile, ["tooling", name, "disabled"])
+          : undefined;
+        return source === undefined ? [] : [[name, source.file]];
+      }),
+    ),
+  );
+  return tooling;
 };
 
 export const connectionClientOwners = (input: {
@@ -90,6 +105,7 @@ export const attachEffectiveTooling = <Plan extends AppPlan>(
         tasks: tooling,
         internalNames: [...getInternalToolingTasks(tooling)],
         connectionClients,
+        disabledSources: disabledSources.get(tooling) ?? {},
       },
     },
   };
@@ -99,5 +115,14 @@ export const effectiveToolingForPlan = (plan: AppPlan): EffectiveTooling | undef
   const value = plan.extensions[TOOLING_PLAN_KEY];
   if (value === undefined) return undefined;
   const decoded = Schema.decodeUnknownSync(ToolingPlan)(value);
-  return rememberInternalToolingTasks(decoded.tasks, decoded.internalNames);
+  const tooling = rememberInternalToolingTasks(decoded.tasks, decoded.internalNames);
+  disabledSources.set(tooling, decoded.disabledSources ?? {});
+  return tooling;
+};
+
+export const disabledToolingSourceForPlan = (plan: AppPlan, name: string): string | undefined => {
+  const value = plan.extensions[TOOLING_PLAN_KEY];
+  return value === undefined
+    ? undefined
+    : Schema.decodeUnknownSync(ToolingPlan)(value).disabledSources?.[name];
 };
