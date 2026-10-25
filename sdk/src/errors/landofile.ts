@@ -19,9 +19,7 @@ export class LandofileNotFoundError extends Schema.TaggedError<LandofileNotFound
     cwd: Schema.String,
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
       Schema.withConstructorDefault(
-        Effect.succeed(
-          "Run lando init in your project directory to create a Landofile, or run this command from an existing Lando project.",
-        ),
+        Effect.succeed("Run `lando init --full --name=<name>` to scaffold an app."),
       ),
     ),
   },
