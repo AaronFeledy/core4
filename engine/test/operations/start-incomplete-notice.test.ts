@@ -162,7 +162,7 @@ describe("incomplete start notice", () => {
       // Then: the failure is unchanged and one notice lists what was left in place.
       expect(Exit.isFailure(exit)).toBe(true);
       expect(notices).toEqual([
-        "Start did not complete. Resources were left in place. Running: web; created/stopped: db, worker; unverified: cache. Agent forwarding/file sync remain active where established. Inspect `lando info` and `lando logs`; fix the reported error, then run `lando start`. Run `lando stop` to shut down or `lando destroy` to remove resources; volumes require `--volumes`.",
+        "Start did not complete. Resources were left in place. Running: web; created/stopped: db, worker; unverified: cache. Agent forwarding/file sync remain active where established. Inspect `lando info` and `lando logs`; fix the reported error, then run `lando start`. Run `lando stop` to shut down or `lando destroy` to remove resources; named volumes require `--volumes`.",
       ]);
     },
   );
