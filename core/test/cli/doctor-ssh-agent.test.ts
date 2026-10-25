@@ -417,6 +417,27 @@ describe("SSH agent doctor posture", () => {
     expect(check.context.fixError).not.toContain(secret);
   });
 
+  test("sidecar fix reports the final socket probe failure after setup succeeds", async () => {
+    // Given a sidecar whose setup succeeds but whose agent socket still refuses connections.
+    const input = inputs();
+    const secret = "probe-socket-token-91c2";
+    // When doctor attempts automatic repair.
+    const check = await Effect.runPromise(
+      sshAgentPostureCheck({
+        ...input,
+        fix: true,
+        env: { LANDO_TEST_API_TOKEN: secret },
+        probe: async () => {
+          throw new Error(`connect ECONNREFUSED /test/agent.sock (${secret})`);
+        },
+      }),
+    );
+    // Then the repair failure names the probe's reason without the secret value.
+    expect(check.context).toMatchObject({ fixOutcome: "failed", fixExitCode: "1" });
+    expect(check.context.fixError).toContain("Last probe failure: connect ECONNREFUSED /test/agent.sock");
+    expect(check.context.fixError).not.toContain(secret);
+  });
+
   test("subsystem doctor reads global SSH config without requiring an app", async () => {
     // Given
     const input = inputs();

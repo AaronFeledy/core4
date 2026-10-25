@@ -10,6 +10,7 @@ import {
   sidecarSocketCheck,
 } from "@lando/engine/subsystems/ssh-agent/session";
 import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
+import { causeMessage } from "@lando/sdk/errors";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
 import {
   ConfigService,
@@ -99,6 +100,8 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         if (waitAfterSetup)
           readinessDetail = (yield* awaitRuntimeSshAgent(sidecarSocketCheck(upstream, input.probe))).detail;
         const probed = yield* Effect.result(probeAgent(upstream));
+        // After repair, the final socket probe decides reachability, so its failure is the reason to report.
+        if (waitAfterSetup && probed._tag === "Failure") readinessDetail = causeMessage(probed.failure);
         return {
           source: "sidecar" as const,
           reachable: probed._tag === "Success",
@@ -152,11 +155,12 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         fixContext.fixCommand = "ssh.setup";
         fixContext.fixExitCode = recovered ? "0" : "1";
         if (!recovered) {
-          fixContext.fixError = Result.isFailure(setup)
-            ? (yield* resolveSecretsRedactor({ sourceEnv: input.env ?? process.env })).redact(
-                setup.failure.message,
-              )
-            : `SSH agent forwarding remains degraded after setup.${readinessDetail === undefined ? "" : ` Last probe failure: ${readinessDetail}`}`;
+          const { redact } = yield* resolveSecretsRedactor({ sourceEnv: input.env ?? process.env });
+          fixContext.fixError = redact(
+            Result.isFailure(setup)
+              ? setup.failure.message
+              : `SSH agent forwarding remains degraded after setup.${readinessDetail === undefined ? "" : ` Last probe failure: ${readinessDetail}`}`,
+          );
         }
         break;
       }
