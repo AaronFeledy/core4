@@ -33,23 +33,28 @@ const phpAssertion = (): string =>
     return `$actual = ini_get(${setting}); if ($actual !== ${expected}) { fwrite(STDERR, ${setting} . '=' . var_export($actual, true) . "\\n"); exit(1); } echo ${setting}, '=', $actual, "\\n";`;
   }).join(" ");
 
-const imageCommand = (): string => {
-  const assertion = phpAssertion();
-  if (assertion.includes("'")) {
-    throw new Error("PHP baseline assertion cannot contain single quotes");
-  }
-  return `${phpBaselineIniCommand(renderPhpBaselineIni())} && php -r '${assertion}'`;
-};
-
 const runImage = async (
   docker: string,
   image: string,
 ): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> => {
-  const proc = Bun.spawn([docker, "run", "--rm", image, "sh", "-c", imageCommand()], {
-    env: dockerEnv(),
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+  const proc = Bun.spawn(
+    [
+      docker,
+      "run",
+      "--rm",
+      image,
+      "sh",
+      "-c",
+      `${phpBaselineIniCommand(renderPhpBaselineIni())} && php -r "$1"`,
+      "sh",
+      phpAssertion(),
+    ],
+    {
+      env: dockerEnv(),
+      stderr: "pipe",
+      stdout: "pipe",
+    },
+  );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
