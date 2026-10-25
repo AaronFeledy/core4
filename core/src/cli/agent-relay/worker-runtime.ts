@@ -224,6 +224,7 @@ export const runAgentRelayWorkerProcess = async (
   signals.once("SIGTERM", onSignal);
   signals.once("SIGINT", onSignal);
   const owner = makeRedactionOwner();
+  const sourceEnv = { ...process.env };
   const redactionLayer = Layer.succeed(RedactionService, owner.service);
   try {
     const readInput = options.readInput ?? (() => Bun.stdin.text());
@@ -257,7 +258,7 @@ export const runAgentRelayWorkerProcess = async (
       ),
     );
   } catch (cause) {
-    const redactor = await Effect.runPromise(owner.service.forProfile("secrets"));
+    const redactor = await Effect.runPromise(owner.service.forProfile("secrets", { sourceEnv }));
     throw new Error(redactor.redactString(String(cause)));
   } finally {
     owner.dispose();
