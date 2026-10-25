@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { Schema } from "effect";
-import { mcpCompletionFixture, mcpPrerequisite } from "./mcp-completion-fixture.ts";
+import { within } from "./mcp-cli-client.ts";
+import { mcpAcceptanceBinary, mcpCompletionFixture, mcpPrerequisite } from "./mcp-completion-fixture.ts";
 
 const enabled = mcpPrerequisite === undefined || process.env.LANDO_GUIDE_E2E === "1";
 const suite = enabled ? describe.serial : describe.skip;
@@ -179,6 +180,47 @@ suite("compiled CLI managed MCP command completion", () => {
       await client.dispose();
     }
   }, 60_000);
+
+  test.each(["SIGINT", "SIGTERM"] as const)(
+    "releases a quiet CLI log follower on %s",
+    async (signal) => {
+      const app = current();
+      const { BUN_BE_BUN: _bunBeBun, ...env } = process.env;
+      const child = Bun.spawn(
+        [mcpAcceptanceBinary, "logs", "--service=app", "--follow", "--tail=1", "--format=json"],
+        { cwd: app.root, env, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+      );
+      const diagnostics = new Response(child.stderr).text();
+      const reader = child.stdout.getReader();
+      const decoder = new TextDecoder();
+      let stdout = "";
+      try {
+        while (!stdout.includes("quiet-ready")) {
+          const next = await within(reader.read(), "initial CLI log record");
+          if (next.done) throw new Error("CLI exited before its initial log record");
+          stdout += decoder.decode(next.value, { stream: true });
+        }
+        const started = performance.now();
+        child.kill(signal);
+        const exitCode = await within(child.exited, "idle CLI shutdown", 5_000);
+        const milliseconds = performance.now() - started;
+        for (;;) {
+          const next = await reader.read();
+          if (next.done) break;
+          stdout += decoder.decode(next.value, { stream: true });
+        }
+        const stderr = await diagnostics;
+        await app.artifact("cli-idle-signal", { signal, exitCode, milliseconds, stdout, stderr });
+        expect(exitCode).toBe(signal === "SIGINT" ? 130 : 143);
+        expect(stderr).toBe("");
+      } finally {
+        if (child.exitCode === null) child.kill("SIGKILL");
+        await child.exited;
+        await reader.cancel();
+      }
+    },
+    60_000,
+  );
 
   test.each(["cancel-and-eof", "eof", "SIGTERM"] as const)(
     "releases a quiet real log follower on %s",
