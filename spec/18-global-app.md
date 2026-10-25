@@ -53,7 +53,7 @@ The root is created on demand. With no contributions, the generated layer names 
 
 #### 20.3.2 Discovery rules
 
-`<userDataRoot>/global/` MUST be excluded from cwd discovery and `cwd-app-map` (§7.1, §12.1). `app:*` commands resolve only user apps; `meta:global:*` resolves the global app explicitly through `GlobalAppService`. `apps:list` excludes it unless `--include-global` or `--all` is set. Global lifecycle payloads carry `AppRef { kind: "global", id: "global", root }`.
+`<userDataRoot>/global/` MUST be excluded from cwd discovery (§7.1). `app:*` commands resolve only user apps; `meta:global:*` resolves the global app explicitly through `GlobalAppService`. `apps:list` excludes it unless `--include-global` or `--all` is set. Global lifecycle payloads carry `AppRef { kind: "global", id: "global", root }`.
 
 ### 20.4 The `globalServices:` plugin contribution surface
 

@@ -16,7 +16,6 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `core-command` | embedded plus `<userCacheRoot>/command-cache.bin` | binary | Built-in command, alias, and docs metadata; invalidated by core version or clear. |
 | `plugin-command` | `<userCacheRoot>/plugin-command-cache.bin` | binary | Sole metadata owner for precedence-merged bundled/external plugin commands; invalidated by plugin graph changes or clear. External plugin commands contribute metadata only; executable dispatch of them is governed by §9.7. |
 | `app-command` | `<userCacheRoot>/apps/<app-id>/commands.bin` | binary | App tooling routing metadata and app-plan key; invalidated by relevant app inputs, rebuild, refresh, or clear. |
-| `cwd-app-map` | `<userCacheRoot>/cwd-app-map.bin` | binary | Bounded CWD-to-app-root index with Landofile freshness metadata; stale entries fall back to discovery. |
 | `plugin` | `<userCacheRoot>/plugin-cache.json` | JSON | Resolved manifests, dependency graph, and contribution index. |
 | `app-plugin` | `<userCacheRoot>/apps/<app-id>/plugins.json` | JSON | App plugin lock resolution and local install metadata. |
 | `app-plan` | `<userCacheRoot>/apps/<app-id>/plan.bin` | Effect Schema binary | Frozen `AppPlan`, provider id, compiled tooling graphs, expression ASTs, and fingerprints, plus the host-path shadow eligibility verdicts behind its storage shadows; a changed verdict invalidates the entry. The key includes the environment dependencies of app-feature `fromConfig` selectors, captured once for both key derivation and selector evaluation: statically referenced names, with unset values distinct from strings, or the complete captured environment when a selector reads it whole or by computed member. The key MUST also include §7.4.2 input/metadata/translator/context fingerprints and generated-output digests; changed fingerprints invalidate it. Environment and credential values are stored as `EnvironmentValue` descriptors (§7.3.1); the key and record hash descriptors, never resolved bytes. No session secrets or live endpoints. |
@@ -63,7 +62,6 @@ Tooling caches MUST contain only expression ASTs and static redacted metadata. T
 | `<userConfRoot>/global.config.yml` | Global-service enablement map (§20.3.1). |
 | `<userCacheRoot>/logs/` | Core and file-sync logs under §10.9 retention. |
 | `<userCacheRoot>/logs/<label>-worker-<app-id>.log` | Detached host-proxy and agent-relay stderr. Owner-only `0600` on POSIX, verified private ACL on Windows; no symlink or non-regular target. Lando-created log directory `0700`; outer failures and error tails redacted (§10.4, §10.10.2). |
-| `<userCacheRoot>/cwd-app-map.bin` | Router-phase CWD index. |
 | `<userCacheRoot>/apps/<app-id>/` | User-app caches and provider workdir. |
 | `<userCacheRoot>/templates/<engineId>/`, `includes/`, `tool-downloads/<toolId>/` | Cross-app derived and verified content. |
 | `<userCacheRoot>/logs/file-sync/` | Retained file-sync daemon and engine logs. |
@@ -138,7 +136,7 @@ Schema decoding on the CLI hot path uses ahead-of-time compiled decoders under t
 - The `compiled-decoders` derived codegen entry (§17.2) emits the gitignored generated module and its declaration. `runCompiledCli` installs them before any decode; `makeLandoRuntime` and other library entries never install them.
 - Compiled and interpreted decoding MUST agree on verdict, decoded value, and every issue path and message. The parity suite (§13.1) decodes the Landofile corpus in separate interpreted and compiled processes and fails on any difference.
 - Membership is earned and kept under §2.5: end-to-end measurement on compiled binaries against the §2.1 hot-path budgets, recorded with the change that adds the schema. Compiled decoders optimize the hot path; they are never a second source of truth for validity.
-- Binary hot-path caches (`core-command`, `plugin-command`, `app-command`, `cwd-app-map`) are V8-serialized behind header checks and perform no Schema decode, so they have nothing to compile. Effect Schema binary caches (`app-plan`, `global-app-plan`, `scratch-app-plan`) decode through the compiled `AppPlan` decoder when installed.
+- Binary hot-path caches (`core-command`, `plugin-command`, `app-command`) are V8-serialized behind header checks and perform no Schema decode, so they have nothing to compile. Effect Schema binary caches (`app-plan`, `global-app-plan`, `scratch-app-plan`) decode through the compiled `AppPlan` decoder when installed.
 
 ### 12.6 Disconnectable local-dev state
 
