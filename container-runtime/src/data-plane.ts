@@ -45,13 +45,14 @@ import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creat
 export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
 export { dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
 
-import { Cause, Effect, Exit, Fiber, type Scope, Stream } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, type Scope, Stream } from "effect";
 
 import { annotateFailureRole, failureDefectCause, mergeFailure } from "@lando/sdk/command-result";
 
 import {
   ArtifactTransferError,
   ProviderCapabilityError,
+  ProviderUnavailableError,
   ServiceCopyError,
   VolumeOperationError,
 } from "@lando/sdk/errors";
@@ -695,18 +696,42 @@ interface EphemeralRelease {
   readonly observed?: { readonly exitCode?: number; readonly stderr: string };
 }
 
+/** Fixed bound so a hung engine DELETE cannot hold scope close open. */
+const EPHEMERAL_CLEANUP_DEADLINE = Duration.seconds(10);
+
 const releaseEphemeralContainer = (release: EphemeralRelease) => {
   const { options, name, remove, exit, operation, observed } = release;
   if (!remove) return Effect.void;
-  return removeRuntimeContainer(options.api, name, {
-    providerId: options.providerId,
-    operation: `${operation}.remove`,
-    remediation: "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
-    redactor: {
-      redactString: (value) => redactCompletionString(value, options.redactDetails),
-      redactValue: options.redactDetails,
-    },
-  }).pipe(
+  // Finalizers are uninterruptible. The removal stays interruptible so this
+  // deadline can stop it; the finalizer stays masked so parent cancellation
+  // still waits for that bounded attempt instead of abandoning cleanup.
+  const removal = Effect.interruptible(
+    removeRuntimeContainer(options.api, name, {
+      providerId: options.providerId,
+      operation: `${operation}.remove`,
+      remediation:
+        "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+      redactor: {
+        redactString: (value) => redactCompletionString(value, options.redactDetails),
+        redactValue: options.redactDetails,
+      },
+    }),
+  ).pipe(
+    Effect.timeoutOrElse({
+      duration: EPHEMERAL_CLEANUP_DEADLINE,
+      orElse: () =>
+        Effect.fail(
+          new ProviderUnavailableError({
+            providerId: options.providerId,
+            operation: `${operation}.remove`,
+            message: "Provider ephemeral container cleanup timed out.",
+            remediation:
+              "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+          }),
+        ),
+    }),
+  );
+  return removal.pipe(
     Effect.asVoid,
     Effect.catchCause((cause) => {
       const failedCommand = completedCommandFailure(exit, observed);
