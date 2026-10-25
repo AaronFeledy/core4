@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { makeRedactionService } from "@lando/redaction/service";
+import { resolveCommandCompletion } from "@lando/sdk/command-result";
 import { Effect, Schema } from "effect";
 import { dispatchTool } from "../src/dispatch.ts";
 
-test("masks the union of overlapping session and result tokens without retaining result tokens", async () => {
+test.each([true, false])("masks overlap without retaining tokens (ok=%j)", async (ok) => {
   // Given: neither token alone covers the entire overlapping value.
   const service = makeRedactionService();
   await Effect.runPromise(service.registerValues(["abcdef"]));
@@ -30,7 +31,13 @@ test("masks the union of overlapping session and result tokens without retaining
         allowlistSource: "defaults",
         redactor,
         resultRedactor: (tokens) => service.forProfile("secrets", { sourceEnv, authoritativeTokens: tokens }),
-        execute: () => Effect.succeed({ _tag: "success", value: { value: "abcdefghi environment-canary" } }),
+        execute: () =>
+          Effect.succeed(
+            resolveCommandCompletion(entry.spec.id, { value: "abcdefghi environment-canary" }, () => ({
+              ok,
+              exitCode: ok ? 0 : 7,
+            })),
+          ),
         notify: (frame) =>
           Effect.sync(() => {
             frames.push(frame);
@@ -40,6 +47,7 @@ test("masks the union of overlapping session and result tokens without retaining
   );
   // Then: both result surfaces mask the whole union, while session registrations stay unchanged.
   expect(result.envelope).toMatchObject({ result: { value: "[redacted] [redacted]" } });
+  expect(result.ok).toBe(ok);
   expect(JSON.stringify(frames)).not.toContain("ghi");
   expect(redactor.redactString("defghi")).toBe("defghi");
 });

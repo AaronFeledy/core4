@@ -106,6 +106,7 @@ for (const stage of ["dispatch", "body"] as const) {
           resultSchema: Schema.Unknown,
           redactor,
           outcome: failureOutcomeFromCause(Cause.die(defect)),
+          output: { chunks: [], truncated: false },
         }),
       ),
     );
@@ -148,7 +149,13 @@ test("MCP and CLI preserve identical typed diagnostic fields and validation issu
   );
   const cli = JSON.parse(
     await Effect.runPromise(
-      encodeCommandResult({ command: entry.spec.id, resultSchema: Schema.Unknown, redactor, outcome }),
+      encodeCommandResult({
+        command: entry.spec.id,
+        resultSchema: Schema.Unknown,
+        redactor,
+        outcome,
+        output: { chunks: [], truncated: false },
+      }),
     ),
   );
   expect(result.envelope).toEqual(cli);

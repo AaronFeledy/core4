@@ -265,13 +265,25 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
       .debug("MCP command defect", { cause: deps.redactor.redactString(Cause.pretty(exit.cause)) })
       .pipe(Effect.ignore);
   }
+  const redactor = yield* deps.resultRedactor([]);
   const encoded = yield* buildCommandResultEnvelope({
     command: commandId,
     resultSchema: Schema.Unknown,
     outcome: failureOutcomeFromCause(exit.cause),
-    redactor: deps.redactor,
+    redactor,
   });
-  const envelope = yield* redactBoundedJsonValue(encoded, deps.redactor, "MCP tool failure");
+  const safeEnvelope = yield* redactBoundedJsonValue(encoded, redactor, "MCP tool failure");
+  if (!Predicate.isObject(safeEnvelope))
+    return yield* Effect.fail(
+      new McpTransportError({
+        message: "MCP failure encoding did not produce an object envelope.",
+        remediation: "Return a schema-valid command failure.",
+      }),
+    );
+  const capture = deps.capture ?? new OutputCapture();
+  const envelope: Schema.Json = JSON.parse(
+    yield* stringifyBoundedJson(capture.fitEnvelope(safeEnvelope, redactor), "MCP tool failure"),
+  );
   yield* emitPost("failure", envelopeTag(envelope));
   return { envelope, ok: false };
 }, Effect.uninterruptible);
