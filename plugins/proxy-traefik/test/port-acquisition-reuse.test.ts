@@ -4,6 +4,7 @@ import { Cause, Effect, type Exit } from "effect";
 import * as sdkErrors from "@lando/sdk/errors";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
+import { buildTraefikServiceConfig } from "../src/global-services/traefik.ts";
 import { stillOwnPersisted } from "../src/port-acquisition-helpers.ts";
 import { persistPortAcquisition } from "../src/port-acquisition-state.ts";
 import {
@@ -18,6 +19,7 @@ import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../src/ports.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { resolvePublishedRouterBindAddress } from "../src/router-bind-address.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
@@ -276,6 +278,47 @@ describe("persistPortAcquisition reuse", () => {
     expect(decision.notices.join(" ")).toContain("lando info");
   });
 
+  test("rewrites a stale 0.0.0.0 fingerprint before Traefik publishes a narrowed bind", async () => {
+    // Given: setup already published on every interface; global config now asks for loopback.
+    const store = memoryFiles();
+    seedAcquisition(store.files, {
+      httpPort: 8080,
+      httpsPort: 8443,
+      fingerprint: {
+        http: [...HTTP_TRY_LIST],
+        https: [...HTTPS_TRY_LIST],
+        bindAddress: "0.0.0.0",
+      },
+    });
+    const deps = makeDeps(store, overrideFor({ httpFirstFree: 8080, httpsFirstFree: 8443 }), {
+      fingerprint: {
+        http: [...HTTP_TRY_LIST],
+        https: [...HTTPS_TRY_LIST],
+        bindAddress: "0.0.0.0",
+      },
+      router: { bindAddress: "127.0.0.1" },
+    });
+
+    // When: start-path persist runs with the narrowed router bind.
+    const decision = await Effect.runPromise(persistPortAcquisition(deps));
+    const persisted = readJson(store.files);
+    const fingerprint = persisted.fingerprint as { bindAddress: string };
+    const published = buildTraefikServiceConfig({
+      http: decision.httpPort,
+      https: decision.httpsPort,
+      bindAddress: resolvePublishedRouterBindAddress(fingerprint.bindAddress, "0.0.0.0"),
+    });
+
+    // Then: the rewritten fingerprint, not the stale 0.0.0.0 state, is what Traefik publishes.
+    expect(decision.fingerprint.bindAddress).toBe("127.0.0.1");
+    expect(fingerprint.bindAddress).toBe("127.0.0.1");
+    expect(
+      (published.endpoints ?? [])
+        .filter((endpoint) => endpoint._tag === "published")
+        .map((endpoint) => endpoint.publication.bindAddress),
+    ).toEqual(["127.0.0.1", "127.0.0.1"]);
+  });
+
   test("Given a changed fingerprint, When persisting, Then acquisition rescans the new try list", async () => {
     // Given: persisted 8080/8443 under the default fingerprint; lists now start at 8888/4443.
     const store = memoryFiles();
@@ -519,6 +562,79 @@ describe("fallback notice", () => {
     expect(joined).toContain("nginx");
     expect(joined).toContain("lando info");
     expect(joined.match(/alternate URL is available/gu)).toHaveLength(1);
+  });
+});
+
+describe("bind narrowing on start and setup", () => {
+  test("prepare rewrites a stale 0.0.0.0 fingerprint so Traefik would publish loopback", async () => {
+    // Given: a running router published on every interface.
+    const store = memoryFiles();
+    seedAcquisition(store.files, {
+      httpPort: 8080,
+      httpsPort: 8443,
+      fingerprint: {
+        http: [...HTTP_TRY_LIST],
+        https: [...HTTPS_TRY_LIST],
+        bindAddress: "0.0.0.0",
+      },
+    });
+    const service = makeTraefikRouterService(
+      makeDeps(store, overrideFor({ httpFirstFree: 8080, httpsFirstFree: 8443 })),
+    );
+
+    // When: start-path prepare runs with the narrowed global bind.
+    await Effect.runPromise(
+      Effect.scoped(service.prepare?.({ defaultDomain: "lndo.site", router: { bindAddress: "127.0.0.1" } })),
+    );
+    const persisted = readJson(store.files);
+    const fingerprint = persisted.fingerprint as { bindAddress: string };
+    const published = buildTraefikServiceConfig({
+      http: 8080,
+      https: 8443,
+      bindAddress: resolvePublishedRouterBindAddress(fingerprint.bindAddress, "0.0.0.0"),
+    });
+
+    // Then: the file Traefik reads during ensureGlobalServicesRunning is already loopback.
+    expect(fingerprint.bindAddress).toBe("127.0.0.1");
+    expect(
+      (published.endpoints ?? [])
+        .filter((endpoint) => endpoint._tag === "published")
+        .map((endpoint) => endpoint.publication.bindAddress),
+    ).toEqual(["127.0.0.1", "127.0.0.1"]);
+  });
+
+  test("setup persist rewrites the bind before ensureRunning builds Traefik", async () => {
+    // Given: stale every-interface state; setup ensureRunning snapshots acquisition after persist.
+    const store = memoryFiles();
+    seedAcquisition(store.files, {
+      httpPort: 8080,
+      httpsPort: 8443,
+      fingerprint: {
+        http: [...HTTP_TRY_LIST],
+        https: [...HTTPS_TRY_LIST],
+        bindAddress: "0.0.0.0",
+      },
+    });
+    const applied: Array<{ bindAddress?: string }> = [];
+    const service = makeTraefikRouterService(
+      makeDeps(store, overrideFor({ httpFirstFree: 8080, httpsFirstFree: 8443 }), {
+        globalApp: {
+          ensureRunning: () => {
+            const persisted = readJson(store.files);
+            applied.push((persisted.fingerprint as { bindAddress?: string }) ?? {});
+            return Effect.succeed([{ name: "traefik", state: "running", endpoints: [] }]);
+          },
+        },
+      }),
+    );
+
+    // When: setup re-acquires the narrowed bind and then starts Traefik.
+    await Effect.runPromise(
+      Effect.scoped(service.setup({ defaultDomain: "lndo.site", router: { bindAddress: "127.0.0.1" } })),
+    );
+
+    // Then: ensureRunning already sees 127.0.0.1, so publication cannot keep 0.0.0.0.
+    expect(applied).toEqual([expect.objectContaining({ bindAddress: "127.0.0.1" })]);
   });
 });
 

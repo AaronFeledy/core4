@@ -22,7 +22,7 @@ export const routerBindWarnings = (
         path: [...BIND_PATH],
         message: "router.bindAddress is global-only and does not change the shared router bind.",
         suggestion:
-          "Set router.bindAddress in the installation config.yml or LANDO_ROUTER_BIND_ADDRESS, then run lando setup.",
+          "Set router.bindAddress in the installation config.yml or LANDO_ROUTER_BIND_ADDRESS, then run lando start.",
         ...(source === undefined ? {} : { source }),
       },
       "effective",

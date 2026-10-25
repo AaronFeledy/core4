@@ -46,6 +46,7 @@ test("warns that a Landofile router.bindAddress is global-only", async () => {
       },
       line: 3,
       column: 3,
+      suggestion: expect.stringContaining("lando start"),
     }),
   ]);
   expect(resolved?.document.router?.bindAddress).toBe("0.0.0.0");

@@ -100,7 +100,7 @@ const windowsTryList = (
 
 export const resolveTryLists = (dependencies: TraefikProxyDependencies): ResolvedTryLists => {
   const bindAddress = normalizeRouterBindAddress(
-    dependencies.fingerprint?.bindAddress ?? dependencies.router?.bindAddress ?? LOOPBACK_HOST,
+    dependencies.router?.bindAddress ?? dependencies.fingerprint?.bindAddress ?? LOOPBACK_HOST,
   );
   if (dependencies.paths.platform !== "win32") {
     const httpTryList =
