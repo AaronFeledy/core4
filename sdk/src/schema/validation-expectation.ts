@@ -18,7 +18,10 @@ const phrase = (original: SchemaAST.AST, seen: Set<SchemaAST.AST>): string => {
       expected = [
         ...new Set(
           ast.types
-            .filter((member) => !isExpressionSlot(member) && !isMergeDirectiveMemberAst(member))
+            .filter(
+              (member) =>
+                member._tag !== "Never" && !isExpressionSlot(member) && !isMergeDirectiveMemberAst(member),
+            )
             .map((member) => child(SchemaAST.toEncoded(member))),
         ),
       ].join(" | ");
@@ -90,5 +93,7 @@ export const validationExpectation = (original: SchemaAST.AST): string => {
   const ast = authoringExpectation(original);
   return typeof ast.annotations?.message === "string"
     ? ast.annotations.message
-    : `Expected ${phrase(ast, new Set())}`;
+    : ast._tag === "Never"
+      ? "This key is not allowed here"
+      : `Expected ${phrase(ast, new Set())}`;
 };

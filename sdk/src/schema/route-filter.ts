@@ -20,6 +20,7 @@ const name = Schema.optionalKey(Schema.String).annotate({
 const prefix = Schema.NonEmptyString.pipe(
   Schema.check(
     Schema.isPattern(PREFIX_PATTERN, {
+      message: "Expected a path prefix starting with /",
       toJsonSchema: () => ({ pattern: PREFIX_PATTERN.source }),
     }),
   ),
@@ -29,6 +30,7 @@ const prefix = Schema.NonEmptyString.pipe(
 const header = Schema.String.pipe(
   Schema.check(
     Schema.isPattern(HEADER_PATTERN, {
+      message: "Expected an HTTP header name containing only letters, digits, and hyphens",
       toJsonSchema: () => ({ pattern: HEADER_PATTERN.source }),
     }),
   ),

@@ -91,6 +91,9 @@ test("generated Landofile defects have plain messages and unchanged-scope parity
       if (
         issue.message.includes("Symbol(") ||
         issue.message.includes("Authoring") ||
+        issue.message.includes("Expected never") ||
+        issue.message.includes("RegExp") ||
+        issue.message.includes("<filter>") ||
         issue.message.includes("authoring site: Expected an expression, not plain text") ||
         [...identifiers].some((id) => issue.message.includes(id))
       ) {
