@@ -9,7 +9,6 @@ import { TestClock } from "effect/testing";
 import {
   agentSocketMountPlan,
   awaitRuntimeSshAgent,
-  runtimeSshAgentCheck,
   runtimeSshAgentState,
   sidecarSocketCheck,
 } from "../../../src/subsystems/ssh-agent/session.ts";
@@ -288,10 +287,17 @@ test.each([false, true])(
   },
 );
 
-test("socket readiness retains a failed identity request", async () => {
+test.each([
+  {
+    cause: new Error("socket identity request failed", { cause: new Error("connection refused") }),
+    detail: "socket identity request failed connection refused",
+  },
+  { cause: new Error("socket identity request failed"), detail: "socket identity request failed" },
+  { cause: "connection refused", detail: "connection refused" },
+])("socket readiness retains a failed identity request: $detail", async ({ cause, detail }) => {
   // Given a running sidecar whose socket rejects identity requests.
   const check = sidecarSocketCheck({ _tag: "unix", path: "/missing.sock" }, async () => {
-    throw new Error("socket identity request failed", { cause: new Error("connection refused") });
+    throw cause;
   });
   // When its readiness budget expires.
   const result = await Effect.runPromise(
@@ -306,7 +312,7 @@ test("socket readiness retains a failed identity request", async () => {
     ),
   );
   // Then socket failure detail is retained.
-  expect(result).toEqual({ state: "starting", detail: "socket identity request failed connection refused" });
+  expect(result).toEqual({ state: "starting", detail });
 });
 
 test("overall timeout retains the last completed failure rather than the interrupted attempt", async () => {
@@ -317,7 +323,7 @@ test("overall timeout retains the last completed failure rather than the interru
     if (attempts === 1) return Effect.fail(new Error("concrete exec refusal"));
     return attempts === 2 ? Effect.succeed({ state: "starting" as const }) : Effect.never;
   });
-  // When the overall deadline interrupts the second attempt.
+  // When the overall deadline interrupts the third attempt.
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const fiber = yield* Effect.forkChild(awaitRuntimeSshAgent(check));
@@ -335,7 +341,7 @@ test("per-attempt timeout is retained when exec never completes", async () => {
   // When all readiness time elapses.
   const result = await Effect.runPromise(
     Effect.gen(function* () {
-      const fiber = yield* Effect.forkChild(awaitRuntimeSshAgent(runtimeSshAgentCheck));
+      const fiber = yield* Effect.forkChild(awaitRuntimeSshAgent());
       yield* TestClock.adjust("30 seconds");
       return yield* Fiber.join(fiber);
     }).pipe(

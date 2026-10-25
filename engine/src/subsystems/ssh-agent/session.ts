@@ -98,9 +98,10 @@ export const sidecarSocketCheck = (upstream: AgentRelayUpstream, probe = probeSs
                 new SshError({
                   sshId: "sidecar",
                   message:
-                    cause instanceof Error && cause.cause !== undefined
-                      ? `${cause.message} ${causeMessage(cause.cause)}`
-                      : causeMessage(cause),
+                    causeMessage(cause) +
+                    (cause instanceof Error && cause.cause !== undefined
+                      ? ` ${causeMessage(cause.cause)}`
+                      : ""),
                   cause,
                 }),
             }).pipe(Effect.as({ state: "ready" as const })),

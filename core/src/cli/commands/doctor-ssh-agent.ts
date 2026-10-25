@@ -92,7 +92,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
           readinessDetail = readiness?.detail;
           return {
             source: "sidecar" as const,
-            reachable: waitAfterSetup ? readiness?.state === "ready" : yield* runtimeSshAgentReady,
+            reachable: readiness === undefined ? yield* runtimeSshAgentReady : readiness.state === "ready",
           };
         }
         const upstream = { _tag: "unix" as const, path: socket.socketPath };
