@@ -8,6 +8,7 @@ import {
   collectLlmsPages,
   fixtureRootsFor,
   llmsIndexUrls,
+  renderLlmsFull,
   renderLlmsIndex,
   routeFor,
   serializeDocsPage,
@@ -33,7 +34,9 @@ describe("llms serializer", () => {
     const out = await serializeFile(resolve(docsRoot, "guides/services/build-steps.mdx"), "build-steps");
 
     expect(out).toContain("```sh\nlando app:config:lint --format=json\n```");
-    expect(out).toContain("expect: command `lando app:config:lint --format=json` matches");
+    expect(out).toContain(
+      'expect: command `lando app:config:lint --format=json` stdout matches `"valid":\\s*true`',
+    );
     expect(out).toContain("Fixture `build-steps-demo`, `.lando.yml`:\n\n```yaml\nname: build-steps-demo\n");
     // render={false} scenario and its fixture are dropped.
     expect(out).not.toContain("build-steps-invalid-user");
@@ -77,7 +80,7 @@ describe("llms serializer", () => {
     expect(out).toContain("Use `demo` here.");
     expect(out).toContain("```sh\nlando start\n```");
     expect(out).toContain("```ts\nconst y = 1;\n```");
-    expect(out).toContain("expect: command `lando info` matches `ok`");
+    expect(out).toContain("expect: command `lando info` output equals `ok`");
     expect(out).toContain("```sh\necho hi\n```");
     expect(out.match(/expect:/g)).toHaveLength(1);
     expect(out).not.toContain("secret-");
@@ -93,6 +96,34 @@ describe("llms serializer", () => {
     );
   });
 
+  test("parses Verify expectations into stream and pattern", () => {
+    const verify = (expect: string): string =>
+      serializeDocsPage(`<Verify command="c" expect={${expect}} />\n`, { file: "/x/v.mdx" });
+
+    expect(verify('{ stdout: { regex: "\\"ok\\":\\\\s*true" } }')).toBe(
+      'expect: command `c` stdout matches `"ok":\\s*true`',
+    );
+    expect(verify('{ stdout: "a\\nb", stderr: { regex: "done" } }')).toBe(
+      "expect: command `c` stdout equals `a\\nb`, stderr matches `done`",
+    );
+    expect(verify('{ stdout: { not: { regex: "boom" } } }')).toBe(
+      "expect: command `c` stdout not matches `boom`",
+    );
+    expect(verify('{ regex: "x" }')).toBe("expect: command `c` output matches `x`");
+    expect(verify('{ anyOf: ["a", "b"] }')).toBe("expect: command `c` output is one of `a` or `b`");
+    expect(verify("{ exitCode: 2 }")).toBe("expect: command `c` exitCode is `2`");
+    // Unknown shapes fall back to the raw expression.
+    expect(verify("{ stdout: makeMatcher() }")).toBe(
+      "expect: command `c` matches `{ stdout: makeMatcher() }`",
+    );
+  });
+
+  test("fails loudly on a Run without a command", () => {
+    expect(() => serializeDocsPage("Text\n\n<Run expectExit={1} />\n", { file: "/x/run.mdx" })).toThrow(
+      "<Run> without a command in /x/run.mdx:3",
+    );
+  });
+
   test("fails loudly on a missing fixture", () => {
     expect(() =>
       serializeDocsPage('<UseFixture name="nope" />\n', { file: "/x/f.mdx", fixtureRoots: [] }),
@@ -100,10 +131,33 @@ describe("llms serializer", () => {
   });
 });
 
-describe("llms.txt", () => {
+describe("llms.txt", async () => {
+  const inventory = await createSourceLinkInventory(repoRoot, base);
+  const pages = await collectLlmsPages(inventory, site);
+
+  test("every link in llms-full.txt is absolute", () => {
+    const full = renderLlmsFull(pages);
+    const bad = [...full.matchAll(/\]\(([^)\s]*)/g)]
+      .map((match) => match[1] ?? "")
+      .filter((url) => !/^(?:https?|mailto):/.test(url) && !url.startsWith("#"));
+
+    expect(bad).toEqual([]);
+    expect(full).toContain(`](${site}${base}`);
+  });
+
+  test("leaves schema reference pages out of llms-full.txt but indexes them", () => {
+    const full = renderLlmsFull(pages);
+    const index = renderLlmsIndex(pages, inventory, site);
+    const schemaPages = pages.filter((page) => page.id.startsWith("reference/schemas/"));
+
+    expect(schemaPages.length).toBeGreaterThan(0);
+    for (const page of schemaPages) {
+      expect(full).not.toContain(`Source: ${page.url}\n`);
+      expect(index).toContain(`](${page.url})`);
+    }
+  });
+
   test("every URL resolves under the /core4/ base path", async () => {
-    const inventory = await createSourceLinkInventory(repoRoot, base);
-    const pages = await collectLlmsPages(inventory, site);
     const index = renderLlmsIndex(pages, inventory, site);
     const routes = new Set([...inventory.pages.values()].map((id) => routeFor(base, id)));
     const urls = llmsIndexUrls(index);

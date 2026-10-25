@@ -15,21 +15,29 @@ import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
 import { unified } from "unified";
+import { VFile } from "vfile";
 import { parse as parseYaml } from "yaml";
 
 import { guideComponentVocabulary } from "../components/vocabulary.ts";
+import { remarkSourceLinks } from "../plugins/remark-source-links.ts";
 import { escapeReferenceMdxPlaceholders } from "../reference-mdx.ts";
 import type { SourceLinkInventory } from "./source-links.ts";
 import { normalizeContentMetadata } from "./titles.ts";
 
 type JsxElement = MdxJsxFlowElement | MdxJsxTextElement;
-type PropValue = string | boolean | { readonly expression: string };
+type PropValue = string | boolean | { readonly expression: string; readonly estree?: unknown };
 
 export type SerializeOptions = {
   /** Absolute path of the source file, used for errors and fixture lookup. */
   readonly file: string;
   /** Directories searched, in order, for `<UseFixture name>` fixtures. */
   readonly fixtureRoots?: readonly string[];
+  /** When set, links are rewritten like the site does and made absolute against `site`. */
+  readonly links?: {
+    readonly inventory: SourceLinkInventory;
+    readonly site: string;
+    readonly pageUrl: string;
+  };
 };
 
 export class LlmsSerializeError extends Error {
@@ -63,7 +71,7 @@ const propsOf = (node: JsxElement, file: string): Map<string, PropValue> => {
         ? true
         : typeof value === "string"
           ? value
-          : { expression: value.value },
+          : { expression: value.value, estree: value.data?.estree },
     );
   }
   return props;
@@ -120,18 +128,117 @@ const fixtureNodes = (name: string, options: SerializeOptions, node: Nodes): Roo
   throw new LlmsSerializeError(`Fixture "${name}" not found for <UseFixture> in ${at(node, options.file)}`);
 };
 
+type EsNode = { readonly type: string; readonly [key: string]: unknown };
+
+const MATCHERS: Readonly<Record<string, string>> = {
+  regex: "matches",
+  contains: "contains",
+  equals: "equals",
+};
+const display = (value: string): string => value.replace(/\n/g, "\\n");
+
+const literalOf = (node: EsNode | undefined): string | number | boolean | undefined => {
+  if (node?.type === "Literal") {
+    const value = node.value;
+    return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+      ? value
+      : undefined;
+  }
+  if (node?.type === "TemplateLiteral" && (node.expressions as unknown[]).length === 0) {
+    const cooked = (node.quasis as { value: { cooked?: string } }[])[0]?.value.cooked;
+    return cooked ?? undefined;
+  }
+  return undefined;
+};
+
+const keyOf = (property: EsNode): string | undefined => {
+  if (property.type !== "Property" || property.computed === true) return undefined;
+  const key = property.key as EsNode;
+  return key.type === "Identifier" ? String(key.name) : typeof key.value === "string" ? key.value : undefined;
+};
+
+// Describe one matcher value, such as "x", { regex: "x" }, { not: ... } or { anyOf: [...] }.
+const describeMatcher = (node: EsNode | undefined): string[] | undefined => {
+  const literal = literalOf(node);
+  if (literal !== undefined) return [typeof literal === "string" ? "equals" : "is", display(String(literal))];
+  if (node?.type !== "ObjectExpression") return undefined;
+  const properties = node.properties as EsNode[];
+  if (properties.length !== 1) return undefined;
+  const [property] = properties;
+  const key = property === undefined ? undefined : keyOf(property);
+  const value = property?.value as EsNode | undefined;
+  if (key === undefined) return undefined;
+  const verb = MATCHERS[key];
+  if (verb !== undefined) {
+    const pattern = literalOf(value);
+    return typeof pattern === "string" ? [verb, display(pattern)] : undefined;
+  }
+  if (key === "not") {
+    const inner = describeMatcher(value);
+    return inner === undefined ? undefined : [`not ${inner[0]}`, ...inner.slice(1)];
+  }
+  if (key === "anyOf" && value?.type === "ArrayExpression") {
+    const options = (value.elements as EsNode[]).map(literalOf);
+    if (options.some((option) => typeof option !== "string")) return undefined;
+    return ["is one of", ...options.map((option) => display(String(option)))];
+  }
+  return undefined;
+};
+
+type Clause = { readonly subject: string; readonly verb: string; readonly values: readonly string[] };
+
+/** Parse a Verify `expect` object into readable clauses, or undefined for shapes we do not know. */
+export const describeExpectation = (estree: unknown): Clause[] | undefined => {
+  const statement = (estree as { body?: EsNode[] } | undefined)?.body?.[0];
+  const expression = statement?.type === "ExpressionStatement" ? (statement.expression as EsNode) : undefined;
+  const top = describeMatcher(expression);
+  if (top !== undefined) return [{ subject: "output", verb: top[0] ?? "", values: top.slice(1) }];
+  if (expression?.type !== "ObjectExpression") return undefined;
+  const clauses: Clause[] = [];
+  for (const property of expression.properties as EsNode[]) {
+    const key = keyOf(property);
+    if (key === undefined) return undefined;
+    const value = property.value as EsNode;
+    const described =
+      key in MATCHERS || key === "not" || key === "anyOf" ? undefined : describeMatcher(value);
+    if (described === undefined) {
+      const whole = describeMatcher({ type: "ObjectExpression", properties: [property] });
+      if (whole === undefined) return undefined;
+      clauses.push({ subject: "output", verb: whole[0] ?? "", values: whole.slice(1) });
+    } else clauses.push({ subject: key, verb: described[0] ?? "", values: described.slice(1) });
+  }
+  return clauses.length === 0 ? undefined : clauses;
+};
+
 const verifyNodes = (props: Map<string, PropValue>): RootContent[] => {
   const target = ["command", "event", "file", "errorTag"]
     .map((key) => [key === "errorTag" ? "error" : key, text(props.get(key))] as const)
     .find((entry) => entry[1] !== undefined);
-  const expectation = text(props.get("expect"));
+  const expect = props.get("expect");
+  const expectation = text(expect);
   if (target === undefined && expectation === undefined) return [];
   const children: Paragraph["children"] = [{ type: "text", value: "expect: " }];
   if (target !== undefined) children.push({ type: "text", value: `${target[0]} ` }, code(target[1] ?? ""));
-  if (expectation !== undefined) {
+  if (expectation === undefined) return [paragraph(...children)];
+  const clauses =
+    typeof expect === "object"
+      ? describeExpectation(expect.estree)
+      : [{ subject: "output", verb: "equals", values: [display(expectation)] }];
+  if (clauses === undefined) {
     if (target !== undefined) children.push({ type: "text", value: " matches " });
     children.push(code(expectation.replace(/\s+/g, " ")));
+    return [paragraph(...children)];
   }
+  clauses.forEach((clause, index) => {
+    children.push({
+      type: "text",
+      value: `${index === 0 ? (target === undefined ? "" : " ") : ", "}${clause.subject} ${clause.verb} `,
+    });
+    clause.values.forEach((value, at) => {
+      if (at > 0) children.push({ type: "text", value: " or " });
+      children.push(code(value));
+    });
+  });
   return [paragraph(...children)];
 };
 
@@ -159,8 +266,9 @@ const replaceComponent = (node: JsxElement, options: SerializeOptions, source: s
         text(props.get("displayCode")) ??
         text(props.get("command")) ??
         text(props.get("shell")) ??
-        text(props.get("code")) ??
-        "";
+        text(props.get("code"));
+      if (command === undefined || command.trim() === "")
+        throw new LlmsSerializeError(`<Run> without a command in ${at(node, options.file)}`);
       return [fence(text(props.get("runtime")) === "library" ? "ts" : "sh", command)];
     }
     case "Verify":
@@ -215,6 +323,18 @@ function transformChildren<T extends Parents>(parent: T, options: SerializeOptio
   return { ...parent, children: next } as T;
 }
 
+const absolutizeLinks = (tree: Root, file: string, links: NonNullable<SerializeOptions["links"]>): void => {
+  remarkSourceLinks(links.inventory)(tree, new VFile({ path: file }));
+  const visit = (node: Nodes): void => {
+    if (node.type === "link" || node.type === "definition") {
+      // Whatever the source rewrite leaves is browser-relative, so resolve it the way the page would.
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(node.url)) node.url = new URL(node.url, links.pageUrl).href;
+    }
+    if ("children" in node) for (const child of node.children) visit(child as Nodes);
+  };
+  visit(tree);
+};
+
 const dropLeadingHeading = (tree: Root): Root => {
   const first = tree.children[0];
   return first?.type === "heading" && first.depth === 1
@@ -241,7 +361,9 @@ export const serializeDocsPage = (source: string, options: SerializeOptions): st
   const processor = unified().use(remarkParse).use(remarkFrontmatter).use(remarkGfm);
   if (isMdx) processor.use(remarkMdx);
   const tree = processor.parse(input) as Root;
-  return stringify(dropLeadingHeading(transformChildren(tree, options, input)));
+  const out = dropLeadingHeading(transformChildren(tree, options, input));
+  if (options.links !== undefined) absolutizeLinks(out, options.file, options.links);
+  return stringify(out);
 };
 
 export const fixtureRootsFor = (docsRoot: string, frontmatter: Record<string, unknown>): string[] => {
@@ -278,12 +400,17 @@ export const collectLlmsPages = async (inventory: SourceLinkInventory, site: str
     const source = await readFile(file, "utf8");
     const frontmatter = frontmatterOf(source);
     const meta = normalizeContentMetadata(frontmatter, source, id);
+    const url = new URL(routeFor(inventory.base, id), site).href;
     pages.push({
       id,
-      url: new URL(routeFor(inventory.base, id), site).href,
+      url,
       title: String(meta.title),
       description: typeof meta.description === "string" ? meta.description : undefined,
-      body: serializeDocsPage(source, { file, fixtureRoots: fixtureRootsFor(docsRoot, frontmatter) }),
+      body: serializeDocsPage(source, {
+        file,
+        fixtureRoots: fixtureRootsFor(docsRoot, frontmatter),
+        links: { inventory, site, pageUrl: url },
+      }),
     });
   }
   return pages.sort((left, right) =>
@@ -321,8 +448,14 @@ export const renderLlmsIndex = (
   return `${lines.join("\n")}\n`;
 };
 
+// Schema reference pages restate the JSON schemas that llms.txt already links.
+export const inLlmsFull = (page: LlmsPage): boolean => !page.id.startsWith("reference/schemas/");
+
 export const renderLlmsFull = (pages: readonly LlmsPage[]): string =>
-  `${pages.map((page) => `# ${page.title}\n\nSource: ${page.url}\n\n${page.body}`.trim()).join("\n\n---\n\n")}\n`;
+  `${pages
+    .filter(inLlmsFull)
+    .map((page) => `# ${page.title}\n\nSource: ${page.url}\n\n${page.body}`.trim())
+    .join("\n\n---\n\n")}\n`;
 
 /** Every list entry link target in an llms.txt, in order. */
 export const llmsIndexUrls = (index: string): string[] =>
@@ -347,13 +480,17 @@ export const writeLlmsFiles = async (
   const index = renderLlmsIndex(pages, inventory, site);
   await mkdir(outDir, { recursive: true });
   await writeFile(resolve(outDir, "llms.txt"), index);
-  await writeFile(resolve(outDir, "llms-full.txt"), renderLlmsFull(pages));
+  const full = renderLlmsFull(pages);
+  await writeFile(resolve(outDir, "llms-full.txt"), full);
+  const own = new URL(inventory.base, site).href;
+  const fullUrls = [...full.matchAll(/\]\(([^)\s]+)\)/g)].map((match) =>
+    (match[1] ?? "").replace(/#.*$/, ""),
+  );
   const missing: string[] = [];
-  for (const url of llmsIndexUrls(index)) {
+  for (const url of new Set([...llmsIndexUrls(index), ...fullUrls.filter((url) => url.startsWith(own))])) {
     const file = builtFileFor(url, inventory.base, site, outDir);
     if (!(await stat(file).catch(() => undefined))?.isFile())
       missing.push(`${url} (${basename(dirname(file))})`);
   }
-  if (missing.length > 0)
-    throw new LlmsSerializeError(`llms.txt links do not resolve:\n${missing.join("\n")}`);
+  if (missing.length > 0) throw new LlmsSerializeError(`llms links do not resolve:\n${missing.join("\n")}`);
 };
