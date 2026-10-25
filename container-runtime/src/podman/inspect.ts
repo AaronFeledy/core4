@@ -20,6 +20,7 @@ import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts
 import { fingerprintInspectPublishPorts } from "../plan.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import { inspectBindSources, inspectContainerLabels, inspectNetworkNames } from "./bring-up-recreate.ts";
+import { mountObservationFromInspect } from "./inspect-mounts.ts";
 
 interface ContainerInspect {
   readonly Id?: string;
@@ -161,6 +162,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       status: "stopped",
       state: "stopped",
       publications: { status: "missing" },
+      mounts: { status: "missing" },
     };
   }
   if (response.status < 200 || response.status >= 300) {
@@ -207,6 +209,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       ? { imageIdentity: decoded.Image }
       : {}),
     publications: publicationObservationFromInspect(decoded),
+    mounts: mountObservationFromInspect(decoded),
     ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
     publishFingerprint: fingerprintInspectPublishPorts(decoded),
     labels: inspectContainerLabels(decoded),

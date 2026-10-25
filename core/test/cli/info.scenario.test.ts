@@ -16,6 +16,7 @@ import {
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
+  ServiceInfo,
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
@@ -26,7 +27,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
-import type { RuntimeProviderShape } from "@lando/sdk/services";
+import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
@@ -241,6 +242,7 @@ const makeInfoLayer = (
       readonly port: number;
     }>;
     readonly inspectCalls?: ServiceName[];
+    readonly mounts?: ServiceRuntimeInfo["mounts"];
   },
 ) => {
   const plannedApp = options?.plannedApp ?? plan;
@@ -295,6 +297,7 @@ const makeInfoLayer = (
           providerId,
           status: state,
           state,
+          ...(options?.mounts === undefined ? {} : { mounts: options.mounts }),
           publications: {
             status: "present",
             bindings:
@@ -460,6 +463,60 @@ describe("lando info", () => {
       /valkey\trunning\tvalkey:\/\/localhost:6379,\s*redis:\/\/localhost:6379\tvalkey:\/\/valkey:6379,\s*redis:\/\/valkey:6379/,
     );
     expect(output).not.toContain(`${String.fromCharCode(27)}[`);
+  });
+
+  test("retains storage observations and resolved app mounts across the info JSON contract", async () => {
+    const appMount = {
+      source: plan.root,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      includes: [".git"],
+      excludes: ["vendor"],
+      realization: "passthrough" as const,
+    };
+    const plannedApp = { ...plan, services: { [node.name]: { ...node, appMount } } };
+    const inspectCalls: ServiceName[] = [];
+    const result = await Effect.runPromise(
+      infoApp().pipe(
+        Effect.provide(
+          makeInfoLayer("running", {
+            plannedApp,
+            inspectCalls,
+            mounts: {
+              status: "present",
+              mounts: [
+                { type: "bind", source: plan.root, target: "/app", readOnly: false },
+                { type: "volume", source: "runtime-volume", target: "/data", readOnly: false },
+              ],
+            },
+          }),
+        ),
+      ),
+    );
+    const wire = result.services.map((row) => Schema.encodeSync(ServiceInfo)(row));
+    expect(inspectCalls).toEqual([node.name]);
+    expect(wire[0]?.appMount).toEqual(appMount);
+    expect(wire[0]?.mounts).toEqual([
+      {
+        type: "bind",
+        source: plan.root,
+        target: "/app",
+        readOnly: false,
+        origin: "planned",
+        observation: "present",
+        lifetime: "retained",
+      },
+      {
+        type: "volume",
+        source: "runtime-volume",
+        target: "/data",
+        readOnly: false,
+        origin: "runtime",
+        observation: "present",
+        lifetime: "unknown",
+      },
+    ]);
+    expect(wire[0]?.connections).toHaveLength(2);
   });
 
   test("retains configured addresses as inactive for stopped services", async () => {
