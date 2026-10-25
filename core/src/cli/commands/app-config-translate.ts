@@ -9,7 +9,7 @@ import {
   ConfigTranslateNoTranslatorsError,
   type ConfigTranslatorConflictError,
   type LandofileFormConflictError,
-  LandofileNotFoundError,
+  type LandofileNotFoundError,
   type LandofileParseError,
   type NotImplementedError,
   type PluginDescriptorMismatchError,
@@ -24,7 +24,7 @@ import {
   resolveConfigTranslators,
   runConfigTranslator,
 } from "@lando/landofile/config-translate";
-import { findLandofilePath } from "@lando/landofile/discovery";
+import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 
 import {
   buildDocumentSetShape,
@@ -107,16 +107,7 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
     };
   }
 
-  const cwd = options.cwd ?? process.cwd();
-  const inputPath = yield* findLandofilePath(cwd);
-  if (inputPath === undefined) {
-    return yield* Effect.fail(
-      new LandofileNotFoundError({
-        message: "No .lando.yml found. Run `lando init` to create one before translating.",
-        cwd,
-      }),
-    );
-  }
+  const { filePath: inputPath } = yield* findDiscoveredLandofilePath(options.cwd);
 
   if (resolved.length === 0) {
     return yield* Effect.fail(
