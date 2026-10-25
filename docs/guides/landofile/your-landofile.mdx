@@ -87,6 +87,8 @@ That fails with `LandofileParseError`, the line number, and a remediation showin
 
 Put machine-local changes in `.lando.local.yml`. Layers load from low to high precedence: `.lando.base.yml`, `.lando.dist.yml`, `.lando.upstream.yml`, `.lando.yml`, `.lando.local.yml`, then `.lando.user.yml`.
 
+Each layer accepts YAML (`.yml`) or TypeScript (`.ts`), not both: Landofile loads fail with `LandofileFormConflictError` naming both files and telling you to remove one. `stop` and `destroy` can still tear down from applied state, skipping Landofile hooks with the conflict reason; a never-started app reports `unchanged`.
+
 Maps deep-merge and scalars use the later value. Collection rules come from each field's schema, not the properties of its entries. Included Landofiles follow the same rules.
 
 These are authored values: Lando merges before interpreting shorthand or adding defaults. A local `appMount: /site` replaces an inherited app-mount object, including its `excludes`. Changing `environment` or `labels` between a list and a map also replaces the earlier value. Use maps when you want individual keys to merge. Only literal `healthcheck: false` discards an inherited probe before later layers; disabled object spellings still participate in ordinary map merging.
