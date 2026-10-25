@@ -5,6 +5,7 @@ import {
   encodeCommandResult,
   listSelectableResultKeys,
   projectEncodedResult,
+  resolveCommandCompletion,
 } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -201,6 +202,25 @@ describe("projectEncodedResult", () => {
 });
 
 describe("encodeCommandResult nested projection", () => {
+  test("preserves typed projection errors for a completed command failure", () => {
+    const outcome = resolveCommandCompletion("app:exec", { name: "ada" }, () => ({ ok: false, exitCode: 7 }));
+    const error = Effect.runSync(
+      encodeCommandResult({
+        command: "app:exec",
+        resultSchema: Schema.Struct({ name: Schema.String }),
+        outcome,
+        redactor: plainRedactor,
+        projectResultKeys: ["missing"],
+      }).pipe(Effect.catch((error) => Effect.succeed(error))),
+    );
+    expect(error).toMatchObject({
+      _tag: "JsonProjectionError",
+      reason: "unknown_key",
+      keys: ["missing"],
+      available: ["name"],
+    });
+  });
+
   test("projects urls.appserver inside the success envelope", () => {
     const line = Effect.runSync(
       encodeCommandResult({

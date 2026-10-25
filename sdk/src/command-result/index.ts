@@ -109,10 +109,14 @@ const encodeCommandEnvelope = Effect.fnUntraced(function* (
           ok: false,
           ...(Object.hasOwn(options.outcome, "value")
             ? {
-                result: applyProjectResultKeys(
-                  options.resultSchema,
-                  yield* encodeResult(options.resultSchema, options.outcome.value),
-                  options.projectResultKeys,
+                result: yield* Effect.flatMap(
+                  encodeResult(options.resultSchema, options.outcome.value),
+                  (encoded) =>
+                    Effect.try({
+                      try: () =>
+                        applyProjectResultKeys(options.resultSchema, encoded, options.projectResultKeys),
+                      catch: (error) => error,
+                    }),
                 ),
               }
             : {}),
