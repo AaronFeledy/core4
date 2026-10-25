@@ -18,12 +18,12 @@ import { sidebar } from "./src/sidebar.ts";
 
 const REFERENCE_MDX_PATTERN = /\/docs\/reference\/.*\.mdx$/;
 
-const site = "https://aaronfeledy.github.io";
 const base = "/core4/";
+let site;
 const links = await createSourceLinkInventory(fileURLToPath(new URL("../", import.meta.url)), base);
 
 export default defineConfig({
-  site,
+  site: "https://aaronfeledy.github.io",
   base,
   markdown: {
     processor: unified({
@@ -34,6 +34,9 @@ export default defineConfig({
     {
       name: "lando-schema-assets",
       hooks: {
+        "astro:config:done": ({ config }) => {
+          site = config.site;
+        },
         "astro:build:start": () => {
           if (links.schemas.size === 0)
             throw new Error(
