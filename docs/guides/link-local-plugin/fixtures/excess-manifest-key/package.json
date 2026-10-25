@@ -1,0 +1,11 @@
+{
+  "name": "@acme/lando-plugin-demo",
+  "version": "1.0.0",
+  "landoPlugin": {
+    "name": "@acme/lando-plugin-demo",
+    "version": "1.0.0",
+    "api": 4,
+    "entry": "index.js",
+    "unexpected": true
+  }
+}
