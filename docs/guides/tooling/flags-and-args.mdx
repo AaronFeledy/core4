@@ -135,12 +135,12 @@ tooling:
 
 ## Turn a task off
 
-Set a task to `false` or `disabled` to drop an inherited or service-type task of the same name:
+Set a task to `false` to drop an inherited or service-type task of the same name:
 
 ```yaml
 tooling:
   legacy: false
-  old-build: disabled
+  old-build: false
 ```
 
 Both spellings replace the inherited definition wholesale. The task disappears from `lando --help` and the MCP tooling catalog. Calling it directly fails with `ToolingDisabledError`, even when a stale command cache still lists it.
