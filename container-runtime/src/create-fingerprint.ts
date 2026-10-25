@@ -17,6 +17,7 @@ import {
   GPG_AGENT_OVERLAY_LABEL,
   HOST_PROXY_SESSION_LABEL,
   SSH_AGENT_OVERLAY_LABEL,
+  containerIntegrationLabels,
 } from "./labels.ts";
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 import { realizePodmanComposeKnobs } from "./podman/compose-knobs.ts";
@@ -87,11 +88,14 @@ export const createConfigFingerprint = (
     },
   });
   const appMount = service.appMount;
+  const integrationLabels = containerIntegrationLabels(service.environment);
+  const sshAgentActive = integrationLabels[SSH_AGENT_OVERLAY_LABEL] === "true";
+  const gpgAgentActive = integrationLabels[GPG_AGENT_OVERLAY_LABEL] === "true";
   const sessionMountTargets = new Set<string>();
-  if (service.environment.SSH_AUTH_SOCK === agentEnvironment.SSH_AUTH_SOCK) {
+  if (sshAgentActive) {
     sessionMountTargets.add(AGENT_SOCKET_CONTAINER_DIR.ssh);
   }
-  if (service.environment.LANDO_GPG_AGENT_SOCKET === agentEnvironment.LANDO_GPG_AGENT_SOCKET) {
+  if (gpgAgentActive) {
     sessionMountTargets.add(AGENT_SOCKET_CONTAINER_DIR.gpg);
     sessionMountTargets.add("/run/lando/gpg-agent-keys");
   }
@@ -113,7 +117,7 @@ export const createConfigFingerprint = (
         ([key, value]) =>
           key !== "LANDO_HOST_IP" &&
           !(isCoreServiceEnvKey(key) && key.startsWith("LANDO_HOST_PROXY_")) &&
-          agentEnvironment[key] !== value,
+          !(agentEnvironment[key] === value && (key === "SSH_AUTH_SOCK" ? sshAgentActive : gpgAgentActive)),
       ),
     ),
     appMount:

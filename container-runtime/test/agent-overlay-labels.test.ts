@@ -3,6 +3,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  PortablePath,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -115,4 +116,94 @@ test.each([...cases])("keeps $label activation out of normalized create identity
   const labels = commonContainerLabels(plan, { ...service, environment });
   // Then
   expect(labels[CREATE_CONFIG_LABEL]).toBe(baseline);
+});
+
+const gpgSocket = "/run/lando/gpg-agent/S.gpg-agent";
+const gpgKeyring = "/run/lando/gpg-agent-keys";
+const gpgTargets = ["/run/lando/gpg-agent", gpgKeyring] as const;
+const fingerprint = (selected: ServicePlan) => commonContainerLabels(plan, selected)[CREATE_CONFIG_LABEL];
+
+for (const keyring of [undefined, "/user/keyring"]) {
+  const environment = {
+    LANDO_GPG_AGENT_SOCKET: gpgSocket,
+    ...(keyring === undefined ? {} : { LANDO_GPG_KEYRING: keyring }),
+  };
+  test.each([...gpgTargets])(
+    `tracks user bind source edits at %s with partial GPG keyring ${keyring}`,
+    (target) => {
+      // Given
+      const mount = {
+        type: "bind" as const,
+        source: "/user/before",
+        target: PortablePath.make(target),
+        readOnly: true,
+        realization: "passthrough" as const,
+      };
+      const before = fingerprint({ ...service, environment, mounts: [mount] });
+      // When
+      const after = fingerprint({ ...service, environment, mounts: [{ ...mount, source: "/user/after" }] });
+      // Then
+      expect(after).not.toBe(before);
+    },
+  );
+
+  test(`tracks a user bind moving to the keyring target with partial GPG keyring ${keyring}`, () => {
+    // Given
+    const mount = {
+      type: "bind" as const,
+      source: "/user/keys",
+      target: PortablePath.make("/run/lando/gpg-agent"),
+      readOnly: true,
+      realization: "passthrough" as const,
+    };
+    const before = fingerprint({ ...service, environment, mounts: [mount] });
+    // When
+    const after = fingerprint({
+      ...service,
+      environment,
+      mounts: [{ ...mount, target: PortablePath.make(gpgKeyring) }],
+    });
+    // Then
+    expect(after).not.toBe(before);
+  });
+}
+
+test.each([
+  { key: "LANDO_GPG_AGENT_SOCKET", value: gpgSocket },
+  { key: "LANDO_GPG_KEYRING", value: gpgKeyring },
+  { key: "GNUPGHOME", value: "/tmp/lando-gnupg" },
+])("tracks authored $key removal when GPG integration is incomplete", ({ key, value }) => {
+  // Given
+  const before = fingerprint({ ...service, environment: { [key]: value } });
+  // When
+  const after = fingerprint(service);
+  // Then
+  expect(after).not.toBe(before);
+});
+
+test("normalizes complete GPG overlays across session mount source changes", () => {
+  // Given
+  const overlay: ServicePlan = {
+    ...service,
+    environment: {
+      LANDO_GPG_AGENT_SOCKET: gpgSocket,
+      LANDO_GPG_KEYRING: gpgKeyring,
+      GNUPGHOME: "/tmp/lando-gnupg",
+    },
+    mounts: gpgTargets.map((target) => ({
+      type: "bind",
+      source: "/session/before",
+      target: PortablePath.make(target),
+      readOnly: true,
+      realization: "passthrough",
+    })),
+  };
+  const baseline = fingerprint(service);
+  // When
+  const fingerprints = [
+    overlay,
+    { ...overlay, mounts: overlay.mounts.map((mount) => ({ ...mount, source: "/session/after" })) },
+  ].map(fingerprint);
+  // Then
+  expect(fingerprints).toEqual([baseline, baseline]);
 });
