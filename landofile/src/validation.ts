@@ -1,46 +1,24 @@
 import { LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
-import { expressionInterpolationsTouchOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
 import { isPlainRecord, valueOriginAt } from "@lando/sdk/landofile";
 import {
   LandofileShape,
-  ServiceConfig,
   type ValidationIssue,
   type ValidationIssuePath,
   formatValidationIssueLine,
   schemaIssueLeaves,
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { getOrigins } from "./pipeline/origins.ts";
+import { landofileIssuesFromSchema, valueAtPath } from "./validation-suggestions.ts";
 import { isValidSemverRange } from "./version-constraint.ts";
 
-const SERVICE_KEYS = [...Object.keys(ServiceConfig.fields), "working_dir", "env_file", "depends_on"];
 export const getLandofileValueSource = (value: object, path: ValidationIssuePath) => {
   const origins = getOrigins(value);
   return origins === undefined ? undefined : valueOriginAt(origins, path).source;
 };
 const COMPOSE_REMEDIATION =
   "Compose compatibility is limited to the supported subset; move provider-native keys under providers.<provider-id> or use config translation.";
-
-const valueAtPath = (value: unknown, path: ValidationIssuePath): unknown => {
-  let current = value;
-  for (const key of path) {
-    if (Array.isArray(current) && typeof key === "number") current = current[key];
-    else if (isPlainRecord(current)) current = current[String(key)];
-    else return undefined;
-  }
-  return current;
-};
-
-export const plannerScopeSuggestion = (value: unknown, path: ValidationIssuePath): string | undefined => {
-  const site = valueAtPath(value, path);
-  if (typeof site !== "string" || !site.includes("{{")) return undefined;
-  const parsed = parseExpressionEither(site, { filePath: "<landofile>", bareShellParameters: "preserve" });
-  return Result.isSuccess(parsed) &&
-    !expressionInterpolationsTouchOnlyScopes(parsed.success, ["recipe", "env"])
-    ? "This value uses plan-time scopes (app, proxy, services), which resolve to text after validation. Use a literal or a recipe/env expression here."
-    : undefined;
-};
 
 export const landofileValidationError = (
   file: string,
@@ -56,28 +34,21 @@ export const landofileValidationError = (
     file: source !== undefined && "file" in source ? source.file : file,
     issues,
     remediation: framing.remediation,
-    message: `${framing.headline}: ${lines}${/[.?!]$/.test(lines) ? "" : "."} ${framing.remediation}`,
+    message: `${framing.headline}: ${lines}${/[.?!]$/.test(lines) ? "" : "."}`,
   });
 };
 
 export const validationErrorFromCause = (file: string, parsed: unknown, cause: unknown) => {
   const leaves = Schema.isSchemaError(cause) ? schemaIssueLeaves(cause.issue) : [];
   const unknown = leaves.filter((issue) => issue._tag === "Unexpected");
-  const valuePaths = new Set(
-    leaves.filter((issue) => issue._tag === "Type").map((issue) => JSON.stringify(issue.path)),
-  );
-  for (const issue of unknown) valuePaths.delete(JSON.stringify(issue.path));
-  const issues = validationIssuesFromCause(cause, {
-    fallback: "Invalid Landofile.",
-    extraAllowedKeys: (path) => (path[0] === "services" && path.length >= 3 ? SERVICE_KEYS : []),
-  }).map((issue) => {
-    const suggestion =
-      (valuePaths.has(JSON.stringify(issue.path)) ? plannerScopeSuggestion(parsed, issue.path) : undefined) ??
-      issue.suggestion;
+  const issues = (
+    Schema.isSchemaError(cause)
+      ? landofileIssuesFromSchema(cause.issue, parsed)
+      : validationIssuesFromCause(cause, { fallback: "Invalid Landofile." })
+  ).map((issue) => {
     const origins = isPlainRecord(parsed) ? getOrigins(parsed) : undefined;
     return {
       ...issue,
-      ...(suggestion === undefined ? {} : { suggestion }),
       ...(origins === undefined ? {} : { source: valueOriginAt(origins, issue.path).source }),
     };
   });
