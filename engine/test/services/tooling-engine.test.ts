@@ -640,14 +640,11 @@ describe("ProviderExecToolingEngine.layer", () => {
                   typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk;
                 stdout += new TextDecoder().decode(payload.write(bytes));
               }),
-            flush: () =>
-              Effect.sync(() => {
-                stdout += new TextDecoder().decode(payload.flush());
-              }),
           }),
         ),
       );
       // Then
+      stdout += new TextDecoder().decode(payload.flush());
       expect(base.calls[0]?.command.env?.OPENCODE_CLIENT).toBe("true");
       expect(stdout).toBe('{"ok":true}');
       expect([...values()]).not.toContain("true");

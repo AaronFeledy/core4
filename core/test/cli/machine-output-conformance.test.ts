@@ -302,7 +302,12 @@ describe("machine-output conformance", () => {
         ...(spec.streamingMode === "live" ? { streamingMode: "live" as const } : {}),
         ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
         ...(spec.redactionTokens === undefined ? {} : { redactionTokens: spec.redactionTokens }),
-        ...(spec.successExitCode === undefined ? {} : { successExitCode: spec.successExitCode }),
+        ...(spec.completion === undefined
+          ? {}
+          : {
+              completion: (value: unknown) =>
+                spec.completion?.(value, {}) ?? { ok: true as const, exitCode: 0 },
+            }),
         io,
         render: () => undefined,
         formatError: ({ error }) => `diagnostic: ${String(error)}`,
@@ -328,8 +333,8 @@ describe("machine-output conformance", () => {
         if (Option.isSome(redaction)) yield* redaction.value.registerValues(value.redactionTokens ?? []);
         const sink = yield* Effect.serviceOption(StreamFrameSink);
         if (Option.isSome(sink)) {
-          yield* sink.value.emit({ _tag: "stdout", chunk: value.stdout, raw: true });
-          yield* sink.value.emit({ _tag: "stderr", chunk: value.stderr, raw: true });
+          yield* sink.value.emit({ _tag: "stdout", chunk: value.stdout, kind: "bytes" });
+          yield* sink.value.emit({ _tag: "stderr", chunk: value.stderr, kind: "bytes" });
         }
         return value;
       });
@@ -377,7 +382,7 @@ describe("machine-output conformance", () => {
       expect(exitCode).toBe(1);
     });
 
-    test("a non-zero tool exit stays ok:true in the result frame and propagates the exit code", async () => {
+    test("a non-zero tool exit retains the failed result and propagates the exit code", async () => {
       let exitCode: number | undefined;
       const io = await runScratchRunSpec(streamedResult(successValue(7)), (code) => {
         exitCode = code;
@@ -385,7 +390,7 @@ describe("machine-output conformance", () => {
       const frames = io.stdoutLines().map(decodeFrame);
       const result = frames.at(-1);
       if (result?._tag !== "result") throw new Error("expected a terminal result frame");
-      expect(result.envelope.ok).toBe(true);
+      expect(result.envelope.ok).toBe(false);
       const payload = result.envelope.result as { exitCode: number };
       expect(payload.exitCode).toBe(7);
       expect(exitCode).toBe(7);

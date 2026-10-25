@@ -23,7 +23,8 @@ projects that key inside `result`. `--jq` prints a raw jq selection.
 
 On success the envelope wraps the command's typed result under `result` with
 `ok: true`. On failure it carries the tagged error JSON under `error` with
-`ok: false`. A global `apiVersion: "v4"` identifies the wire contract, and
+`ok: false`. A process that finishes unsuccessfully also retains its typed
+`result`, so failure does not discard its exit code and diagnostics. A global `apiVersion: "v4"` identifies the wire contract, and
 the redaction service runs before emission so secrets never appear in
 machine output.
 
@@ -40,9 +41,15 @@ native registry and dispatcher.
 
 Project scripts from `.lando/scripts/*.bun.sh` emit the same envelope. With
 `--format=json` or `--format=yaml`, `result` carries the script's `stdout`,
-`stderr`, and `exitCode`, and Lando exits with the script's own code even
-when `ok` is `true`. Writing those scripts is covered in
+`stderr`, and `exitCode`, and Lando exits with the script's own code. A nonzero
+script exit sets `ok: false`, retains `result`, and includes a tagged `error`.
+Writing those scripts is covered in
 [Add project commands with Bun Shell scripts](../tooling/bun-shell-scripts/).
+
+Diagnostic reports are different from failed processes. A completed lint report
+can have `ok: true`, `result.valid: false`, and shell exit status 1. Check the
+report's fields as well as `ok`. JSON and YAML preserve that exit status, just
+like text output.
 
 After adding the `stamp.bun.sh` example from that guide to your app, run these commands from its directory:
 

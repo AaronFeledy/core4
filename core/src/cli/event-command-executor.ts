@@ -5,6 +5,7 @@ import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { Renderer } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventCommandExecutorInput } from "@lando/engine/services/event-command-executor";
@@ -106,16 +107,21 @@ export const makeEventCommandExecutor = (
             : typeof target.spec.streamingMode === "function"
               ? target.spec.streamingMode(input)
               : target.spec.streamingMode;
-        const streamFrameSinkLayer = RendererOutput.layerStreamFrameSink("text").pipe(
-          Layer.provide(
-            Layer.merge(
-              Layer.succeed(Renderer, resolved.silent === true ? silentRenderer : baseRenderer),
-              Layer.succeed(RedactionService, lifecycleRedaction),
-            ),
-          ),
-        );
+        const streamOwner =
+          streamingMode === "live"
+            ? yield* RendererOutput.makeStreamFrameSink("text").pipe(
+                Effect.provideService(Renderer, renderer),
+                Effect.provideService(RedactionService, lifecycleRedaction),
+              )
+            : undefined;
         const streamingCommand =
-          streamingMode === "live" ? inCwd.pipe(Effect.provide(streamFrameSinkLayer)) : inCwd;
+          streamOwner === undefined
+            ? inCwd
+            : inCwd.pipe(
+                Effect.provideService(StreamFrameSink, streamOwner.sink),
+                Effect.scoped,
+                Effect.ensuring(streamOwner.finish()),
+              );
         const command = withRedactedRenderer(streamingCommand, { redactionTokens }).pipe(
           Effect.provideService(Renderer, renderer),
         );
@@ -126,20 +132,20 @@ export const makeEventCommandExecutor = (
           flags: input.flags,
           cwd: resolved.cwd,
         });
+        const completion = target.spec.completion;
         const exit = yield* runCommandLifecycle(redactedCommand, {
           invocation,
-          ...(target.spec.successExitCode === undefined
-            ? {}
-            : { successExitCode: (value) => target.spec.successExitCode?.(value, input) }),
+          ...(completion === undefined ? {} : { completion: (value) => completion(value, input) }),
         }).pipe(Effect.provideService(RedactionService, lifecycleRedaction));
         if (exit._tag === "Success") {
-          const exitCode = target.spec.successExitCode?.(exit.value, input) ?? 0;
+          const completed = exit.value;
+          const exitCode = completed.exitCode;
+          const value = completed.value;
           if (resolved.silent !== true) {
-            const resultTokens =
-              target.kind === "built-in" ? (target.spec.redactionTokens?.(exit.value) ?? []) : [];
+            const resultTokens = target.spec.redactionTokens?.(value) ?? [];
             const outputRenderer = yield* Renderer;
             if (target.kind === "built-in" && target.spec.render !== undefined) {
-              const rendered = target.spec.render(exit.value, input, {
+              const rendered = target.spec.render(value, input, {
                 mode: isRendererMode(outputRenderer.id) ? outputRenderer.id : DEFAULT_RENDERER_MODE,
                 format: "text",
                 ...(yield* ResultTerminal),
@@ -154,7 +160,7 @@ export const makeEventCommandExecutor = (
               }
             } else if (target.kind === "plugin" && target.spec.render !== undefined) {
               yield* withRedactedRenderer(
-                target.spec.render({ input, result: exit.value, stdout: "", stderr: "", exitCode }),
+                target.spec.render({ input, result: value, stdout: "", stderr: "", exitCode }),
                 { redactionTokens: [...redactionTokens, ...resultTokens] },
               );
             }
@@ -163,19 +169,19 @@ export const makeEventCommandExecutor = (
             exitCode,
             stdout:
               target.kind === "tooling" &&
-              typeof exit.value === "object" &&
-              exit.value !== null &&
-              "stdout" in exit.value &&
-              typeof exit.value.stdout === "string"
-                ? inputRedactor.redactString(exit.value.stdout)
+              typeof value === "object" &&
+              value !== null &&
+              "stdout" in value &&
+              typeof value.stdout === "string"
+                ? inputRedactor.redactString(value.stdout)
                 : "",
             stderr:
               target.kind === "tooling" &&
-              typeof exit.value === "object" &&
-              exit.value !== null &&
-              "stderr" in exit.value &&
-              typeof exit.value.stderr === "string"
-                ? inputRedactor.redactString(exit.value.stderr)
+              typeof value === "object" &&
+              value !== null &&
+              "stderr" in value &&
+              typeof value.stderr === "string"
+                ? inputRedactor.redactString(value.stderr)
                 : "",
           };
         }

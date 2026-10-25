@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Args, Flags } from "../../spec/metadata";
 
 import {
@@ -13,7 +14,7 @@ import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io"
 import { isEnvelopeResultFormat } from "../../format-flags";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
-import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { booleanFlag, specArgsOf, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 export const execInputUsesCliHostIo = (input: unknown): boolean =>
   typeof input === "object" && input !== null && "hostIo" in input && input.hostIo === "cli";
@@ -42,6 +43,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
   args: {
     command: Args.string({
       name: "command",
+      multiple: true,
       description: "Command argv after `--`. An optional service name may come first.",
     }),
   },
@@ -52,9 +54,17 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
     const format = stringFlag(flags, "format");
     const user = stringFlag(flags, "user");
     const cwd = stringFlag(flags, "cwd");
+    const parsedArgv = extractSpecParsedArgv(input);
+    const namedCommand = specArgsOf(input).command;
+    const command =
+      parsedArgv.length > 0
+        ? parsedArgv
+        : Array.isArray(namedCommand)
+          ? namedCommand.filter((arg): arg is string => typeof arg === "string")
+          : [];
     const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
     const base = {
-      command: extractSpecParsedArgv(input),
+      command,
       ...(user === undefined ? {} : { user }),
       ...(cwd === undefined ? {} : { cwd }),
     };
@@ -80,6 +90,6 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
     return frames;
   },
   redactionTokens: execAppRedactionTokens,
-  successExitCode: (result) => result.exitCode,
+  completion: (result) => commandCompletionFromExitCode(result.exitCode),
   render: (result) => renderExecAppResult(result as ExecAppResult),
 };

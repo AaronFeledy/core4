@@ -1,7 +1,12 @@
 import { Cause, Clock, Context, DateTime, Effect, Exit, Option, Schema } from "effect";
 
-import { failureOutcomeFromCause } from "@lando/sdk/command-result";
+import {
+  type CompletedCommandResult,
+  failureOutcomeFromCause,
+  resolveCommandCompletion,
+} from "@lando/sdk/command-result";
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
+import type { CommandCompletion } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
 
 import * as LandoEventService from "@lando/engine/services/event-service";
@@ -25,7 +30,7 @@ export interface CliInvocationSnapshot {
 
 export interface CommandLifecycleOptions<A> {
   readonly invocation: CliInvocationSnapshot;
-  readonly successExitCode?: (value: A) => number | undefined;
+  readonly completion?: (value: A) => CommandCompletion;
   readonly failureExitCode?: (error: unknown) => number | undefined;
   readonly interruptionExitCode?: number;
   /** Runs after the init event is published and before the command starts. */
@@ -128,58 +133,72 @@ const publishRedacted = Effect.fnUntraced(
 export const runCommandLifecycle: <A, E, R>(
   command: Effect.Effect<A, E, R>,
   options: CommandLifecycleOptions<A>,
-) => Effect.Effect<Exit.Exit<A, E>, never, R | RedactionService> = Effect.fnUntraced(function* <A, E, R>(
-  command: Effect.Effect<A, E, R>,
-  options: CommandLifecycleOptions<A>,
-) {
-  const startedAt = yield* Clock.currentTimeMillis;
-  const invocationId = options.invocation.invocationId ?? newInvocationId();
-  const parentInvocationId = options.invocation.parentInvocationId;
-  const invocationSnapshot: CliInvocationSnapshot = {
-    ...options.invocation,
-    invocationId,
-  };
-  const invocation = {
-    commandId: options.invocation.commandId,
-    argv: summarizeInvocationArgv(options.invocation.argv),
-    args: summarizeInvocationRecord(options.invocation.args),
-    flags: summarizeInvocationRecord(options.invocation.flags),
-    cwd: options.invocation.cwd,
-    ...(options.invocation.app === undefined ? {} : { app: options.invocation.app }),
-    invocationId,
-    ...(parentInvocationId === undefined ? {} : { parentInvocationId }),
-    timestamp: DateTime.formatIso(DateTime.makeUnsafe(startedAt)),
-  };
-  yield* publishRedacted(CliCommandInitEvent, {
-    _tag: `cli-${options.invocation.commandId}-init`,
-    ...invocation,
-  });
-  if (options.onInitialized !== undefined) yield* options.onInitialized;
-  const outcome = yield* Effect.exit(command).pipe(
-    Effect.provideService(CurrentCommandInvocation, invocationSnapshot),
-  );
-  const finishedAt = yield* Clock.currentTimeMillis;
-  const terminal = {
-    ...invocation,
-    timestamp: DateTime.formatIso(DateTime.makeUnsafe(finishedAt)),
-    durationMs: Math.max(0, finishedAt - startedAt),
-  };
-  if (Exit.isSuccess(outcome)) {
-    yield* publishRedacted(CliCommandRunEvent, {
-      _tag: `cli-${options.invocation.commandId}-run`,
-      ...terminal,
-      exitCode: options.successExitCode?.(outcome.value) ?? 0,
+) => Effect.Effect<Exit.Exit<CompletedCommandResult<A>, E>, never, R | RedactionService> = Effect.fnUntraced(
+  function* <A, E, R>(command: Effect.Effect<A, E, R>, options: CommandLifecycleOptions<A>) {
+    const startedAt = yield* Clock.currentTimeMillis;
+    const invocationId = options.invocation.invocationId ?? newInvocationId();
+    const parentInvocationId = options.invocation.parentInvocationId;
+    const invocationSnapshot: CliInvocationSnapshot = {
+      ...options.invocation,
+      invocationId,
+    };
+    const invocation = {
+      commandId: options.invocation.commandId,
+      argv: summarizeInvocationArgv(options.invocation.argv),
+      args: summarizeInvocationRecord(options.invocation.args),
+      flags: summarizeInvocationRecord(options.invocation.flags),
+      cwd: options.invocation.cwd,
+      ...(options.invocation.app === undefined ? {} : { app: options.invocation.app }),
+      invocationId,
+      ...(parentInvocationId === undefined ? {} : { parentInvocationId }),
+      timestamp: DateTime.formatIso(DateTime.makeUnsafe(startedAt)),
+    };
+    yield* publishRedacted(CliCommandInitEvent, {
+      _tag: `cli-${options.invocation.commandId}-init`,
+      ...invocation,
     });
-  } else {
-    const failure = failureOutcomeFromCause(outcome.cause);
-    yield* publishRedacted(CliCommandErrorEvent, {
-      _tag: `cli-${options.invocation.commandId}-error`,
-      ...terminal,
-      exitCode: Cause.hasInterruptsOnly(outcome.cause)
-        ? (options.interruptionExitCode ?? 1)
-        : (options.failureExitCode?.(failure.error) ?? 1),
-      ...failureIdentity(outcome.cause),
-    });
-  }
-  return outcome;
-}, withCommandEventService);
+    if (options.onInitialized !== undefined) yield* options.onInitialized;
+    const outcome = yield* Effect.exit(
+      command.pipe(
+        Effect.scoped,
+        Effect.map((value) =>
+          resolveCommandCompletion(options.invocation.commandId, value, options.completion),
+        ),
+      ),
+    ).pipe(Effect.provideService(CurrentCommandInvocation, invocationSnapshot));
+    const finishedAt = yield* Clock.currentTimeMillis;
+    const terminal = {
+      ...invocation,
+      timestamp: DateTime.formatIso(DateTime.makeUnsafe(finishedAt)),
+      durationMs: Math.max(0, finishedAt - startedAt),
+    };
+    if (Exit.isSuccess(outcome)) {
+      if (outcome.value._tag === "failure") {
+        yield* publishRedacted(CliCommandErrorEvent, {
+          _tag: `cli-${options.invocation.commandId}-error`,
+          ...terminal,
+          exitCode: outcome.value.exitCode,
+          failureTag: "LandoCommandError",
+        });
+        return outcome;
+      }
+      yield* publishRedacted(CliCommandRunEvent, {
+        _tag: `cli-${options.invocation.commandId}-run`,
+        ...terminal,
+        exitCode: outcome.value.exitCode,
+      });
+    } else {
+      const failure = failureOutcomeFromCause(outcome.cause);
+      yield* publishRedacted(CliCommandErrorEvent, {
+        _tag: `cli-${options.invocation.commandId}-error`,
+        ...terminal,
+        exitCode: Cause.hasInterruptsOnly(outcome.cause)
+          ? (options.interruptionExitCode ?? 1)
+          : (options.failureExitCode?.(failure.error) ?? 1),
+        ...failureIdentity(outcome.cause),
+      });
+    }
+    return outcome;
+  },
+  withCommandEventService,
+);

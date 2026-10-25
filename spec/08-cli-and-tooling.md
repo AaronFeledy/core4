@@ -254,6 +254,7 @@ Named command types are `CommandNamespace`, `LandoCommandSpec<A, E extends Lando
 | `mcpAllowed` | Generated `mcp-allowlist` membership |
 | `docs`, `acceptance` | Required public documentation and acceptance metadata |
 | `resultSchema` | Required schema for every result; empty result uses an empty struct |
+| `completion` | Optional format-independent policy over the returned value and normalized command input, yielding `CommandCompletion` |
 | `streaming` | Optional `StreamFrame` schema for streaming commands |
 | `run` | Effect program over `CommandInput` and `LandoCommandRequirements` |
 
@@ -268,6 +269,10 @@ Named command types are `CommandNamespace`, `LandoCommandSpec<A, E extends Lando
 | `stdout`, `stderr` | Effect sinks of bytes |
 
 The adapter supplies universal format flags and IO bindings.
+
+`CommandCompletion` separates successful Effect execution from successful command completion. Its schema accepts `{ ok: true, exitCode }` with a nonnegative integer exit code, or `{ ok: false, exitCode }` with a positive integer exit code; exit codes are not restricted to a POSIX-only 255 ceiling. An absent policy means success with exit 0. An installed policy MUST return a complete decision and MUST be resolved exactly once after producer scopes and owned output finish, before terminal lifecycle events and result rendering. CLI, MCP, plugin rendering, and event invocation consume that resolved decision rather than evaluating it again or inferring status from arbitrary result properties.
+
+Process-backed commands explicitly classify their typed process exit code: nonzero completion produces `ok: false`, a `LandoCommandError` with command id, exit code, and remediation, and the completed typed value. Successfully produced diagnostic reports MAY remain `ok: true` while returning a nonzero shell code for findings, independently of result format. Actual Effect failures retain their original Cause and do not invoke a completion policy; pure interruption remains cancellation. Completion-policy defects MUST NOT silently default to success.
 
 Read-only and non-destructive commands MAY set `mcpAllowed`; destructive built-ins MUST NOT. A destructive self-allow returns `McpAllowlistConflictError`. Host-proxy lifecycle commands MUST NOT self-allow; denied requests return `HostProxyCommandNotAllowedError`. Missing required registry metadata or `resultSchema` returns `CommandRegistrationError`.
 
@@ -864,7 +869,7 @@ Every command is agent-consumable without prose parsing. `--renderer` selects pr
 
 #### 8.11.1 The result envelope
 
-Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `FailureRole`, `CommandWarning`, and `CommandResultEnvelope`.
+Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `FailureRole`, `CommandWarning`, `CommandCompletion`, `CommandOutputChunk`, `CommandOutput`, and `CommandResultEnvelope`.
 
 **Advertised formats.** `text`, `json`, and `yaml` are universal and are attached to every command's `--format` flag. `table` and `ndjson` are opt-in render-path values declared through the command's `resultFormats`. Help, the generated command-registry manifest, and the MCP catalog projection MUST show exactly the supported set. A command that does not advertise a value MUST reject it with `RendererSelectionError` rather than silently emit text. Advertisement and implementation MUST agree on every surface. `text` is the default.
 
@@ -875,10 +880,13 @@ Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `Fa
 | `ok` | Success discriminator |
 | `result` | Optional command `resultSchema` value |
 | `error` | Optional primary `TaggedErrorJson`; non-empty `error.additionalErrors` carries ordered, non-recursive additional tagged failures with required `role` |
+| `output` | Optional `CommandOutput`: bounded, redacted text chunks with channel/provenance and an explicit truncation flag; mandatory for completed MCP command responses |
 | `warnings` | `CommandWarning[]` |
 | `deprecations` | `DeprecationUse[]` |
 
 Payloadless commands return an empty result object.
+
+Unsuccessful process completion MUST retain its schema-encoded `result` alongside `error`, with `ok: false`; result-key projection and result-derived redaction tokens apply to that retained value too. CLI output uses its ordinary result renderer rather than presenting an expected nonzero child exit as an internal Lando defect. Effect-native library operations keep their existing typed results and failure channels (§16).
 
 CLI and MCP failure envelopes MUST share one Cause projection. The primary is the first `Fail` reason without a failure role, otherwise the first such `Die`, otherwise the first `Fail`, otherwise the first `Die`, otherwise the squashed Cause. Failure-role annotations take precedence over Cause order, which breaks ties within each category. Every other `Fail` and `Die` reason, in Cause order and excluding interruptions, is an additional error with a `role`: `rollback` (undoing the failed operation's partial work), `cleanup` (best-effort release, teardown, or bookkeeping), or `peer` (a sibling step in the same phase, and the default for unannotated reasons). Roles are reason annotations set only by the engine compensation helpers; error mappings and nested defect conversion MUST preserve every reason and its annotations.
 
@@ -904,7 +912,9 @@ Live commands MUST treat `StreamFrameSink` as optional (`Effect.serviceOption`).
 
 Streaming specs emit newline-delimited `StreamFrame` values tagged `stdout`, `stderr`, `event`, or terminal `result`. Data frames carry chunks and optional service/source; event frames carry redacted bounded-history events; result frames carry `CommandResultEnvelope`. Human sinks deliver tool bytes through value-only payload redaction (§3.7). JSON data frames MUST first apply the boundary-safe byte value layer, then accumulate complete lines (including `\n`), flush at end of stream or a 64 KiB byte cap, decode with UTF-8 replacement, and apply the full `secrets` profile through `redactString` before encoding. UTF-8 codepoints split at the cap MUST decode incrementally; an incomplete final codepoint becomes a replacement character. Pattern matching is bounded to each line or capped fragment; registered-value matching MUST span fragments. Envelopes keep §8.11.2 redaction unchanged. This is not a second event tap. `--format=ndjson` is that frame sequence, one JSON document per line, and is advertised only by streaming commands: a command with no frame sequence does not advertise `ndjson` rather than inventing one.
 
-Tooling MUST use one sink path. Without a host-provided live sink it MUST install a collecting sink and return stdout and stderr, including for envelope, MCP, library, and event invocations. Live sink delivery MUST NOT also accumulate those channels in the result or replay them at completion. The output is delivered exactly once. Live memory MUST be bounded by chunk size, the registered value set and longest-prefix hold, and the JSON line cap, not total output size.
+Tooling MUST use one sink path. Without a host-provided live sink it MUST install a collecting sink and return stdout and stderr, including for envelope, library, and event invocations. A live sink MUST NOT also accumulate an unbounded copy in those result channels or replay live frames at completion. Human delivery remains byte-exact after value redaction. MCP additionally retains a bounded final text capture (§10.14); that authoritative result evidence is not a second live emission. Live memory MUST be bounded by chunk size, the registered value set and longest-prefix hold, the JSON line cap, and any explicitly bounded capture, not total output size.
+
+Producer frames MUST distinguish continuous `kind: bytes` chunks from complete `kind: record` strings. Byte chunks invent no delimiter or terminal prefix; records contain no terminating delimiter, and machine/captured text adds one LF. Human record presentation MAY add provenance labels. Producers receive an emit-only sink. The invocation owner closes or joins producer scopes, calls its idempotent terminal `finish`, resolves completion, then publishes the terminal lifecycle event and final result. Nested exec/tooling steps MUST NOT finish a supplied parent sink or expose held secret prefixes between sibling steps. Locally created collectors are finished by their local owner. CLI and MCP MUST agree on Unicode, record boundaries, and final-tail behavior without sharing protocol-specific inspection or presentation.
 
 `CommandResultEnvelope`, `CommandWarning`, `CommandResultFormat`, and `StreamFrame` are published from `@lando/sdk`, re-exported by `@lando/core/schema`, and snapshot-governed by §13.2.
 

@@ -66,7 +66,6 @@ import {
   scratchRun,
   scratchRunHasCommandTail,
   scratchRunOptionsFromInput,
-  scratchRunSuccessExitCode,
 } from "../../src/cli/commands/scratch-run.ts";
 import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
@@ -692,7 +691,7 @@ describe("scratchRun", () => {
       );
       expect(result.exitCode).toBe(7);
       expect(recorded.destroyCalls).toHaveLength(1);
-      expect(scratchRunSuccessExitCode(result)).toBe(7);
+      expect(appsScratchRunSpec.completion?.(result, {})).toEqual({ ok: false, exitCode: 7 });
     });
   });
 
@@ -1150,8 +1149,11 @@ describe("scratch run rendering", () => {
   });
 
   test("success exit code passes through only non-zero tool exits", () => {
-    expect(scratchRunSuccessExitCode(baseResult)).toBeUndefined();
-    expect(scratchRunSuccessExitCode({ ...baseResult, exitCode: 3 })).toBe(3);
+    expect(appsScratchRunSpec.completion?.(baseResult, {})).toEqual({ ok: true, exitCode: 0 });
+    expect(appsScratchRunSpec.completion?.({ ...baseResult, exitCode: 3 }, {})).toEqual({
+      ok: false,
+      exitCode: 3,
+    });
   });
 
   test("human streaming sends tool stderr to the stderr sink", async () => {
@@ -1174,7 +1176,7 @@ describe("scratch run rendering", () => {
           }),
         ),
       );
-      expect(frames).toEqual([{ _tag: "stderr", chunk: "warn\n", raw: true }]);
+      expect(frames).toEqual([{ _tag: "stderr", chunk: "warn\n", kind: "bytes" }]);
     });
   });
 

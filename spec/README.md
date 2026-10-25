@@ -132,7 +132,7 @@ If you are looking for a public surface or policy:
 | Init sources, source auth, and hoster init | 08 | §8.8.13 |
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
-| Machine-readable command envelopes, advertised formats, streams, and closed pipes | 08 | §8.11 |
+| Command completion, machine envelopes, bounded output capture, streams, and closed pipes | 08 + 11 | §8.3 + §8.11 + §10.14 |
 | Library entry points and runtime factory | 09 | §16.2 + §16.3 |
 | Library plugin/config policy and scope ownership | 09 | §16.4 + §16.6 |
 | Programmatic CLI and testing APIs | 09 | §16.7 + §16.8 |
@@ -212,7 +212,7 @@ Public surfaces MUST have one canonical registry. Narrative sections may explain
 
 Canonical owners:
 
-- Built-in commands, aliases, flags, args, bootstrap levels, recipe post-init eligibility, and command docs metadata: the `LandoCommandSpec` registry (§8.2, §8.3).
+- Built-in commands, aliases, flags, args, bootstrap levels, completion policies, recipe post-init eligibility, and command docs metadata: the `LandoCommandSpec` registry (§8.2, §8.3).
 - Public schemas, event payload schemas, tagged errors, and plugin-facing contract metadata: the `@lando/sdk` schema, error, and event registries (§7.8, §13.2).
 - Core service tags and public service exports: §3.4 plus `@lando/core/services` (§16.2).
 - Secret and PII redaction: `@lando/sdk/secrets` owns the value layer, pattern-class catalog, `secrets`/`telemetry`/`transcript` profiles, and `[redacted]` sentinel, surfaced through `RedactionService` (§3.7, §3.4). This invariant is non-replaceable, has no `redactors:` plugin surface (§4.2), composes into every sensitive emitter, and is protected by the §13.4 boundary gate.

@@ -78,7 +78,8 @@ export const updateSpec: LandoCommandSpec<UpdateResult> = {
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "plugins",
-  successExitCode: (result) => (result.hasFailures === true ? 1 : undefined),
+  completion: (result) =>
+    result.hasFailures === true ? { ok: false, exitCode: 1 } : { ok: true, exitCode: 0 },
   flags: {
     channel: Flags.string({
       description: "Release channel to resolve.",

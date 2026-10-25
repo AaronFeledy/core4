@@ -25,9 +25,8 @@ for (const format of ["text", "json"] as const) {
         yield* session.resolveEnvironment({ VALUE: { _tag: "SecretRef", reference: "canary" } });
         const sink = yield* Effect.serviceOption(StreamFrameSink);
         if (Option.isSome(sink)) {
-          yield* sink.value.emit({ _tag: "stdout", chunk: canary.slice(0, 9), raw: true });
-          yield* sink.value.emit({ _tag: "stdout", chunk: `${canary.slice(9)}!\n`, raw: true });
-          if (sink.value.flush !== undefined) yield* sink.value.flush();
+          yield* sink.value.emit({ _tag: "stdout", chunk: canary.slice(0, 9), kind: "bytes" });
+          yield* sink.value.emit({ _tag: "stdout", chunk: `${canary.slice(9)}!\n`, kind: "bytes" });
         }
         return { output: Option.isSome(sink) ? "" : `${canary}!\n` };
       }).pipe(Effect.scoped),
