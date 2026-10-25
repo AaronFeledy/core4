@@ -61,15 +61,22 @@ export const landofileLayerPaths = (
     typescriptPath: join(appRoot, `${position.basename}.ts`),
   }));
 
+const fileExists = (path: string): Effect.Effect<boolean> => Effect.promise(() => Bun.file(path).exists());
+
+/** Whether the YAML and TypeScript forms of one layer exist, as `[yaml, typescript]`. */
+export const landofileLayerFormsPresent = (position: {
+  readonly yamlPath: string;
+  readonly typescriptPath: string;
+}): Effect.Effect<readonly [boolean, boolean]> =>
+  Effect.all([fileExists(position.yamlPath), fileExists(position.typescriptPath)], { concurrency: 2 });
+
 export const presentLandofileLayers = Effect.fn("Landofile.presentLayers")(function* (
   appRoot: string,
 ): Effect.fn.Return<ReadonlyArray<PresentLandofileLayer>, LandofileFormConflictError> {
   const present: PresentLandofileLayer[] = [];
   for (const position of landofileLayerPaths(appRoot)) {
     const { yamlPath, typescriptPath } = position;
-    const [yamlExists, typescriptExists] = yield* Effect.promise(() =>
-      Promise.all([Bun.file(yamlPath).exists(), Bun.file(typescriptPath).exists()]),
-    );
+    const [yamlExists, typescriptExists] = yield* landofileLayerFormsPresent(position);
     if (yamlExists && typescriptExists) {
       return yield* Effect.fail(
         new LandofileFormConflictError({
