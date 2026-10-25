@@ -5,7 +5,7 @@
 
 This is an architecture-level specification: every public contract (services, schemas, errors, events, commands, manifest keys, and invariants) is named and its rules stated; shapes, bodies, and mechanics live in code and generated reference docs.
 
-The specification lives in nineteen focused parts. Files are canonical; **cross-references use stable `§N` section numbers independent of file numbers**, so a reference such as §4.2 remains valid when parts move. Use the topic lookup to map a section to its part.
+The specification lives in twenty focused parts. Files are canonical; **cross-references use stable `§N` section numbers independent of file numbers**, so a reference such as §4.2 remains valid when parts move. Use the topic lookup to map a section to its part.
 
 The split is almost one section per file, with these principled merges and additions:
 
@@ -17,6 +17,7 @@ The split is almost one section per file, with these principled merges and addit
 - **§19** is filed as part 17 because executable guides connect authored documentation to §13 scenario testing.
 - **§20** is filed as part 18 because the global app is a cross-cutting host-level app used by routing and shared services.
 - **§21** is filed as part 19 because scratch apps are scope-bounded peers to user and global apps with distinct identity and persistence rules.
+- **§22** is filed as part 20 because programmable execution composes existing environments, operations, and scopes without changing Lando's local-development focus.
 
 ---
 
@@ -43,6 +44,7 @@ The split is almost one section per file, with these principled merges and addit
 | 17 | [`17-executable-tutorials.md`](./17-executable-tutorials.md) | §19 | Defines prose-first executable guides, typed components, scenario context, transcripts, codegen, source maps, lint, recipe README generation, and variants. |
 | 18 | [`18-global-app.md`](./18-global-app.md) | §20 | Defines global-app identity and Landofile, plugin contributions, lifecycle and CLI, networking, storage, proxy realization, errors, and non-goals. |
 | 19 | [`19-scratch-apps.md`](./19-scratch-apps.md) | §21 | Defines scratch identity and sources, scoped lifecycle, isolation, storage rewriting, routing, CLI and library access, cleanup, errors, and non-goals. |
+| 20 | [`20-programmable-execution.md`](./20-programmable-execution.md) | §22 | Defines opt-in execution sessions, borrowed/owned environments, programmatic configuration, admission, process handles, private artifacts, and local-development compatibility. |
 
 ---
 
@@ -197,6 +199,16 @@ If you are looking for a public surface or policy:
 | Scratch lifecycle, isolation, storage, and routes | 19 | §21.6 + §21.9 |
 | Scratch CLI, registry, library mode, and errors | 19 | §21.10 + §21.14 |
 | Scratch non-goals | 19 | §21.15 |
+| Configuration-backed scratch and retained source provenance | 19 + 20 | §21.4.3 + §22.4 |
+| Programmable execution purpose and public contracts | 20 | §22.1 + §22.2 |
+| Borrowed and owned environment lifetime | 20 | §22.3 |
+| Typed operations, stdin, and scoped process handles | 20 | §22.5 |
+| Invocation-local admission and credential grants | 20 | §22.6 |
+| Execution observations, results, and events | 20 | §22.7 |
+| Private local artifact retention and fresh-runtime access | 20 | §22.8 |
+| Effect composition and future integration boundary | 20 | §22.9 |
+| Local-development UX/performance and execution acceptance | 20 | §22.10 + §22.12 |
+| Execution tagged errors | 20 | §22.11 |
 
 ---
 
@@ -221,6 +233,7 @@ Canonical owners:
 - Acceptance checklist items: stable ids mapped to tests and public surfaces (§15, §17.9).
 - Deprecation notices: schema annotations, contract fields, manifest fields, or TSDoc tags per §18.5, merged by `DeprecationService` (§18.3) and published as `dist/schemas/deprecation-notice.json` (§18.2).
 - Executable-guide vocabulary: prop schemas, `GuideFrontmatter`, `ScenarioProps`, `MatcherSchema`, `Transcript`/`TranscriptFrame`, `TabAxis`/`TabAxisValue`, `TabsProps`/`TabProps`, and redactions belong to `@lando/sdk/docs/components` and `@lando/sdk/docs/redactions` (§19.3, §19.6, §19.16). JSX/Astro runtime implementations and Starlight integration belong to `@lando/core/docs/components`; `ScenarioContext` belongs to `@lando/core/testing` (§19.4, §16.8).
+- Programmable execution: schema-backed session options, policies, observations, process requests/results, artifact refs, errors, and opaque handles belong to `@lando/sdk/execution` and the canonical schema/error/event/service registries (§22.2, §22.11). `ExecutionSessionService` belongs to §3.4; the facade belongs to `@lando/core/execution` (§2.7, §16.2). Internal step/scheduler representations are not public. Implementation must add canonical exports and compatibility tests before advertising a planned surface as available.
 
 Surface change checklist:
 

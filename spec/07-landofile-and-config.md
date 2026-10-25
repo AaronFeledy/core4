@@ -1,6 +1,6 @@
 # Lando v4: Landofile and Configuration
 
-> **Part 7 of 19** · [Index](./README.md)
+> **Part 7 of 20** · [Index](./README.md)
 > **Read next:** [08 CLI and Tooling](./08-cli-and-tooling.md)
 
 This part defines the user-facing Landofile, global configuration, composition, expression, translation, and schema-publication contracts.
@@ -175,6 +175,8 @@ The optional `lando` semver range is validated after merge and before planning. 
 The top-level wrappers `compose:` and `recipes:` are forbidden and fail with `LandofileForbiddenWrapperError`; Compose keys are direct, and recipe provenance uses singular `recipe`. Bare `recipe: <id>` remains valid and inert. The object form carries `id`, `version`, `producer`, `options`, and optional injective service-name mapping; producer identity and canonical content digest MUST agree with the declaration. Local and bundled source identities MUST NOT collide. The declaration MUST NOT trigger expansion, plugin loading, or runtime lookup. `init` and decomposing frontends MUST emit the object form.
 
 ### 7.4.1 Config translation
+
+`ConfigTranslator` remains authoring-fragment-only. Configuration-backed scratch uses the explicit input path in §21.4.3, not translation refresh; programmable execution adds no mandatory Landofile key (§22.9).
 
 Translation is explicit conversion through `LandofileAuthoringShape` and recursively partial `LandofileAuthoringFragment`. `LandofileShape` is runtime input and `AppPlan` is provider-neutral output; frontends MUST NOT emit `AppPlan`, and text backends MUST NOT encode runtime or plan shapes. These public Effect Schemas share canonical field definitions and inferred types.
 

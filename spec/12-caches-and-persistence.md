@@ -1,6 +1,6 @@
 # Lando v4: Caches and Persistence
 
-> **Part 12 of 19** · [Index](./README.md)
+> **Part 12 of 20** · [Index](./README.md)
 > **Read next:** [13 Testing and Distribution](./13-testing-and-distribution.md)
 
 This part defines Lando-owned caches, durable state, on-disk artifacts, atomicity, hot-path budgets, and offline behavior.
@@ -51,11 +51,15 @@ Every cache is versioned. Binary files carry a cache identity, schema/Lando vers
 
 Tooling caches MUST contain only expression ASTs and static redacted metadata. They MUST NOT contain dynamic shell-variable results, decrypted secrets, host output, provider connection state, or status/precondition results.
 
+Execution observations are bounded in-memory metadata (§22.7), not replay journals. They do not change build-cache eligibility or permit caching resolved secrets and arbitrary Effect values.
+
 ### 12.3 Atomicity
 
 `CacheService.writeAtomic` encodes before mutation, writes and syncs a sibling temporary file, then atomically renames it. In-process read/modify/write uses an Effect `Ref`. Crashes MUST leave either the prior complete cache or a regenerable invalid file, never a partial live value.
 
 ### 12.4 Persistent artifacts
+
+Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests. Session captures follow their scope; explicitly retained private bytes live under the user-data root until authorized removal. They are distinct from runnable provider artifacts, build caches, and public transcripts.
 
 | Location | Artifact class |
 |---|---|

@@ -1,7 +1,7 @@
 # Lando v4: Scratch Apps
 
-> **Part 19 of 19** · [Index](./README.md)
-> **Read next:** *(end of spec)*
+> **Part 19 of 20** · [Index](./README.md)
+> **Read next:** [20 Programmable Execution](./20-programmable-execution.md)
 
 **Scratch apps** are short-lived Lando apps whose resources and materialized state are owned by an Effect `Scope`. They support isolated forks of existing apps, recipe-backed temporary stacks, and library-hosted test environments.
 
@@ -14,7 +14,7 @@
 A scratch app:
 
 - Has an identity disjoint from user and global apps (§21.2).
-- Has a Lando-managed root at `<userCacheRoot>/scratch/<id>/`, populated from a source app or recipe.
+- Has a Lando-managed root at `<userCacheRoot>/scratch/<id>/`, populated from a source app, recipe, or explicit programmatic configuration and workspace.
 - Uses the standard Landofile, planner, build, provider, router, and certificate contracts.
 - Is owned by a `Scope` whose finalizer destroys containers, applicable volumes, routes, host-proxy state, transcripts, caches, and the materialized root.
 - Is excluded from cwd discovery and is addressable only through `apps:scratch:*` or the library API.
@@ -44,10 +44,11 @@ The entire scratch tree MUST be excluded from cwd discovery and `cwd-app-map`. S
 
 ### 21.4 Scratch sources
 
-`ScratchSource` is a tagged contract with exactly two variants:
+`ScratchSource.kind` is `fork`, `recipe`, or `config`:
 
 - `fork` identifies the resolved source app root, source app id, and copied Landofile layers.
-- `from-recipe` identifies a standard `RecipeRef` and resolved answers (§8.8.4).
+- `recipe` identifies a standard `RecipeRef` and resolved answers (§8.8.4).
+- `config` carries `config: Schema.Encoded<typeof LandofileAuthoringShapeWire>` and authoritative `sourceRoot: AbsolutePath` (§21.4.3). Acquisition payloads are separate from registry/listing source summaries.
 
 #### 21.4.1 Fork mode
 
@@ -65,6 +66,14 @@ The entire scratch tree MUST be excluded from cwd discovery and `cwd-app-map`. S
 `apps:scratch:start --from <recipe-ref>` materializes through the standard recipe pipeline (§8.8). Recipe `postInit:` actions MUST NOT run unless `--run-post-init` is set.
 
 Recipe resolution, prompt precedence, validation, fragments, and assets follow §8.8. Missing non-interactive answers fail through the recipe error contract and remove partial state. The generated Landofile uses the scratch id. Scratch mode defaults to `baked` isolation (§21.7).
+
+#### 21.4.3 Programmatic configuration mode
+
+The `config` source requires strict authoring-wire validation, one conversion to native authoring input, and canonical preparation/composition/finalization. It MUST NOT re-decode runtime Landofiles, accept caller plans, or serialize temporary YAML only to reload it.
+
+Copy the workspace under fork containment/exclusion rules; default isolation is `full`. The supplied document is authoritative over copied `.lando.*` and ambient local/user layers. Explicit includes and load inputs follow canonical policy inside the managed workspace. Standard scratch planning, build, and readiness apply, with session admission before materialization (§22.6).
+
+Retain the `LoadScopedLandofile` and managed-root provenance with the handle/plan for later operations and cleanup; never rediscover copied configuration. Registry/listing summaries contain kind, root identity, and digest, not authored input or resolved secrets. Existing applied-plan persistence and orphan recovery remain authoritative.
 
 ### 21.5 `ScratchAppService` core service
 

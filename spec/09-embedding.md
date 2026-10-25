@@ -1,6 +1,6 @@
 # Lando v4: Embedding and Library Use
 
-> **Part 9 of 19** · [Index](./README.md)
+> **Part 9 of 20** · [Index](./README.md)
 > **Read next:** [10 Plugins](./10-plugins.md)
 
 An embedding host is a Bun program that uses the same Effect runtime, planner, providers, plugins, and lifecycle bus as the CLI (§3.6), with resource lifetime owned by `Scope`.
@@ -22,6 +22,7 @@ Embedding is first-class for:
 | Custom CLIs and wrappers | Pair core with curated plugins and host-owned UX. |
 | Monorepo orchestrators | Drive multiple apps within one fiber tree. |
 | Config translation tools | Explicitly invoke contributed translators and emit canonical authoring fragments. |
+| Programmable local tooling | Compose typed operations in borrowed or owned environments, retain interactive processes, and collect private artifacts without an external automation service (§22). |
 
 Hosts MUST use core’s provider registry rather than wrapping Docker or Podman directly. They MAY replace abstractions declared pluggable in §4, but non-pluggable service contracts remain private. Parsing CLI output is not an embedding API.
 
@@ -40,6 +41,7 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | `@lando/core/errors` | Published tagged errors. |
 | `@lando/core/events` | `EventService`, event schemas, priority bands, and standard sequences. |
 | `@lando/core/cli` | Programmatic built-in command operations (§16.7). |
+| `@lando/core/execution` | `openExecutionSession` and opaque session/environment/process contracts (§22); thin Effect-native facade over `ExecutionSessionService`, not another runtime. |
 | `@lando/core/testing` | Supported deterministic test fixtures (§16.8). |
 | `@lando/core/docs/components` | Executable-guide JSX/Astro runtime and AST helpers (§19.3); unstable, outside the semver-stable set. |
 | `@lando/core/docs/redactions` | Canonical transcript redactions (§19.6); unstable, outside the semver-stable set. |
@@ -61,6 +63,8 @@ Required behavior:
 - Library defaults are `bootstrap: app`, `silent` logging, `json` rendering, non-interactive prompts, host-provided plugins only, telemetry enabled unless disabled, and no signal handlers. App bootstrap requires an authoritative cwd. Unanswered non-interactive prompts fail fast (§8.10.3).
 
 `openLandoRuntime(options)` acquires one runtime in the caller’s scope and returns retained methods `app`, `scratch`, and `run`. It MUST NOT reacquire the runtime per call.
+
+Construction and requirement types MUST reflect the requested tier (§22.2). Hosts invoke `openExecutionSession` through `runtime.run`, whose existing Effect-provision meaning is unchanged.
 
 `resolveApp(selector)` is the Layer-native equivalent of `runtime.app(selector)`. Selector precedence is `id` > `landofile` > `root` > `cwd`; lower-precedence fields MAY accompany a selector only when they validate against it. Unknown ids and mismatches fail with `AppResolveError`. A decoded Landofile MUST include an authoritative root. Resolution MUST use retained roots and cwd, never a later ambient `process.cwd()`. With no selector, resolution uses the runtime cwd or its configured scratch app.
 
@@ -108,6 +112,9 @@ Bootstrap, event order, payload schemas, subscriber priorities, and subscriber f
 - Interruption MUST propagate through provider operations and finalize acquisition-local work. Interrupting an individual `App` operation MUST NOT close its owning runtime or current managed scope; closing the outer runtime scope finalizes the resources it owns.
 - An `App` handle owns a child scope for managed start-state resources. `stop`, `restart`, `destroy`, or outer runtime closure ends it. Repeated managed starts converge resources, but init and lifecycle hooks run on every invocation (§6.15). A failed or interrupted managed start keeps the current managed scope and the resources it established (§6.7); the handle retries by converging on them. Only unused staged scopes are discarded before ownership transfer; acquisition-local incomplete resources finalize without releasing app-owned resources.
 - Configured scratch apps are materialized in runtime scope and destroyed when it closes (§21). Imperatively acquired scratches retain their returned scope contract.
+- Session closure leaves borrowed App ownership unchanged; owned environments and processes follow §22.3 and §22.5.
+
+Captured-handle delegation preserves invocation-local admission without changing the App's retained configuration, provenance, or hook policy (§22.6).
 
 Hosts MAY register programmatic event subscribers, but manifest-declared subscribers are the recommended extension path. `EventService` itself is not replaceable.
 
