@@ -285,6 +285,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
   const initStage = makeStage("init");
   const renderStage = makeStage("render", true);
   let resultExit: Exit.Exit<unknown, unknown> = Exit.void;
+  let completedExitCode: number | undefined;
   const capture = options.traceCapture;
   const finishTrace =
     capture === undefined
@@ -424,7 +425,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       }
       const completed = commandExit.value;
       const value = completed.value;
-      setExitCode(completed.exitCode);
+      completedExitCode = completed.exitCode;
       if (!envelopeFormat && options.renderEffect !== undefined) yield* options.renderEffect(completed);
       if (attachLiveSink) {
         if (envelopeFormat) {
@@ -596,6 +597,13 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
   if (Exit.isFailure(exit)) {
     const redactor = await Effect.runPromise(redaction.forProfile("secrets", { sourceEnv }));
     await renderTerminalFailure(exit.cause, options, redactor);
+  } else if (Exit.isSuccess(resultExit) && completedExitCode !== undefined) {
+    (
+      options.setExitCode ??
+      ((code) => {
+        process.exitCode = code;
+      })
+    )(completedExitCode);
   }
   if (options.traceCapture !== undefined && options.traceDisplay === true && !envelopeFormat && !brokenPipe) {
     await Effect.runPromise(
