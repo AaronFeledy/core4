@@ -233,6 +233,8 @@ const inputValid = [
   },
 ] as const;
 const inputInvalid = [
+  { id: "disabled-tooling-string", input: { tooling: { retired: "disabled" } } },
+  { id: "empty-tooling-string", input: { tooling: { retired: "" } } },
   { id: "plain-boolean", input: { name: "demo", services: { web: { primary: "maybe" } } } },
   { id: "plain-number", input: { name: "demo", router: { httpPort: "abc" } } },
   { id: "surrounding-spaces", input: { name: "demo", router: { httpPort: "  {{ number(env.PORT) }}  " } } },

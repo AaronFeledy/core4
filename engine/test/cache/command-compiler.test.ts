@@ -18,7 +18,7 @@ const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
 });
 
 describe("compileToolingCommands", () => {
-  test.each([false, "disabled", { cmd: "echo retired", disabled: true }])(
+  test.each([false, { cmd: "echo retired", disabled: true }])(
     "indexes disabled task %j as hidden so the router can refuse it",
     (task) => {
       // Given

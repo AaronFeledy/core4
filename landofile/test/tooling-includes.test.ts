@@ -69,10 +69,7 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     "%s keeps string tasks and include vars until composition",
     async (form) => {
       // Given
-      await writeFile(
-        join(appRoot, "tasks.yml"),
-        "tooling:\n  greet: echo hi\n  off: false\n  retired: disabled\n",
-      );
+      await writeFile(join(appRoot, "tasks.yml"), "tooling:\n  greet: echo hi\n  off: false\n");
       const entry = {
         source: "./tasks.yml",
         kind: "tooling" as const,
@@ -91,7 +88,6 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
       expect(resolved.tooling).toEqual({
         "docs:greet": { cmd: "echo hi", vars: { PORT: 4321 } },
         "docs:off": { disabled: true },
-        "docs:retired": { disabled: true },
       });
     },
   );

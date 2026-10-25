@@ -98,7 +98,7 @@ test.each([
   },
 );
 
-test.each(["false", "disabled", "\n    disabled: true"])(
+test.each(["false", "\n    disabled: true"])(
   "overlay %s drops a service type's reserved task",
   async (task) => {
     // Given
@@ -127,7 +127,7 @@ test("lint accepts all tooling task shorthands", async () => {
   try {
     await writeFile(
       join(root, ".lando.yml"),
-      "name: shorthand\ntooling:\n  foo: false\n  bar: disabled\n  baz: echo hi\n",
+      "name: shorthand\ntooling:\n  foo: false\n  bar:\n    cmd: disabled\n  baz: echo hi\n",
     );
     // When
     const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));

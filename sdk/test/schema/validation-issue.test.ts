@@ -217,7 +217,7 @@ describe("schema issue traversal", () => {
     expect(messages).toEqual([
       {
         path: ["tooling", "foo"],
-        message: "Expected false, disabled, a non-empty command string, or a tooling task object",
+        message: "Expected false, a non-empty command string, or a tooling task object",
       },
     ]);
   });

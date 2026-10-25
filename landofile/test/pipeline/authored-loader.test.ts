@@ -27,7 +27,6 @@ const load = (root: string) => loadLandofileLayers(root, join(root, ".lando.yml"
 
 test.each([
   ["false", { disabled: true }],
-  ["disabled", { disabled: true }],
   ["echo local", { cmd: "echo local" }],
 ])("a local YAML tooling shorthand %s replaces the inherited definition", async (higher, expected) => {
   // Given
@@ -49,8 +48,7 @@ test("TypeScript Landofiles accept tooling shorthands", async () => {
   // Given
   await withApp(
     {
-      ".lando.ts":
-        "export default { name: 'forms', tooling: { off: false, retired: 'disabled', greet: 'echo hi' } }",
+      ".lando.ts": "export default { name: 'forms', tooling: { off: false, greet: 'echo hi' } }",
     },
     async (root) => {
       // When
@@ -60,7 +58,6 @@ test("TypeScript Landofiles accept tooling shorthands", async () => {
       // Then
       expect(result.document.tooling).toEqual({
         off: { disabled: true },
-        retired: { disabled: true },
         greet: { cmd: "echo hi" },
       });
     },

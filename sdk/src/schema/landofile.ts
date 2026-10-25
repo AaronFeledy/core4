@@ -38,6 +38,7 @@ import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
+import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
 const REPLACE = { kind: "replace" } as const;
@@ -991,13 +992,19 @@ export const ToolingTaskShape = Schema.Struct({
 export type ToolingTaskShape = typeof ToolingTaskShape.Type;
 
 const TOOLING_TASK_FORMS = {
-  expected: "false, disabled, a non-empty command string, or a tooling task object",
-  message: "Expected false, disabled, a non-empty command string, or a tooling task object",
+  expected: "false, a non-empty command string, or a tooling task object",
+  message: "Expected false, a non-empty command string, or a tooling task object",
 };
 const ToolingTaskShorthand = Schema.Union([
   Schema.Literal(false),
   Schema.String.check(
-    Schema.isMinLength(1, { message: "Expected a non-empty command string; use false to disable a task" }),
+    Schema.isMinLength(toolingTaskStringConstraints.minLength, {
+      message: "Expected a non-empty command string; use false to disable a task",
+    }),
+    Schema.makeFilter((input) => input !== toolingTaskStringConstraints.not.const, {
+      message: "`disabled` is not a command; use false to disable a task",
+      toJsonSchema: () => ({ not: toolingTaskStringConstraints.not }),
+    }),
   ),
 ])
   .annotate(TOOLING_TASK_FORMS)
@@ -1006,7 +1013,7 @@ const ToolingTaskShorthand = Schema.Union([
       Schema.toType(ToolingTaskShape),
       SchemaTransformation.transformEffect({
         decode: (input): Effect.Effect<ToolingTaskShape, SchemaIssue.Issue> =>
-          Effect.succeed(input === false || input === "disabled" ? { disabled: true } : { cmd: input }),
+          Effect.succeed(input === false ? { disabled: true } : { cmd: input }),
         // Task objects encode through the object member, which the union tries first.
         encode: (): Effect.Effect<string | false, SchemaIssue.Issue> =>
           Effect.fail(new SchemaIssue.Forbidden({ message: "Tooling tasks encode as objects" })),
@@ -1019,7 +1026,7 @@ const ToolingTaskShorthand = Schema.Union([
 export const ToolingTaskInput = Schema.Union([ToolingTaskShape, ToolingTaskShorthand]).annotate({
   identifier: "ToolingTaskInput",
   description:
-    "Tooling task object or non-empty command string; false and disabled disable the task. Shorthands replace inherited tasks after layer composition.",
+    "Tooling task object or non-empty command string; false disables the task. Shorthands replace inherited tasks after layer composition.",
   ...TOOLING_TASK_FORMS,
 });
 export type ToolingTaskInput = typeof ToolingTaskInput.Type;
