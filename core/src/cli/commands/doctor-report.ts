@@ -54,8 +54,11 @@ import {
 import type { DoctorDeprecationEntry, DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
 import { countDoctorChecks } from "./doctor-report-render";
 import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
-import type { SubsystemDoctorOptions, SubsystemDoctorResult } from "./doctor-subsystems";
-import { subsystemDoctor } from "./doctor-subsystems";
+import {
+  type SubsystemDoctorOptions,
+  type SubsystemDoctorResult,
+  subsystemDoctor,
+} from "./doctor-subsystems";
 import { appVersionConstraintsForReport } from "./doctor-version-constraint";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 

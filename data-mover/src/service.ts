@@ -1548,10 +1548,7 @@ export const layer: Layer.Layer<
                 message: cause.message,
                 operation: "select",
                 cause,
-                remediation:
-                  "remediation" in cause && typeof cause.remediation === "string"
-                    ? cause.remediation
-                    : "Run lando setup to install a provider, then lando doctor --all to inspect its availability.",
+                remediation: cause.remediation,
               }),
           ),
         );
