@@ -103,6 +103,7 @@ const INEXPRESSIBLE = [
 ] as const;
 
 const SKIPPED = [
+  { suffix: ".lando.stop", reason: "Discovery stop marker, not a Landofile document." },
   { suffix: ".lando.ts", reason: "TypeScript program, not a YAML Landofile document." },
   { suffix: ".lando.base.yml", reason: "Partial base layer, not a canonical Landofile document." },
   { suffix: ".lando.local.yml", reason: "Partial overlay layer, not a canonical Landofile document." },
