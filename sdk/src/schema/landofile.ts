@@ -992,34 +992,37 @@ export type ToolingTaskShape = typeof ToolingTaskShape.Type;
 
 const TOOLING_TASK_DESCRIPTION =
   "Tooling task object or non-empty command string; false and disabled disable the task. Shorthands replace inherited tasks after layer composition.";
-export const ToolingTaskInput = Schema.Union([
+const TOOLING_TASK_FORMS = {
+  expected: "false, disabled, a non-empty command string, or a tooling task object",
+  message: "Expected false, disabled, a non-empty command string, or a tooling task object",
+};
+const ToolingTaskShorthand = Schema.Union([
   Schema.Literal(false),
   Schema.String.check(
     Schema.isMinLength(1, { message: "Expected a non-empty command string; use false to disable a task" }),
   ),
-  Schema.toEncoded(ToolingTaskShape),
 ])
-  .annotate({
-    identifier: "ToolingTaskInput",
-    description: TOOLING_TASK_DESCRIPTION,
-    expected: "false, disabled, a non-empty command string, or a tooling task object",
-    message: "Expected false, disabled, a non-empty command string, or a tooling task object",
-  })
+  .annotate(TOOLING_TASK_FORMS)
   .pipe(
     Schema.decodeTo(
-      ToolingTaskShape,
-      SchemaTransformation.transform({
-        decode: (input) =>
-          input === false || input === "disabled"
-            ? { disabled: true }
-            : typeof input === "string"
-              ? { cmd: input }
-              : input,
-        encode: (input) => input,
+      Schema.toType(ToolingTaskShape),
+      SchemaTransformation.transformEffect({
+        decode: (input): Effect.Effect<ToolingTaskShape, SchemaIssue.Issue> =>
+          Effect.succeed(input === false || input === "disabled" ? { disabled: true } : { cmd: input }),
+        // Task objects encode through the object member, which the union tries first.
+        encode: (): Effect.Effect<string | false, SchemaIssue.Issue> =>
+          Effect.fail(new SchemaIssue.Forbidden({ message: "Tooling tasks encode as objects" })),
       }),
     ),
-  )
-  .annotate({ description: TOOLING_TASK_DESCRIPTION });
+  );
+
+// The object member stays outside the shorthand codec so authoring derivation walks the
+// task struct itself and keeps its nested checks instead of a flattened encoded copy.
+export const ToolingTaskInput = Schema.Union([ToolingTaskShape, ToolingTaskShorthand]).annotate({
+  identifier: "ToolingTaskInput",
+  description: TOOLING_TASK_DESCRIPTION,
+  ...TOOLING_TASK_FORMS,
+});
 export type ToolingTaskInput = typeof ToolingTaskInput.Type;
 
 /** App-wide defaults inherited by tooling tasks unless a task overrides them. */
