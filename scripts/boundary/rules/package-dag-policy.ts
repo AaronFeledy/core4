@@ -93,7 +93,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: [],
   },
   "@lando/mcp": {
-    dependencies: ["@lando/sdk", "@lando/engine", "@lando/redaction"],
+    dependencies: ["@lando/sdk", "@lando/engine", "@lando/landofile", "@lando/redaction"],
     devDependencies: [],
   },
   "@lando/landofile": {
