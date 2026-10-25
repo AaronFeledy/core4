@@ -20,11 +20,11 @@ import { TestClock } from "effect/testing";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-report-contract.ts";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
 import {
-  DefaultSubsystemDoctorLayer,
   renderSubsystemDoctorResultAsNdjson,
   subsystemDoctor,
 } from "../../src/cli/commands/doctor-subsystems.ts";
 import { globalAppForProvider } from "../_support/global-provider.ts";
+import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const inputs = () => ({
   globalConfig: {},

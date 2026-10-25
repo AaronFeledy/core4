@@ -187,7 +187,6 @@
     "./subsystems/gpg-agent/intent": "./src/subsystems/gpg-agent/intent.ts",
     "./subsystems/gpg-agent/keyring": "./src/subsystems/gpg-agent/keyring.ts",
     "./subsystems/healthcheck/api": "./src/subsystems/healthcheck/api.ts",
-    "./subsystems/healthcheck/live": "./src/subsystems/healthcheck/live.ts",
     "./subsystems/healthcheck/runner-factory": "./src/subsystems/healthcheck/runner-factory.ts",
     "./subsystems/host-proxy/api": "./src/subsystems/host-proxy/api.ts",
     "./subsystems/host-proxy/detached-worker": "./src/subsystems/host-proxy/detached-worker.ts",

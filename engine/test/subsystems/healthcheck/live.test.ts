@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Fiber, Layer } from "effect";
+import { Effect, Exit, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
 import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import type { HealthcheckPlan } from "@lando/sdk/schema";
-import { HealthcheckRunner, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider, runHealthcheckContract } from "@lando/sdk/test";
+import { runHealthcheckContract } from "@lando/sdk/test";
 
-import * as ProviderHealthcheckRunner from "../../../src/subsystems/healthcheck/live.ts";
 import { makeHealthcheckRunner } from "../../../src/subsystems/healthcheck/runner-factory.ts";
 import {
   appId,
@@ -284,18 +282,13 @@ describe("makeHealthcheckRunner", () => {
   });
 });
 
-describe("ProviderHealthcheckRunner.layer", () => {
-  test("provides the provider-exec runner from RuntimeProvider", async () => {
+describe("selected provider healthcheck runner", () => {
+  test("executes through the explicitly selected provider", async () => {
     const fakeExecOk = execSequence([0]);
-    const provider = { ...TestRuntimeProvider, exec: fakeExecOk.exec } satisfies RuntimeProviderShape;
-    const runner = await drive(
-      Effect.gen(function* () {
-        return yield* HealthcheckRunner;
-      }).pipe(
-        Effect.provide(ProviderHealthcheckRunner.layer),
-        Effect.provide(Layer.succeed(RuntimeProvider, provider)),
-      ),
-    );
+    const runner = makeHealthcheckRunner({ exec: fakeExecOk.exec });
+    const result = await drive(runner.run(commandPlan(["true"]), appId, service));
+    expect(result.healthy).toBe(true);
+    expect(fakeExecOk.calls).toHaveLength(1);
 
     expect(runner.id).toBe("provider-exec");
     expect(["unavailable", "disabled"]).not.toContain(runner.id);

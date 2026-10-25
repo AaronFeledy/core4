@@ -193,15 +193,17 @@ describe("doctor progress events", () => {
       .filter((event) => event._tag === "task.start")
       .map((event) => event.taskId);
     expect(starts).toEqual([
+      "subsystems",
       "provider",
       "certificate-authority",
       "network-trust",
-      "subsystems",
       "global-app",
       "mcp",
     ]);
     expect(recorder.events.filter((event) => event._tag === "task.fail")).toEqual([]);
-    expect(recorder.events.find((event) => event._tag === "task.complete")).toMatchObject({
+    expect(
+      recorder.events.find((event) => event._tag === "task.complete" && event.taskId === "provider"),
+    ).toMatchObject({
       taskId: "provider",
       summary: "provider · 1 warning",
       outcome: "warn",

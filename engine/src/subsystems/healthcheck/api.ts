@@ -8,7 +8,7 @@
  * - Startup distinguishes `running` from `ready`. The `ready` event fires
  *   when all healthchecks pass.
  * - The active `HealthcheckRunner` decides execution mechanics. The default
- *   provider-exec runner lives in `live.ts`, executes command healthchecks via
+ *   provider-exec runner lives in `runner-factory.ts`, executes command healthchecks via
  *   `RuntimeProvider.exec`, builds retry/delay/timeout behavior on
  *   `@lando/sdk/probe`'s `runProbe`, and redacts probe failure details through
  *   `RedactionService` before surfacing them.
@@ -24,7 +24,7 @@ import { UNAVAILABLE_ID, unavailableOperation } from "../unavailable.ts";
 export { HealthcheckRunner };
 
 const HC_UNAVAILABLE_MESSAGE =
-  "HealthcheckRunner requires provider-exec. Run `lando setup` to install the provider (full implementation is not available yet).";
+  "No provider-bound healthcheck runner is available in this context. Run `lando setup`, then start the app so readiness uses its selected provider.";
 
 export const layerUnavailable = Layer.succeed(
   HealthcheckRunner,
