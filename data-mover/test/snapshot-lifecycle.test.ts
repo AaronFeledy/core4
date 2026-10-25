@@ -147,6 +147,23 @@ test("removal routes to recording provider A when call-time provider is B", () =
     expect(wrongCalls).toEqual([]);
   }));
 
+test("a registry returning the wrong recording provider leaves the snapshot listed", () =>
+  withCatalog(async (f) => {
+    // Given an A snapshot and a registry that incorrectly returns B for A.
+    const handle = await runScoped(f.mover().snapshot(store));
+    const wrong = f.provider({ id: "B" });
+    const registry = RuntimeProviderRegistry.of({ ...f.registry, select: () => Effect.succeed(wrong) });
+    const mover = f.mover(wrong, f.stateStore, registry);
+
+    // When removal resolves a provider with the wrong identity.
+    const result = await run(mover.removeSnapshot(handle).pipe(Effect.result));
+
+    // Then it fails before deleting either the artifact or its catalog evidence.
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "DataTransferError" } });
+    expect(f.removals).toEqual([]);
+    expect((await run(mover.listSnapshots({}))).map((info) => info.id)).toEqual([handle.id]);
+  }));
+
 test("missing recording provider leaves the snapshot listed", () =>
   withCatalog(async (f) => {
     // Given a snapshot recorded by A, which the registry can no longer select.

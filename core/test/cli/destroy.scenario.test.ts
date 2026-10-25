@@ -549,7 +549,13 @@ const seedSnapshot = async (
     digest: "sha256:snapshot",
     sizeBytes: 42,
     createdAt: "2026-05-15T00:00:00Z",
-    native: { provider: "docker", id: input.id, digest: "sha256:snapshot", sizeBytes: 42, format: "native" },
+    native: {
+      provider: providerId,
+      id: input.id,
+      digest: "sha256:snapshot",
+      sizeBytes: 42,
+      format: "native",
+    },
     ...(input.sourceRoot === undefined
       ? {}
       : {
@@ -1266,7 +1272,7 @@ describe("lando destroy", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain("LandofileNotFoundError");
-      expect(result.stderr).toContain("Run `lando init --full --name=<name>` to scaffold an app.");
+      expect(result.stderr).toContain(`Run \`lando init\` in ${dir} to create an app.`);
     });
   });
 
