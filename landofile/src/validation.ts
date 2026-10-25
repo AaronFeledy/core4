@@ -7,51 +7,12 @@ import {
   type ValidationIssue,
   type ValidationIssuePath,
   formatValidationIssueLine,
+  schemaIssueLeaves,
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
-import { Effect, Result, Schema, SchemaIssue } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { getOrigins } from "./pipeline/origins.ts";
 import { isValidSemverRange } from "./version-constraint.ts";
-
-export type SchemaIssueLeaf = {
-  readonly _tag: "Unexpected" | "Missing" | "Type";
-  readonly path: ReadonlyArray<PropertyKey>;
-  readonly message: string;
-};
-
-export const schemaIssueLeaves = (
-  issue: SchemaIssue.Issue,
-  path: ReadonlyArray<PropertyKey> = [],
-): ReadonlyArray<SchemaIssueLeaf> => {
-  switch (issue._tag) {
-    case "Pointer":
-      return schemaIssueLeaves(issue.issue, [...path, ...issue.path]);
-    case "Encoding":
-      return schemaIssueLeaves(issue.issue, path);
-    case "Composite":
-      return issue.issues.flatMap((child) => schemaIssueLeaves(child, path));
-    case "AnyOf":
-      if (issue.issues.length > 0) return issue.issues.flatMap((child) => schemaIssueLeaves(child, path));
-      break;
-    case "Filter":
-      if (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue") {
-        return schemaIssueLeaves(issue.issue, path);
-      }
-      break;
-    case "UnexpectedKey":
-    case "MissingKey":
-    case "InvalidType":
-    case "InvalidValue":
-    case "Forbidden":
-    case "OneOf":
-      break;
-  }
-  return SchemaIssue.makeFormatterStandardSchemaV1()(issue).issues.map((formatted) => ({
-    _tag: issue._tag === "UnexpectedKey" ? "Unexpected" : issue._tag === "MissingKey" ? "Missing" : "Type",
-    path,
-    message: formatted.message,
-  }));
-};
 
 const SERVICE_KEYS = [...Object.keys(ServiceConfig.fields), "working_dir", "env_file", "depends_on"];
 export const getLandofileValueSource = (value: object, path: ValidationIssuePath) => {
