@@ -154,6 +154,18 @@ tooling:
 Your editor can catch the structural problems (unknown keys, wrong literal types, an expression where none belongs) before you run anything; lint still owns resolving expressions. See [Validate a Landofile in your editor](./editor-validation.mdx) for the one-line modeline.
 
 <Guide>
+  <Scenario id="wrong-type-shares-both-scopes" render>
+    <Step name="lint-wrong-type">
+      <UseFixture name="wrong-type" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.validation\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"api\",\\s*\"primary\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"message\":\\s*\"Expected boolean\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"scopes\":\\s*\\[\\s*\"fragment\",\\s*\"effective\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { not: { regex: "\"rule\":[\\s\\S]*\"rule\":|Symbol\\(|AuthoringFragment|AuthoringShape|authoring site" } } }} />
+    </Step>
+    <Step name="cleanup-wrong-type"><Cleanup /></Step>
+  </Scenario>
   <Scenario id="reject-missing-http-binding" render>
     <Step name="lint-missing-http">
       <UseFixture name="route-missing-http" />

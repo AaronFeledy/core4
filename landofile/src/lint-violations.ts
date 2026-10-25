@@ -3,16 +3,18 @@ import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
   type ConfigLintViolation,
+  type SchemaIssueLeaf,
   ServiceConfig,
   type ValidationIssuePath,
   formatValidationIssuePath,
   parseValidationIssuePath,
+  schemaIssueLeaves,
   validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 import type { SchemaIssue } from "effect";
 import { Predicate } from "effect";
 import type { ComposeRejectionMatch } from "./compose/rejections.ts";
-import { type SchemaIssueLeaf, plannerScopeSuggestion, schemaIssueLeaves } from "./validation.ts";
+import { plannerScopeSuggestion } from "./validation.ts";
 
 const lastKey = (path: ReadonlyArray<PropertyKey>): string | undefined =>
   path.length === 0 ? undefined : String(path[path.length - 1]);
