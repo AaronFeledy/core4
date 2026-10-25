@@ -51,6 +51,7 @@ import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-ma
 import type { RendererMode } from "./renderer-selection";
 import { ResultTerminal } from "./result-terminal";
 import { type TraceSelection, activeTrace } from "./trace-selection";
+import { recordCliDefect, renderTerminalFailure } from "./terminal-failure";
 
 export {
   type ResolveCliDeprecationWarningsOptions,
@@ -184,7 +185,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     const redactor = await Effect.runPromise(
       owner.service.forProfile("secrets", { sourceEnv: options.sourceEnv ?? process.env }),
     );
-    throw new Error(redactor.redactString(String(cause)));
+    await renderTerminalFailure(Cause.isCause(cause) ? cause : Cause.die(cause), options, redactor);
   } finally {
     owner.dispose();
   }
@@ -321,6 +322,8 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);
+      const defectRedactor = yield* redaction.forProfile("secrets", { sourceEnv, redactionTokens: extraTokens });
+      yield* recordCliDefect(cause, defectRedactor, io);
       const { error: primaryError, additionalErrors } = failureOutcomeFromCause(cause);
       const error = yield* renderFailureEvidence(
         Cause.hasInterruptsOnly(cause) ? "All fibers interrupted without errors." : primaryError,
@@ -348,9 +351,9 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       let message = options.formatError({ error, additionalErrors });
       // Failure notices (for example what an incomplete start left in place) follow the error.
       let notices = yield* commandWarnings.failureNotices;
-      const redaction = yield* Effect.serviceOption(RedactionService);
-      if (redaction._tag === "Some") {
-        const redactor = yield* redaction.value.forProfile("secrets", {
+      const failureRedaction = yield* Effect.serviceOption(RedactionService);
+      if (failureRedaction._tag === "Some") {
+        const redactor = yield* failureRedaction.value.forProfile("secrets", {
           sourceEnv,
           redactionTokens: extraTokens,
         });
@@ -569,7 +572,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
   );
   if (Exit.isFailure(exit)) {
     const redactor = await Effect.runPromise(redaction.forProfile("secrets", { sourceEnv }));
-    throw new Error(redactor.redactString(Cause.pretty(exit.cause)));
+    await renderTerminalFailure(exit.cause, options, redactor);
   }
   if (options.traceCapture !== undefined && options.traceDisplay === true && !envelopeFormat && !brokenPipe) {
     await Effect.runPromise(

@@ -140,14 +140,14 @@ const HELP_SPECIAL_FLAGS = {
 
 const readAppCommandCacheOrNull = async () => {
   const exit = await Effect.runPromiseExit(Effect.result(readFreshAppCommandCacheForCwd()));
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  if (Exit.isFailure(exit)) throw exit.cause;
   const cache = exit.value;
   return cache._tag === "Success" ? cache.success : null;
 };
 
 const resolveToolingRouteExit = async (token: string | undefined) => {
   const exit = await Effect.runPromiseExit(Effect.result(resolveToolingRoute(token)));
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  if (Exit.isFailure(exit)) throw exit.cause;
   return exit.value;
 };
 
@@ -506,4 +506,16 @@ export interface RunCliOptions {
   readonly rootUrl: string;
 }
 
-export const runCli = (options: RunCliOptions): Promise<void> => runCompiledCli(options.argv);
+export const runCli = async (options: RunCliOptions): Promise<void> => {
+  try {
+    await runCompiledCli(options.argv);
+  } catch (error) {
+    const cause = Cause.isCause(error) ? error : Cause.die(error);
+    const output = preCommandOutputMode({ argv: options.argv, env: process.env });
+    setActiveRendererMode(output.rendererMode);
+    if (output.resultFormat !== undefined) setActiveResultFormat(output.resultFormat);
+    await runCompiledCommand(Effect.failCause(cause), Layer.empty, () => undefined, {
+      preCommand: true,
+    });
+  }
+};

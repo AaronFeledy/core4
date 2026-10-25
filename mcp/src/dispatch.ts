@@ -18,7 +18,9 @@ import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@l
 import type { LandoEvent } from "@lando/sdk/events";
 import { type Redactor, createRedactor } from "@lando/sdk/secrets";
 
-import { type CommandResultOutcome, buildCommandResultEnvelope } from "@lando/sdk/command-result";
+import { type CommandResultOutcome, buildCommandResultEnvelope, failureOutcomeFromCause } from "@lando/sdk/command-result";
+import { Logger } from "@lando/sdk/services";
+import { Schema } from "effect";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
 import { boundedEventString, postEvent, preEvent } from "./call-events";
 import { encodeProgressFrame } from "./progress";
@@ -256,6 +258,17 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
     yield* emitPost("failure", failure.value._tag);
     return yield* Effect.fail(failure.value);
   }
-  yield* emitPost("failure", "Defect");
-  return yield* Effect.die(Cause.squash(exit.cause));
+  const logger = yield* Effect.serviceOption(Logger);
+  if (Option.isSome(logger)) {
+    yield* logger.value.debug("MCP command defect", { cause: deps.redactor.redactString(Cause.pretty(exit.cause)) }).pipe(Effect.ignore);
+  }
+  const encoded = yield* buildCommandResultEnvelope({
+    command: commandId,
+    resultSchema: Schema.Unknown,
+    outcome: failureOutcomeFromCause(exit.cause),
+    redactor: deps.redactor,
+  });
+  const envelope = yield* redactBoundedJsonValue(encoded, deps.redactor, "MCP tool failure");
+  yield* emitPost("failure", envelopeTag(envelope));
+  return { envelope, ok: false };
 }, Effect.uninterruptible);

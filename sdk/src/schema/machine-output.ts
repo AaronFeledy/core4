@@ -23,7 +23,7 @@ export type CommandWarning = typeof CommandWarning.Type;
 const taggedErrorFields = {
   _tag: Schema.String,
   message: Schema.String,
-  remediation: Schema.optionalKey(Schema.String),
+  remediation: Schema.NonEmptyString,
   service: Schema.optionalKey(Schema.String),
   steps: Schema.optionalKey(
     Schema.Array(
@@ -56,7 +56,7 @@ const AdditionalErrorJson = Schema.StructWithRest(
   [Schema.Record(Schema.String, Schema.Unknown)],
 );
 
-const TaggedErrorJson = Schema.StructWithRest(
+export const TaggedErrorJson = Schema.StructWithRest(
   Schema.Struct({
     ...taggedErrorFields,
     additionalErrors: Schema.optionalKey(Schema.NonEmptyArray(AdditionalErrorJson)).annotate({

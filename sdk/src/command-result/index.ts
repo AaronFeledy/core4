@@ -1,4 +1,4 @@
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import type { ProjectedFailure } from "./failure.ts";
 export {
   FailureRoleAnnotation,
@@ -9,13 +9,13 @@ export {
 } from "./failure.ts";
 
 import type { CommandTrace, CommandWarning, DeprecationUse } from "@lando/sdk/schema";
-import { CommandResultEnvelope, ValidationIssue } from "@lando/sdk/schema";
+import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import { SqlConfirmRequiredError } from "../errors/sql.ts";
+import { internalErrorRemediation, taggedErrorJson } from "./diagnostic.ts";
+export { internalError, internalErrorRemediation, taggedErrorJson } from "./diagnostic.ts";
 
 import { emitYamlDocument } from "../yaml/document.ts";
 import { encodeStreamFrame } from "./frames.ts";
-import { isJsonSafe } from "./json-safe.ts";
 import { applyProjectResultKeys } from "./project-result.ts";
 
 export {
@@ -52,69 +52,6 @@ export interface EncodeCommandResultOptions {
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
-
-const nonEmptyString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-const taggedErrorJson = (
-  error: unknown,
-): {
-  readonly _tag: string;
-  readonly message: string;
-  readonly remediation?: string;
-  readonly service?: string;
-  readonly steps?: ReadonlyArray<{
-    readonly id: string;
-    readonly label: string;
-    readonly target: string;
-    readonly destructive: boolean;
-  }>;
-  readonly reason?: string;
-  readonly issues?: ReadonlyArray<ValidationIssue>;
-  readonly [key: string]: unknown;
-} => {
-  const record = asRecord(error);
-  const tag = nonEmptyString(record?._tag) ?? nonEmptyString(record?.name) ?? "UnknownError";
-  const message = nonEmptyString(record?.message) ?? String(error);
-  const remediation = nonEmptyString(record?.remediation);
-  const reason = typeof record?.reason === "string" ? record.reason : undefined;
-  const decodedIssues = Schema.decodeUnknownResult(Schema.Array(ValidationIssue))(record?.issues);
-  const issues = Result.isSuccess(decodedIssues) ? decodedIssues.success : undefined;
-  const reserved = new Set([
-    "_tag",
-    "name",
-    "message",
-    "stack",
-    "cause",
-    "remediation",
-    "reason",
-    "issues",
-    "steps",
-    "redactionTokens",
-    "additionalErrors",
-    "role",
-  ]);
-  const extra = Object.fromEntries(
-    Object.keys(record ?? {}).flatMap((key) => {
-      if (reserved.has(key) || record === undefined) return [];
-      const descriptor = Object.getOwnPropertyDescriptor(record, key);
-      if (descriptor === undefined || !("value" in descriptor) || !isJsonSafe(descriptor.value)) return [];
-      if (key === "service" && nonEmptyString(descriptor.value) === undefined) return [];
-      return [[key, descriptor.value]];
-    }),
-  );
-  const base = {
-    _tag: tag,
-    message,
-    ...(remediation === undefined ? {} : { remediation }),
-    ...(reason === undefined ? {} : { reason }),
-    ...(issues === undefined ? {} : { issues }),
-  };
-  if (error instanceof SqlConfirmRequiredError) {
-    return { ...base, service: error.service, steps: error.steps, ...extra };
-  }
-  return { ...base, ...extra };
-};
 
 const encodeResult = (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
   Effect.try({
@@ -180,7 +117,11 @@ const fallbackEnvelope = (command: string, trace?: CommandTrace): unknown => ({
   apiVersion: "v4",
   command,
   ok: false,
-  error: { _tag: "CommandResultEncodeError", message: "Failed to encode command result." },
+  error: {
+    _tag: "CommandResultEncodeError",
+    message: "Failed to encode command result.",
+    remediation: internalErrorRemediation,
+  },
   warnings: [],
   deprecations: [],
   ...(trace === undefined ? {} : { trace }),
