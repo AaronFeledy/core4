@@ -7,7 +7,7 @@ import {
 import {
   awaitRuntimeSshAgent,
   runtimeSshAgentReady,
-  sidecarSocketState,
+  sidecarSocketCheck,
 } from "@lando/engine/subsystems/ssh-agent/session";
 import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
@@ -65,6 +65,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
   let delivery: Details["delivery"] = capabilities?.agentSocket?.delivery ?? "none";
   let runtimeVolume: string | undefined;
   let waitAfterSetup = false;
+  let readinessDetail: string | undefined;
   const probeAgent = (upstream: Parameters<typeof probeSshAgent>[0]) =>
     Effect.tryPromise({
       try: () => (input.probe ?? probeSshAgent)(upstream, { timeoutMs: 1_000 }),
@@ -87,15 +88,19 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         ) {
           delivery = "runtime-volume";
           runtimeVolume = socket.runtimeVolume;
+          const readiness = waitAfterSetup ? yield* awaitRuntimeSshAgent() : undefined;
+          readinessDetail = readiness?.detail;
           return {
             source: "sidecar" as const,
-            reachable: waitAfterSetup
-              ? (yield* awaitRuntimeSshAgent()) === "ready"
-              : yield* runtimeSshAgentReady,
+            reachable: waitAfterSetup ? readiness?.state === "ready" : yield* runtimeSshAgentReady,
           };
         }
         const upstream = { _tag: "unix" as const, path: socket.socketPath };
-        if (waitAfterSetup) yield* awaitRuntimeSshAgent(sidecarSocketState(upstream, input.probe));
+        if (waitAfterSetup) {
+          const readiness = yield* awaitRuntimeSshAgent(sidecarSocketCheck(upstream, input.probe));
+          readinessDetail = readiness.detail;
+          if (readiness.state !== "ready") return { source: "sidecar" as const, reachable: false };
+        }
         const probed = yield* Effect.result(probeAgent(upstream));
         return {
           source: "sidecar" as const,
@@ -152,7 +157,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         if (!recovered) {
           fixContext.fixError = Result.isFailure(setup)
             ? redactString(setup.failure.message)
-            : "SSH agent forwarding remains degraded after setup.";
+            : `SSH agent forwarding remains degraded after setup.${readinessDetail === undefined ? "" : ` Last probe failure: ${readinessDetail}`}`;
         }
         break;
       }

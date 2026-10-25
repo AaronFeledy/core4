@@ -141,6 +141,12 @@ test.each([
         expect(warnings[0]).toContain(shell?.evidence ?? "missing evidence");
         expect(warnings[0]).toContain(shell?.remediation ?? "missing remediation");
         expect(shell?.evidence).toContain(scenario.state === "exited" ? "stopped" : "30 seconds");
+        expect(shell?.evidence).toContain("Last probe failure:");
+        expect(shell?.evidence).toContain(
+          scenario.state === "exited"
+            ? "container status: exited"
+            : "SSH readiness shell probe exited with code 2",
+        );
         expect(shell?.remediation).toContain("lando setup");
       } else {
         expect(warnings).toEqual([]);

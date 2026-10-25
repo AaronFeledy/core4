@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { RedactionService } from "@lando/redaction/service";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -7,7 +9,9 @@ import { TestClock } from "effect/testing";
 import {
   agentSocketMountPlan,
   awaitRuntimeSshAgent,
+  runtimeSshAgentCheck,
   runtimeSshAgentState,
+  sidecarSocketCheck,
 } from "../../../src/subsystems/ssh-agent/session.ts";
 
 const globalRoot = AbsolutePath.make("/lando/global");
@@ -200,7 +204,8 @@ test("wait exhausts its budget when a running agent never answers", async () => 
     ),
   );
   // Then
-  expect(state).toBe("starting");
+  expect(state.state).toBe("starting");
+  expect(state.detail).toContain("SSH readiness shell probe exited with code 2");
   expect(probes).toBe(60);
 });
 
@@ -217,4 +222,129 @@ test("omits bind-only fields when the socket uses a volume", () => {
     readOnly: true,
     realization: "passthrough",
   });
+});
+
+const runningProvider = {
+  ...TestRuntimeProvider,
+  inspect: () =>
+    Effect.succeed({
+      app: AppId.make("global"),
+      service: ServiceName.make("ssh-agent"),
+      providerId: ProviderId.make("lando"),
+      status: "running",
+      publications: { status: "unknown" as const },
+    }),
+};
+const withProvider = (provider: typeof TestRuntimeProvider) =>
+  Effect.provideService(RuntimeProviderRegistry, {
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    list: Effect.succeed([ProviderId.make(provider.id)]),
+    capabilities: Effect.succeed(provider.capabilities),
+    select: () => Effect.succeed(provider),
+  });
+
+test.each([false, true])(
+  "exec failure is redacted with RedactionService present=%s",
+  async (servicePresent) => {
+    // Given an exec failure containing a secret from the source environment.
+    const secret = "seeded-ssh-readiness-secret";
+    const previous = process.env.LANDO_TEST_SSH_TOKEN;
+    process.env.LANDO_TEST_SSH_TOKEN = secret;
+    const provider = {
+      ...runningProvider,
+      exec: () =>
+        Effect.fail(
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "exec",
+            message: `exec denied ${secret}`,
+          }),
+        ),
+    };
+    const wait = Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(awaitRuntimeSshAgent());
+      yield* TestClock.adjust("30 seconds");
+      return yield* Fiber.join(fiber);
+    }).pipe(
+      withProvider(provider),
+      Effect.provideService(GlobalAppService, globalApp),
+      Effect.provide(TestClock.layer()),
+    );
+    try {
+      // When the readiness budget expires, with or without the optional redaction service.
+      const result = await Effect.runPromise(
+        servicePresent ? wait.pipe(Effect.provide(RedactionService.layer), Effect.scoped) : wait,
+      );
+      // Then the concrete failure survives but its seeded secret does not.
+      expect(result.state).toBe("starting");
+      expect(result.detail).toContain("exec denied");
+      expect(result.detail).toContain("[redacted]");
+      expect(result.detail).not.toContain(secret);
+    } finally {
+      process.env.LANDO_TEST_SSH_TOKEN = previous;
+    }
+  },
+);
+
+test("socket readiness retains a failed identity request", async () => {
+  // Given a running sidecar whose socket rejects identity requests.
+  const check = sidecarSocketCheck({ _tag: "unix", path: "/missing.sock" }, async () => {
+    throw new Error("socket identity request failed", { cause: new Error("connection refused") });
+  });
+  // When its readiness budget expires.
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(awaitRuntimeSshAgent(check));
+      yield* TestClock.adjust("30 seconds");
+      return yield* Fiber.join(fiber);
+    }).pipe(
+      withProvider(runningProvider),
+      Effect.provideService(GlobalAppService, globalApp),
+      Effect.provide(TestClock.layer()),
+    ),
+  );
+  // Then socket failure detail is retained.
+  expect(result).toEqual({ state: "starting", detail: "socket identity request failed connection refused" });
+});
+
+test("overall timeout retains the last completed failure rather than the interrupted attempt", async () => {
+  // Given one concrete failure followed by an attempt that never completes.
+  let attempts = 0;
+  const check = Effect.suspend(() => {
+    attempts++;
+    if (attempts === 1) return Effect.fail(new Error("concrete exec refusal"));
+    return attempts === 2 ? Effect.succeed({ state: "starting" as const }) : Effect.never;
+  });
+  // When the overall deadline interrupts the second attempt.
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(awaitRuntimeSshAgent(check));
+      yield* TestClock.adjust("30 seconds");
+      return yield* Fiber.join(fiber);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+  // Then the completed failure, not ProbeTimeoutError, is the reported reason.
+  expect(result).toEqual({ state: "starting", detail: "concrete exec refusal" });
+});
+
+test("per-attempt timeout is retained when exec never completes", async () => {
+  // Given a running sidecar with a stuck exec transport.
+  const provider = { ...runningProvider, exec: () => Effect.never };
+  // When all readiness time elapses.
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(awaitRuntimeSshAgent(runtimeSshAgentCheck));
+      yield* TestClock.adjust("30 seconds");
+      return yield* Fiber.join(fiber);
+    }).pipe(
+      withProvider(provider),
+      Effect.provideService(GlobalAppService, globalApp),
+      Effect.provide(TestClock.layer()),
+    ),
+  );
+  // Then the completed five-second probe timeout is retained.
+  expect(result.state).toBe("starting");
+  expect(result.detail).toContain("5s");
 });
