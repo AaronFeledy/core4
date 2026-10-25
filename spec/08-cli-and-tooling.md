@@ -347,7 +347,7 @@ Declared task keys that are not yet executable are listed once, in `@lando/lando
 
 **Positional argument round-trip.** `ArgSpec` positionals are read by declaration index on every surface: the CLI parses argv into named inputs, and MCP and library callers serialize structured input back to argv for the same parser. Serialization and parsing MUST round-trip for every declared shape. A caller that supplies a value for a later positional while an earlier declared positional resolves to nothing describes an interior hole that argv cannot express; both the serializer and the parser MUST fail with `ToolingInputError` naming the task and argument rather than binding the value to the wrong name. Trailing omitted positionals remain valid. The CLI and MCP paths MUST agree on every accepted and rejected shape.
 
-A string task means one `cmd`. `cmd` normalizes to one ordered `cmds` step. `disabled` and `false` disable inherited tasks. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. `hostProxyAllowed` defaults false and adds the canonical id to `host-proxy-allowlist` (§10.10, §12.1).
+A string task means one `cmd`. Shorthands are interpreted after layer composition, so a string, `false`, or `disabled` task replaces an inherited task of the same name. `cmd` normalizes to one ordered `cmds` step. `disabled` and `false` disable inherited tasks. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. `hostProxyAllowed` defaults false and adds the canonical id to `host-proxy-allowlist` (§10.10, §12.1).
 
 #### 8.5.2 Commands and dependencies
 
