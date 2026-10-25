@@ -86,7 +86,7 @@ ports:
 
 The proxy answers a hostname like `web.external-access-demo.lndo.site`. Public DNS resolves `*.lndo.site` to `127.0.0.1`, and Lando does not write host DNS rules. On another device, that address points at the device itself, not your app host.
 
-The shared proxy listener is a separate bind from a service `ports:` `host_ip`. Default is `127.0.0.1`. Set `router.bindAddress` or `LANDO_ROUTER_BIND_ADDRESS` to a LAN address when you want the proxy itself reachable from another device, then run `lando setup`. `0.0.0.0` and `::` publish on every interface; `lando doctor` warns.
+The shared proxy listener is a separate bind from a service `ports:` `host_ip`. Default is `127.0.0.1`. Set `router.bindAddress` in the installation `config.yml` or `LANDO_ROUTER_BIND_ADDRESS` to a LAN address when you want the proxy itself reachable from another device, then run `lando setup`. A Landofile `router.bindAddress` is ignored and lint warns. `0.0.0.0` and `::` publish on every interface; `lando doctor` warns.
 
 Proxy routing and published ports are independent. Reaching a proxied hostname from the host does not need a `ports:` entry. `ports:` only controls direct host-port publication.
 

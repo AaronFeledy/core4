@@ -35,6 +35,7 @@ After expression materialization succeeds, lint collects independent findings fr
 | `landofile.hostname` | Each `services.<name>.hostnames:` entry is a plain DNS name after evaluation | `services.web.hostnames[0]` |
 | `landofile.route` | Route syntax and authored HTTP endpoint selection in service `routes:` and top-level `proxy:` after evaluation | `services.web.routes[1]`, `proxy.web[0]` |
 | `landofile.healthcheck` | Authored `kind: http` or `kind: tcp` | `services.web.healthcheck.kind` |
+| `router.bind-address-global-only` | A Landofile `router.bindAddress` does not bind the shared router | `router.bindAddress` |
 | `landofile.event` | Each key under `events:` is a lifecycle event or the `pre-`/`post-` bracket of a tooling task | `events.pre-buidl` |
 | `landofile.tooling` | No tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-`/`post-` events are reserved, such as `start` or `pull` | `tooling.run` |
 | `landofile.load` | An include or tooling include that cannot be read, fetched, or that cycles | `includes[1]`, `toolingIncludes.docs` |
@@ -129,6 +130,10 @@ A rejected Compose key keeps its full authored path, for example `["services", "
 `healthcheck.bare-compose-marker` means a bare argv list starts with `CMD`, `CMD-SHELL`, or `NONE`. Bare lists execute literally, including that first item. Remove the marker, or move the list under `test:` in a block YAML healthcheck object.
 
 `healthcheck.mixed-dialects` means different sources contributed surviving Lando-only and Compose-only healthcheck fields. Lando fields still win. Pick one dialect across layers rather than relying on that precedence. Discarded lower fields and shared `retries` or `disable` fields alone do not trigger the warning.
+
+## Fix a Landofile router bind
+
+`router.bind-address-global-only` means the Landofile set `router.bindAddress`. That key is installation-wide: set it in `config.yml` or `LANDO_ROUTER_BIND_ADDRESS`, then run `lando setup`. The Landofile value is ignored so one app cannot widen the shared listener. The Landofile stays valid.
 
 ## Read unknown event names
 

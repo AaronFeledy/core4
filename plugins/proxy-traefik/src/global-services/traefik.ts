@@ -18,7 +18,12 @@ import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../ports.ts";
 import { acquisitionStateFile } from "../proxy-paths.ts";
 import type { ProxyPaths } from "../proxy-types.ts";
 import { TRAEFIK_DYNAMIC_CONFIG_SOURCE } from "../proxy.ts";
-import { DEFAULT_ROUTER_BIND_ADDRESS, resolveEffectiveRouterBindAddress } from "../router-bind-address.ts";
+import {
+  DEFAULT_ROUTER_BIND_ADDRESS,
+  normalizeRouterBindAddress,
+  resolveEffectiveRouterBindAddress,
+  resolvePublishedRouterBindAddress,
+} from "../router-bind-address.ts";
 
 /** Override per-install via the user `.lando.yml`. */
 export const TRAEFIK_IMAGE = "traefik:v3.3";
@@ -72,7 +77,7 @@ export const resolveTraefikPublishPorts = (state: TraefikPublishState | undefine
 };
 
 export const buildTraefikServiceConfig = (ports: TraefikPublishPorts): ServiceConfig => {
-  const bindAddress = ports.bindAddress ?? DEFAULT_ROUTER_BIND_ADDRESS;
+  const bindAddress = normalizeRouterBindAddress(ports.bindAddress ?? DEFAULT_ROUTER_BIND_ADDRESS);
   return Schema.decodeUnknownSync(ServiceConfig)({
     api: 4,
     type: "compose",
@@ -136,7 +141,8 @@ const toPublishState = (state: AcquisitionState): TraefikPublishState => ({
 
 const traefikGlobalService: Effect.Effect<ServiceConfig> = Effect.gen(function* () {
   const state = yield* loadAcquisitionState;
-  const bindAddress = yield* resolveEffectiveRouterBindAddress();
+  const fallback = yield* resolveEffectiveRouterBindAddress();
+  const bindAddress = resolvePublishedRouterBindAddress(state?.fingerprint.bindAddress, fallback);
   return buildTraefikServiceConfig({
     ...resolveTraefikPublishPorts(state === undefined ? undefined : toPublishState(state)),
     bindAddress,

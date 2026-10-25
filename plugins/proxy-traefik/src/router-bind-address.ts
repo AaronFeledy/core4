@@ -1,8 +1,10 @@
 /**
- * Effective `router.bindAddress` for Traefik publication and doctor.
+ * Effective `router.bindAddress` for Traefik publication, probes, and doctor.
  *
- * Precedence: ConfigService (already includes env overlays) when present,
- * then `LANDO_ROUTER_BIND_ADDRESS` / env overlay, then loopback.
+ * Bind is global-only: ConfigService (already includes env overlays) when
+ * present, then `LANDO_ROUTER_BIND_ADDRESS`, then loopback. A persisted
+ * acquisition fingerprint wins for publication and doctor. `localhost`
+ * normalizes to `127.0.0.1` before Docker publish.
  */
 import { envOverlay } from "@lando/paths/overlay";
 import { ConfigService } from "@lando/sdk/services";
@@ -11,7 +13,7 @@ import { Effect } from "effect";
 export const DEFAULT_ROUTER_BIND_ADDRESS = "127.0.0.1";
 
 export const UNSPECIFIED_BIND_REMEDIATION =
-  "your proxy is reachable from your local network; unset router.bindAddress or set 127.0.0.1";
+  "Your proxy is reachable from your local network; unset router.bindAddress or set 127.0.0.1";
 
 export type RouterBindKind = "loopback" | "unspecified" | "specific";
 
@@ -28,14 +30,31 @@ export const routerBindAddressFromEnv = (
   env: Readonly<Record<string, string | undefined>>,
 ): string | undefined => bindFromUnknown(envOverlay({ ...env }).router);
 
+export const bindAddressFromAcquisition = (value: unknown): string | undefined => {
+  if (typeof value !== "object" || value === null) return undefined;
+  const fingerprint = "fingerprint" in value ? value.fingerprint : undefined;
+  return bindFromUnknown(fingerprint);
+};
+
+export const normalizeRouterBindAddress = (value: string): string => {
+  const trimmed = value.trim();
+  return stripBrackets(trimmed).toLowerCase() === "localhost" ? DEFAULT_ROUTER_BIND_ADDRESS : trimmed;
+};
+
 export const resolveRouterBindAddress = (input: {
   readonly configured?: string | undefined;
   readonly env?: Readonly<Record<string, string | undefined>>;
 }): string => {
   const configured = input.configured?.trim();
-  if (configured !== undefined && configured.length > 0) return configured;
-  return routerBindAddressFromEnv(input.env ?? {}) ?? DEFAULT_ROUTER_BIND_ADDRESS;
+  const resolved =
+    configured !== undefined && configured.length > 0
+      ? configured
+      : (routerBindAddressFromEnv(input.env ?? {}) ?? DEFAULT_ROUTER_BIND_ADDRESS);
+  return normalizeRouterBindAddress(resolved);
 };
+
+export const resolvePublishedRouterBindAddress = (persisted: string | undefined, fallback: string): string =>
+  normalizeRouterBindAddress(persisted ?? fallback);
 
 export const resolveEffectiveRouterBindAddress = Effect.fnUntraced(function* (
   env: Readonly<Record<string, string | undefined>> = process.env,

@@ -52,7 +52,7 @@ The rest of the `router:` block works the same whether or not you touch `enabled
 | Key | What it does |
 | --- | --- |
 | `enabled` | Start the shared router and publish this app's routes. Default `true`. |
-| `bindAddress` | Host address the router listens on. |
+| `bindAddress` | Host address the router listens on. Global-only (`config.yml` or `LANDO_ROUTER_BIND_ADDRESS`); a Landofile value is ignored and lint warns. |
 | `httpPort` | Host port for plain HTTP. |
 | `httpsPort` | Host port for HTTPS. |
 | `httpFallbacks` | Extra HTTP ports to try when `httpPort` is taken. |
