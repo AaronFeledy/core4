@@ -57,10 +57,7 @@ export const renderTerminalFailure = async <A, R, RE>(
       }
     }).pipe(Effect.provide(layerPlainService(io))),
   );
-  (
-    options.setExitCode ??
-    ((code) => {
-      process.exitCode = code;
-    })
-  )(1);
+  const setExitCode = options.setExitCode;
+  if (setExitCode == null) process.exitCode = 1;
+  else setExitCode(1);
 };

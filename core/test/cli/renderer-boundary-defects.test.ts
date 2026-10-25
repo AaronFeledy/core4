@@ -1,10 +1,32 @@
 import { expect, test } from "bun:test";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { Cause, Effect, Layer, Schema } from "effect";
 import { formatBugReport } from "../../src/cli/bug-report";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { activeLogLevel, setActiveLogLevel } from "../../src/cli/renderer-mode-state";
+import { renderTerminalFailure } from "../../src/cli/terminal-failure";
+
+test("terminal failure sets the process exit code when no setter is supplied", async () => {
+  // Given an isolated renderer and no injected exit-code setter.
+  const io = createBufferedRendererIO();
+  const previous = process.exitCode ?? 0;
+  process.exitCode = 0;
+  try {
+    // When the terminal fallback renders a defect.
+    await renderTerminalFailure(
+      Cause.die(new Error("terminal failure")),
+      { runtime: Layer.empty, rendererMode: "plain", resultFormat: "json", io, formatError: () => "unused" },
+      createStandaloneRedactor("secrets"),
+    );
+    // Then it sets the real process exit status and emits a structured failure.
+    expect(process.exitCode).toBe(1);
+    expect(JSON.parse(io.stdout())).toMatchObject({ ok: false, error: { _tag: "LandoInternalError" } });
+  } finally {
+    process.exitCode = previous;
+  }
+});
 
 for (const stage of ["bootstrap", "body", "formatter", "failure-formatter", "finalizer"] as const) {
   for (const format of ["text", "json"] as const) {
