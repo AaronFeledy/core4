@@ -53,7 +53,7 @@ test.each([{}, { State: {} }, { State: { Status: "unrecognized" } }])(
         { app: plan.id, service: service.name },
         {
           api,
-          ctx: { providerId: "podman", remediation: "Retry inspect." },
+          ctx: { providerId: "podman", remediation: "Retry inspect.", env: {} },
         },
       ),
     );
@@ -80,7 +80,7 @@ test.each(["created", "exited", "dead", "stopped"])(
         { app: plan.id, service: service.name },
         {
           api,
-          ctx: { providerId: "podman", remediation: "Retry inspect." },
+          ctx: { providerId: "podman", remediation: "Retry inspect.", env: {} },
         },
       ),
     );

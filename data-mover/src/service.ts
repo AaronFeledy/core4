@@ -21,7 +21,7 @@ import {
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { isPathWithin } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
   ArchiveFormatError,
   ArtifactTransferError,
@@ -105,11 +105,6 @@ type DataMoverTransferError =
   | DataChecksumMismatchError
   | DataTargetExistsError;
 
-const noopEvents: DataMoverEvents = {
-  redactText: (text) => text,
-  publish: () => Effect.void,
-};
-
 const helperTarget = Schema.decodeUnknownSync(PortablePath)("/data");
 const helperPayload = Schema.decodeUnknownSync(PortablePath)("/data/payload");
 
@@ -157,12 +152,11 @@ const makeEvents = (
     ? (event) => eventService.value.publish(event).pipe(Effect.catchCause(() => Effect.void))
     : () => Effect.void;
 
-  if (Option.isNone(redaction)) return Effect.succeed({ ...noopEvents, publish });
-
-  return redaction.value.forProfile("secrets").pipe(
-    Effect.map((redactor) => ({ redactText: redactor.redactString, publish })),
-    Effect.catch(() => Effect.succeed({ ...noopEvents, publish })),
-  );
+  const options = { sourceEnv: { ...process.env } };
+  const redactor = Option.isSome(redaction)
+    ? redaction.value.forProfile("secrets", options)
+    : Effect.succeed(createStandaloneRedactor("secrets", options));
+  return redactor.pipe(Effect.map((redactor) => ({ redactText: redactor.redactString, publish })));
 };
 
 const unsupported = (from: DataEndpoint, to: DataEndpoint, reason: string): DataEndpointUnsupportedError =>

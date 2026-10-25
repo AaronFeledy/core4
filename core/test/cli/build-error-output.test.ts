@@ -57,6 +57,7 @@ test.each(["text", "json"] as const)("surfaces the failing build step in %s outp
     },
     {
       providerId,
+      sourceEnv: {},
       api: {
         request: () =>
           Effect.succeed({

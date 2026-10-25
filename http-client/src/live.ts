@@ -108,6 +108,7 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
           const spanUrl = Option.isNone(canonical)
             ? safeUrl
             : (yield* canonical.value.forProfile("secrets", {
+                sourceEnv: env,
                 redactionTokens: policy.redactionTokens,
               })).redactString(safeUrl);
           yield* Effect.annotateCurrentSpan({ "http.request.method": request.method, "url.full": spanUrl });

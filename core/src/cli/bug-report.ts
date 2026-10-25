@@ -1,6 +1,8 @@
 import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { ProjectedFailure } from "@lando/sdk/command-result";
 import type { FailureRole } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { redactDetails, redactString } from "./redact";
 import { formatStructuredIssue } from "./validation-issue-text";
@@ -302,7 +304,15 @@ export const buildBugReport = (input: {
   readonly error: unknown;
   readonly additionalErrors?: ProjectedFailure["additionalErrors"];
   readonly context: BugReportContext;
+  /** Caller-owned redactor; when omitted, a standalone is built from sourceEnv (or a process.env snapshot). */
+  readonly redactor?: Redactor;
+  readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
 }): BugReportEnvelope => {
+  const redactor =
+    input.redactor ??
+    createStandaloneRedactor("secrets", {
+      sourceEnv: { ...(input.sourceEnv ?? process.env) },
+    });
   const record = asTaggedRecord(input.error);
   const causes = extractTaggedCauses(record);
   const deepestCause = causes.at(-1);
@@ -338,14 +348,14 @@ export const buildBugReport = (input: {
     [...(causeTag === undefined ? [] : ([["cause", causeTag]] as const)), ...causeFields],
     extractExtraTagFields(record),
   ).map(([key, value]) => {
-    const sanitized = key === "issues" ? value : redactString(value);
+    const sanitized = key === "issues" ? value : redactString(value, redactor);
     return [key, sanitized] as readonly [string, string];
   });
   return {
     code,
     commandId: ctx.commandId,
-    body: redactString(bodyRaw),
-    remediation: remediationRaw.length === 0 ? undefined : redactString(remediationRaw),
+    body: redactString(bodyRaw, redactor),
+    remediation: remediationRaw.length === 0 ? undefined : redactString(remediationRaw, redactor),
     appId,
     providerId,
     logsDir: logsDirFor(cacheDir),
@@ -355,14 +365,19 @@ export const buildBugReport = (input: {
       ? {}
       : {
           additionalErrors: input.additionalErrors.map(({ role, error }) => {
-            const additional = buildBugReport({ error, context: ctx });
+            const additional = buildBugReport({
+              error,
+              context: ctx,
+              redactor,
+              ...(input.sourceEnv === undefined ? {} : { sourceEnv: input.sourceEnv }),
+            });
             const identity = [
               ["appId", additional.appId, appId],
               ["providerId", additional.providerId, providerId],
             ] as const;
             return {
               role,
-              code: redactString(additional.code),
+              code: redactString(additional.code, redactor),
               body: additional.body,
               extra: [
                 ...identity.flatMap(([key, value, primary]) =>
@@ -464,6 +479,8 @@ export const formatBugReport = (
   input: ProjectedFailure & {
     readonly context: BugReportContext;
     readonly rendererMode: RendererMode;
+    readonly redactor?: Redactor;
+    readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
   },
 ): string => {
   const envelope = buildBugReport(input);

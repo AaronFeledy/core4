@@ -51,7 +51,7 @@ export const legacyPlan = (): AppPlan => {
   const { valueModel: _marker, ...legacy } = plan;
   return legacy;
 };
-export const ctx = { providerId: "docker", remediation: "Retry." };
+export const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
 
 export const fakeEngine = (existing?: AppPlan, initiallyRunning = true) => {
   const calls: EngineHttpRequest[] = [];

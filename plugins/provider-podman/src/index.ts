@@ -61,8 +61,13 @@ import {
   providerHostInputs,
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
-import { runtimeDiagnosticContext } from "@lando/container-runtime/redact";
-import { redactDetails, redactString } from "@lando/container-runtime/redact";
+import {
+  redactDetails,
+  redactString,
+  redactorFor,
+  runtimeDiagnosticContext,
+  standaloneSecretsRedactor,
+} from "@lando/container-runtime/redact";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
@@ -104,14 +109,22 @@ export const PLUGIN_NAME = "@lando/provider-podman" as const;
 
 const PROVIDER_ID = "podman";
 const providerIdBranded = ProviderId.make(PROVIDER_ID);
-const PODMAN_CTX: ProviderErrorContext = {
+const PODMAN_CTX_BASE = {
   providerId: "podman",
   remediation:
     "Run `lando doctor --provider=podman` to inspect the Podman socket, then retry the failing command.",
-};
+} as const;
+
+const podmanContextForEnv = (env: ProviderErrorContext["env"]): ProviderErrorContext => ({
+  ...PODMAN_CTX_BASE,
+  env,
+  redactor: standaloneSecretsRedactor(env),
+});
+
+const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
 export const getContainerDiedEvents = (api: PodmanApiClient) =>
-  getRuntimeContainerDiedEvents(api, { ctx: PODMAN_CTX });
+  getRuntimeContainerDiedEvents(api, { ctx: podmanContextForEnv({ ...process.env }) });
 
 type RuntimeProviderWithContainerEvents = RuntimeProviderShape & {
   readonly getContainerDiedEvents: ReturnType<typeof getContainerDiedEvents>;
@@ -384,7 +397,7 @@ export class UnsupportedPodmanSocketError extends ProviderUnavailableError {
         "provider-podman currently supports local Unix sockets and Windows Podman Desktop named pipes only.",
       remediation:
         "Set DOCKER_HOST to a unix:// Podman socket, unset it to use the platform default, or on Windows use the Podman Desktop npipe://./pipe/<machine> socket.",
-      details: { socketPath: redactString(socketPath) },
+      details: { socketPath: redactString(socketPath, hostSecretsRedactor()) },
     });
   }
 }
@@ -483,7 +496,7 @@ const unsupportedSocket = (
 };
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
-  makeRuntimePodmanApiClient(socketPath, PODMAN_CTX);
+  makeRuntimePodmanApiClient(socketPath, podmanContextForEnv({ ...process.env }));
 
 export interface ProviderLayerOptions {
   readonly agentBridgeHost?: MachineSshBridgeHost;
@@ -522,7 +535,7 @@ const podmanUnavailable = (operation: string, socketPath: string, cause?: unknow
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
-    message: redactString(`The Podman socket "${socketPath}" is not reachable.`),
+    message: redactString(`The Podman socket "${socketPath}" is not reachable.`, hostSecretsRedactor()),
     remediation:
       "Ensure your user-installed Podman is running (e.g. `systemctl --user start podman.socket` on Linux). Verify the socket path or `DOCKER_HOST` env. Run `lando doctor` for a full diagnostic.",
     ...(cause === undefined ? {} : { cause }),
@@ -541,12 +554,16 @@ export class PodmanServerVersionUnsupportedError extends ProviderUnavailableErro
       operation: "select",
       message: redactString(
         `Podman server version "${observedVersion}" (reported by the Podman API /libpod/info) does not satisfy the required minimum ${MINIMUM_PODMAN_VERSION}.`,
+        hostSecretsRedactor(),
       ),
-      details: redactDetails({
-        observedVersion,
-        source: "libpod-info",
-        minimumVersion: MINIMUM_PODMAN_VERSION,
-      }),
+      details: redactDetails(
+        {
+          observedVersion,
+          source: "libpod-info",
+          minimumVersion: MINIMUM_PODMAN_VERSION,
+        },
+        hostSecretsRedactor(),
+      ),
       remediation: `Upgrade Podman Desktop or your system Podman to >= ${MINIMUM_PODMAN_VERSION}, then retry.`,
     });
   }
@@ -645,6 +662,7 @@ const assembleRuntimeProvider = (
           );
           const logSourceBinding = makeProviderLogSourceBinding({
             ...(PODMAN_CTX.redactor === undefined ? {} : { redactor: PODMAN_CTX.redactor }),
+            sourceEnv: PODMAN_CTX.env,
             providerId: PROVIDER_ID,
             logFileAccess: options.logFileAccess,
             helperTarget: capabilities.hostProxy?.containerTargets[0],
@@ -696,7 +714,7 @@ const assembleRuntimeProvider = (
         }),
       api: podmanApi,
       capabilities: resolvedCapabilities,
-      redactDetails: (value) => redactDetails(value, PODMAN_CTX.redactor),
+      redactor: redactorFor(PODMAN_CTX),
       volumeCreationLabels: podmanVolumeCreationLabels,
       providerName: "provider-podman",
       ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
@@ -766,7 +784,7 @@ const assembleRuntimeProvider = (
       getVersions: Effect.succeed({ provider: "0.0.0", runtime: serverVersion }),
       getContainerDiedEvents: getContainerDiedEvents(podmanApi),
       buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
-        buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi }),
+        buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi, sourceEnv: PODMAN_CTX.env }),
       ),
       pullArtifact: Effect.fn("RuntimeProvider.pullArtifact")((spec) =>
         pullImage(podmanApi, spec.ref, {
@@ -866,7 +884,10 @@ const assembleRuntimeProvider = (
 export const makeRuntimeProvider = Effect.fnUntraced(function* (
   options: ProviderLayerOptions = {},
 ): Effect.fn.Return<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> {
-  const ctx = yield* runtimeDiagnosticContext(PODMAN_CTX);
+  const ctx = yield* runtimeDiagnosticContext({
+    ...PODMAN_CTX_BASE,
+    env: { ...(options.env ?? process.env) },
+  });
   const found = yield* Effect.serviceOption(AppPlanSanitizer);
   return yield* assembleRuntimeProvider(
     options.sanitizeAppliedPlan !== undefined || found._tag === "None"

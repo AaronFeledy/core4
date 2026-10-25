@@ -51,6 +51,8 @@ test("dispatch retains and redacts combined failures without invoking unsafe fie
         effective: new Set([entry.spec.id]),
         allowlistSource: "defaults",
         redactor: createRedactor("secrets", { values: [secret] }),
+        resultRedactor: (tokens) =>
+          Effect.succeed(createRedactor("secrets", { values: [secret, ...tokens] })),
         execute: () => Effect.flatMap(Effect.exit(command), outcomeFromExit),
         publish: () => Effect.void,
       },

@@ -163,7 +163,7 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
   }).pipe(Effect.mapError(() => blocked("translate")));
   const service = yield* Effect.serviceOption(RedactionService);
   if (Option.isSome(service)) yield* service.value.registerValues(raw);
-  const options = { redactionTokens: raw };
+  const options = { redactionTokens: raw, sourceEnv: { ...process.env } };
   const base = Option.isSome(service)
     ? yield* service.value.forProfile("secrets", options)
     : createStandaloneRedactor("secrets", options);

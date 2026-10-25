@@ -87,6 +87,8 @@ const harness = (
       effective: allowlist,
       allowlistSource: "defaults",
       redactor: createRedactor("secrets", { values: [...(options.secrets ?? [])] }),
+      resultRedactor: (tokens) =>
+        Effect.succeed(createRedactor("secrets", { values: [...(options.secrets ?? []), ...tokens] })),
       execute: directExecute(),
       publish: (event) =>
         Effect.sync(() => {

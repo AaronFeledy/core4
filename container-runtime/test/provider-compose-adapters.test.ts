@@ -20,7 +20,7 @@ const plan = Schema.decodeSync(AppPlan)({
   extensions: {},
   metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
 });
-const ctx = { providerId: "custom", remediation: "Custom provider remediation." };
+const ctx = { providerId: "custom", remediation: "Custom provider remediation.", env: {} };
 
 describe("provider compose adapters", () => {
   test("renders the shared serializer output", () => {

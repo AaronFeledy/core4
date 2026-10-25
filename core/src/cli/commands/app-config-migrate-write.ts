@@ -82,7 +82,7 @@ export const writeRecipeMigration = Effect.fnUntraced(function* ({
         }),
     ),
   );
-  const { redactor } = yield* resolveSecretsRedactor();
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
   yield* makeManagedFileTransactions({
     journalRoot: () => resolveLandoRoots().userDataRoot,
     privateFileAccess,

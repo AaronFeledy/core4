@@ -23,6 +23,7 @@ import { inspect } from "../src/podman/inspect.ts";
 const ctx = {
   providerId: "podman",
   remediation: "Run `lando setup` and retry.",
+  env: {},
   get redactor() {
     return Effect.runSync(fixtureRedaction.forProfile("secrets"));
   },

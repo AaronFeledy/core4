@@ -17,6 +17,7 @@ import { ContainerTransportError } from "../src/transport.ts";
 const ctx = {
   providerId: "test-provider",
   remediation: "Run the provider doctor.",
+  env: {},
   get redactor() {
     return Effect.runSync(fixtureRedaction.forProfile("secrets"));
   },

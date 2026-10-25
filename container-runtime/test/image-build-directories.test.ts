@@ -76,7 +76,7 @@ test("creates scaffold directories with COPY when the image has no executables",
   await Effect.runPromise(
     buildContainerArtifact(
       { app: plan.id, service: serviceName, plan, buildKey: "directories" },
-      { providerId, api },
+      { providerId, api, sourceEnv: {} },
     ),
   );
   // Then
@@ -108,6 +108,7 @@ test.each(["relative", "/", "/etc/../tmp", "/etc/lando\nRUN evil"])(
           { app: plan.id, service: serviceName, plan, buildKey: "unsafe" },
           {
             providerId,
+            sourceEnv: {},
             api: {
               request: () => {
                 requests++;
@@ -142,6 +143,7 @@ test("copies attached CA files when the owning build step creates directories", 
         { app: plan.id, service: serviceName, plan, buildKey: "directory-ca" },
         {
           providerId,
+          sourceEnv: {},
           api: {
             request: (request: ContainerBuildHttpRequest) =>
               Effect.promise(async () => {

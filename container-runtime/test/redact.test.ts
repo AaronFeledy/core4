@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { makeRedactionService } from "@lando/redaction/service";
+import { createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { Effect } from "effect";
 
-import { redactDetails, redactString, withApiReason } from "../src/redact.ts";
+import { redactDetails, redactString, runtimeDiagnosticContext, withApiReason } from "../src/redact.ts";
+
+const patternRedactor = createStandaloneRedactor("secrets", { sourceEnv: {} });
 
 let fixtureRedaction = makeRedactionService();
 beforeEach(() => {
@@ -58,14 +61,17 @@ describe("runtime-registered redaction", () => {
 
 describe("redactDetails", () => {
   test("masks property values whose key looks like a credential", () => {
-    const out = redactDetails({
-      username: "alice",
-      password: "hunter2",
-      apiKey: "sk-123",
-      api_key: "sk-456",
-      Authorization: "Bearer xyz",
-      noise: "ok",
-    });
+    const out = redactDetails(
+      {
+        username: "alice",
+        password: "hunter2",
+        apiKey: "sk-123",
+        api_key: "sk-456",
+        Authorization: "Bearer xyz",
+        noise: "ok",
+      },
+      patternRedactor,
+    );
     expect(out).toEqual({
       username: "alice",
       password: "[redacted]",
@@ -79,6 +85,7 @@ describe("redactDetails", () => {
   test("masks env-style NAME=value substrings inside string bodies", () => {
     const out = redactDetails(
       "request body: Env=[POSTGRES_PASSWORD=hunter2,REDIS_TOKEN=abc] command=postgres",
+      patternRedactor,
     );
     expect(out).toBe(
       "request body: Env=[POSTGRES_PASSWORD=[redacted],REDIS_TOKEN=[redacted]] command=postgres",
@@ -86,11 +93,14 @@ describe("redactDetails", () => {
   });
 
   test("recurses into nested objects and arrays", () => {
-    const out = redactDetails({
-      service: "database",
-      env: ["POSTGRES_PASSWORD=hunter2", "POSTGRES_DB=lando"],
-      nested: { secret: "shh", deep: { token: "abc" } },
-    });
+    const out = redactDetails(
+      {
+        service: "database",
+        env: ["POSTGRES_PASSWORD=hunter2", "POSTGRES_DB=lando"],
+        nested: { secret: "shh", deep: { token: "abc" } },
+      },
+      patternRedactor,
+    );
     expect(out).toEqual({
       service: "database",
       env: ["POSTGRES_PASSWORD=[redacted]", "POSTGRES_DB=lando"],
@@ -99,16 +109,16 @@ describe("redactDetails", () => {
   });
 
   test("preserves null, undefined, and primitive values", () => {
-    expect(redactDetails(null)).toBe(null);
-    expect(redactDetails(undefined)).toBe(undefined);
-    expect(redactDetails(42)).toBe(42);
-    expect(redactDetails(true)).toBe(true);
-    expect(redactDetails("no secret here")).toBe("no secret here");
+    expect(redactDetails(null, patternRedactor)).toBe(null);
+    expect(redactDetails(undefined, patternRedactor)).toBe(undefined);
+    expect(redactDetails(42, patternRedactor)).toBe(42);
+    expect(redactDetails(true, patternRedactor)).toBe(true);
+    expect(redactDetails("no secret here", patternRedactor)).toBe("no secret here");
   });
 
   test("redacts Error messages while preserving the error name", () => {
     const error = new Error("connection refused; POSTGRES_PASSWORD=hunter2 in url");
-    const out = redactDetails(error);
+    const out = redactDetails(error, patternRedactor);
     if (typeof out !== "object" || out === null || !("name" in out) || !("message" in out)) {
       throw new Error("Expected redacted error details");
     }
@@ -118,13 +128,34 @@ describe("redactDetails", () => {
   });
 
   test("masks percent-encoded URL userinfo in Podman request paths", () => {
-    const out = redactDetails({
-      path: "/libpod/images/pull?reference=https%3A%2F%2Fuser%3As3cr3tPass%40registry.internal%2Fteam%2Fimg%3A1.0&pullProgress=true",
-    });
+    const out = redactDetails(
+      {
+        path: "/libpod/images/pull?reference=https%3A%2F%2Fuser%3As3cr3tPass%40registry.internal%2Fteam%2Fimg%3A1.0&pullProgress=true",
+      },
+      patternRedactor,
+    );
     if (typeof out !== "object" || out === null || !("path" in out) || typeof out.path !== "string") {
       throw new Error("Expected redacted request path");
     }
     expect(out.path).not.toContain("s3cr3tPass");
     expect(out.path).toContain("https%3A%2F%2F[redacted]%40registry.internal");
   });
+});
+
+describe("required redactor contract", () => {
+  test.each([false, true])(
+    "runtime diagnostics mask explicit environment values (service=%s)",
+    (withService) => {
+      const effect = runtimeDiagnosticContext({
+        providerId: "fixture",
+        remediation: "Repair the fixture provider.",
+        env: { API_TOKEN: "seeded-env-secret-p5" },
+      });
+      const { redactor } = Effect.runSync(
+        withService ? effect.pipe(Effect.provideService(RedactionService, makeRedactionService())) : effect,
+      );
+      expect(redactString("failure seeded-env-secret-p5", redactor)).toBe("failure [redacted]");
+      expect(redactDetails({ detail: "seeded-env-secret-p5" }, redactor)).toEqual({ detail: "[redacted]" });
+    },
+  );
 });

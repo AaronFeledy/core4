@@ -72,6 +72,7 @@ test("the log-file session encodes canonical requests and decodes Go response fr
     Effect.scoped(
       Effect.gen(function* () {
         const access = yield* scopedDockerLogFileAccess({
+          sourceEnv: {},
           providerId: "fixture",
           container: "service",
           api,

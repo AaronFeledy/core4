@@ -82,6 +82,7 @@ describe("Tomcat authored HTTP port", () => {
         {
           providerId: service.provider,
           api: { request: () => Effect.succeed({ status: 200, body: '{"Config":{"User":"root"}}' }) },
+          sourceEnv: {},
         },
       ),
     );

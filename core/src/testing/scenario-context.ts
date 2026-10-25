@@ -27,6 +27,7 @@ import { FileSystem, type FileSystemError, type LandoEvent } from "@lando/sdk/se
 
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { CORE_VERSION } from "@lando/engine/version";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import { redactDetails } from "../cli/redact";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
 import { withRuntimeProviderRegistryOverride } from "../runtime/layer";
@@ -287,7 +288,7 @@ const stable = (value: unknown): unknown => {
 };
 
 const sanitizeTranscriptValue = (value: unknown, testDir: string): unknown => {
-  const redacted = redactDetails(value);
+  const redacted = redactDetails(value, createStandaloneRedactor("secrets", { sourceEnv: {} }));
   const sanitize = (input: unknown, key?: string): unknown => {
     if (typeof input === "string") {
       const withPath = input.split(testDir).join("<testDir>");

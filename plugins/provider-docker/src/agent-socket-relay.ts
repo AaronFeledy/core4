@@ -190,7 +190,11 @@ export const makeDockerDesktopAgentSocketBridge = (options: {
         const initial = yield* request(createRequest);
         if (initial.status === 404) {
           yield* pullImage(options.api, options.relayImage, {
-            ctx: { providerId: "docker", remediation: "Pull the agent relay image and retry." },
+            ctx: {
+              providerId: "docker",
+              remediation: "Pull the agent relay image and retry.",
+              env: { ...process.env },
+            },
             dialect: dockerPullDialect,
           }).pipe(Effect.mapError(() => failure("Could not pull the Docker agent relay image.")));
         }

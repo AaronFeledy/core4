@@ -186,7 +186,7 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
         { outputs, currentLowerV4Fragments },
         target.encode,
       );
-  const { redactor } = yield* resolveSecretsRedactor();
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
   const encodingDiagnostics = [...frontendDiagnostics, ...encoded.flatMap((result) => result.diagnostics)];
   const includeDiagnostics = yield* validateTranslatedIncludeTargets(appRoot, outputs);
   const diagnostics = [...encodingDiagnostics, ...includeDiagnostics].map((diagnostic) => ({

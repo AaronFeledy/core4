@@ -140,9 +140,10 @@ const unavailable = (requested?: string): RemoteProviderUnavailableError =>
 
 const outputRedactor = Effect.fnUntraced(function* (profile: RedactionProfile) {
   const service = yield* Effect.serviceOption(RedactionService);
+  const options = { sourceEnv: { ...process.env } };
   return service._tag === "Some"
-    ? yield* service.value.forProfile(profile)
-    : createStandaloneRedactor(profile);
+    ? yield* service.value.forProfile(profile, options)
+    : createStandaloneRedactor(profile, options);
 });
 
 const redactConfig = (config: RemoteConfigType) =>

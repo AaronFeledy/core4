@@ -26,7 +26,7 @@ import {
   SSH_SIDECAR_READINESS_POLICY,
   awaitRuntimeSshAgent,
 } from "@lando/engine/subsystems/ssh-agent/session";
-import { redactString } from "../../redact";
+import { resolveSecretsRedactor } from "../../commands/secrets-redactor";
 import { inputBooleanFlag } from "./setup-inputs";
 import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";
 import type { SetupReadinessRecorder } from "./setup-steps";
@@ -198,7 +198,8 @@ export const runShellServiceSetupStep = Effect.fn("SetupCommand.runShellServiceS
       }),
     );
     if (Result.isFailure(setup)) {
-      const evidence = redactString(setup.failure.message);
+      const { redact } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
+      const evidence = redact(setup.failure.message);
       const setupCommand =
         selectedProviderId in SYSTEM_RUNTIME_PROVIDERS
           ? `lando setup --provider=${selectedProviderId}`

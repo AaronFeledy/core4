@@ -20,6 +20,7 @@ import { ContainerTransportError } from "../src/transport.ts";
 const ctx = {
   providerId: "podman",
   remediation: "Run `lando setup` and retry.",
+  env: {},
   get redactor() {
     return Effect.runSync(fixtureRedaction.forProfile("secrets"));
   },
