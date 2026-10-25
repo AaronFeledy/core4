@@ -23,7 +23,7 @@ export type CommandWarning = typeof CommandWarning.Type;
 const taggedErrorFields = {
   _tag: Schema.String,
   message: Schema.String,
-  remediation: Schema.NonEmptyString,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   service: Schema.optionalKey(Schema.String),
   steps: Schema.optionalKey(
     Schema.Array(

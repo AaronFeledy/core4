@@ -1,5 +1,41 @@
 [
   {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "property-required",
+    "path": "$.error.remediation",
+    "justification": "Intentional pre-release P2b wire contract: every primary failure, including normalized defects and encode fallbacks, requires actionable remediation. No compatibility path ships before v4."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "property-required",
+    "path": "$.error.additionalErrors.items.remediation",
+    "justification": "Intentional pre-release P2b wire contract: additional failures require remediation exactly like primary failures, preserving their failure roles."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-keyword",
+    "path": "$.error.remediation.minLength",
+    "justification": "Reviewed P2b narrowing: empty primary failure remediation is invalid; every emitted diagnostic has a recovery or diagnostic/reporting action."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-keyword",
+    "path": "$.error.remediation.pattern",
+    "justification": "Reviewed P2b narrowing: whitespace-only primary failure remediation is invalid on the wire, matching the required SDK error contract."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-keyword",
+    "path": "$.error.additionalErrors.items.remediation.minLength",
+    "justification": "Reviewed P2b narrowing: empty additional failure remediation is invalid, matching primary errors."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-keyword",
+    "path": "$.error.additionalErrors.items.remediation.pattern",
+    "justification": "Reviewed P2b narrowing: whitespace-only additional failure remediation is invalid, matching primary errors."
+  },
+  {
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
@@ -885,7 +921,7 @@
     "surface": "schema:StreamFrame",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Only the terminal result member's embedded error envelope gains optional reason: string. Existing frames remain valid, all discriminators and required fields are unchanged, and absent or non-string source reasons remain omitted. The conservative union checker cannot classify this additive nested property. Only the terminal result envelope adds optional SQL confirmation service and steps; existing frame variants and fields remain valid. The terminal error object also additively admits remaining JSON-safe own tagged-error fields, excluding cause, stack, private redaction metadata, cyclic, over-depth, and non-JSON-safe values; existing typed fields and canonical redaction remain unchanged. Embedded validation issues on primary and additional errors also accept optional source: { file, layer, path }; this adds no required frame fields or union variants."
+    "justification": "The terminal result member's embedded error envelope admits optional reason, SQL confirmation service and steps, JSON-safe own error fields, and authored validation issue sources. P2b intentionally narrows that embedded envelope before v4 ships: primary and additional error remediation is now required and nonblank, matching standalone CommandResultEnvelope. No frame discriminator or transport shape changes. Cause, stack, private redaction metadata, cyclic, over-depth, and non-JSON-safe fields remain excluded; defects normalize to LandoInternalError."
   },
   {
     "surface": "command:meta:doctor",

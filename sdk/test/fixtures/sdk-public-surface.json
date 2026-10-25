@@ -483,9 +483,12 @@
       "encodeStreamStdoutFrame",
       "failureOutcomeFromCause",
       "identityRedactor",
+      "internalError",
+      "internalErrorRemediation",
       "listSelectableResultKeys",
       "primaryFailureReason",
-      "projectEncodedResult"
+      "projectEncodedResult",
+      "taggedErrorJson"
     ],
     "./database-creds": [
       "DATABASE_FAMILY_DEFAULT_PORTS",
@@ -647,6 +650,7 @@
       "Lando3LandofileDetected",
       "Lando3UnsupportedRecipeError",
       "LandoCommandError",
+      "LandoInternalError",
       "LandoRuntimeBootstrapError",
       "LandofileDialectMixError",
       "LandofileEventInvocationDepthError",
@@ -1632,6 +1636,7 @@
       "SyncResult",
       "TabProps",
       "TabsProps",
+      "TaggedErrorJson",
       "TelemetryConfig",
       "TemplateRenderContext",
       "TomcatServiceConfig",
