@@ -40,19 +40,18 @@ export const discoverForOperation = Effect.fnUntraced(function* (cwd?: string) {
   return yield* Effect.promise(() => resolver.resolve(directory));
 });
 
-export const withAppDiscovery = <A, E, R>(
+export const withAppDiscovery = Effect.fnUntraced(function* <A, E, R>(
   cwd: string,
   effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, Exclude<R, OperationDiscovery>> =>
-  Effect.gen(function* () {
-    const resolver = yield* operationResolver();
-    return yield* effect.pipe(
-      Effect.provideService(OperationDiscovery, {
-        cwd,
-        resolver,
-      }),
-    );
-  });
+) {
+  const resolver = yield* operationResolver();
+  return yield* effect.pipe(
+    Effect.provideService(OperationDiscovery, {
+      cwd,
+      resolver,
+    }),
+  );
+});
 
 export const withDiscoveryCwd = Effect.fnUntraced(function* <A, E, R>(
   cwd: string,
