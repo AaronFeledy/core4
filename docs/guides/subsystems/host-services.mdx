@@ -54,7 +54,7 @@ lsof -nP -iTCP:8000 -sTCP:LISTEN       # macOS
 netstat -an | findstr :8000            # Windows
 ```
 
-The local address must be `0.0.0.0:8000` or `*:8000`, not `127.0.0.1:8000`. On native Linux, a server bound only to `127.0.0.1` refuses connections from containers, because container traffic arrives on the host's bridge interface, not on loopback. Change the server's listen address to `0.0.0.0`, or to the host's bridge IP if you don't want it on the LAN.
+On native Linux, the local address must be `0.0.0.0:8000` or `*:8000`, not `127.0.0.1:8000`. A server bound only to `127.0.0.1` refuses connections from containers, because container traffic arrives on the host's bridge interface, not on loopback. Change the server's listen address to `0.0.0.0`, or to the host's bridge IP if you don't want it on the LAN.
 
 A `0.0.0.0` bind also exposes the server to your network wherever the host firewall allows it. Stop the demo server when you finish.
 
@@ -102,6 +102,8 @@ lando exec web -- wget -qO- http://host.lando.internal:8025/api/v1/info
 
 `--wait` returns once the container reports healthy. The JSON response proves the app container reached the sibling stack's published port. Point your app's SMTP settings at `host.lando.internal` port `1025`. Publish without a `127.0.0.1:` prefix; on native Linux a loopback-only publication is not reachable from Lando services.
 
+These ports publish on every interface, which exposes them to your network wherever the host firewall allows it. To keep them off the LAN, prefix each one with the host gateway IP that `lando exec web -- getent hosts host.lando.internal` prints, for example `"172.17.0.1:8025:8025"`. The app still reaches them through `host.lando.internal`.
+
 Stop the sibling stack from its directory when you finish:
 
 ```sh
@@ -120,6 +122,8 @@ services:
     home: false
     appMount: false
 ```
+
+For Mailpit itself, use the built-in service in [Add Mailpit](../services/mailpit.mdx); fold in Compose services only for software Lando doesn't ship.
 
 If the stack brought its own database, leave that service out and point the moved service at your app's database service by its key.
 
