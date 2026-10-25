@@ -253,7 +253,7 @@ describe("publication, probes, display, and doctor agree", () => {
       https: 8443,
       bindAddress: resolvePublishedRouterBindAddress(persisted, "0.0.0.0"),
     });
-    const displayHost = persisted === "0.0.0.0" ? "127.0.0.1" : persisted === "::" ? "::1" : persisted;
+    const displayHost = persisted;
     const acquisition = withAcquisitionFile(persisted);
 
     try {
