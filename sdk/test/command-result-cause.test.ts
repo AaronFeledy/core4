@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { encodeCommandResult, failureOutcomeFromCause } from "@lando/sdk/command-result";
+import {
+  encodeCommandResult,
+  failureOutcomeFromCause,
+  internalError,
+  internalErrorRemediation,
+} from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Cause, Effect, Schema } from "effect";
@@ -9,7 +14,15 @@ describe("command failure projection", () => {
     { name: "empty", additionalErrors: [] },
     {
       name: "nested",
-      additionalErrors: [{ _tag: "CleanupError", message: "cleanup", role: "cleanup", additionalErrors: [] }],
+      additionalErrors: [
+        {
+          _tag: "CleanupError",
+          message: "cleanup",
+          remediation: "Repair cleanup.",
+          role: "cleanup",
+          additionalErrors: [],
+        },
+      ],
     },
   ])("rejects a $name additional-error collection on decode", ({ additionalErrors }) => {
     // Given: a wire envelope that violates the additional-error contract.
@@ -19,7 +32,7 @@ describe("command failure projection", () => {
       ok: false,
       warnings: [],
       deprecations: [],
-      error: { _tag: "StartError", message: "start", additionalErrors },
+      error: { _tag: "StartError", message: "start", remediation: "Repair start.", additionalErrors },
     };
     // When: the public schema decodes the envelope.
     const decoded = Schema.decodeUnknownResult(CommandResultEnvelope)(envelope);
@@ -38,6 +51,7 @@ describe("command failure projection", () => {
       error: {
         _tag: "StartError",
         message: "start",
+        remediation: "Repair start.",
         additionalErrors: [
           {
             _tag: "CleanupError",
@@ -83,7 +97,7 @@ describe("command failure projection", () => {
 
   test("omits an explicitly empty additionalErrors collection from the envelope", () => {
     // Given: a failure outcome with an empty additional-error collection.
-    const error = { _tag: "StartError", message: "failed" };
+    const error = { _tag: "StartError", message: "failed", remediation: "Repair start." };
     // When: the outcome is encoded.
     const line = Effect.runSync(
       encodeCommandResult({
@@ -113,7 +127,7 @@ describe("command failure projection", () => {
       _tag: "failure",
       error: primary,
       additionalErrors: [
-        { role: "peer", error: defect },
+        { role: "peer", error: internalError(defect) },
         { role: "peer", error: secondary },
       ],
     });
@@ -129,15 +143,20 @@ describe("command failure projection", () => {
     // Then: neither interruption nor the primary is duplicated.
     expect(outcome).toEqual({
       _tag: "failure",
-      error: first,
-      additionalErrors: [{ role: "peer", error: second }],
+      error: internalError(first),
+      additionalErrors: [{ role: "peer", error: internalError(second) }],
     });
   });
 
   test.each(["json", "yaml"] as const)("encodes non-recursive redacted additional errors in %s", (format) => {
     // Given: an additional defect and a tagged failure with a colliding reserved field.
     const secret = "private-cause-token";
-    const primary = { _tag: "StartError", message: "start failed", additionalErrors: ["spoof"] };
+    const primary = {
+      _tag: "StartError",
+      message: "start failed",
+      remediation: "Repair start.",
+      additionalErrors: ["spoof"],
+    };
     const secondary = {
       _tag: "StopError",
       message: secret,
@@ -165,8 +184,14 @@ describe("command failure projection", () => {
     expect(envelope.error).toEqual({
       _tag: "StartError",
       message: "start failed",
+      remediation: "Repair start.",
       additionalErrors: [
-        { _tag: "Error", role: "peer", message: "[redacted]" },
+        {
+          _tag: "LandoInternalError",
+          role: "peer",
+          message: "[redacted]",
+          remediation: internalErrorRemediation,
+        },
         { _tag: "StopError", role: "peer", message: "[redacted]", remediation: "[redacted]" },
       ],
     });
@@ -176,7 +201,12 @@ describe("command failure projection", () => {
 
   test("omits additionalErrors for a single failure even when its own fields collide", () => {
     // Given: one typed failure and an interruption.
-    const primary = { _tag: "StartError", message: "failed", additionalErrors: ["spoof"] };
+    const primary = {
+      _tag: "StartError",
+      message: "failed",
+      remediation: "Repair start.",
+      additionalErrors: ["spoof"],
+    };
     // When: the failure is projected and encoded.
     const outcome = failureOutcomeFromCause(Cause.combine(Cause.fail(primary), Cause.interrupt(1)));
     const line = Effect.runSync(
@@ -192,6 +222,7 @@ describe("command failure projection", () => {
     expect(Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line)).error).toEqual({
       _tag: "StartError",
       message: "failed",
+      remediation: "Repair start.",
     });
   });
 });
