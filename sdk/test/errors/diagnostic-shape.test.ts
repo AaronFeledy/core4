@@ -15,15 +15,14 @@ describe("public diagnostic contracts", () => {
       });
       continue;
     }
-    const remediation = Reflect.get(fields, "remediation");
+    const remediation: unknown = Reflect.get(fields, "remediation");
 
     if (Schema.isSchema(remediation) && remediation.ast.context?.constructorDefault !== undefined) {
       test(`${name} applies its constructor default without replacing an explicit action`, () => {
         // Given the real defaulted field used by the error constructor.
         const diagnostic = Schema.Struct({ remediation });
         // When constructing with omission or a caller-specified action.
-        // Constructor defaults apply at runtime; the Struct make type still lists the field.
-        const omitted = diagnostic.make({} as never);
+        const omitted = diagnostic.make({ remediation: undefined });
         const action = "Edit /project/custom.yml to resolve this specific failure.";
         const overridden = diagnostic.make({ remediation: action });
         // Then omission supplies a valid action and the override survives.
@@ -51,14 +50,10 @@ describe("public diagnostic contracts", () => {
         expect(Result.isFailure(Schema.encodeUnknownResult(diagnostic)(input))).toBe(true);
       }
       expect(Schema.is(diagnostic)({ remediation: "Run lando doctor." })).toBe(true);
-      const jsonSchema = Schema.toJsonSchemaDocument(diagnostic).schema as {
-        readonly properties?: { readonly remediation?: Record<string, unknown> };
-        readonly required?: ReadonlyArray<string>;
-      };
-      expect(jsonSchema.required).toContain("remediation");
-      expect(jsonSchema.properties?.remediation).toMatchObject({ type: "string", minLength: 1 });
-      // Runtime NonEmptyString + /\S/ reject blanks even when JSON Schema omits pattern.
-      expect(Schema.is(diagnostic)({ remediation: " " })).toBe(false);
+      expect(Schema.toJsonSchemaDocument(diagnostic).schema).toMatchObject({
+        properties: { remediation: { type: "string", minLength: 1, pattern: "\\S" } },
+        required: ["remediation"],
+      });
       expect("suggestion" in fields).toBe(false);
     });
 
