@@ -12,7 +12,11 @@ const TOOLING_TASK_EXPECTATION =
   "Expected false, disabled, a non-empty command string, or a tooling task object";
 
 test.each([
-  ["services:\n  api:\n    environment: 5", ["services", "api", "environment"], "Expected object"],
+  [
+    "services:\n  api:\n    environment: 5",
+    ["services", "api", "environment"],
+    "Expected a map or a list of KEY=VALUE strings",
+  ],
   [
     "services:\n  api:\n    appMount: 7",
     ["services", "api", "appMount"],
@@ -29,7 +33,7 @@ test.each([
     "Healthcheck command must not be empty; use healthcheck: false to disable the probe.",
   ],
   ["services:\n  api:\n    primary: maybe", ["services", "api", "primary"], "Expected boolean"],
-  ["services:\n  web: nginx", ["services", "web"], "Expected ServiceConfigInput"],
+  ["services:\n  web: nginx", ["services", "web"], "Expected object"],
   [
     "services:\n  api:\n    mounts:\n      - type: invalid\n        source: data\n        target: /data",
     ["services", "api", "mounts", 0, "type"],
