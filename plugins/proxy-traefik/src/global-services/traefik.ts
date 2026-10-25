@@ -18,6 +18,7 @@ import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../ports.ts";
 import { acquisitionStateFile } from "../proxy-paths.ts";
 import type { ProxyPaths } from "../proxy-types.ts";
 import { TRAEFIK_DYNAMIC_CONFIG_SOURCE } from "../proxy.ts";
+import { DEFAULT_ROUTER_BIND_ADDRESS, resolveEffectiveRouterBindAddress } from "../router-bind-address.ts";
 
 /** Override per-install via the user `.lando.yml`. */
 export const TRAEFIK_IMAGE = "traefik:v3.3";
@@ -45,6 +46,7 @@ export const TRAEFIK_START_SCRIPT = [
 export type TraefikPublishPorts = {
   readonly http: number;
   readonly https: number;
+  readonly bindAddress?: string;
 };
 
 export type TraefikPublishState = {
@@ -69,8 +71,9 @@ export const resolveTraefikPublishPorts = (state: TraefikPublishState | undefine
   return { http: TRAEFIK_HTTP_PORT, https: TRAEFIK_HTTPS_PORT };
 };
 
-export const buildTraefikServiceConfig = (ports: TraefikPublishPorts): ServiceConfig =>
-  Schema.decodeUnknownSync(ServiceConfig)({
+export const buildTraefikServiceConfig = (ports: TraefikPublishPorts): ServiceConfig => {
+  const bindAddress = ports.bindAddress ?? DEFAULT_ROUTER_BIND_ADDRESS;
+  return Schema.decodeUnknownSync(ServiceConfig)({
     api: 4,
     type: "compose",
     image: TRAEFIK_IMAGE,
@@ -94,20 +97,21 @@ export const buildTraefikServiceConfig = (ports: TraefikPublishPorts): ServiceCo
         name: "web",
         protocol: "http",
         port: 80,
-        publication: { bindAddress: "127.0.0.1", hostPort: ports.http },
+        publication: { bindAddress, hostPort: ports.http },
       },
       {
         _tag: "published",
         name: "websecure",
         protocol: "https",
         port: 443,
-        publication: { bindAddress: "127.0.0.1", hostPort: ports.https },
+        publication: { bindAddress, hostPort: ports.https },
       },
     ],
     ports: ["8080"],
     cap_add: ["NET_BIND_SERVICE"],
     environment: {},
   });
+};
 
 const loadAcquisitionState: Effect.Effect<AcquisitionState | undefined> = Effect.gen(function* () {
   const resolved = makeLandoPaths();
@@ -132,9 +136,11 @@ const toPublishState = (state: AcquisitionState): TraefikPublishState => ({
 
 const traefikGlobalService: Effect.Effect<ServiceConfig> = Effect.gen(function* () {
   const state = yield* loadAcquisitionState;
-  return buildTraefikServiceConfig(
-    resolveTraefikPublishPorts(state === undefined ? undefined : toPublishState(state)),
-  );
+  const bindAddress = yield* resolveEffectiveRouterBindAddress();
+  return buildTraefikServiceConfig({
+    ...resolveTraefikPublishPorts(state === undefined ? undefined : toPublishState(state)),
+    bindAddress,
+  });
 });
 
 export default traefikGlobalService;

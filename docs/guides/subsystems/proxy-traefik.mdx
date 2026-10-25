@@ -106,7 +106,7 @@ router:
   httpsFallbacks: [4443, 4433, 4444, 444, 38443]
 ```
 
-This Landofile prefers 8080 and 8443, then walks the rest of each list. The same `router` block works in the installation `config.yml`. Env aliases are `LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_BIND_ADDRESS`, `LANDO_ROUTER_HTTP_FALLBACKS`, and `LANDO_ROUTER_HTTPS_FALLBACKS`. Fallback env values must be JSON arrays such as `[8000,8888]`. The default bind address is `127.0.0.1`.
+This Landofile prefers 8080 and 8443, then walks the rest of each list. The same `router` block works in the installation `config.yml`. Env aliases are `LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_BIND_ADDRESS`, `LANDO_ROUTER_HTTP_FALLBACKS`, and `LANDO_ROUTER_HTTPS_FALLBACKS`. Fallback env values must be JSON arrays such as `[8000,8888]`. The default bind address is `127.0.0.1`. Traefik publishes HTTP and HTTPS on that host address. `0.0.0.0` and `::` make the proxy reachable on your local network; `lando doctor` warns. A specific interface IP is intentional LAN sharing.
 
 Router ports are shared by every app. After changing the `router` block in `config.yml`, run `lando setup`. Setup rescans the candidate ports and moves Traefik to the pair it picks, even while Traefik is running. Starting an app that uses the router also picks up changed router ports; with unchanged config, app and scratch starts keep the owned pair so URLs stay stable. `lando global:restart` keeps the ports Traefik already has.
 

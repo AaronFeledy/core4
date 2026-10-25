@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { ROUTE_PRIORITY_MAX, ServiceConfig } from "@lando/sdk/schema";
+import { GlobalConfig, ROUTE_PRIORITY_MAX, ServiceConfig } from "@lando/sdk/schema";
+import { ConfigService } from "@lando/sdk/services";
 
 import { TRAEFIK_DASHBOARD_PRIORITY, renderTraefikDashboardConfig } from "../../src/dashboard.ts";
 import traefikGlobalService, {
@@ -176,6 +177,77 @@ describe("buildTraefikServiceConfig", () => {
     );
     expect(hostPorts).not.toContain(38080);
     expect(hostPorts).not.toContain(38443);
+  });
+
+  test("publishes on the configured bind address", () => {
+    // Given: chosen ports on 0.0.0.0.
+    const chosen = { http: 8080, https: 8443, bindAddress: "0.0.0.0" };
+
+    // When: the Traefik ServiceConfig is built from that pair.
+    const config = buildTraefikServiceConfig(chosen);
+
+    // Then: both ingress endpoints publish on the configured bind, not loopback.
+    expect(config.endpoints).toEqual([
+      {
+        _tag: "published",
+        name: "web",
+        protocol: "http",
+        port: 80,
+        publication: { bindAddress: "0.0.0.0", hostPort: 8080 },
+      },
+      {
+        _tag: "published",
+        name: "websecure",
+        protocol: "https",
+        port: 443,
+        publication: { bindAddress: "0.0.0.0", hostPort: 8443 },
+      },
+    ]);
+  });
+
+  test("default export publishes the ConfigService router.bindAddress", async () => {
+    // Given: global config sets a non-loopback bind.
+    const loaded = Schema.decodeUnknownSync(GlobalConfig)({ router: { bindAddress: "10.0.0.8" } });
+
+    // When: the global service Effect runs with that ConfigService.
+    const config = await Effect.runPromise(
+      traefikGlobalService.pipe(
+        Effect.provideService(
+          ConfigService,
+          ConfigService.of({
+            load: Effect.succeed(loaded),
+            get: (key) => Effect.succeed(loaded[key]),
+          }),
+        ),
+      ),
+    );
+
+    // Then: both ingress endpoints publish on that bind.
+    const published = (config.endpoints ?? []).filter((endpoint) => endpoint._tag === "published");
+    expect(published.map((endpoint) => endpoint.publication.bindAddress)).toEqual(["10.0.0.8", "10.0.0.8"]);
+  });
+
+  test("default export honors LANDO_ROUTER_BIND_ADDRESS", async () => {
+    // Given: the friendly env overlay sets a non-loopback bind and ConfigService is absent.
+    const previous = process.env.LANDO_ROUTER_BIND_ADDRESS;
+    process.env.LANDO_ROUTER_BIND_ADDRESS = "192.168.4.2";
+    try {
+      // When: the global service Effect runs.
+      const config = await decodeConfig();
+
+      // Then: both ingress endpoints publish on that bind.
+      const published = (config.endpoints ?? []).filter((endpoint) => endpoint._tag === "published");
+      expect(published.map((endpoint) => endpoint.publication.bindAddress)).toEqual([
+        "192.168.4.2",
+        "192.168.4.2",
+      ]);
+    } finally {
+      if (previous === undefined) {
+        Reflect.deleteProperty(process.env, "LANDO_ROUTER_BIND_ADDRESS");
+      } else {
+        process.env.LANDO_ROUTER_BIND_ADDRESS = previous;
+      }
+    }
   });
 
   test("publishes last-resort host ports when they are the chosen pair", () => {
