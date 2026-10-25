@@ -46,7 +46,12 @@ describe("compileEffectiveTooling", () => {
         landofile: compiled.document,
         services: [{ name: "web", tooling: { inspect: { cmd: "service-type" } } }],
       });
-      const plan = toolingForPlan.attachEffectiveTooling(eventPlan(), tasks);
+      const plan = toolingForPlan.attachEffectiveTooling(
+        eventPlan(),
+        tasks,
+        {},
+        toolingForPlan.disabledToolingSources(compiled.document, tasks),
+      );
       const roundTrip = Schema.decodeUnknownSync(AppPlan)(Schema.encodeSync(AppPlan)(plan));
       expect(toolingForPlan.effectiveToolingForPlan(roundTrip)?.inspect).toEqual({ disabled: true });
       expect(toolingForPlan.disabledToolingSourceForPlan(roundTrip, "inspect")).toBe(file);

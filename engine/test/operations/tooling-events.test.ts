@@ -32,7 +32,11 @@ import { runEventToolingCommand } from "../../src/operations/event-tooling-comma
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
-import { attachEffectiveTooling, compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
+import {
+  attachEffectiveTooling,
+  compileEffectiveTooling,
+  disabledToolingSources,
+} from "../../src/planner/effective-tooling.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
@@ -70,6 +74,7 @@ const executedLabel = (command: ReadonlyArray<string>, fallback: string): string
 
 const harness = (input: {
   readonly tooling: Readonly<Record<string, ToolingTaskShape>>;
+  readonly disabledSources?: Readonly<Record<string, string>>;
   readonly events?: LandofileEvents;
   readonly failOn?: string;
   readonly omitEventRuntime?: boolean;
@@ -100,6 +105,8 @@ const harness = (input: {
   const plan = attachEffectiveTooling(
     input.events === undefined ? basePlan : withProjectEvents(basePlan, input.events),
     input.tooling,
+    {},
+    input.disabledSources,
   );
 
   const record = (label: string) => {
@@ -252,7 +259,11 @@ test.each(["command", "task"] as const)(
       ),
     );
     const tooling = compileEffectiveTooling({ landofile: compiled.document, services: [] });
-    const h = harness({ tooling, events: { "pre-build": [{ task: "off" }] } });
+    const h = harness({
+      tooling,
+      disabledSources: disabledToolingSources(compiled.document, tooling),
+      events: { "pre-build": [{ task: "off" }] },
+    });
     const persisted = Schema.decodeUnknownSync(AppPlan)(Schema.encodeSync(AppPlan)(h.plan));
     const result =
       kind === "command"
