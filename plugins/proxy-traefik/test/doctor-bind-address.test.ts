@@ -104,9 +104,7 @@ describe("routerBindAddressCheck", () => {
       runtimeStatus: UNSPECIFIED_BIND_REMEDIATION,
       context: { bindAddress: "0.0.0.0", kind: "unspecified" },
     });
-    expect(report.solutions).toEqual([
-      { kind: "manual", description: UNSPECIFIED_BIND_REMEDIATION },
-    ]);
+    expect(report.solutions).toEqual([{ kind: "manual", description: UNSPECIFIED_BIND_REMEDIATION }]);
   });
 
   test("warns when bind is ::", async () => {
