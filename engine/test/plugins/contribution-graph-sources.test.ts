@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -34,6 +34,17 @@ describe("plugin contribution source merge", () => {
     try {
       await writeFile(join(root, ".lando.yml"), "name: graph\n");
       await writeFile(join(root, ".lando.ts"), 'export default { name: "graph" };\n');
+      const pluginsRoot = join(root, ".lando", "plugins");
+      const pluginPath = join(pluginsRoot, "example");
+      const manifest = { name: "@example/app-local", version: "1.0.0", api: 4 };
+      await mkdir(pluginPath, { recursive: true });
+      await writeFile(join(pluginPath, "package.json"), JSON.stringify({ landoPlugin: manifest }));
+      await writeFile(
+        join(pluginsRoot, "registry.json"),
+        JSON.stringify({
+          [manifest.name]: { name: manifest.name, version: manifest.version, path: pluginPath },
+        }),
+      );
       const graphLayer = PluginContributionGraph.layer<never>(
         {
           cwd: root,
@@ -47,13 +58,11 @@ describe("plugin contribution source merge", () => {
       // When
       const plugins = await Effect.runPromise(
         Effect.scoped(
-          Effect.flatMap(PluginContributionGraph, (graph) => Effect.succeed(graph.plugins)).pipe(
-            Effect.provide(graphLayer),
-          ),
+          Effect.map(PluginContributionGraph, (graph) => graph.plugins).pipe(Effect.provide(graphLayer)),
         ),
       );
       // Then
-      expect(plugins).toEqual([]);
+      expect(plugins).toMatchObject([{ source: "app", manifest }]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
