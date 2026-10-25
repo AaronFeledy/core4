@@ -3,7 +3,12 @@ import { Effect, Layer } from "effect";
 
 import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
 import { AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { RouterService, RuntimeProvider, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
+import {
+  RouterService,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+  UrlScanner,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import * as HttpClient from "effect/http/HttpClient";
 
@@ -14,6 +19,39 @@ import { appId, asHttpClient, drive, driveExit, failureOf, httpStatus, requestSe
 const web = ServiceName.make("web");
 const worker = ServiceName.make("worker");
 
+const registryFor = (
+  provider: RuntimeProviderShape,
+  selected: Array<AppPlan | ProviderId | undefined> = [],
+  broken?: "select" | "appliedPlans",
+) =>
+  RuntimeProviderRegistry.of({
+    list: Effect.succeed(
+      broken === undefined
+        ? [ProviderId.make(provider.id)]
+        : [ProviderId.make("broken"), ProviderId.make(provider.id)],
+    ),
+    capabilities: Effect.succeed(provider.capabilities),
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    select: (target) => {
+      const failure = new ProviderUnavailableError({
+        providerId: "broken",
+        operation: "select",
+        message: "Unrelated provider is offline.",
+        remediation: "Repair the unrelated provider.",
+      });
+      if (target === "broken")
+        return broken === "select"
+          ? Effect.fail(failure)
+          : Effect.succeed({ ...TestRuntimeProvider, appliedPlans: Effect.fail(failure) });
+      return Effect.sync(() => {
+        selected.push(target);
+        return provider;
+      });
+    },
+  });
+
 const provideScanner = Effect.fnUntraced(
   function* (_provider: RuntimeProviderShape, _http: ReturnType<typeof requestSequence>) {
     return yield* UrlScanner;
@@ -21,76 +59,83 @@ const provideScanner = Effect.fnUntraced(
   Effect.provide(ProviderUrlScanner.layer),
   (effect, provider, http) =>
     effect.pipe(
-      Effect.provide(Layer.succeed(RuntimeProvider, provider)),
+      Effect.provide(Layer.succeed(RuntimeProviderRegistry, registryFor(provider))),
       Effect.provide(Layer.succeed(HttpClient.HttpClient, asHttpClient(http))),
     ),
 );
 
 describe("ProviderUrlScanner.layer", () => {
-  test("scans shared router ingress without claiming it as an app port collision", async () => {
-    // Given two routed apps with no direct host publications.
-    const plans: readonly AppPlan[] = ["one", "two"].map((name) => ({
-      ...plan,
-      id: AppId.make(name),
-      services: {
-        [web]: { ...webPlan, endpoints: [{ _tag: "internal", protocol: "http", port: 80 }] },
-      },
-      routes: [
-        {
-          hostname: `${name}.test`,
-          scheme: "https",
-          priority: 1,
-          service: web,
-          backend: { service: web, protocol: "http", port: 80 },
+  test.each(["select", "appliedPlans"] as const)(
+    "scans the selected app past an unrelated provider's %s failure",
+    async (broken) => {
+      // Given two routed apps with no direct host publications.
+      const plans: readonly AppPlan[] = ["one", "two"].map((name) => ({
+        ...plan,
+        id: AppId.make(name),
+        services: {
+          [web]: { ...webPlan, endpoints: [{ _tag: "internal", protocol: "http", port: 80 }] },
         },
-      ],
-    }));
-    const provider: RuntimeProviderShape = {
-      ...TestRuntimeProvider,
-      appliedPlans: Effect.succeed(plans),
-      inspect: ({ app, service }) =>
-        Effect.succeed({
-          app,
-          service,
-          providerId: ProviderId.make("test"),
-          status: "running",
-          publications: { status: "present", bindings: [] },
-        }),
-    };
-    const router = RouterService.of({
-      ...makeTestRouterService(),
-      observeRoutes: (_app, routes) =>
-        Effect.succeed({
-          configuredAuthorities: [],
-          observation: {
-            status: "present",
-            publications: routes.map((route) => ({
-              route,
-              authority: { hostname: route.hostname, scheme: "https", port: 38443 },
-            })),
+        routes: [
+          {
+            hostname: `${name}.test`,
+            scheme: "https",
+            priority: 1,
+            service: web,
+            backend: { service: web, protocol: "http", port: 80 },
           },
-        }),
-    });
-    const http = requestSequence([httpStatus(200)]);
-    // When the production layer discovers connections for collision checks and scans.
-    const result = await drive(
-      Effect.gen(function* () {
-        const scanner = yield* UrlScanner;
-        return {
-          collisions: yield* scanner.detectCollisions(plans.map((entry) => entry.id)),
-          scan: yield* scanner.scan(AppId.make("one")),
-        };
-      }).pipe(
-        Effect.provide(ProviderUrlScanner.layer),
-        Effect.provideService(RuntimeProvider, provider),
-        Effect.provideService(HttpClient.HttpClient, asHttpClient(http)),
-        Effect.provideService(RouterService, router),
-      ),
-    );
-    // Then shared ingress is not a direct-publication collision, but remains scannable.
-    expect(result.collisions).toEqual([]);
-    expect(result.scan.endpoints.map((endpoint) => endpoint.url)).toEqual(["https://one.test:38443/"]);
-  });
+        ],
+      }));
+      const provider: RuntimeProviderShape = {
+        ...TestRuntimeProvider,
+        appliedPlans: Effect.succeed(plans),
+        inspect: ({ app, service }) =>
+          Effect.succeed({
+            app,
+            service,
+            providerId: ProviderId.make("test"),
+            status: "running",
+            publications: { status: "present", bindings: [] },
+          }),
+      };
+      const router = RouterService.of({
+        ...makeTestRouterService(),
+        observeRoutes: (_app, routes) =>
+          Effect.succeed({
+            configuredAuthorities: [],
+            observation: {
+              status: "present",
+              publications: routes.map((route) => ({
+                route,
+                authority: { hostname: route.hostname, scheme: "https", port: 38443 },
+              })),
+            },
+          }),
+      });
+      const http = requestSequence([httpStatus(200)]);
+      const selected: Array<AppPlan | ProviderId | undefined> = [];
+      // When the production layer discovers connections for collision checks and scans.
+      const result = await drive(
+        Effect.gen(function* () {
+          const scanner = yield* UrlScanner;
+          return {
+            collisions: yield* scanner.detectCollisions(plans.map((entry) => entry.id)),
+            scan: yield* scanner.scan(AppId.make("one")),
+          };
+        }).pipe(
+          Effect.provide(ProviderUrlScanner.layer),
+          Effect.provideService(RuntimeProviderRegistry, registryFor(provider, selected, broken)),
+          Effect.provideService(HttpClient.HttpClient, asHttpClient(http)),
+          Effect.provideService(RouterService, router),
+        ),
+      );
+      // Then shared ingress is not a direct-publication collision, but remains scannable.
+      expect(result.collisions).toEqual([]);
+      expect(selected).toContain(plans[0]);
+      expect(selected).toContain(plans[1]);
+      expect(selected).not.toContain(undefined);
+      expect(result.scan.endpoints.map((endpoint) => endpoint.url)).toEqual(["https://one.test:38443/"]);
+    },
+  );
 
   test("wires the probe scanner from RuntimeProvider endpoints and HttpClient", async () => {
     const http = requestSequence([httpStatus(200)]);
@@ -140,6 +185,14 @@ describe("ProviderUrlScanner.layer", () => {
     const http = requestSequence([httpStatus(200)]);
     const provider = {
       ...TestRuntimeProvider,
+      appliedPlans: Effect.fail(
+        new ProviderUnavailableError({
+          providerId: "test",
+          operation: "appliedPlans",
+          message: "provider saw MY_TOKEN=abc123",
+          remediation: "Repair the test provider.",
+        }),
+      ),
       list: () =>
         Effect.fail(
           new ProviderUnavailableError({
