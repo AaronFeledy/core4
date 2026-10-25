@@ -11,6 +11,7 @@ export {
   commandFailureCause,
   failureDefectCause,
   failureOutcomeFromCause,
+  mapFailureCause,
   mergeFailure,
   primaryFailureReason,
   type ProjectedFailure,

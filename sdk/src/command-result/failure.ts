@@ -14,6 +14,27 @@ export interface ProjectedFailure {
 const roleOf = (reason: Cause.Reason<unknown>): FailureRole | undefined =>
   Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation);
 
+/** Map typed failures with their explicit role, preserving annotations, defects and interrupts. */
+export const mapFailureCause = <E, E2>(
+  cause: Cause.Cause<E>,
+  f: (error: E, role: FailureRole | undefined) => E2,
+): Cause.Cause<E2> =>
+  Cause.fromReasons(
+    cause.reasons.map((reason) => {
+      switch (reason._tag) {
+        case "Fail":
+          return Cause.makeFailReason(f(reason.error, roleOf(reason))).annotate(
+            Cause.reasonAnnotations(reason),
+          );
+        case "Die":
+        case "Interrupt":
+          return reason;
+        default:
+          return reason satisfies never;
+      }
+    }),
+  );
+
 /** The reason the projection reports as primary, or `undefined` when the Cause has no Fail or Die. */
 export const primaryFailureReason = <E>(cause: Cause.Cause<E>): Cause.Reason<E> | undefined =>
   cause.reasons.find((reason) => Cause.isFailReason(reason) && roleOf(reason) === undefined) ??

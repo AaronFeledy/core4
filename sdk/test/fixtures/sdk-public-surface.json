@@ -467,6 +467,7 @@
       "failureOutcomeFromCause",
       "identityRedactor",
       "listSelectableResultKeys",
+      "mapFailureCause",
       "mergeFailure",
       "primaryFailureReason",
       "projectEncodedResult",

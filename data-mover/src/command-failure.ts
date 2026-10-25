@@ -1,7 +1,8 @@
 import { makeDiagnosticTailFactory } from "@lando/redaction";
+import { mapFailureCause } from "@lando/sdk/command-result";
 import { DataTransferError } from "@lando/sdk/errors";
 import type { ExecResult } from "@lando/sdk/services";
-import { Cause, Effect } from "effect";
+import { Effect } from "effect";
 
 export const serviceCommandFailure = (
   operation: string,
@@ -37,25 +38,6 @@ const taggedMessage = (error: unknown): string | undefined => {
   return "message" in error && typeof error.message === "string" ? error.message : undefined;
 };
 
-const transferFailure = (
-  operation: string,
-  error: unknown,
-  diagnostic: (text: string | undefined) => string | undefined,
-): DataTransferError => {
-  const evidence = completionEvidence(error);
-  if (evidence !== undefined) {
-    return serviceCommandFailure(operation, evidence.exitCode, diagnostic(evidence.stderrTail));
-  }
-  const message = diagnostic(taggedMessage(error));
-  if (message === undefined) return serviceCommandFailure(operation);
-  return new DataTransferError({
-    message,
-    operation,
-    remediation:
-      "Inspect and resolve the reported failure, including cleanup, before deciding whether to repeat the transfer; it may already have completed.",
-  });
-};
-
 export const checkedTransferCommand = Effect.fnUntraced(function* <E, R>(
   command: Effect.Effect<ExecResult, E, R>,
   operation: string,
@@ -70,7 +52,31 @@ export const checkedTransferCommand = Effect.fnUntraced(function* <E, R>(
   };
   const result = yield* command.pipe(
     Effect.catchCause((cause) =>
-      Effect.failCause(Cause.map(cause, (error) => transferFailure(operation, error, diagnostic))),
+      Effect.failCause(
+        mapFailureCause(cause, (error, role) => {
+          const evidence = completionEvidence(error);
+          if (evidence !== undefined) {
+            return serviceCommandFailure(operation, evidence.exitCode, diagnostic(evidence.stderrTail));
+          }
+          const message = diagnostic(taggedMessage(error));
+          if (message === undefined) return serviceCommandFailure(operation);
+          switch (role) {
+            case "cleanup":
+              return new DataTransferError({
+                message,
+                operation,
+                remediation:
+                  "Inspect and resolve the reported failure, including cleanup, before deciding whether to repeat the transfer; it may already have completed.",
+              });
+            case undefined:
+            case "peer":
+            case "rollback":
+              return new DataTransferError({ ...serviceCommandFailure(operation), message });
+            default:
+              return role satisfies never;
+          }
+        }),
+      ),
     ),
   );
   if (result.exitCode !== 0) {

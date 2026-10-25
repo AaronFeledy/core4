@@ -7,10 +7,59 @@ import {
   failureDefectCause,
   failureOutcomeFromCause,
   identityRedactor,
+  mapFailureCause,
   mergeFailure,
 } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { Cause, Context, Effect, Schema } from "effect";
+
+test.each([undefined, "cleanup", "peer", "rollback"] as const)(
+  "maps typed failures with role %s while preserving every reason's annotations",
+  (role) => {
+    // Given annotated typed, defect and interruption reasons.
+    const extra = Context.Reference("test/map-annotation", { defaultValue: () => "absent" });
+    const failure = Cause.annotate(Cause.fail("typed"), Context.make(extra, "failure"));
+    const defect = Cause.annotate(Cause.die("defect"), Context.make(extra, "defect"));
+    const interrupt = Cause.annotate(Cause.interrupt(7), Context.make(extra, "interrupt"));
+    const cause = Cause.combine(
+      role === undefined ? failure : annotateFailureRole(failure, role),
+      Cause.combine(defect, interrupt),
+    );
+    // When the typed failure is transformed using its role.
+    const mapped = mapFailureCause(cause, (error, failureRole) => ({ message: error, role: failureRole }));
+    // Then the callback sees only the typed error and all metadata and other reasons survive.
+    expect(mapped.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).toEqual([
+      { message: "typed", role },
+    ]);
+    expect(mapped.reasons.map((reason) => Context.get(Cause.reasonAnnotations(reason), extra))).toEqual([
+      "failure",
+      "defect",
+      "interrupt",
+    ]);
+    expect(
+      mapped.reasons.map((reason) =>
+        Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+      ),
+    ).toEqual([role, undefined, undefined]);
+    expect(mapped.reasons.find(Cause.isDieReason)).toBe(defect.reasons.find(Cause.isDieReason));
+    expect(mapped.reasons.find(Cause.isInterruptReason)).toBe(
+      interrupt.reasons.find(Cause.isInterruptReason),
+    );
+  },
+);
+
+test("keeps role-based primary selection when mapped cleanup precedes an unroled failure", () => {
+  // Given a cleanup reason preceding the actual primary.
+  const cause = Cause.combine(annotateFailureRole(Cause.fail("remove"), "cleanup"), Cause.fail("start"));
+  // When errors are mapped with their original roles.
+  const mapped = mapFailureCause(cause, (error, role) => `${role ?? "primary"}:${error}`);
+  // Then projection still selects the unroled failure, not the first reason.
+  expect(failureOutcomeFromCause(mapped)).toEqual({
+    _tag: "failure",
+    error: "primary:start",
+    additionalErrors: [{ role: "cleanup", error: "cleanup:remove" }],
+  });
+});
 
 test.each(["rollback", "cleanup", "peer"] as const)(
   "selects an unannotated defect ahead of a %s typed failure",

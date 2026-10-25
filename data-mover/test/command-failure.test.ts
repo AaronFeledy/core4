@@ -1,7 +1,66 @@
 import { expect, test } from "bun:test";
-import { failureOutcomeFromCause, mergeFailure } from "@lando/sdk/command-result";
+import { annotateFailureRole, failureOutcomeFromCause, mergeFailure } from "@lando/sdk/command-result";
 import { Cause, Effect, Exit, Option } from "effect";
 import { checkedTransferCommand } from "../src/command-failure.ts";
+
+test.each([undefined, "peer", "rollback"] as const)(
+  "uses ordinary remediation when a tagged failure has role %s and no exit evidence",
+  async (role) => {
+    // Given a non-cleanup failure with private context and no completion evidence.
+    const secret = "PRIMARY_1789_SECRET";
+    const failure = {
+      _tag: "ProviderUnavailableError",
+      message: `Provider startup failed: ${secret}`,
+      cause: "PRIVATE CAUSE",
+    };
+    const cause = role === undefined ? Cause.fail(failure) : annotateFailureRole(Cause.fail(failure), role);
+    // When the failure crosses the transfer boundary.
+    const exit = await Effect.runPromiseExit(
+      checkedTransferCommand(Effect.failCause(cause), "run", { MYSQL_PWD: secret }),
+    );
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+    // Then safe context survives without suggesting that cleanup or completion occurred.
+    expect(error.message).toBe("Provider startup failed: [redacted]");
+    expect(error.remediation).toBe("Inspect the service command and retry after the service is healthy.");
+    expect(error.exitCode).toBeUndefined();
+    expect(error.stderrTail).toBeUndefined();
+    expect(error.cause).toBeUndefined();
+    expect(JSON.stringify(error)).not.toMatch(/PRIMARY_1789_SECRET|PRIVATE CAUSE/u);
+  },
+);
+
+test("keeps primary and cleanup remediation distinct when neither has exit evidence", async () => {
+  // Given startup and removal failures, each with a tagged diagnostic but no exit code.
+  const primary = { _tag: "VolumeOperationError", message: "Start failed: MIXED_SECRET", cause: "PRIVATE" };
+  const cleanup = {
+    _tag: "ProviderUnavailableError",
+    message: "Remove failed: MIXED_SECRET",
+    cause: "PRIVATE",
+  };
+  const cause = mergeFailure(Cause.fail(primary), Cause.fail(cleanup), "cleanup");
+  // When both reasons cross the same transfer boundary.
+  const exit = await Effect.runPromiseExit(
+    checkedTransferCommand(Effect.failCause(cause), "run", { MYSQL_PWD: "MIXED_SECRET" }),
+  );
+  if (!Exit.isFailure(exit)) throw new Error("expected failure");
+  // Then only the cleanup reason receives the caution about repeating a completed transfer.
+  const outcome = failureOutcomeFromCause(exit.cause);
+  expect(outcome.error).toMatchObject({
+    message: "Start failed: [redacted]",
+    remediation: "Inspect the service command and retry after the service is healthy.",
+  });
+  expect(outcome.additionalErrors).toEqual([
+    {
+      role: "cleanup",
+      error: expect.objectContaining({
+        message: "Remove failed: [redacted]",
+        remediation: expect.stringContaining("may already have completed"),
+      }),
+    },
+  ]);
+  expect(JSON.stringify(outcome)).not.toMatch(/MIXED_SECRET|PRIVATE/u);
+});
 
 test.each(["exec", "run"])("keeps safe destination diagnostics without stdout for %s", async (operation) => {
   const exit = await Effect.runPromiseExit(
@@ -96,12 +155,15 @@ test("redacts cleanup-only messages when the transfer may already have completed
   const cleanup = { _tag: "ProviderUnavailableError", message: `Container removal failed: ${secret}` };
   // When cleanup is the only failure.
   const exit = await Effect.runPromiseExit(
-    checkedTransferCommand(Effect.fail(cleanup), "run", { MYSQL_PWD: secret }),
+    checkedTransferCommand(Effect.failCause(annotateFailureRole(Cause.fail(cleanup), "cleanup")), "run", {
+      MYSQL_PWD: secret,
+    }),
   );
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
   const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
   // Then its context is safe and no command exit is invented.
   expect(error.message).toBe("Container removal failed: [redacted]");
+  expect(error.remediation).toContain("may already have completed");
   expect(error.exitCode).toBeUndefined();
   expect(error.stderrTail).toBeUndefined();
 });
