@@ -21,9 +21,9 @@ import {
 } from "@lando/sdk/services";
 import { type Context, Effect, Option, Result } from "effect";
 import { loadUserLandofile } from "../app-resolution";
-import { redactString } from "../redact";
 import { gpgAgentPostureDetail } from "./doctor-gpg-agent";
 import { type DoctorSubsystemCheck, SSH_SPEC, type SshAgentPostureDetails } from "./doctor-subsystem-checks";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 type Details = typeof SshAgentPostureDetails.Type;
 
@@ -156,7 +156,9 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         fixContext.fixExitCode = recovered ? "0" : "1";
         if (!recovered) {
           fixContext.fixError = Result.isFailure(setup)
-            ? redactString(setup.failure.message)
+            ? (yield* resolveSecretsRedactor({ sourceEnv: input.env ?? process.env })).redact(
+                setup.failure.message,
+              )
             : `SSH agent forwarding remains degraded after setup.${readinessDetail === undefined ? "" : ` Last probe failure: ${readinessDetail}`}`;
         }
         break;

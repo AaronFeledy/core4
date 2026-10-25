@@ -392,6 +392,31 @@ describe("SSH agent doctor posture", () => {
     expect(check.context.fixError).not.toContain("super-secret");
   });
 
+  test("sidecar fix masks a bare environment secret value in the setup failure", async () => {
+    // Given a setup failure that echoes the value of a secret-named environment variable.
+    const input = inputs();
+    const secret = "env-only-sidecar-token-7f3a";
+    // When doctor attempts automatic repair with that environment.
+    const check = await Effect.runPromise(
+      sshAgentPostureCheck({
+        ...input,
+        fix: true,
+        env: { LANDO_TEST_API_TOKEN: secret },
+        probe: async () => {
+          throw new Error("offline");
+        },
+        sshService: {
+          ...input.sshService,
+          setup: () =>
+            Effect.fail(new SshError({ sshId: "sidecar", message: `sidecar rejected credential ${secret}` })),
+        },
+      }),
+    );
+    // Then the reported repair error never carries the raw value.
+    expect(check.context.fixError).toContain("sidecar rejected credential");
+    expect(check.context.fixError).not.toContain(secret);
+  });
+
   test("subsystem doctor reads global SSH config without requiring an app", async () => {
     // Given
     const input = inputs();
