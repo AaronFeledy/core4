@@ -5,7 +5,8 @@ import {
   expressionScopeMembers,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
-import { Effect, Result, Schema, SchemaIssue } from "effect";
+import { validationIssuesFromSchemaIssue } from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 import {
   type ActivationPlan,
   type AppFeatureSelectionInput,
@@ -146,8 +147,8 @@ export const decodeAppFeatureConfig = (
         : rawConfig,
     );
   }
-  const details = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue)
-    .issues.map((issue) => issue.message)
+  const details = validationIssuesFromSchemaIssue(decoded.failure.issue)
+    .map((issue) => issue.message)
     .join("; ");
   return Effect.fail(
     new AppFeatureSelectorMatchedNothingError({
