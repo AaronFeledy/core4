@@ -581,10 +581,12 @@ describe("bind narrowing on start and setup", () => {
     const service = makeTraefikRouterService(
       makeDeps(store, overrideFor({ httpFirstFree: 8080, httpsFirstFree: 8443 })),
     );
+    const prepare = service.prepare;
+    if (prepare === undefined) throw new TypeError("Traefik router prepare is missing");
 
     // When: start-path prepare runs with the narrowed global bind.
     await Effect.runPromise(
-      Effect.scoped(service.prepare?.({ defaultDomain: "lndo.site", router: { bindAddress: "127.0.0.1" } })),
+      Effect.scoped(prepare({ defaultDomain: "lndo.site", router: { bindAddress: "127.0.0.1" } })),
     );
     const persisted = readJson(store.files);
     const fingerprint = persisted.fingerprint as { bindAddress: string };
