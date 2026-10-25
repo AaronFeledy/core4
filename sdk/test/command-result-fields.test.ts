@@ -4,6 +4,7 @@ import {
   encodeCommandResult,
   encodeStreamResultFrame,
   identityRedactor,
+  internalErrorRemediation,
 } from "@lando/sdk/command-result";
 import { ConfigError, ConfigExpressionError, ServiceExecError, ServiceStartError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
@@ -114,6 +115,7 @@ test("omits entire unsafe fields when projecting an error", () => {
     _tag: "UnsafeError",
     message: "failure",
     safe: { list: [null, true, 3, "text"], shared: [{ value: "shared" }, { value: "shared" }], empty: {} },
+    remediation: internalErrorRemediation,
   });
 });
 
@@ -153,6 +155,7 @@ test("omits proxy fields without invoking traps when projecting an error", () =>
   expect(Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line)).error).toEqual({
     _tag: "ProxyFieldError",
     message: "failure",
+    remediation: internalErrorRemediation,
   });
   expect(trapCalls).toBe(0);
 });
@@ -180,6 +183,7 @@ for (const kind of ["object", "array"] as const) {
       expect(Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line)).error).toEqual({
         _tag: "SerializerFieldError",
         message: "failure",
+        remediation: internalErrorRemediation,
       });
       expect(serializerCalls).toBe(0);
     });
@@ -192,7 +196,11 @@ test("omits arrays with exotic prototypes when projecting an error", () => {
 
   const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
 
-  expect(envelope.error).toEqual({ _tag: "ExoticArrayError", message: "failure" });
+  expect(envelope.error).toEqual({
+    _tag: "ExoticArrayError",
+    message: "failure",
+    remediation: internalErrorRemediation,
+  });
 });
 
 test("omits own accessors without invoking getters when projecting an error", () => {
@@ -209,7 +217,12 @@ test("omits own accessors without invoking getters when projecting an error", ()
 
   const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
 
-  expect(envelope.error).toEqual({ _tag: "AccessorFieldError", message: "failure", path: "/x" });
+  expect(envelope.error).toEqual({
+    _tag: "AccessorFieldError",
+    message: "failure",
+    path: "/x",
+    remediation: internalErrorRemediation,
+  });
   expect(getterCalls).toBe(0);
 });
 
@@ -226,7 +239,12 @@ test("omits malformed typed fields instead of falling back when extras are valid
   };
   const line = Effect.runSync(encodeCommandResult(options(error)));
   const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
-  expect(envelope.error).toEqual({ _tag: "WrongShapesError", message: "failure", path: "config.path" });
+  expect(envelope.error).toEqual({
+    _tag: "WrongShapesError",
+    message: "failure",
+    path: "config.path",
+    remediation: internalErrorRemediation,
+  });
 });
 
 test("preserves declared service context on non-start execution errors", () => {

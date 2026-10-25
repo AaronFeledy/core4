@@ -1,7 +1,7 @@
 import { types } from "node:util";
 import { Result, Schema } from "effect";
-import { TaggedErrorJson } from "../schema/machine-output.ts";
 import { LandoInternalError } from "../errors/internal.ts";
+import { TaggedErrorJson } from "../schema/machine-output.ts";
 import { isJsonSafe } from "./json-safe.ts";
 
 export const internalErrorRemediation =
@@ -17,14 +17,26 @@ const text = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0 ? value : undefined;
 
 const reserved = new Set([
-  "_tag", "name", "message", "stack", "cause", "remediation", "reason", "issues", "steps",
-  "redactionTokens", "additionalErrors", "role",
+  "_tag",
+  "name",
+  "message",
+  "stack",
+  "cause",
+  "remediation",
+  "reason",
+  "issues",
+  "steps",
+  "redactionTokens",
+  "additionalErrors",
+  "role",
 ]);
 
 export const taggedErrorJson = (error: unknown): typeof TaggedErrorJson.Type => {
   const record = error !== null && typeof error === "object" && !types.isProxy(error) ? error : undefined;
   const tag = text(ownValue(record, "_tag"));
-  const message = text(ownValue(record, "message")) ?? (typeof error === "string" ? error : "An internal Lando error occurred.");
+  const message =
+    text(ownValue(record, "message")) ??
+    (typeof error === "string" ? error : "An internal Lando error occurred.");
   const base = {
     _tag: tag ?? "LandoInternalError",
     message: message.split(/\n\s+at /u)[0] ?? "An internal Lando error occurred.",
@@ -39,7 +51,9 @@ export const taggedErrorJson = (error: unknown): typeof TaggedErrorJson.Type => 
     extra[key] = value;
   }
   for (const key of ["reason", "issues", "steps"] as const) {
-    const decoded = Schema.decodeUnknownResult(TaggedErrorJson.schema.fields[key])(ownValue(record, key));
+    const value = ownValue(record, key);
+    if (!isJsonSafe(value)) continue;
+    const decoded = Schema.decodeUnknownResult(TaggedErrorJson.schema.fields[key])(value);
     if (Result.isSuccess(decoded) && decoded.success !== undefined) extra[key] = decoded.success;
   }
   return { ...extra, ...base };

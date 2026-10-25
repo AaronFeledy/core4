@@ -266,7 +266,7 @@ describe("encodeCommandResult union projection", () => {
   ] as const)("preserves projection errors for keys %j", (keys, value, reason) => {
     // Given a union admitting both object and scalar results.
     const resultSchema = Schema.Union([UnionResultSchema, Schema.String]);
-    // When the encoder attempts an invalid projection, capture its defect.
+    // When the encoder attempts an invalid projection, capture its typed failure.
     const error = Effect.runSync(
       encodeCommandResult({
         command: "app:info",
@@ -274,7 +274,7 @@ describe("encodeCommandResult union projection", () => {
         outcome: { _tag: "success", value },
         redactor: plainRedactor,
         projectResultKeys: keys,
-      }).pipe(Effect.catchDefect((defect) => Effect.succeed(defect))),
+      }).pipe(Effect.catch((error) => Effect.succeed(error))),
     );
     // Then the tagged failure retains its reason, requested keys and public allowlist.
     expect(error).toMatchObject({
