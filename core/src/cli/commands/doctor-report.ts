@@ -13,9 +13,12 @@ import {
   type ConfigService,
   DeprecationService,
   FileSystem,
+  HostProxyService,
   type PathsService,
   type PluginRegistry,
+  RouterService,
   type RuntimeProviderRegistry,
+  SshService,
 } from "@lando/sdk/services";
 
 import { appConfigLint } from "@lando/engine/operations/app-config-lint";
@@ -29,6 +32,7 @@ import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
+import { HostDnsResolver } from "./doctor-host-dns";
 import { legacySnapshotCatalogsDoctor } from "./doctor-legacy-snapshot-catalogs";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
@@ -50,12 +54,8 @@ import {
 import type { DoctorDeprecationEntry, DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
 import { countDoctorChecks } from "./doctor-report-render";
 import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
-import {
-  DefaultSubsystemDoctorLayer,
-  type SubsystemDoctorOptions,
-  type SubsystemDoctorResult,
-  subsystemDoctor,
-} from "./doctor-subsystems";
+import type { SubsystemDoctorOptions, SubsystemDoctorResult } from "./doctor-subsystems";
+import { subsystemDoctor } from "./doctor-subsystems";
 import { appVersionConstraintsForReport } from "./doctor-version-constraint";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
@@ -196,9 +196,7 @@ export interface CollectDoctorReportInput<R> {
   >;
   /**
    * Injected subsystem doctor. Callers that already built a provider runtime
-   * should provide that runtime first so selected RouterService/SshService win
-   * over `DefaultSubsystemDoctorLayer`. `doctorReport()` omits this and keeps
-   * the stub-backed default layer.
+   * provide the selected runtime services. Without them, the section is skipped.
    */
   readonly subsystems?: (options: SubsystemDoctorOptions) => Effect.Effect<SubsystemDoctorResult, never, R>;
   /** Self checks recorded before collection started (e.g. bootstrap failure). */
@@ -227,11 +225,19 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   const { redact } = yield* resolveSecretsRedactor({ sourceEnv });
   const budgetMs = doctorSectionBudgetMs(sourceEnv);
   const selfChecks: DoctorSelfCheck[] = [...(input.initialSelfChecks ?? [])];
+  const skipped: NonNullable<DoctorReport["skipped"]>[number][] = [...(input.skipped ?? [])];
+  if (input.subsystems === undefined && !skipped.some((entry) => entry.section === "subsystems")) {
+    skipped.push({
+      section: "subsystems",
+      status: "skipped",
+      reason: "Runtime subsystem services were not provided; no subsystem inspection was performed.",
+    });
+  }
   yield* tree.start;
-  for (const skipped of input.skipped ?? []) {
-    if (!doctorSections(options).some(({ id }) => id === skipped.section)) continue;
-    yield* tree.startTask(skipped.section);
-    yield* tree.infoTask(skipped.section, `${skipped.section} · skipped · ${skipped.reason}`);
+  for (const entry of skipped) {
+    if (!doctorSections(options).some(({ id }) => id === entry.section)) continue;
+    yield* tree.startTask(entry.section);
+    yield* tree.infoTask(entry.section, `${entry.section} · skipped · ${entry.reason}`);
   }
 
   // Each section is one task in the live tree: it spins while the section
@@ -243,7 +249,7 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     fallback: A,
     outcome: (value: A) => DoctorSectionOutcome,
   ): Effect.Effect<A, never, SR> => {
-    if (input.skipped?.some((entry) => entry.section === name)) return Effect.succeed(fallback);
+    if (skipped.some((entry) => entry.section === name)) return Effect.succeed(fallback);
     return tree.startTask(name).pipe(
       Effect.andThen(isolateDoctorSection({ section: name, effect, fallback, budgetMs, redact })),
       Effect.flatMap((isolated) => {
@@ -279,14 +285,13 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     fix: options.fix === true,
     certs,
   };
-  const subsystems = yield* section(
+  const subsystems = yield* section<SubsystemDoctorResult, never, R>(
     "subsystems",
-    input.subsystems !== undefined
-      ? input.subsystems(subsystemOptions)
-      : subsystemDoctor(subsystemOptions).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
+    input.subsystems !== undefined ? input.subsystems(subsystemOptions) : Effect.succeed(EMPTY_CHECKS),
     EMPTY_CHECKS,
     (result) => checksOutcome("subsystems", result.checks),
   );
+  skipped.push(...(subsystems.skipped ?? []));
   const globalApp = yield* section(
     "global-app",
     globalAppDoctor().pipe(Effect.provide(DefaultGlobalAppDoctorLayer)),
@@ -359,7 +364,7 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   if (filesystemWatch.self !== undefined) selfChecks.push(filesystemWatch.self);
   const report: DoctorReport = {
     version: CORE_VERSION,
-    ...(input.skipped === undefined ? {} : { skipped: input.skipped }),
+    ...(skipped.length === 0 ? {} : { skipped }),
     provider: { checks: provider.checks },
     subsystems: {
       checks: [
@@ -399,10 +404,24 @@ export const doctorReport = Effect.fn("Doctor.report")(
     never,
     ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry
   > =>
-    collectDoctorReport<ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry>({
-      options,
-      provider: doctor(options),
-      deprecations: doctorDeprecations(),
-      appConfig: appConfigForReport(),
+    Effect.gen(function* () {
+      const router = yield* Effect.serviceOption(RouterService);
+      const ssh = yield* Effect.serviceOption(SshService);
+      const hostProxy = yield* Effect.serviceOption(HostProxyService);
+      const hasRuntimeSubsystems = Option.isSome(router) || Option.isSome(ssh) || Option.isSome(hostProxy);
+      return yield* collectDoctorReport<
+        ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry
+      >({
+        options,
+        provider: doctor(options),
+        deprecations: doctorDeprecations(),
+        appConfig: appConfigForReport(),
+        ...(hasRuntimeSubsystems
+          ? {
+              subsystems: (subsystemOptions: SubsystemDoctorOptions) =>
+                subsystemDoctor(subsystemOptions).pipe(Effect.provide(HostDnsResolver.layer)),
+            }
+          : {}),
+      });
     }),
 );

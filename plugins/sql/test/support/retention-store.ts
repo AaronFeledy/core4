@@ -33,36 +33,38 @@ export const makeRetentionTestDeps = async (
   const warnings: unknown[] = [];
   const moverForRoot = (sourceRoot: string) =>
     makeDataMoverService(
-      RuntimeProvider.of({
-        ...TestRuntimeProvider,
-        capabilities: { ...TestRuntimeProvider.capabilities, volumeSnapshot: "native" },
-        listVolumes: ({ app, store }) =>
-          Effect.succeed([
-            {
-              ref: { app: app ?? AppId.make("sql-app"), store: store ?? "sql-app_database_data" },
-              identity: {
-                coordinationKey: `daemon:${store}`,
-                nativeName: store ?? "sql-app_database_data",
-                generation: `volume-instance:${store}`,
-                ownerRoot: AbsolutePath.make(sourceRoot),
-                origin: "created",
+      Effect.succeed(
+        RuntimeProvider.of({
+          ...TestRuntimeProvider,
+          capabilities: { ...TestRuntimeProvider.capabilities, volumeSnapshot: "native" },
+          listVolumes: ({ app, store }) =>
+            Effect.succeed([
+              {
+                ref: { app: app ?? AppId.make("sql-app"), store: store ?? "sql-app_database_data" },
+                identity: {
+                  coordinationKey: `daemon:${store}`,
+                  nativeName: store ?? "sql-app_database_data",
+                  generation: `volume-instance:${store}`,
+                  ownerRoot: AbsolutePath.make(sourceRoot),
+                  origin: "created",
+                },
+                provenance: "known",
               },
-              provenance: "known",
-            },
-          ]),
-        snapshotVolume: ({ snapshotId }) =>
-          Effect.succeed({
-            provider: ProviderId.make("test"),
-            id: snapshotId ?? "snapshot",
-            digest: "sha256:fixture",
-            sizeBytes: 12,
-            format: "native",
-          }),
-        removeVolumeSnapshot: (snapshot) =>
-          Effect.sync(() => {
-            removed.push(snapshot.id);
-          }),
-      }),
+            ]),
+          snapshotVolume: ({ snapshotId }) =>
+            Effect.succeed({
+              provider: ProviderId.make("test"),
+              id: snapshotId ?? "snapshot",
+              digest: "sha256:fixture",
+              sizeBytes: 12,
+              format: "native",
+            }),
+          removeVolumeSnapshot: (snapshot) =>
+            Effect.sync(() => {
+              removed.push(snapshot.id);
+            }),
+        }),
+      ),
       { redactText: (text) => text, publish: () => Effect.void },
       { paths, stateStore },
     );

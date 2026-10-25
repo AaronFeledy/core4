@@ -289,23 +289,3 @@ export const buildDegradedCheck = Effect.fnUntraced(function* (
     solutions: [diagnostic?.solution ?? degradedSolution(spec)],
   });
 });
-
-/**
- * Probe an identity-based subsystem (ready iff its service id is not a
- * fallback/disabled stub).
- */
-export const buildIdCheck = (
-  spec: SubsystemSpec,
-  serviceId: string,
-  fix: boolean,
-  runSetup?: () => Effect.Effect<void, unknown>,
-): Effect.Effect<DoctorSubsystemCheck, never> => {
-  const ready = isReadySubsystemId(serviceId);
-  const baseContext: Record<string, string> = {
-    subsystem: spec.name,
-    subsystemId: serviceId,
-    ready: String(ready),
-  };
-  if (ready) return Effect.succeed(passCheck(spec, baseContext));
-  return buildDegradedCheck(spec, baseContext, fix, runSetup);
-};

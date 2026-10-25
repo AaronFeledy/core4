@@ -383,6 +383,10 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 
 `lando doctor` combines core checks with `provides.doctorChecks`. Every finding has severity, context, and automatic or manual remediation; `--fix` runs only declared automatic actions.
 
+A subsystem check MUST pass only after inspection against the selected available provider, not merely because a service or runner id is registered. Checks that cannot inspect their target MUST be omitted from the check list and reported in the report-level `skipped` array with a reason; `--fix` MUST NOT manufacture a passing result. The library `doctorReport()` without runtime subsystem services skips that section. Doctor does not currently execute service healthchecks or scan app endpoints, so `healthcheck` and `scanner` are skipped; readiness and build gates continue to use runners constructed from the app's selected provider. Plugin healthcheck-runner selection and its registry remain deferred.
+
+Certificate authority selection alone MUST NOT report installed or trusted status. The current certificate authority contract exposes setup and certificate issuance but no read-only trust inspection, so successful selection skips the `certs` subsystem check; selection failures remain attributed findings.
+
 - `DoctorCheckContext` exposes bounded app/provider identity, resource inspection, and path-only executable lookup. It MUST NOT execute candidates, read executable contents or state, or import `@lando/container-runtime`.
 - Bundled `@lando/lando3` contributes read-only `lando3-leftovers` and `lando3-shadow` checks. They MUST NOT mutate or read Lando 3 user state; `LegacyProxyContainerDetected` solely owns legacy proxy detection.
 - With `--app`, the config section runs the same validation as `app:config:lint` and reports its `ConfigLintResult`; uncaught failures stay isolated under §10.9.1.
