@@ -264,12 +264,7 @@ export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")
           }
         });
         if (!rootGone) return false;
-        const removedState = yield* pruneAppliedPlanState(
-          pruneServices.paths,
-          pruneServices.stateStore,
-          entry,
-        );
-        return removedState;
+        return yield* pruneAppliedPlanState(pruneServices.paths, pruneServices.stateStore, entry);
       }),
     ).pipe(
       Effect.provideService(PathsService, pruneServices.paths),

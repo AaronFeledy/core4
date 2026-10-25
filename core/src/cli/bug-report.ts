@@ -90,7 +90,6 @@ export const buildBugReport = (input: {
   }
   const ctx = input.context;
   const cacheDir = ctx.cacheRoot ?? resolveUserCacheRoot();
-  const redacted = (text: string) => redactor.redactString(text);
   const diagnostics = [error, ...causes];
   const app = error.app;
   const appId =
@@ -115,13 +114,13 @@ export const buildBugReport = (input: {
   const extra = mergeExtraFields(
     [...(deepest === undefined ? [] : [["cause", deepest._tag] as const]), ...causeFields],
     diagnosticFields(error),
-  ).map(([key, value]) => [key, redacted(value)] as const);
+  ).map(([key, value]) => [key, redactor.redactString(value)] as const);
   const issues = diagnostics.flatMap((item) => item.issues ?? []);
   return {
-    code: redacted(error._tag),
+    code: redactor.redactString(error._tag),
     commandId: ctx.commandId,
-    body: redacted([...new Set(diagnostics.map((item) => item.message))].join("\n")),
-    remediation: redacted([...new Set(diagnostics.map((item) => item.remediation))].join(" ")),
+    body: redactor.redactString([...new Set(diagnostics.map((item) => item.message))].join("\n")),
+    remediation: redactor.redactString([...new Set(diagnostics.map((item) => item.remediation))].join(" ")),
     appId,
     providerId,
     logsDir: `${cacheDir.replace(/\/+$/u, "")}/logs`,

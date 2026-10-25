@@ -153,3 +153,21 @@ test("shows an additional failure's app and provider only when they differ from 
     "Also failed (PeerError): Same.\n  ↳ Repair peer.\nAlso failed (PeerError): Other.\n  ↳ Repair peer.\n  appId: blog\n  providerId: docker\n",
   );
 });
+
+test("escapes controls without losing blank or trailing additional remediation lines", () => {
+  // Given
+  const cleanup = {
+    _tag: "CleanupError",
+    message: "Cleanup failed.",
+    remediation: "First\taction.\n\nSecond\r\u001b[31m action.\n",
+  };
+  // When
+  const text = formatBugReport({
+    error,
+    additionalErrors: [{ role: "cleanup", error: cleanup }],
+    context,
+    rendererMode: "plain",
+  });
+  // Then
+  expect(text).toContain("  ↳ First\\u0009action.\n  ↳ \n  ↳ Second\\u000d\\u001b[31m action.\n  ↳ \ncode:");
+});

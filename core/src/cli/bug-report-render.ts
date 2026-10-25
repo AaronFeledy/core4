@@ -9,11 +9,7 @@ export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
       error.role
     ];
     lines.push(`${label} (${renderText(error.code)}): ${renderText(error.body).replaceAll("\n", "\n  ")}`);
-    lines.push(
-      ...renderText(error.remediation)
-        .split("\n")
-        .map((line) => `  ↳ ${line}`),
-    );
+    lines.push(...error.remediation.split("\n").map((line) => `  ↳ ${escapeDiagnosticText(line)}`));
     for (const [key, value] of error.extra)
       lines.push(`  ${key}: ${renderText(value).replaceAll("\n", "\n  ")}`);
   }
