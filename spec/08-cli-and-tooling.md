@@ -886,6 +886,10 @@ CLI and MCP failure envelopes MUST share one Cause projection. The primary is th
 
 `CommandWarning` carries `code`, `message`, and optional `remediation`. Only a breaking envelope change may change `apiVersion`.
 
+Every primary and additional `TaggedErrorJson` MUST carry `_tag`, `message`, and required nonblank `remediation`. Unknown failures and serialization fallbacks MUST also satisfy that schema with a specific diagnostic/reporting action. CLI human reports, JSON/YAML envelopes, and MCP MUST use one field-generic SDK diagnostic projection, not error-tag presentation branches. Human formatters MAY specialize by field name (`issues`, `logTail`, `outputTail`); error-owned fields carry tag-specific human context such as a 1-based event step.
+
+Defects at CLI presentation and MCP command-outcome boundaries MUST normalize to `LandoInternalError`, including routing, bootstrap, command, formatter, and finalizer failures. A primary defect exits `1`. Normal stdout/stderr MUST NOT contain stack traces, raw Causes, or `Cause.pretty` embedded in an exception message. Redacted pretty Causes go only to the existing opt-in debug diagnostic channel (`--debug`, structured stderr records); `--trace` supplies invocation timings. Remediation MUST name those flags, explain that debug records can be captured from stderr and runtime worker logs live under the reported `logsDir`, and say how to report the problem. The dependency-light entrypoint fallback remains for failures before dispatch or inside terminal emission.
+
 Validation failures carry the collected `issues` (`ValidationIssue`: `path` as an array of keys and indexes, `message`, optional `rule`, optional `suggestion`, optional authored `source: { file, layer, path }`) in the envelope's `error`, and MCP results carry the same structure. The text renderer prints one line per issue as `<dotted path>: <message>`, subject to the stage boundaries in §7.8. A completed lint returns `ok: true` with `ConfigLintResult`, including `valid: false` and its `violations` when configuration errors were found; a failure that prevents that result uses the failure envelope.
 
 #### 8.11.2 The single serialization seam
