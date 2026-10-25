@@ -24,6 +24,7 @@ import {
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
 
 import type { VolumeCreationFact } from "@lando/sdk/schema";
+import { removeRuntimeContainer } from "../container-removal.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
@@ -665,23 +666,16 @@ const stopContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<voi
     Effect.catch(() => Effect.void),
   );
 
-const removeContainer = (
-  deps: BringUpDeps,
-  service: ServicePlan,
-  name: string,
-): Effect.Effect<void, BringUpError> =>
-  request(deps, { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }).pipe(
-    Effect.flatMap((response) =>
-      response.status === 204 || response.status === 200 || response.status === 404
-        ? Effect.void
-        : Effect.fail(
-            podmanFailure(deps, {
-              service,
-              operation: "bringUp.remove",
-              message: `provider-${deps.options.ctx.providerId} container remove failed with HTTP ${response.status}.`,
-              details: { status: response.status, body: response.body },
-            }),
-          ),
+const removeContainer = (deps: BringUpDeps, service: ServicePlan, name: string) =>
+  removeRuntimeContainer(deps.api, name, { ...deps.options.ctx, operation: "bringUp.remove" }).pipe(
+    Effect.mapError((cause) =>
+      podmanFailure(deps, {
+        service,
+        operation: "bringUp.remove",
+        message: cause.message,
+        details: cause.details,
+        cause,
+      }),
     ),
   );
 

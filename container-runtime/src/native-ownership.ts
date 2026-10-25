@@ -2,12 +2,14 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   LANDO_SHARED_CROSS_APP_NETWORK,
+  appIdentityKey,
   landoSharedNetworkName,
   planAppIdentity,
 } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "./labels.ts";
+import { isOwnershipRoot } from "./ownership-root.ts";
 
 const Labels = Schema.Record(Schema.String, Schema.String);
 const Observation = Schema.Struct({
@@ -20,7 +22,56 @@ const Observation = Schema.Struct({
   labels: Schema.optionalKey(Schema.NullOr(Labels)),
   Config: Schema.optionalKey(Schema.Struct({ Labels: Schema.optionalKey(Labels) })),
 });
+export type NativeObservation = typeof Observation.Type;
 export const Observations = Schema.fromJsonString(Schema.Union([Observation, Schema.Array(Observation)]));
+
+export const decodeNativeObservation = (body: string): NativeObservation | undefined => {
+  const decoded = Schema.decodeUnknownOption(Observations)(body);
+  if (Option.isNone(decoded)) return undefined;
+  if (Schema.is(Observation)(decoded.value)) return decoded.value;
+  return decoded.value.length === 1 ? decoded.value[0] : undefined;
+};
+
+export const coherentContainerOwnership = (
+  labels: Readonly<Record<string, string>>,
+  providerId: string,
+): boolean => {
+  const app = labels[APP_LABEL];
+  const legacy = labels["com.lando.app"];
+  if (app === undefined) {
+    return !!legacy && !Object.keys(labels).some((key) => key.startsWith("dev.lando."));
+  }
+  const root = labels[APP_ROOT_LABEL];
+  return (
+    !!app &&
+    !!root &&
+    isOwnershipRoot(root) &&
+    !!labels[SERVICE_LABEL] &&
+    (legacy === undefined || legacy === app) &&
+    (labels["dev.lando.provider"] === undefined || labels["dev.lando.provider"] === providerId) &&
+    (labels["dev.lando.owner"] === undefined || labels["dev.lando.owner"] === appIdentityKey("owner", root))
+  );
+};
+
+export const coherentPrivateNetworkOwnership = (
+  labels: Readonly<Record<string, string>>,
+  providerId: string,
+): boolean => {
+  const appId = labels[APP_LABEL];
+  const appRoot = labels[APP_ROOT_LABEL];
+  if (!appId || !appRoot || !isOwnershipRoot(appRoot)) return false;
+  return (
+    networkLabelsDecision(
+      labels,
+      privateNetworkLabels({
+        appId,
+        appRoot,
+        ownerKey: appIdentityKey("owner", appRoot),
+        providerId,
+      }),
+    ) === "owned"
+  );
+};
 
 export const privateNetworkLabels = (resource: {
   readonly appId: string;

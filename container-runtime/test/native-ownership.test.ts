@@ -218,7 +218,7 @@ test("bring-down mutates verified native IDs rather than reusable names", async 
     fake.calls.filter((call) => call.method !== "GET").map((call) => `${call.method} ${call.path}`),
   ).toEqual([
     "POST /containers/observed-container/stop",
-    "DELETE /containers/observed-container?force=true",
+    "DELETE /containers/observed-container?force=true&v=true",
     "DELETE /networks/observed-network",
   ]);
 });

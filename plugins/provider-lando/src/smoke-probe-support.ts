@@ -1,3 +1,5 @@
+import { buildContainerRemoveRequest } from "@lando/container-runtime/engine-api";
+import { annotateFailureRole, failureDefectCause } from "@lando/sdk/command-result";
 import { Duration, Effect } from "effect";
 
 import type {
@@ -156,7 +158,28 @@ export const acquireSmokeContainer = (
       Effect.as(input.name),
     ),
     (container) =>
-      removeSmokeResource(deps, input.operation, `/containers/${encodeURIComponent(container)}?force=true`),
+      smokeApiRequest(deps, input.operation, buildContainerRemoveRequest(container)).pipe(
+        Effect.flatMap((response) => {
+          switch (response.status) {
+            case 200:
+            case 204:
+            case 404:
+              return Effect.void;
+            default:
+              return Effect.fail(
+                new ProviderLandoSmokeError({
+                  smokeOperation: input.operation,
+                  message: `Podman could not remove the ${input.operation} smoke container.`,
+                  remediation: smokeRemediation(input.operation),
+                  details: { status: response.status },
+                }),
+              );
+          }
+        }),
+        Effect.catchCause((cause) =>
+          Effect.failCause(failureDefectCause(annotateFailureRole(cause, "cleanup"))),
+        ),
+      ),
   );
 
 export const startSmokeContainer = (deps: SmokeProbeDeps, operation: "run" | "health", name: string) =>

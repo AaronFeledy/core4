@@ -2,6 +2,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AbsolutePath, OwnedResourcesCleanupResult, ServiceName } from "@lando/sdk/schema";
 import type { DestroyOptions, ProviderError } from "@lando/sdk/services";
 import { Effect, Option, Schema } from "effect";
+import { removeRuntimeContainer } from "./container-removal.ts";
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import { Observations, networkLabelsDecision, privateNetworkLabels } from "./native-ownership.ts";
 import { volumeSelectorValue } from "./podman/volume-prune.ts";
@@ -119,21 +120,28 @@ export const makeOwnedResourcesCleanup = (input: {
         )
           return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
       }
-      const removed = yield* request({
-        method: "DELETE",
-        path: `/${collection}/${encodeURIComponent(nativeId)}${resource.kind === "container" ? "?force=true" : ""}`,
-      });
-      if (![200, 204, 404].includes(removed.status))
-        return yield* Effect.fail(
-          new ProviderUnavailableError({
-            providerId: input.ctx.providerId,
-            operation: "cleanupOwnedResources",
-            message: "Verified resource removal failed.",
-            remediation: input.ctx.remediation,
-          }),
-        );
+      const removed =
+        resource.kind === "container"
+          ? yield* removeRuntimeContainer({ request }, nativeId, {
+              ...input.ctx,
+              operation: "cleanupOwnedResources",
+            })
+          : yield* request({ method: "DELETE", path: `/${collection}/${encodeURIComponent(nativeId)}` }).pipe(
+              Effect.flatMap((response) =>
+                [200, 204, 404].includes(response.status)
+                  ? Effect.succeed(response.status !== 404)
+                  : Effect.fail(
+                      new ProviderUnavailableError({
+                        providerId: input.ctx.providerId,
+                        operation: "cleanupOwnedResources",
+                        message: "Verified resource removal failed.",
+                        remediation: input.ctx.remediation,
+                      }),
+                    ),
+              ),
+            );
       yield* input.store.retire(root, resource);
-      if (removed.status !== 404) {
+      if (removed) {
         switch (resource.kind) {
           case "container":
             servicesRemoved.push(resource.service);

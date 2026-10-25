@@ -30,6 +30,12 @@ export interface EngineHttpResponse {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
+/** Compat removal deletes engine-anonymous volumes, never explicitly named mounts. */
+export const buildContainerRemoveRequest = (rawReference: string): EngineHttpRequest => ({
+  method: "DELETE",
+  path: `/containers/${encodeURIComponent(rawReference)}?force=true&v=true`,
+});
+
 export interface EngineHttpApi {
   /** Named-pipe exec attach can stay open after Podman reports command exit. */
   readonly execAttachNeedsInspectCompletion?: boolean;
