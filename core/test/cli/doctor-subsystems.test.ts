@@ -451,19 +451,31 @@ describe("meta:doctor subsystem checks", () => {
     }
   });
 
-  test("skips healthcheck and scanner when no service or endpoint was inspected", async () => {
-    const result = await runDefault();
-    const healthcheck = result.checks.find((check) => check.name === "healthcheck");
-    const scanner = result.checks.find((check) => check.name === "scanner");
+  test.each([false, true])(
+    "skips uninspected subsystems with runtime services provided=%s",
+    async (provided) => {
+      // Given a runtime with or without the inspectable subsystem services.
+      const runtime = provided ? DefaultSubsystemDoctorLayer : dnsLayer([]);
+      // When doctor inspects that runtime.
+      const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(runtime)));
+      // Then missing services and unexecuted probes never become passing checks.
+      const healthcheck = result.checks.find((check) => check.name === "healthcheck");
+      const scanner = result.checks.find((check) => check.name === "scanner");
 
-    expect(healthcheck).toBeUndefined();
-    expect(scanner).toBeUndefined();
-    expect(result.skipped?.map((entry) => entry.section)).toEqual(["healthcheck", "scanner"]);
-    for (const entry of result.skipped ?? []) {
-      expect(entry.status).toBe("skipped");
-      expect(entry.reason.length).toBeGreaterThan(0);
-    }
-  });
+      expect(healthcheck).toBeUndefined();
+      expect(scanner).toBeUndefined();
+      expect(result.checks.map((check) => check.name)).toEqual(
+        provided ? [...EXPECTED_SUBSYSTEMS] : ["certs"],
+      );
+      expect(result.skipped?.map((entry) => entry.section)).toEqual(
+        provided ? ["healthcheck", "scanner"] : ["router", "ssh", "host-proxy", "healthcheck", "scanner"],
+      );
+      for (const entry of result.skipped ?? []) {
+        expect(entry.status).toBe("skipped");
+        expect(entry.reason.length).toBeGreaterThan(0);
+      }
+    },
+  );
 
   test("plain-text renderer surfaces every subsystem name, status, and remediation", async () => {
     const result = await runDefault();

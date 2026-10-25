@@ -244,6 +244,31 @@ const withProvider = (provider: typeof TestRuntimeProvider) =>
     select: () => Effect.succeed(provider),
   });
 
+test.each([
+  { status: "exited", state: "stopped", probes: 0 },
+  { status: "restarting", state: "ready", probes: 1 },
+  { status: "running", state: "ready", probes: 1 },
+])("socket readiness for a $status sidecar returns $state", async ({ status, state, probes }) => {
+  // Given a sidecar and a socket that answers identity requests.
+  let socketProbes = 0;
+  const provider = {
+    ...runningProvider,
+    inspect: () => runningProvider.inspect().pipe(Effect.map((service) => ({ ...service, status }))),
+    exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+  };
+  // When checking readiness through the socket.
+  const result = await Effect.runPromise(
+    sidecarSocketCheck({ _tag: "unix", path: "/agent.sock" }, async () => {
+      socketProbes++;
+    }).pipe(withProvider(provider), Effect.provideService(GlobalAppService, globalApp)),
+  );
+  // Then stopped sidecars skip the socket; a successful socket probe proves readiness otherwise.
+  expect(result).toEqual(
+    state === "stopped" ? { state, detail: "SSH agent sidecar container status: exited." } : { state },
+  );
+  expect(socketProbes).toBe(probes);
+});
+
 test.each([false, true])(
   "exec failure is redacted with RedactionService present=%s",
   async (servicePresent) => {

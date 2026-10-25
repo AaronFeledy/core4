@@ -88,26 +88,22 @@ export const runtimeSshAgentState = runtimeSshAgentCheck.pipe(
 
 export const sidecarSocketCheck = (upstream: AgentRelayUpstream, probe = probeSshAgent) =>
   runtimeSshAgentCheck.pipe(
-    Effect.flatMap(
-      (sidecar): Effect.Effect<SshSidecarReadiness, SshError> =>
-        sidecar.state === "stopped"
-          ? Effect.succeed(sidecar)
-          : Effect.tryPromise({
-              try: () => probe(upstream, { timeoutMs: 2_000 }),
-              catch: (cause: unknown) =>
-                new SshError({
-                  sshId: "sidecar",
-                  message:
-                    causeMessage(cause) +
-                    (cause instanceof Error && cause.cause !== undefined
-                      ? ` ${causeMessage(cause.cause)}`
-                      : ""),
-                  cause,
-                  remediation:
-                    "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
-                }),
-            }).pipe(Effect.as({ state: "ready" as const })),
-    ),
+    Effect.flatMap((sidecar): Effect.Effect<SshSidecarReadiness, SshError> => {
+      if (sidecar.state === "stopped") return Effect.succeed(sidecar);
+      return Effect.tryPromise({
+        try: () => probe(upstream, { timeoutMs: 2_000 }),
+        catch: (cause: unknown) =>
+          new SshError({
+            sshId: "sidecar",
+            message:
+              causeMessage(cause) +
+              (cause instanceof Error && cause.cause !== undefined ? ` ${causeMessage(cause.cause)}` : ""),
+            cause,
+            remediation:
+              "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+          }),
+      }).pipe(Effect.as({ state: "ready" as const }));
+    }),
   );
 
 export const sidecarSocketState = (upstream: AgentRelayUpstream, probe = probeSshAgent) =>

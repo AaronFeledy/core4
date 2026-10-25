@@ -110,20 +110,17 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
             },
           ]
         : []),
-      ...[
-        ["router", proxy],
-        ["ssh", ssh],
-        ["host-proxy", hostProxy],
-      ].flatMap(([section, service]) =>
-        service === undefined
-          ? [
-              {
-                section: String(section),
-                status: "skipped" as const,
-                reason: "Runtime subsystem service was not provided; no inspection was performed.",
-              },
-            ]
-          : [],
+      ...[["router", proxy] as const, ["ssh", ssh] as const, ["host-proxy", hostProxy] as const].flatMap(
+        ([section, service]) =>
+          service === undefined
+            ? [
+                {
+                  section,
+                  status: "skipped" as const,
+                  reason: "Runtime subsystem service was not provided; no inspection was performed.",
+                },
+              ]
+            : [],
       ),
       {
         section: "healthcheck",
