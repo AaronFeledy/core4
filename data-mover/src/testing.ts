@@ -39,7 +39,7 @@ export const makeTestDataMover = (
           message: `Snapshot ${reference} was not found.`,
           snapshotId: reference,
           remediation:
-            "Run `lando db:snapshots` to list snapshot ids and labels, then retry with one of them.",
+            "List snapshots in this scope and retry with an existing id or label.",
         }),
       ),
     findOrphanedSnapshots: Effect.succeed([]),

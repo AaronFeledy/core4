@@ -32,7 +32,11 @@ export const layerUnavailable = Layer.succeed(
     id: UNAVAILABLE_ID,
     run: unavailableOperation(
       (_plan, _appId, service) =>
-        new HealthcheckError({ message: HC_UNAVAILABLE_MESSAGE, service: String(service) }),
+        new HealthcheckError({
+          message: HC_UNAVAILABLE_MESSAGE,
+          service: String(service),
+          remediation: "Run `lando setup` to install a runtime provider, then retry healthchecks.",
+        }),
     ),
   }),
 );

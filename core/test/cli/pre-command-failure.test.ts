@@ -134,6 +134,8 @@ describe("pre-command failure surface", () => {
     const bootstrapError = new LandoRuntimeBootstrapError({
       message: "Failed to construct the app runtime layer.",
       stage: "app",
+      remediation:
+        "Fix app resolution or Landofile loading for this working directory, then re-run the command.",
     });
     const failingRuntime = Layer.effectDiscard(Effect.fail(bootstrapError));
 

@@ -27,7 +27,12 @@ const loadExternalPluginEntry = async (
   try {
     return (await import(pathToFileURL(entryPath).href)) as ExternalPluginModule;
   } catch (cause) {
-    throw pluginLoadError(String(manifest.name), `Failed to import plugin entry ${manifest.entry}`, cause);
+    throw pluginLoadError(
+      String(manifest.name),
+      `Failed to import plugin entry ${manifest.entry}`,
+      cause,
+      `Repair the ${String(manifest.entry)} entry for plugin ${String(manifest.name)}, or reinstall the plugin.`,
+    );
   }
 };
 

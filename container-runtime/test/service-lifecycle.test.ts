@@ -175,6 +175,8 @@ describe("service lifecycle failures", () => {
       providerId: "podman",
       operation: "podman-api",
       message: "socket parse failed",
+      remediation:
+        "Re-run the command after checking `podman` logs for the `podman-api` failure; if it persists, report the error with that operation name.",
     });
     const api: EngineHttpApi = { request: () => Effect.fail(requestFailure) };
 

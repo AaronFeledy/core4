@@ -40,7 +40,7 @@ export class HostProxyOpenerError extends Schema.TaggedError<HostProxyOpenerErro
   opener: Schema.String,
   operation: Schema.Literals(["openUrl", "revealPath"]),
   exitCode: Schema.optionalKey(Schema.Number),
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 const runHostOpener = Effect.fn("HostOpener.run")(function* (

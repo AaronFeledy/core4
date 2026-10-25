@@ -33,6 +33,8 @@ export const waitForExit = Effect.fn("RuntimeProvider.waitForExit")(function* (
         operation: "waitForExit",
         service: target.service,
         message: `Service ${target.service} is not present in the app plan.`,
+        remediation:
+          "Add the missing service to the Landofile or correct the service name, then re-run the command.",
       }),
     );
   }

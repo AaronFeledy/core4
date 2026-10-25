@@ -82,6 +82,8 @@ const mapRequestError = (
         providerId: options.providerId,
         operation: "buildArtifact",
         message: "Container image build request failed.",
+        remediation:
+          "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
       });
 
 const buildStreamError = (body: string): string | undefined => {
@@ -133,6 +135,8 @@ export const requestContainerBuild = (
                 operation: "buildArtifact",
                 message: `Container image build failed with HTTP ${response.status}.`,
                 details: { status: response.status },
+                remediation:
+                  "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
               }),
             );
           }
@@ -164,6 +168,8 @@ export const requestContainerBuild = (
                     operation: "buildArtifact",
                     message: `Built image tag ${input.tag} was not available through the container API.`,
                     details: { status: response.status, tag: input.tag },
+                    remediation:
+                      "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
                   }),
                 ),
           ),

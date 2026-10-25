@@ -168,7 +168,9 @@ const unavailable = (
     message: redactString(withApiReason(message, details)),
     ...(details === undefined ? {} : { details: redactDetails(details) }),
     ...(cause === undefined ? {} : { cause }),
-    ...(remediation === undefined ? {} : { remediation }),
+    remediation:
+      remediation ??
+      `Install or start Docker and confirm it can perform \`${operation}\`, then re-run the command.`,
   });
 
 const internal = (operation: string, message: string, details?: unknown, cause?: unknown) =>
@@ -178,10 +180,17 @@ const internal = (operation: string, message: string, details?: unknown, cause?:
     message: redactString(message),
     ...(details === undefined ? {} : { details: redactDetails(details) }),
     ...(cause === undefined ? {} : { cause }),
+    remediation: `Re-run the command after checking Docker logs for the \`${operation}\` failure; if it persists, report the error with that operation name.`,
   });
 
 const missingApi = (operation: string) =>
-  unavailable(operation, `provider-docker ${operation} requires a Docker API client.`);
+  unavailable(
+    operation,
+    `provider-docker ${operation} requires a Docker API client.`,
+    undefined,
+    undefined,
+    `Ensure the Docker engine API is reachable, then retry \`${operation}\`.`,
+  );
 
 const parseJson = (
   response: DockerHttpResponse,
@@ -275,6 +284,8 @@ export const introspectProviderCapabilities = (
             requiredValue: "Docker info response",
             actualValue: undefined,
             cause,
+            remediation:
+              "Choose a provider that supports `docker-info`, or remove that requirement from the app.",
           })
         : cause,
     ),

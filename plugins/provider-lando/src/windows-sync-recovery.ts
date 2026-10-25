@@ -27,6 +27,8 @@ const failure = (message: string) =>
     ...context,
     operation: "quiesceRetainedFileSync",
     message,
+    remediation:
+      "Install or start the selected runtime provider and confirm it can perform `quiesceRetainedFileSync`.",
   });
 
 const Inventory = Schema.Array(Schema.Struct({ Id: Schema.String }));

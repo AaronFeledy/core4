@@ -295,6 +295,7 @@ export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* 
         filePath: landofilePath,
         line: undefined,
         column: undefined,
+        remediation: `Ensure ${landofilePath} exists and is readable.`,
         cause,
       }),
   });
@@ -305,6 +306,7 @@ export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* 
         filePath: landofilePath,
         line: undefined,
         column: undefined,
+        remediation: `Reduce ${landofilePath} below the explain size limit or split large includes out of the Landofile.`,
         cause: "input-budget",
       }),
     );

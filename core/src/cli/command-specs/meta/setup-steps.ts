@@ -67,13 +67,14 @@ export class ShellProfileIntegrationError extends Schema.TaggedError<ShellProfil
   {
     message: Schema.String,
     stderr: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
 export class SetupStepFailedError extends Schema.TaggedError<SetupStepFailedError>()("SetupStepFailedError", {
   message: Schema.String,
   stepId: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 export const setupDeferredFileSyncPath = (userDataRoot: string): string =>

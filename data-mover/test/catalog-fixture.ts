@@ -108,6 +108,8 @@ const catalogFixture = async (root: string) => {
               providerId: String(id),
               message: "Missing fixture provider",
               operation: "select",
+              remediation:
+                "Install or start the selected runtime provider and confirm it can perform `select`.",
             }),
           ),
   });

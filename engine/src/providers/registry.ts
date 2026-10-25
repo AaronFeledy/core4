@@ -50,6 +50,7 @@ const toProviderUnavailable = (cause: unknown) =>
     operation: "list",
     message: "Unable to list runtime provider plugins.",
     cause,
+    remediation: "Install or start the `unknown` provider and confirm it can perform `list`.",
   });
 
 export const makeRuntimeProviderRegistry = (

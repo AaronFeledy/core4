@@ -180,6 +180,7 @@ const loadRemoteLandofile = Effect.fnUntraced(function* (
         filePath: file,
         line: undefined,
         column: undefined,
+        remediation: `Ensure ${file} exists and is readable.`,
         cause,
       }),
   });
@@ -192,6 +193,7 @@ const loadRemoteLandofile = Effect.fnUntraced(function* (
         filePath: file,
         line: undefined,
         column: undefined,
+        remediation: `Correct the schema and field values in ${file} so the Landofile decodes successfully.`,
         cause: decoded.failure,
       }),
     );
@@ -208,6 +210,7 @@ const writeLandofile = (file: string, landofile: typeof LandofileShape.Type) =>
         filePath: file,
         line: undefined,
         column: undefined,
+        remediation: `Ensure ${file} is writable and its parent directory exists.`,
         cause,
       }),
   });
@@ -290,6 +293,7 @@ const datasetKinds = Effect.fnUntraced(function* (
         new RemoteDatasetUnsupportedError({
           message: `RemoteSource does not support dataset kind ${kind}.`,
           dataset: kind,
+          remediation: `Choose a dataset kind this remote supports, or install a RemoteSource that handles ${kind}.`,
         }),
       );
     }
@@ -404,6 +408,7 @@ export const appRemoteRemove = Effect.fn("AppOperation.remoteRemove")(function* 
       new RemoteError({
         message: `Remote ${options.name} is not configured in this Landofile.`,
         remote: options.name,
+        remediation: `Add remote ${options.name} under remotes: in the Landofile, then retry.`,
       }),
     );
   }
@@ -536,6 +541,7 @@ const appPushWithPlan = Effect.fnUntraced(function* <E, R>(
       new RemoteDatasetUnsupportedError({
         message: "RemoteSource does not support push.",
         remote: entry.name,
+        remediation: "Use a RemoteSource that advertises push, or pull instead of push.",
       }),
     );
   }

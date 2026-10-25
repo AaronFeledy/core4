@@ -998,7 +998,7 @@ const withServiceStartLogTail = (
         message: error.message,
         service: error.service,
         ...(error.details === undefined ? {} : { details: error.details }),
-        ...(error.remediation === undefined ? {} : { remediation: error.remediation }),
+        remediation: error.remediation,
         ...(error.cause === undefined ? {} : { cause: error.cause }),
         logTail,
       });

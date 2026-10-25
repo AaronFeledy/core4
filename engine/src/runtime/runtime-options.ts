@@ -133,6 +133,8 @@ export const bootstrapError = (message: string, cause: unknown): LandoRuntimeBoo
     message,
     stage: "minimal",
     cause,
+    remediation:
+      "Fix the minimal runtime bootstrap failure (paths, permissions, or install layout) and re-run the command.",
   });
 
 export const collectEmbeddingPluginLayers = (

@@ -10,7 +10,7 @@ export class LandofileEventStepFailedError extends Schema.TaggedError<LandofileE
     service: Schema.optional(Schema.String),
     exitCode: Schema.Number,
     outputTail: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -21,7 +21,7 @@ export class LandofileEventLifecycleReentryError extends Schema.TaggedError<Land
     event: Schema.String,
     command: Schema.String,
     chain: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -33,7 +33,7 @@ export class LandofileEventInvocationDepthError extends Schema.TaggedError<Lando
     chain: Schema.Array(Schema.String),
     depth: Schema.Number,
     limit: Schema.Number,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -46,6 +46,6 @@ export class LandofileEventsSkippedError extends Schema.TaggedError<LandofileEve
   {
     message: Schema.String,
     reason: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

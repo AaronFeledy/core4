@@ -45,7 +45,13 @@ const registryLayerFor = (harness: ReturnType<typeof makeHarness>) => {
     ]),
   };
   const unsupported = (name: string) =>
-    Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
+    Effect.fail(
+      new PluginLoadError({
+        message: "unused",
+        pluginName: name,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    );
   const dependencies = Layer.mergeAll(
     harness.layer,
     Layer.succeed(

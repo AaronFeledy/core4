@@ -66,6 +66,7 @@ const unavailable = (ctx: ProviderErrorContext) => (operation: string, message: 
     operation,
     message: redactString(withApiReason(message, details, ctx.redactor), ctx.redactor),
     ...(details === undefined ? {} : { details: redactDetails(details, ctx.redactor) }),
+    remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 
 const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) =>
@@ -82,6 +83,8 @@ const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) 
             requiredValue: "valid JSON Docker info response",
             actualValue: redactString(response.body, ctx.redactor),
             cause,
+            remediation:
+              "Choose a provider that supports `docker-info`, or remove that requirement from the app.",
           }),
       );
 
@@ -419,6 +422,8 @@ export const makeUnixDockerApiClient = (
                 operation: "docker-api",
                 message: "Docker API response did not include an HTTP status code.",
                 details: redactString(spawned.stdout, ctx.redactor),
+                remediation:
+                  "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
               });
             }
             return parsed;

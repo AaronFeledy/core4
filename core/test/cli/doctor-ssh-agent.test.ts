@@ -102,6 +102,7 @@ describe("SSH agent doctor posture", () => {
       filePath: "/app/.lando.yml",
       line: undefined,
       column: undefined,
+      remediation: "Correct the YAML syntax in /app/.lando.yml.",
     });
     // When
     const check = await Effect.runPromise(
@@ -249,7 +250,14 @@ describe("SSH agent doctor posture", () => {
           getAgentSocket: () =>
             ready
               ? input.sshService.getAgentSocket(AppId.make("global"))
-              : Effect.fail(new SshError({ sshId: "sidecar", message: "stopped" })),
+              : Effect.fail(
+                  new SshError({
+                    sshId: "sidecar",
+                    message: "stopped",
+                    remediation:
+                      "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+                  }),
+                ),
         },
       }).pipe(
         Effect.provideService(RuntimeProviderRegistry, sidecarRegistry),
@@ -379,6 +387,8 @@ describe("SSH agent doctor posture", () => {
               new SshError({
                 sshId: "sidecar",
                 message: `${message} HTTP_PROXY_PASSWORD=super-secret`,
+                remediation:
+                  "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
               }),
             ),
         },
@@ -408,7 +418,14 @@ describe("SSH agent doctor posture", () => {
         sshService: {
           ...input.sshService,
           setup: () =>
-            Effect.fail(new SshError({ sshId: "sidecar", message: `sidecar rejected credential ${secret}` })),
+            Effect.fail(
+              new SshError({
+                sshId: "sidecar",
+                message: `sidecar rejected credential ${secret}`,
+                remediation:
+                  "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+              }),
+            ),
         },
       }),
     );

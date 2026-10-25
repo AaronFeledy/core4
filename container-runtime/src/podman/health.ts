@@ -46,6 +46,8 @@ const missingSuccessfulInspect = (ctx: ProviderErrorContext, service: string) =>
     providerId: ctx.providerId,
     operation: "inspect",
     message: `Service ${service} health probe completed without a captured inspect result.`,
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
 const unavailableFromProbe = (

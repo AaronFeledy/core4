@@ -106,6 +106,7 @@ describe("container engine error mapping", () => {
       providerId: "original",
       operation: "request",
       message: "Already classified.",
+      remediation: "Install or start the `original` provider and confirm it can perform `request`.",
     });
 
     // When

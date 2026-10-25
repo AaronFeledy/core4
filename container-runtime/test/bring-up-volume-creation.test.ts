@@ -94,6 +94,8 @@ test.each([false, true])(
       providerId: "podman",
       operation: "receipt",
       message: "Persistence failed.",
+      remediation:
+        "Re-run the command after checking `podman` logs for the `receipt` failure; if it persists, report the error with that operation name.",
     });
     const result = await Effect.runPromise(
       Effect.result(
@@ -153,6 +155,8 @@ test.each(["fails", "interrupts"] as const)(
       providerId: "podman",
       operation: "receipt",
       message: "No receipt.",
+      remediation:
+        "Re-run the command after checking `podman` logs for the `receipt` failure; if it persists, report the error with that operation name.",
     });
     const exit = await Effect.runPromiseExit(
       bringUp(plan, {

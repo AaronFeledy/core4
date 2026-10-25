@@ -41,6 +41,7 @@ const cacheError = (path: string, message: string, cause?: unknown): CacheError 
     key: "cwd-app-map",
     path,
     ...(cause === undefined ? {} : { cause }),
+    remediation: "Delete the Lando cache entry `cwd-app-map` and re-run the command.",
   });
 
 const sha256 = (payload: Uint8Array): Buffer => createHash("sha256").update(payload).digest();

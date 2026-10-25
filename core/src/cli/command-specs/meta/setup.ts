@@ -249,6 +249,8 @@ export const setupSpec: LandoCommandSpec<
           return new ShellProfileIntegrationError({
             message: "Shell profile integration failed.",
             stderr: cause.message,
+            remediation:
+              "Fix shell profile write permissions, then rerun `lando setup` or `lando shellenv` to finish PATH integration.",
           });
         },
       }).pipe(
@@ -261,6 +263,8 @@ export const setupSpec: LandoCommandSpec<
           new ShellProfileIntegrationError({
             message: "Shell profile integration failed.",
             stderr: shellProfile.stderr,
+            remediation:
+              "Fix shell profile write permissions, then rerun `lando setup` or `lando shellenv` to finish PATH integration.",
           }),
         );
       }

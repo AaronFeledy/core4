@@ -277,6 +277,8 @@ describe("provider data plane", () => {
       providerId: "test",
       operation: "importArtifact",
       message: "Provider request did not start before the producer resumed.",
+      remediation:
+        "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
     });
     const source = Stream.fromAsyncIterable(
       (async function* () {
@@ -300,6 +302,8 @@ describe("provider data plane", () => {
               operation: "importArtifact",
               message: "Failed to consume artifact upload.",
               cause,
+              remediation:
+                "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
             }),
         });
       },
@@ -356,6 +360,8 @@ describe("provider data plane", () => {
       providerId: "test",
       operation: "produceArtifact",
       message: "Artifact producer failed.",
+      remediation:
+        "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
     });
     const api: DataPlaneApiClient = {
       request: (request) =>
@@ -370,6 +376,8 @@ describe("provider data plane", () => {
               operation: "importArtifact",
               message: "Artifact upload failed.",
               cause,
+              remediation:
+                "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
             }),
         }),
     };
@@ -507,11 +515,13 @@ describe("provider data plane", () => {
         providerId: "test",
         operation: "inspect",
         message: "Image inspection unavailable.",
+        remediation: "Inspect provider volume state and retry the `inspect` volume operation.",
       });
       const deleteError = new VolumeOperationError({
         providerId: "test",
         operation: "delete",
         message: "Image deletion unavailable.",
+        remediation: "Inspect provider volume state and retry the `delete` volume operation.",
       });
       const provider = makeProviderDataPlane({
         providerId: "test",

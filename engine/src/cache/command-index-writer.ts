@@ -170,6 +170,7 @@ const localIncludePath = async (
       message: `Local include ${source} resolves outside the app root.`,
       key: "app-command",
       path: candidate,
+      remediation: "Delete the Lando cache entry `app-command` and re-run the command.",
     });
   }
   return { filePath: realCandidate, relativePath: relative(realRoot, realCandidate).split(sep).join("/") };
@@ -237,7 +238,12 @@ const resolveAppCommandCacheSource = Effect.fnUntraced(function* (cwd: string) {
         readOptionalFile(join(appRoot, ".lando.lock.yml")),
       ]),
     catch: (cause) =>
-      new CacheError({ message: "Failed to read app-command sources.", key: "app-command", cause }),
+      new CacheError({
+        message: "Failed to read app-command sources.",
+        key: "app-command",
+        cause,
+        remediation: "Delete the Lando cache entry `app-command` and re-run the command.",
+      }),
   });
   return { filePath, stats, landofileSources, includeLockfileBytes };
 });
@@ -364,6 +370,7 @@ const writePluginCommandCacheTask = async (options: WritePluginCommandCacheOptio
       message: `Cannot write plugin-command cache because bundled plugin manifests are missing: ${missing.join(", ")}.`,
       key: "plugin-command",
       cause: { missing },
+      remediation: "Delete the Lando cache entry `plugin-command` and re-run the command.",
     });
   }
 
@@ -534,6 +541,7 @@ export const readAppCommandCache = (
                 message: "Failed to read app-command cache.",
                 key: "app-command",
                 cause,
+                remediation: "Delete the Lando cache entry `app-command` and re-run the command.",
               }),
           }),
     ),
@@ -557,6 +565,7 @@ export const readFreshAppCommandCacheForCwd = (
                 message: "Failed to read app-command cache.",
                 key: "app-command",
                 cause,
+                remediation: "Delete the Lando cache entry `app-command` and re-run the command.",
               }),
           }),
     ),
@@ -578,6 +587,7 @@ export const writeAppCommandCacheStrict = (
                     message: "Failed to write app-command cache.",
                     key: "app-command",
                     cause,
+                    remediation: "Delete the Lando cache entry `app-command` and re-run the command.",
                   }),
           }),
     ),
@@ -593,6 +603,7 @@ export const readPluginCommandCache = (
         message: "Failed to read plugin-command cache.",
         key: "plugin-command",
         cause,
+        remediation: "Delete the Lando cache entry `plugin-command` and re-run the command.",
       }),
   });
 
@@ -608,6 +619,7 @@ export const writePluginCommandCacheStrict = (
             message: "Failed to write plugin-command cache.",
             key: "plugin-command",
             cause,
+            remediation: "Delete the Lando cache entry `plugin-command` and re-run the command.",
           }),
   });
 

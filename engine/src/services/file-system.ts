@@ -27,7 +27,13 @@ const fileError = (path: string, cause: unknown, fallback: string): FileSystemEr
   if (code !== undefined && permissionCodes.has(code)) {
     return new FilePermissionError({ message: messageFrom(cause, fallback), path, cause });
   }
-  return new FileIoError({ message: messageFrom(cause, fallback), path, cause });
+  return new FileIoError({
+    message: messageFrom(cause, fallback),
+    path,
+    cause,
+    remediation:
+      "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+  });
 };
 
 const notFound = (path: string): FileNotFoundError =>

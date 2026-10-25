@@ -699,6 +699,7 @@ describe("pull failure handling", () => {
         path: "/images/create?fromImage=registry.internal%2Fteam%2Fimg&tag=1.0",
         status: 401,
       },
+      remediation: "Install or start the `docker` provider and confirm it can perform `docker-api`.",
     });
 
     // When
@@ -730,6 +731,7 @@ describe("pull failure handling", () => {
       operation: "podman-api",
       message: "Container runtime stream request failed with HTTP 500.",
       cause,
+      remediation: "Install or start the `lando` provider and confirm it can perform `podman-api`.",
     });
 
     // When

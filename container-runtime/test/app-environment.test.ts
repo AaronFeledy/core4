@@ -186,6 +186,7 @@ test("transport failures discard their cause and response data", async () => {
           providerId: "test",
           operation: "request",
           message: "transport-private-canary",
+          remediation: "Install or start the `test` provider and confirm it can perform `request`.",
         }),
       ),
   };

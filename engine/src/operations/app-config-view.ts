@@ -26,7 +26,12 @@ const inspectionValue = (value: unknown) =>
   Schema.decodeUnknownEffect(LandofileSourceValue)(value).pipe(
     Effect.mapError(
       (cause) =>
-        new ConfigError({ message: "Landofile inspection requires serializable source data.", cause }),
+        new ConfigError({
+          message: "Landofile inspection requires serializable source data.",
+          cause,
+          remediation:
+            "Remove non-serializable values from the Landofile sources, then retry `lando app:config`.",
+        }),
     ),
   );
 
@@ -34,7 +39,12 @@ const sourceValue = (value: unknown) =>
   Effect.try({
     try: () => encodeLandofileSourceValue(value),
     catch: (cause) =>
-      new ConfigError({ message: "Landofile inspection requires serializable source data.", cause }),
+      new ConfigError({
+        message: "Landofile inspection requires serializable source data.",
+        cause,
+        remediation:
+          "Remove non-serializable values from the Landofile sources, then retry `lando app:config`.",
+      }),
   }).pipe(Effect.flatMap(inspectionValue));
 
 export const appConfigView = Effect.fn("AppOperation.configView")(function* (options: AppConfigViewOptions) {

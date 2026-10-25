@@ -267,7 +267,12 @@ const fixtureNotFoundError = (name: string, candidates: ReadonlyArray<string>): 
     candidates: [...candidates],
   });
 
-const fixtureIoError = (path: string, message: string): FileIoError => new FileIoError({ message, path });
+const fixtureIoError = (path: string, message: string): FileIoError =>
+  new FileIoError({
+    message,
+    path,
+    remediation: `Ensure \`${path}\` exists and is readable/writable by this user, then re-run the command.`,
+  });
 
 const TIMESTAMP_PATTERN = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z\b|\b\d{10,13}\b/g;
 

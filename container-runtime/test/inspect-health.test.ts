@@ -459,6 +459,8 @@ describe("waitForServiceHealth", () => {
             operation: "inspect",
             message: `failed to reach ${secretUrl}`,
             details: { url: secretUrl },
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `inspect`.",
           }),
         ),
     };

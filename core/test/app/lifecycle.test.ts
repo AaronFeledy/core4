@@ -798,6 +798,8 @@ describe("App handle managed lifecycle scopes", () => {
                 providerId: TestRuntimeProvider.id,
                 operation: "destroy",
                 message: "stop failed",
+                remediation:
+                  "Install or start the selected runtime provider and confirm it can perform `destroy`.",
               }),
             );
           }),
@@ -1061,7 +1063,13 @@ describe("App handle managed lifecycle scopes", () => {
         flushSession: Effect.fnUntraced(function* () {
           flushCalls += 1;
           if (flushCalls === 2) {
-            return yield* Effect.fail(new FileSyncStartError({ engineId: "test", message: "sync failed" }));
+            return yield* Effect.fail(
+              new FileSyncStartError({
+                engineId: "test",
+                message: "sync failed",
+                remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+              }),
+            );
           }
         }),
         pauseSession: () => Effect.void,
@@ -1122,6 +1130,8 @@ describe("App handle managed lifecycle scopes", () => {
                 providerId: TestRuntimeProvider.id,
                 operation: "apply",
                 message: "apply failed",
+                remediation:
+                  "Install or start the selected runtime provider and confirm it can perform `apply`.",
               }),
             );
           }
@@ -1283,7 +1293,13 @@ describe("App handle managed lifecycle scopes", () => {
         setup: () => Effect.void,
         createSession: (spec: FileSyncSessionSpec) =>
           spec.mountKey === "mount-0"
-            ? Effect.fail(new FileSyncStartError({ engineId: "test", message: "sync failed" }))
+            ? Effect.fail(
+                new FileSyncStartError({
+                  engineId: "test",
+                  message: "sync failed",
+                  remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+                }),
+              )
             : Effect.gen(function* () {
                 const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
                 sessions.set(ref, spec);

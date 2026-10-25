@@ -258,7 +258,15 @@ test.each(["docker", "podman", "missing-volume"])("%s keeps the host socket prob
     ).pipe(
       Effect.provideService(SshService, {
         ...service,
-        setup: () => Effect.fail(new SshError({ sshId: "sidecar", message: "offline" })),
+        setup: () =>
+          Effect.fail(
+            new SshError({
+              sshId: "sidecar",
+              message: "offline",
+              remediation:
+                "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+            }),
+          ),
       }),
       Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
       Effect.provideService(GlobalAppService, globalApp),
@@ -384,6 +392,8 @@ test.each([
             new SshError({
               sshId: "sidecar",
               message,
+              remediation:
+                "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
             }),
           ),
       }),
@@ -427,7 +437,14 @@ test.each([false, true])(
                 ...ssh,
                 setup: () =>
                   setupFails
-                    ? Effect.fail(new SshError({ sshId: "sidecar", message: `setup denied ${secret}` }))
+                    ? Effect.fail(
+                        new SshError({
+                          sshId: "sidecar",
+                          message: `setup denied ${secret}`,
+                          remediation:
+                            "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+                        }),
+                      )
                     : Effect.void,
               },
               { _tag: "volume", volume: "agent" },

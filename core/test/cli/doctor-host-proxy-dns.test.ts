@@ -49,7 +49,11 @@ test.each(["lndo.test", "LNDO.Test"])(
 
 test("does not run host-proxy checks when config construction fails", async () => {
   // Given
-  const failure = new ConfigError({ message: "config unavailable", path: "/config.yml" });
+  const failure = new ConfigError({
+    message: "config unavailable",
+    path: "/config.yml",
+    remediation: "Restore /config.yml for the doctor fixture.",
+  });
   const config = Layer.effect(ConfigService, Effect.fail(failure));
 
   // When

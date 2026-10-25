@@ -51,6 +51,7 @@ const enterDir = (root: string): Effect.Effect<string, LandofileParseError> =>
         filePath: root,
         line: undefined,
         column: undefined,
+        remediation: `Ensure the app directory ${root} exists and is accessible.`,
         cause,
       }),
   });

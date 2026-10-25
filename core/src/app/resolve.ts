@@ -42,12 +42,15 @@ const toAppResolveError = (cause: unknown): AppResolveError => {
       reason: "not-found",
       detail: "reserved-id",
       cause,
+      remediation: "Change the Landofile name: to a value other than global.",
     });
   }
   return new AppResolveError({
     message: tag ? `Failed to resolve app (${tag}).` : "Failed to resolve app.",
     reason: "not-found",
     cause,
+    remediation:
+      "Run the command from an app directory with a Landofile, or pass an explicit root to the app.",
   });
 };
 
@@ -103,6 +106,7 @@ const selectorMismatch = (detail: string): AppResolveError =>
     message: "App selector fields do not resolve to the same app.",
     reason: "mismatch",
     detail,
+    remediation: "Use selector fields that resolve to the same app (matching id and root).",
   });
 
 const sameResolvedApp = (left: AppPlan, right: AppPlan): boolean =>
@@ -169,6 +173,7 @@ const resolvePlan = (
               message: `Cannot resolve app by id \`${selector.id}\` without a known root at this bootstrap level.`,
               reason: "unknown-id",
               detail: selector.id,
+              remediation: `Pass root or cwd with id \`${selector.id}\`, or run from that app directory.`,
             }),
           )
         : validateLowerSelectors(
@@ -185,6 +190,7 @@ const resolvePlan = (
                       message: `App id \`${selector.id}\` does not match the app \`${resolved.plan.id}\` at the selected root.`,
                       reason: "mismatch",
                       detail: "id+root",
+                      remediation: `Use app id \`${resolved.plan.id}\` or open the app root that owns \`${selector.id}\`.`,
                     }),
                   ),
             ),

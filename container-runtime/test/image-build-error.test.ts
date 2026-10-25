@@ -167,6 +167,7 @@ test("preserves unavailable classification when the build socket is down", async
         providerId: "podman",
         operation: "buildArtifact",
         message: "Connection refused",
+        remediation: "Install or start the `podman` provider and confirm it can perform `buildArtifact`.",
       }),
     );
 

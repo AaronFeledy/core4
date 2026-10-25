@@ -97,6 +97,7 @@ const loadFailure = new LandofileParseError({
   filePath: ".lando.yml",
   line: undefined,
   column: undefined,
+  remediation: "Correct the YAML syntax in .lando.yml.",
 });
 
 for (const agent of cases) {
@@ -155,7 +156,12 @@ for (const agent of cases) {
 
   test(`${agent.label} maps global configuration failures to its broker error`, async () => {
     // Given
-    const layer = Layer.effect(ConfigService, Effect.fail(new ConfigError({ message: "invalid" })));
+    const layer = Layer.effect(
+      ConfigService,
+      Effect.fail(
+        new ConfigError({ message: "invalid", remediation: "Injected config failure for agent intent." }),
+      ),
+    );
     // When
     const result = await Effect.runPromise(
       agent.resolve({ ...target, landofile }).pipe(Effect.provide(layer), Effect.result),

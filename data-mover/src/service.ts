@@ -329,6 +329,7 @@ const unarchivePayloadWithCap = (
                 message: "Failed to decode host archive endpoint.",
                 format,
                 archivePath: path,
+                remediation: `Recreate "${path}" as a valid tar archive before importing it.`,
                 cause,
               }),
       });
@@ -354,6 +355,7 @@ const unarchivePayloadWithCap = (
                 message: "Failed to decode host archive endpoint.",
                 format,
                 archivePath: path,
+                remediation: `Recreate "${path}" as a valid ${format} archive before importing it.`,
                 cause,
               }),
       });
@@ -595,6 +597,7 @@ const hostSourceIsDirectory = (path: string): Effect.Effect<boolean, DataTransfe
         fromEndpoint: `hostPath:${path}`,
         operation: "stat-host",
         cause,
+        remediation: `Confirm ${path} exists and is readable, then retry the transfer.`,
       }),
   }).pipe(Effect.map((info) => info.isDirectory()));
 

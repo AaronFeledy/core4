@@ -146,6 +146,7 @@ describe("ProviderUrlScanner.layer", () => {
             providerId: TestRuntimeProvider.id,
             operation: "list",
             message: "provider saw MY_TOKEN=abc123",
+            remediation: "Install or start the selected runtime provider and confirm it can perform `list`.",
           }),
         ),
     } satisfies RuntimeProviderShape;

@@ -72,6 +72,7 @@ const unsupportedProviderOperation = (operation: string) =>
     providerId: "stub",
     operation,
     message: `runtime provider stub cannot ${operation}`,
+    remediation: "Install or start the `stub` provider, then re-run the failed command.",
   });
 
 export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvider> = RuntimeProvider.of({

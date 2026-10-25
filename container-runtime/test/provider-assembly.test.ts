@@ -165,12 +165,14 @@ describe("provider assembly", () => {
         "Run `lando start` (or `lando app:start`) to start the app, then retry. Alternatively, pass an AppPlan directly via `target.plan`.",
     });
   });
-  test("preserves the unavailable error without adding optional fields", () => {
+  test("preserves the unavailable error fields with a concrete remediation", () => {
     const error = notImplementedError("lando", "exec");
     expect(error.message).toBe("provider-lando does not implement exec yet.");
     expect(error.providerId).toBe("lando");
     expect(error.operation).toBe("exec");
-    expect(Object.hasOwn(error, "remediation")).toBe(false);
+    expect(error.remediation).toBe(
+      "Install or start the selected runtime provider, then re-run the failed command.",
+    );
     expect(Object.hasOwn(error, "details")).toBe(false);
   });
   test("omits EventService when the host does not provide it", async () => {

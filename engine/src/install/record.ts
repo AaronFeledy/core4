@@ -24,7 +24,7 @@ export class InstallRecordError extends Schema.TaggedError<InstallRecordError>()
   reason: Schema.Literals(["invalid-json", "schema", "unsupported-version", "not-regular-file", "io"]),
   file: Schema.String,
   detail: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 const recordError = (

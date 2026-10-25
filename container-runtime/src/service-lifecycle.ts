@@ -112,6 +112,8 @@ export const postServiceLifecycle = (
           operation: action,
           service: target.service,
           message: `Service ${target.service} was not found.`,
+          remediation:
+            "Add the missing service to the Landofile or correct the service name, then re-run the command.",
         }),
       ),
     },
@@ -149,6 +151,8 @@ export const postExactServiceLifecycle = (
           operation: action,
           service: target.service,
           message: `The inspected runtime for ${target.service} was not found.`,
+          remediation:
+            "Add the missing service to the Landofile or correct the service name, then re-run the command.",
         }),
       ),
     },

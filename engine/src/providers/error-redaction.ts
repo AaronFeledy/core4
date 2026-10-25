@@ -36,7 +36,7 @@ const baseFields = (
   operation: redactor.redactString(error.operation),
   message: redactor.redactString(error.message),
   ...(error.details === undefined ? {} : { details: redactor.redactValue(error.details) }),
-  ...(error.remediation === undefined ? {} : { remediation: redactor.redactString(error.remediation) }),
+  remediation: redactor.redactString(error.remediation),
   ...(error.cause === undefined ? {} : { cause: error.cause }),
 });
 
@@ -64,7 +64,7 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
         ...error,
         message: redactor.redactString(error.message),
         secret: redactor.redactString(error.secret),
-        remediation: error.remediation === undefined ? undefined : redactor.redactString(error.remediation),
+        remediation: redactor.redactString(error.remediation),
       });
     case "SecretReferenceInvalidError":
       return new SecretReferenceInvalidError({

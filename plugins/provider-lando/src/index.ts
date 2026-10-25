@@ -880,7 +880,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         operation: "exec",
         service: target.service,
         message: "Managed Windows Podman stdin execution requires ProcessRunner.",
-        details: { remediation: "Retry with the standard Lando runtime layer." },
+        remediation: "Retry with the standard Lando runtime layer that provides ProcessRunner.",
       });
     const managedRuntimeStatusDeps =
       shouldManageRuntime &&
@@ -1192,6 +1192,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             operation: "matchingPublishPorts",
             message: "Podman returned invalid container network metadata.",
             cause,
+            remediation:
+              "Install or start the `lando` provider and confirm it can perform `matchingPublishPorts`.",
           }),
       });
       if (

@@ -1,8 +1,11 @@
 import { Schema } from "effect";
 
+const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
+
 export class SshError extends Schema.TaggedError<SshError>()("SshError", {
   message: Schema.String,
   sshId: Schema.String,
+  remediation: Remediation,
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -23,7 +26,7 @@ export class SshAgentUnavailableError extends Schema.TaggedError<SshAgentUnavail
       description:
         "Redacted reason from the last sidecar readiness probe, when one failed with a concrete cause.",
     }),
-    remediation: Schema.String,
+    remediation: Remediation,
   },
 ) {}
 
@@ -32,7 +35,7 @@ export class SshAgentTransportError extends Schema.TaggedError<SshAgentTransport
   {
     message: Schema.String,
     stage: Schema.Literals(["broker", "worker", "bridge"]),
-    remediation: Schema.String,
+    remediation: Remediation,
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}

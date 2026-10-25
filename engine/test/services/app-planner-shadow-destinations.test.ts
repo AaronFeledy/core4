@@ -72,11 +72,25 @@ test.each([
 test.each([
   [new FileNotFoundError({ message: "missing", path: "/app/missing" }), true],
   [
-    new FileIoError({ message: "parent is file", path: "/app/file/child", cause: { code: "ENOTDIR" } }),
+    new FileIoError({
+      message: "parent is file",
+      path: "/app/file/child",
+      cause: { code: "ENOTDIR" },
+      remediation:
+        "Ensure `/app/file/child` exists and is readable/writable by this user, then re-run the command.",
+    }),
     false,
   ],
   [new FilePermissionError({ message: "denied", path: "/app/private", cause: { code: "EACCES" } }), true],
-  [new FileIoError({ message: "io", path: "/app/io", cause: { code: "EIO" } }), true],
+  [
+    new FileIoError({
+      message: "io",
+      path: "/app/io",
+      cause: { code: "EIO" },
+      remediation: "Ensure `/app/io` exists and is readable/writable by this user, then re-run the command.",
+    }),
+    true,
+  ],
 ] as const)("preserves shadow eligibility for stat failure %j", async (error, expected) => {
   // Given the real filesystem service with only stat failing at its boundary.
   const fileSystem = await Effect.runPromise(Effect.provide(FileSystem, BunFileSystem.layer));

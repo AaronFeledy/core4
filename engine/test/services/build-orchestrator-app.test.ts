@@ -296,6 +296,8 @@ describe("BuildOrchestrator artifact phase", () => {
       providerId,
       operation: "buildArtifact",
       message: "synthetic artifact failure",
+      remediation:
+        "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
     });
     const provider = {
       ...TestRuntimeProvider,

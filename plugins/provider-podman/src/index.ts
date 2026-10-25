@@ -302,6 +302,7 @@ export const resolvePodmanSocket = (options: ResolvePodmanSocketOptions): string
       providerId: PROVIDER_ID,
       operation: "select",
       message: "provider-podman socket resolution requires the resolved host platform.",
+      remediation: "Install or start the selected runtime provider and confirm it can perform `select`.",
     });
   }
   return defaultPodmanSocket(options.platform, env);
@@ -586,6 +587,7 @@ const assembleRuntimeProvider = (
         providerId: PROVIDER_ID,
         operation: "select",
         message: "provider-podman construction requires the resolved host platform.",
+        remediation: "Install or start the selected runtime provider and confirm it can perform `select`.",
       }),
     );
   }

@@ -116,7 +116,13 @@ const registryLayer = Layer.effect(
       loadServiceType: (id: string) =>
         id === serviceType.id
           ? Effect.succeed(serviceType)
-          : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
+          : Effect.fail(
+              new PluginLoadError({
+                message: `Unknown service type ${id}.`,
+                pluginName: id,
+                remediation: "Install or register the plugin, then retry.",
+              }),
+            ),
     }),
   ),
 ).pipe(Layer.provide(PluginRegistryLayer.layer));

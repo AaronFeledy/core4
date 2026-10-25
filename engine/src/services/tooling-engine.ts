@@ -30,6 +30,7 @@ export const noCommandsError = (tool: string): ToolingExecError =>
   new ToolingExecError({
     message: `Tooling task ${tool} has no commands to run.`,
     tool,
+    remediation: `Add at least one command under tooling.${tool}, then run \`lando app:cache:refresh\`.`,
   });
 
 const noPrimaryServiceError = (tool: string, services: AppPlan["services"]) => {
@@ -37,6 +38,10 @@ const noPrimaryServiceError = (tool: string, services: AppPlan["services"]) => {
   return new ToolingExecError({
     message: `Tooling task ${tool} did not declare service: and the app has no primary service. Set service: on the task or mark one of the available services as primary${available.length === 0 ? "." : `: ${available}.`}`,
     tool,
+    remediation:
+      available.length === 0
+        ? `Declare a service in the Landofile, or set service: on tooling.${tool}.`
+        : `Set service: on tooling.${tool} to one of: ${available}, or mark a service primary: true.`,
   });
 };
 
@@ -45,6 +50,10 @@ const unknownServiceError = (tool: string, requested: string, services: AppPlan[
   return new ToolingExecError({
     message: `Tooling task ${tool} declared service: ${requested} but no such service exists in the app plan${available.length === 0 ? "." : ` (available: ${available}).`}`,
     tool,
+    remediation:
+      available.length === 0
+        ? `Add service ${requested} to the Landofile, or change tooling.${tool}.service to an existing service.`
+        : `Change tooling.${tool}.service to one of: ${available}.`,
   });
 };
 

@@ -1393,6 +1393,8 @@ describe("meta:doctor host-proxy transport reachability", () => {
             operation: "exec",
             service: target.service,
             message: "service is unavailable",
+            remediation:
+              "Confirm the target service is running and the exec command is valid inside that container, then retry.",
           }),
         );
       },

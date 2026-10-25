@@ -53,6 +53,7 @@ export const windowsStdinExec = (
             service: target.service,
             message: "Managed Windows Podman CLI could not execute the command.",
             details: redactDetails({ cause }),
+            remediation: `Confirm service ${target.service} is running and the managed Windows Podman CLI can exec into it, then retry.`,
           }),
       ),
     );
@@ -81,6 +82,7 @@ export const windowsStdinExecStream = (
             service: target.service,
             message: "Managed Windows Podman CLI could not stream the command.",
             details: redactDetails({ cause }),
+            remediation: `Confirm service ${target.service} is running and the managed Windows Podman CLI can stream exec into it, then retry.`,
           }),
       ),
     );

@@ -63,6 +63,8 @@ const execFailure = (
     service: session.service.name,
     message: failure.message,
     details: redactDetails(failure.details, session.ctx.redactor),
+    remediation:
+      "Confirm the target service is running and the exec command is valid inside that container, then retry.",
   });
 
 const execStartHttpStatus = (error: ExecError): number | undefined => {

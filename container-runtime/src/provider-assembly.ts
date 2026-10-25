@@ -111,6 +111,7 @@ export const notImplementedError = (providerId: string, operation: string) =>
     providerId,
     operation,
     message: `provider-${providerId} does not implement ${operation} yet.`,
+    remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 
 export const composeAdaptersFor = (ctx: ProviderErrorContext) => ({

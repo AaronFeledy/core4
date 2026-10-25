@@ -27,10 +27,16 @@ export const pluginManifestError = (
     remediation,
   });
 
-export const pluginLoadError = (pluginName: string, message: string, cause?: unknown): PluginLoadError =>
+export const pluginLoadError = (
+  pluginName: string,
+  message: string,
+  cause: unknown | undefined,
+  remediation: string,
+): PluginLoadError =>
   new PluginLoadError({
     message: cause === undefined ? message : `${message}: ${String(cause)}`,
     pluginName,
+    remediation,
   });
 
 export const packageRootPath = (packageRoot: string): string =>
@@ -54,6 +60,8 @@ export const resolvePluginModulePath = async (
     throw pluginLoadError(
       pluginName,
       `Plugin module ${modulePath} resolves outside the plugin package root ${root}.`,
+      undefined,
+      `Point the module path at a file inside the plugin package root ${root}.`,
     );
   }
 
@@ -63,6 +71,8 @@ export const resolvePluginModulePath = async (
     throw pluginLoadError(
       pluginName,
       `Plugin module ${modulePath} resolves through symlink outside the plugin package root ${root}.`,
+      undefined,
+      `Remove the escaping symlink or point the module path inside the plugin package root ${root}.`,
     );
   }
 

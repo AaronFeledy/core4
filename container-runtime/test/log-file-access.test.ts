@@ -137,6 +137,8 @@ const makeFakeApi = () => {
             operation: "fixture",
             message: "fake stream failed",
             cause,
+            remediation:
+              "Re-run the command after checking `test` logs for the `fixture` failure; if it persists, report the error with that operation name.",
           }),
       ),
   };
@@ -320,6 +322,8 @@ describe("Docker-compatible scoped log file access", () => {
               operation: "fixture",
               message: "stream failed",
               cause,
+              remediation:
+                "Re-run the command after checking `test` logs for the `fixture` failure; if it persists, report the error with that operation name.",
             }),
         ),
     };
@@ -403,6 +407,8 @@ describe("Docker-compatible scoped log file access", () => {
               operation: "fixture",
               message: "stream failed",
               cause,
+              remediation:
+                "Re-run the command after checking `test` logs for the `fixture` failure; if it persists, report the error with that operation name.",
             }),
         ),
     };
@@ -579,6 +585,8 @@ test("one scoped helper survives missing-file readiness, rotation, and truncatio
             operation: "fixture",
             message: "protocol failed",
             cause,
+            remediation:
+              "Re-run the command after checking `test` logs for the `fixture` failure; if it persists, report the error with that operation name.",
           }),
       ),
   };

@@ -55,7 +55,14 @@ describe("applyAppRoutes", () => {
           Effect.sync(() => void calls.push(app)).pipe(
             Effect.andThen(
               fails
-                ? Effect.fail(new ProxyError({ message: "router unavailable", proxyId: "test" }))
+                ? Effect.fail(
+                    new ProxyError({
+                      message: "router unavailable",
+                      proxyId: "test",
+                      remediation:
+                        "Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
+                    }),
+                  )
                 : Effect.void,
             ),
           ),

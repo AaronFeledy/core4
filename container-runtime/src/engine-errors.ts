@@ -25,6 +25,7 @@ export const missingService = (ctx: ProviderErrorContext, target: ServiceSelecto
     operation,
     service: target.service,
     message: `Service ${target.service} is not present in the app plan.`,
+    remediation: `Add service ${target.service} to the Landofile or correct the service name, then re-run the command.`,
   });
 
 export const missingRequest = (ctx: ProviderErrorContext, operation: string, message: string) =>

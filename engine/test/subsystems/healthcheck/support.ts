@@ -95,7 +95,14 @@ export const execSequence = (exitCodes: readonly [number, ...number[]]): FakeExe
 };
 
 const providerFailure = (message: string): ServiceExecError =>
-  new ServiceExecError({ providerId: TestRuntimeProvider.id, operation: "exec", service, message });
+  new ServiceExecError({
+    providerId: TestRuntimeProvider.id,
+    operation: "exec",
+    service,
+    message,
+    remediation:
+      "Confirm the target service is running and the exec command is valid inside that container, then retry.",
+  });
 
 export const execFailing = (message: string): FakeExec =>
   makeExec(() => Effect.fail(providerFailure(message)));

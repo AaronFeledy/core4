@@ -85,7 +85,14 @@ const withFailingModify = (state: PluginStateStore): PluginStateStore => ({
       Effect.map((bucket) => ({
         ...bucket,
         modify: <B>(_update: (current: A | null) => readonly [B, A]) =>
-          Effect.fail(new StateStoreError({ reason: "io", operation: "modify", path: String(bucket.path) })),
+          Effect.fail(
+            new StateStoreError({
+              reason: "io",
+              operation: "modify",
+              path: String(bucket.path),
+              remediation: "Injected modify failure for podman applied-state fixture.",
+            }),
+          ),
       })),
     ),
   withLock: state.withLock,

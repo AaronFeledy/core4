@@ -343,6 +343,7 @@ test("failed provider apply retains sessions and the next start resumes the same
                   providerId: "lando",
                   operation: "apply",
                   message: "apply failed",
+                  remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
                 }),
               );
             }

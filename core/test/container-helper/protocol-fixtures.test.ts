@@ -63,6 +63,8 @@ test("the log-file session encodes canonical requests and decodes Go response fr
             operation: "protocol",
             message: "Fixture transport failed",
             cause,
+            remediation:
+              "Re-run the command after checking `fixture` logs for the `protocol` failure; if it persists, report the error with that operation name.",
           }),
       ),
   };

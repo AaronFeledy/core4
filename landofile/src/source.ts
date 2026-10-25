@@ -31,6 +31,7 @@ export const readFileContent = (filePath: string): Effect.Effect<string, Landofi
         filePath,
         line: undefined,
         column: undefined,
+        remediation: `Ensure ${filePath} exists and is readable.`,
         cause,
       }),
   });

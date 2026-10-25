@@ -82,6 +82,7 @@ const makeDiscoverLandofile = Effect.fn("LandofileService.discover")(
         filePath: join(process.cwd(), LANDOFILE_NAME),
         line: undefined,
         column: undefined,
+        remediation: `Correct the Landofile under ${process.cwd()} or run the command from a Lando app root.`,
         cause,
       }),
     );

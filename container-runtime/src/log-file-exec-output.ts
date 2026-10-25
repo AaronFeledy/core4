@@ -23,6 +23,8 @@ const stderrFrameError = (
     operation: "logFileAccess",
     message: "Log helper wrote to stderr.",
     details: redactString(decoder.decode(payload), redactor),
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
 export const makeHelperExecOutputDecoder = (providerId: string, redactor?: Redactor) => {

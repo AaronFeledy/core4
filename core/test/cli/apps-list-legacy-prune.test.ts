@@ -72,6 +72,7 @@ const fixture = async (provider: string) => {
                             reason: "io",
                             operation: "remove",
                             path: legacyPath,
+                            remediation: "Injected legacy path remove failure for prune fixture.",
                           }),
                         ),
                       };

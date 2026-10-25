@@ -60,6 +60,8 @@ export const registryLayer = Layer.succeed(RuntimeProviderRegistry, {
             providerId: typeof target === "string" ? target : "unknown",
             operation: "select",
             message: "Provider is not installed in this test fixture.",
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `select`.",
           }),
         ),
 });

@@ -74,6 +74,7 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
         new ServiceFeatureError({
           message: `Redis authored ${startupOverride} cannot be combined with ${managedOption}; remove the startup override or the managed Redis option.`,
           feature: REDIS_FEATURE_ID,
+          remediation: `Remove the Redis startup override or the managed Redis option so they are not combined, then re-run.`,
         }),
       );
     return serviceFeatureApply(

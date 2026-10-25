@@ -184,6 +184,8 @@ const makeApi = (options: {
             providerId: "podman",
             operation: "logs",
             message: "logs unavailable",
+            remediation:
+              "Re-run the command after checking `podman` logs for the `logs` failure; if it persists, report the error with that operation name.",
           }),
         );
       }

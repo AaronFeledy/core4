@@ -101,7 +101,7 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
                 operation: cause.operation,
                 message: cause.message,
                 ...(cause.details === undefined ? {} : { details: cause.details }),
-                ...(cause.remediation === undefined ? {} : { remediation: cause.remediation }),
+                remediation: cause.remediation,
                 cause,
               })
             : cause,

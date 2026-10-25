@@ -281,6 +281,7 @@ const makeDestroyLayer = (
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -289,6 +290,7 @@ const makeDestroyLayer = (
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,
@@ -705,7 +707,12 @@ describe("lando destroy", () => {
           absent: evidence === "snapshots",
           orphanEvidence: evidence === "orphans",
           ownedEvidence: evidence === "inventory",
-          preDestroyFailure: new EventError({ message: "veto", event: "pre-destroy" }),
+          preDestroyFailure: new EventError({
+            message: "veto",
+            event: "pre-destroy",
+            remediation:
+              "Fix the handler or emitter for event `pre-destroy`, then re-run the operation that publishes it.",
+          }),
         });
         const owned = await seedSnapshot(harness, dataRoot, { id: "vetoed", sourceRoot: testAppRoot });
         const result = await withCwd(testAppRoot, () =>
@@ -871,8 +878,14 @@ describe("lando destroy", () => {
       providerId: "lando",
       operation: "destroy",
       message: "provider destroy failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
     });
-    const proxyFailure = new ProxyError({ message: "route removal failed", proxyId: "recording" });
+    const proxyFailure = new ProxyError({
+      message: "route removal failed",
+      proxyId: "recording",
+      remediation:
+        "Install or repair the `recording` router plugin and ensure `defaultRouterService` points at an installed id.",
+    });
     const harness = makeDestroyLayer({
       providerDestroyEffect: Effect.fail(providerFailure),
       proxyRemoveEffect: Effect.fail(proxyFailure),
@@ -892,7 +905,12 @@ describe("lando destroy", () => {
 
   test("destroys the provider when route removal fails", async () => {
     // Given
-    const proxyFailure = new ProxyError({ message: "route removal failed", proxyId: "recording" });
+    const proxyFailure = new ProxyError({
+      message: "route removal failed",
+      proxyId: "recording",
+      remediation:
+        "Install or repair the `recording` router plugin and ensure `defaultRouterService` points at an installed id.",
+    });
     const harness = makeDestroyLayer({ proxyRemoveEffect: Effect.fail(proxyFailure) });
 
     // When
@@ -1035,6 +1053,8 @@ describe("lando destroy", () => {
         providerId: "docker",
         operation: "removeVolumeSnapshot",
         message: "offline",
+        remediation:
+          "Install or start the `docker` provider and confirm it can perform `removeVolumeSnapshot`.",
       });
       const harness = makeDestroyLayer({
         userDataRoot: dataRoot,
@@ -1332,6 +1352,8 @@ describe("lando destroy", () => {
                 engineId: "mutagen",
                 sessionRef: FileSyncSessionRef.make("session-web-app-mount"),
                 message: "daemon unavailable",
+                remediation:
+                  "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
               }),
             ),
           ),
@@ -1403,6 +1425,8 @@ describe("lando destroy", () => {
                     engineId: "mutagen",
                     sessionRef: String(ref),
                     message: "daemon unavailable",
+                    remediation:
+                      "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
                   }),
                 )
               : Effect.void,
@@ -1479,6 +1503,8 @@ describe("lando destroy", () => {
                 engineId: "mutagen",
                 sessionRef: String(ref),
                 message: "flush unavailable",
+                remediation:
+                  "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
               }),
             ),
           ),

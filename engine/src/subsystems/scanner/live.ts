@@ -123,6 +123,8 @@ const providerListError = (error: ProviderError, redactor: Redactor): ScannerErr
     ),
     scannerId: SCANNER_ID,
     cause: redactor.redactValue(error),
+    remediation:
+      "Start the app services and ensure a scanner implementation is installed, then re-run URL checks.",
   });
 
 const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>

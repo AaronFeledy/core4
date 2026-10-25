@@ -70,6 +70,7 @@ export class DoctorSubsystemFailure extends Schema.TaggedError<DoctorSubsystemFa
       description: Schema.String,
       command: Schema.optionalKey(Schema.String),
     }),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -189,10 +190,12 @@ export const classifySubsystemFailure = (
 ): DoctorSubsystemFailure | undefined => {
   const spec = SPEC_BY_NAME.get(subsystem);
   if (spec === undefined) return undefined;
+  const solution = degradedSolution(spec);
   return new DoctorSubsystemFailure({
     subsystem,
     severity: "warn",
-    solution: degradedSolution(spec),
+    solution,
+    remediation: solution.description,
     ...(cause === undefined ? {} : { cause }),
   });
 };
@@ -204,12 +207,14 @@ export const subsystemFailureDiagnostic = (
 ): DoctorSubsystemFailure => {
   const diagnostic = classifySubsystemFailure(subsystem, serviceId, cause);
   if (diagnostic !== undefined) return diagnostic;
+  const solution = manualSetupSolution(
+    `The ${subsystem} subsystem is not available. Run \`lando setup\` to provision it.`,
+  );
   return new DoctorSubsystemFailure({
     subsystem,
     severity: "warn",
-    solution: manualSetupSolution(
-      `The ${subsystem} subsystem is not available. Run \`lando setup\` to provision it.`,
-    ),
+    solution,
+    remediation: solution.description,
     ...(cause === undefined ? {} : { cause }),
   });
 };

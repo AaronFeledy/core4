@@ -6,7 +6,11 @@ import { unavailableOperation } from "../../src/subsystems/unavailable.ts";
 test("unavailableOperation creates a fresh error for each call", async () => {
   const errors: SshError[] = [];
   const operation = unavailableOperation(() => {
-    const error = new SshError({ message: "unavailable", sshId: "test" });
+    const error = new SshError({
+      message: "unavailable",
+      sshId: "test",
+      remediation: "Repair the `test` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+    });
     errors.push(error);
     return error;
   });
@@ -20,8 +24,23 @@ test("unavailableOperation creates a fresh error for each call", async () => {
 
 test("unavailableOperation forwards typed call arguments to the factory", async () => {
   const operation = unavailableOperation(
-    (id: string, attempt: number) => new SshError({ message: `attempt ${attempt}`, sshId: id }),
+    (id: string, attempt: number) =>
+      new SshError({
+        message: `attempt ${attempt}`,
+        sshId: id,
+        remediation:
+          "Install or repair the SSH service plugin and confirm the agent socket is available, then re-run.",
+      }),
   );
   const result = await Effect.runPromise(operation("requested", 3).pipe(Effect.result));
-  expect(result).toEqual(Result.fail(new SshError({ message: "attempt 3", sshId: "requested" })));
+  expect(result).toEqual(
+    Result.fail(
+      new SshError({
+        message: "attempt 3",
+        sshId: "requested",
+        remediation:
+          "Repair the `requested` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+      }),
+    ),
+  );
 });

@@ -340,6 +340,7 @@ const makeScratchForkLayer = (
                 operation: "registry.write",
                 message: "injected registry upsert failure",
                 cause: undefined,
+                remediation: "Injected registry upsert failure for scratch fork fixture.",
               }),
             );
           }

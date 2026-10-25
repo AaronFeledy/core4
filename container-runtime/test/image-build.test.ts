@@ -314,6 +314,7 @@ test("buildContainerArtifact redacts raw and encoded build args from provider er
     operation: "buildArtifact",
     message: `/build?t=x&buildargs={\"TOKEN\":\"${rawSecret}\"}`,
     details: { path: `/build?t=x&buildargs=%7B%22TOKEN%22%3A%22${encodedSecret}%22%7D` },
+    remediation: "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
   });
   const api = { request: () => Effect.fail(error) };
 

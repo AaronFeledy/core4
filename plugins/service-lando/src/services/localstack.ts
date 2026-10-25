@@ -86,6 +86,13 @@ export const localstackServiceFeature: ServiceFeatureDefinition = {
           feature: LOCALSTACK_FEATURE_ID,
           message: `${formatValidationIssuePath(["services", ctx.serviceName, ...cause.path])}: ${cause.message}${cause.suggestion ? ` ${cause.suggestion}` : ""}`,
           cause,
+          remediation:
+            cause instanceof Error &&
+            "suggestion" in cause &&
+            typeof cause.suggestion === "string" &&
+            cause.suggestion
+              ? cause.suggestion
+              : `Correct the ${LOCALSTACK_FEATURE_ID} feature configuration in the Landofile, then re-run.`,
         });
       },
     }),
