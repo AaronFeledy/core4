@@ -11,7 +11,6 @@ import { isMergeDirectiveMemberAst } from "./landofile-directive.ts";
 const plainTextSlotRejection = (issue: SchemaIssue.Issue): boolean =>
   issue._tag === "InvalidValue" && issue.annotations?.[PLAIN_TEXT_SLOT_REJECTION] === true;
 
-// A key present where its member forbids it (`Never`), seen through authoring wrappers.
 const forbiddenKeyIssue = (issue: SchemaIssue.Issue): boolean => {
   switch (issue._tag) {
     case "Encoding":
@@ -40,7 +39,6 @@ const keyPresencePointer = (issue: SchemaIssue.Issue): boolean =>
 const forbiddenKeyPointer = (issue: SchemaIssue.Issue): boolean =>
   issue._tag === "Pointer" && issue.path.length === 1 && forbiddenKeyIssue(issue.issue);
 
-// Field-level issues of a struct candidate, looking through authoring wrappers.
 const fieldIssues = (issue: SchemaIssue.Issue): readonly SchemaIssue.Issue[] | undefined => {
   switch (issue._tag) {
     case "Encoding":
@@ -48,10 +46,7 @@ const fieldIssues = (issue: SchemaIssue.Issue): readonly SchemaIssue.Issue[] | u
     case "Composite":
       return issue.ast._tag === "Objects" ? issue.issues : undefined;
     case "AnyOf": {
-      const real = issue.issues.filter(
-        (child) =>
-          !(child._tag === "InvalidValue" && child.annotations?.[PLAIN_TEXT_SLOT_REJECTION] === true),
-      );
+      const real = issue.issues.filter((child) => !plainTextSlotRejection(child));
       return real.length === 1 && real[0] !== undefined ? fieldIssues(real[0]) : undefined;
     }
     default:
@@ -59,8 +54,6 @@ const fieldIssues = (issue: SchemaIssue.Issue): readonly SchemaIssue.Issue[] | u
   }
 };
 
-// Whether the authored object could be this source member: its sentinels match,
-// its required keys are present, and none of its forbidden (`Never`) keys are.
 const fitsMember = (member: SchemaAST.AST, value: Readonly<Record<string, unknown>>): boolean => {
   switch (member._tag) {
     case "Objects":
@@ -145,10 +138,7 @@ export const unionValueMessage = (
       case "InvalidType":
         return typeof authoringExpectation(issue.ast).annotations?.message !== "string";
       case "InvalidValue":
-        return (
-          issue.annotations?.[PLAIN_TEXT_SLOT_REJECTION] === true ||
-          typeof issue.annotations?.message !== "string"
-        );
+        return plainTextSlotRejection(issue) || typeof issue.annotations?.message !== "string";
       case "MissingKey":
       case "UnexpectedKey":
       case "Forbidden":
@@ -180,7 +170,7 @@ const rejectsDiscriminator = (issue: SchemaIssue.Issue): boolean => {
     case "MissingKey":
       return true;
     case "InvalidValue":
-      return issue.annotations?.[PLAIN_TEXT_SLOT_REJECTION] === true;
+      return plainTextSlotRejection(issue);
     case "Encoding":
       return rejectsDiscriminator(issue.issue);
     case "Composite":

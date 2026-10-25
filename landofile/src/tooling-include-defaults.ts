@@ -14,8 +14,9 @@ export const layerIncludeDefaults = (
 ): ToolingIncludeDefaults => {
   if (inner === undefined) return outer;
   const origins = inner.varOrigins;
-  const vars = { ...(origins?.replaced || origins?.deleted ? {} : outer.vars), ...inner.vars };
-  const children = new Map(origins?.replaced || origins?.deleted ? [] : outer.varOrigins?.children);
+  const replacesOuterDefaults = origins?.replaced || origins?.deleted;
+  const vars = { ...(replacesOuterDefaults ? {} : outer.vars), ...inner.vars };
+  const children = new Map(replacesOuterDefaults ? [] : outer.varOrigins?.children);
   for (const [key, origin] of origins?.children ?? []) {
     children.set(key, origin);
     if (origin.deleted) delete vars[String(key)];
@@ -42,16 +43,12 @@ export const applyToolingIncludeDefaults = (
     const task = tooling[name];
     const authored = authoredTasks?.children.get(name);
     const origin = effectiveTasks?.children.get(name);
-    if (
-      task === undefined ||
-      task.disabled ||
-      origin === undefined ||
-      authoredTasks?.replaced ||
-      authored?.replaced ||
-      authored?.deleted ||
-      (authored !== undefined && (origin.replaced || !isPlainRecord(composition.included[name])))
-    )
-      continue;
+    if (task === undefined || task.disabled || origin === undefined) continue;
+    const replacesIncludedTask = authoredTasks?.replaced || authored?.replaced || authored?.deleted;
+    if (replacesIncludedTask) continue;
+    const changesIncludedForm =
+      authored !== undefined && (origin.replaced || !isPlainRecord(composition.included[name]));
+    if (changesIncludedForm) continue;
     const ownVars = origin.children.get("vars");
     if (ownVars?.deleted || ownVars?.replaced) continue;
     const addedVars = Object.fromEntries(

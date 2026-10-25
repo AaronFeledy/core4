@@ -1,7 +1,5 @@
-import { join } from "node:path";
 import { EnvironmentValueResolver } from "@lando/sdk/services";
 
-import { LANDOFILE_NAME } from "@lando/landofile/discovery";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
 import { Clock, type Context, Effect, Option } from "effect";
@@ -27,7 +25,7 @@ import { eventStepLabel } from "./event-step-identity.ts";
 
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
-import { disabledToolingSourceForPlan, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
+import { effectiveToolingForPlan, toolingSourcePathForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import type { ToolingStepLeaf } from "../tooling/step-program.ts";
@@ -193,8 +191,7 @@ const runInvocation = Effect.fnUntraced(function* (
     lookupKey: tool,
     task,
     source: {
-      path:
-        disabledToolingSourceForPlan(options.plan, tool) ?? join(String(options.plan.root), LANDOFILE_NAME),
+      path: toolingSourcePathForPlan(options.plan, tool),
       task: tool,
     },
     ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),

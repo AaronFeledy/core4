@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { LANDOFILE_NAME } from "@lando/landofile/discovery";
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import { type AppPlan, type LandofileShape, ServiceName, ToolingTaskShape } from "@lando/sdk/schema";
 import { Schema } from "effect";
@@ -125,3 +127,6 @@ export const disabledToolingSourceForPlan = (plan: AppPlan, name: string): strin
     ? undefined
     : Schema.decodeUnknownSync(ToolingPlan)(value).disabledSources?.[name];
 };
+
+export const toolingSourcePathForPlan = (plan: AppPlan, name: string): string =>
+  disabledToolingSourceForPlan(plan, name) ?? join(String(plan.root), LANDOFILE_NAME);

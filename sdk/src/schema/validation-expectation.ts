@@ -91,9 +91,6 @@ const phrase = (original: SchemaAST.AST, seen: Set<SchemaAST.AST>): string => {
 
 export const validationExpectation = (original: SchemaAST.AST): string => {
   const ast = authoringExpectation(original);
-  return typeof ast.annotations?.message === "string"
-    ? ast.annotations.message
-    : ast._tag === "Never"
-      ? "This key is not allowed here"
-      : `Expected ${phrase(ast, new Set())}`;
+  if (typeof ast.annotations?.message === "string") return ast.annotations.message;
+  return ast._tag === "Never" ? "This key is not allowed here" : `Expected ${phrase(ast, new Set())}`;
 };

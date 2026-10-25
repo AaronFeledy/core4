@@ -41,17 +41,15 @@ export const landofileValidationError = (
 export const validationErrorFromCause = (file: string, parsed: unknown, cause: unknown) => {
   const leaves = Schema.isSchemaError(cause) ? schemaIssueLeaves(cause.issue) : [];
   const unknown = leaves.filter((issue) => issue._tag === "Unexpected");
+  const origins = isPlainRecord(parsed) ? getOrigins(parsed) : undefined;
   const issues = (
     Schema.isSchemaError(cause)
       ? landofileIssuesFromSchema(cause.issue, parsed)
       : validationIssuesFromCause(cause, { fallback: "Invalid Landofile." })
-  ).map((issue) => {
-    const origins = isPlainRecord(parsed) ? getOrigins(parsed) : undefined;
-    return {
-      ...issue,
-      ...(origins === undefined ? {} : { source: valueOriginAt(origins, issue.path).source }),
-    };
-  });
+  ).map((issue) => ({
+    ...issue,
+    ...(origins === undefined ? {} : { source: valueOriginAt(origins, issue.path).source }),
+  }));
   const hasValues = leaves.length === 0 || leaves.some((issue) => issue._tag !== "Unexpected");
   const compose = unknown.filter(
     (issue) =>
