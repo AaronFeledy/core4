@@ -1,15 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
-import {
-  AbsolutePath,
-  AppId,
-  type AppPlan,
-  type LandofileShape,
-  PortablePath,
-  ProviderId,
-} from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan, LandofileShape, PortablePath, ProviderId } from "@lando/sdk/schema";
 import { validEventNames } from "../../src/planner/event-names.ts";
 
 import { runAppEvent } from "../../src/operations/events.ts";
@@ -38,6 +32,44 @@ const eventPlan = (): AppPlan => ({
 });
 
 describe("compileEffectiveTooling", () => {
+  test.each([false, { disabled: true }])(
+    "persists the authored disable source for a service-type task %j",
+    async (disabled) => {
+      const file = "/tmp/same-app/.lando.local.yml";
+      const compiled = await Effect.runPromise(
+        loadAuthoredDocuments([{ file, value: { tooling: { inspect: disabled } } }], {
+          appRoot: "/tmp/same-app",
+          file,
+        }),
+      );
+      const tasks = compileEffectiveTooling({
+        landofile: compiled.document,
+        services: [{ name: "web", tooling: { inspect: { cmd: "service-type" } } }],
+      });
+      const plan = toolingForPlan.attachEffectiveTooling(
+        eventPlan(),
+        tasks,
+        {},
+        toolingForPlan.disabledToolingSources(compiled.document, tasks),
+      );
+      const roundTrip = Schema.decodeUnknownSync(AppPlan)(Schema.encodeSync(AppPlan)(plan));
+      expect(toolingForPlan.effectiveToolingForPlan(roundTrip)?.inspect).toEqual({ disabled: true });
+      expect(toolingForPlan.disabledToolingSourceForPlan(roundTrip, "inspect")).toBe(file);
+    },
+  );
+  test("false drops a service-type task definition wholesale", () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({ tooling: { inspect: false } });
+    // When
+    const tooling = compileEffectiveTooling({
+      landofile,
+      services: [
+        { name: "web", tooling: { inspect: { cmd: "inspect", flags: { loud: { boolean: true } } } } },
+      ],
+    });
+    // Then
+    expect(tooling.inspect).toEqual({ disabled: true });
+  });
   test("attachment preserves internal include provenance", () => {
     // Given
     const landofile = rememberInternalToolingTasks(

@@ -35,6 +35,16 @@ lando info
 
 `lando info` prints URLs and connection details for the configured services. This example supplies a Node environment and Postgres; add your application code and startup command to make Node serve your application.
 
+A task that only needs a command can be a non-empty string. It uses your tooling defaults and the same service selection as an object task with only `cmd:`:
+
+```yaml
+tooling:
+  node: node
+  check: echo checking
+```
+
+Use the object form when you need `service:`, flags, args, or other task settings. An empty shorthand string is rejected; use `false` to turn a task off. The object form still accepts `cmd: ""`, but that is not a disabling shorthand.
+
 MySQL and Postgres already wait on their own probe. To wait on your app, set `healthcheck:` on the service. See [Make start wait for your app](../services/wait-for-your-app.mdx).
 
 ## Add a hostname
@@ -90,6 +100,8 @@ Put machine-local changes in `.lando.local.yml`. Layers load from low to high pr
 Maps deep-merge and scalars use the later value. Collection rules come from each field's schema, not the properties of its entries. Included Landofiles follow the same rules.
 
 These are authored values: Lando merges before interpreting shorthand or adding defaults. A local `appMount: /site` replaces an inherited app-mount object, including its `excludes`. Changing `environment` or `labels` between a list and a map also replaces the earlier value. Use maps when you want individual keys to merge. Only literal `healthcheck: false` discards an inherited probe before later layers; disabled object spellings still participate in ordinary map merging.
+
+The same rule applies to tooling: `tooling.check: echo local` or `tooling.check: false` replaces an inherited task wholesale, including its `service`, `cmds`, and flags. Lando interprets those shorthands only after composing the layers. The bare string `disabled` is rejected; use `false` to disable a task.
 
 Inspect the effective result with `lando app:config --format=json`. A bad local value carries its effective `issues[].path` plus `issues[].source` with the original file, layer, and authored path. The error's `remediation` is separate from those locations. Source coordinates appear only when the parser actually recorded them.
 

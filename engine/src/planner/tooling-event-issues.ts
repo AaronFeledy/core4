@@ -46,7 +46,7 @@ export const toolingAndEventIssues = (resolution: ResolvedLandofile): ReadonlyAr
           `${claimant} ${name} would bind ${collisions.join(" and ")}, which Lando reserves for its own app and remote sync events.`,
           serviceTypeId === undefined
             ? `Rename tooling task ${name}.`
-            : `Set tooling.${name}.disabled: true in the Landofile to drop service type ${serviceTypeId}'s task, or redefine it under another name.`,
+            : `Set tooling.${name}: false in the Landofile to drop service type ${serviceTypeId}'s task, or redefine it under another name.`,
         ),
       );
     }

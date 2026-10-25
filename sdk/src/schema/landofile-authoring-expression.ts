@@ -3,6 +3,7 @@ import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effec
 import { type ExpressionNode, ExpressionTemplate, type PathSegment } from "../expressions/ast.ts";
 import { EXPRESSION_HELPER_NAMES } from "../expressions/evaluator.ts";
 import { parseExpressionEither } from "../expressions/parser.ts";
+import { PLAIN_TEXT_SLOT_REJECTION } from "./authoring-issue-metadata.ts";
 
 // ==== Parsed authoring expressions retain source without resolving values.
 export const AuthoringExpressionExpectedType = Schema.Literals([
@@ -230,10 +231,13 @@ export const authoringExpressionSlot = (
       Schema.toType(AuthoringExpression),
       SchemaTransformation.transformEffect<AuthoringExpression, string>({
         decode: (source, options) => {
-          const fail = (message: string) =>
+          const fail = (message: string, plainText = false) =>
             Effect.fail(
               new SchemaIssue.InvalidValue(
-                { message: `${expectedType} authoring site: ${message}` },
+                {
+                  message: `${expectedType} authoring site: ${message}`,
+                  [PLAIN_TEXT_SLOT_REJECTION]: plainText,
+                },
                 source,
                 options,
               ),
@@ -241,7 +245,7 @@ export const authoringExpressionSlot = (
           const parsed = parseExpressionEither(source, { filePath: "<authoring>" });
           if (Result.isFailure(parsed)) return fail("Invalid expression syntax.");
           const template = parsed.success;
-          if (!hasExpression(template)) return fail("Expected an expression, not plain text.");
+          if (!hasExpression(template)) return fail("Expected an expression, not plain text.", true);
           const form = template.whole ? "whole" : "composite";
           if (!template.whole && expectedType !== "string")
             return fail("Composite expressions require a string site.");

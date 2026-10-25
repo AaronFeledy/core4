@@ -214,6 +214,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   ToolingArgShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ToolingDefaultsShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ToolingStepShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ToolingTaskInput: "sdk/test/schema/tooling-task-input.test.ts",
   ToolingTaskShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ToolingIncludeShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   IncludeEntry: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

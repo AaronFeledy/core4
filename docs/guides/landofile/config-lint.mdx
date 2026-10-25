@@ -20,7 +20,9 @@ It does not run doctor checks, probe a provider, or start a container runtime. E
 
 Lint resolves `{{ recipe.<option> }}` and `{{ env.* }}` expressions the same way `lando start` does, before validation, so a whole-value expression like `primary: "{{ recipe.flag }}"` or `httpPort: "{{ number(default(env.PORT, '8080')) }}"` lints as the boolean or number it resolves to. An unset env var with no `default()` is a violation at that path, reported against the layer file that wrote it. Planner-owned expressions (`app.*`, `proxy.*`, `services.<name>.creds.*`) evaluate too, so a route hostname built from `{{ app.name }}` is checked as the string it becomes. See [Landofile expressions](./expressions.mdx#whole-value-expressions-keep-their-type).
 
-Lint retains each acquired source once. It can report a bad lower fragment even when a higher layer masks the value and the effective configuration is valid. A value that's wrong in its own file and in the composed app is one finding listing both scopes. Identical paths in different files stay separate findings. Event and tooling checks reuse the resolved snapshot instead of loading or evaluating TypeScript again.
+Lint retains each acquired source once. It can report a bad lower fragment even when a higher layer masks the value and the effective configuration is valid. A value that's wrong in its own file and in the composed app is one finding listing both scopes, unless composition moves it to a different path, such as a later position in a merged list. Identical paths in different files stay separate findings. Event and tooling checks reuse the resolved snapshot instead of loading or evaluating TypeScript again.
+
+For example, `tooling.old-build: disabled` is one finding at fragment and effective scope: "`disabled` is not a command; use false to disable a task". Set `tooling.old-build: false` to disable it. To keep the command and its metadata, set `disabled: true` inside the task object instead.
 
 ## What lint catches
 
@@ -118,6 +120,11 @@ Text output prints each finding's path, severity, rule, and message, then where 
 
 That file is wrong on its own (`fragment`) and it breaks the composed app (`effective`), so it's one finding with both scopes. JSON reports it once, with `"scopes": ["fragment", "effective"]`. When the effective path differs from what you wrote, the location line adds `authored as <path>`.
 
+Wrong values name the expected shape, not an internal schema name. For example,
+`services.web: nginx` needs an object. A filter with `type: stripPrefix` and
+`prefix: 5` reports the prefix's wrong type once, with both scopes. It does not
+report errors for other filter types you didn't choose.
+
 An unknown key gets a `suggestion` naming the closest allowed key, as long as the typo is within two edits. `imgae` suggests `image`. A key nowhere near anything valid gets a plain unknown-key message instead. Unknown keys are schema-only violations, never a `NotImplementedError`.
 
 ## Read rejected Compose keys
@@ -138,12 +145,11 @@ When a service type fails to resolve, lint reports that failure and skips the ev
 
 ## Read reserved tooling names
 
-`run`, `scratch`, and every `scratch:*` name belong to scratch apps. A tooling task with one of those names is a `landofile.tooling` finding at `["tooling", "<name>"]`, whether it comes from your Landofile, a tooling include namespaced `scratch`, or a service type. The same rule covers a task whose brackets would land on a reserved event: a task named `start` would bind `pre-start`, and one named `pull` would bind the `post-pull` sync hook. `lando start` rejects the same tasks, and `commandAliases.custom` can't hand those names to a task. A task you wrote points `source` at your `tooling:` entry; rename it. A service type's task points `source` at that service's `type`; drop it by setting `disabled: true` on that name under your `tooling:`.
+`run`, `scratch`, and every `scratch:*` name belong to scratch apps. A tooling task with one of those names is a `landofile.tooling` finding at `["tooling", "<name>"]`, whether it comes from your Landofile, a tooling include namespaced `scratch`, or a service type. The same rule covers a task whose brackets would land on a reserved event: a task named `start` would bind `pre-start`, and one named `pull` would bind the `post-pull` sync hook. `lando start` rejects the same tasks, and `commandAliases.custom` can't hand those names to a task. A task you wrote points `source` at your `tooling:` entry; rename it. A service type's task points `source` at that service's `type`; drop it by setting `tooling.<name>: false`.
 
 ```yaml
 tooling:
-  run:
-    disabled: true
+  run: false
 ```
 
 ## Run it from doctor
@@ -155,6 +161,28 @@ tooling:
 Your editor can catch the structural problems (unknown keys, wrong literal types, an expression where none belongs) before you run anything; lint still owns resolving expressions. See [Validate a Landofile in your editor](./editor-validation.mdx) for the one-line modeline.
 
 <Guide>
+  <Scenario id="filter-reports-only-selected-type" render>
+    <Step name="lint-filter-prefix">
+      <UseFixture name="wrong-filter-prefix" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"routes\",\\s*0,\\s*\"filters\",\\s*0,\\s*\"prefix\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"message\":\\s*\"Expected string\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"scopes\":\\s*\\[\\s*\"fragment\",\\s*\"effective\"\\s*\\]", not: { regex: "\"rule\":[\\s\\S]*\"rule\":" } } }} />
+    </Step>
+    <Step name="cleanup-filter-prefix"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="wrong-type-shares-both-scopes" render>
+    <Step name="lint-wrong-type">
+      <UseFixture name="wrong-type" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.validation\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"api\",\\s*\"primary\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"message\":\\s*\"Expected boolean\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"scopes\":\\s*\\[\\s*\"fragment\",\\s*\"effective\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { not: { regex: "\"rule\":[\\s\\S]*\"rule\":|Symbol\\(|AuthoringFragment|AuthoringShape|authoring site" } } }} />
+    </Step>
+    <Step name="cleanup-wrong-type"><Cleanup /></Step>
+  </Scenario>
   <Scenario id="reject-missing-http-binding" render>
     <Step name="lint-missing-http">
       <UseFixture name="route-missing-http" />
