@@ -204,7 +204,7 @@ const resolveEntries = Effect.fnUntraced(function* (
               source: taskOrigins.source,
             });
           }
-          if (entry.varOrigins !== undefined && (Predicate.isObject(task) || typeof task === "string")) {
+          if (entry.varOrigins !== undefined && Predicate.isObject(task)) {
             const ownVars = taskOrigins.children.get("vars");
             children.set("vars", {
               ...entry.varOrigins,

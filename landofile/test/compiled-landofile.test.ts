@@ -202,6 +202,50 @@ test("keeps namespaced tooling pending IDs and original fragment source paths", 
   }
 });
 
+test.each(["includes", "toolingIncludes"])(
+  "retains deferred string tasks with vars from %s",
+  async (form) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-compiled-tooling-vars-"));
+    try {
+      await Bun.write(join(root, "tasks.yml"), 'tooling:\n  task: "echo {{ app.name }}"\n');
+      const entry =
+        form === "includes"
+          ? "includes:\n  - source: ./tasks.yml\n    kind: tooling\n    namespace: ns\n    aliases: [alias]\n    vars:\n      PORT: 4321\n"
+          : "toolingIncludes:\n  ns:\n    file: ./tasks.yml\n    aliases: [alias]\n    vars:\n      PORT: 4321\n";
+      await Bun.write(join(root, ".lando.yml"), entry);
+      // When
+      const compiled = await Effect.runPromise(
+        loadLandofileLayers(root, join(root, ".lando.yml"), {
+          ports: makeTestLandofilePorts(join(root, "cache")),
+          stateStore: makeTestLandofileStateStore(),
+          templates: { modules: [] },
+        }),
+      );
+      const result = advance(compiled);
+      // Then
+      expect(compiled.pendingSites.map((site) => site.path)).toEqual([
+        ["tooling", "ns:task", "cmd"],
+        ["tooling", "alias:task", "cmd"],
+      ]);
+      expect(compiled.pendingSites[0]?.source).toMatchObject({
+        file: join(root, "tasks.yml"),
+        path: ["tooling", "task"],
+      });
+      expect(Result.isSuccess(result)).toBe(true);
+      if (Result.isSuccess(result))
+        expect(result.success.document).toMatchObject({
+          tooling: {
+            "ns:task": { cmd: "echo resolved", vars: { PORT: 4321 } },
+            "alias:task": { cmd: "echo resolved", vars: { PORT: 4321 } },
+          },
+        });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
 test("uses the same captured environment for mixed-scope sites", async () => {
   const before = process.env.LANE_B_SNAPSHOT;
   try {
