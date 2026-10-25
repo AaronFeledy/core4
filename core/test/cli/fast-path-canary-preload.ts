@@ -18,6 +18,7 @@ Bun.plugin({
   setup(build) {
     for (const { marker, filter } of CANARY_MODULES) {
       build.onLoad({ filter }, (args) => {
+        process.stderr.write(`[FAST_PATH_CANARY] ${marker} was imported on the fast path\n`);
         throw new Error(`[FAST_PATH_CANARY] ${marker} was imported on the fast path: ${args.path}`);
       });
     }
