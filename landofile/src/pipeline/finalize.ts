@@ -16,6 +16,7 @@ import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "../load-expression-provenance.ts";
+import { applyToolingIncludeDefaults } from "../tooling-include-defaults.ts";
 import {
   getInternalToolingTasks,
   rememberInternalToolingTasks,
@@ -195,56 +196,22 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   }
   rememberVersionConstraintEntries(assembled, constraints);
   const validated = yield* validateLandofile(file, assembled);
-  const scalarVarSites: ParsedPendingSite[] = [];
-  const decodedTaskOrigins = new Map(toolingOrigins?.children);
-  const decoded = {
-    ...validated,
-    ...(validated.tooling === undefined
-      ? {}
-      : {
-          tooling: Object.fromEntries(
-            Object.entries(validated.tooling).map(([name, task]) => {
-              const included = tooling.scalarVars.get(name);
-              if (included === undefined || Object.keys(included.vars).length === 0) return [name, task];
-              if (valueOriginAt(effectiveOrigins, ["tooling", name]).source !== included.source)
-                return [name, task];
-              if (included.varOrigins !== undefined) {
-                // These vars exist only after scalar decoding, so their sites already use decoded paths.
-                scalarVarSites.push(
-                  ...survivingSites(included.varOrigins, scope.pendingSites ?? []).map((site) => ({
-                    ...site,
-                    path: ["tooling", name, "vars", ...site.path],
-                  })),
-                );
-                const taskOrigin = valueOriginAt(effectiveOrigins, ["tooling", name]);
-                decodedTaskOrigins.set(name, {
-                  ...taskOrigin,
-                  children: new Map([
-                    ["cmd", taskOrigin],
-                    ["vars", included.varOrigins],
-                  ]),
-                });
-              }
-              return [name, { ...task, vars: { ...included.vars, ...task.vars } }];
-            }),
-          ),
-        }),
-  };
+  const defaults = applyToolingIncludeDefaults(validated, tooling.defaults, {
+    included: tooling.tooling,
+    authored: ownOrigins,
+    effective: effectiveOrigins,
+  });
+  const decoded = defaults.document;
   const compiled = LoadScopedLandofile.make({
     stage: "load-scoped",
     document: decoded,
     pendingSites: [
       ...decodedPendingSites(assembled, decoded, survivingSites(effectiveOrigins, scope.pendingSites ?? [])),
-      ...scalarVarSites,
+      ...survivingSites(defaults.addedOrigins, scope.pendingSites ?? []),
     ],
     context: { appRoot: AbsolutePath.make(context.appRoot), env: scope.env },
   });
-  // Graft decoded origins only after collecting scalar command sites from the original leaf nodes.
-  if (toolingOrigins !== undefined) {
-    const decodedChildren = new Map(effectiveOrigins.children);
-    decodedChildren.set("tooling", { ...toolingOrigins, children: decodedTaskOrigins });
-    rememberOrigins(assembled, { ...effectiveOrigins, children: decodedChildren });
-  }
+  rememberOrigins(assembled, defaults.origins);
   copyLandofileProvenance(assembled, compiled.document);
   return copyLandofileProvenance(assembled, compiled);
 });
