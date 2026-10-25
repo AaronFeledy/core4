@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
-import { Cause, Effect, Layer, Schema } from "effect";
+import { Cause, Context, Effect, Layer, Schema } from "effect";
 import { formatBugReport } from "../../src/cli/bug-report";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { activeLogLevel, setActiveLogLevel } from "../../src/cli/renderer-mode-state";
@@ -93,9 +94,28 @@ for (const stage of ["bootstrap", "body", "formatter", "failure-formatter", "fin
 }
 
 test("tagged defects normalize without changing typed primary and cleanup roles", async () => {
-  const { failureOutcomeFromCause } = await import("@lando/sdk/command-result");
-  const outcome = failureOutcomeFromCause(Cause.die({ _tag: "NotAUserFailure", message: "crashed" }));
-  expect(outcome.error).toMatchObject({ _tag: "LandoInternalError", message: "crashed" });
+  // Given a typed failure and a tagged-looking cleanup defect.
+  const primary = { _tag: "PrimaryError", message: "refused", remediation: "Repair the input." };
+  const cleanup = Cause.annotate(
+    Cause.die({ _tag: "NotAUserFailure", message: "crashed" }),
+    Context.make(FailureRoleAnnotation, "cleanup"),
+  );
+  const io = createBufferedRendererIO();
+  // When the CLI presents the combined cause.
+  await runWithRendererHandling(Effect.failCause(Cause.combine(cleanup, Cause.fail(primary))), {
+    runtime: Layer.empty,
+    command: "app:info",
+    rendererMode: "plain",
+    resultFormat: "json",
+    io,
+    setExitCode: () => undefined,
+    formatError: () => "unused",
+  });
+  // Then only the defect is normalized, retaining its role and the typed primary.
+  expect(JSON.parse(io.stdout()).error).toMatchObject({
+    ...primary,
+    additionalErrors: [{ _tag: "LandoInternalError", message: "crashed", role: "cleanup" }],
+  });
 });
 
 test("debug diagnostics retain the redacted pretty cause in the existing structured stderr channel", async () => {

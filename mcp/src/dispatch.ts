@@ -22,6 +22,7 @@ import {
   type CommandResultOutcome,
   buildCommandResultEnvelope,
   failureOutcomeFromCause,
+  internalError,
 } from "@lando/sdk/command-result";
 import { Logger } from "@lando/sdk/services";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
@@ -269,7 +270,7 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
   const encoded = yield* buildCommandResultEnvelope({
     command: commandId,
     resultSchema: Schema.Unknown,
-    outcome: failureOutcomeFromCause(exit.cause),
+    outcome: failureOutcomeFromCause(exit.cause, internalError),
     redactor,
   });
   const safeEnvelope = yield* redactBoundedJsonValue(encoded, redactor, "MCP tool failure");

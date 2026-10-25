@@ -5,7 +5,6 @@ import {
   encodeCommandResult,
   failureOutcomeFromCause,
   identityRedactor,
-  internalError,
 } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { Cause, Context, Effect, Schema } from "effect";
@@ -21,7 +20,7 @@ test.each(["rollback", "cleanup", "peer"] as const)(
     );
     expect(failureOutcomeFromCause(cause)).toEqual({
       _tag: "failure",
-      error: internalError(operation),
+      error: operation,
       additionalErrors: [{ role, error: secondary }],
     });
   },
@@ -35,7 +34,7 @@ test("falls back to the first typed failure when every reason has a role", () =>
   expect(failureOutcomeFromCause(cause)).toEqual({
     _tag: "failure",
     error: "typed",
-    additionalErrors: [{ role: "cleanup", error: internalError("defect") }],
+    additionalErrors: [{ role: "cleanup", error: "defect" }],
   });
 });
 

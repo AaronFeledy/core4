@@ -16,6 +16,7 @@ import {
   type CommandResultOutcome,
   type CompletedCommandResult,
   failureOutcomeFromCause,
+  internalError,
 } from "@lando/sdk/command-result";
 import type { McpExecute } from "./dispatch";
 import type { McpCommandExecutorShape } from "./port";
@@ -27,7 +28,7 @@ export const outcomeFromExit = (
     return Effect.succeed(exit.value);
   }
   if (Cause.hasInterruptsOnly(exit.cause)) return Effect.interrupt;
-  return Effect.succeed(failureOutcomeFromCause(exit.cause));
+  return Effect.succeed(failureOutcomeFromCause(exit.cause, internalError));
 };
 
 export const makeNestedExecute = (

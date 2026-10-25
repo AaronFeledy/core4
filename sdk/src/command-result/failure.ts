@@ -24,20 +24,21 @@ export const primaryFailureReason = <E>(cause: Cause.Cause<E>): Cause.Reason<E> 
 
 export const failureOutcomeFromCause = (
   cause: Cause.Cause<unknown>,
+  projectDefect: (defect: unknown) => unknown = (defect) => defect,
 ): ProjectedFailure & { readonly _tag: "failure" } => {
   const primary = primaryFailureReason(cause);
   const error =
     primary !== undefined && Cause.isFailReason(primary)
       ? primary.error
       : primary !== undefined && Cause.isDieReason(primary)
-        ? internalError(primary.defect)
+        ? projectDefect(primary.defect)
         : Cause.squash(cause);
   const additionalErrors = cause.reasons.flatMap((reason) => {
     if (reason === primary || Cause.isInterruptReason(reason)) return [];
     return [
       {
         role: roleOf(reason) ?? "peer",
-        error: Cause.isFailReason(reason) ? reason.error : internalError(reason.defect),
+        error: Cause.isFailReason(reason) ? reason.error : projectDefect(reason.defect),
       },
     ];
   });

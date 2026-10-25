@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   encodeCommandResult,
   failureOutcomeFromCause,
-  internalError,
   internalErrorRemediation,
 } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
@@ -127,7 +126,7 @@ describe("command failure projection", () => {
       _tag: "failure",
       error: primary,
       additionalErrors: [
-        { role: "peer", error: internalError(defect) },
+        { role: "peer", error: defect },
         { role: "peer", error: secondary },
       ],
     });
@@ -143,8 +142,8 @@ describe("command failure projection", () => {
     // Then: neither interruption nor the primary is duplicated.
     expect(outcome).toEqual({
       _tag: "failure",
-      error: internalError(first),
-      additionalErrors: [{ role: "peer", error: internalError(second) }],
+      error: first,
+      additionalErrors: [{ role: "peer", error: second }],
     });
   });
 

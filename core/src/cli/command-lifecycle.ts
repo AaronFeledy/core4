@@ -3,6 +3,7 @@ import { Cause, Clock, Context, DateTime, Effect, Exit, Option, Schema } from "e
 import {
   type CompletedCommandResult,
   failureOutcomeFromCause,
+  internalError,
   resolveCommandCompletion,
 } from "@lando/sdk/command-result";
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
@@ -89,7 +90,7 @@ const failureIdentity = (
   cause: Cause.Cause<unknown>,
 ): Pick<CliCommandErrorEvent, "failureTag" | "additionalFailures"> => {
   if (Cause.hasInterruptsOnly(cause)) return { failureTag: "Interrupted" };
-  const failure = failureOutcomeFromCause(cause);
+  const failure = failureOutcomeFromCause(cause, internalError);
   const tagOf = (value: unknown): string =>
     typeof value === "object" && value !== null && "_tag" in value && typeof value._tag === "string"
       ? value._tag
@@ -188,7 +189,7 @@ export const runCommandLifecycle: <A, E, R>(
         exitCode: outcome.value.exitCode,
       });
     } else {
-      const failure = failureOutcomeFromCause(outcome.cause);
+      const failure = failureOutcomeFromCause(outcome.cause, internalError);
       yield* publishRedacted(CliCommandErrorEvent, {
         _tag: `cli-${options.invocation.commandId}-error`,
         ...terminal,
