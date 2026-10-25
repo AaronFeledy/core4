@@ -20,7 +20,7 @@ It does not run doctor checks, probe a provider, or start a container runtime. E
 
 Lint resolves `{{ recipe.<option> }}` and `{{ env.* }}` expressions the same way `lando start` does, before validation, so a whole-value expression like `primary: "{{ recipe.flag }}"` or `httpPort: "{{ number(default(env.PORT, '8080')) }}"` lints as the boolean or number it resolves to. An unset env var with no `default()` is a violation at that path, reported against the layer file that wrote it. Planner-owned expressions (`app.*`, `proxy.*`, `services.<name>.creds.*`) evaluate too, so a route hostname built from `{{ app.name }}` is checked as the string it becomes. See [Landofile expressions](./expressions.mdx#whole-value-expressions-keep-their-type).
 
-Lint retains each acquired source once. It can report a bad lower fragment even when a higher layer masks the value and the effective configuration is valid. A value that's wrong in its own file and in the composed app is one finding listing both scopes. Identical paths in different files stay separate findings. Event and tooling checks reuse the resolved snapshot instead of loading or evaluating TypeScript again.
+Lint retains each acquired source once. It can report a bad lower fragment even when a higher layer masks the value and the effective configuration is valid. A value that's wrong in its own file and in the composed app is one finding listing both scopes, unless composition moves it to a different path, such as a later position in a merged list. Identical paths in different files stay separate findings. Event and tooling checks reuse the resolved snapshot instead of loading or evaluating TypeScript again.
 
 ## What lint catches
 
