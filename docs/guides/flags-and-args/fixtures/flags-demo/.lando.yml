@@ -53,3 +53,4 @@ tooling:
     disabled: true
     service: web
     cmd: echo legacy
+  retired-shorthand: false

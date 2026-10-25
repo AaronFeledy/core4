@@ -2,7 +2,7 @@
  * Lando 3 `tooling:` as Lando 4 tooling tasks.
  *
  * Lando 3 registered a task only when its value was a mapping. The disabling
- * values `false` and `disabled` pass through; other non-mappings become `false`.
+ * value `false` passes through; other non-mappings become `false`.
  * Positional arguments written into the task name, yargs `options`, and `positionals` become
  * declared `args` and `flags`. A command list becomes ordered `cmds` steps,
  * with `{service: command}` entries as service-targeted step objects.
@@ -20,7 +20,7 @@ export interface LoweredTask {
 }
 
 export interface LoweredTooling {
-  readonly tooling: Readonly<Record<string, V4Wire | false | "disabled">>;
+  readonly tooling: Readonly<Record<string, V4Wire | false>>;
   readonly tasks: ReadonlyMap<string, LoweredTask>;
 }
 
@@ -252,7 +252,7 @@ const lowerTask = (
 };
 
 export const lowerTooling = (value: unknown, report: Report): LoweredTooling => {
-  const tooling: Record<string, V4Wire | false | "disabled"> = {};
+  const tooling: Record<string, V4Wire | false> = {};
   const tasks = new Map<string, LoweredTask>();
   if (!hasPlainObjectPrototype(value)) return { tooling, tasks };
   for (const [key, entry] of Object.entries(value)) {
@@ -278,9 +278,9 @@ export const lowerTooling = (value: unknown, report: Report): LoweredTooling => 
       continue;
     }
     if (!hasPlainObjectPrototype(entry)) {
-      tooling[name] = entry === "disabled" ? "disabled" : false;
+      tooling[name] = false;
       tasks.set(name, { service: undefined });
-      if (entry === false || entry === "disabled") continue;
+      if (entry === false) continue;
       report(
         "rewritten",
         path,

@@ -223,7 +223,7 @@ describe("compileToolingInvocations", () => {
     ]);
   });
 
-  test.each([false, "disabled", { cmd: "echo ok", disabled: true }])(
+  test.each([false, { cmd: "echo ok", disabled: true }])(
     "fails rather than throws when a task is disabled with %j",
     (input) => {
       // Given

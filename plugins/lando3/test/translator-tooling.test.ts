@@ -72,7 +72,7 @@ describe("tooling", () => {
         ],
       },
       iamroot: { service: "appserver", cmd: "id", dir: "/tmp", env: { TIMEOUT: 600 }, user: "root" },
-      "xdebug-off": "disabled",
+      "xdebug-off": false,
       php: false,
     });
     expect(summary(result)).toEqual([
@@ -82,10 +82,11 @@ describe("tooling", () => {
       "rewritten tooling.install.cmd",
       "rewritten tooling.iamroot.user",
       "dropped tooling.iamroot.env.LANDO_X",
+      "rewritten tooling.xdebug-off",
     ]);
   });
 
-  test.each(["echo hi", "true", "42", "null", "[]"])(
+  test.each(["disabled", "echo hi", "true", "42", "null", "[]"])(
     "keeps non-mapping legacy task %s disabled instead of turning it into a command",
     async (value) => {
       // Given

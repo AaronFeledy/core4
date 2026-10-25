@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
 
 import { LandofileIncludeError } from "@lando/sdk/errors";
-import { Effect, Predicate } from "effect";
+import { Effect } from "effect";
 
 import {
   type ValueOrigins,
@@ -10,7 +10,7 @@ import {
   override,
   valueOriginAt,
 } from "@lando/sdk/landofile";
-import type { LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
+import type { LandofileShape } from "@lando/sdk/schema";
 
 import { hasIncludeCycle } from "./include-graph.ts";
 import { attributeIncludeError, includeError, realpathOrSelf } from "./include-guard.ts";
@@ -20,6 +20,7 @@ import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import { rememberOrigins } from "./pipeline/origins.ts";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 import type { SourceDocument } from "./pipeline/source-table.ts";
+import { type ToolingIncludeDefaults, layerIncludeDefaults } from "./tooling-include-defaults.ts";
 import {
   type NormalizedToolingInclude,
   assertCompatibleIncludeFields,
@@ -48,14 +49,8 @@ export interface ResolveToolingIncludesOptions {
   readonly onRelaxedRead?: ToolingSourceContext["onRelaxedRead"];
 }
 
-type ScalarTaskVars = {
-  readonly vars: Readonly<Record<string, ToolingVarLiteral>>;
-  readonly source: AuthoredOrigin;
-  readonly varOrigins: ValueOrigins<AuthoredOrigin> | undefined;
-};
-
 export interface ToolingIncludeResolution {
-  readonly scalarVars: ReadonlyMap<string, ScalarTaskVars>;
+  readonly defaults: ReadonlyMap<string, ToolingIncludeDefaults>;
   readonly sources: readonly SourceDocument[];
   readonly tooling: Readonly<Record<string, unknown>>;
   readonly internalTaskIds: ReadonlyArray<string>;
@@ -64,7 +59,7 @@ export interface ToolingIncludeResolution {
 }
 
 interface Contribution {
-  readonly scalarVars: ToolingIncludeResolution["scalarVars"];
+  readonly defaults: ToolingIncludeResolution["defaults"];
   readonly sources: readonly SourceDocument[];
   readonly origins: ReadonlyMap<string, ValueOrigins<AuthoredOrigin>>;
   readonly tasks: ReadonlyMap<string, unknown>;
@@ -76,12 +71,6 @@ interface Contribution {
 const COLLISION_REMEDIATION =
   "Give the colliding tooling includes distinct namespaces or aliases, or exclude the duplicated task.";
 const CYCLE_REMEDIATION = "Break the tooling include cycle so no fragment transitively includes itself.";
-
-const withIncludeVars = (task: unknown, vars: Readonly<Record<string, ToolingVarLiteral>>): unknown => {
-  if (Object.keys(vars).length === 0 || !Predicate.isObject(task)) return task;
-  const taskVars = Predicate.isObject(task.vars) ? task.vars : {};
-  return { ...task, vars: { ...vars, ...taskVars } };
-};
 
 const taskIds = (entry: NormalizedToolingInclude, name: string): ReadonlyArray<string> =>
   entry.flatten ? [name] : [entry.namespace ?? "", ...entry.aliases].map((prefix) => `${prefix}:${name}`);
@@ -103,8 +92,8 @@ const resolveEntries = Effect.fnUntraced(function* (
   const referencedFiles: LandofileReferencedFile[] = [];
   const sources: SourceDocument[] = [];
   const origins = new Map<string, ValueOrigins<AuthoredOrigin>>();
-  const scalarVars = new Map<string, ScalarTaskVars>();
-  if (entries.length === 0) return { tasks, internal, paths, referencedFiles, sources, origins, scalarVars };
+  const defaults = new Map<string, ToolingIncludeDefaults>();
+  if (entries.length === 0) return { tasks, internal, paths, referencedFiles, sources, origins, defaults };
   if (depth > ctx.maxDepth) {
     return yield* Effect.fail(
       attributeIncludeError(
@@ -184,38 +173,20 @@ const resolveEntries = Effect.fnUntraced(function* (
               }),
             );
           }
-          tasks.set(id, withIncludeVars(task, entry.vars));
+          tasks.set(id, task);
           const taskOrigins =
             fragment.origins.children.get("tooling")?.children.get(name) ??
             nested.origins.get(name) ??
             fragment.origins;
-          const children = new Map(taskOrigins.children);
-          if (typeof task === "string" && task !== "disabled") {
-            // Keep scalar form through composition. A replacing task must drop these vars too.
-            const inherited = Object.hasOwn(localNames, name) ? undefined : nested.scalarVars.get(name);
-            scalarVars.set(id, {
-              vars: { ...entry.vars, ...inherited?.vars },
-              source: taskOrigins.source,
-              varOrigins:
-                entry.varOrigins === undefined
-                  ? inherited?.varOrigins
-                  : {
-                      ...entry.varOrigins,
-                      children: new Map([
-                        ...entry.varOrigins.children,
-                        ...(inherited?.varOrigins?.children ?? []),
-                      ]),
-                    },
-            });
-          }
-          if (entry.varOrigins !== undefined && Predicate.isObject(task)) {
-            const ownVars = taskOrigins.children.get("vars");
-            children.set("vars", {
-              ...entry.varOrigins,
-              children: new Map([...entry.varOrigins.children, ...(ownVars?.children ?? [])]),
-            });
-          }
-          origins.set(id, { ...taskOrigins, children });
+          defaults.set(
+            id,
+            layerIncludeDefaults(
+              { vars: entry.vars, varOrigins: entry.varOrigins },
+              Object.hasOwn(localNames, name) ? undefined : nested.defaults.get(name),
+            ),
+          );
+          const { replaced: _replaced, ...contributedOrigin } = taskOrigins;
+          origins.set(id, contributedOrigin);
           if (entry.internal || (!Object.hasOwn(localNames, name) && nested.internal.has(name))) {
             internal.add(id);
           }
@@ -224,7 +195,7 @@ const resolveEntries = Effect.fnUntraced(function* (
     }).pipe(Effect.mapError((error) => attributeIncludeError(error, entry.origin)));
   }
 
-  return { tasks, internal, paths, referencedFiles, sources, origins, scalarVars };
+  return { tasks, internal, paths, referencedFiles, sources, origins, defaults };
 });
 
 export const resolveToolingIncludes = (
@@ -243,7 +214,7 @@ export const resolveToolingIncludes = (
   }
   if (!hasToolingIncludes(options.landofile)) {
     return Effect.succeed({
-      scalarVars: new Map(),
+      defaults: new Map(),
       tooling: {},
       internalTaskIds: [],
       localFragmentPaths: [],
@@ -265,7 +236,7 @@ export const resolveToolingIncludes = (
     [],
   ).pipe(
     Effect.map((contribution) => ({
-      scalarVars: contribution.scalarVars,
+      defaults: contribution.defaults,
       tooling: rememberOrigins(Object.fromEntries(contribution.tasks), {
         source: { file: options.sourceRoot, layer: "canonical", path: ["tooling"] },
         deleted: false,

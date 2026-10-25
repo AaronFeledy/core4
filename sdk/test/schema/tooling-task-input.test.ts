@@ -1,12 +1,36 @@
 import { describe, expect, test } from "bun:test";
 import { mergeLandofiles } from "@lando/sdk/landofile";
-import { LandofileShape, ToolingTaskInput, ToolingTaskShape } from "@lando/sdk/schema";
+import {
+  LandofileAuthoringFragmentNative,
+  LandofileShape,
+  ToolingTaskInput,
+  ToolingTaskShape,
+  validationIssuesFromSchemaIssue,
+} from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
 describe("tooling task shorthands", () => {
+  test.each([LandofileShape, LandofileAuthoringFragmentNative])(
+    "rejects the reserved scalar with one actionable issue through %j",
+    (schema) => {
+      const input = { tooling: { retired: "disabled" } };
+      const result = Schema.decodeUnknownResult(schema)(input, { errors: "all" });
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(validationIssuesFromSchemaIssue(result.failure.issue)).toEqual([
+          {
+            path: ["tooling", "retired"],
+            message: "`disabled` is not a command; use false to disable a task",
+          },
+        ]);
+      }
+    },
+  );
   test.each<readonly [typeof ToolingTaskInput.Encoded, ToolingTaskShape]>([
     [false, { disabled: true }],
-    ["disabled", { disabled: true }],
+    ["DISABLED", { cmd: "DISABLED" }],
+    [" disabled ", { cmd: " disabled " }],
+    [{ cmd: "disabled" }, { cmd: "disabled" }],
     ["echo hi", { cmd: "echo hi" }],
     [
       { cmd: "", service: ":host" },
@@ -44,7 +68,6 @@ describe("tooling task shorthands", () => {
 
   test.each([
     [false, { disabled: true }],
-    ["disabled", { disabled: true }],
     ["echo local", { cmd: "echo local" }],
   ])("replaces an inherited object before decoding shorthand %j", (local, expected) => {
     // Given

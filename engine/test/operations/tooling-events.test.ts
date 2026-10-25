@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import {
   AbsolutePath,
   AppId,
+  AppPlan,
   type CurrentExecutableAppPlan,
   GlobalConfig,
   type LandofileEvents,
@@ -26,10 +28,11 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Option, Redacted, Schema, Stream } from "effect";
 
+import { runEventToolingCommand } from "../../src/operations/event-tooling-command.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
-import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
+import { attachEffectiveTooling, compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
@@ -222,6 +225,73 @@ const harness = (input: {
       Effect.runPromise(runTooling({ name }).pipe(Effect.provide(Layer.merge(layer, sink)), Effect.result)),
   };
 };
+
+test.each(["command", "task"] as const)(
+  "retains disabled origin for a plan-backed event %s",
+  async (kind) => {
+    const file = `${process.cwd()}/.lando.local.yml`;
+    const compiled = await Effect.runPromise(
+      loadAuthoredDocuments(
+        [
+          {
+            file: `${process.cwd()}/.lando.yml`,
+            value: {
+              tooling: {
+                build: { cmd: "echo build", service: "web" },
+                off: { cmd: "echo off" },
+              },
+            },
+          },
+          { file, value: { tooling: { off: { disabled: true } } } },
+          {
+            file: `${process.cwd()}/.lando.user.yml`,
+            value: { tooling: { off: { description: "higher task root" } } },
+          },
+        ],
+        { appRoot: process.cwd(), file: `${process.cwd()}/.lando.yml` },
+      ),
+    );
+    const tooling = compileEffectiveTooling({ landofile: compiled.document, services: [] });
+    const h = harness({ tooling, events: { "pre-build": [{ task: "off" }] } });
+    const persisted = Schema.decodeUnknownSync(AppPlan)(Schema.encodeSync(AppPlan)(h.plan));
+    const result =
+      kind === "command"
+        ? await Effect.runPromise(
+            runEventToolingCommand(persisted, "off", tooling.off ?? {}, []).pipe(
+              Effect.provide(testEnvironmentResolverLayerFor(h.redaction)),
+              Effect.result,
+              Effect.provideService(
+                ToolingEngine,
+                ToolingEngine.of({
+                  id: "disabled-source-test",
+                  run: () => Effect.die("disabled task executed"),
+                }),
+              ),
+              Effect.provideService(
+                RuntimeProviderRegistry,
+                RuntimeProviderRegistry.of({
+                  appliedPlansFor: () => Effect.succeed([]),
+                  resolveAppliedPlan: () => Effect.succeed(undefined),
+                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                  list: Effect.succeed([]),
+                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                  select: () => Effect.die("disabled task selected provider"),
+                }),
+              ),
+            ),
+          )
+        : await h.run("build");
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { remediation: expect.stringContaining(file) },
+    });
+    if (kind === "command")
+      expect(result).toMatchObject({
+        failure: { _tag: "ToolingDisabledError", source: { path: file, task: "off" } },
+      });
+    expect(h.executed).toEqual([]);
+  },
+);
 
 test("brackets a top-level tooling run with its pre and post task events", async () => {
   // Given a task whose brackets are declared alongside it
