@@ -27,7 +27,7 @@ import {
   certsCheckContext,
   certsSubsystemId,
 } from "./doctor-certs-status";
-import type { HostDnsResolver } from "./doctor-host-dns";
+import { HostDnsResolver } from "./doctor-host-dns";
 import { buildHostProxyCheck } from "./doctor-host-proxy-check";
 import { doctorSolutionPayloads, orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
@@ -66,11 +66,12 @@ export interface SubsystemDoctorOptions {
 
 export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   options: SubsystemDoctorOptions = {},
-): Effect.fn.Return<SubsystemDoctorResult, never, HostDnsResolver> {
+): Effect.fn.Return<SubsystemDoctorResult, never> {
   const fix = options.fix === true;
   const proxy = Option.getOrUndefined(yield* Effect.serviceOption(RouterService));
   const ssh = Option.getOrUndefined(yield* Effect.serviceOption(SshService));
   const hostProxy = Option.getOrUndefined(yield* Effect.serviceOption(HostProxyService));
+  const resolver = yield* Effect.serviceOption(HostDnsResolver);
 
   const proxyChecks = proxy === undefined ? [] : [yield* buildProxyCheck(proxy, fix)];
   const certs = options.certs ?? UNRESOLVED_CERTS_STATUS;
@@ -89,7 +90,13 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
         );
   const sshChecks =
     ssh === undefined ? [] : [yield* sshAgentPostureCheck({ ...options.sshAgent, sshService: ssh, fix })];
-  const hostProxyChecks = hostProxy === undefined ? [] : [yield* buildHostProxyCheck(hostProxy, fix)];
+  const hostProxyChecks = Option.isNone(resolver)
+    ? []
+    : [
+        yield* buildHostProxyCheck(hostProxy, fix).pipe(
+          Effect.provideService(HostDnsResolver, resolver.value),
+        ),
+      ];
 
   return {
     checks: [
@@ -110,18 +117,26 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
             },
           ]
         : []),
-      ...[["router", proxy] as const, ["ssh", ssh] as const, ["host-proxy", hostProxy] as const].flatMap(
-        ([section, service]) =>
-          service === undefined
-            ? [
-                {
-                  section,
-                  status: "skipped" as const,
-                  reason: "Runtime subsystem service was not provided; no inspection was performed.",
-                },
-              ]
-            : [],
+      ...[["router", proxy] as const, ["ssh", ssh] as const].flatMap(([section, service]) =>
+        service === undefined
+          ? [
+              {
+                section,
+                status: "skipped" as const,
+                reason: "Runtime subsystem service was not provided; no inspection was performed.",
+              },
+            ]
+          : [],
       ),
+      ...(Option.isNone(resolver)
+        ? [
+            {
+              section: "host-proxy",
+              status: "skipped" as const,
+              reason: "Host DNS resolver was not provided; no host DNS inspection was performed.",
+            },
+          ]
+        : []),
       {
         section: "healthcheck",
         status: "skipped",

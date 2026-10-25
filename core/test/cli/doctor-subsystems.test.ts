@@ -465,10 +465,10 @@ describe("meta:doctor subsystem checks", () => {
       expect(healthcheck).toBeUndefined();
       expect(scanner).toBeUndefined();
       expect(result.checks.map((check) => check.name)).toEqual(
-        provided ? [...EXPECTED_SUBSYSTEMS] : ["certs"],
+        provided ? [...EXPECTED_SUBSYSTEMS] : ["certs", "host-proxy"],
       );
       expect(result.skipped?.map((entry) => entry.section)).toEqual(
-        provided ? ["healthcheck", "scanner"] : ["router", "ssh", "host-proxy", "healthcheck", "scanner"],
+        provided ? ["healthcheck", "scanner"] : ["router", "ssh", "healthcheck", "scanner"],
       );
       for (const entry of result.skipped ?? []) {
         expect(entry.status).toBe("skipped");
