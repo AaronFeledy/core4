@@ -40,6 +40,7 @@ export class HostProxyOpenerError extends Schema.TaggedError<HostProxyOpenerErro
   opener: Schema.String,
   operation: Schema.Literals(["openUrl", "revealPath"]),
   exitCode: Schema.optionalKey(Schema.Number),
+  cause: Schema.optional(Schema.Unknown),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
@@ -51,15 +52,16 @@ const runHostOpener = Effect.fn("HostOpener.run")(function* (
   const redaction = yield* Effect.serviceOption(RedactionService);
   const [cmd, ...args] = argv;
   const runner = yield* ProcessRunner;
-  const failure = (exitCode?: number) =>
+  const failure = (exitCode?: number, cause?: unknown) =>
     new HostProxyOpenerError({
       message: "The host opener failed.",
       opener: cmd,
       operation,
+      cause,
       ...(exitCode === undefined ? {} : { exitCode }),
       remediation: "Check that your host has a working default browser or file manager and desktop session.",
     });
-  const launch = runner.run({ cmd, args }).pipe(Effect.mapError(() => failure()));
+  const launch = runner.run({ cmd, args }).pipe(Effect.mapError((cause) => failure(undefined, cause)));
   const result = yield* redaction._tag === "Some"
     ? launch.pipe(
         Effect.provideService(RedactionService, {
