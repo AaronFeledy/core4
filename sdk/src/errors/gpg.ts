@@ -4,6 +4,7 @@ export class GpgAgentUnavailableError extends Schema.TaggedError<GpgAgentUnavail
   "GpgAgentUnavailableError",
   {
     message: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
     reason: Schema.Literals([
       "host-agent-not-found",
       "socket-missing",

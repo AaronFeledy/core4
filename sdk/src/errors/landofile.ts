@@ -171,6 +171,7 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
   {
     message: Schema.String,
     file: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
     issues: Schema.Array(ValidationIssue),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
       description: "Action required to correct the authored configuration.",
