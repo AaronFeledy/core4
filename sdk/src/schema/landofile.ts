@@ -114,7 +114,7 @@ export const MountInput = Schema.Union([
     /** Includes — re-bind specific excluded paths. */
     includes: Schema.optionalKey(Schema.Array(Schema.String)),
   }),
-]).annotate({ description: MOUNT_INPUT_DESCRIPTION });
+]).annotate({ description: MOUNT_INPUT_DESCRIPTION, expected: "a source:target string or a mount object" });
 export type MountInput = typeof MountInput.Type;
 
 /** Storage input — named volume reference. */
@@ -130,7 +130,7 @@ export const StorageInput = Schema.Union([
     kind: Schema.optionalKey(Schema.Literals(["data", "cache"])),
     key: Schema.optionalKey(Schema.String),
   }),
-]).annotate({ description: STORAGE_INPUT_DESCRIPTION });
+]).annotate({ description: STORAGE_INPUT_DESCRIPTION, expected: "a target path string or a storage object" });
 export type StorageInput = typeof StorageInput.Type;
 
 export { HealthcheckInput } from "./compose-healthcheck.ts";

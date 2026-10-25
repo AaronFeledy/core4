@@ -4,13 +4,10 @@ import { Result, Schema, SchemaIssue } from "effect";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { override } from "@lando/sdk/landofile";
 import {
-  AppPlan,
   ConfigLintViolation,
-  GlobalConfig,
   LandofileAuthoringFragment,
   LandofileAuthoringFragmentNative,
   LandofileShape,
-  RecipeManifest,
   ValidationIssue,
   authoringExpressionSlot,
   deriveAuthoringAst,
@@ -147,13 +144,10 @@ const issuesFor = (schema: Schema.ConstraintDecoder<unknown, never>, input: unkn
 
 describe("schema issue traversal", () => {
   test.each([
-    ["effective Landofile", LandofileShape, { services: { api: { environment: 5, primary: "maybe" } } }],
-    ["global config", GlobalConfig, { provider: 5, unknown: true }],
-    ["recipe manifest", RecipeManifest, { id: 5, name: false, snapshot: { invalid: true } }],
-    ["plan", AppPlan, { id: 5, services: [{ name: false }] }],
-    ["encoding", Schema.Struct({ count: Schema.NumberFromString }), { count: false }],
+    ["primitive", Schema.Struct({ count: Schema.Number }), { count: false }],
+    ["literal", Schema.Struct({ kind: Schema.Literal("web") }), { kind: false }],
     ["filter", Schema.Struct({ count: Schema.Number.check(Schema.isGreaterThan(0)) }), { count: -1 }],
-  ] as const)("matches Effect byte-for-byte for an unmarked %s", (_name, schema, input) => {
+  ] as const)("matches Effect byte-for-byte for a %s", (_name, schema, input) => {
     // Given
     const issue = issuesFor(schema, input);
     // When

@@ -205,6 +205,10 @@ const INVALID_INPUT_FIXTURES = new Map([
   ["convert-from-lando-3/fixtures/lando3-layers", "Legacy layered source requires translation."],
   ["config-lint/fixtures/config-lint-invalid", "Deliberate unknown keys and invalid ports."],
   ["config-lint/fixtures/wrong-type", "Deliberate wrong boolean type for fragment and effective parity."],
+  [
+    "config-lint/fixtures/wrong-filter-prefix",
+    "Deliberate wrong prefix type on a selected route-filter member.",
+  ],
   ["config-views/fixtures/invalid", "Deliberate invalid runtime for raw and merged inspection."],
   [
     "your-landofile/fixtures/flow-mapping-rejected",

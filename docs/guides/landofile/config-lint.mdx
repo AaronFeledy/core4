@@ -120,6 +120,11 @@ Text output prints each finding's path, severity, rule, and message, then where 
 
 That file is wrong on its own (`fragment`) and it breaks the composed app (`effective`), so it's one finding with both scopes. JSON reports it once, with `"scopes": ["fragment", "effective"]`. When the effective path differs from what you wrote, the location line adds `authored as <path>`.
 
+Wrong values name the expected shape, not an internal schema name. For example,
+`services.web: nginx` needs an object. A filter with `type: stripPrefix` and
+`prefix: 5` reports the prefix's wrong type once, with both scopes. It does not
+report errors for other filter types you didn't choose.
+
 An unknown key gets a `suggestion` naming the closest allowed key, as long as the typo is within two edits. `imgae` suggests `image`. A key nowhere near anything valid gets a plain unknown-key message instead. Unknown keys are schema-only violations, never a `NotImplementedError`.
 
 ## Read rejected Compose keys
@@ -156,6 +161,16 @@ tooling:
 Your editor can catch the structural problems (unknown keys, wrong literal types, an expression where none belongs) before you run anything; lint still owns resolving expressions. See [Validate a Landofile in your editor](./editor-validation.mdx) for the one-line modeline.
 
 <Guide>
+  <Scenario id="filter-reports-only-selected-type" render>
+    <Step name="lint-filter-prefix">
+      <UseFixture name="wrong-filter-prefix" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"routes\",\\s*0,\\s*\"filters\",\\s*0,\\s*\"prefix\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"message\":\\s*\"Expected string\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"scopes\":\\s*\\[\\s*\"fragment\",\\s*\"effective\"\\s*\\]", not: { regex: "\"rule\":[\\s\\S]*\"rule\":" } } }} />
+    </Step>
+    <Step name="cleanup-filter-prefix"><Cleanup /></Step>
+  </Scenario>
   <Scenario id="wrong-type-shares-both-scopes" render>
     <Step name="lint-wrong-type">
       <UseFixture name="wrong-type" />
