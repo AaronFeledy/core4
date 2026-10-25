@@ -198,9 +198,7 @@ export const schemaIssueLeaves = (
       if (authoringSource(issue.ast) !== undefined) {
         const children = issue.issues.filter((child) => !authoringNonCandidate(child));
         const candidates = diagnosticUnionCandidates(issue.ast, children);
-        return candidates.length === 0
-          ? walk(expectationIssue(issue.ast, issue))
-          : candidates.flatMap(walk);
+        return candidates.length === 0 ? walk(expectationIssue(issue.ast, issue)) : candidates.flatMap(walk);
       }
       if (issue.issues.length > 0) return issue.issues.flatMap(walk);
       break;

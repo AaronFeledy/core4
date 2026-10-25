@@ -109,25 +109,28 @@ test("generated Landofile defects have plain messages and unchanged-scope parity
       sample.partial || effectiveResult.missing
         ? "partial missing keys"
         : sample.path[0] === "services" && sample.path[2] === "dependsOn"
-            ? "dependsOn input transform"
-            : sample.transformed === true && (effective.length === 0 || fragment.length === 0)
-              ? "transform-only constraint"
-              : undefined;
+          ? "dependsOn input transform"
+          : sample.transformed === true && (effective.length === 0 || fragment.length === 0)
+            ? "transform-only constraint"
+            : undefined;
     if (exception !== undefined) exceptions.set(exception, (exceptions.get(exception) ?? 0) + 1);
     else {
       compared++;
       if (sample.tagged === true) tagged++;
       if (effective.some((issue) => issue.suggestion !== undefined)) suggested++;
     }
-    if (
-      exception === undefined &&
-      JSON.stringify(effective) !== JSON.stringify(fragment)
-    ) {
+    if (exception === undefined && JSON.stringify(effective) !== JSON.stringify(fragment)) {
       failures.push({ path: sample.path, value: sample.value, effective, fragment });
     }
   }
   // Then
-  console.log("Parity coverage", { compared, tagged, accepted, suggested, exceptions: Object.fromEntries(exceptions) });
+  console.log("Parity coverage", {
+    compared,
+    tagged,
+    accepted,
+    suggested,
+    exceptions: Object.fromEntries(exceptions),
+  });
   expect(compared).toBeGreaterThan(2500);
   expect(tagged).toBeGreaterThan(100);
   expect(suggested).toBeGreaterThan(0);
