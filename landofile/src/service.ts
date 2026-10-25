@@ -7,7 +7,7 @@ import { compileLandofileFile } from "./file-compile.ts";
 import { presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
 import { type LandofileLoadContext, ensureConsistentRoot } from "./load-context.ts";
 import { mergeLandofileRootLayers } from "./merge-validate.ts";
-import { discoverForOperation } from "./operation-discovery.ts";
+import { discoverForOperation, discoveryCwd } from "./operation-discovery.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 
@@ -29,11 +29,11 @@ export const findDiscoveredLandofilePath = Effect.fn("Landofile.findDiscoveredPa
     if (layer !== undefined) return { filePath: layer.filePath, appRoot: result.directory };
   }
   let reason: string;
-  let remediation = `Run lando init in ${result.cwd} to create an app.`;
+  let remediation = `Run \`lando init\` in ${result.cwd} to create an app.`;
   switch (result.kind === "stopped" ? result.reason : "missing") {
     case "marker":
       reason = `.lando.stop at ${result.directory}`;
-      remediation = `Run lando init in ${result.cwd}, or move/remove the .lando.stop at ${result.directory} to search above it.`;
+      remediation = `Run \`lando init\` in ${result.cwd}, or move/remove the .lando.stop at ${result.directory} to search above it.`;
       break;
     case "bound":
       reason = "the fixed bound of 64 parent levels";
@@ -71,6 +71,7 @@ export const loadLandofileLayers = Effect.fn("Landofile.loadLayers")(mergeLandof
 
 const makeDiscoverLandofile = Effect.fn("LandofileService.discover")(
   function* (inputs: LandofileRuntimeInputs) {
+    yield* ensureConsistentRoot(yield* discoveryCwd(), inputs);
     const discovered = yield* findDiscoveredLandofilePath();
     yield* ensureConsistentRoot(discovered.appRoot, inputs);
     return yield* loadLandofileLayers(discovered.appRoot, discovered.filePath, inputs);
