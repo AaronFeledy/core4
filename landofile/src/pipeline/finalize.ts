@@ -195,6 +195,8 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   }
   rememberVersionConstraintEntries(assembled, constraints);
   const validated = yield* validateLandofile(file, assembled);
+  const scalarVarSites: ParsedPendingSite[] = [];
+  const decodedTaskOrigins = new Map(toolingOrigins?.children);
   const decoded = {
     ...validated,
     ...(validated.tooling === undefined
@@ -206,6 +208,23 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
               if (included === undefined || Object.keys(included.vars).length === 0) return [name, task];
               if (valueOriginAt(effectiveOrigins, ["tooling", name]).source !== included.source)
                 return [name, task];
+              if (included.varOrigins !== undefined) {
+                // These vars exist only after scalar decoding, so their sites already use decoded paths.
+                scalarVarSites.push(
+                  ...survivingSites(included.varOrigins, scope.pendingSites ?? []).map((site) => ({
+                    ...site,
+                    path: ["tooling", name, "vars", ...site.path],
+                  })),
+                );
+                const taskOrigin = valueOriginAt(effectiveOrigins, ["tooling", name]);
+                decodedTaskOrigins.set(name, {
+                  ...taskOrigin,
+                  children: new Map([
+                    ["cmd", taskOrigin],
+                    ["vars", included.varOrigins],
+                  ]),
+                });
+              }
               return [name, { ...task, vars: { ...included.vars, ...task.vars } }];
             }),
           ),
@@ -214,13 +233,18 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   const compiled = LoadScopedLandofile.make({
     stage: "load-scoped",
     document: decoded,
-    pendingSites: decodedPendingSites(
-      assembled,
-      decoded,
-      survivingSites(effectiveOrigins, scope.pendingSites ?? []),
-    ),
+    pendingSites: [
+      ...decodedPendingSites(assembled, decoded, survivingSites(effectiveOrigins, scope.pendingSites ?? [])),
+      ...scalarVarSites,
+    ],
     context: { appRoot: AbsolutePath.make(context.appRoot), env: scope.env },
   });
+  // Graft decoded origins only after collecting scalar command sites from the original leaf nodes.
+  if (toolingOrigins !== undefined) {
+    const decodedChildren = new Map(effectiveOrigins.children);
+    decodedChildren.set("tooling", { ...toolingOrigins, children: decodedTaskOrigins });
+    rememberOrigins(assembled, { ...effectiveOrigins, children: decodedChildren });
+  }
   copyLandofileProvenance(assembled, compiled.document);
   return copyLandofileProvenance(assembled, compiled);
 });

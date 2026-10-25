@@ -67,6 +67,31 @@ test("TypeScript Landofiles accept tooling shorthands", async () => {
   );
 });
 
+test.each(["includes", "toolingIncludes"])(
+  "a higher layer drops deferred vars when replacing a scalar task from %s",
+  async (form) => {
+    // Given
+    const include =
+      form === "includes"
+        ? 'includes:\n  - source: ./tasks.yml\n    kind: tooling\n    namespace: ns\n    vars:\n      NAME: "{{ app.name }}"\n'
+        : 'toolingIncludes:\n  ns:\n    file: ./tasks.yml\n    vars:\n      NAME: "{{ app.name }}"\n';
+    await withApp(
+      {
+        ".lando.yml": `name: forms\n${include}`,
+        "tasks.yml": 'tooling:\n  task: "echo {{ app.name }}"\n',
+        ".lando.local.yml": "tooling:\n  ns:task:\n    cmd: echo local\n    service: :host\n",
+      },
+      async (root) => {
+        // When
+        const result = await Effect.runPromise(load(root));
+        // Then
+        expect(result.document.tooling?.["ns:task"]).toEqual({ cmd: "echo local", service: ":host" });
+        expect(result.pendingSites).toEqual([]);
+      },
+    );
+  },
+);
+
 test.each([
   ["environment", { KEEP: "lower" }, ["WIN=upper"], { WIN: "upper" }],
   ["environment", ["KEEP=lower"], { WIN: "upper" }, { WIN: "upper" }],

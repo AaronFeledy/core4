@@ -51,6 +51,7 @@ export interface ResolveToolingIncludesOptions {
 type ScalarTaskVars = {
   readonly vars: Readonly<Record<string, ToolingVarLiteral>>;
   readonly source: AuthoredOrigin;
+  readonly varOrigins: ValueOrigins<AuthoredOrigin> | undefined;
 };
 
 export interface ToolingIncludeResolution {
@@ -195,6 +196,16 @@ const resolveEntries = Effect.fnUntraced(function* (
             scalarVars.set(id, {
               vars: { ...entry.vars, ...inherited?.vars },
               source: taskOrigins.source,
+              varOrigins:
+                entry.varOrigins === undefined
+                  ? inherited?.varOrigins
+                  : {
+                      ...entry.varOrigins,
+                      children: new Map([
+                        ...entry.varOrigins.children,
+                        ...(inherited?.varOrigins?.children ?? []),
+                      ]),
+                    },
             });
           }
           if (entry.varOrigins !== undefined && Predicate.isObject(task)) {
