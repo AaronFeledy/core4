@@ -433,9 +433,15 @@ describe("dispatchTool", () => {
     );
 
     // Then
-    expect(exit._tag).toBe("Failure");
+    expect(exit._tag).toBe("Success");
+    if (exit._tag === "Success") {
+      expect(exit.value).toMatchObject({
+        ok: false,
+        envelope: { ok: false, error: { _tag: "LandoInternalError" } },
+      });
+    }
     expect(events.map((event) => event._tag)).toEqual(["pre-mcp-call", "post-mcp-call"]);
-    expect(events[1]).toMatchObject({ outcome: "failure", failureDetail: "Defect" });
+    expect(events[1]).toMatchObject({ outcome: "failure", failureDetail: "LandoInternalError" });
   });
 
   test("rejects hostile command failures without invoking their hooks", async () => {
