@@ -49,6 +49,13 @@ export interface ResolveToolingIncludesOptions {
 }
 
 export interface ToolingIncludeResolution {
+  readonly scalarVars: ReadonlyMap<
+    string,
+    {
+      readonly vars: Readonly<Record<string, ToolingVarLiteral>>;
+      readonly source: AuthoredOrigin;
+    }
+  >;
   readonly sources: readonly SourceDocument[];
   readonly tooling: Readonly<Record<string, unknown>>;
   readonly internalTaskIds: ReadonlyArray<string>;
@@ -57,6 +64,7 @@ export interface ToolingIncludeResolution {
 }
 
 interface Contribution {
+  readonly scalarVars: ToolingIncludeResolution["scalarVars"];
   readonly sources: readonly SourceDocument[];
   readonly origins: ReadonlyMap<string, ValueOrigins<AuthoredOrigin>>;
   readonly tasks: ReadonlyMap<string, unknown>;
@@ -95,7 +103,14 @@ const resolveEntries = Effect.fnUntraced(function* (
   const referencedFiles: LandofileReferencedFile[] = [];
   const sources: SourceDocument[] = [];
   const origins = new Map<string, ValueOrigins<AuthoredOrigin>>();
-  if (entries.length === 0) return { tasks, internal, paths, referencedFiles, sources, origins };
+  const scalarVars = new Map<
+    string,
+    {
+      readonly vars: Readonly<Record<string, ToolingVarLiteral>>;
+      readonly source: AuthoredOrigin;
+    }
+  >();
+  if (entries.length === 0) return { tasks, internal, paths, referencedFiles, sources, origins, scalarVars };
   if (depth > ctx.maxDepth) {
     return yield* Effect.fail(
       attributeIncludeError(
@@ -181,7 +196,15 @@ const resolveEntries = Effect.fnUntraced(function* (
             nested.origins.get(name) ??
             fragment.origins;
           const children = new Map(taskOrigins.children);
-          if (entry.varOrigins !== undefined && Predicate.isObject(task)) {
+          if (typeof task === "string" && task !== "disabled") {
+            // Keep scalar form through composition. A replacing task must drop these vars too.
+            const inherited = Object.hasOwn(localNames, name) ? undefined : nested.scalarVars.get(name);
+            scalarVars.set(id, {
+              vars: { ...entry.vars, ...inherited?.vars },
+              source: taskOrigins.source,
+            });
+          }
+          if (entry.varOrigins !== undefined && (Predicate.isObject(task) || typeof task === "string")) {
             const ownVars = taskOrigins.children.get("vars");
             children.set("vars", {
               ...entry.varOrigins,
@@ -197,7 +220,7 @@ const resolveEntries = Effect.fnUntraced(function* (
     }).pipe(Effect.mapError((error) => attributeIncludeError(error, entry.origin)));
   }
 
-  return { tasks, internal, paths, referencedFiles, sources, origins };
+  return { tasks, internal, paths, referencedFiles, sources, origins, scalarVars };
 });
 
 export const resolveToolingIncludes = (
@@ -216,6 +239,7 @@ export const resolveToolingIncludes = (
   }
   if (!hasToolingIncludes(options.landofile)) {
     return Effect.succeed({
+      scalarVars: new Map(),
       tooling: {},
       internalTaskIds: [],
       localFragmentPaths: [],
@@ -237,6 +261,7 @@ export const resolveToolingIncludes = (
     [],
   ).pipe(
     Effect.map((contribution) => ({
+      scalarVars: contribution.scalarVars,
       tooling: rememberOrigins(Object.fromEntries(contribution.tasks), {
         source: { file: options.sourceRoot, layer: "canonical", path: ["tooling"] },
         deleted: false,

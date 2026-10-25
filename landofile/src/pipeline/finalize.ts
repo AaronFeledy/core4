@@ -194,7 +194,27 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     constraints.push({ ...entry, range });
   }
   rememberVersionConstraintEntries(assembled, constraints);
-  const decoded = yield* validateLandofile(file, assembled);
+  const validated = yield* validateLandofile(file, assembled);
+  const decoded = {
+    ...validated,
+    ...(validated.tooling === undefined
+      ? {}
+      : {
+          tooling: Object.fromEntries(
+            Object.entries(validated.tooling).map(([name, task]) => {
+              const included = tooling.scalarVars.get(name);
+              return [
+                name,
+                included !== undefined &&
+                Object.keys(included.vars).length > 0 &&
+                valueOriginAt(effectiveOrigins, ["tooling", name]).source === included.source
+                  ? { ...task, vars: { ...included.vars, ...task.vars } }
+                  : task,
+              ];
+            }),
+          ),
+        }),
+  };
   const compiled = LoadScopedLandofile.make({
     stage: "load-scoped",
     document: decoded,
