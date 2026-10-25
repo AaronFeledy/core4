@@ -203,14 +203,10 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
           tooling: Object.fromEntries(
             Object.entries(validated.tooling).map(([name, task]) => {
               const included = tooling.scalarVars.get(name);
-              return [
-                name,
-                included !== undefined &&
-                Object.keys(included.vars).length > 0 &&
-                valueOriginAt(effectiveOrigins, ["tooling", name]).source === included.source
-                  ? { ...task, vars: { ...included.vars, ...task.vars } }
-                  : task,
-              ];
+              if (included === undefined || Object.keys(included.vars).length === 0) return [name, task];
+              if (valueOriginAt(effectiveOrigins, ["tooling", name]).source !== included.source)
+                return [name, task];
+              return [name, { ...task, vars: { ...included.vars, ...task.vars } }];
             }),
           ),
         }),

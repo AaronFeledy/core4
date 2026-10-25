@@ -990,8 +990,6 @@ export const ToolingTaskShape = Schema.Struct({
 });
 export type ToolingTaskShape = typeof ToolingTaskShape.Type;
 
-const TOOLING_TASK_DESCRIPTION =
-  "Tooling task object or non-empty command string; false and disabled disable the task. Shorthands replace inherited tasks after layer composition.";
 const TOOLING_TASK_FORMS = {
   expected: "false, disabled, a non-empty command string, or a tooling task object",
   message: "Expected false, disabled, a non-empty command string, or a tooling task object",
@@ -1020,7 +1018,8 @@ const ToolingTaskShorthand = Schema.Union([
 // task struct itself and keeps its nested checks instead of a flattened encoded copy.
 export const ToolingTaskInput = Schema.Union([ToolingTaskShape, ToolingTaskShorthand]).annotate({
   identifier: "ToolingTaskInput",
-  description: TOOLING_TASK_DESCRIPTION,
+  description:
+    "Tooling task object or non-empty command string; false and disabled disable the task. Shorthands replace inherited tasks after layer composition.",
   ...TOOLING_TASK_FORMS,
 });
 export type ToolingTaskInput = typeof ToolingTaskInput.Type;

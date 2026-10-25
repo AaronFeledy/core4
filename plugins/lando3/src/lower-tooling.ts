@@ -3,8 +3,7 @@
  *
  * Lando 3 registered a task only when its value was a mapping. The disabling
  * values `false` and `disabled` pass through; other non-mappings become `false`.
- * Positional arguments
- * written into the task name, yargs `options`, and `positionals` become
+ * Positional arguments written into the task name, yargs `options`, and `positionals` become
  * declared `args` and `flags`. A command list becomes ordered `cmds` steps,
  * with `{service: command}` entries as service-targeted step objects.
  */

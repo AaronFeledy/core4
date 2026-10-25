@@ -48,14 +48,13 @@ export interface ResolveToolingIncludesOptions {
   readonly onRelaxedRead?: ToolingSourceContext["onRelaxedRead"];
 }
 
+type ScalarTaskVars = {
+  readonly vars: Readonly<Record<string, ToolingVarLiteral>>;
+  readonly source: AuthoredOrigin;
+};
+
 export interface ToolingIncludeResolution {
-  readonly scalarVars: ReadonlyMap<
-    string,
-    {
-      readonly vars: Readonly<Record<string, ToolingVarLiteral>>;
-      readonly source: AuthoredOrigin;
-    }
-  >;
+  readonly scalarVars: ReadonlyMap<string, ScalarTaskVars>;
   readonly sources: readonly SourceDocument[];
   readonly tooling: Readonly<Record<string, unknown>>;
   readonly internalTaskIds: ReadonlyArray<string>;
@@ -103,13 +102,7 @@ const resolveEntries = Effect.fnUntraced(function* (
   const referencedFiles: LandofileReferencedFile[] = [];
   const sources: SourceDocument[] = [];
   const origins = new Map<string, ValueOrigins<AuthoredOrigin>>();
-  const scalarVars = new Map<
-    string,
-    {
-      readonly vars: Readonly<Record<string, ToolingVarLiteral>>;
-      readonly source: AuthoredOrigin;
-    }
-  >();
+  const scalarVars = new Map<string, ScalarTaskVars>();
   if (entries.length === 0) return { tasks, internal, paths, referencedFiles, sources, origins, scalarVars };
   if (depth > ctx.maxDepth) {
     return yield* Effect.fail(

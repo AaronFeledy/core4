@@ -174,7 +174,7 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
   const member = (node: AST.AST, partialKey = true): AST.AST => {
     const derived = derive(node, true);
     if (!options.directives) {
-      if (!options.partial || !partialKey) return derived;
+      if (!options.partial) return derived;
       const partial = Schema.optionalKey(Schema.make<Schema.Codec<unknown>>(derived)).ast;
       recordAuthoringSource(partial, authoringSource(derived) ?? node);
       return partial;

@@ -158,13 +158,12 @@ const authoringNonCandidate = (issue: SchemaIssue.Issue): boolean => {
 const directivePayloadIssues = (issue: SchemaIssue.Issue): readonly SchemaIssue.Issue[] => {
   if (issue._tag === "Encoding") return directivePayloadIssues(issue.issue);
   if (issue._tag !== "Composite" || !isMergeDirectiveMemberAst(issue.ast)) return [issue];
-  return issue.issues.map((child) =>
-    child._tag === "Pointer" && child.path[0] === "value" && child.issue._tag !== "MissingKey"
-      ? child.path.length === 1
-        ? child.issue
-        : new SchemaIssue.Pointer(child.path.slice(1), child.issue)
-      : child,
-  );
+  return issue.issues.map((child) => {
+    if (child._tag !== "Pointer" || child.path[0] !== "value" || child.issue._tag === "MissingKey") {
+      return child;
+    }
+    return child.path.length === 1 ? child.issue : new SchemaIssue.Pointer(child.path.slice(1), child.issue);
+  });
 };
 
 export const schemaIssueLeaves = (
@@ -185,9 +184,7 @@ export const schemaIssueLeaves = (
       if (value !== undefined) {
         const directives = issue.issues.filter(directiveIssue);
         if (directives.length > 0) return directives.flatMap(directivePayloadIssues).flatMap(walk);
-        const children = issue.issues.filter(
-          (child) => !directiveIssue(child) && !authoringNonCandidate(child),
-        );
+        const children = issue.issues.filter((child) => !authoringNonCandidate(child));
         return children.length === 0 ? walk(expectationIssue(value, issue)) : children.flatMap(walk);
       }
       if (authoringSource(issue.ast) !== undefined) {
