@@ -145,14 +145,12 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
           if (!isErrnoCode(cause, "EEXIST")) throw cause;
           const identity = await lockIdentity(lockPath);
           if (identity === null) return "retry" as const;
-          // A lock this process may not safely reclaim blocks the operation like a live holder.
-          if (
-            !identity.isFile() ||
-            identity.isSymbolicLink() ||
-            identity.nlink !== 1 ||
-            (process.getuid !== undefined && identity.uid !== process.getuid())
-          )
-            return "held" as const;
+          // A lock path that is not a private regular file never becomes reclaimable, so waiting is pointless.
+          if (identity.isSymbolicLink()) return { _tag: "unsafe", detail: "a symbolic link" } as const;
+          if (!identity.isFile()) return { _tag: "unsafe", detail: "not a regular file" } as const;
+          if (identity.nlink !== 1) return { _tag: "unsafe", detail: "hard-linked to another file" } as const;
+          if (process.getuid !== undefined && identity.uid !== process.getuid())
+            return { _tag: "unsafe", detail: "owned by another user" } as const;
           await options.privateFileAccess.verify(lockPath);
           const staleByMtime = now - identity.mtimeMs > LOCK_STALE_MS;
           const current = await readLockRecord(lockPath).catch((error: unknown) => {
@@ -187,6 +185,15 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
       catch: (cause) => lockError(options.operation, lockPath, cause),
     });
     if (attempt === "acquired") return;
+    if (typeof attempt === "object")
+      return yield* Effect.fail(
+        new StateStoreError({
+          reason: "path",
+          operation: options.operation,
+          path: lockPath,
+          remediation: `Lock path ${lockPath} is ${attempt.detail}, so Lando cannot use it. Make sure no Lando command is running, remove ${lockPath}, and retry.`,
+        }),
+      );
     if ((yield* Clock.currentTimeMillis) >= deadline)
       return yield* Effect.fail(lockError(options.operation, lockPath));
     if (attempt === "held" && !announced && options.onWait !== undefined) {

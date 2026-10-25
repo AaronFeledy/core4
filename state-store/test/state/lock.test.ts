@@ -159,7 +159,7 @@ describe("advisory state lock", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
-  test("acquisition announces the wait when the lock path cannot be safely reclaimed", async () => {
+  test("acquisition fails at once with the path when the lock path cannot be safely reclaimed", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
     try {
       // Given a lock path that is a symlink, which reclaim must never follow or remove.
@@ -169,18 +169,24 @@ describe("advisory state lock", () => {
       await writeFile(target, JSON.stringify({ pid: 99_999_999, token: "dead", createdAt: 0 }));
       await symlink(target, `${file}.lock`);
       let waits = 0;
-      // When acquisition runs until its deadline.
+      const started = Date.now();
+      // When acquisition runs with a long deadline.
       const result = await Effect.runPromiseExit(
         withAdvisoryLock(file, "test", Effect.succeed("unreachable"), {
-          timeoutMs: 100,
+          timeoutMs: 10_000,
           onWait: Effect.sync(() => {
             waits += 1;
           }),
         }),
       );
-      // Then it reports the blocked wait once, fails, and leaves the symlink alone.
-      expect(result._tag).toBe("Failure");
-      expect(waits).toBe(1);
+      // Then it fails promptly without a contention notice, names the path, and leaves the symlink alone.
+      expect(Date.now() - started).toBeLessThan(1_000);
+      expect(waits).toBe(0);
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        cause: { reasons: [{ error: { _tag: "StateStoreError", reason: "path", path: `${file}.lock` } }] },
+      });
+      expect(JSON.stringify(result)).toContain("a symbolic link");
       expect((await lstat(`${file}.lock`)).isSymbolicLink()).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });
