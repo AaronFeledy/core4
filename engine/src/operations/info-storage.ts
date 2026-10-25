@@ -1,4 +1,9 @@
-import { HOST_PROXY_SESSION_LABEL } from "@lando/container-runtime/labels";
+import {
+  GPG_AGENT_OVERLAY_LABEL,
+  HOST_PROXY_SESSION_LABEL,
+  SSH_AGENT_OVERLAY_LABEL,
+  containerIntegrationLabels,
+} from "@lando/container-runtime/labels";
 import {
   AGENT_SOCKET_CONTAINER_DIR,
   type AppPlan,
@@ -51,17 +56,27 @@ export const projectServiceMounts = (
   const hostProxyActive =
     service.environment.LANDO_HOST_PROXY_SESSION !== undefined ||
     runtime?.labels?.[HOST_PROXY_SESSION_LABEL] !== undefined;
+  const integrationLabels = containerIntegrationLabels(service.environment);
+  const sshAgentActive =
+    integrationLabels[SSH_AGENT_OVERLAY_LABEL] === "true" ||
+    runtime?.labels?.[SSH_AGENT_OVERLAY_LABEL] === "true";
+  const gpgAgentActive =
+    integrationLabels[GPG_AGENT_OVERLAY_LABEL] === "true" ||
+    runtime?.labels?.[GPG_AGENT_OVERLAY_LABEL] === "true";
   const planned: PlannedMount[] = [];
   const servicePlan = { ...plan, services: { [service.name]: service } };
-  const cleanPlan = stripSshAgentOverlay(
-    stripGpgAgentOverlay(hostProxyActive ? stripHostProxyRunLando(servicePlan) : servicePlan),
-  );
+  const hostProxyClean = hostProxyActive ? stripHostProxyRunLando(servicePlan) : servicePlan;
+  const gpgClean = gpgAgentActive ? stripGpgAgentOverlay(hostProxyClean) : hostProxyClean;
+  const cleanPlan = sshAgentActive ? stripSshAgentOverlay(gpgClean) : gpgClean;
   const userMounts = cleanPlan.services[service.name]?.mounts ?? [];
   const internalTargets = new Set(
     service.mounts.filter((mount) => !userMounts.includes(mount)).map((mount) => String(mount.target)),
   );
-  internalTargets.add(AGENT_SOCKET_CONTAINER_DIR.ssh);
-  internalTargets.add(AGENT_SOCKET_CONTAINER_DIR.gpg);
+  if (sshAgentActive) internalTargets.add(AGENT_SOCKET_CONTAINER_DIR.ssh);
+  if (gpgAgentActive) {
+    internalTargets.add(AGENT_SOCKET_CONTAINER_DIR.gpg);
+    internalTargets.add("/run/lando/gpg-agent-keys");
+  }
   if (hostProxyActive) {
     for (const target of HOST_PROXY_MOUNT_TARGETS) internalTargets.add(target);
   }

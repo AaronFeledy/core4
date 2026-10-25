@@ -191,7 +191,12 @@ test("omits internal agent and host-proxy mounts from user storage facts", async
   ];
   const selected: ServicePlan = {
     ...service,
-    environment: { LANDO_HOST_PROXY_SESSION: "session" },
+    environment: {
+      LANDO_HOST_PROXY_SESSION: "session",
+      SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
+      LANDO_GPG_AGENT_SOCKET: "/run/lando/gpg-agent/S.gpg-agent",
+      LANDO_GPG_KEYRING: "/run/lando/gpg-agent-keys",
+    },
     mounts: targets.map((target) => ({
       type: "volume",
       source: "internal",

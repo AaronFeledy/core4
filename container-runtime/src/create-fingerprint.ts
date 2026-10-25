@@ -12,7 +12,12 @@ import {
 import { composeConfigMounts } from "./compose-configs.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
 import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
-import { AGENT_SESSION_LABEL, HOST_PROXY_SESSION_LABEL } from "./labels.ts";
+import {
+  AGENT_SESSION_LABEL,
+  GPG_AGENT_OVERLAY_LABEL,
+  HOST_PROXY_SESSION_LABEL,
+  SSH_AGENT_OVERLAY_LABEL,
+} from "./labels.ts";
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 import { realizePodmanComposeKnobs } from "./podman/compose-knobs.ts";
 import { podmanNetworkNames } from "./podman/networks.ts";
@@ -126,7 +131,11 @@ export const createConfigFingerprint = (
     labels: Object.fromEntries(
       Object.entries(labels).filter(
         ([key]) =>
-          key !== CREATE_CONFIG_LABEL && key !== AGENT_SESSION_LABEL && key !== HOST_PROXY_SESSION_LABEL,
+          key !== CREATE_CONFIG_LABEL &&
+          key !== AGENT_SESSION_LABEL &&
+          key !== HOST_PROXY_SESSION_LABEL &&
+          key !== SSH_AGENT_OVERLAY_LABEL &&
+          key !== GPG_AGENT_OVERLAY_LABEL,
       ),
     ),
     healthcheck: containerHealthcheck(service.healthcheck, plan, service),
