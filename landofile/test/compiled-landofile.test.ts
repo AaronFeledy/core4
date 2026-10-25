@@ -245,3 +245,27 @@ test("maps schema-transform destinations from surviving origins rather than equa
       services: { web: { appMount: { target: "resolved" }, healthcheck: { command: "echo resolved" } } },
     });
 });
+
+test("relocates a retained tooling shorthand expression without changing its authored source", async () => {
+  // Given
+  const compiled = await load({ tooling: { greet: "echo {{ app.name }}", build: "echo {{ app.name }}" } });
+  // When
+  const result = advance(compiled);
+  // Then
+  expect(compiled.pendingSites.map((site) => site.path)).toEqual([
+    ["tooling", "greet", "cmd"],
+    ["tooling", "build", "cmd"],
+  ]);
+  expect(compiled.pendingSites.map((site) => site.source.path)).toEqual([
+    ["tooling", "greet"],
+    ["tooling", "build"],
+  ]);
+  expect(Result.isSuccess(result)).toBe(true);
+  if (Result.isSuccess(result))
+    expect(result.success.document).toMatchObject({
+      tooling: {
+        greet: { cmd: "echo resolved" },
+        build: { cmd: "echo resolved" },
+      },
+    });
+});
