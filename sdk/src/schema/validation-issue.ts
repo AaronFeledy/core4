@@ -8,7 +8,9 @@ import {
 } from "./authoring-issue-metadata.ts";
 import { isMergeDirectiveMemberAst } from "./landofile-directive.ts";
 import { LandofileLayer } from "./landofile-reference.ts";
+import { validationExpectation } from "./validation-expectation.ts";
 import { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
+import { diagnosticUnionCandidates } from "./validation-union.ts";
 
 export { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
 
@@ -147,11 +149,14 @@ const authoringNonCandidate = (issue: SchemaIssue.Issue): boolean => {
         (isExpressionSlot(issue.ast) && issue.issue._tag === "InvalidType") ||
         authoringNonCandidate(issue.issue)
       );
-    case "AnyOf":
+    case "AnyOf": {
+      const source = authoringSource(issue.ast);
       return (
-        (issue.issues.length > 0 || authoringSource(issue.ast) !== undefined) &&
+        !(source?._tag === "Union" && source.types.every((member) => member._tag === "Literal")) &&
+        (issue.issues.length > 0 || source !== undefined) &&
         issue.issues.every(authoringNonCandidate)
       );
+    }
     default:
       return false;
   }
@@ -192,7 +197,9 @@ export const schemaIssueLeaves = (
       }
       if (authoringSource(issue.ast) !== undefined) {
         const children = issue.issues.filter((child) => !authoringNonCandidate(child));
-        return children.length === 0 ? walk(expectationIssue(issue.ast, issue)) : children.flatMap(walk);
+        return children.length === 0
+          ? walk(expectationIssue(issue.ast, issue))
+          : diagnosticUnionCandidates(issue.ast, children).flatMap(walk);
       }
       if (issue.issues.length > 0) return issue.issues.flatMap(walk);
       break;
@@ -215,6 +222,9 @@ export const schemaIssueLeaves = (
       return issue satisfies never;
   }
   const normalizedPath = propertyKeyPath(path);
+  if (issue._tag === "InvalidType" || issue._tag === "AnyOf") {
+    return [{ _tag: "Type", path, message: validationExpectation(issue.ast) }];
+  }
   const unknownKey = normalizedPath.at(-1);
   const suggestion =
     issue._tag === "UnexpectedKey" && typeof unknownKey === "string"
