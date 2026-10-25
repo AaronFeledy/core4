@@ -1,2 +1,2 @@
 export * from "./service.ts";
-export { makeDiagnosticTail } from "./diagnostic-tail.ts";
+export { makeDiagnosticTail, makeDiagnosticTailFactory } from "./diagnostic-tail.ts";
