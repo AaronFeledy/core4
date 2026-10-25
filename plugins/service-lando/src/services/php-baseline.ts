@@ -118,7 +118,8 @@ export const stockPhpImageVersion = (line: string, via: "apache" | "fpm" | "cli"
   }
   const token = ref.slice(prefix.length, -suffix.length);
   const rc = /^(\d+\.\d+)-rc(?:\.(\d+))?$/u.exec(token);
-  const normalized = rc === null ? (/^\d+\.\d+$/u.test(token) ? `${token}.0` : token) : `${rc[1]}.0-rc.${rc[2] ?? "0"}`;
+  const normalized =
+    rc === null ? (/^\d+\.\d+$/u.test(token) ? `${token}.0` : token) : `${rc[1]}.0-rc.${rc[2] ?? "0"}`;
   const parsed = coerce(normalized, { includePrerelease: true });
   if (parsed === null) throw new Error(`Cannot parse PHP version from ${ref}`);
   return parsed.version;

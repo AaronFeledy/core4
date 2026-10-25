@@ -17,6 +17,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
+import { phpBaselineBuildStep } from "./php-baseline.ts";
 import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
 import {
@@ -37,7 +38,6 @@ import {
   phpServingMode,
   resolvePhpVia,
 } from "./php-via.ts";
-import { phpBaselineBuildStep } from "./php-baseline.ts";
 import { PHP_WP_CLI_STEP } from "./php-wp-cli.ts";
 import {
   assertPhpXdebugSupported,

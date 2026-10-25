@@ -15,13 +15,13 @@ import {
   renderPhpBaselineIni,
   stockPhpImageVersion,
 } from "../src/services/php-baseline.ts";
+import { phpImageFor } from "../src/services/php-via.ts";
 import {
   PHP_FEATURE_ID,
   SUPPORTED_PHP_VERSIONS,
   php82ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
-import { phpImageFor } from "../src/services/php-via.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const BuildSteps = Schema.Struct({
@@ -96,9 +96,10 @@ describe("PHP security baseline table", () => {
     // when a line is fixed. This test fails when every supported line is there.
     const retired = PHP_SECURITY_BASELINE.filter((entry) => phpBaselineEntryIsRetired(entry));
     expect(retired).toEqual([]);
-    expect(
-      phpBaselineEntryIsRetired(PHP_SECURITY_BASELINE[0]!, (line) => PHP_BASELINE_REMOVE_WHEN[line]),
-    ).toBe(true);
+    const [entry] = PHP_SECURITY_BASELINE;
+    expect(entry).toBeDefined();
+    if (entry === undefined) return;
+    expect(phpBaselineEntryIsRetired(entry, (line) => PHP_BASELINE_REMOVE_WHEN[line])).toBe(true);
   });
 
   test("parses stock image tags for retirement comparison", () => {

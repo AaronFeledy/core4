@@ -161,16 +161,16 @@ describe("stock PHP prerequisite plan", () => {
       "service-lando.php:apache-default-site",
       "service-lando.http-errors:pages",
     ]);
-    expect(steps[1]?.buildKeyInputs).toEqual({
+    expect(steps[2]?.buildKeyInputs).toEqual({
       aptPackages: PHP_APT_PACKAGE_PINS,
       extensions: PHP_COMMON_EXTENSIONS,
     });
-    expect(steps[1]?.command).toBe(PHP_PREREQUISITES_COMMAND);
-    expect(steps[1]?.user).toBe("root");
-    expect("privileged" in (rawPrereq ?? {})).toBe(false);
-    expect(steps[2]?.buildKeyInputs).toEqual({ composer: PHP_COMPOSER });
-    expect(steps[2]?.command).toBe(PHP_COMPOSER_COMMAND);
+    expect(steps[2]?.command).toBe(PHP_PREREQUISITES_COMMAND);
     expect(steps[2]?.user).toBe("root");
+    expect("privileged" in (rawPrereq ?? {})).toBe(false);
+    expect(steps[3]?.buildKeyInputs).toEqual({ composer: PHP_COMPOSER });
+    expect(steps[3]?.command).toBe(PHP_COMPOSER_COMMAND);
+    expect(steps[3]?.user).toBe("root");
     expect("privileged" in (rawComposer ?? {})).toBe(false);
   });
 

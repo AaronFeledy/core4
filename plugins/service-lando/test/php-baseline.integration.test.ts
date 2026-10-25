@@ -8,8 +8,8 @@ import {
   PHP_SECURITY_BASELINE,
   renderPhpBaselineIni,
 } from "../src/services/php-baseline.ts";
+import { type PhpVia, phpImageFor } from "../src/services/php-via.ts";
 import { SUPPORTED_PHP_VERSIONS } from "../src/services/php.ts";
-import { phpImageFor, type PhpVia } from "../src/services/php-via.ts";
 
 const dockerHost = process.env.LANDO_TEST_DOCKER_SOCKET ?? process.env.DOCKER_HOST;
 const servingModes = ["apache", "fpm"] as const satisfies ReadonlyArray<Exclude<PhpVia, "cli">>;
@@ -42,7 +42,17 @@ const runImage = async (
   iniHostPath: string,
 ): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> => {
   const proc = Bun.spawn(
-    [docker, "run", "--rm", "-v", `${iniHostPath}:${PHP_BASELINE_INI_PATH}:ro`, image, "php", "-r", phpAssertion()],
+    [
+      docker,
+      "run",
+      "--rm",
+      "-v",
+      `${iniHostPath}:${PHP_BASELINE_INI_PATH}:ro`,
+      image,
+      "php",
+      "-r",
+      phpAssertion(),
+    ],
     {
       env: dockerEnv(),
       stderr: "pipe",
