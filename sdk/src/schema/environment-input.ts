@@ -18,7 +18,10 @@ const reservedKeyCheck = Schema.makeFilter(
 );
 
 const EnvironmentMapInput = mapInputWithPrecheck(
-  Schema.Record(Schema.String, Schema.Union([EnvironmentValue, Schema.Finite, Schema.Boolean, Schema.Null])),
+  Schema.Record(
+    Schema.String,
+    Schema.Union([EnvironmentValue, Schema.Finite, Schema.Boolean, Schema.Null]),
+  ).annotate({ expected: "a map or a list of KEY=VALUE strings" }),
   reservedKeyCheck,
 );
 

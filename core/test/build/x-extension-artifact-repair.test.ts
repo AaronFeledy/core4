@@ -38,6 +38,7 @@ import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
+import { evolveHistoricalToolingShorthand } from "./x-extension-tooling-shorthand-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
@@ -52,15 +53,18 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalEnvironment(
-    evolveHistoricalEndpointMetadata(
-      evolveHistoricalServicePort(
-        evolveHistoricalTimestamps(
-          evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
-          "bare",
+  evolveHistoricalToolingShorthand(
+    evolveHistoricalEnvironment(
+      evolveHistoricalEndpointMetadata(
+        evolveHistoricalServicePort(
+          evolveHistoricalTimestamps(
+            evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
+            "bare",
+          ),
         ),
       ),
     ),
+    "bare",
   );
 
 describe("closed x-* extension artifact repair", () => {

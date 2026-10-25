@@ -26,6 +26,7 @@ describe("Landofile validation issues", () => {
     );
     // Then
     expect(result).toHaveProperty("remediation", framing.remediation);
+    expect(result.message).not.toContain(framing.remediation);
   });
 
   test("uses the primary issue's authored source as the top-level error file", () => {
@@ -91,7 +92,9 @@ describe("Landofile validation issues", () => {
     // When
     const result = landofileValidationError("/app/.lando.yml", issues);
     // Then
-    expect(result.message).toContain('a: Bad value; imgae: Unknown key. Did you mean "image"? Fix');
+    expect(result.message).toBe(
+      'Landofile has invalid values: a: Bad value; imgae: Unknown key. Did you mean "image"?',
+    );
     expect(result.message).not.toContain("?.");
     expect(result.message).not.toContain("..");
   });
