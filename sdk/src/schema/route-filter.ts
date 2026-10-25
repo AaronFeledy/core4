@@ -66,5 +66,7 @@ export const RouteFilter = Schema.Union([
     to: Schema.NonEmptyString.annotate({ description: "Non-empty redirect destination." }),
     permanent: Schema.optionalKey(Schema.Boolean).annotate({ description: "Use a permanent redirect." }),
   }),
-]);
+]).annotate({
+  expected: "a filter with type stripPrefix, addPrefix, requestHeader, responseHeader, or redirect",
+});
 export type RouteFilter = typeof RouteFilter.Type;

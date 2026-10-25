@@ -45,62 +45,63 @@ const rejectsKey = (issue: SchemaIssue.Issue, key: PropertyKey): boolean => {
   }
 };
 
-const sentinelKeys = new WeakMap<SchemaAST.Union, readonly PropertyKey[]>();
-const sourceMembers = new WeakMap<SchemaAST.Union, readonly SchemaAST.AST[]>();
-const flattenMembers = (ast: SchemaAST.AST): readonly SchemaAST.AST[] =>
-  ast._tag === "Union" ? ast.types.flatMap(flattenMembers) : [ast];
-const flattenCandidates = (issue: SchemaIssue.Issue): readonly SchemaIssue.Issue[] =>
-  issue._tag === "AnyOf" && authoringSource(issue.ast)?._tag === "Union"
-    ? issue.issues.flatMap(flattenCandidates)
-    : [issue];
-const literalDiscriminator = (ast: SchemaAST.AST): boolean =>
-  ast.context?.isOptional !== true &&
-  (ast._tag === "Literal" ||
-    ast._tag === "UniqueSymbol" ||
-    (ast._tag === "Union" &&
-      ast.types.length > 0 &&
-      ast.types.every((member) => member._tag === "Literal" || member._tag === "UniqueSymbol")));
+// Mirrors Effect's union sentinels: a required immediate literal property of a
+// struct, or a sentinel every member of a nested union shares.
+type Sentinel = { readonly key: PropertyKey; readonly literal: unknown };
+const sentinels = new WeakMap<SchemaAST.AST, readonly Sentinel[]>();
+const sentinelsOf = (member: SchemaAST.AST): readonly Sentinel[] => {
+  const cached = sentinels.get(member);
+  if (cached !== undefined) return cached;
+  sentinels.set(member, []);
+  let found: readonly Sentinel[] = [];
+  if (member._tag === "Objects") {
+    found = member.propertySignatures.flatMap(({ name, type }): Sentinel[] =>
+      type.context?.isOptional === true
+        ? []
+        : type._tag === "Literal"
+          ? [{ key: name, literal: type.literal }]
+          : type._tag === "UniqueSymbol"
+            ? [{ key: name, literal: type.symbol }]
+            : [],
+    );
+  } else if (member._tag === "Union" && member.types.length > 0) {
+    const [first = [], ...rest] = member.types.map(sentinelsOf);
+    found = first.filter((sentinel) =>
+      rest.every((others) => others.some((o) => o.key === sentinel.key && o.literal === sentinel.literal)),
+    );
+  } else if (member._tag === "Suspend") {
+    found = sentinelsOf(member.thunk());
+  }
+  sentinels.set(member, found);
+  return found;
+};
 
+const isLiteral = (ast: SchemaAST.AST): boolean => ast._tag === "Literal" || ast._tag === "UniqueSymbol";
+
+/**
+ * Derivation strips literal sentinels and turns literals into expression-capable
+ * unions, so every union member becomes a candidate. Keep only what the
+ * effective decode would have tried: Effect tries a literal member only on an
+ * exact match, and never tries a member whose required literal property
+ * rejects the input. An empty result means no member matched, and the caller
+ * reports the union expectation.
+ */
 export const diagnosticUnionCandidates = (
   ast: SchemaAST.Union,
   children: readonly SchemaIssue.Issue[],
 ): readonly SchemaIssue.Issue[] => {
   const source = authoringSource(ast);
   if (source?._tag !== "Union") return children;
-  let keys = sentinelKeys.get(source);
-  if (keys === undefined) {
-    const flattened = flattenMembers(source);
-    sourceMembers.set(source, flattened);
-    const members = flattened.filter((member) => member._tag === "Objects");
-    const first = members[0];
-    keys =
-      first?._tag === "Objects"
-        ? first.propertySignatures
-            .filter((property) =>
-              members.every(
-                (member) =>
-                  member._tag === "Objects" &&
-                  member.propertySignatures.some(
-                    (other) => other.name === property.name && literalDiscriminator(other.type),
-                  ),
-              ),
-            )
-            .map((property) => property.name)
-        : [];
-    sentinelKeys.set(source, keys);
-  }
-  if (keys.length === 0) return children;
-  // Parsers omit input values from diagnostics. A surviving required source
-  // sentinel is proved by the absence of its failure in exactly one candidate;
-  // missing tags in partial fragments leave multiple candidates and stay partial.
-  const members = sourceMembers.get(source) ?? [];
-  const matches = children.flatMap(flattenCandidates).filter((child) => {
+  // Nested AnyOfs with the same source are derivation wrappers, not source members.
+  const unwrap = (issue: SchemaIssue.Issue): readonly SchemaIssue.Issue[] =>
+    issue._tag === "AnyOf" && authoringSource(issue.ast) === source ? issue.issues.flatMap(unwrap) : [issue];
+  return children.flatMap(unwrap).filter((child) => {
     const derived = candidateAst(child);
-    return (
-      derived !== undefined &&
-      members.includes(authoringSource(derived) ?? derived) &&
-      keys.every((key) => !rejectsKey(child, key))
-    );
+    if (derived === undefined) return true;
+    const member = authoringSource(derived) ?? derived;
+    if (isLiteral(member)) return !rejectsDiscriminator(child);
+    const keys = sentinelsOf(member).map(({ key }) => key);
+    // Effect never tries a discriminated member for non-object input or a mismatched tag.
+    return keys.length === 0 || !(rejectsDiscriminator(child) || keys.some((key) => rejectsKey(child, key)));
   });
-  return matches.length === 1 ? matches : children;
 };
