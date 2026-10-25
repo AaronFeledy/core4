@@ -16,6 +16,7 @@ import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "../load-expression-provenance.ts";
+import { applyToolingIncludeDefaults } from "../tooling-include-defaults.ts";
 import {
   getInternalToolingTasks,
   rememberInternalToolingTasks,
@@ -195,17 +196,23 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     constraints.push({ ...entry, range });
   }
   rememberVersionConstraintEntries(assembled, constraints);
-  const decoded = yield* validateLandofile(file, assembled);
+  const validated = yield* validateLandofile(file, assembled);
+  const defaults = applyToolingIncludeDefaults(validated, tooling.defaults, {
+    included: tooling.tooling,
+    authored: ownOrigins,
+    effective: effectiveOrigins,
+  });
+  const decoded = defaults.document;
   const compiled = LoadScopedLandofile.make({
     stage: "load-scoped",
     document: decoded,
-    pendingSites: decodedPendingSites(
-      assembled,
-      decoded,
-      survivingSites(effectiveOrigins, scope.pendingSites ?? []),
-    ),
+    pendingSites: [
+      ...decodedPendingSites(assembled, decoded, survivingSites(effectiveOrigins, scope.pendingSites ?? [])),
+      ...survivingSites(defaults.addedOrigins, scope.pendingSites ?? []),
+    ],
     context: { appRoot: AbsolutePath.make(context.appRoot), env: scope.env },
   });
+  rememberOrigins(assembled, defaults.origins);
   copyLandofileProvenance(assembled, compiled.document);
   return copyLandofileProvenance(assembled, compiled);
 });

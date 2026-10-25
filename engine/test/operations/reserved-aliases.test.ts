@@ -20,7 +20,7 @@ describe("reservedToolingNameConflict", () => {
       claimedBy: "service type php task run",
       reservedFor: "apps:scratch:run",
       remediation:
-        "Set tooling.run.disabled: true in the Landofile to drop service type php's task, or redefine it under another name.",
+        "Set tooling.run: false in the Landofile to drop service type php's task, or redefine it under another name.",
     });
   });
 

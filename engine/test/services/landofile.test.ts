@@ -354,7 +354,7 @@ describe("LandofileService layer", () => {
               "services.web.unsupported",
             );
             expect(error.message).toContain("unsupported Compose-subset keys");
-            expect(error.message).toContain("providers.<provider-id>");
+            expect(error.remediation).toContain("providers.<provider-id>");
           }
         }
       }
@@ -434,7 +434,7 @@ describe("LandofileService layer", () => {
               "services.web.unsupported",
             ]);
             expect(error.message).toContain("unsupported service keys");
-            expect(error.message).toContain("Compose compatibility is limited to the supported subset");
+            expect(error.remediation).toContain("Compose compatibility is limited to the supported subset");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
           }
         }
@@ -493,7 +493,7 @@ describe("LandofileService layer", () => {
             expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
               "services.web.certs.key",
             );
-            expect(error.message).toContain("Fix each listed value.");
+            expect(error.remediation).toContain("Fix each listed value.");
           }
         }
       }

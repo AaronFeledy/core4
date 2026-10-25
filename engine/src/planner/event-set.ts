@@ -16,6 +16,7 @@ import { resolveUserAppDefaults } from "./app-defaults.ts";
 import {
   compileEffectiveTooling,
   connectionClientOwners,
+  disabledToolingSources,
   toolingBeforeDefaults,
 } from "./effective-tooling.ts";
 import { requireServiceProjection } from "./endpoint-availability.ts";
@@ -227,6 +228,7 @@ const knownEventSetFrom = Effect.fnUntraced(function* (resolution: ResolvedLando
     services,
     effectiveTooling,
     connectionClients: connectionClientOwners({ landofile, services: toolingServices }),
+    disabledToolingSources: disabledToolingSources(landofile, effectiveTooling),
     invocationSites,
     knownEventNames,
   };

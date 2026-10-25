@@ -15,6 +15,7 @@ import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts"
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
+import { evolveHistoricalToolingShorthand } from "./x-extension-tooling-shorthand-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import {
   WIRE_TARGETS,
@@ -72,16 +73,19 @@ const evolvedTypedCache = new Map<
 const evolvedTyped = (source: keyof typeof typedCaptured) => {
   const cached = evolvedTypedCache.get(source);
   if (cached !== undefined) return cached;
-  const evolved = evolveHistoricalEnvironment(
-    evolveHistoricalEndpointMetadata(
-      evolveHistoricalIncludeChecksum(
-        evolveHistoricalTimestamps(
-          evolveHistoricalShorthand(
-            normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+  const evolved = evolveHistoricalToolingShorthand(
+    evolveHistoricalEnvironment(
+      evolveHistoricalEndpointMetadata(
+        evolveHistoricalIncludeChecksum(
+          evolveHistoricalTimestamps(
+            evolveHistoricalShorthand(
+              normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+            ),
+            "authoring",
           ),
-          "authoring",
         ),
       ),
+      "authoring",
     ),
     "authoring",
   );
