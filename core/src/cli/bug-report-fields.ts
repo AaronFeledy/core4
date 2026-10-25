@@ -3,12 +3,27 @@ import { escapeDiagnosticText } from "./diagnostic-text";
 import { formatStructuredIssue } from "./validation-issue-text";
 
 const consumed = new Set([
-  "_tag", "message", "remediation", "appId", "appName", "app", "providerId", "provider",
-  "additionalErrors", "role", "commandId", "code", "body", "logsDir", "cacheDir", "timestamp",
+  "_tag",
+  "message",
+  "remediation",
+  "appId",
+  "appName",
+  "app",
+  "providerId",
+  "provider",
+  "additionalErrors",
+  "role",
+  "commandId",
+  "code",
+  "body",
+  "logsDir",
+  "cacheDir",
+  "timestamp",
 ]);
 
 const scalar = (value: unknown): value is string | number | boolean =>
-  typeof value === "string" || typeof value === "boolean" ||
+  typeof value === "string" ||
+  typeof value === "boolean" ||
   (typeof value === "number" && Number.isFinite(value));
 
 const logTailField = (value: unknown): readonly [string, string] | undefined => {
@@ -27,15 +42,24 @@ const logTailField = (value: unknown): readonly [string, string] | undefined => 
   return [parts.length === 0 ? "logTail" : `logTail (${parts.join(", ")})`, text];
 };
 
-export const diagnosticFields = (error: typeof TaggedErrorJson.Type): ReadonlyArray<readonly [string, string]> => {
+export const diagnosticFields = (
+  error: typeof TaggedErrorJson.Type,
+): ReadonlyArray<readonly [string, string]> => {
   const out: Array<readonly [string, string]> = [];
   for (const [key, value] of Object.entries(error)) {
     if (consumed.has(key) || value === "") continue;
+    if (key === "step" && typeof error.index === "number") continue;
+    if (key === "index" && typeof error.step === "number") {
+      out.push(["step", String(error.step)]);
+      continue;
+    }
     if (key === "issues") {
-      const text = error.issues?.flatMap((issue) => {
-        const line = formatStructuredIssue(issue);
-        return line === undefined ? [] : [line];
-      }).join("\n");
+      const text = error.issues
+        ?.flatMap((issue) => {
+          const line = formatStructuredIssue(issue);
+          return line === undefined ? [] : [line];
+        })
+        .join("\n");
       if (text) out.push([key, `\n${text}`]);
     } else if (key === "logTail") {
       const tail = logTailField(value);

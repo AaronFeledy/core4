@@ -5,10 +5,17 @@ export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
   const renderText = (text: string) => text.split("\n").map(escapeDiagnosticText).join("\n");
   const lines = [renderText(envelope.body), `  ↳ ${renderText(envelope.remediation)}`];
   for (const error of envelope.additionalErrors ?? []) {
-    const label = { rollback: "Rollback also failed", cleanup: "Cleanup also failed", peer: "Also failed" }[error.role];
+    const label = { rollback: "Rollback also failed", cleanup: "Cleanup also failed", peer: "Also failed" }[
+      error.role
+    ];
     lines.push(`${label} (${renderText(error.code)}): ${renderText(error.body).replaceAll("\n", "\n  ")}`);
-    lines.push(...renderText(error.remediation).split("\n").map((line) => `  ↳ ${line}`));
-    for (const [key, value] of error.extra) lines.push(`  ${key}: ${renderText(value).replaceAll("\n", "\n  ")}`);
+    lines.push(
+      ...renderText(error.remediation)
+        .split("\n")
+        .map((line) => `  ↳ ${line}`),
+    );
+    for (const [key, value] of error.extra)
+      lines.push(`  ${key}: ${renderText(value).replaceAll("\n", "\n  ")}`);
   }
   const details = [`code: ${envelope.code}`, `commandId: ${renderText(envelope.commandId)}`];
   if (envelope.appId !== undefined) details.push(`appId: ${renderText(envelope.appId)}`);
@@ -26,11 +33,14 @@ export const renderJsonBugReport = (envelope: BugReportEnvelope): string => {
     ...base,
     ...fields,
     ...(issues === undefined ? {} : { issues }),
-    ...(additionalErrors === undefined ? {} : {
-      additionalErrors: additionalErrors.map(({ extra: additionalExtra, ...error }) => ({
-        ...Object.fromEntries(additionalExtra.filter(([key]) => key !== "issues")), ...error,
-      })),
-    }),
+    ...(additionalErrors === undefined
+      ? {}
+      : {
+          additionalErrors: additionalErrors.map(({ extra: additionalExtra, ...error }) => ({
+            ...Object.fromEntries(additionalExtra.filter(([key]) => key !== "issues")),
+            ...error,
+          })),
+        }),
     timestamp: new Date().toISOString(),
   });
 };

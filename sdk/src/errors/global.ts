@@ -35,7 +35,22 @@ export class AppIdReservedError extends Schema.TaggedError<AppIdReservedError>()
       Effect.succeed("Set name in your Landofile to an app name other than global."),
     ),
   ),
-}) {}
+}) {
+  constructor(props: Schema.Struct.MakeIn<typeof AppIdReservedError.fields>, options?: Schema.MakeOptions) {
+    super(
+      {
+        ...props,
+        remediation:
+          props.remediation ??
+          `Rename the project in your Landofile${props.suggested === undefined ? "." : `, e.g. name: ${props.suggested}.`}`,
+      },
+      options,
+    );
+  }
+
+  override readonly message =
+    `The app id "${this.reserved}" is reserved for the global Lando app and cannot be used as a project name.`;
+}
 
 /**
  * Umbrella error for global-app state transitions and path management

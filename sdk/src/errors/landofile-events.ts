@@ -12,7 +12,9 @@ export class LandofileEventStepFailedError extends Schema.TaggedError<LandofileE
     outputTail: Schema.String,
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
-) {}
+) {
+  readonly step = this.index + 1;
+}
 
 export class LandofileEventLifecycleReentryError extends Schema.TaggedError<LandofileEventLifecycleReentryError>()(
   "LandofileEventLifecycleReentryError",

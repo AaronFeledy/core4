@@ -18,7 +18,12 @@ const rollback = {
   commandId: "spoof",
   logsDir: "/spoof",
   cacheDir: "/spoof",
-  cause: { _tag: "FilePermissionError", message: "EACCES: unlink", path: "/certs" },
+  cause: {
+    _tag: "FilePermissionError",
+    message: "EACCES: unlink",
+    remediation: "Repair router.",
+    path: "/certs",
+  },
 };
 
 test.each(["rollback", "cleanup", "peer"] as const)(
@@ -67,7 +72,7 @@ test("JSON additional reports retain their role and distinct detail fields", () 
   ]);
 });
 
-test("leaves a block without remediation undimmed so body text is never styled as a detail", () => {
+test("keeps multiline body text undimmed before required remediation", () => {
   const text = formatBugReport({
     error,
     additionalErrors: [
@@ -76,6 +81,7 @@ test("leaves a block without remediation undimmed so body text is never styled a
         error: {
           _tag: "CleanupError",
           message: "Cleanup failed.\nEACCES: unlink\n\npath: this is body text",
+          remediation: "Repair cleanup.",
           path: "/certs",
         },
       },
@@ -85,9 +91,10 @@ test("leaves a block without remediation undimmed so body text is never styled a
   });
   const decorated = dimBugReportDetails(text);
   expect(decorated).toContain(
-    "Cleanup failed.\n  EACCES: unlink\n  \n  path: this is body text\n  path: /certs\n",
+    "Cleanup failed.\n  EACCES: unlink\n  \n  path: this is body text\n  ↳ Repair cleanup.\n",
   );
-  expect(decorated).not.toContain("\u001b[2m  path:");
+  expect(decorated).not.toContain("\u001b[2m  path: this is body text");
+  expect(decorated).toContain("\u001b[2m  path: /certs\u001b[22m");
 });
 
 test("keeps every remediation line undimmed", () => {
@@ -117,14 +124,32 @@ test("shows an additional failure's app and provider only when they differ from 
   const text = formatBugReport({
     error: { ...error, providerId: "lando", appId: "shop" },
     additionalErrors: [
-      { role: "peer", error: { _tag: "PeerError", message: "Same.", providerId: "lando", appId: "shop" } },
-      { role: "peer", error: { _tag: "PeerError", message: "Other.", providerId: "docker", appId: "blog" } },
+      {
+        role: "peer",
+        error: {
+          _tag: "PeerError",
+          message: "Same.",
+          remediation: "Repair peer.",
+          providerId: "lando",
+          appId: "shop",
+        },
+      },
+      {
+        role: "peer",
+        error: {
+          _tag: "PeerError",
+          message: "Other.",
+          remediation: "Repair peer.",
+          providerId: "docker",
+          appId: "blog",
+        },
+      },
     ],
     context,
     rendererMode: "plain",
   });
   // Then: only the differing identity is repeated, inside its own block.
   expect(text).toContain(
-    "Also failed (PeerError): Same.\nAlso failed (PeerError): Other.\n  appId: blog\n  providerId: docker\n",
+    "Also failed (PeerError): Same.\n  ↳ Repair peer.\nAlso failed (PeerError): Other.\n  ↳ Repair peer.\n  appId: blog\n  providerId: docker\n",
   );
 });
