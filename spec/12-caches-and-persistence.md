@@ -160,7 +160,7 @@ All mutations encode before atomic replace. Version mismatch either discards or 
 
 Hot-path caches remain under their existing readers and MAY adopt `StateStore` only while preserving §12.5 budgets.
 
-App mutation locks left by dead commands MUST be reclaimed without a contention warning. Reclaim and vanished-file attempts retain the normal acquire deadline and retry delay; only an observed live holder triggers the wait message.
+App mutation locks left by dead commands MUST be reclaimed without a contention warning. Reclaim and vanished-file attempts retain the normal acquire deadline and retry delay; only an observed live holder triggers the wait message. A lock path that can never be reclaimed (a symbolic link, not a regular file, hard-linked, or owned by another user) fails at once with a `StateStoreError` whose remediation names the path and why it is unusable, never with a contention message.
 
 #### 12.7.2 Reference consumers
 
