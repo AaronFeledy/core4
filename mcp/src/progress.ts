@@ -45,7 +45,7 @@ export const makeStreamFrameSink = (
   payloadValues: () => Iterable<string>,
 ) => {
   const lock = Semaphore.makeUnsafe(1);
-  const capture = new OutputCapture();
+  const capture = new OutputCapture(payloadValues);
   let finished = false;
   const live = new LiveProgress(payloadValues, (frame) =>
     encodeProgressFrame(frame, redactorForFrame).pipe(
