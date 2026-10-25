@@ -145,3 +145,38 @@ test("suggests the required key at effective scope when a partial fragment omits
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+test.each([
+  [
+    "a step that mixes cmd and task",
+    "events:\n  post-start:\n    - cmd: echo hi\n      task: other",
+    ["events", "post-start", 0],
+    "Expected a command string or a step with exactly one of cmd, task, command, defer, or for",
+  ],
+  [
+    "a task step with a bad value",
+    "events:\n  post-start:\n    - task: other\n      vars: 5",
+    ["events", "post-start", 0, "vars"],
+    "Expected object",
+  ],
+  [
+    "an unknown pull policy",
+    "services:\n  api:\n    type: nginx\n    pull_policy: sometimes",
+    ["services", "api", "pull_policy"],
+    "Expected always, never, build, if_not_present, missing, refresh, daily, weekly, or every_<interval> such as every_12h",
+  ],
+] as const)("reports %s as one plain finding", async (_name, yaml, path, message) => {
+  // Given
+  const cwd = await mkdtemp(join(tmpdir(), "lando-lint-message-"));
+  try {
+    await writeFile(join(cwd, ".lando.yml"), `name: lint-parity\n${yaml}\n`);
+    // When
+    const result = await Effect.runPromise(lintLandofile({ cwd }));
+    // Then
+    expect(result.violations).toEqual([
+      expect.objectContaining({ path, message, scopes: ["fragment", "effective"] }),
+    ]);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});

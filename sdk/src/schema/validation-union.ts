@@ -1,5 +1,165 @@
-import type { SchemaAST, SchemaIssue } from "effect";
-import { PLAIN_TEXT_SLOT_REJECTION, authoringSource } from "./authoring-issue-metadata.ts";
+import { type SchemaAST, SchemaIssue } from "effect";
+import { isPlainRecord } from "../landofile/record.ts";
+import {
+  PLAIN_TEXT_SLOT_REJECTION,
+  authoringExpectation,
+  authoringSource,
+  isExpressionSlot,
+} from "./authoring-issue-metadata.ts";
+import { isMergeDirectiveMemberAst } from "./landofile-directive.ts";
+
+const plainTextSlotRejection = (issue: SchemaIssue.Issue): boolean =>
+  issue._tag === "InvalidValue" && issue.annotations?.[PLAIN_TEXT_SLOT_REJECTION] === true;
+
+// A key present where its member forbids it (`Never`), seen through authoring wrappers.
+const forbiddenKeyIssue = (issue: SchemaIssue.Issue): boolean => {
+  switch (issue._tag) {
+    case "Encoding":
+      return forbiddenKeyIssue(issue.issue);
+    case "AnyOf": {
+      const real = issue.issues.filter((child) => !plainTextSlotRejection(child));
+      if (real.length > 0) return real.every(forbiddenKeyIssue);
+      // Never is never a union candidate, so a forbidden key under an authoring wrapper fails empty.
+      const members = issue.ast.types.filter(
+        (member) => !isMergeDirectiveMemberAst(member) && !isExpressionSlot(member),
+      );
+      return members.length > 0 && members.every((member) => member._tag === "Never");
+    }
+    case "InvalidType":
+      return issue.ast._tag === "Never";
+    default:
+      return false;
+  }
+};
+const keyPresencePointer = (issue: SchemaIssue.Issue): boolean =>
+  issue._tag === "Pointer" &&
+  issue.path.length === 1 &&
+  (issue.issue._tag === "MissingKey" || forbiddenKeyIssue(issue.issue));
+// Partial fragments never report missing keys, so only a present forbidden key
+// may rule a member out; otherwise fragment and effective would select differently.
+const forbiddenKeyPointer = (issue: SchemaIssue.Issue): boolean =>
+  issue._tag === "Pointer" && issue.path.length === 1 && forbiddenKeyIssue(issue.issue);
+
+// Field-level issues of a struct candidate, looking through authoring wrappers.
+const fieldIssues = (issue: SchemaIssue.Issue): readonly SchemaIssue.Issue[] | undefined => {
+  switch (issue._tag) {
+    case "Encoding":
+      return fieldIssues(issue.issue);
+    case "Composite":
+      return issue.ast._tag === "Objects" ? issue.issues : undefined;
+    case "AnyOf": {
+      const real = issue.issues.filter(
+        (child) =>
+          !(child._tag === "InvalidValue" && child.annotations?.[PLAIN_TEXT_SLOT_REJECTION] === true),
+      );
+      return real.length === 1 && real[0] !== undefined ? fieldIssues(real[0]) : undefined;
+    }
+    default:
+      return undefined;
+  }
+};
+
+// Whether the authored object could be this source member: its sentinels match,
+// its required keys are present, and none of its forbidden (`Never`) keys are.
+const fitsMember = (member: SchemaAST.AST, value: Readonly<Record<string, unknown>>): boolean => {
+  switch (member._tag) {
+    case "Objects":
+      return member.propertySignatures.every(({ name, type }) => {
+        if (typeof name !== "string") return true;
+        const present = Object.hasOwn(value, name);
+        if (type._tag === "Never") return !present;
+        if (type.context?.isOptional === true) return true;
+        if (!present) return false;
+        return type._tag === "Literal" ? value[name] === type.literal : true;
+      });
+    case "Union":
+      return member.types.some((type) => fitsMember(type, value));
+    case "Suspend":
+      return fitsMember(member.thunk(), value);
+    default:
+      return false;
+  }
+};
+
+/**
+ * Struct members told apart by which keys are present (each requires its own
+ * key and forbids the others) have no literal sentinel. When exactly one
+ * candidate fits the authored object, its issues are the whole story. Without
+ * the authored value, a present forbidden key is the only evidence both partial
+ * fragments and effective decodes share.
+ */
+export const selectByKeyPresence = (
+  candidates: readonly SchemaIssue.Issue[],
+  value?: unknown,
+): readonly SchemaIssue.Issue[] => {
+  if (candidates.length < 2) return candidates;
+  if (isPlainRecord(value)) {
+    const fitting = candidates.filter((candidate) => {
+      const derived = candidateAst(candidate);
+      return derived !== undefined && fitsMember(authoringSource(derived) ?? derived, value);
+    });
+    if (fitting.length === 1) return fitting;
+  }
+  const fields = candidates.map(fieldIssues);
+  if (fields.some((issues) => issues === undefined)) return candidates;
+  const matching = candidates.filter((_, index) => !fields[index]?.some(forbiddenKeyPointer));
+  return matching.length === 1 ? matching : candidates;
+};
+
+// A union's message summarizes value-level or key-combination failures, but never
+// hides a deeper location or a candidate's own explicit remediation.
+export const unionValueMessage = (
+  ast: SchemaAST.Union,
+  candidates: readonly SchemaIssue.Issue[],
+): string | undefined => {
+  const source = authoringExpectation(ast);
+  const message = source.annotations?.message;
+  if (typeof message !== "string") return undefined;
+  // Key presence only summarizes when several members compete for the input.
+  const keyCombination = candidates.length > 1;
+  const canSummarize = (issue: SchemaIssue.Issue): boolean => {
+    switch (issue._tag) {
+      case "Pointer":
+        return (
+          (keyCombination && keyPresencePointer(issue)) ||
+          (issue.path.length === 0 && canSummarize(issue.issue))
+        );
+      case "Encoding":
+        return canSummarize(issue.issue);
+      case "Filter":
+        return SchemaIssue.defaultCheckHook(issue) === undefined && canSummarize(issue.issue);
+      case "Composite":
+        return (
+          typeof authoringExpectation(issue.ast).annotations?.message !== "string" &&
+          issue.issues.every(canSummarize)
+        );
+      case "AnyOf":
+        // Nested authoring unions drop the members the effective decode never tries.
+        return (
+          typeof authoringExpectation(issue.ast).annotations?.message !== "string" &&
+          diagnosticUnionCandidates(
+            issue.ast,
+            issue.issues.filter((child) => !plainTextSlotRejection(child)),
+          ).every(canSummarize)
+        );
+      case "InvalidType":
+        return typeof authoringExpectation(issue.ast).annotations?.message !== "string";
+      case "InvalidValue":
+        return (
+          issue.annotations?.[PLAIN_TEXT_SLOT_REJECTION] === true ||
+          typeof issue.annotations?.message !== "string"
+        );
+      case "MissingKey":
+      case "UnexpectedKey":
+      case "Forbidden":
+      case "OneOf":
+        return false;
+      default:
+        return issue satisfies never;
+    }
+  };
+  return candidates.every(canSummarize) ? message : undefined;
+};
 
 const candidateAst = (issue: SchemaIssue.Issue): SchemaAST.AST | undefined => {
   switch (issue._tag) {

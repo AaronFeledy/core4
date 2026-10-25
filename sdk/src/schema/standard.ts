@@ -25,7 +25,10 @@ const standardSchema = <S extends Schema.ConstraintDecoder<unknown, never>>(
         Result.match(decode(input, options.parseOptions), {
           onSuccess: (value) => ({ value }),
           onFailure: (error) => ({
-            issues: schemaIssueLeaves(error.issue).map(({ path, message }) => ({ path, message })),
+            issues: schemaIssueLeaves(error.issue, [], { input }).map(({ path, message }) => ({
+              path,
+              message,
+            })),
           }),
         }),
     },

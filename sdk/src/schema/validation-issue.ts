@@ -1,4 +1,5 @@
 import { Schema, type SchemaAST, SchemaIssue } from "effect";
+import { isPlainRecord } from "../landofile/record.ts";
 import {
   PLAIN_TEXT_SLOT_REJECTION,
   authoringExpectation,
@@ -10,7 +11,7 @@ import { isMergeDirectiveMemberAst } from "./landofile-directive.ts";
 import { LandofileLayer } from "./landofile-reference.ts";
 import { validationExpectation } from "./validation-expectation.ts";
 import { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
-import { diagnosticUnionCandidates } from "./validation-union.ts";
+import { diagnosticUnionCandidates, selectByKeyPresence, unionValueMessage } from "./validation-union.ts";
 
 export { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
 
@@ -116,7 +117,19 @@ export const formatValidationIssueLine = (issue: ValidationIssue): string => {
 export interface SchemaValidationIssueOptions {
   readonly fallback?: string;
   readonly extraAllowedKeys?: (path: ValidationIssuePath) => readonly string[];
+  /** The decoded input, used only to tell which union member an authored object meant. */
+  readonly input?: unknown;
 }
+
+const valueAt = (root: unknown, path: ReadonlyArray<PropertyKey>): unknown => {
+  let current = root;
+  for (const key of path) {
+    if (Array.isArray(current) && typeof key === "number") current = current[key];
+    else if (isPlainRecord(current) && typeof key === "string") current = current[key];
+    else return undefined;
+  }
+  return current;
+};
 
 /** Diagnostic leaf retaining the issue category and Standard Schema property-key path. */
 export const SchemaIssueLeaf = Schema.Struct({
@@ -173,6 +186,18 @@ const directivePayloadIssues = (issue: SchemaIssue.Issue): readonly SchemaIssue.
   });
 };
 
+// Competing union members, or a property plus a matching pattern key, that report
+// the same issue at the same path describe one defect.
+const distinctLeaves = (leaves: ReadonlyArray<SchemaIssueLeaf>): ReadonlyArray<SchemaIssueLeaf> => {
+  const seen = new Set<string>();
+  return leaves.filter((leaf) => {
+    const key = JSON.stringify([leaf._tag, leaf.path.map(String), leaf.message, leaf.suggestion]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
 /** Flatten diagnostics, hiding authoring-only alternatives and synthetic directive payload paths. */
 export const schemaIssueLeaves = (
   issue: SchemaIssue.Issue,
@@ -186,7 +211,7 @@ export const schemaIssueLeaves = (
     case "Encoding":
       return walk(issue.issue);
     case "Composite":
-      return issue.issues.flatMap(walk);
+      return distinctLeaves(issue.issues.flatMap(walk));
     case "AnyOf": {
       const value = directiveValue(issue.ast);
       if (value !== undefined) {
@@ -198,9 +223,16 @@ export const schemaIssueLeaves = (
       if (authoringSource(issue.ast) !== undefined) {
         const children = issue.issues.filter((child) => !authoringNonCandidate(child));
         const candidates = diagnosticUnionCandidates(issue.ast, children);
-        return candidates.length === 0 ? walk(expectationIssue(issue.ast, issue)) : candidates.flatMap(walk);
+        const message = unionValueMessage(issue.ast, candidates);
+        if (message !== undefined) return [{ _tag: "Type", path, message }];
+        return candidates.length === 0
+          ? walk(expectationIssue(issue.ast, issue))
+          : distinctLeaves(selectByKeyPresence(candidates, valueAt(options?.input, path)).flatMap(walk));
       }
-      if (issue.issues.length > 0) return issue.issues.flatMap(walk);
+      const message = unionValueMessage(issue.ast, issue.issues);
+      if (message !== undefined) return [{ _tag: "Type", path, message }];
+      if (issue.issues.length > 0)
+        return distinctLeaves(selectByKeyPresence(issue.issues, valueAt(options?.input, path)).flatMap(walk));
       break;
     }
     case "InvalidType":

@@ -101,6 +101,7 @@ export const landofileIssuesFromSchema = (
 ): readonly ValidationIssue[] =>
   schemaIssueLeaves(issue, [], {
     extraAllowedKeys: (path) => (path[0] === "services" && path.length >= 3 ? SERVICE_KEYS : []),
+    input: parsed,
   }).map((leaf) => {
     const suggestion = suggestionForLeaf(leaf, parsed);
     return {
