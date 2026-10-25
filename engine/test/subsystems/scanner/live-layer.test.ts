@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
+import { ProviderConfigError, ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
 import { AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   RouterService,
@@ -214,6 +214,33 @@ describe("ProviderUrlScanner.layer", () => {
       expect(failure.scannerId).toBe("http-probe");
       expect(failure.message).not.toContain("abc123");
       expect(failure.message).toContain("[redacted]");
+      expect(failure.remediation).toBe("Repair the test provider.");
+    }
+  });
+
+  test("keeps the provider's own failure when its applied plans cannot be inspected", async () => {
+    // Given a provider whose applied-plan inspection fails with a configuration error.
+    const http = requestSequence([httpStatus(200)]);
+    const original = new ProviderConfigError({
+      providerId: "test",
+      operation: "appliedPlans",
+      message: "DOCKER_HOST points at a missing socket.",
+      remediation: "Unset DOCKER_HOST or point it at a running daemon.",
+    });
+    const provider = {
+      ...TestRuntimeProvider,
+      appliedPlans: Effect.fail(original),
+    } satisfies RuntimeProviderShape;
+    // When the scanner selects the app's provider.
+    const failure = failureOf(
+      await driveExit(provideScanner(provider, http).pipe(Effect.flatMap((scanner) => scanner.scan(appId)))),
+    );
+    // Then the scanner error carries that failure and its remediation, not a provider-unavailable relabel.
+    expect(failure).toBeInstanceOf(ScannerError);
+    if (failure instanceof ScannerError) {
+      expect(failure.message).toContain("DOCKER_HOST points at a missing socket.");
+      expect(failure.remediation).toBe("Unset DOCKER_HOST or point it at a running daemon.");
+      expect(failure.cause).toMatchObject({ name: "ProviderConfigError" });
     }
   });
 });

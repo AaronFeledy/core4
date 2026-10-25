@@ -2,7 +2,7 @@ import { Effect, Layer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
-import { type AppId, type AppPlan, ServiceName } from "@lando/sdk/schema";
+import { type AppId, type AppPlan, type ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import {
   type PortCollision,
@@ -115,15 +115,18 @@ export const makeUrlScanner = (
   });
 };
 
-const providerListError = (error: { readonly message: string }, redactor: Redactor): ScannerError =>
+const providerListError = (
+  error: { readonly message: string; readonly remediation?: string },
+  redactor: Redactor,
+): ScannerError =>
   new ScannerError({
-    message: redactor.redactString(
-      `App checks could not list provider services: ${error.message}. Check the provider with \`lando doctor\` and re-run the checks.`,
-    ),
+    message: redactor.redactString(`App checks could not list provider services: ${error.message}`),
     scannerId: SCANNER_ID,
     cause: redactor.redactValue(error),
-    remediation:
-      "Start the app services and ensure a scanner implementation is installed, then re-run URL checks.",
+    // The provider's own remediation names the real fix; the fallback covers untagged failures.
+    remediation: redactor.redactString(
+      error.remediation ?? "Run lando doctor to inspect the provider, then re-run the URL checks.",
+    ),
   });
 
 const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>
@@ -175,21 +178,16 @@ export const layer: Layer.Layer<UrlScanner, never, RuntimeProviderRegistry | Htt
           const redactor = yield* resolveRedactor;
           const selected = Effect.gen(function* () {
             if (suppliedPlan !== undefined) return yield* registry.select(suppliedPlan);
-            let uninspected: ProviderUnavailableError | undefined;
+            const inspectAppliedPlans = (id: ProviderId) =>
+              registry
+                .select(id)
+                .pipe(Effect.flatMap((candidate) => candidate.appliedPlans ?? Effect.succeed([])));
+            // The first provider that could not be inspected keeps its own tag and remediation.
+            let uninspected: Effect.Error<ReturnType<typeof inspectAppliedPlans>> | undefined;
             for (const id of yield* registry.list) {
-              const inspected = yield* Effect.result(
-                registry
-                  .select(id)
-                  .pipe(Effect.flatMap((candidate) => candidate.appliedPlans ?? Effect.succeed([]))),
-              );
+              const inspected = yield* Effect.result(inspectAppliedPlans(id));
               if (inspected._tag === "Failure") {
-                uninspected ??= new ProviderUnavailableError({
-                  providerId: id,
-                  operation: "scan",
-                  message: `Could not inspect applied plans on provider ${id} for app ${appId}: ${inspected.failure.message}`,
-                  remediation: `Inspect provider ${id} with lando doctor --provider=${id} and repair it before scanning app ${appId}.`,
-                  cause: inspected.failure,
-                });
+                uninspected ??= inspected.failure;
                 continue;
               }
               const plan = inspected.success.find((plan) => plan.id === appId);

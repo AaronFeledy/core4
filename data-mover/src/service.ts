@@ -1517,21 +1517,16 @@ export const layer: Layer.Layer<
           const supplied = yield* Effect.serviceOption(RuntimeProvider);
           if (Option.isSome(supplied) && supplied.value.id !== "stub") return supplied.value;
           if (app === undefined) return yield* providerRegistry.select(providerId);
-          let uninspected: ProviderUnavailableError | undefined;
+          const inspectAppliedPlans = (id: ProviderId) =>
+            providerRegistry
+              .select(id)
+              .pipe(Effect.flatMap((candidate) => candidate.appliedPlans ?? Effect.succeed([])));
+          // The first provider that could not be inspected keeps its own tag and remediation.
+          let uninspected: Effect.Error<ReturnType<typeof inspectAppliedPlans>> | undefined;
           for (const id of yield* providerRegistry.list) {
-            const inspected = yield* Effect.result(
-              providerRegistry
-                .select(id)
-                .pipe(Effect.flatMap((candidate) => candidate.appliedPlans ?? Effect.succeed([]))),
-            );
+            const inspected = yield* Effect.result(inspectAppliedPlans(id));
             if (inspected._tag === "Failure") {
-              uninspected ??= new ProviderUnavailableError({
-                providerId: id,
-                operation: "select",
-                message: `Could not inspect applied plans on provider ${id} for app ${app}: ${inspected.failure.message}`,
-                remediation: `Inspect provider ${id} with lando doctor --provider=${id} and repair it before transferring app ${app}'s data.`,
-                cause: inspected.failure,
-              });
+              uninspected ??= inspected.failure;
               continue;
             }
             const plan = inspected.success.find((plan) => plan.id === app);
