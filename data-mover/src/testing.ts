@@ -38,8 +38,7 @@ export const makeTestDataMover = (
         new SnapshotNotFoundError({
           message: `Snapshot ${reference} was not found.`,
           snapshotId: reference,
-          remediation:
-            "List snapshots in this scope and retry with an existing id or label.",
+          remediation: "List snapshots in this scope and retry with an existing id or label.",
         }),
       ),
     findOrphanedSnapshots: Effect.succeed([]),
