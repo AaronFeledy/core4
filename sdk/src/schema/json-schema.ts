@@ -310,7 +310,15 @@ import {
   ToolingVar,
 } from "./landofile.ts";
 import { LogSource, LogSourceId, LogSourceInput, LogSourceStrategy, LogSourceStream } from "./log-source.ts";
-import { CommandResultEnvelope, CommandResultFormat, CommandWarning, StreamFrame } from "./machine-output.ts";
+import {
+  CommandCompletion,
+  CommandOutput,
+  CommandOutputChunk,
+  CommandResultEnvelope,
+  CommandResultFormat,
+  CommandWarning,
+  StreamFrame,
+} from "./machine-output.ts";
 import { ManagedFile, ManagedFileInfo, ManagedFilePlan, ManagedFileResult } from "./managed-file.ts";
 import { McpCatalog, McpCatalogOptions, McpServeOptions, McpToolDescriptor } from "./mcp.ts";
 import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan, StorageScope } from "./mounts.ts";
@@ -932,6 +940,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   FailureRole,
   CommandWarning,
   CommandResultEnvelope,
+  CommandCompletion,
+  CommandOutput,
+  CommandOutputChunk,
   CommandTraceSpan,
   CommandTrace,
   StreamFrame,
@@ -1468,6 +1479,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   FailureRole: "Relationship of an additional failure to the primary operation failure.",
   CommandWarning: "Public Lando schema contract for Command Warning.",
   CommandResultEnvelope: "Public Lando schema contract for Command Result Envelope.",
+  CommandCompletion: "Canonical command semantic verdict and shell exit status.",
+  CommandOutput: "Bounded redacted command output tail.",
+  CommandOutputChunk: "Redacted output text with channel and provenance.",
   CommandTraceSpan: "One finished span in a command-invocation timing tree.",
   CommandTrace: "Command-invocation timing tree for machine-output and display.",
   StreamFrame: "Public Lando schema contract for Stream Frame.",

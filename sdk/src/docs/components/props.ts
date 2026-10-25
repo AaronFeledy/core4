@@ -175,6 +175,9 @@ export type RunProps = typeof RunProps.Type;
 export const VerifyProps = Schema.Struct({
   event: Schema.optionalKey(Schema.String),
   command: Schema.optionalKey(Schema.String),
+  expectExit: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()))).annotate({
+    description: "Expected process exit code for command verification; defaults to zero.",
+  }),
   file: Schema.optionalKey(Schema.String),
   errorTag: Schema.optionalKey(Schema.String),
   expect: Schema.optionalKey(MatcherSchema),
@@ -187,6 +190,12 @@ export const VerifyProps = Schema.Struct({
             .length === 1,
         { message: "<Verify> requires exactly one target.", toJsonSchema: () => [{}, true] },
       ),
+    ),
+    Schema.check(
+      Schema.makeFilter((input) => input.expectExit === undefined || input.command !== undefined, {
+        message: "<Verify> expectExit requires a command target.",
+        toJsonSchema: () => [{}, true],
+      }),
     ),
   )
   .annotate({

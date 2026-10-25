@@ -206,7 +206,7 @@ describe("piped exec binary archives", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: payload, raw: true });
+        yield* sink.emit({ _tag: "stdout", chunk: payload, kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
 

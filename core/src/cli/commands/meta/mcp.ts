@@ -1,4 +1,5 @@
 import { serializeToolingInput } from "@lando/landofile/tooling-input";
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 /**
  * `meta:mcp` (`lando mcp`) command logic.
  *
@@ -112,7 +113,7 @@ const toolingArgsFromInput = (input: unknown): ReadonlyArray<string> => {
   return Array.isArray(values) ? values.filter((value): value is string => typeof value === "string") : [];
 };
 
-const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoCommandSpec => {
+const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoCommandSpec<RunToolingResult> => {
   let namespace: LandoCommandSpec["namespace"] = "app";
   if (command.id.startsWith("meta:")) namespace = "meta";
   else if (command.id.startsWith("apps:")) namespace = "apps";
@@ -154,6 +155,7 @@ const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoComm
           ),
         }),
     resultSchema: ToolingMcpResultSchema,
+    completion: (result) => commandCompletionFromExitCode(result.exitCode),
     run: (input) =>
       command.input === undefined
         ? runTooling({ name: command.id, args: toolingArgsFromInput(input) })
@@ -356,6 +358,7 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
 
 export const dispatchMcpCommand = async (params: {
   readonly flags: McpCommandFlags;
+  readonly signal?: AbortSignal;
   readonly commandRuntime: Layer.Layer<
     ConfigService | RedactionService | BuiltInCommandCatalog,
     ConfigError | LandoRuntimeBootstrapError
@@ -413,7 +416,20 @@ export const dispatchMcpCommand = async (params: {
           yield* serveMcp(registry, params.flags, retainedRuntime);
         }).pipe(Effect.scoped)
       : Effect.fail(startupError);
-  return runWithRendererHandling(serveEffect, {
+  const signal = params.signal;
+  const interrupted =
+    signal === undefined
+      ? Effect.never
+      : Effect.callback<never>((resume) => {
+          const abort = () => resume(Effect.interrupt);
+          if (signal.aborted) {
+            abort();
+            return;
+          }
+          signal.addEventListener("abort", abort, { once: true });
+          return Effect.sync(() => signal.removeEventListener("abort", abort));
+        });
+  await runWithRendererHandling(Effect.raceFirst(interrupted, serveEffect), {
     runtime: params.commandRuntime,
     rendererMode: params.rendererMode,
     resultFormat: "text",
@@ -424,4 +440,7 @@ export const dispatchMcpCommand = async (params: {
     render: () => undefined,
     formatError: params.formatError,
   });
+  if (signal?.aborted && (process.exitCode === undefined || process.exitCode === 0)) {
+    process.exitCode = signal.reason === "SIGTERM" ? 143 : 130;
+  }
 };

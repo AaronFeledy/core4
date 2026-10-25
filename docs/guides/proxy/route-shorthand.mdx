@@ -401,10 +401,10 @@ Skip lint and `lando start` reports the same entries, at the same paths, in one 
       <UseFixture name="route-shorthand-invalid" />
     </Step>
     <Step name="lint-invalid-route">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"routes\",\\s*0\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "hostname\\[:port\\]\\[/pathPrefix\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"routes\",\\s*0\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "hostname\\[:port\\]\\[/pathPrefix\\]" } }} />
     </Step>
     <Step name="cleanup-invalid">
       <Cleanup />
@@ -416,10 +416,10 @@ Skip lint and `lando start` reports the same entries, at the same paths, in one 
       <UseFixture name="route-object-invalid" />
     </Step>
     <Step name="lint-invalid-object-hostname">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"routes\",\\s*0,\\s*\"hostname\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^\"]*endpoint[^\"]*pathPrefix" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"routes\",\\s*0,\\s*\"hostname\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^\"]*endpoint[^\"]*pathPrefix" } }} />
     </Step>
     <Step name="cleanup-invalid-object">
       <Cleanup />

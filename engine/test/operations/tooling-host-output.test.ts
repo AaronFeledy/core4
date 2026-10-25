@@ -122,12 +122,7 @@ const harness = (
               Effect.sync(() => {
                 const bytes =
                   typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk;
-                frames.push({ ...frame, chunk: payloads[frame._tag].write(bytes) });
-              }),
-            flush: () =>
-              Effect.sync(() => {
-                for (const tag of ["stdout", "stderr"] as const)
-                  frames.push({ _tag: tag, chunk: payloads[tag].flush() });
+                frames.push({ ...frame, kind: "bytes", chunk: payloads[frame._tag].write(bytes) });
               }),
           });
           return yield* runTooling({ name: "probe" }).pipe(
@@ -139,6 +134,13 @@ const harness = (
               ),
             ),
             Effect.result,
+            Effect.ensuring(
+              Effect.sync(() => {
+                if (options.payload === true)
+                  for (const tag of ["stdout", "stderr"] as const)
+                    frames.push({ kind: "bytes", _tag: tag, chunk: payloads[tag].flush() });
+              }),
+            ),
           );
         }),
       ),
@@ -218,7 +220,7 @@ test("streams host channels through the sink without collecting the body", async
   // Then channels stream as authored and the collected result stays empty under a live sink.
   expect(joined(h.frames, "stdout")).toBe("split-host-secret");
   expect(joined(h.frames, "stderr")).toBe("split-host-secret");
-  expect(h.frames.every((frame) => frame.raw === true)).toBe(true);
+  expect(h.frames.every((frame) => frame.kind === "bytes")).toBe(true);
   expect(result).toMatchObject({
     _tag: "Success",
     success: { stdout: "", stderr: "", exitCode: 0 },

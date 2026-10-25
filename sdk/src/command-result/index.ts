@@ -1,6 +1,11 @@
 import { Effect, Result, Schema } from "effect";
 import type { ProjectedFailure } from "./failure.ts";
 export {
+  resolveCommandCompletion,
+  commandCompletionFromExitCode,
+  type CompletedCommandResult,
+} from "./completion.ts";
+export {
   FailureRoleAnnotation,
   failureOutcomeFromCause,
   commandFailureCause,
@@ -29,9 +34,9 @@ export {
 
 export { listSelectableResultKeys, projectEncodedResult } from "./project-result.ts";
 
-export type CommandResultOutcome =
-  | { readonly _tag: "success"; readonly value: unknown }
-  | (ProjectedFailure & { readonly _tag: "failure" });
+export type CommandResultOutcome<A = unknown> =
+  | { readonly _tag: "success"; readonly value: A }
+  | (ProjectedFailure & { readonly _tag: "failure"; readonly value?: A });
 
 /** Serializations of the one command result envelope. Stream frames stay JSON. */
 export type CommandResultEnvelopeFormat = "json" | "yaml";
@@ -40,6 +45,7 @@ export interface EncodeCommandResultOptions {
   readonly command: string;
   readonly resultSchema: Schema.Codec<unknown, unknown>;
   readonly outcome: CommandResultOutcome;
+  readonly output?: import("../schema/machine-output.ts").CommandOutput;
   readonly redactor: Redactor;
   readonly warnings?: ReadonlyArray<CommandWarning>;
   readonly deprecations?: ReadonlyArray<DeprecationUse>;
@@ -146,6 +152,7 @@ const encodeCommandEnvelope = Effect.fnUntraced(function* (
     warnings: [...(options.warnings ?? [])],
     deprecations: [...(options.deprecations ?? [])],
     ...(options.trace === undefined ? {} : { trace: options.trace }),
+    ...(options.output === undefined ? {} : { output: options.output }),
   };
   const envelope =
     options.outcome._tag === "success"
@@ -161,6 +168,15 @@ const encodeCommandEnvelope = Effect.fnUntraced(function* (
       : {
           ...base,
           ok: false,
+          ...(Object.hasOwn(options.outcome, "value")
+            ? {
+                result: applyProjectResultKeys(
+                  options.resultSchema,
+                  yield* encodeResult(options.resultSchema, options.outcome.value),
+                  options.projectResultKeys,
+                ),
+              }
+            : {}),
           error: {
             ...taggedErrorJson(options.outcome.error),
             ...(options.outcome.additionalErrors.length

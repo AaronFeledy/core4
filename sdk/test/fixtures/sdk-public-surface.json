@@ -455,6 +455,7 @@
     "./command-result": [
       "FailureRoleAnnotation",
       "buildCommandResultEnvelope",
+      "commandCompletionFromExitCode",
       "commandFailureCause",
       "encodeCommandResult",
       "encodeStreamEventFrame",
@@ -465,7 +466,8 @@
       "identityRedactor",
       "listSelectableResultKeys",
       "primaryFailureReason",
-      "projectEncodedResult"
+      "projectEncodedResult",
+      "resolveCommandCompletion"
     ],
     "./database-creds": [
       "DATABASE_FAMILY_DEFAULT_PORTS",
@@ -1148,6 +1150,9 @@
       "ChoicesFrom",
       "CleanupProps",
       "CommandAliasesShape",
+      "CommandCompletion",
+      "CommandOutput",
+      "CommandOutputChunk",
       "CommandResultEnvelope",
       "CommandResultFormat",
       "CommandSpec",

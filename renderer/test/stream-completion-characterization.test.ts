@@ -10,8 +10,8 @@ import { EventService } from "@lando/sdk/services";
 import { Context, DateTime, Effect, Layer, Stream } from "effect";
 
 const frames = [
-  { _tag: "stdout", chunk: "ready", service: "web" },
-  { _tag: "stderr", chunk: "warning", service: "web", source: "error-log" },
+  { kind: "record", _tag: "stdout", chunk: "ready", service: "web" },
+  { kind: "record", _tag: "stderr", chunk: "warning", service: "web", source: "error-log" },
 ] satisfies readonly StreamFrameSinkFrame[];
 const redaction = RedactionService.layer;
 
@@ -74,12 +74,11 @@ describe("renderer finite stream completion", () => {
         Effect.gen(function* () {
           const sink = yield* StreamFrameSink;
           yield* Stream.runForEach(stream, sink.emit);
-          if (sink.flush !== undefined) yield* sink.flush();
         }).pipe(Effect.provide(layer)),
       );
 
       expect(finalized).toBe(1);
-      expect(io.stderr()).toBe("");
+      expect(io.stderr()).toBe(format === "text" ? "web stderr [error-log]: warning\n" : "");
       if (format === "json") {
         expect(
           io
@@ -88,13 +87,11 @@ describe("renderer finite stream completion", () => {
             .split("\n")
             .map((line) => JSON.parse(line)),
         ).toEqual([
-          { _tag: "stdout", chunk: "ready", service: "web" },
-          { _tag: "stderr", chunk: "warning", service: "web", source: "error-log" },
+          { _tag: "stdout", chunk: "ready\n", service: "web" },
+          { _tag: "stderr", chunk: "warning\n", service: "web", source: "error-log" },
         ]);
       } else {
-        expect(io.stdout()).toBe(
-          format === "yaml" ? "" : "web stdout: ready\nweb stderr [error-log]: warning\n",
-        );
+        expect(io.stdout()).toBe(format === "yaml" ? "" : "web stdout: ready\n");
       }
     });
   }

@@ -61,37 +61,37 @@ describe("collectExecStream binary frames", () => {
     expect(concat(frames.filter((frame) => frame._tag === "stderr").map((frame) => frame.chunk))).toEqual(
       new Uint8Array([0x00, 0xff]),
     );
-    expect(frames.every((frame) => frame.raw === true)).toBe(true);
+    expect(frames.every((frame) => frame.kind === "bytes")).toBe(true);
   });
 
-  test("flushes the sink after the provider stream ends", async () => {
+  test("does not finish a supplied sink after the provider stream ends", async () => {
     // Given
     let flushed = 0;
-    const sink = StreamFrameSink.of({
+    const sink = {
       emit: () => Effect.void,
       flush: () =>
         Effect.sync(() => {
           flushed += 1;
         }),
-    });
+    };
 
     // When
     await Effect.runPromise(collectExecStream(Stream.fromIterable([{ exitCode: 0 }]), Option.some(sink)));
 
     // Then
-    expect(flushed).toBe(1);
+    expect(flushed).toBe(0);
   });
 
-  test("flushes the sink when the provider stream fails", async () => {
+  test("does not finish a supplied sink when the provider stream fails", async () => {
     // Given
     let flushed = 0;
-    const sink = StreamFrameSink.of({
+    const sink = {
       emit: () => Effect.void,
       flush: () =>
         Effect.sync(() => {
           flushed += 1;
         }),
-    });
+    };
 
     // When
     const exit = await Effect.runPromiseExit(
@@ -100,7 +100,7 @@ describe("collectExecStream binary frames", () => {
 
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(flushed).toBe(1);
+    expect(flushed).toBe(0);
   });
 
   test("writes held UTF-8 bytes when the provider stream fails", async () => {

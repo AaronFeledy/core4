@@ -165,8 +165,8 @@ describe("log-follow completion", () => {
         mode === "empty"
           ? []
           : [
-              { _tag: "stdout", chunk: "database ready", service: "database" },
-              { _tag: "stdout", chunk: "web ready", service: "web" },
+              { kind: "record", _tag: "stdout", chunk: "database ready", service: "database" },
+              { kind: "record", _tag: "stdout", chunk: "web ready", service: "web" },
             ],
       );
     });

@@ -322,11 +322,15 @@ const withStreamedTail = Effect.fnUntraced(function* (
   const tee: StreamFrameSinkShape = {
     emit: (frame) =>
       Effect.sync(() => {
-        const bytes = typeof frame.chunk === "string" ? encoder.encode(frame.chunk) : frame.chunk;
+        const bytes =
+          frame.kind === "record"
+            ? encoder.encode(`${frame.chunk}\n`)
+            : typeof frame.chunk === "string"
+              ? encoder.encode(frame.chunk)
+              : frame.chunk;
         const text = decoders[frame._tag].decode(payloads[frame._tag].write(bytes), { stream: true });
         tail[frame._tag] = (tail[frame._tag] + text).slice(-OUTPUT_TAIL_LENGTH);
       }).pipe(Effect.andThen(live.value.emit(frame))),
-    ...(live.value.flush === undefined ? {} : { flush: live.value.flush }),
   };
   const execution = yield* effect.pipe(Effect.provideService(StreamFrameSink, tee));
   for (const kind of ["stdout", "stderr"] as const) {

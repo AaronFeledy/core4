@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 import { Args } from "../../spec/metadata";
 
@@ -43,6 +44,6 @@ export const metaXSpec: LandoCommandSpec<MetaXResult> = {
     }
     return yield* metaX({ spec, argv: args });
   }),
-  successExitCode: (result) => result.exitCode,
+  completion: (result) => commandCompletionFromExitCode(result.exitCode),
   render: (result) => renderMetaXResult(result as MetaXResult),
 };

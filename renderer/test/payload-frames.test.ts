@@ -17,8 +17,7 @@ const drive = async (format: "text" | "json", chunks: readonly (string | Uint8Ar
   await Effect.runPromise(
     Effect.gen(function* () {
       const sink = yield* StreamFrameSink;
-      for (const chunk of chunks) yield* sink.emit({ _tag: "stdout", chunk, raw: true });
-      if (sink.flush !== undefined) yield* sink.flush();
+      for (const chunk of chunks) yield* sink.emit({ _tag: "stdout", chunk, kind: "bytes" });
     }).pipe(Effect.provide(layer)),
   );
   return io;
@@ -45,9 +44,8 @@ describe("payload frames", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stderr", chunk: "known-", raw: true });
-        yield* sink.emit({ _tag: "stderr", chunk: "secret", raw: true });
-        if (sink.flush !== undefined) yield* sink.flush();
+        yield* sink.emit({ _tag: "stderr", chunk: "known-", kind: "bytes" });
+        yield* sink.emit({ _tag: "stderr", chunk: "secret", kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
     // Then
@@ -104,9 +102,8 @@ describe("payload frames", () => {
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
         yield* service.registerValues(["late-registration"]);
-        yield* sink.emit({ _tag: "stdout", chunk: "late-reg", raw: true });
-        yield* sink.emit({ _tag: "stdout", chunk: "istration!", raw: true });
-        if (sink.flush !== undefined) yield* sink.flush();
+        yield* sink.emit({ _tag: "stdout", chunk: "late-reg", kind: "bytes" });
+        yield* sink.emit({ _tag: "stdout", chunk: "istration!", kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
     // Then

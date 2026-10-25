@@ -150,7 +150,7 @@ const harness = (input: {
             const sink = yield* Effect.serviceOption(StreamFrameSink);
             if (Option.isSome(sink) && output.length > 0) {
               for (const chunk of input.failureOutput ?? [output]) {
-                yield* sink.value.emit({ _tag: "stdout", chunk, raw: true });
+                yield* sink.value.emit({ _tag: "stdout", chunk, kind: "bytes" });
               }
             }
             return {

@@ -51,10 +51,10 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
     resultFormat: format,
     resultSchema: UpdateResultSchema,
     deprecationWarnings: false,
-    successExitCode: (result) =>
+    completion: (result) =>
       result.hasFailures === true || result.coreFailure !== undefined || result.coreBlocked === true
-        ? 1
-        : undefined,
+        ? { ok: false, exitCode: 1 }
+        : { ok: true, exitCode: 0 },
     render: (result) => `Previous Windows update result:\n${renderUpdateResult(result)}`,
     formatError: (failure) =>
       formatBugReport({

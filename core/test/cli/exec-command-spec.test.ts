@@ -186,7 +186,7 @@ describe("exec command spec", () => {
                     ]).run({
                       command: execSpec.id,
                       flags: {},
-                      args: { command: "cat" },
+                      args: { command: ["cat"] },
                       argv: [],
                       cwd: process.cwd(),
                     })
@@ -232,10 +232,13 @@ describe("exec command spec", () => {
   ] as const)("routes $name to provider exec without host stdin", async ({ interactive, spec }) => {
     // Given
     const stdinModes: Array<"inherit" | "ignore" | undefined> = [];
+    const commands: Array<readonly string[]> = [];
+    const commandArgv = ["printf", "%s", "two words", "", "$(echo injected)", "*.ts"] as const;
     const provider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
       execStream: (_target, command) => {
         stdinModes.push(command.stdin);
+        commands.push(command.command);
         return Stream.fromIterable([{ exitCode: 0 }]);
       },
     };
@@ -257,7 +260,7 @@ describe("exec command spec", () => {
             makeEventCommandExecutor(context, [entry]).run({
               command: spec.id,
               flags: spec === sshSpec ? {} : { interactive },
-              args: { command: "cat" },
+              args: { command: spec === sshSpec ? "cat" : commandArgv },
               argv: [],
               cwd: process.cwd(),
             }),
@@ -268,5 +271,6 @@ describe("exec command spec", () => {
 
     // Then
     expect(stdinModes).toEqual([undefined]);
+    expect(commands).toEqual([spec === sshSpec ? ["cat"] : commandArgv]);
   });
 });

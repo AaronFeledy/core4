@@ -148,8 +148,18 @@ describe("--format=yaml on a live-streaming command", () => {
   const streamingEffect = Effect.gen(function* () {
     const sink = yield* Effect.serviceOption(StreamFrameSink);
     if (Option.isSome(sink)) {
-      yield* sink.value.emit({ _tag: "stdout", chunk: "raw-stdout-chunk\n", service: "appserver" });
-      yield* sink.value.emit({ _tag: "stderr", chunk: "raw-stderr-chunk\n", service: "appserver" });
+      yield* sink.value.emit({
+        kind: "bytes",
+        _tag: "stdout",
+        chunk: "raw-stdout-chunk\n",
+        service: "appserver",
+      });
+      yield* sink.value.emit({
+        kind: "bytes",
+        _tag: "stderr",
+        chunk: "raw-stderr-chunk\n",
+        service: "appserver",
+      });
     }
     return { message: "done", output: Option.isSome(sink) ? "" : "raw-stdout-chunk\nraw-stderr-chunk\n" };
   });
@@ -308,7 +318,7 @@ describe("documentOutput keeps a command's own document on success only", () => 
     const { io, exitCode } = await run({ documentOutput: true });
     expect(io.stdout()).toBe("name: demo\n");
     expect(io.stdout()).not.toContain("apiVersion");
-    expect(exitCode).toBeUndefined();
+    expect(exitCode).toBe(0);
   });
 
   test("without the declaration the same command emits the envelope", async () => {

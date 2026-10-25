@@ -1,13 +1,14 @@
 import { McpCommandExecutor } from "@lando/mcp/port";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { startStdioClient } from "@lando/mcp/testing";
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { RedactionService, type RedactionServiceShape, makeRedactionService } from "@lando/redaction/service";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 import { Effect, Layer, Queue, Schema, Stream } from "effect";
 
 export const serverLayer = (
   config: Partial<McpRuntimeConfigShape> = {},
   secrets: ReadonlyArray<string> = [],
+  redaction?: RedactionServiceShape,
 ) =>
   McpService.layer.pipe(
     Layer.provide(
@@ -23,12 +24,21 @@ export const serverLayer = (
         ),
         Layer.succeed(
           McpCommandExecutor,
-          McpCommandExecutor.of({ execute: (command) => Effect.exit(command) }),
+          McpCommandExecutor.of({
+            execute: (command, execution) =>
+              Effect.exit(
+                command.pipe(
+                  Effect.map((value) =>
+                    resolveCommandCompletion(execution.commandId, value, execution.completion),
+                  ),
+                ),
+              ),
+          }),
         ),
         Layer.effect(
           RedactionService,
           Effect.gen(function* () {
-            const service = makeRedactionService();
+            const service = redaction ?? makeRedactionService();
             yield* service.registerValues(secrets);
             return service;
           }),
@@ -77,3 +87,4 @@ export const toolErrorObject = (message: Schema.JsonObject) => {
   if (first === undefined) throw new Error("Expected tool error content.");
   return Schema.decodeUnknownSync(Schema.JsonObject)(JSON.parse(first.text));
 };
+import { resolveCommandCompletion } from "@lando/sdk/command-result";

@@ -762,7 +762,7 @@ describe("lando logs", () => {
     expect(released).toBe(true);
   });
 
-  test("follow mode streams human lines live to stdout under text format", async () => {
+  test("follow mode preserves stdout and stderr for live human lines under text format", async () => {
     const harness = makeLogsLayer();
     const io = createBufferedRendererIO({ isTTY: false });
     await runWithRendererHandling(followLogsApp({ follow: true }), {
@@ -777,9 +777,14 @@ describe("lando logs", () => {
       formatError: ({ error }) => String(error),
     });
 
-    const out = io.stdout();
-    expect(out).toContain("web stdout: web line 1");
-    expect(out).toContain("database stderr: database warn");
+    expect(io.stdout().trim().split("\n").sort()).toEqual([
+      "database stdout: database line 1",
+      "web stdout: web line 1",
+    ]);
+    expect(io.stderr().trim().split("\n").sort()).toEqual([
+      "database stderr: database warn",
+      "web stderr: web warn",
+    ]);
   });
 
   test("fails outside an app directory with init remediation", async () => {

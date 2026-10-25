@@ -623,6 +623,7 @@ export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, Priva
     }),
   },
   run: (input) => uninstall(uninstallOptionsFromInput(input)),
-  successExitCode: (result) => (result.refused || result.failed ? 1 : undefined),
+  completion: (result) =>
+    result.refused || result.failed ? { ok: false, exitCode: 1 } : { ok: true, exitCode: 0 },
   render: (result, _input, ctx) => renderUninstallResult(result as UninstallResult, ctx),
 };

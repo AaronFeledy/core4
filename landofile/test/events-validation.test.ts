@@ -132,7 +132,7 @@ describe("Landofile events", () => {
       const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
 
       // Then
-      expect(exitCode).toBe(0);
+      expect(exitCode).toBe(1);
       const envelope = JSON.parse(stdout);
       expect(envelope).toMatchObject({
         ok: true,

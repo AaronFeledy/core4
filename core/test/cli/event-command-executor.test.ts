@@ -253,13 +253,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     const harness = makeHarness();
     const spec = {
       ...testSpec(() => Effect.succeed({ exitCode: 7 })),
-      successExitCode: (result: unknown) =>
-        typeof result === "object" &&
-        result !== null &&
-        "exitCode" in result &&
-        typeof result.exitCode === "number"
-          ? result.exitCode
-          : undefined,
+      completion: () => ({ ok: false, exitCode: 7 }),
     } satisfies LandoCommandSpec;
 
     // When
@@ -275,7 +269,7 @@ describe("EventCommandExecutorLayer.layer", () => {
 
     // Then
     expect(result.exitCode).toBe(7);
-    expect(harness.events.at(-1)).toMatchObject({ _tag: `cli-${spec.id}-run`, exitCode: 7 });
+    expect(harness.events.at(-1)).toMatchObject({ _tag: `cli-${spec.id}-error`, exitCode: 7 });
   });
 
   test("renders a successful target result through the provided renderer", async () => {
@@ -443,7 +437,9 @@ describe("EventCommandExecutorLayer.layer", () => {
     const spec = {
       ...testSpec(() =>
         StreamFrameSink.pipe(
-          Effect.flatMap((sink) => sink.emit({ _tag: "stdout", service: "app", chunk: "before interrupt" })),
+          Effect.flatMap((sink) =>
+            sink.emit({ kind: "record", _tag: "stdout", service: "app", chunk: "before interrupt" }),
+          ),
           Effect.andThen(Effect.interrupt),
         ),
       ),

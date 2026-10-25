@@ -205,9 +205,9 @@ Per-service `scanner:` settings override the global one. A global `false` turns 
       <UseFixture name="router-and-scanner-invalid" />
     </Step>
     <Step name="lint-invalid-retries">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"scanner\",\\s*\"retries\"\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"scanner\",\\s*\"retries\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-invalid">
       <Cleanup />
