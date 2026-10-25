@@ -79,12 +79,13 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
             }),
             apply: Effect.fnUntraced(function* (plan, options) {
               const tokens = [...collectAppPlanRedactionTokens(plan)];
+              const redactorOptions = { sourceEnv: { ...process.env }, redactionTokens: tokens };
               const redactor =
                 redaction._tag === "Some"
                   ? yield* redaction.value
                       .registerValues(tokens)
-                      .pipe(Effect.andThen(redaction.value.forProfile("secrets")))
-                  : createStandaloneRedactor("secrets", { redactionTokens: tokens });
+                      .pipe(Effect.andThen(redaction.value.forProfile("secrets", redactorOptions)))
+                  : createStandaloneRedactor("secrets", redactorOptions);
               return yield* runtime
                 .apply(plan, options)
                 .pipe(Effect.provideService(StartFailureLogRedactor, redactor));
