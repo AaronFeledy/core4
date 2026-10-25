@@ -1629,6 +1629,7 @@
       "ToolingFlagShape",
       "ToolingIncludeShape",
       "ToolingStepShape",
+      "ToolingTaskInput",
       "ToolingTaskShape",
       "ToolingVar",
       "ToolingVarDefault",

@@ -953,10 +953,16 @@ export const ToolingTaskShape = Schema.Struct({
   disabled: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Disables the task so it is hidden from listings and refused at execution.",
   }),
-  service: Schema.optionalKey(Schema.String),
-  description: Schema.optionalKey(Schema.String),
-  summary: Schema.optionalKey(Schema.String),
-  cmd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+  service: Schema.optionalKey(Schema.String).annotate({
+    description: "Service target, :host for host execution, or :<flag-name> for a dynamic target.",
+  }),
+  description: Schema.optionalKey(Schema.String).annotate({ description: "Task description shown in help." }),
+  summary: Schema.optionalKey(Schema.String).annotate({
+    description: "Short task help, used when description is absent.",
+  }),
+  cmd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])).annotate({
+    description: "Single shell command or argv array run by the task.",
+  }),
   cmds: Schema.optionalKey(
     layerMerge(Schema.Array(Schema.Union([Schema.String, ToolingStepShape])), REPLACE),
   ).annotate({
@@ -971,12 +977,50 @@ export const ToolingTaskShape = Schema.Struct({
   env: Schema.optionalKey(ToolingEnvironment).annotate({
     description: "Environment variables applied to this tooling task after app-wide tooling defaults.",
   }),
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)),
+  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)).annotate({
+    description: "Task-local variables, overriding include and app-wide tooling variables.",
+  }),
   deprecated: Schema.optionalKey(DeprecationNotice),
-  flags: Schema.optionalKey(Schema.Record(Schema.String, ToolingFlagShape)),
-  args: Schema.optionalKey(Schema.Record(Schema.String, ToolingArgShape)),
+  flags: Schema.optionalKey(Schema.Record(Schema.String, ToolingFlagShape)).annotate({
+    description: "Named command-line flags accepted by the task.",
+  }),
+  args: Schema.optionalKey(Schema.Record(Schema.String, ToolingArgShape)).annotate({
+    description: "Positional arguments accepted by the task.",
+  }),
 });
 export type ToolingTaskShape = typeof ToolingTaskShape.Type;
+
+const TOOLING_TASK_DESCRIPTION =
+  "Tooling task object or non-empty command string; false and disabled disable the task. Shorthands replace inherited tasks after layer composition.";
+export const ToolingTaskInput = Schema.Union([
+  Schema.Literal(false),
+  Schema.String.check(
+    Schema.isMinLength(1, { message: "Expected a non-empty command string; use false to disable a task" }),
+  ),
+  Schema.toEncoded(ToolingTaskShape),
+])
+  .annotate({
+    identifier: "ToolingTaskInput",
+    description: TOOLING_TASK_DESCRIPTION,
+    expected: "false, disabled, a non-empty command string, or a tooling task object",
+    message: "Expected false, disabled, a non-empty command string, or a tooling task object",
+  })
+  .pipe(
+    Schema.decodeTo(
+      ToolingTaskShape,
+      SchemaTransformation.transform({
+        decode: (input) =>
+          input === false || input === "disabled"
+            ? { disabled: true }
+            : typeof input === "string"
+              ? { cmd: input }
+              : input,
+        encode: (input) => input,
+      }),
+    ),
+  )
+  .annotate({ description: TOOLING_TASK_DESCRIPTION });
+export type ToolingTaskInput = typeof ToolingTaskInput.Type;
 
 /** App-wide defaults inherited by tooling tasks unless a task overrides them. */
 export const ToolingDefaultsShape = Schema.Struct({
@@ -1223,7 +1267,7 @@ const LandofileShapeBase = Schema.Struct({
   toolingDefaults: Schema.optionalKey(ToolingDefaultsShape).annotate({
     description: "App-wide service, directory, environment, and variable defaults for tooling tasks.",
   }),
-  tooling: Schema.optionalKey(Schema.Record(Schema.String, ToolingTaskShape)),
+  tooling: Schema.optionalKey(Schema.Record(Schema.String, ToolingTaskInput)),
   events: Schema.optionalKey(LandofileEvents),
   toolingIncludes: Schema.optionalKey(Schema.Record(Schema.String, ToolingIncludeShape)).annotate({
     description:

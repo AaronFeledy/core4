@@ -306,6 +306,7 @@ import {
   ToolingFlagShape,
   ToolingIncludeShape,
   ToolingStepShape,
+  ToolingTaskInput,
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
@@ -675,6 +676,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ToolingArgShape,
   ToolingDefaultsShape,
   ToolingStepShape,
+  ToolingTaskInput,
   ToolingTaskShape,
   ToolingIncludeShape,
   IncludeEntry,
@@ -1210,6 +1212,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ToolingArgShape: "Public Lando schema contract for Tooling Arg Shape.",
   ToolingDefaultsShape: "App-wide defaults inherited by Landofile tooling tasks.",
   ToolingStepShape: "Shell command step with tooling task execution overrides.",
+  ToolingTaskInput: "Tooling task object, command string, or false/disabled shorthand.",
   ToolingTaskShape: "Public Lando schema contract for Tooling Task Shape.",
   ToolingIncludeShape: "Public Lando schema contract for Tooling Include Shape.",
   IncludeEntry: "Public Lando schema contract for Include Entry.",
