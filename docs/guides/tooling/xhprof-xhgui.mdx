@@ -166,13 +166,13 @@ These checks exercise the declared services and tooling. They don't build XHProf
 
 ## Keep or remove the profiles
 
-`lando destroy -y` removes the app's containers and networks but keeps its volumes, so saved runs and the installed `vendor` directory are still there after the next start:
+`lando destroy -y` removes the app's containers and networks but keeps its named volumes: the `profiles` data store and the `vendor` shadow, so saved runs and the installed profiler are still there after the next start:
 
 ```sh
 lando destroy -y
 ```
 
-Add `--volumes` only when you want to delete the app's persistent volumes, including every saved profile. Your source files stay on the host.
+Add `--volumes` only when you want to delete the app's named volumes, including every saved profile. Your source files stay on the host.
 
 ## Next
 
