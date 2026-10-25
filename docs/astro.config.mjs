@@ -6,6 +6,7 @@ import starlight from "@astrojs/starlight";
 import AutoImport from "astro-auto-import";
 import { defineConfig } from "astro/config";
 
+import { writeLlmsFiles } from "./src/lib/llms.ts";
 import { createSourceLinkInventory, publishSchemaAssets } from "./src/lib/source-links.ts";
 import { remarkSourceLinks } from "./src/plugins/remark-source-links.ts";
 
@@ -17,11 +18,12 @@ import { sidebar } from "./src/sidebar.ts";
 
 const REFERENCE_MDX_PATTERN = /\/docs\/reference\/.*\.mdx$/;
 
+const site = "https://aaronfeledy.github.io";
 const base = "/core4/";
 const links = await createSourceLinkInventory(fileURLToPath(new URL("../", import.meta.url)), base);
 
 export default defineConfig({
-  site: "https://aaronfeledy.github.io",
+  site,
   base,
   markdown: {
     processor: unified({
@@ -38,7 +40,10 @@ export default defineConfig({
               "Generated schema assets are missing. Run bun run docs:build from the repository root.",
             );
         },
-        "astro:build:done": async ({ dir }) => publishSchemaAssets(links, fileURLToPath(dir)),
+        "astro:build:done": async ({ dir }) => {
+          await publishSchemaAssets(links, fileURLToPath(dir));
+          await writeLlmsFiles(links, site, fileURLToPath(dir));
+        },
       },
     },
     starlight({
