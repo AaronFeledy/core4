@@ -42,6 +42,22 @@ lando meta:plugin:link ../lando-plugin-demo --format=json
 The failure envelope carries `error.issues`, each with a `path` array and a
 `message`, plus `error.remediation`. An empty path means the manifest root.
 
+For example, an extra `unexpected` key in `landoPlugin` is rejected with the
+issue path `["unexpected"]`. Remove the key from `package.json`, then rerun
+the link command. Lando validates the manifest before creating the link.
+
+<Guide>
+  <Scenario id="reject-excess-manifest-key" render>
+    <Step name="inspect-manifest-issue">
+      <UseFixture name="excess-manifest-key" />
+      <Run command="lando meta:plugin:link --format=json" expectExit={1} />
+      <Verify errorTag="PluginManifestError" />
+      <Verify command="lando meta:plugin:link --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"unexpected\"\\s*\\]" } }} />
+      <Verify command="lando meta:plugin:link --format=json" expectExit={1} expect={{ stdout: { regex: "\"remediation\":\\s*\"[^\"\\s]" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
 ## What it writes
 
 The link target is `<userDataRoot>/plugins/<manifest.name>`. State also lands in:
