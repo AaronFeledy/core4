@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { ValidationIssue } from "../schema/validation-issue.ts";
 
 export class GuideFixtureNotFoundError extends Schema.TaggedError<GuideFixtureNotFoundError>()(
   "GuideFixtureNotFoundError",
@@ -25,7 +26,7 @@ export class GuideFrontmatterValidationError extends Schema.TaggedError<GuideFro
     sourcePath: Schema.String,
     field: Schema.String,
     rejectedValue: Schema.Unknown,
-    issues: Schema.Array(Schema.String),
+    issues: Schema.Array(ValidationIssue),
     remediation: Schema.String,
   },
 ) {}

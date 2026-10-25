@@ -26,6 +26,22 @@ lando meta:plugin:link ../lando-plugin-demo
 After linking, check that `<userDataRoot>/plugins/<name>` points to your checkout,
 where `<name>` is the plugin manifest's name.
 
+## Fix a rejected manifest
+
+If linking fails with `PluginManifestError`, read the issue paths and reasons
+below the message, then correct those fields in `package.json`. Unknown keys are
+rejected. The manifest is the `landoPlugin` object when present, otherwise the
+whole `package.json`.
+
+For scripts or editor integrations, request structured diagnostics:
+
+```sh
+lando meta:plugin:link ../lando-plugin-demo --format=json
+```
+
+The failure envelope carries `error.issues`, each with a `path` array and a
+`message`, plus `error.remediation`. An empty path means the manifest root.
+
 ## What it writes
 
 The link target is `<userDataRoot>/plugins/<manifest.name>`. State also lands in:

@@ -221,8 +221,13 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
       new PluginManifestError({
         message: `Invalid plugin name: ${options.name}`,
         issues: [
-          "Plugin name must match the npm package-name grammar (`@scope/name` or `name`); path segments and version specifiers are rejected.",
+          {
+            path: [],
+            message:
+              "Plugin name must match the npm package-name grammar (`@scope/name` or `name`); path segments and version specifiers are rejected.",
+          },
         ],
+        remediation: "Pass an npm package name without a path or version specifier.",
       }),
     );
   }
@@ -236,7 +241,8 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
       new PluginManifestError({
         message: `Plugin name resolves outside ${modulesRoot}.`,
         pluginName: options.name,
-        issues: [`refusing to recursively remove ${moduleDir}`],
+        issues: [{ path: [], message: `refusing to recursively remove ${moduleDir}` }],
+        remediation: "Pass the installed plugin's npm package name, not a filesystem path.",
       }),
     );
   }
@@ -251,7 +257,8 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
       new PluginManifestError({
         message: `Plugin name resolves outside ${pluginsRoot}.`,
         pluginName: options.name,
-        issues: [`refusing to recursively remove ${versionedDir}`],
+        issues: [{ path: [], message: `refusing to recursively remove ${versionedDir}` }],
+        remediation: "Pass the installed plugin's npm package name, not a filesystem path.",
       }),
     );
   }
@@ -260,7 +267,10 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
       new PluginManifestError({
         message: `Plugin name "${options.name}" is reserved; refusing to remove shared/managed plugins root entries.`,
         pluginName: options.name,
-        issues: [`refusing to recursively remove managed plugins root entry ${versionedDir}`],
+        issues: [
+          { path: [], message: `refusing to recursively remove managed plugins root entry ${versionedDir}` },
+        ],
+        remediation: "Pass a plugin package name instead of a reserved plugins root entry.",
       }),
     );
   }

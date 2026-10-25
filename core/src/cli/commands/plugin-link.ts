@@ -66,7 +66,8 @@ export const pluginLink = Effect.fn("PluginLink.link")(function* (
         ? cause
         : new PluginManifestError({
             message: `Plugin manifest validation failed in ${linkedPath}.`,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: `Check package.json in ${linkedPath} and correct the reported manifest issues.`,
           }),
   });
   const registryEntry = resolve(pluginsRoot, manifest.name);
@@ -83,7 +84,8 @@ export const pluginLink = Effect.fn("PluginLink.link")(function* (
         : new PluginManifestError({
             message: `Plugin ${manifest.name} link target resolves outside ${pluginsRoot}.`,
             pluginName: manifest.name,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: "Use an npm package name that stays inside the plugins directory.",
           }),
   });
 

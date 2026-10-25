@@ -176,22 +176,15 @@ const extractExtraTagFields = (
     const exitCode = record.exitCode;
     if (typeof exitCode === "number") out.push(["exitCode", String(exitCode)]);
   }
-  if (
-    tag === "ConfigError" ||
-    tag === "RecipeManifestValidationError" ||
-    tag === "LandofileValidationError" ||
-    tag === "LandofileWriteValidationError"
-  ) {
-    const issues = record.issues;
-    if (Array.isArray(issues) && issues.length > 0) {
-      const flat = issues
-        .flatMap((issue) => {
-          const line = formatStructuredIssue(issue);
-          return line === undefined ? [] : [line];
-        })
-        .join("\n");
-      if (flat.length > 0) out.push(["issues", `\n${flat}`]);
-    }
+  const issues = record.issues;
+  if (Array.isArray(issues) && issues.length > 0) {
+    const flat = issues
+      .flatMap((issue) => {
+        const line = formatStructuredIssue(issue);
+        return line === undefined ? [] : [line];
+      })
+      .join("\n");
+    if (flat.length > 0) out.push(["issues", `\n${flat}`]);
   }
   const op = asString(record.operation);
   if (op !== undefined) out.push(["operation", op]);
