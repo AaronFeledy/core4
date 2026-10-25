@@ -289,6 +289,22 @@ describe("schema issue traversal", () => {
     expect(messages).toEqual([{ path: [], message: "Use false or one" }]);
   });
 
+  test("preserves source metadata when partial keys clone a derived union without directives", () => {
+    // Given
+    const source = Schema.Struct({ enabled: Schema.Boolean });
+    const schema = Schema.make<Schema.Codec<unknown>>(
+      deriveAuthoringAst(source.ast, {
+        partial: true,
+        rootExpression: false,
+        slotFor: (kind) => authoringExpressionSlot(kind).ast,
+      }),
+    );
+    // When
+    const messages = validationIssuesFromSchemaIssue(issuesFor(schema, { enabled: "maybe" }));
+    // Then
+    expect(messages).toEqual([{ path: ["enabled"], message: "Expected boolean" }]);
+  });
+
   test.each([
     ["{{ env.FLAG", "Invalid expression syntax."],
     ["{{ unknown.flag }}", "Expression references an unknown scope."],

@@ -1,5 +1,5 @@
 import { SchemaAST as AST, Schema } from "effect";
-import { recordAuthoringSource, recordExpressionSlot } from "./authoring-issue-metadata.ts";
+import { authoringSource, recordAuthoringSource, recordExpressionSlot } from "./authoring-issue-metadata.ts";
 import {
   type AuthoringExpression,
   type AuthoringExpressionExpectedType,
@@ -173,7 +173,12 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
   };
   const member = (node: AST.AST, partialKey = true): AST.AST => {
     const derived = derive(node, true);
-    if (!options.directives) return derived;
+    if (!options.directives) {
+      if (!options.partial || !partialKey) return derived;
+      const partial = Schema.optionalKey(Schema.make<Schema.Codec<unknown>>(derived)).ast;
+      recordAuthoringSource(partial, authoringSource(derived) ?? node);
+      return partial;
+    }
     const schema = directiveMember(
       Schema.make<Schema.Codec<unknown>>(derived),
       options.nativeDirectives === true,
@@ -214,15 +219,7 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
       case "Objects": {
         const object = new AST.Objects(
           node.propertySignatures.map(
-            (property) =>
-              new AST.PropertySignature(
-                property.name,
-                options.directives
-                  ? member(property.type)
-                  : options.partial
-                    ? Schema.optionalKey(Schema.make<Schema.Codec<unknown>>(derive(property.type, true))).ast
-                    : derive(property.type, true),
-              ),
+            (property) => new AST.PropertySignature(property.name, member(property.type)),
           ),
           node.indexSignatures.map(
             (index) =>
