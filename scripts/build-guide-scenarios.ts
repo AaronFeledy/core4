@@ -47,6 +47,7 @@ import {
 } from "../core/src/docs/render/index.ts";
 import { encodeVariantPair, encodeVariantString, variantFileSuffix } from "../core/src/docs/variant.ts";
 import { GuideId, type GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
+import { validationIssuesFromCause } from "../sdk/src/schema/validation-issue.ts";
 
 import {
   GuideFrontmatterValidationError,
@@ -714,7 +715,7 @@ const parseFrontmatter = (sourcePath: string, yaml: string | undefined): Record<
       sourcePath,
       field: "frontmatter",
       rejectedValue: yaml,
-      issues: [String(error)],
+      issues: [{ path: [], message: String(error) }],
       remediation: `Fix the YAML frontmatter in ${sourcePath}.`,
     });
   }
@@ -780,14 +781,9 @@ const decodeOrThrow = <A>(
     sourcePath,
     field: firstField,
     rejectedValue: props[firstField],
-    issues: [String(either.failure)],
+    issues: validationIssuesFromCause(either.failure),
     remediation: `Fix <${component}> prop \`${firstField}\` in ${sourcePath}.`,
   });
-};
-
-const fieldFromParseIssue = (issue: string): string => {
-  const match = /\["([^\"]+)"\]/.exec(issue);
-  return match?.[1] ?? "frontmatter";
 };
 
 const decodeFrontmatter = (sourcePath: string, input: Record<string, unknown>): GuideFrontmatter => {
@@ -795,14 +791,14 @@ const decodeFrontmatter = (sourcePath: string, input: Record<string, unknown>): 
   const decoded = decodeGuideFrontmatterEither(schemaFrontmatter);
   if (Result.isSuccess(decoded)) return decoded.success;
   if (decoded.failure instanceof NotImplementedError) throw decoded.failure;
-  const issue = String(decoded.failure);
-  const firstField = fieldFromParseIssue(issue);
+  const issues = validationIssuesFromCause(decoded.failure);
+  const firstField = String(issues[0]?.path[0] ?? "frontmatter");
   throw new GuideFrontmatterValidationError({
     message: `Guide frontmatter is invalid at ${sourcePath}.`,
     sourcePath,
     field: firstField,
     rejectedValue: input[firstField],
-    issues: [issue],
+    issues,
     remediation: `Fix guide frontmatter field \`${firstField}\` with rejected value ${JSON.stringify(input[firstField])}.`,
   });
 };

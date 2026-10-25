@@ -64,7 +64,8 @@ export const assertInsidePluginsRoot = (pluginsRoot: string, target: string, plu
     throw new PluginManifestError({
       message: `Plugin ${pluginName} link target resolves outside ${pluginsRoot}.`,
       pluginName,
-      issues: [`refusing to write ${target}`],
+      issues: [{ path: [], message: `refusing to write ${target}` }],
+      remediation: "Set the manifest name to an npm package name without parent-directory segments.",
     });
   }
   const [firstSegment] = rel.split(/[\\/]/u);
@@ -72,7 +73,8 @@ export const assertInsidePluginsRoot = (pluginsRoot: string, target: string, plu
     throw new PluginManifestError({
       message: `Plugin ${pluginName} link target uses reserved plugins root entry ${firstSegment}.`,
       pluginName,
-      issues: [`refusing to write ${target}`],
+      issues: [{ path: [], message: `refusing to write ${target}` }],
+      remediation: "Choose a plugin package name that does not use a reserved plugins root entry.",
     });
   }
 };

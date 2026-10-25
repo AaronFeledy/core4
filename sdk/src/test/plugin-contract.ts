@@ -194,7 +194,8 @@ export const runPluginContract = Effect.fnUntraced(function* (
   const manifestError = new PluginManifestError({
     message: "plugin contract manifest error",
     pluginName: manifest.name,
-    issues: ["contract"],
+    issues: [{ path: [], message: "contract" }],
+    remediation: "Correct the plugin manifest before loading it.",
   });
 
   yield* requirePluginContract(

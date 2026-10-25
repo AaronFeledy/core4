@@ -14,9 +14,18 @@ import { fileURLToPath } from "node:url";
 
 import { isPathWithin } from "@lando/paths";
 import { PluginLoadError, PluginManifestError } from "@lando/sdk/errors";
+import { validationIssuesFromCause } from "@lando/sdk/schema";
 
-export const pluginManifestError = (message: string, cause: unknown): PluginManifestError =>
-  new PluginManifestError({ message, issues: [String(cause)] });
+export const pluginManifestError = (
+  message: string,
+  cause: unknown,
+  remediation: string,
+): PluginManifestError =>
+  new PluginManifestError({
+    message,
+    issues: validationIssuesFromCause(cause, { fallback: String(cause) }),
+    remediation,
+  });
 
 export const pluginLoadError = (pluginName: string, message: string, cause?: unknown): PluginLoadError =>
   new PluginLoadError({
