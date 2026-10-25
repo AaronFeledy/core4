@@ -415,7 +415,7 @@ describe("buildBugReport: envelope extraction", () => {
     expect(json).not.toContain("secret-value");
   });
 
-  test("retains middle tagged remediation when the provider cause has none", () => {
+  test("retains middle tagged remediation when a foreign provider diagnostic has none", () => {
     const env = buildBugReport({
       error: new ProxySetupError({
         proxyId: "traefik",
@@ -424,12 +424,12 @@ describe("buildBugReport: envelope extraction", () => {
         cause: new GlobalAppError({
           message: "Unable to ensure global services are running.",
           remediation: "Run `lando doctor` to inspect the managed runtime.",
-          cause: new ProviderUnavailableError({
+          cause: {
+            _tag: "ProviderUnavailableError",
             providerId: "lando",
             operation: "bringUp.create",
             message: "Container creation failed.",
-            remediation: "Install or start the `lando` provider and confirm it can perform `bringUp.create`.",
-          }),
+          },
         }),
       }),
       context: ctx({ commandId: "meta:setup" }),

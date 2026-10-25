@@ -28,8 +28,7 @@ test("unavailableOperation forwards typed call arguments to the factory", async 
       new SshError({
         message: `attempt ${attempt}`,
         sshId: id,
-        remediation:
-          "Install or repair the SSH service plugin and confirm the agent socket is available, then re-run.",
+        remediation: `Repair the \`${id}\` SSH service (agent socket, plugin install, or sidecar), then re-run.`,
       }),
   );
   const result = await Effect.runPromise(operation("requested", 3).pipe(Effect.result));

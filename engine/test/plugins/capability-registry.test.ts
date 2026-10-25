@@ -101,8 +101,7 @@ test("selectRegistration forwards a missing id to the caller error factory", asy
         new ProxyError({
           message: "not installed",
           proxyId: id,
-          remediation:
-            "Install a RouterService plugin and set `defaultRouterService` to an installed router id.",
+          remediation: `Install or repair the \`${id}\` router plugin and ensure \`defaultRouterService\` points at an installed id.`,
         }),
     }).pipe(Effect.result),
   );
