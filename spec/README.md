@@ -171,7 +171,7 @@ If you are looking for a public surface or policy:
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |
 | Durable resource-ownership manifest | 12 | §12.4.2 |
 | Hot-path caches, compiled decoder targets, and offline-state policies | 12 | §12.5 + §12.6 |
-| `StateStore`, buckets, consumers, and plugin access | 12 | §12.7 |
+| `StateStore`, buckets, app/worker locks, consumers, and plugin access | 12 | §12.7 |
 | Test and contract-suite layers | 13 | §13.1 |
 | Schema, documentation, type, and PR gates | 13 | §13.2 + §13.4 |
 | Distribution forms, CI matrix, and release channels | 13 | §13.5 + §13.7 |

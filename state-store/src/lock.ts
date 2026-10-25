@@ -114,7 +114,7 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
   let announced = false;
   for (;;) {
     const now = yield* Clock.currentTimeMillis;
-    const acquired = yield* Effect.tryPromise({
+    const attempt = yield* Effect.tryPromise({
       try: async () => {
         try {
           await mkdir(dirname(lockPath), { recursive: true });
@@ -140,18 +140,18 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
           } finally {
             await handle.close();
           }
-          return true;
+          return "acquired" as const;
         } catch (cause) {
           if (!isErrnoCode(cause, "EEXIST")) throw cause;
           const identity = await lockIdentity(lockPath);
-          if (identity === null) return false;
+          if (identity === null) return "retry" as const;
           if (
             !identity.isFile() ||
             identity.isSymbolicLink() ||
             identity.nlink !== 1 ||
             (process.getuid !== undefined && identity.uid !== process.getuid())
           )
-            return false;
+            return "retry" as const;
           await options.privateFileAccess.verify(lockPath);
           const staleByMtime = now - identity.mtimeMs > LOCK_STALE_MS;
           const current = await readLockRecord(lockPath).catch((error: unknown) => {
@@ -180,15 +180,15 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
               });
             }
           }
-          return false;
+          return takeover || current === null ? ("retry" as const) : ("held" as const);
         }
       },
       catch: (cause) => lockError(options.operation, lockPath, cause),
     });
-    if (acquired) return;
+    if (attempt === "acquired") return;
     if ((yield* Clock.currentTimeMillis) >= deadline)
       return yield* Effect.fail(lockError(options.operation, lockPath));
-    if (!announced && options.onWait !== undefined) {
+    if (attempt === "held" && !announced && options.onWait !== undefined) {
       announced = true;
       yield* options.onWait;
     }

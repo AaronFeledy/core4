@@ -132,6 +132,7 @@ describe("advisory state lock", () => {
         `${file}.lock`,
         JSON.stringify({ pid: 99_999_999, token: "dead", createdAt: Date.now() }),
       );
+      let waits = 0;
 
       const result = await run(
         withAdvisoryLock(
@@ -141,11 +142,17 @@ describe("advisory state lock", () => {
             await writeFile(file, JSON.stringify(["ok"]));
             return "ran";
           }),
-          { expireLiveOwner: false },
+          {
+            expireLiveOwner: false,
+            onWait: Effect.sync(() => {
+              waits += 1;
+            }),
+          },
         ),
       );
 
       expect(result).toBe("ran");
+      expect(waits).toBe(0);
       expect(await readFile(file, "utf8")).toContain("ok");
       await expect(stat(`${file}.lock`)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {

@@ -161,9 +161,13 @@ All mutations encode before atomic replace. Version mismatch either discards or 
 
 Hot-path caches remain under their existing readers and MAY adopt `StateStore` only while preserving §12.5 budgets.
 
+App mutation locks left by dead commands MUST be reclaimed without a contention warning. Reclaim and vanished-file attempts retain the normal acquire deadline and retry delay; only an observed live holder triggers the wait message.
+
 #### 12.7.2 Reference consumers
 
 The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec in an unlocked bucket, and its writers re-read and merge under a host-wide `StateStore.withLock` operation lock so no lock file lands beside it; snapshot sidecars use owner/store-scoped, version-1 JSON buckets that fail on corruption or version mismatch, with per-snapshot removal locks; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). The accelerated-start journal uses an advisory, fail-closed, version-migrating bucket in the user-data `accelerated-starts` namespace (§10.6.3). These subsystems MUST NOT implement bespoke persistence primitives.
+
+Detached host-proxy and agent-relay worker locks MUST live under the resolved user-data `operation-locks` namespace, outside disposable run directories. Their stable key combines worker kind with a SHA-256 digest of the absolute run-directory path. Ensure, replacement, shutdown, teardown, and root sweeping MUST use the same identity and injected private-file access and MUST NOT expire a live owner. Host-proxy root sweeping MUST acquire before inspecting or deleting worker state, including legacy and untrusted records, and MUST leave reserved agent-relay and tunnel directories to their owners. Release removes the lock file; purge removes the data root.
 
 #### 12.7.3 Plugins and embedding hosts
 

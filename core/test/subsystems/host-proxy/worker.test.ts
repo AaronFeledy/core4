@@ -1343,8 +1343,9 @@ console.log(JSON.stringify({
               ? {
                   privateFileAccess: {
                     ...ownerOnlyFileAccess,
-                    verify: async () => {
-                      throw new Error("private access rejected");
+                    verify: async (candidate) => {
+                      if (candidate === path) throw new Error("private access rejected");
+                      await ownerOnlyFileAccess.verify(candidate);
                     },
                   },
                 }
