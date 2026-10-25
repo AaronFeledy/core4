@@ -171,12 +171,14 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   }).pipe(
     Effect.catchTag("LandofileFormConflictError", (error) => {
-      const builtIn = resolveBuiltInCommand(token);
-      return builtIn?.spec.id === "app:stop" ||
-        builtIn?.spec.id === "app:destroy" ||
-        builtIn?.spec.id === "meta:doctor"
-        ? Effect.succeed(null)
-        : Effect.fail(error);
+      switch (resolveBuiltInCommand(token)?.spec.id) {
+        case "app:stop":
+        case "app:destroy":
+        case "meta:doctor":
+          return Effect.succeed(null);
+        default:
+          return Effect.fail(error);
+      }
     }),
   );
   if (cache === null) {
