@@ -8,7 +8,7 @@ export const internalErrorRemediation =
   "Rerun the command with --debug --trace. Debug diagnostics are written to stderr; runtime worker logs are in the reported logsDir. Include the command and diagnostics when reporting this failure at https://github.com/AaronFeledy/core4/issues. Remove secrets before sharing diagnostics.";
 
 const ownValue = (value: object | undefined, key: string): unknown => {
-  if (value === undefined) return undefined;
+  if (value === undefined || types.isProxy(value)) return undefined;
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
   return descriptor !== undefined && "value" in descriptor ? descriptor.value : undefined;
 };
@@ -43,7 +43,19 @@ export const taggedErrorJson = (error: unknown): typeof TaggedErrorJson.Type => 
     remediation: text(ownValue(record, "remediation")) ?? internalErrorRemediation,
   };
   const extra: Record<string, unknown> = {};
-  for (const key of Object.keys(record ?? {}).slice(0, 256)) {
+  const keys = new Set(Object.keys(record ?? {}));
+  const prototype = record === undefined ? undefined : Object.getPrototypeOf(record);
+  let schemaClass = ownValue(prototype ?? undefined, "constructor");
+  for (let depth = 0; depth < 8 && typeof schemaClass === "function"; depth++) {
+    if (types.isProxy(schemaClass)) break;
+    const fields = ownValue(schemaClass, "fields");
+    if (fields !== null && typeof fields === "object" && !types.isProxy(fields)) {
+      for (const key of Object.keys(fields)) keys.add(key);
+      break;
+    }
+    schemaClass = Object.getPrototypeOf(schemaClass);
+  }
+  for (const key of [...keys].slice(0, 256)) {
     if (reserved.has(key)) continue;
     const value = ownValue(record, key);
     if (!isJsonSafe(value)) continue;

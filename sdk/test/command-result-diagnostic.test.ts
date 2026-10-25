@@ -1,7 +1,37 @@
 import { expect, test } from "bun:test";
 import { encodeCommandResult, identityRedactor, taggedErrorJson } from "@lando/sdk/command-result";
+import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, TaggedErrorJson } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
+
+test("projects declared non-enumerable error fields without exposing runtime source locations", () => {
+  // Given real tagged errors, including fields that collide with Bun's Error metadata.
+  const parse = new LandofileParseError({
+    message: "Invalid YAML.",
+    filePath: "/app/.lando.yml",
+    line: 3,
+    column: 2,
+    remediation: "Correct the YAML syntax.",
+  });
+  const compose = new ComposeKeyRejectedError({
+    message: "Unsupported key.",
+    source: "/app/.lando.yml",
+    service: "web",
+    keyPath: "deploy.replicas",
+    remediation: "Remove the unsupported key.",
+  });
+
+  // When each error crosses the shared diagnostic boundary.
+  const projected = taggedErrorJson(parse);
+  const unrelated = taggedErrorJson(compose);
+
+  // Then authored locations survive, but construct-site metadata does not.
+  expect(projected).toMatchObject({ filePath: "/app/.lando.yml", line: 3, column: 2 });
+  expect(unrelated).not.toHaveProperty("line");
+  expect(unrelated).not.toHaveProperty("column");
+  expect(projected).not.toHaveProperty("sourceURL");
+  expect(projected).not.toHaveProperty("stack");
+});
 
 test.each([new Error("failure\n    at hidden-frame"), undefined, 42, "failure"])(
   "unknown failure %j becomes a schema-valid internal diagnostic",
