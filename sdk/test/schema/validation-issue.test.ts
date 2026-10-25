@@ -193,7 +193,7 @@ describe("schema issue traversal", () => {
     ["boolean", { services: { api: { primary: "maybe" } } }],
     ["service", { services: { web: "nginx" } }],
     ["enum", { services: { api: { mounts: [{ type: "invalid", source: "data", target: "/data" }] } } }],
-    ["task", { tooling: { foo: false } }],
+    ["task", { tooling: { foo: true } }],
   ])("reports the effective expectation for an unchanged %s defect", (_name, input) => {
     // Given
     const effective = issuesFor(LandofileShape, input);
@@ -214,7 +214,12 @@ describe("schema issue traversal", () => {
     // When
     const messages = validationIssuesFromSchemaIssue(issue);
     // Then
-    expect(messages).toEqual([{ path: ["tooling", "foo"], message: "Expected object" }]);
+    expect(messages).toEqual([
+      {
+        path: ["tooling", "foo"],
+        message: "Expected false, disabled, a non-empty command string, or a tooling task object",
+      },
+    ]);
   });
 
   test("retains malformed wire-envelope diagnostics", () => {

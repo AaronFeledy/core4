@@ -136,6 +136,13 @@
       "digest": "ab78ee10251571f12549ce10a6d9728201df7344889fe42eee427380bf283cb9"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/wrong-type",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/config-translate/fixtures/lando3-compose-arguments",
       "invalid": {
         "status": "invalid",
@@ -324,7 +331,7 @@
     },
     {
       "fixture": "docs/guides/flags-and-args/fixtures/flags-demo",
-      "digest": "c5606017647f40a8e6a69bc7592efbc951ee0f83686e41c93c709b5cfb956cba"
+      "digest": "49fb4d290f20b8d94f80548c6c21dc10685a151bdb66e96b4254b6c2721b5440"
     },
     {
       "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",
