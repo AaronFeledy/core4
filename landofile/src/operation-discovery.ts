@@ -1,3 +1,5 @@
+import { isPathWithin } from "@lando/paths";
+import { PathsService } from "@lando/sdk/services";
 import { Context, Effect } from "effect";
 import { currentDiscoveryOperation } from "./operation-scope.ts";
 import { type AppDiscoveryResolver, makeAppDiscoveryResolver } from "./traversal-policy.ts";
@@ -17,11 +19,24 @@ export const discoveryCwd = Effect.fnUntraced(function* () {
     : (currentDiscoveryOperation()?.cwd ?? process.cwd());
 });
 
+const operationResolver = Effect.fnUntraced(function* () {
+  const paths = yield* Effect.serviceOption(PathsService);
+  return makeAppDiscoveryResolver(
+    paths._tag === "None"
+      ? undefined
+      : {
+          exists: (path) => Bun.file(path).exists(),
+          excluded: (directory) =>
+            directory === paths.value.globalAppRoot || isPathWithin(paths.value.scratchDir, directory),
+        },
+  );
+});
+
 export const discoverForOperation = Effect.fnUntraced(function* (cwd?: string) {
   const provided = yield* Effect.serviceOption(OperationDiscovery);
   const operation = provided._tag === "Some" ? provided.value : currentDiscoveryOperation();
   const directory = cwd ?? operation?.cwd ?? process.cwd();
-  const resolver = operation?.resolver ?? makeAppDiscoveryResolver();
+  const resolver = operation?.resolver ?? (yield* operationResolver());
   return yield* Effect.promise(() => resolver.resolve(directory));
 });
 
@@ -29,14 +44,15 @@ export const withAppDiscovery = <A, E, R>(
   cwd: string,
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, Exclude<R, OperationDiscovery>> =>
-  Effect.suspend(() =>
-    effect.pipe(
+  Effect.gen(function* () {
+    const resolver = yield* operationResolver();
+    return yield* effect.pipe(
       Effect.provideService(OperationDiscovery, {
         cwd,
-        resolver: makeAppDiscoveryResolver(),
+        resolver,
       }),
-    ),
-  );
+    );
+  });
 
 export const withDiscoveryCwd = Effect.fnUntraced(function* <A, E, R>(
   cwd: string,
@@ -47,7 +63,7 @@ export const withDiscoveryCwd = Effect.fnUntraced(function* <A, E, R>(
   return yield* effect.pipe(
     Effect.provideService(OperationDiscovery, {
       cwd,
-      resolver: operation?.resolver ?? makeAppDiscoveryResolver(),
+      resolver: operation?.resolver ?? (yield* operationResolver()),
     }),
   );
 });
