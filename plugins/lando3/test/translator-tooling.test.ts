@@ -72,8 +72,8 @@ describe("tooling", () => {
         ],
       },
       iamroot: { service: "appserver", cmd: "id", dir: "/tmp", env: { TIMEOUT: 600 }, user: "root" },
-      "xdebug-off": { disabled: true },
-      php: { disabled: true },
+      "xdebug-off": "disabled",
+      php: false,
     });
     expect(summary(result)).toEqual([
       "needs-review services.appserver.type",
@@ -82,10 +82,21 @@ describe("tooling", () => {
       "rewritten tooling.install.cmd",
       "rewritten tooling.iamroot.user",
       "dropped tooling.iamroot.env.LANDO_X",
-      "rewritten tooling.xdebug-off",
-      "rewritten tooling.php",
     ]);
   });
+
+  test.each(["echo hi", "true", "42", "null", "[]"])(
+    "keeps non-mapping legacy task %s disabled instead of turning it into a command",
+    async (value) => {
+      // Given
+      const text = `name: legacy\ntooling:\n  retired: ${value}\n`;
+      // When
+      const result = await translate(text);
+      // Then
+      expect(fragment(result).tooling).toEqual({ retired: false });
+      expect(summary(result)).toContain("rewritten tooling.retired");
+    },
+  );
 
   test("lowers options and positionals to flags and args", async () => {
     // Given / When

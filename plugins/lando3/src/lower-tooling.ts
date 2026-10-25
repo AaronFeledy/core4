@@ -1,8 +1,9 @@
 /**
  * Lando 3 `tooling:` as Lando 4 tooling tasks.
  *
- * Lando 3 registered a task only when its value was a mapping, so any other
- * value removes the task and becomes `disabled: true`. Positional arguments
+ * Lando 3 registered a task only when its value was a mapping. The disabling
+ * values `false` and `disabled` pass through; other non-mappings become `false`.
+ * Positional arguments
  * written into the task name, yargs `options`, and `positionals` become
  * declared `args` and `flags`. A command list becomes ordered `cmds` steps,
  * with `{service: command}` entries as service-targeted step objects.
@@ -20,7 +21,7 @@ export interface LoweredTask {
 }
 
 export interface LoweredTooling {
-  readonly tooling: Readonly<Record<string, V4Wire>>;
+  readonly tooling: Readonly<Record<string, V4Wire | false | "disabled">>;
   readonly tasks: ReadonlyMap<string, LoweredTask>;
 }
 
@@ -252,7 +253,7 @@ const lowerTask = (
 };
 
 export const lowerTooling = (value: unknown, report: Report): LoweredTooling => {
-  const tooling: Record<string, V4Wire> = {};
+  const tooling: Record<string, V4Wire | false | "disabled"> = {};
   const tasks = new Map<string, LoweredTask>();
   if (!hasPlainObjectPrototype(value)) return { tooling, tasks };
   for (const [key, entry] of Object.entries(value)) {
@@ -278,12 +279,13 @@ export const lowerTooling = (value: unknown, report: Report): LoweredTooling => 
       continue;
     }
     if (!hasPlainObjectPrototype(entry)) {
-      tooling[name] = { disabled: true };
+      tooling[name] = entry === "disabled" ? "disabled" : false;
       tasks.set(name, { service: undefined });
+      if (entry === false || entry === "disabled") continue;
       report(
         "rewritten",
         path,
-        "Lando 3 removed a task whose value is not a mapping; it is now disabled: true.",
+        "Lando 3 removed a task whose value is not a mapping; it is now false to keep it disabled.",
         "Delete the task instead if nothing else defines it.",
       );
       continue;
