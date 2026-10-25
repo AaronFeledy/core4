@@ -53,12 +53,12 @@ export const makeNestedExecute = (
         executor.execute(
           rootAwareCommand.pipe(Effect.scoped, Effect.ensuring(Effect.suspend(output.finish))),
           {
-          commandId: entry.spec.id,
-          argv: runInput.argv,
-          args: runInput.args,
-          flags: runInput.flags,
-          ...(runInput.appPath === undefined ? {} : { cwd: runInput.appPath }),
-          ...(completion === undefined ? {} : { completion: (value) => completion(value, runInput) }),
+            commandId: entry.spec.id,
+            argv: runInput.argv,
+            args: runInput.args,
+            flags: runInput.flags,
+            ...(runInput.appPath === undefined ? {} : { cwd: runInput.appPath }),
+            ...(completion === undefined ? {} : { completion: (value) => completion(value, runInput) }),
           },
         ),
       );

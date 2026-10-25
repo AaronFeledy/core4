@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { makeNestedExecute } from "@lando/mcp/execute";
+import { resolveCommandCompletion } from "@lando/sdk/command-result";
 import { Context, Effect, Schema } from "effect";
 
 test("retained MCP execution resolves each call's appPath with a fresh memo", async () => {
@@ -17,9 +18,10 @@ test("retained MCP execution resolves each call's appPath with a fresh memo", as
   await writeFile(join(right, ".lando.yml"), "name: right\n");
   const execute = makeNestedExecute(
     Context.makeUnsafe<unknown>(new Map()),
-    { emit: () => Effect.void },
+    { sink: { emit: () => Effect.void }, finish: () => Effect.void },
     {
-      execute: (command) => Effect.exit(command),
+      execute: (command) =>
+        Effect.exit(Effect.map(command, (value) => resolveCommandCompletion("app:discovery", value))),
     },
   );
   const entry = {
@@ -32,18 +34,21 @@ test("retained MCP execution resolves each call's appPath with a fresh memo", as
   };
   const input = { argv: [], args: {}, flags: {}, interaction: "non-interactive" as const };
   try {
-    expect(await Effect.runPromise(execute(entry, { ...input, appPath: left }))).toEqual({
+    expect<unknown>(await Effect.runPromise(execute(entry, { ...input, appPath: left }))).toEqual({
       _tag: "success",
       value: left,
+      exitCode: 0,
     });
-    expect(await Effect.runPromise(execute(entry, { ...input, appPath: right }))).toEqual({
+    expect<unknown>(await Effect.runPromise(execute(entry, { ...input, appPath: right }))).toEqual({
       _tag: "success",
       value: right,
+      exitCode: 0,
     });
     await rm(join(left, ".lando.yml"));
-    expect(await Effect.runPromise(execute(entry, { ...input, appPath: left }))).toEqual({
+    expect<unknown>(await Effect.runPromise(execute(entry, { ...input, appPath: left }))).toEqual({
       _tag: "success",
       value: undefined,
+      exitCode: 0,
     });
   } finally {
     await rm(root, { recursive: true, force: true });
