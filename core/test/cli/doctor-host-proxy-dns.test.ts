@@ -27,11 +27,17 @@ test.each([
       baseDomain: "lndo.site",
       dnsHostname: "lando-doctor-probe.lndo.site",
       dnsResolved: String(status === "pass"),
-      dnsAddresses: addresses.join(","),
+      ...(addresses.length === 0 ? {} : { dnsAddresses: addresses.join(",") }),
       loopback: "127.0.0.1",
     },
   });
-  for (const key of ["active", "mode", "mechanism", "subsystemId"]) {
+  for (const key of [
+    "active",
+    "mode",
+    "mechanism",
+    "subsystemId",
+    ...(addresses.length === 0 ? ["dnsAddresses"] : []),
+  ]) {
     expect(check?.context).not.toHaveProperty(key);
   }
   expect(result.skipped?.some((entry) => entry.section === "host-proxy")).toBe(false);

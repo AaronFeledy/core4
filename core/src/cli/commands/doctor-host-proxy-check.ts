@@ -34,10 +34,8 @@ export const buildHostProxyCheck = Effect.fnUntraced(function* (
             active: String(status.success.active),
             mode: status.success.mode,
             mechanism: status.success.mechanism,
-            baseDomain,
-            loopback: status.success.loopback,
           }
-        : { active: "false", baseDomain }),
+        : { active: "false" }),
   };
   if (status !== undefined && Result.isFailure(status)) {
     return yield* buildDegradedCheck(HOST_PROXY_SPEC, context, fix, undefined, status.failure);
@@ -68,7 +66,7 @@ export const buildHostProxyCheck = Effect.fnUntraced(function* (
     ...context,
     dnsHostname: hostname,
     dnsResolved: String(dnsReady),
-    ...(hostProxy !== undefined && addresses.length === 0 ? {} : { dnsAddresses: addresses.join(",") }),
+    ...(addresses.length === 0 ? {} : { dnsAddresses: addresses.join(",") }),
   };
   if (dnsReady) return passCheck(HOST_PROXY_SPEC, dnsContext);
 
