@@ -6,7 +6,7 @@
  */
 import { join } from "node:path";
 
-import { DateTime, Effect, Option } from "effect";
+import { DateTime, Effect, Layer, Option } from "effect";
 
 import { type ConfigLintResult, MAILHOG_DEPRECATION_NOTICE } from "@lando/sdk/schema";
 import {
@@ -411,6 +411,7 @@ export const doctorReport = Effect.fn("Doctor.report")(
       const router = yield* Effect.serviceOption(RouterService);
       const ssh = yield* Effect.serviceOption(SshService);
       const hostProxy = yield* Effect.serviceOption(HostProxyService);
+      const resolver = yield* Effect.serviceOption(HostDnsResolver);
       const hasRuntimeSubsystems = Option.isSome(router) || Option.isSome(ssh) || Option.isSome(hostProxy);
       return yield* collectDoctorReport<
         ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry
@@ -419,10 +420,16 @@ export const doctorReport = Effect.fn("Doctor.report")(
         provider: doctor(options),
         deprecations: doctorDeprecations(),
         appConfig: appConfigForReport(),
-        ...(hasRuntimeSubsystems
+        ...(hasRuntimeSubsystems || Option.isSome(resolver)
           ? {
               subsystems: (subsystemOptions: SubsystemDoctorOptions) =>
-                subsystemDoctor(subsystemOptions).pipe(Effect.provide(HostDnsResolver.layer)),
+                subsystemDoctor(subsystemOptions).pipe(
+                  Effect.provide(
+                    Option.isSome(resolver)
+                      ? Layer.succeed(HostDnsResolver, resolver.value)
+                      : HostDnsResolver.layer,
+                  ),
+                ),
             }
           : {}),
       });
