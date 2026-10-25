@@ -260,6 +260,7 @@ test.each([
   const result = await Effect.runPromise(
     sidecarSocketCheck({ _tag: "unix", path: "/agent.sock" }, async () => {
       socketProbes++;
+      return { identities: 0 };
     }).pipe(withProvider(provider), Effect.provideService(GlobalAppService, globalApp)),
   );
   // Then stopped sidecars skip the socket; a successful socket probe proves readiness otherwise.
