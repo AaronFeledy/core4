@@ -683,14 +683,18 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
       const svc = yield* EventService;
       yield* svc.publish(treeStart(["web"]));
       yield* svc.publish(taskStart("web", transcriptPath));
+      yield* svc.publish(taskComplete("web"));
       yield* Effect.sleep("20 millis");
       inject?.("\r");
       yield* Effect.sleep("20 millis");
       inject?.("\x1b");
       yield* Effect.sleep("20 millis");
+      expect(transcriptReader.closed).toEqual([transcriptPath]);
       footerCountAfterCollapse = controller.calls.filter((call) => call.kind === "setFooter").length;
+      const readsAfterCollapse = transcriptReader.reads.length;
       yield* transcriptReader.fireLateChange();
       yield* Effect.sleep("20 millis");
+      expect(transcriptReader.reads).toHaveLength(readsAfterCollapse);
     });
 
     await Effect.runPromise(
