@@ -2905,7 +2905,7 @@ describe("BunDataMover.layer", () => {
           expect(error).toBeInstanceOf(SnapshotNotFoundError);
           expect(error).toMatchObject({
             snapshotId: "no-such-snapshot",
-            remediation: expect.stringContaining("List snapshots"),
+            remediation: expect.stringContaining("lando db:snapshots"),
           });
         }
       } finally {
