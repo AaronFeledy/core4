@@ -150,18 +150,14 @@ export const toAppFeatureDraft = (
       }
     }),
     buildSteps: serviceFeatureBuildSteps(servicePlan.extensions),
-    storage: servicePlan.mounts.flatMap((mount) =>
-      mount.type === "volume"
-        ? [
-            {
-              store: mount.store,
-              target: mount.target,
-              readOnly: mount.readOnly,
-              ...(mount.subpath === undefined ? {} : { subpath: mount.subpath }),
-            },
-          ]
-        : [],
-    ),
+    storage: servicePlan.mounts
+      .filter((mount) => mount.type === "volume")
+      .map((mount) => ({
+        store: mount.store,
+        target: mount.target,
+        readOnly: mount.readOnly,
+        ...(mount.subpath === undefined ? {} : { subpath: mount.subpath }),
+      })),
     storageOwnership: serviceFeatureDataTrees(servicePlan.extensions),
     endpoints: servicePlan.endpoints.map((endpoint) => ({ ...endpoint })),
     dependsOn: servicePlan.dependsOn.map((dependency) => ({ ...dependency })),

@@ -158,8 +158,8 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     });
     if (preparedMounts instanceof LandofileValidationError || preparedMounts instanceof ServiceFeatureError)
       return yield* Effect.fail(servicePlanError(input.appRoot, name, preparedMounts));
-    const volumeTargets = new Set(
-      preparedMounts.mounts.filter((mount) => mount.type === "volume").map((mount) => String(mount.target)),
+    const volumeTargets = new Set<string>(
+      preparedMounts.mounts.filter((mount) => mount.type === "volume").map((mount) => mount.target),
     );
     const storageOwnership = (draft.storageOwnership ?? []).filter((tree) => volumeTargets.has(tree.target));
     const redirectSteps = redirectLogSourceBuildSteps({ logSources, base: draft.base });
@@ -179,18 +179,15 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       return yield* Effect.fail(ownedTrees);
     }
     const ownershipStep = dataTreeOwnershipStep(ownedTrees);
-    const draftForPlan =
-      ownershipStep === undefined && redirectSteps.length === 0
-        ? { ...draft, storageOwnership }
-        : {
-            ...draft,
-            storageOwnership,
-            buildSteps: [
-              ...(ownershipStep === undefined ? [] : [ownershipStep]),
-              ...draft.buildSteps,
-              ...redirectSteps,
-            ],
-          };
+    const draftForPlan = {
+      ...draft,
+      storageOwnership,
+      buildSteps: [
+        ...(ownershipStep === undefined ? [] : [ownershipStep]),
+        ...draft.buildSteps,
+        ...redirectSteps,
+      ],
+    };
     const endpoints = normalizeEndpoints(draft.endpoints, draft.normalizedConfig);
     const endpointError = endpointValidationError(endpoints, { appRoot: input.appRoot, serviceName: name });
     if (endpointError !== undefined) return yield* Effect.fail(endpointError);

@@ -50,8 +50,8 @@ export const prepareServiceMounts = (input: {
       message: `Service ${input.context.serviceName} has multiple feature mounts at ${duplicate}.`,
       remediation: `Remove the conflicting feature mount, or author one mount at ${duplicate} to replace them.`,
     });
-  const volumes = new Set(
-    mounts.filter((mount) => mount.type === "volume").map((mount) => String(mount.target)),
+  const volumes = new Set<string>(
+    mounts.filter((mount) => mount.type === "volume").map((mount) => mount.target),
   );
   const extension = serviceFeatureExtension(service.extensions);
   const trees = extension?.dataTrees;
@@ -138,12 +138,11 @@ export const realizeServiceMounts = (
     if (mount.type !== "bind") return mount;
     const { mountKey: _mountKey, ...bind } = mount;
     const realization = bind.role === "app" ? bindRealization(capabilities) : "passthrough";
+    if (realization === "passthrough") return { ...bind, realization };
     return {
       ...bind,
       realization,
-      ...(realization === "accelerated"
-        ? { mountKey: serviceAppMount(service) === mount ? "app-mount" : `mount-${shortHash(bind.target)}` }
-        : {}),
+      mountKey: serviceAppMount(service) === mount ? "app-mount" : `mount-${shortHash(bind.target)}`,
     };
   }),
 });

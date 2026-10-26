@@ -69,7 +69,7 @@ export const authoredStorageScopes = (
     const destination = parseContainerDestination(entry.target);
     const target = destination.ok ? destination.value : entry.target;
     const key = kind === "cache" ? cacheStorageKey(target, entry.key) : entry.key;
-    const storeName = kind === "cache" ? cacheStoreName(target, entry.key) : entry.store;
+    const storeName = kind === "cache" ? cacheStoreName(target, key) : entry.store;
     const scope = entry.scope ?? "service";
     if (scope === "global" && kind !== "cache") {
       return { byStore, globalEntry: { index, store: entry.store } };

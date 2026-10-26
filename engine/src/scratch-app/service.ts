@@ -318,23 +318,21 @@ export const applyMountCwd = Effect.fnUntraced(function* (
   const appMount = serviceAppMount(primary);
   const containerTarget = PortablePath.make(target ?? appMount?.target ?? "/app");
   const { mountKey: _mountKey, ...appBind } = appMount ?? {};
-  // Binds that mirror a path of the app source (nested includes, `./vendor/x` at
-  // `/app/vendor/x`) follow the app source when it moves to the host cwd.
-  const appPrefix = appMount === undefined ? undefined : `${appMount.target}/`;
-  const mirrored = (mount: (typeof primary.mounts)[number]): string | undefined => {
-    if (appMount === undefined || appPrefix === undefined || containerTarget !== appMount.target)
-      return undefined;
-    if (mount.type !== "bind" || mount === appMount || !mount.target.startsWith(appPrefix)) return undefined;
-    const rel = mount.target.slice(appPrefix.length);
-    return relative(appMount.source, mount.source).replaceAll("\\", "/") === rel
-      ? join(hostCwd, rel)
-      : undefined;
-  };
   const mounts = orderMounts([
     ...primary.mounts.flatMap((mount) => {
       if (appMount === undefined ? mount.target === containerTarget : mount === appMount) return [];
-      const rebased = mirrored(mount);
-      return [rebased === undefined || mount.type !== "bind" ? mount : { ...mount, source: rebased }];
+      if (mount.type !== "bind" || appMount === undefined || containerTarget !== appMount.target)
+        return [mount];
+      // Binds that mirror a path of the app source (nested includes, `./vendor/x` at
+      // `/app/vendor/x`) follow the app source when it moves to the host cwd.
+      const appPrefix = `${appMount.target}/`;
+      if (!mount.target.startsWith(appPrefix)) return [mount];
+      const rel = mount.target.slice(appPrefix.length);
+      return [
+        relative(appMount.source, mount.source).replaceAll("\\", "/") === rel
+          ? { ...mount, source: join(hostCwd, rel) }
+          : mount,
+      ];
     }),
     {
       ...appBind,

@@ -95,10 +95,9 @@ const serviceMountLists = (
   plan: AppPlan,
   service: ServicePlan,
 ): { readonly volumes: ReadonlyArray<ComposeVolumeEntry>; readonly tmpfs: ReadonlyArray<string> } => {
-  const fail = (message: string, details?: unknown): never => {
+  const planned = serviceComposeMounts(plan, service, (message, details) => {
     throw composeError(ctx, message, details);
-  };
-  const planned = serviceComposeMounts(plan, service, fail);
+  });
   const configs = composeConfigMounts(plan, service).flatMap(
     (mount): ReadonlyArray<ComposeVolumeEntry> =>
       requiresLongMountSyntax(mount.target)
@@ -158,11 +157,11 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
   const networkNames = podmanNetworkNames(plan);
   const sharedName = landoSharedNetworkName(plan);
   const services = Object.fromEntries(
-    Object.entries(plan.services).map(([name, service]) => [
-      name,
-      (() => {
-        const mounts = serviceMountLists(ctx, plan, service);
-        return removeEmpty({
+    Object.entries(plan.services).map(([name, service]) => {
+      const mounts = serviceMountLists(ctx, plan, service);
+      return [
+        name,
+        removeEmpty({
           image: serviceImage(ctx, service),
           ports: servicePorts(service),
           expose: serviceExpose(service),
@@ -183,9 +182,9 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
               return [networkName, aliases.length > 0 ? { aliases } : {}];
             }),
           ),
-        });
-      })(),
-    ]),
+        }),
+      ];
+    }),
   );
   const networks = Object.fromEntries(
     networkNames.map((name) => {

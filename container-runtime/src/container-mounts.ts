@@ -28,7 +28,7 @@ export const acceleratedMountVolume = (plan: AppPlan, service: ServicePlan, moun
 export const duplicateServiceMountTarget = (plan: AppPlan, service: ServicePlan): string | undefined => {
   const seen = new Set<string>();
   for (const target of [
-    ...service.mounts.map((mount) => String(mount.target)),
+    ...service.mounts.map((mount) => mount.target),
     ...composeConfigMounts(plan, service).map((mount) => mount.target),
   ]) {
     if (seen.has(target)) return target;
