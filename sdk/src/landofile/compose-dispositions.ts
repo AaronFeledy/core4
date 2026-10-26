@@ -80,6 +80,13 @@ const rejectedEntry = (path: string): ComposeDispositionEntry => {
       remediation: `Translate ${path} to Lando networks: configuration.`,
     };
   }
+  if (path === "configs.uid" || path === "configs.gid") {
+    return {
+      disposition: "rejected",
+      rationale: "Config grants mount a read-only copy of a host file; Lando cannot change its owner.",
+      remediation: `Remove ${path} and set the grant's mode (for example "0444") so the service user can read the file.`,
+    };
+  }
   if (path.startsWith("deploy.") && !path.startsWith("deploy.resources")) {
     return {
       disposition: "rejected",
@@ -125,6 +132,11 @@ const normalizedServicePaths = [
   ["healthcheck.test"],
   ["healthcheck.timeout"],
   ["image", ["artifact"]],
+  ["configs", ["mounts"]],
+  ["configs.mode"],
+  ["configs.source"],
+  ["configs.target"],
+  ["configs.x-*"],
   ["ports", ["endpoints"]],
   ["ports.app_protocol"],
   ["ports.host_ip"],
@@ -154,13 +166,6 @@ const normalizedServicePaths = [
 const preservedServicePaths = [
   "cap_add",
   "cap_drop",
-  "configs",
-  "configs.gid",
-  "configs.mode",
-  "configs.source",
-  "configs.target",
-  "configs.uid",
-  "configs.x-*",
   "depends_on.*.restart",
   "deploy",
   "deploy.resources",
@@ -245,6 +250,8 @@ const preservedServicePaths = [
 ] as const;
 
 const rejectedServicePaths = [
+  "configs.gid",
+  "configs.uid",
   "networks.*.driver_opts",
   "networks.*.driver_opts.*",
   "networks.*.gw_priority",

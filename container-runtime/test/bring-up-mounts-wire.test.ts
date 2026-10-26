@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import {
@@ -110,6 +113,40 @@ const hostConfig = (request: EngineHttpRequest | undefined): unknown => field(re
 
 describe("bring-up mount wire", () => {
   for (const dialect of [libpodLifecycleDialect, dockerLifecycleDialect]) {
+    test(`${dialect.engine}: prepares file-mode bind copies before create`, async () => {
+      // Given
+      const root = await mkdtemp(join(tmpdir(), "lando-file-mode-wire-"));
+      const source = join(root, "config");
+      await writeFile(source, "config bytes\n");
+      const fake = makeFakeApi();
+      const plan = planWith([
+        {
+          type: "bind",
+          source,
+          target: PortablePath.make("/config"),
+          readOnly: true,
+          realization: "passthrough",
+          createHostPath: false,
+          fileMode: 0o440,
+        },
+      ]);
+      try {
+        // When
+        await Effect.runPromise(
+          bringUp(plan, { api: fake.api, ctx, dialect, userDataRoot: join(root, "data") }),
+        );
+        // Then
+        const mounts = field(hostConfig(findCreateRequest(fake.calls)), "Mounts");
+        const copy: unknown = Array.isArray(mounts) ? field(mounts[0], "Source") : undefined;
+        expect(typeof copy).toBe("string");
+        if (typeof copy !== "string") throw new TypeError("Missing prepared copy");
+        expect(copy).not.toBe(source);
+        expect((await stat(copy)).mode & 0o7777).toBe(0o440);
+        expect(await Bun.file(copy).text()).toBe("config bytes\n");
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
     test(`${dialect.engine}: tmpfs mounts reach HostConfig.Tmpfs on the create body`, async () => {
       const fake = makeFakeApi();
       const plan = planWith([
@@ -137,6 +174,37 @@ describe("bring-up mount wire", () => {
       });
     });
   }
+
+  test("missing file-mode source fails with provider context before create", async () => {
+    // Given
+    const fake = makeFakeApi();
+    const source = `/missing/${crypto.randomUUID()}`;
+    const plan = planWith([
+      {
+        type: "bind",
+        source,
+        target: PortablePath.make("/config"),
+        readOnly: true,
+        realization: "passthrough",
+        fileMode: 0o440,
+      },
+    ]);
+    // When
+    const result = await Effect.runPromise(
+      Effect.result(bringUp(plan, { api: fake.api, ctx, userDataRoot: "/unused" })),
+    );
+    // Then
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ServiceStartError",
+        operation: "bringUp.mounts",
+        service: "web",
+        details: { source, target: "/config", service: "web" },
+      },
+    });
+    expect(findCreateRequest(fake.calls)).toBeUndefined();
+  });
 
   test("duplicate mount targets fail before the create request", async () => {
     const fake = makeFakeApi();

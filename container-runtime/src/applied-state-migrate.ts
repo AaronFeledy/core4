@@ -209,19 +209,19 @@ export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanSh
 };
 
 /**
- * Record-layout migrator: each app converts on its own, so one unconvertible
- * plan leaves the others readable instead of discarding every app's state.
+ * Record-layout migration is atomic: losing any app would erase its ownership claim.
  */
 export const migrateAppliedPlansRecord = (
   raw: unknown,
   fromVersion: number,
 ): Readonly<Record<string, AppPlanShape>> | null => {
   if (fromVersion !== 1) return null;
-  if (!Predicate.isObject(raw)) return null;
+  if (!Predicate.isObject(raw) || Array.isArray(raw)) return null;
   const next: Record<string, AppPlanShape> = {};
   for (const [id, plan] of Object.entries(raw)) {
     const migrated = migrateAppliedPlan(plan, 1);
-    if (migrated !== null) next[id] = migrated;
+    if (migrated === null) return null;
+    next[id] = migrated;
   }
   return next;
 };

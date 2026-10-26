@@ -22,7 +22,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Scope | Normalized | Preserved | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | Top-level keys | 6 | 3 | 1 | 10 |
-| Service keys | 51 | 90 | 221 | 362 |
+| Service keys | 56 | 83 | 223 | 362 |
 | YAML tags | 2 | 0 | 0 | 2 |
 
 ## Top-level keys
@@ -62,7 +62,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `cgroup` | rejected | — | Translate cgroup with a Compose-to-Lando config translator. |
 | `cgroup_parent` | rejected | — | Translate cgroup_parent with a Compose-to-Lando config translator. |
 | `command` | normalized | — | Normalizes into `ServicePlan.command` |
-| [`configs`](#configs) | preserved | 6 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| [`configs`](#configs) | normalized | 6 | Normalizes into `ServicePlan.mounts` |
 | `container_name` | rejected | — | Remove container_name and use the Lando service key as the container identity. |
 | `cpu_count` | rejected | — | Translate cpu_count with a Compose-to-Lando config translator. |
 | `cpu_percent` | rejected | — | Translate cpu_percent with a Compose-to-Lando config translator. |
@@ -228,13 +228,13 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 
 | Key path | Disposition | Detail |
 | --- | --- | --- |
-| `configs` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `configs.gid` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `configs.mode` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `configs.source` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `configs.target` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `configs.uid` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `configs.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `configs` | normalized | Normalizes into `ServicePlan.mounts` |
+| `configs.gid` | rejected | Remove configs.gid and set the grant's mode (for example "0444") so the service user can read the file. |
+| `configs.mode` | normalized | Normalizes into `ServicePlan.mounts` |
+| `configs.source` | normalized | Normalizes into `ServicePlan.mounts` |
+| `configs.target` | normalized | Normalizes into `ServicePlan.mounts` |
+| `configs.uid` | rejected | Remove configs.uid and set the grant's mode (for example "0444") so the service user can read the file. |
+| `configs.x-*` | normalized | Normalizes into `ServicePlan.mounts` |
 
 ### `credential_spec`
 

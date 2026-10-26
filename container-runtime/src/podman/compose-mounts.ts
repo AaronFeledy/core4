@@ -4,9 +4,11 @@ import {
   type ServicePlan,
   type TmpfsMountPlan,
   type VolumeMountPlan,
+  duplicateMountTarget,
   fileSyncVolumeName,
 } from "@lando/sdk/schema";
-import { duplicateServiceMountTarget, mountSuffix } from "../container-mounts.ts";
+import { mountSuffix } from "../container-mounts.ts";
+import { preparedBindSource } from "../file-mode-mounts.ts";
 import { requiresLongMountSyntax } from "../mount-syntax.ts";
 
 export interface ComposeBindVolume {
@@ -122,10 +124,11 @@ const bindVolumeEntry = (
       : shortVolumeSpec(source, mount.target, mount.readOnly);
   }
 
+  const source = preparedBindSource(mount);
   if (mount.createHostPath === false) {
     return {
       type: "bind",
-      source: mount.source,
+      source,
       target: mount.target,
       read_only: mount.readOnly,
       bind: { create_host_path: false },
@@ -133,8 +136,8 @@ const bindVolumeEntry = (
   }
 
   return requiresLongMountSyntax(mount.target)
-    ? { type: "bind", source: mount.source, target: mount.target, read_only: mount.readOnly }
-    : shortVolumeSpec(mount.source, mount.target, mount.readOnly);
+    ? { type: "bind", source, target: mount.target, read_only: mount.readOnly }
+    : shortVolumeSpec(source, mount.target, mount.readOnly);
 };
 
 const storeVolumeEntry = (mount: VolumeMountPlan): ComposeVolumeEntry => {
@@ -165,7 +168,7 @@ export const serviceComposeMounts = (
   service: ServicePlan,
   fail: ComposeMountFail,
 ): ServiceComposeMounts => {
-  const duplicate = duplicateServiceMountTarget(plan, service);
+  const duplicate = duplicateMountTarget(service.mounts);
   if (duplicate !== undefined)
     return fail("Compose mount targets must be unique.", { service: service.name, target: duplicate });
   const volumes: ComposeVolumeEntry[] = [];

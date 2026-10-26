@@ -99,6 +99,8 @@ const expectations = {
     expect(web.mounts).toContainEqual({
       type: "bind",
       source: resolve(context.appRoot, "src"),
+      origin: "authored",
+      relativeTo: "app",
       target: PortablePath.make("/workspace/src"),
       readOnly: true,
       createHostPath: false,
@@ -107,6 +109,7 @@ const expectations = {
     expect(web.mounts).toContainEqual({
       type: "volume",
       store: `${context.plan.name}-cache`,
+      origin: "authored",
       target: PortablePath.make("/var/cache/app"),
       readOnly: false,
       subpath: "web",
@@ -114,6 +117,7 @@ const expectations = {
     expect(web.mounts).toContainEqual({
       type: "tmpfs",
       target: PortablePath.make("/run/app"),
+      origin: "authored",
       readOnly: false,
       options: `size=67108864,mode=${(1770).toString(8)}`,
     });
@@ -123,6 +127,7 @@ const expectations = {
     expect(database.mounts).toContainEqual({
       type: "tmpfs",
       target: PortablePath.make("/run"),
+      origin: "authored",
       readOnly: false,
       options: "size=64m,mode=1770",
     });
@@ -208,6 +213,8 @@ const expectations = {
     expect(entry.mounts).toContainEqual({
       type: "bind",
       source: resolve(context.appRoot, "test_volume.txt"),
+      origin: "authored",
+      relativeTo: "app",
       target: PortablePath.make("/volumes/test_volume.txt"),
       readOnly: false,
       realization: "passthrough",

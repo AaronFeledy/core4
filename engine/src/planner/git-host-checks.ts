@@ -100,6 +100,7 @@ export const worktreeGitMounts = (
     return [
       {
         type: "bind",
+        origin: "derived",
         source,
         target: target.value,
         readOnly: appMount.readOnly,

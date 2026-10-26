@@ -8,10 +8,10 @@ import {
   isCoreServiceEnvKey,
   landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
-import { composeConfigMounts } from "./compose-configs.ts";
 import { acceleratedMountVolume } from "./container-mounts.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
 import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
+import { fileModeMountIdentity } from "./file-mode-mounts.ts";
 import {
   AGENT_SESSION_LABEL,
   GPG_AGENT_OVERLAY_LABEL,
@@ -123,17 +123,21 @@ export const createConfigFingerprint = (
       .map((mount) => {
         const common = { type: mount.type, target: mount.target, readOnly: mount.readOnly };
         switch (mount.type) {
-          case "bind":
+          case "bind": {
+            const fileIdentity = fileModeMountIdentity(mount);
             return {
               ...common,
               source:
                 mount.realization === "accelerated"
                   ? acceleratedMountVolume(plan, service, mount)
-                  : mount.source,
+                  : (fileIdentity?.source ?? mount.source),
+              fileMode: mount.fileMode,
+              contentDigest: fileIdentity?.digest,
               realization: mount.realization,
               createHostPath:
                 mount.realization === "passthrough" && mount.createHostPath === false ? false : undefined,
             };
+          }
           case "volume":
             return { ...common, store: mount.store, subpath: mount.subpath };
           case "tmpfs":
@@ -142,7 +146,6 @@ export const createConfigFingerprint = (
             return mount satisfies never;
         }
       }),
-    configs: composeConfigMounts(plan, service),
     labels: Object.fromEntries(
       Object.entries(labels).filter(
         ([key]) =>

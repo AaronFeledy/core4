@@ -1,18 +1,20 @@
 import { Effect } from "effect";
 
 import { FileSyncStartError } from "@lando/sdk/errors";
-import { type AppPlan, plannedFileSyncSessions } from "@lando/sdk/schema";
+import { type AppPlan, type FileSyncSessionSpec, plannedFileSyncSessions } from "@lando/sdk/schema";
 import { type AppliedFileSyncInspection, FileSyncEngine } from "@lando/sdk/services";
 
 const hasAcceleratedMounts = (plan: AppPlan): boolean => plannedFileSyncSessions(plan)?.length !== 0;
 
-const hasCompleteFileSyncCoverage = (plan: AppPlan): boolean => {
+export const hasCompleteFileSyncCoverage = (
+  plan: AppPlan,
+  specs: readonly FileSyncSessionSpec[] = plan.fileSync.map(({ session }) => session),
+): boolean => {
   const expected = plannedFileSyncSessions(plan);
-  if (expected === undefined || expected.length === 0 || plan.fileSync.length !== expected.length)
-    return false;
+  if (expected === undefined || expected.length === 0 || specs.length !== expected.length) return false;
 
   const seen = new Set<(typeof expected)[number]>();
-  return plan.fileSync.every(({ session }) => {
+  return specs.every((session) => {
     const mount = expected.find(
       (candidate) => candidate.service === session.service && candidate.mountKey === session.mountKey,
     );

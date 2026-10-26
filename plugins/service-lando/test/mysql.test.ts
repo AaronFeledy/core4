@@ -189,6 +189,7 @@ describe("mysql ServiceType", () => {
 
     expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/srv/apps/myapp/config/my.cnf",
         target: MYSQL_CONFIG_TARGET,

@@ -281,6 +281,7 @@ describe("solr ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/solr/conf",
       target: SOLR_CONFIG_TARGET,
@@ -298,6 +299,7 @@ describe("solr ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/solr/conf",
       target: SOLR_CONFIG_TARGET,
@@ -326,6 +328,7 @@ describe("solr ServiceType", () => {
 
     expect(plan.command).toEqual(["solr-foreground", "-p", "8983"]);
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/solr/conf",
       target: SOLR_CONFIG_TARGET,

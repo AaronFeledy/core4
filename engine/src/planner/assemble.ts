@@ -365,6 +365,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   }
 
   const finalized = yield* finalizeServices({
+    configs: landofile.configs,
     plannedServiceDrafts,
     appId,
     appRoot,

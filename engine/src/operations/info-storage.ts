@@ -24,6 +24,7 @@ type PlannedMount = {
   readonly fact: ObservedMount;
   readonly realized: ObservedMount;
   readonly lifetime: ServiceInfoMount["lifetime"];
+  readonly provenance: ServiceInfoMount["provenance"];
 };
 
 const windowsSource = (source: string): boolean => /^[a-z]:[\\/]/iu.test(source) || source.startsWith("\\\\");
@@ -80,7 +81,12 @@ export const projectServiceMounts = (
     for (const target of HOST_PROXY_MOUNT_TARGETS) internalTargets.add(target);
   }
   for (const mount of service.mounts) {
-    if (internalTargets.has(mount.target)) continue;
+    if (mount.origin === "integration") internalTargets.add(mount.target);
+    else if (mount.origin !== undefined) internalTargets.delete(mount.target);
+  }
+  for (const mount of service.mounts) {
+    if (mount.origin === "integration" || (mount.origin === undefined && internalTargets.has(mount.target)))
+      continue;
     const fact: ObservedMount = {
       type: mount.type,
       target: mount.target,
@@ -93,6 +99,7 @@ export const projectServiceMounts = (
     };
     planned.push({
       fact,
+      provenance: mount.origin,
       lifetime: mount.type === "tmpfs" ? "container" : "retained",
       realized:
         mount.type === "bind" && mount.realization === "accelerated" && mount.mountKey !== undefined
@@ -106,7 +113,7 @@ export const projectServiceMounts = (
   }
   const observed = observation?.status === "present" ? observation.mounts : [];
   const matched = new Set<ObservedMount>();
-  const result = planned.map(({ fact, realized, lifetime }): ServiceInfoMount => {
+  const result = planned.map(({ fact, realized, lifetime, provenance }): ServiceInfoMount => {
     const actual = observed.find(
       (mount) =>
         !matched.has(mount) &&
@@ -132,6 +139,7 @@ export const projectServiceMounts = (
       ...fact,
       ...(actual?.readOnly === undefined ? {} : { readOnly: actual.readOnly }),
       origin: "planned",
+      ...(provenance === undefined ? {} : { provenance }),
       lifetime,
       observation:
         actual !== undefined

@@ -172,7 +172,7 @@ describe("applied plan state layouts", () => {
       codec: "json",
       mode: 0o600,
       lock: "advisory",
-      onCorrupt: "discard",
+      onCorrupt: "fail",
       hasDefault: false,
     });
     expect(calls[0]?.version).toBe(2);
@@ -194,8 +194,8 @@ describe("applied plan state layouts", () => {
       codec: "json",
       mode: 0o600,
       lock: "advisory",
-      onCorrupt: "discard",
-      hasDefault: true,
+      onCorrupt: "fail",
+      hasDefault: false,
     });
     expect(calls[0]?.version).toBe(2);
     expect(typeof calls[0]?.onVersionMismatch).toBe("function");
@@ -368,7 +368,7 @@ describe("applied plan v1 -> v2 mount migration", () => {
     ).toBeNull();
   });
 
-  test("record migration keeps convertible plans when one plan cannot convert", () => {
+  test("record migration refuses the whole record when one plan cannot convert", () => {
     const migrated = migrateAppliedPlansRecord(
       {
         values: v1PlanBase,
@@ -387,8 +387,8 @@ describe("applied plan v1 -> v2 mount migration", () => {
       },
       1,
     );
-    expect(Object.keys(migrated ?? {})).toEqual(["values"]);
-    expect(migrated?.values?.id).toBe(AppId.make("values"));
+    expect(migrated).toBeNull();
+    expect(migrateAppliedPlansRecord({ values: v1PlanBase }, 1)?.values?.id).toBe(AppId.make("values"));
   });
 
   test("moves legacy Compose tmpfs knobs into tmpfs mounts", () => {

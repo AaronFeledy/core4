@@ -37,6 +37,7 @@ import type {
 } from "../engine-api.ts";
 import { missingApi, parseEngineJson } from "../engine-errors.ts";
 import { literalServiceEnvironment, requireCurrentCreationPlan } from "../environment-values.ts";
+import { prepareFileModeMounts } from "../file-mode-mounts.ts";
 import {
   containerOwnershipLabels,
   inspectOwnedNativeId,
@@ -141,6 +142,7 @@ export interface BringUpOptions {
   readonly probeBind?: ServicePublishProbe;
   readonly forbidRecreate?: boolean;
   readonly completionPlan?: AppPlan;
+  readonly userDataRoot?: string | undefined;
 }
 
 interface BringUpDeps {
@@ -994,7 +996,7 @@ const captureStartFailure = (
 };
 
 export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
-  plan: AppPlan,
+  logicalPlan: AppPlan,
   options: BringUpOptions,
 ): Effect.fn.Return<ApplyResult, ProviderError> {
   const api = options.api;
@@ -1011,6 +1013,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       }),
     );
   }
+  const plan = yield* prepareFileModeMounts(logicalPlan, options.ctx, options.userDataRoot);
   const deps: BringUpDeps = {
     api,
     options,

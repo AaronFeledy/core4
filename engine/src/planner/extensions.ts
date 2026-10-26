@@ -199,14 +199,18 @@ export const servicePlanFromDraft = (
           {
             ...draft.appMount,
             type: "bind" as const,
+            origin: "service" as const,
+            relativeTo: "app" as const,
             role: "app" as const,
             realization: "passthrough" as const,
           },
         ]),
     ...draft.mounts.map((mount) =>
-      mount.type === "bind" ? { ...mount, realization: "passthrough" as const } : mount,
+      mount.type === "bind"
+        ? { ...mount, origin: "service" as const, realization: "passthrough" as const }
+        : { ...mount, origin: "service" as const },
     ),
-    ...draft.storage.map((storage) => ({ ...storage, type: "volume" as const })),
+    ...draft.storage.map((storage) => ({ ...storage, origin: "service" as const, type: "volume" as const })),
   ],
   endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
   routes: routes.map((route) => ({ ...route })),

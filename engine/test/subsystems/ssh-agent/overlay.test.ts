@@ -68,6 +68,7 @@ test("adds SSH_AUTH_SOCK and a read-only directory mount only to eligible servic
   expect(result.services[ServiceName.make("web")]?.mounts).toEqual([
     {
       type: "bind",
+      origin: "integration",
       source: "/relay/socket",
       target: PortablePath.make("/run/lando/ssh-agent"),
       readOnly: true,
@@ -106,7 +107,9 @@ test("strip removes the overlay and volume delivery rejects duplicate targets", 
 });
 
 test("rejects when the overlay target collides with a planned mount", async () => {
-  const { withSshAgentOverlay } = await import("../../../src/subsystems/ssh-agent/overlay.ts");
+  const { withSshAgentOverlay, stripSshAgentOverlay } = await import(
+    "../../../src/subsystems/ssh-agent/overlay.ts"
+  );
   const { SshAgentTransportError } = await import("@lando/sdk/errors");
   // Given an eligible service already claiming the agent socket directory
   const plan = overlayFixture();
@@ -121,6 +124,7 @@ test("rejects when the overlay target collides with a planned mount", async () =
         mounts: [
           {
             type: "bind" as const,
+            origin: "authored" as const,
             source: "/other",
             target: PortablePath.make("/run/lando/ssh-agent"),
             readOnly: true,
@@ -133,7 +137,7 @@ test("rejects when the overlay target collides with a planned mount", async () =
   };
   // When/Then
   const result = Effect.runSync(
-    withSshAgentOverlay(colliding, {
+    withSshAgentOverlay(stripSshAgentOverlay(colliding), {
       kind: "ssh",
       socketName: "agent.sock",
       mount: { _tag: "bind-directory", directory: AbsolutePath.make("/relay/socket") },

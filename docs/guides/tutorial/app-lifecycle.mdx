@@ -123,6 +123,7 @@ services:
 | `origin` | `planned`, `runtime` | Whether the mount matches your resolved plan or only appeared on the running container. |
 | `observation` | `present`, `missing`, `unknown` | Whether the container's mount table confirmed it, the container is absent, or evidence was unavailable. |
 | `lifetime` | `retained`, `container`, `unknown` | Bind mounts and declared stores are `retained`; `tmpfs` is `container`; a runtime-only volume is `unknown`. |
+| `provenance` | `authored`, `service`, `derived` | For planned mounts: you declared it in the Landofile, the service type added it, or Lando derived it (an excluded directory's volume, a nested include, Git metadata, or the service home). |
 
 A runtime-only volume with `lifetime: unknown` is unverified, not proven anonymous. Lando does not infer lifetime from a volume name, so decide from the image: if the path is an image `VOLUME` you have not declared, declare it as above. The agent-forwarding and host-proxy mounts Lando adds for its own SSH, GPG, and `lando` integration are not user data and need no declaration.
 
@@ -148,6 +149,13 @@ Only the selected provider's state and resources are touched. See [Recover an ap
 missing or invalid. That means you can still tear down an app after deleting its
 directory or breaking its config. Lando verifies the stored app root, owner, and
 provider before it touches anything.
+
+If that saved state is damaged or unreadable, `start`, `stop`, `restart`, and
+`destroy` refuse to change anything and name the state file, while `info` and
+`logs` keep working. Restore the file from a backup if you have one. Otherwise
+move it aside and run `lando destroy` again: Lando then finds the app's
+containers and volumes by their ownership labels. On Windows with accelerated
+file sync, changes that had not synced back yet can be lost that way.
 
 Teardown looks at what is actually running before it reads your config. An app
 that was never started reports `unchanged` and exits 0, even when its Landofile

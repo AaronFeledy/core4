@@ -94,6 +94,7 @@ export const deriveMountOverlays = Effect.fn("AppPlanner.deriveMountOverlays")(f
       if (!check.shadowed) continue;
       const shadow: MountPlan = {
         type: "volume",
+        origin: "derived",
         store: `${input.context.appSlug}-${input.context.serviceName}-${kebab(target)}-${shortHash(target)}`,
         target,
         readOnly: false,
@@ -119,6 +120,8 @@ export const deriveMountOverlays = Effect.fn("AppPlanner.deriveMountOverlays")(f
       if (parent === undefined || !shadows.get(bind)?.has(parent)) continue;
       mounts.push({
         type: "bind",
+        origin: "derived",
+        ...(bind.relativeTo === undefined ? {} : { relativeTo: bind.relativeTo }),
         source: join(bind.source, rel),
         target,
         readOnly: bind.readOnly,

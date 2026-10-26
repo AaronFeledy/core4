@@ -173,6 +173,7 @@ describe("applyServiceHome", () => {
       {
         type: "volume",
         store: "lando-myapp-web-home",
+        origin: "derived",
         target: PortablePath.make("/home/node"),
         readOnly: false,
       },
@@ -219,19 +220,37 @@ describe("applyServiceHome", () => {
 
   it("Given authored storage with a trailing slash, When applied, Then it is still the same destination", () => {
     expect(applyAuthoredThenHome("/home/node/").mounts).toEqual([
-      { type: "volume", store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+      {
+        type: "volume",
+        store: "myapp-web-cache",
+        target: PortablePath.make("/home/node"),
+        readOnly: false,
+        origin: "authored",
+      },
     ]);
   });
 
   it("Given authored storage spelled with dot segments, When applied, Then it is the same destination as the home", () => {
     expect(applyAuthoredThenHome("/home/./other/../node").mounts).toEqual([
-      { type: "volume", store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+      {
+        type: "volume",
+        store: "myapp-web-cache",
+        target: PortablePath.make("/home/node"),
+        readOnly: false,
+        origin: "authored",
+      },
     ]);
   });
 
   it("Given authored storage with repeated separators, When applied, Then it is the same destination as the home", () => {
     expect(applyAuthoredThenHome("/home//node").mounts).toEqual([
-      { type: "volume", store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+      {
+        type: "volume",
+        store: "myapp-web-cache",
+        target: PortablePath.make("/home/node"),
+        readOnly: false,
+        origin: "authored",
+      },
     ]);
   });
 

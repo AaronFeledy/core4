@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { migrateAppliedPlan } from "@lando/container-runtime/applied-state";
 import { sha256Hex } from "@lando/sdk/digest";
 
@@ -18,22 +18,18 @@ import {
   AbsolutePath,
   type AppPlan,
   AppPlan as AppPlanSchema,
-  type BindMountPlan,
   type IsolateMode,
   type LandofileShape,
   type NetworkingPlan,
-  PortablePath,
   type ProviderCapabilities,
   type RouterConfig,
-  ServiceName,
   landoNetworkingPlan,
-  orderMounts,
-  serviceAppMount,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
   BuildOrchestrator,
   DataMover,
+  EventService,
   FileSystem,
   GlobalAppService,
   LandofileService,
@@ -69,9 +65,12 @@ import { makeScratchReaper } from "./destroy.ts";
 import { ownerPidIsDead, scratchGcCandidates } from "./gc-candidates.ts";
 import { SCRATCH_EXTENSION_KEY } from "./identity.ts";
 import { decodeScratchLandofile } from "./landofile.ts";
+import { applyMountCwd, isolateScratchMounts } from "./mount-isolation.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner, isCanonicalScratchId } from "./scanner.ts";
 import { applyScratchStartup, withScratchAcquisition } from "./startup.ts";
+
+export { applyMountCwd, findPrimaryServiceName } from "./mount-isolation.ts";
 
 export interface ScratchInitAppInput {
   readonly cwd: string;
@@ -300,71 +299,6 @@ const markScratchPlan = (plan: AppPlan, scratchId: string): AppPlan => ({
   },
 });
 
-export const findPrimaryServiceName = (plan: AppPlan): ServiceName | undefined => {
-  const names = Object.keys(plan.services).map((name) => ServiceName.make(name));
-  return names.find((name) => plan.services[name]?.primary === true) ?? names[0];
-};
-
-export const applyMountCwd = (
-  plan: AppPlan,
-  target: string | undefined,
-  hostCwd: string,
-): AppPlan | undefined => {
-  const primaryName = findPrimaryServiceName(plan);
-  if (primaryName === undefined) return undefined;
-  const primary = plan.services[primaryName];
-  if (primary === undefined) return undefined;
-  const appMount = serviceAppMount(primary);
-  const containerTarget = PortablePath.make(target ?? appMount?.target ?? "/app");
-  // The cwd at the app mount's own target replaces the app source; any other
-  // target adds a plain bind there and leaves the app mount alone. Either way
-  // the cwd bind replaces whatever was planned at its target.
-  const rebound = appMount !== undefined && appMount.target === containerTarget ? appMount : undefined;
-  let cwdBind: BindMountPlan = {
-    type: "bind",
-    source: hostCwd,
-    target: containerTarget,
-    readOnly: false,
-    realization: "passthrough",
-  };
-  if (rebound !== undefined) {
-    const { mountKey: _mountKey, ...bind } = rebound;
-    cwdBind = { ...bind, source: hostCwd, realization: "passthrough" };
-  }
-  const mounts = orderMounts([
-    ...primary.mounts.flatMap((mount) => {
-      if (mount.target === containerTarget) return [];
-      if (rebound === undefined || mount.type !== "bind" || !mount.target.startsWith(`${containerTarget}/`))
-        return [mount];
-      // Binds that mirror a path of the app source (nested includes, `./vendor/x` at
-      // `/app/vendor/x`) follow the app source when it moves to the host cwd.
-      const rel = mount.target.slice(containerTarget.length + 1);
-      return [
-        relative(rebound.source, mount.source).replaceAll("\\", "/") === rel
-          ? { ...mount, source: join(hostCwd, rel) }
-          : mount,
-      ];
-    }),
-    cwdBind,
-  ]);
-  const nextPrimary = {
-    ...primary,
-    mounts,
-  };
-  return {
-    ...plan,
-    services: { ...plan.services, [primaryName]: nextPrimary },
-    fileSync: plan.fileSync.filter(
-      (entry) =>
-        !(
-          entry.session.service === primaryName &&
-          rebound?.mountKey !== undefined &&
-          entry.session.mountKey === rebound.mountKey
-        ),
-    ),
-  };
-};
-
 const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
   const built = landoNetworkingPlan({
     slug: plan.slug,
@@ -415,9 +349,10 @@ const applyScratchStartFlags = Effect.fnUntraced(function* (
   input: ScratchAcquireInput,
   capabilities: ProviderCapabilities,
   hostCwd: string,
-): Effect.fn.Return<AppPlan, ScratchAppError> {
+): Effect.fn.Return<AppPlan, ScratchAppError, EventService> {
   let next = plan;
-  const mountCwd = resolveScratchAcquireIsolation(input) === "cwd" ? (input.mountCwd ?? {}) : input.mountCwd;
+  const isolation = resolveScratchAcquireIsolation(input);
+  const mountCwd = isolation === "cwd" ? (input.mountCwd ?? {}) : input.mountCwd;
   if (mountCwd !== undefined) {
     const mounted = applyMountCwd(next, mountCwd.target, hostCwd);
     if (mounted === undefined) {
@@ -431,6 +366,14 @@ const applyScratchStartFlags = Effect.fnUntraced(function* (
       );
     }
     next = mounted;
+  } else {
+    next = yield* isolateScratchMounts(next, input.source.kind === "fork" && isolation === "baked").pipe(
+      Effect.mapError((cause) =>
+        cause instanceof ScratchAppError
+          ? cause
+          : scratchAppError("acquire", "Unable to publish scratch mount isolation warnings.", cause),
+      ),
+    );
   }
   if (input.shareGlobalStorage === true) {
     if (!capabilities.sharedCrossAppNetwork) {
@@ -554,6 +497,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   resolution: Pick<UserAppResolution, "loadUserLandofile" | "loadUserLandofileFile">,
 ) {
   const fileSystem = yield* FileSystem;
+  const events = yield* EventService;
   const landofileService = yield* LandofileService;
   const environmentResolver = yield* EnvironmentValueResolver;
   const planner = yield* AppPlanner;
@@ -871,6 +815,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       ),
     );
     const startPlan = yield* applyScratchStartFlags(forkPlan, input, capabilities, hostCwd).pipe(
+      Effect.provideService(EventService, events),
       Effect.tapError(() =>
         unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       ),
@@ -997,6 +942,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       ),
     );
     const startPlan = yield* applyScratchStartFlags(recipePlan, input, capabilities, hostCwd).pipe(
+      Effect.provideService(EventService, events),
       Effect.tapError(() =>
         unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       ),

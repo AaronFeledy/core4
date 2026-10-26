@@ -40,7 +40,7 @@ describe("Compose disposition matrix", () => {
     expect(serviceExtension?.disposition).toBe("preserved");
     expect(serviceExtension?.rationale).not.toContain("capability-checked");
     expect(serviceExtension?.rationale).toContain("inert");
-    expect(gatedExtension?.rationale).toContain("capability-checked");
+    expect(gatedExtension?.disposition).toBe("normalized");
   });
 
   test("documents every exact preserved path with its fail-closed capability gate", () => {

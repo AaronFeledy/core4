@@ -233,6 +233,7 @@ describe("mariadb ServiceType", () => {
     // Then
     expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/srv/apps/myapp/config/my.cnf",
         target: MARIADB_CONFIG_TARGET,

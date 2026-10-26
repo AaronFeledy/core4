@@ -389,6 +389,7 @@
       "waitForExit:(target:ServiceSelector,options?:WaitForExitOptions) => Effect.Effect<ServiceExitResult,ProviderError,Scope.Scope>"
     ],
     "RuntimeProviderRegistry": [
+      "assertAppliedStateReadable?:(plan:Pick<AppPlan,\"id\" | \"provider\">) => Effect.Effect<void,ProviderUnavailableError | NoProviderInstalledError>",
       "appliedPlansFor:(root:AbsolutePath) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|NoProviderInstalledError>",
       "capabilities:Effect.Effect<ProviderCapabilities,ProviderSelectionError>",
       "list:Effect.Effect<ReadonlyArray<ProviderId>,ProviderUnavailableError>",
@@ -1143,6 +1144,7 @@
       "AppMountInput",
       "AppPlan",
       "AppRef",
+      "AppliedStateInventory",
       "ArchiveFormat",
       "ArtifactBuildSpec",
       "ArtifactManifestEntry",
@@ -1690,6 +1692,7 @@
       "TunnelStatusRequest",
       "TunnelStopRequest",
       "TunnelTarget",
+      "UnreadableAppliedState",
       "UpdateChannel",
       "UpdateManifestBinaries",
       "UpdateManifestBinary",

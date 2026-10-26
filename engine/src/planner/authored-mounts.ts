@@ -1,6 +1,7 @@
 import { posix, win32 } from "node:path";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { MountPlan, ServiceConfig, ValidationIssuePath } from "@lando/sdk/schema";
+import { compileConfigMounts } from "./authored-config-mounts.ts";
 import {
   type MountAuthoringContext,
   classifyMount,
@@ -55,17 +56,20 @@ export const compileAuthoredMounts = (
   storage: ServiceConfig["storage"],
 ): readonly MountPlan[] | LandofileValidationError => {
   const lando = new Map<string, { readonly mount: MountPlan; readonly path: ValidationIssuePath }>();
-  const compose = new Map<string, MountPlan>();
+  const compose = new Map<string, { readonly mount: MountPlan; readonly path: ValidationIssuePath }>();
   const add = (mount: MountPlan, path: ValidationIssuePath): LandofileValidationError | undefined => {
-    const previous = lando.get(mount.target);
+    const tier = path[2] === "volumes" || path[2] === "configs" ? compose : lando;
+    const previous = tier.get(mount.target);
     if (previous !== undefined)
       return mountInputError(
         context,
         [previous.path, path],
-        `Multiple Lando mounts claim ${mount.target}.`,
-        "Keep only one mounts, storage, or tmpfs entry at this destination.",
+        `Multiple ${tier === compose ? "Compose" : "Lando"} mounts claim ${mount.target}.`,
+        tier === compose
+          ? "Keep only one volumes or configs entry at this destination."
+          : "Keep only one mounts, storage, or tmpfs entry at this destination.",
       );
-    lando.set(mount.target, { mount, path });
+    tier.set(mount.target, { mount, path });
   };
   for (const [index, entry] of (storage ?? []).entries()) {
     const path = ["services", context.serviceName, "storage", index];
@@ -81,6 +85,7 @@ export const compileAuthoredMounts = (
     const error = add(
       {
         type: "volume",
+        origin: "authored",
         store,
         target,
         readOnly: typeof entry === "string" ? false : (entry.readOnly ?? false),
@@ -94,11 +99,8 @@ export const compileAuthoredMounts = (
       const path = ["services", context.serviceName, key, index];
       const mount = classifyMount(entry, context, path);
       if (mount instanceof LandofileValidationError) return mount;
-      if (key === "volumes") compose.set(mount.target, mount);
-      else {
-        const error = add(mount, path);
-        if (error !== undefined) return error;
-      }
+      const error = add(mount, path);
+      if (error !== undefined) return error;
     }
   }
   for (const [index, entry] of (normalized.tmpfs ?? []).entries()) {
@@ -119,8 +121,14 @@ export const compileAuthoredMounts = (
     const error = add(mount, path);
     if (error !== undefined) return error;
   }
+  const configs = compileConfigMounts(context, normalized.configs);
+  if (configs instanceof LandofileValidationError) return configs;
+  for (const { mount, path } of configs) {
+    const error = add(mount, path);
+    if (error !== undefined) return error;
+  }
   return [
-    ...[...compose.values()].filter((mount) => !lando.has(mount.target)),
+    ...[...compose.values()].filter(({ mount }) => !lando.has(mount.target)).map(({ mount }) => mount),
     ...[...lando.values()].map(({ mount }) => mount),
   ];
 };

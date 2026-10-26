@@ -54,7 +54,7 @@ services:
 
 `/app/node_modules` stays the service's own volume, and `/app/node_modules/@acme/ui` is your host's `packages/ui`. A mount at exactly an excluded path, such as `target: /app/vendor`, replaces that overlay instead of nesting inside it.
 
-Each path takes one mount. Two entries from `mounts:`, `storage:`, and `tmpfs:` at the same path fail `lando app:config:lint`, which names both. A Compose `volumes:` entry at a path that `mounts:`, `storage:`, or `tmpfs:` already uses is dropped in their favor.
+Each path takes one mount. Two entries from `mounts:`, `storage:`, and `tmpfs:` at the same path fail `lando app:config:lint`, which names both. A Compose `volumes:` entry or `configs:` grant at a path that `mounts:`, `storage:`, or `tmpfs:` already uses is dropped in their favor; two Compose entries at one path fail lint, as they would in Compose.
 
 ## Exclude paths from other bind mounts
 
@@ -117,7 +117,7 @@ lando app:cache:refresh
 lando info --format=json
 ```
 
-Each entry under `services[].mounts` has a `type` (`bind`, `volume`, or `tmpfs`) and a `target`, listed shallowest first. Before `lando start`, its `observation` is `unknown`.
+Each entry under `services[].mounts` has a `type` (`bind`, `volume`, or `tmpfs`) and a `target`, listed shallowest first, plus a `provenance` that says why it is there: `authored` for your Landofile, `service` for the service type, `derived` for an excluded directory's volume or a nested include. Before `lando start`, its `observation` is `unknown`.
 
 Lint the excludes before you start. The check reads the Landofile. It does not boot a sync session.
 
@@ -142,6 +142,8 @@ Lint the excludes before you start. The check reads the Landofile. It does not b
       <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/app/node_modules/@acme/ui\"" } }} />
       <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"tmpfs\",\\s*\"target\":\\s*\"/app/tmp\"" } }} />
       <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"volume\",\\s*\"target\":\\s*\"/tools/node_modules\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/app/vendor\",[^}]*\"provenance\":\\s*\"derived\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/app/node_modules/@acme/ui\",[^}]*\"provenance\":\\s*\"authored\"" } }} />
     </Step>
   </Scenario>
 </Guide>

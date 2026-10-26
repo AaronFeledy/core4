@@ -69,6 +69,7 @@ describe("localstack ServiceType", () => {
     expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "0.0.0.0:4566", PERSISTENCE: "1" });
     expect(plan.mounts.filter((mount) => mount.type === "volume")).toEqual([
       {
+        origin: "service",
         type: "volume",
         store: "myapp-localstack-data",
         target: PortablePath.make("/var/lib/localstack"),

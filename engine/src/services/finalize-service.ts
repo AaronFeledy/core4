@@ -36,6 +36,8 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
     mounts.push({
       ...draft.appMount,
       type: "bind",
+      origin: "service",
+      relativeTo: "app",
       role: "app",
       target: parsed.value,
       realization: "passthrough",
@@ -47,15 +49,15 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
     if (!parsed.ok) return destinationError(mount.target, parsed.reason);
     mounts.push(
       mount.type === "bind"
-        ? { ...mount, target: parsed.value, realization: "passthrough" }
-        : { ...mount, target: parsed.value },
+        ? { ...mount, origin: "service", target: parsed.value, realization: "passthrough" }
+        : { ...mount, origin: "service", target: parsed.value },
     );
   }
 
   for (const entry of draft.storage) {
     const parsed = parseContainerDestination(entry.target);
     if (!parsed.ok) return destinationError(entry.target, parsed.reason);
-    mounts.push({ ...entry, type: "volume", target: parsed.value });
+    mounts.push({ ...entry, origin: "service", type: "volume", target: parsed.value });
   }
 
   return {

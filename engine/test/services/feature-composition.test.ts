@@ -89,6 +89,7 @@ describe("composeService", () => {
     expect(plan.environment).toEqual({ FROM_BASE: "yes", NODE_ENV: "development" });
     expect(plan.mounts).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/host/cache",
         target: PortablePath.make("/cache"),

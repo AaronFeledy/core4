@@ -77,6 +77,7 @@ describe("AppPlanner home persistence and host reachability", () => {
       const web = appPlan.services[ServiceName.make("web")];
       const store = `lando-${appPlan.slug}-web-home`;
       const homeMount = {
+        origin: "derived" as const,
         type: "volume" as const,
         store,
         target: PortablePath.make("/home/node"),
@@ -106,6 +107,7 @@ describe("AppPlanner home persistence and host reachability", () => {
         type: "volume",
         store: "keep-home",
         target: homeTarget,
+        origin: "authored",
         readOnly: false,
       });
       expect(web?.mounts.filter((mount) => mount.target === homeTarget)).toHaveLength(1);
@@ -122,6 +124,7 @@ describe("AppPlanner home persistence and host reachability", () => {
         type: "volume",
         store,
         target: PortablePath.make("/root"),
+        origin: "derived",
         readOnly: false,
       });
       expect(db?.mounts.filter((mount) => mount.type === "volume" && mount.store === store)).toHaveLength(1);
@@ -157,6 +160,7 @@ describe("AppPlanner home persistence and host reachability", () => {
         type: "volume",
         store,
         target: PortablePath.make("/home/whoami"),
+        origin: "derived",
         readOnly: false,
       });
       expect(web?.mounts.filter((mount) => mount.type === "volume" && mount.store === store)).toHaveLength(1);
@@ -170,7 +174,15 @@ describe("AppPlanner home persistence and host reachability", () => {
       const store = `lando-${appPlan.slug}-web-home`;
       expect(
         web?.mounts.filter((mount) => mount.type === "volume").filter((mount) => mount.store === store),
-      ).toEqual([{ type: "volume", store, target: PortablePath.make("/home/www-data"), readOnly: false }]);
+      ).toEqual([
+        {
+          type: "volume",
+          store,
+          target: PortablePath.make("/home/www-data"),
+          readOnly: false,
+          origin: "derived",
+        },
+      ]);
       expect(appPlan.stores.filter((entry) => entry.name === store)).toEqual([
         { name: store, scope: "service", kind: "data" },
       ]);

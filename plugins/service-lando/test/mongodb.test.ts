@@ -264,6 +264,7 @@ describe("mongodb ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/config/mongod.conf",
       target: MONGODB_CONFIG_TARGET,
@@ -282,6 +283,7 @@ describe("mongodb ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/config/mongod.conf",
       target: MONGODB_CONFIG_TARGET,

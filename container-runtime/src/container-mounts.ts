@@ -1,10 +1,12 @@
-import { type AppPlan, type BindMountPlan, type ServicePlan, fileSyncVolumeName } from "@lando/sdk/schema";
 import {
-  bindSourceForComposeConfig,
-  composeConfigBindStrings,
-  composeConfigMounts,
-} from "./compose-configs.ts";
+  type AppPlan,
+  type BindMountPlan,
+  type ServicePlan,
+  duplicateMountTarget,
+  fileSyncVolumeName,
+} from "@lando/sdk/schema";
 import { ContainerPlanError } from "./container-plan-error.ts";
+import { preparedBindSource } from "./file-mode-mounts.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
 
 export const mountSuffix = (readOnly: boolean): string => (readOnly ? ":ro" : "");
@@ -20,23 +22,6 @@ export const acceleratedMountVolume = (plan: AppPlan, service: ServicePlan, moun
   return fileSyncVolumeName(plan.name, service.name, mount.mountKey);
 };
 
-/**
- * The first container target claimed twice by a planned mount or a Compose
- * `configs:` grant. Grants are rendered outside the planned list, so the
- * provider boundary checks both together instead of letting the runtime fail.
- */
-export const duplicateServiceMountTarget = (plan: AppPlan, service: ServicePlan): string | undefined => {
-  const seen = new Set<string>();
-  for (const target of [
-    ...service.mounts.map((mount) => mount.target),
-    ...composeConfigMounts(plan, service).map((mount) => mount.target),
-  ]) {
-    if (seen.has(target)) return target;
-    seen.add(target);
-  }
-  return undefined;
-};
-
 type ContainerMountObject = {
   readonly Type: "bind" | "volume";
   readonly Source: string;
@@ -48,7 +33,7 @@ type ContainerMountObject = {
 
 /** One traversal preserves the planner's shallow-to-deep order within each API field. */
 export const containerMountIntent = (plan: AppPlan, service: ServicePlan) => {
-  const duplicate = duplicateServiceMountTarget(plan, service);
+  const duplicate = duplicateMountTarget(service.mounts);
   if (duplicate !== undefined) {
     throw new ContainerPlanError("Container mounts repeat a target.", {
       service: service.name,
@@ -62,7 +47,7 @@ export const containerMountIntent = (plan: AppPlan, service: ServicePlan) => {
     switch (mount.type) {
       case "bind": {
         const accelerated = mount.realization === "accelerated";
-        const source = accelerated ? acceleratedMountVolume(plan, service, mount) : mount.source;
+        const source = accelerated ? acceleratedMountVolume(plan, service, mount) : preparedBindSource(mount);
         const strict = !accelerated && mount.createHostPath === false;
         if (strict || requiresLongMountSyntax(mount.target)) {
           mounts.push({
@@ -95,17 +80,6 @@ export const containerMountIntent = (plan: AppPlan, service: ServicePlan) => {
         break;
       default:
         mount satisfies never;
-    }
-  }
-  binds.push(...composeConfigBindStrings(plan, service));
-  for (const mount of composeConfigMounts(plan, service)) {
-    if (requiresLongMountSyntax(mount.target)) {
-      mounts.push({
-        Type: "bind",
-        Source: bindSourceForComposeConfig(mount),
-        Target: mount.target,
-        ReadOnly: true,
-      });
     }
   }
   return { binds, mounts, tmpfs };

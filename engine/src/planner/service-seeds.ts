@@ -248,7 +248,11 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     const seed = resolved.success;
     const facts = serviceExpressionFacts(seed.resolution);
     if (facts !== undefined) serviceCredsScope[name] = facts;
-    const checked = yield* validateServiceSeed(seed, appRoot, appSlug, input.landofilePath);
+    const checked = yield* validateServiceSeed(
+      seed,
+      { appRoot, appSlug, serviceName: name, configs: landofile.configs },
+      input.landofilePath,
+    );
     for (const error of checked.errors) record(error);
     resolvedByName.set(name, { ...seed, logSources: checked.logSources });
   }

@@ -59,6 +59,17 @@ Do not combine `--mount-cwd` with `--isolate=full`. That pair fails with `Scratc
 
 On a fork, `--mount-cwd` defaults isolation to `cwd` unless you set `--isolate`.
 
+Isolation decides where the app mount and every mount with a relative source, such as `source: ./assets`, point:
+
+| Mode | App mount and relative mounts |
+| --- | --- |
+| `full` | The scratch's own copy of your app. |
+| `baked` on a recipe | The recipe's scaffold, which Lando keeps in its own directory. |
+| `baked` on a fork | Not mounted. |
+| `cwd` | The directory you ran the command from, in every service. |
+
+Mounts with absolute sources pass through in every mode. Under `full` and recipe `baked`, a relative mount that leads outside the scratch's directory, for example `../shared` or a symlink pointing elsewhere, is not mounted, and Lando warns with the service and path. Use an absolute source when a scratch really needs that directory.
+
 ## Control a full fork copy
 
 ```sh

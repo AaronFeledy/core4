@@ -386,7 +386,7 @@ const composeConfigOrSecretInput = (description: string) =>
     .annotate({ description });
 
 const COMPOSE_CONFIGS_DESCRIPTION =
-  "Service config grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose, capability-checked, and realized as read-only file mounts honoring source, target, and mode.";
+  "Service config grants as source-name strings or long entries; capability-checked and normalized into authored read-only file binds in ServicePlan.mounts, honoring source, target (default /<name>), and numeric or octal-string mode. Lando mounts, storage, and tmpfs take precedence; duplicate Compose volume/config destinations are rejected.";
 
 const COMPOSE_SECRETS_DESCRIPTION =
   "Service secret grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";

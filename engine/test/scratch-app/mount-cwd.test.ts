@@ -12,6 +12,8 @@ import { plan, web } from "../operations/start-progress-topology-support.ts";
 const appBind: BindMountPlan = {
   type: "bind",
   role: "app",
+  origin: "service",
+  relativeTo: "app",
   source: "/old",
   target: PortablePath.make("/app"),
   readOnly: false,
@@ -32,6 +34,7 @@ test("mount cwd removes only the rebound app bind's file-sync session", async ()
   };
   const input: AppPlan = {
     ...plan,
+    root: AbsolutePath.make("/old"),
     services: { [web.name]: { ...web, mounts: [appBind] } },
     fileSync: [
       { engineId: "mutagen", session },
@@ -46,6 +49,8 @@ test("mount cwd removes only the rebound app bind's file-sync session", async ()
   expect(service === undefined ? undefined : serviceAppMount(service)).toEqual({
     type: "bind",
     role: "app",
+    origin: "service",
+    relativeTo: "app",
     source: "/cwd",
     target: PortablePath.make("/app"),
     readOnly: false,
@@ -76,6 +81,7 @@ test("mount cwd replaces an occupied target when no app bind exists", async () =
       type: "bind",
       source: "/cwd",
       target: PortablePath.make("/work/app"),
+      origin: "authored",
       readOnly: false,
       realization: "passthrough",
     },
@@ -116,6 +122,7 @@ test("mount cwd at another target adds a bind there and leaves the app mount alo
       type: "bind",
       source: "/cwd",
       target: PortablePath.make("/occupied"),
+      origin: "authored",
       readOnly: false,
       realization: "passthrough",
     },
@@ -123,11 +130,12 @@ test("mount cwd at another target adds a bind there and leaves the app mount alo
   expect(result?.fileSync.map(({ session }) => session.mountKey)).toEqual(["custom-app-key"]);
 });
 
-test("mount cwd moves binds that mirror the app source and keeps unrelated binds", async () => {
+test("mount cwd moves app-relative binds and keeps absolute binds", async () => {
   // Given a nested include bind under the app source and an unrelated host bind.
   const nested: BindMountPlan = {
     type: "bind",
     source: "/old/vendor/acme/sdk",
+    relativeTo: "app",
     target: PortablePath.make("/app/vendor/acme/sdk"),
     readOnly: false,
     realization: "passthrough",
@@ -143,6 +151,7 @@ test("mount cwd moves binds that mirror the app source and keeps unrelated binds
   const input: AppPlan = {
     ...plan,
     services: { [web.name]: { ...web, mounts: [passthroughApp, unrelated, nested] } },
+    root: AbsolutePath.make("/old"),
     fileSync: [],
   };
   // When the cwd replaces the app source at the same target.

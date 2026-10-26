@@ -12,10 +12,8 @@ import {
   scratchLabelsForPlan,
 } from "./labels.ts";
 
-import { composeConfigBindStrings } from "./compose-configs.ts";
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 
-export { composeConfigBindStrings };
 export { bindMountStrings, mountSuffix } from "./container-mounts.ts";
 export { ContainerPlanError, normalizeCommand, normalizeEntrypoint };
 

@@ -290,6 +290,13 @@ describe("Podman Compose emission", () => {
             target: PortablePath.make("/data:v1"),
             readOnly: true,
           },
+          {
+            type: "bind",
+            source: "/srv/apps/myapp/config",
+            target: PortablePath.make("/etc/config:v1"),
+            readOnly: true,
+            realization: "passthrough",
+          },
         ],
         extensions: { compose: { configs: [{ source: "config", target: "/etc/config:v1" }] } },
       };
@@ -385,6 +392,16 @@ describe("Podman Compose emission", () => {
   test("renders Compose config grants as read-only bind volumes", () => {
     const webWithConfigs: ServicePlan = {
       ...web,
+      mounts: [
+        ...web.mounts,
+        ...["/phpini", "/usr/local/etc/php/conf.d/zz-custom.ini"].map((target) => ({
+          type: "bind" as const,
+          source: "/srv/apps/myapp/php.ini",
+          target: PortablePath.make(target),
+          realization: "passthrough" as const,
+          readOnly: true,
+        })),
+      ],
       extensions: {
         compose: {
           configs: [
@@ -568,7 +585,16 @@ describe("Podman Compose emission", () => {
   test("a Compose config grant at a planned mount target fails at the provider boundary", () => {
     const granted: ServicePlan = {
       ...web,
-      mounts: [{ type: "tmpfs", target: PortablePath.make("/etc/app.ini"), readOnly: false }],
+      mounts: [
+        { type: "tmpfs", target: PortablePath.make("/etc/app.ini"), readOnly: false },
+        {
+          type: "bind",
+          source: "/srv/apps/myapp/app.ini",
+          target: PortablePath.make("/etc/app.ini"),
+          readOnly: true,
+          realization: "passthrough",
+        },
+      ],
       extensions: { compose: { configs: [{ source: "appini", target: "/etc/app.ini" }] } },
     };
     expect(() =>

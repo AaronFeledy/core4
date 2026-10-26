@@ -56,10 +56,10 @@ const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
 const fixtureRedaction = makeRedactionService();
 
 describe("desired immutable create config", () => {
-  test("preserves the pre-authored-network default fingerprint bytes", () => {
-    // Given the original default plan without authored networks or bridge aliases.
-    // When / Then its immutable fingerprint stays pinned.
-    expect(fingerprint(service)).toBe("v3:a5b2c6929a8a80d941931689975c2dfc4a90e7bae54c8f3e8b9fea49e51510b7");
+  test("pins the mount-list-only default fingerprint bytes", () => {
+    // Given the default plan without authored networks or bridge aliases.
+    // When / Then the mount-only create projection stays pinned.
+    expect(fingerprint(service)).toBe("v3:ff31e0d13cdd99844ead8b79b3d972ea97ff8f331f26997d674feaa6c3dd4bb8");
   });
   test("keeps explicit shared membership attachments and fingerprint byte-identical to the legacy plan", () => {
     // Given
@@ -74,7 +74,7 @@ describe("desired immutable create config", () => {
     // When
     const actual = fingerprint(service, explicit);
     // Then
-    expect(actual).toBe("v3:a5b2c6929a8a80d941931689975c2dfc4a90e7bae54c8f3e8b9fea49e51510b7");
+    expect(actual).toBe("v3:ff31e0d13cdd99844ead8b79b3d972ea97ff8f331f26997d674feaa6c3dd4bb8");
   });
 
   test.each(["membership", "bridge aliases", "authored aliases"])("fingerprints %s changes", (change) => {

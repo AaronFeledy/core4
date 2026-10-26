@@ -152,6 +152,7 @@ export const applyServiceHome = (input: {
       ...input.servicePlan.mounts,
       {
         type: "volume",
+        origin: "derived",
         store: homeStoreName(input.appSlug, input.serviceName),
         target,
         readOnly: false,

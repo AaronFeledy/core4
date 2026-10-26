@@ -63,7 +63,9 @@ test.each([
     expect(appPlan.stores).toEqual([{ name: store, scope: "service", kind: "data" }]);
     expect(
       appPlan.services[ServiceName.make("web")]?.mounts.filter((mount) => mount.type === "volume"),
-    ).toEqual([{ type: "volume", store, target: PortablePath.make("/app/vendor"), readOnly: false }]);
+    ).toEqual([
+      { type: "volume", store, target: PortablePath.make("/app/vendor"), readOnly: false, origin: "derived" },
+    ]);
   } finally {
     await rm(appRoot, { recursive: true, force: true });
   }
@@ -258,6 +260,7 @@ test("invalidates cached Git mounts when .git changes between directory and gitf
     expect(second.stores.some((store) => store.name.includes("app-git-"))).toBe(false);
     expect(second.services[ServiceName.make("web")]?.mounts).toContainEqual({
       type: "bind",
+      origin: "derived",
       source: metadata,
       target: PortablePath.make(metadata),
       readOnly: false,

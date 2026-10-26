@@ -260,6 +260,7 @@ describe("postgres ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/config/postgresql.conf",
       target: POSTGRES_CONFIG_TARGET,
@@ -299,6 +300,7 @@ describe("postgres ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/config/postgresql.conf",
       target: POSTGRES_CONFIG_TARGET,

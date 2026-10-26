@@ -3,6 +3,7 @@ import { isAbsolute, resolve, win32 } from "node:path";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   type ComposeVolumeEntry,
+  type LandofileShape,
   type MountInput,
   type MountPlan,
   type ValidationIssuePath,
@@ -17,6 +18,7 @@ export interface MountAuthoringContext {
   readonly appRoot: string;
   readonly appSlug: string;
   readonly serviceName: string;
+  readonly configs?: LandofileShape["configs"];
 }
 
 export const mountInputError = (
@@ -32,7 +34,10 @@ export const mountInputError = (
     issues: paths.map((path) => validationIssue(path, message, remediation)),
   });
 
-const bindSource = (source: string, appRoot: string): string => {
+export const isAppRelativeSource = (source: string): boolean =>
+  !source.startsWith("~") && !isAbsolute(source) && !win32.isAbsolute(source) && !/^[A-Za-z]:/u.test(source);
+
+export const bindSource = (source: string, appRoot: string): string => {
   let expanded = source;
   if (source === "~") expanded = homedir();
   else if (source.startsWith("~/")) expanded = homedir() + source.slice(1);
@@ -58,6 +63,7 @@ export const normalizeTmpfs = (
   const options = tokens.filter((token) => token !== "ro" && token !== "rw").join(",");
   return {
     type: "tmpfs",
+    origin: "authored",
     target: input.target,
     readOnly: tokens.includes("ro") || (!tokens.includes("rw") && input.readOnly),
     ...(options.length === 0 ? {} : { options }),
@@ -116,8 +122,10 @@ export const classifyMount = (
         );
       return {
         type,
+        origin: "authored",
         target,
         source: bindSource(entry.source, context.appRoot),
+        ...(isAppRelativeSource(entry.source) ? { relativeTo: "app" } : {}),
         readOnly: entry.readOnly ?? false,
         realization: "passthrough",
         ...("createHostPath" in entry && entry.createHostPath === false ? { createHostPath: false } : {}),
@@ -127,6 +135,7 @@ export const classifyMount = (
     case "volume":
       return {
         type,
+        origin: "authored",
         target,
         store:
           entry.source === undefined

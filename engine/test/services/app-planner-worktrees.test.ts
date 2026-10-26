@@ -62,6 +62,7 @@ const head = (dir: string) => Bun.write(join(dir, "HEAD"), "ref: refs/heads/main
 
 const gitBind = (source: string, target: string, readOnly = false): MountPlan => ({
   type: "bind",
+  origin: "derived",
   source,
   target: PortablePath.make(target),
   readOnly,

@@ -127,11 +127,13 @@ import {
   windowsSyncPermissionsForUser,
 } from "./windows-sync-targets.ts";
 
+import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
 import { runtimeDiagnosticContext } from "@lando/container-runtime/redact";
 import {
   inspectAppliedPlan,
   listAppliedPlans,
-  loadAppliedPlan,
+  listObservedPlans,
+  loadAppliedPlanStrict,
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
@@ -560,6 +562,8 @@ export interface ProviderLayerOptions {
   readonly logFileAccess?: LogFileAccess;
   readonly resolveContainerHelper?: ResolveContainerHelper;
   readonly runtimeLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
+  /** Lando user-data root; file-mode bind copies live beneath it. */
+  readonly userDataRoot?: string;
   readonly runtimeGenerationStore?: RuntimeGenerationStore;
   readonly sanitizeAppliedPlan: (plan: AppPlan) => AppPlan;
 }
@@ -820,7 +824,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
       providerName: "provider-lando",
       ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
       sanitizeAppliedPlan: options.sanitizeAppliedPlan,
-      load: loadAppliedPlan,
+      load: loadAppliedPlanStrict,
       persist: persistAppliedPlan,
       remove: removeAppliedPlan,
     });
@@ -845,7 +849,11 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         );
       }
       const prior = yield* inspectAppliedPlan(state, target.app);
-      if (prior.status === "unreadable" || (requireReceipt && prior.status === "missing")) {
+      if (prior.status === "unreadable")
+        return yield* Effect.fail(
+          unreadableAppliedStateError({ providerId, path: prior.path, layout: "per-app" }),
+        );
+      if (requireReceipt && prior.status === "missing") {
         return yield* Effect.fail(
           new ProviderUnavailableError({
             providerId,
@@ -871,13 +879,12 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
     const hydratePlansFromDisk: Effect.Effect<void, ProviderUnavailableError> =
       options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
         ? Effect.void
-        : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
+        : listObservedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
             Effect.tap((diskPlans) =>
               Effect.sync(() => {
+                plans.clear();
                 for (const diskPlan of diskPlans) {
-                  if (!plans.has(diskPlan.id)) {
-                    plans.set(diskPlan.id, diskPlan);
-                  }
+                  plans.set(diskPlan.id, diskPlan);
                 }
               }),
             ),
@@ -955,6 +962,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
       target: Parameters<typeof runtimePostServiceLifecycle>[1],
     ) => Effect.Effect<void, ProviderError> = () => Effect.void;
     const resolvedOps = bindResolvedProviderOps(planState, {
+      beforeMutation: (app) => appliedPlans.resolveMutationPlan(app).pipe(Effect.asVoid),
       readAppEnvironment: (target, names) =>
         readAppEnvironment(target, names, { api: podmanApi, ctx: LANDO_CTX }),
       ctx: LANDO_CTX,
@@ -1297,7 +1305,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         appliedPlans:
           options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
             ? Effect.succeed([])
-            : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir),
+            : listObservedPlans(options.appliedPlanState, options.appliedPlanStateDir),
         ensureReady: ensureEffect,
         ...(family === "win32" && appliedPlanState !== undefined && podmanApi !== undefined
           ? {
@@ -1618,9 +1626,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                 ),
         removeArtifact: () => Effect.void,
         apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+          const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
           yield* ensureEffect;
           const physicalPlan = yield* physicalNetworkPlan(plan);
-          const previous = yield* appliedPlans.resolvePlan(plan.id);
           const previousPhysicalPlan =
             previous === undefined ? undefined : yield* physicalNetworkPlan(previous);
           yield* planState.ownership.prepare(physicalPlan, previousPhysicalPlan);
@@ -1641,6 +1649,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               startFailureRemediation: makeLandoStartFailureRemediation(platform),
               platform,
               ...(socketPath === undefined ? {} : { daemonUrl: socketPath }),
+              userDataRoot: options.userDataRoot ?? process.env.LANDO_USER_DATA_ROOT,
               ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
               ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
               ...(applyOptions.resolveServiceEnvironment === undefined
@@ -1717,7 +1726,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           withGlobalPublishedLifecycle(
             String(observed.app),
             "removeObservedService",
-            ensureEffect.pipe(
+            appliedPlans.resolveMutationPlan(observed.app).pipe(
+              Effect.andThen(ensureEffect),
               Effect.andThen(
                 Effect.suspend(() =>
                   removeObservedContainer(observed, {
@@ -1858,9 +1868,13 @@ export const plugin = definePlugin({
         id: ProviderId.make("lando"),
         declaredCapabilities: mvpProviderCapabilities,
         resourceOwnership: (ctx, root) => makeResourceOwnershipStore("lando", ctx.stateStore).summary(root),
-        appliedPlans: (ctx) =>
+        appliedStateInventory: (ctx) =>
           Effect.flatMap(PathsService, (paths) =>
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
+          ),
+        appliedPlans: (ctx) =>
+          Effect.flatMap(PathsService, (paths) =>
+            listObservedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan, eventService } =
@@ -1870,6 +1884,7 @@ export const plugin = definePlugin({
           return yield* makeRuntimeProvider({
             platform,
             stateDir: `${paths.roots.userDataRoot}/providers`,
+            userDataRoot: paths.roots.userDataRoot,
             appliedPlanState: ctx.stateStore,
             appliedPlanStateDir: paths.pluginStateDir(PLUGIN_NAME),
             runtimeBinDir: paths.runtimeBinDir,

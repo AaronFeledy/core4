@@ -108,6 +108,13 @@ describe("container plan helpers", () => {
             ...(realization === "accelerated" ? { mountKey: "mount-deadbeef" } : {}),
           },
           { type: "volume", store: "data", target: PortablePath.make("/data:v1"), readOnly: true },
+          {
+            type: "bind",
+            source: "/host/config",
+            target: PortablePath.make("/etc/config:v1"),
+            readOnly: true,
+            realization: "passthrough",
+          },
         ],
         extensions: { compose: { configs: [{ source: "config", target: "/etc/config:v1" }] } },
       };
@@ -439,7 +446,16 @@ describe("container plan helpers", () => {
   test("rejects a Compose config grant at a planned mount target", () => {
     const mounted: ServicePlan = {
       ...service,
-      mounts: [{ type: "tmpfs", target: PortablePath.make("/etc/app.ini"), readOnly: false }],
+      mounts: [
+        { type: "tmpfs", target: PortablePath.make("/etc/app.ini"), readOnly: false },
+        {
+          type: "bind",
+          source: "/srv/app/app.ini",
+          target: PortablePath.make("/etc/app.ini"),
+          readOnly: true,
+          realization: "passthrough",
+        },
+      ],
       extensions: { compose: { configs: [{ source: "appini", target: "/etc/app.ini" }] } },
     };
     const withConfig = {

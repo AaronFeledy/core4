@@ -95,7 +95,7 @@ describe("provider-lando applied plan inspection versioning", () => {
     };
 
     const result = await Effect.runPromise(inspectAppliedPlan(state, appId));
-    expect(result).toEqual({ status: "unreadable" });
+    expect(result).toEqual({ status: "unreadable", path: "/tmp/plugin-state/applied-plans/broken.json" });
   });
 
   test("reports readable when migration converts a v1 appMount plan", async () => {

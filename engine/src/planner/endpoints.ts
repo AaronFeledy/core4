@@ -13,6 +13,7 @@ import {
 import {
   type AppId,
   type FileSyncPlan,
+  type LandofileShape,
   type ProviderCapabilities,
   type ProviderId,
   type RoutePlan,
@@ -65,6 +66,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
   readonly appSlug: string;
+  readonly configs?: LandofileShape["configs"];
   readonly defaultDomain: string;
   readonly provider: ProviderId;
   readonly providerCapabilities: ProviderCapabilities;
@@ -141,7 +143,12 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
               })),
             },
           };
-    const context = { appRoot: input.appRoot, appSlug: input.appSlug, serviceName: name };
+    const context = {
+      appRoot: input.appRoot,
+      appSlug: input.appSlug,
+      serviceName: name,
+      configs: input.configs,
+    };
     const preparedMounts = prepareServiceMounts({
       context,
       servicePlan: servicePlanFromDraft(draft, [], input.metadata, extensionsForPlan),

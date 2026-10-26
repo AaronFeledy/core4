@@ -3,7 +3,8 @@ import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, DateTime, Effect, Exit, Option } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Schema } from "effect";
+import { makeRuntimeProvider } from "../src/index.ts";
 
 import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
@@ -11,7 +12,7 @@ import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  AppPlan,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -138,6 +139,121 @@ const withStateDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => 
 };
 
 describe("provider-docker applied state persistence", () => {
+  for (const damage of ["corrupt", "migration", "decode"] as const) {
+    for (const operation of [
+      "apply",
+      "reconcile",
+      "stop",
+      "stop-supplied",
+      "restart",
+      "destroy",
+      "destroy-supplied",
+    ] as const) {
+      test(`${operation} refuses ${damage} state after a successful cached read`, async () => {
+        await withStateDir(async (stateDir) => {
+          const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+          const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+          const requests: string[] = [];
+          const provider = await Effect.runPromise(
+            makeRuntimeProvider({
+              platform: "linux",
+              appliedPlanState: state,
+              appliedPlanStateDir: stateDir,
+              dockerApi: {
+                info: Effect.succeed({}),
+                request: (input) =>
+                  Effect.sync(() => {
+                    requests.push(input.path);
+                    return { status: 204, body: "" };
+                  }),
+              },
+            }),
+          );
+          await Effect.runPromise(provider.start({ app: plan.id, service: web.name, plan }));
+          requests.length = 0;
+          const encoded = Schema.encodeSync(AppPlan)(plan);
+          const bytes =
+            damage === "corrupt"
+              ? "not json"
+              : JSON.stringify({
+                  version: damage === "migration" ? 1 : 2,
+                  data:
+                    damage === "decode"
+                      ? { ...encoded, services: "invalid" }
+                      : {
+                          ...encoded,
+                          services: {
+                            web: {
+                              ...encoded.services[web.name],
+                              mounts: [
+                                {
+                                  type: "bind",
+                                  source: "/x",
+                                  target: "/x",
+                                  readOnly: false,
+                                  realization: "accelerated",
+                                },
+                              ],
+                            },
+                          },
+                        },
+                });
+          await writeFile(path, bytes);
+          const target = { app: plan.id, service: web.name };
+          const action =
+            operation === "apply" || operation === "reconcile"
+              ? provider.apply(plan, { reconcile: operation === "reconcile" })
+              : operation === "stop"
+                ? provider.stop(target)
+                : operation === "stop-supplied"
+                  ? provider.stop({ ...target, plan })
+                  : operation === "restart"
+                    ? provider.restart({ ...target, plan })
+                    : provider.destroy(
+                        { app: plan.id, ...(operation === "destroy-supplied" ? { plan } : {}) },
+                        { volumes: true },
+                      );
+          const failure = await Effect.runPromise(action.pipe(Effect.flip, Effect.scoped));
+          expect(failure).toBeInstanceOf(ProviderUnavailableError);
+          expect(failure).toMatchObject({ providerId: "docker", operation: "applied-state.read" });
+          expect(failure.remediation).toContain(path);
+          expect(failure.remediation).toContain("unflushed accelerated sync changes may be lost");
+          expect(requests).toEqual([]);
+          expect(await readFile(path, "utf8")).toBe(bytes);
+        });
+      });
+    }
+    test(`observation tolerates ${damage} while inventory reports its app and path`, async () => {
+      await withStateDir(async (stateDir) => {
+        const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+        const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+        await writeFile(
+          path,
+          damage === "corrupt"
+            ? "not json"
+            : JSON.stringify({ version: damage === "migration" ? 99 : 2, data: {} }),
+        );
+        const provider = await Effect.runPromise(
+          makeRuntimeProvider({
+            platform: "linux",
+            appliedPlanState: state,
+            appliedPlanStateDir: stateDir,
+            dockerApi: {
+              info: Effect.succeed({}),
+              request: () => Effect.succeed({ status: 200, body: "[]" }),
+            },
+          }),
+        );
+        expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toBeUndefined();
+        expect(await Effect.runPromise(provider.appliedPlans ?? Effect.die("missing inventory"))).toEqual([]);
+        expect(await Effect.runPromise(provider.list({ includeUnplanned: true }))).toEqual([]);
+        expect(await Effect.runPromise(listAppliedPlans(state, stateDir))).toEqual({
+          plans: [],
+          unreadable: [{ appId: plan.id, path }],
+        });
+      });
+    });
+  }
   test("appliedPlanPath places each app in the applied-plans namespace", () => {
     expect(appliedPlanPath("/tmp/plugin-state/", plan.id)).toBe(
       "/tmp/plugin-state/applied-plans/applied-state.json",
@@ -245,7 +361,10 @@ describe("provider-docker applied state persistence", () => {
   test("listAppliedPlans returns empty when the namespace directory is missing", async () => {
     await withStateDir(async (stateDir) => {
       const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
-      expect(await Effect.runPromise(listAppliedPlans(state, stateDir))).toEqual([]);
+      expect(await Effect.runPromise(listAppliedPlans(state, stateDir))).toEqual({
+        plans: [],
+        unreadable: [],
+      });
     });
   });
 
@@ -269,7 +388,7 @@ describe("provider-docker applied state persistence", () => {
       await Effect.runPromise(persistAppliedPlan(state, globalPlan));
 
       const listed = await Effect.runPromise(listAppliedPlans(state, stateDir));
-      const ids = listed.map((item) => String(item.id)).sort();
+      const ids = listed.plans.map((item) => String(item.id)).sort();
       expect(ids).toEqual(["applied-state", "global"]);
     });
   });

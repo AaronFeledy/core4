@@ -19,13 +19,12 @@ import {
 import { FileSystem } from "@lando/sdk/services";
 import { quoteYamlScalar, yamlMappingKeyText } from "@lando/sdk/yaml";
 
-import { bindSourceForComposeConfig, composeConfigMounts } from "../compose-configs.ts";
 import type { ProviderErrorContext } from "../engine-api.ts";
 import { previewEnvironmentValue } from "../environment-values.ts";
+import { prepareFileModeMounts } from "../file-mode-mounts.ts";
 import { type HostAliasMap, serviceHostAliases, writeHostAliases } from "../host-aliases.ts";
-import { requiresLongMountSyntax } from "../mount-syntax.ts";
 import { physicalListenerPorts, physicalPublications } from "../physical-publications.ts";
-import { commonContainerLabels, composeConfigBindStrings } from "../plan.ts";
+import { commonContainerLabels } from "../plan.ts";
 import { volumeOwnershipLabels } from "../volume-ownership.ts";
 import { composeHealthcheck } from "./compose-healthcheck.ts";
 import { type ComposeVolumeEntry, serviceComposeMounts } from "./compose-mounts.ts";
@@ -95,19 +94,9 @@ const serviceMountLists = (
   plan: AppPlan,
   service: ServicePlan,
 ): { readonly volumes: ReadonlyArray<ComposeVolumeEntry>; readonly tmpfs: ReadonlyArray<string> } => {
-  const planned = serviceComposeMounts(plan, service, (message, details) => {
+  return serviceComposeMounts(plan, service, (message, details) => {
     throw composeError(ctx, message, details);
   });
-  const configs = composeConfigMounts(plan, service).flatMap(
-    (mount): ReadonlyArray<ComposeVolumeEntry> =>
-      requiresLongMountSyntax(mount.target)
-        ? [{ type: "bind", source: bindSourceForComposeConfig(mount), target: mount.target, read_only: true }]
-        : [],
-  );
-  return {
-    volumes: [...planned.volumes, ...composeConfigBindStrings(plan, service), ...configs],
-    tmpfs: planned.tmpfs,
-  };
 };
 
 const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
@@ -400,11 +389,12 @@ export const emitCompose = Effect.fn("RuntimeProvider.emitCompose")(
     const fileSystem = yield* FileSystem;
     const appRoot = pathJoin(options.userDataRoot, "apps", String(plan.id));
     const outputPath = composePath(plan, options);
+    const prepared = yield* prepareFileModeMounts(plan, options.ctx, options.userDataRoot);
     // Wrap synchronous renderCompose in Effect.try so that any throw from
     // serviceImage/serviceVolumes surfaces as a typed ProviderInternalError
     // failure (not an unhandled defect bypassing the mapError handler below).
     const content = yield* Effect.try({
-      try: () => renderCompose(plan, options.ctx),
+      try: () => renderCompose(prepared, options.ctx),
       catch: (e) =>
         e instanceof ProviderInternalError
           ? e

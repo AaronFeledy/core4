@@ -43,7 +43,9 @@ const stripService = (service: ServicePlan): ServicePlan => ({
       ([name, value]) => name !== "SSH_AUTH_SOCK" || value !== `${target}/${SSH_AGENT_SOCKET_NAME}`,
     ),
   ),
-  mounts: service.mounts.filter((mount) => mount.target !== target),
+  mounts: service.mounts.filter(
+    (mount) => mount.target !== target || (mount.origin !== undefined && mount.origin !== "integration"),
+  ),
 });
 
 export const stripSshAgentOverlay = (plan: AppPlan): AppPlan => ({

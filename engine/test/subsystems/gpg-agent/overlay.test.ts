@@ -30,6 +30,7 @@ test("gpg overlay adds isolated home, public keyring and socket only to eligible
   expect(result.services[ServiceName.make("web")]?.mounts).toEqual([
     {
       type: "bind",
+      origin: "integration",
       source: "/relay/socket",
       target: PortablePath.make("/run/lando/gpg-agent"),
       readOnly: true,
@@ -38,6 +39,7 @@ test("gpg overlay adds isolated home, public keyring and socket only to eligible
     },
     {
       type: "bind",
+      origin: "integration",
       source: "/relay/keyring",
       target: PortablePath.make("/run/lando/gpg-agent-keys"),
       readOnly: true,
@@ -50,7 +52,9 @@ test("gpg overlay adds isolated home, public keyring and socket only to eligible
 });
 
 test("rejects when an overlay target collides with a planned mount", async () => {
-  const { withGpgAgentOverlay } = await import("../../../src/subsystems/gpg-agent/overlay.ts");
+  const { withGpgAgentOverlay, stripGpgAgentOverlay } = await import(
+    "../../../src/subsystems/gpg-agent/overlay.ts"
+  );
   const { GpgAgentTransportError } = await import("@lando/sdk/errors");
   // Given
   const web = plan.services[ServiceName.make("web")];
@@ -64,6 +68,7 @@ test("rejects when an overlay target collides with a planned mount", async () =>
         mounts: [
           {
             type: "bind" as const,
+            origin: "authored" as const,
             source: "/other",
             target: PortablePath.make("/run/lando/gpg-agent"),
             readOnly: true,
@@ -77,7 +82,7 @@ test("rejects when an overlay target collides with a planned mount", async () =>
   // When/Then
   const result = Effect.runSync(
     withGpgAgentOverlay(
-      colliding,
+      stripGpgAgentOverlay(colliding),
       {
         kind: "gpg",
         socketName: "S.gpg-agent",

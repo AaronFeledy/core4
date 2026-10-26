@@ -57,7 +57,10 @@ const stripService = (service: ServicePlan): ServicePlan => ({
   environment: Object.fromEntries(
     Object.entries(service.environment).filter(([name, value]) => ownedEnvironmentValue(name) !== value),
   ),
-  mounts: service.mounts.filter((mount) => !ownedTargets.includes(mount.target)),
+  mounts: service.mounts.filter(
+    (mount) =>
+      !ownedTargets.includes(mount.target) || (mount.origin !== undefined && mount.origin !== "integration"),
+  ),
 });
 
 export const stripGpgAgentOverlay = (plan: AppPlan): AppPlan => ({
@@ -87,6 +90,7 @@ export const withGpgAgentOverlay = Effect.fnUntraced(function* (
     });
     mounts.push({
       type: "bind",
+      origin: "integration",
       source: keyringDir,
       target: keyringTarget,
       readOnly: true,

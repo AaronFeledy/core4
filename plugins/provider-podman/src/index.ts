@@ -46,7 +46,7 @@ import {
 } from "@lando/container-runtime/podman/discover";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect } from "@lando/container-runtime/podman/inspect";
-import { logs } from "@lando/container-runtime/podman/logs";
+import { containerConsoleLogs, logs } from "@lando/container-runtime/podman/logs";
 import type { MachineSshBridgeHost } from "@lando/container-runtime/podman/machine-ssh-bridge";
 import {
   MINIMUM_PODMAN_VERSION,
@@ -101,7 +101,13 @@ import {
 import { AppPlanSanitizer, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Layer, Schema, Stream } from "effect";
 
-import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
+import {
+  listAppliedPlans,
+  listObservedPlans,
+  loadAppliedPlanStrict,
+  persistAppliedPlan,
+  removeAppliedPlan,
+} from "./applied-state.ts";
 import { resolvePodmanAgentBridge } from "./machine-bridge.ts";
 import { providerLandoSetupStatePath } from "./provider-lando-state.ts";
 
@@ -502,6 +508,8 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
 
 export interface ProviderLayerOptions {
   readonly agentBridgeHost?: MachineSshBridgeHost;
+  /** Lando user-data root; file-mode bind copies live beneath it. */
+  readonly userDataRoot?: string;
   readonly podmanApi?: PodmanApiClient;
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly socketPath?: string;
@@ -723,7 +731,7 @@ const assembleRuntimeProvider = (
       ...(options.sanitizeAppliedPlan === undefined
         ? {}
         : { sanitizeAppliedPlan: options.sanitizeAppliedPlan }),
-      load: loadAppliedPlan,
+      load: loadAppliedPlanStrict,
       persist: persistAppliedPlan,
       remove: removeAppliedPlan,
     });
@@ -732,6 +740,7 @@ const assembleRuntimeProvider = (
     const resolvePlan = appliedPlans.resolvePlan;
 
     const resolvedOps = bindResolvedProviderOps(planState, {
+      beforeMutation: (app) => appliedPlans.resolveMutationPlan(app).pipe(Effect.asVoid),
       readAppEnvironment: (target, names) =>
         readAppEnvironment(target, names, { api: podmanApi, ctx: PODMAN_CTX }),
       ctx: PODMAN_CTX,
@@ -777,7 +786,7 @@ const assembleRuntimeProvider = (
       appliedPlans:
         options.appliedPlanState === undefined
           ? Effect.succeed([])
-          : listAppliedPlans(options.appliedPlanState),
+          : listObservedPlans(options.appliedPlanState),
       planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
         Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
       ),
@@ -805,7 +814,7 @@ const assembleRuntimeProvider = (
       ),
       removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
-        const previous = yield* appliedPlans.resolvePlan(plan.id);
+        const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
         yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
           api: podmanApi,
@@ -813,6 +822,8 @@ const assembleRuntimeProvider = (
           ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
           platform,
           daemonUrl: socketPath,
+          userDataRoot:
+            options.userDataRoot ?? options.env?.LANDO_USER_DATA_ROOT ?? process.env.LANDO_USER_DATA_ROOT,
           ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
           ...(applyOptions.resolveServiceEnvironment === undefined
             ? {}
@@ -829,7 +840,8 @@ const assembleRuntimeProvider = (
       }),
       cleanupOwnedResources: planState.cleanupOwnedResources,
       destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
-        const plan = target.plan ?? (yield* resolvePlan(target.app));
+        const previous = yield* appliedPlans.resolveMutationPlan(target.app);
+        const plan = target.plan ?? previous;
         if (plan === undefined) return DESTROY_NO_OP;
         yield* bringDown(plan, {
           api: podmanApi,
@@ -841,28 +853,48 @@ const assembleRuntimeProvider = (
         return DESTROYED;
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
-        removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }).pipe(
-          Effect.map(observedRemoval),
-        ),
+        appliedPlans
+          .resolveMutationPlan(observed.app)
+          .pipe(
+            Effect.andThen(removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX })),
+            Effect.map(observedRemoval),
+          ),
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(
           (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
-            Effect.map((plan) =>
-              plan === undefined
-                ? Stream.fail(makeNoPlanError(target.app, "logs"))
-                : logs(plan, target, logOptions, {
-                    api: podmanApi,
-                    ctx: PODMAN_CTX,
-                    ...logSourceBinding.bind(podmanApi, serviceContainerName(plan, target.service)),
-                  }),
-            ),
+            Effect.map((plan) => {
+              if (plan !== undefined)
+                return logs(plan, target, logOptions, {
+                  api: podmanApi,
+                  ctx: PODMAN_CTX,
+                  ...logSourceBinding.bind(podmanApi, serviceContainerName(plan, target.service)),
+                });
+              if (podmanApi.request === undefined) return Stream.fail(makeNoPlanError(target.app, "logs"));
+              return Stream.fromEffect(discoverLabeledContainers(podmanApi, PODMAN_CTX)).pipe(
+                Stream.flatMap((containers) => {
+                  const container = containers.find(
+                    (entry) => entry.app === target.app && entry.service === target.service,
+                  );
+                  return container?.containerId === undefined
+                    ? Stream.fail(makeNoPlanError(target.app, "logs"))
+                    : containerConsoleLogs(
+                        podmanApi,
+                        PODMAN_CTX,
+                        container.containerId,
+                        target.service,
+                        logOptions,
+                      );
+                }),
+              );
+            }),
           ),
         ),
       list: Effect.fn("RuntimeProvider.list")(function* (filter) {
-        const persistedPlans =
-          options.appliedPlanState === undefined ? [] : yield* listAppliedPlans(options.appliedPlanState);
-        const allPlans = [...plans.values(), ...persistedPlans.filter((plan) => !plans.has(plan.id))];
+        const allPlans =
+          options.appliedPlanState === undefined
+            ? [...plans.values()]
+            : yield* listObservedPlans(options.appliedPlanState);
 
         const snapshots = yield* Effect.forEach(allPlans, (plan) =>
           Effect.forEach(Object.values(plan.services), (service) =>
@@ -976,7 +1008,8 @@ export const plugin = definePlugin({
           podmanCapabilitiesForPlatform(platform, hostProxyContainerTargets(arch)),
         resourceOwnership: (ctx, root) =>
           makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
-        appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
+        appliedStateInventory: (ctx) => listAppliedPlans(ctx.stateStore),
+        appliedPlans: (ctx) => listObservedPlans(ctx.stateStore),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan } = yield* providerHostInputs;
           return yield* makeRuntimeProvider({
@@ -985,6 +1018,7 @@ export const plugin = definePlugin({
             appliedPlanState: ctx.stateStore,
             resolveContainerHelper,
             sanitizeAppliedPlan,
+            userDataRoot: paths.roots.userDataRoot,
           });
         }),
       },

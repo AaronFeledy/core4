@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { type AppPlan, PortablePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { withHostProxyRunLando } from "../../src/operations/start-host-proxy.ts";
+import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport-feature.ts";
 import type { HostProxyRunLandoSession } from "../../src/subsystems/host-proxy/transport.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
 
@@ -51,12 +52,23 @@ test("host-proxy rejects a collision with a user mount", async () => {
     services: {
       [web.name]: {
         ...eligible,
-        mounts: [{ type: "tmpfs", target: PortablePath.make("/usr/local/bin/lando"), readOnly: false }],
+        mounts: [
+          {
+            type: "bind",
+            origin: "authored",
+            source: "/host/tool",
+            realization: "passthrough",
+            target: PortablePath.make("/usr/local/bin/lando"),
+            readOnly: false,
+          },
+        ],
       },
     },
   };
   // When the overlay tries to claim the same destination.
-  const result = await Effect.runPromise(withHostProxyRunLando(input, session).pipe(Effect.result));
+  const result = await Effect.runPromise(
+    withHostProxyRunLando(stripHostProxyRunLando(input), session).pipe(Effect.result),
+  );
   // Then the existing subsystem error reports the collision.
   expect(result._tag).toBe("Failure");
   if (result._tag === "Failure") expect(result.failure._tag).toBe("HostProxyTransportUnavailableError");

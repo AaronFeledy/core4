@@ -153,6 +153,8 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     const worker = plan.services[ServiceName.make("worker")];
     expect(worker?.mounts).toContainEqual({
       type: "bind",
+      origin: "authored",
+      relativeTo: "app",
       source: expect.stringContaining("/existing"),
       target: PortablePath.make("/existing"),
       readOnly: false,
@@ -161,6 +163,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     });
     expect(worker?.mounts).toContainEqual({
       type: "volume",
+      origin: "authored",
       store: "composeapp-worker-state",
       target: PortablePath.make("/var/state"),
       readOnly: false,

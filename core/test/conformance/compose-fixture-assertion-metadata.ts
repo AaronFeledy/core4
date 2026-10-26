@@ -1,6 +1,7 @@
 export type ComposePlanAssertion =
   | "artifact-build"
   | "artifact-ref"
+  | "configs"
   | "dependencies"
   | "direct"
   | "environment"
@@ -19,6 +20,7 @@ export interface ComposeFixtureAssertionMetadata {
 export const COMPOSE_FIXTURE_ASSERTIONS: Readonly<Record<string, ComposeFixtureAssertionMetadata>> = {
   build: { assertion: "artifact-build" },
   command: { assertion: "direct" },
+  configs: { assertion: "configs" },
   depends_on: { assertion: "dependencies", configTarget: "dependsOn" },
   entrypoint: { assertion: "direct" },
   env_file: { assertion: "environment", configTarget: "envFile" },

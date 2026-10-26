@@ -333,6 +333,10 @@
       "digest": "655a03023d4ccad27bed30d049ee32d422bc24b17ae97106a5f200290bab14c0"
     },
     {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/nested-mounts",
+      "digest": "902da5597d15933c4fc5c5abe7e255b4697873680843069e4d04ee1553308f68"
+    },
+    {
       "fixture": "docs/guides/file-sync-mutagen/fixtures/accelerated-excludes",
       "digest": "72446e8f58e661512c33405ee91996d3d5e998e4791c8c46b58f85dfae548b04"
     },

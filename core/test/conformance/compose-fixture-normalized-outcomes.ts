@@ -125,6 +125,7 @@ const assertVolumes = (context: ServiceOutcomeContext): void => {
         requireProducedValue(projected, context.match, "ServicePlan.mounts");
         expect<unknown>(projected).toEqual({
           type: "volume",
+          origin: "authored",
           store:
             volume.source === undefined
               ? `${appName}-${String(planService.name)}-${volume.target.split("/").filter(Boolean).join("-")}`
@@ -144,6 +145,7 @@ const assertVolumes = (context: ServiceOutcomeContext): void => {
         ].join(",");
         expect<unknown>(projected).toEqual({
           type: "tmpfs",
+          origin: "authored",
           target: volume.target,
           readOnly: volume.readOnly,
           ...(options.length === 0 ? {} : { options }),
@@ -188,6 +190,29 @@ export const assertNormalizedMatch = (match: ComposeDispositionMatch, context: O
     service,
   };
   switch (planAssertion) {
+    case "configs":
+      for (const grant of service.configs ?? []) {
+        const definition = grant.source === undefined ? undefined : context.landofile.configs?.[grant.source];
+        if (definition?.file === undefined)
+          throw new ComposeFixtureOutcomeError("Missing file-backed config");
+        const target = grant.target ?? `/${grant.source}`;
+        const mount = planService.mounts.find((mount) => mount.target === target);
+        requireProducedValue(mount, match, "ServicePlan.mounts");
+        expect<unknown>(mount).toEqual({
+          type: "bind",
+          source: resolve(context.appRoot, definition.file),
+          target,
+          readOnly: true,
+          realization: "passthrough",
+          createHostPath: false,
+          origin: "authored",
+          relativeTo: "app",
+          ...(grant.mode === undefined
+            ? {}
+            : { fileMode: typeof grant.mode === "string" ? Number.parseInt(grant.mode, 8) : grant.mode }),
+        });
+      }
+      return true;
     case "networks":
       for (const [key, attachment] of Object.entries(service.networks ?? {})) {
         if (key === "default") {
@@ -246,6 +271,7 @@ export const assertNormalizedMatch = (match: ComposeDispositionMatch, context: O
         requireProducedValue(projected, match, "ServicePlan.mounts");
         expect<unknown>(projected).toEqual({
           type: "tmpfs",
+          origin: "authored",
           target,
           readOnly: tokens.includes("ro"),
           ...(options.length === 0 ? {} : { options }),

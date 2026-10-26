@@ -111,7 +111,7 @@ test("authored tmpfs replaces a shadow and contributes a sync ignore", async () 
   const service = web(app);
   const bind = serviceAppMount(service);
   expect(wireMounts(app).filter((mount) => mount.target === "/app/node_modules")).toEqual([
-    { type: "tmpfs", target: "/app/node_modules", readOnly: false },
+    { type: "tmpfs", target: "/app/node_modules", readOnly: false, origin: "authored" },
   ]);
   expect(bind === undefined ? [] : bindSyncIgnores(service, bind)).toContain("node_modules");
 });
@@ -136,16 +136,26 @@ test("every authored bind can create exclude shadows", async () => {
     {
       type: "bind",
       source: join(app.root, "packages"),
+      origin: "authored",
+      relativeTo: "app",
       target: "/packages",
       readOnly: false,
       excludes: ["vendor"],
       includes: ["vendor/sdk"],
       realization: "passthrough",
     },
-    { type: "volume", store: expect.any(String), target: "/packages/vendor", readOnly: false },
+    {
+      type: "volume",
+      store: expect.any(String),
+      target: "/packages/vendor",
+      readOnly: false,
+      origin: "derived",
+    },
     {
       type: "bind",
       source: join(app.root, "packages/vendor/sdk"),
+      origin: "derived",
+      relativeTo: "app",
       target: "/packages/vendor/sdk",
       readOnly: false,
       realization: "passthrough",
@@ -166,6 +176,7 @@ test("volumes on mariadb compile both bind and tmpfs entries", async () => {
     target: "/scratch",
     readOnly: false,
     options: "size=64m,mode=1777",
+    origin: "authored",
   });
   expect(web(app).mounts.find((mount) => mount.target === "/etc/custom")).toMatchObject({
     type: "bind",
@@ -195,6 +206,7 @@ test("named mounts volumes register an owned store", async () => {
   expect(wireMounts(app)).toContainEqual({
     type: "volume",
     store: "mountapp-named",
+    origin: "authored",
     target: "/named",
     readOnly: false,
   });
@@ -216,12 +228,14 @@ test("service tmpfs normalizes access tokens and preserves runtime options", asy
     target: "/run/x",
     readOnly: true,
     options: "size=8m",
+    origin: "authored",
   });
   expect(wireMounts(app)).toContainEqual({
     type: "tmpfs",
     target: "/run/y",
     readOnly: false,
     options: "noexec",
+    origin: "authored",
   });
 });
 
@@ -267,6 +281,7 @@ test("a cache declared through a noncanonical path stays a global cache store", 
   expect(wireMounts(app)).toContainEqual({
     type: "volume",
     store: "lando-cache-app-deps",
+    origin: "authored",
     target: "/app/deps",
     readOnly: false,
   });

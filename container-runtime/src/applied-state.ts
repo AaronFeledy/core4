@@ -2,10 +2,11 @@ import { readdir } from "node:fs/promises";
 
 import { Effect, Option, Schema } from "effect";
 
-import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
+import { ProviderUnavailableError, type StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { AppId, AppPlan, type AppPlan as AppPlanShape } from "@lando/sdk/schema";
+import { AppId, AppPlan, type AppPlan as AppPlanShape, type AppliedStateInventory } from "@lando/sdk/schema";
 import { AppPlanSanitizer } from "@lando/sdk/services";
+import type { StateBucket } from "@lando/sdk/services";
 
 import {
   APPLIED_STATE_VERSION,
@@ -22,6 +23,32 @@ export {
 const APPLIED_PLAN_NAMESPACE = "applied-plans";
 const APPLIED_PLANS_KEY = "applied-plans.json";
 const AppliedPlans = Schema.Record(AppId, AppPlan);
+
+export type AppliedPlanRead =
+  | { readonly status: "missing" }
+  | { readonly status: "readable"; readonly plan: AppPlanShape }
+  | { readonly status: "unreadable"; readonly path: string };
+
+export const unreadableAppliedStateError = (input: {
+  readonly providerId: string;
+  readonly path: string;
+  readonly layout: "per-app" | "record";
+}) =>
+  new ProviderUnavailableError({
+    providerId: input.providerId,
+    operation: "applied-state.read",
+    message: `The applied provider state file "${input.path}" is unreadable; refusing to mutate runtime resources.${input.layout === "record" ? " This file contains state for several apps; no app in this record can be safely mutated." : ""}`,
+    remediation: `Restore "${input.path}" from backup; or, accepting that unflushed accelerated sync changes may be lost, move it aside and rerun \`lando destroy\`, which then cleans up by ownership labels.${input.layout === "record" ? " Moving this file aside affects every app in the record." : ""}`,
+  });
+
+const inspectBucket = <A>(bucket: StateBucket<A>) =>
+  bucket.exists.pipe(
+    Effect.flatMap((exists) =>
+      exists
+        ? bucket.get.pipe(Effect.map((value) => ({ exists: true, value })))
+        : Effect.succeed({ exists: false, value: null }),
+    ),
+  );
 
 /**
  * Applied state records what the provider realized. Landofile events are not
@@ -43,6 +70,11 @@ export const appliedPlanPath = (stateDir: string, appId: AppId): string =>
   `${appliedPlansDir(stateDir)}/${appId}.json`;
 
 interface AppliedPlanOperations {
+  readonly inspectAppliedPlan: (stateStore: PluginStateStore, appId: AppId) => Effect.Effect<AppliedPlanRead>;
+  readonly loadAppliedPlanStrict: (
+    stateStore: PluginStateStore,
+    appId: AppId,
+  ) => Effect.Effect<AppPlanShape | undefined, ProviderUnavailableError>;
   readonly persistAppliedPlan: (
     stateStore: PluginStateStore,
     plan: AppPlanShape,
@@ -58,16 +90,21 @@ interface AppliedPlanOperations {
 }
 
 export interface PerAppAppliedPlanStore extends AppliedPlanOperations {
+  readonly listObservedPlans: (
+    stateStore: PluginStateStore,
+    stateDir: string,
+  ) => Effect.Effect<ReadonlyArray<AppPlanShape>>;
   readonly listAppliedPlans: (
     stateStore: PluginStateStore,
     stateDir: string,
-  ) => Effect.Effect<ReadonlyArray<AppPlanShape>, ProviderUnavailableError>;
+  ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError>;
 }
 
 export interface RecordAppliedPlanStore extends AppliedPlanOperations {
+  readonly listObservedPlans: (stateStore: PluginStateStore) => Effect.Effect<ReadonlyArray<AppPlanShape>>;
   readonly listAppliedPlans: (
     stateStore: PluginStateStore,
-  ) => Effect.Effect<ReadonlyArray<AppPlanShape>, ProviderUnavailableError>;
+  ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError>;
 }
 
 interface AppliedPlanStoreOptions {
@@ -105,16 +142,87 @@ export function makeAppliedPlanStore(
         codec: "json",
         mode: 0o600,
         lock: "advisory",
-        onCorrupt: "discard",
+        onCorrupt: "fail",
         onVersionMismatch: migrateAppliedPlan,
       });
-    const loadForList = (stateStore: PluginStateStore, appId: AppId) =>
+    const inspectAppliedPlan = (stateStore: PluginStateStore, appId: AppId): Effect.Effect<AppliedPlanRead> =>
       open(stateStore, appId).pipe(
-        Effect.flatMap((bucket) => bucket.get),
-        Effect.map((plan) => plan ?? undefined),
+        Effect.flatMap((bucket) =>
+          inspectBucket(bucket).pipe(
+            Effect.map(
+              ({ exists, value }): AppliedPlanRead =>
+                !exists
+                  ? { status: "missing" }
+                  : value === null
+                    ? { status: "unreadable", path: bucket.path }
+                    : { status: "readable", plan: value },
+            ),
+            Effect.catch(() => Effect.succeed<AppliedPlanRead>({ status: "unreadable", path: bucket.path })),
+          ),
+        ),
+        Effect.catch((cause) =>
+          Effect.succeed<AppliedPlanRead>({
+            status: "unreadable",
+            path: cause.path ?? `${APPLIED_PLAN_NAMESPACE}/${appId}.json`,
+          }),
+        ),
+      );
+    const loadAppliedPlanStrict = (stateStore: PluginStateStore, appId: AppId) =>
+      inspectAppliedPlan(stateStore, appId).pipe(
+        Effect.flatMap((read) => {
+          switch (read.status) {
+            case "missing":
+              return Effect.succeed(undefined);
+            case "readable":
+              return Effect.succeed(read.plan);
+            case "unreadable":
+              return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path }));
+          }
+        }),
+      );
+    const loadAppliedPlan = (stateStore: PluginStateStore, appId: AppId) =>
+      loadAppliedPlanStrict(stateStore, appId).pipe(Effect.catch(() => Effect.succeed(undefined)));
+    const list = (stateStore: PluginStateStore, stateDir: string) =>
+      Effect.tryPromise({ try: () => readdir(appliedPlansDir(stateDir)), catch: (cause) => cause }).pipe(
+        Effect.catchIf(
+          (cause: unknown) => isErrnoCode(cause, "ENOENT"),
+          () => Effect.succeed([]),
+        ),
         Effect.mapError((cause) => error("list", cause)),
+        Effect.map((entries) =>
+          entries.flatMap((entry) =>
+            !entry.endsWith(".json")
+              ? []
+              : Option.match(Schema.decodeUnknownOption(AppId)(entry.slice(0, -5)), {
+                  onNone: () => [],
+                  onSome: (appId) => [appId],
+                }),
+          ),
+        ),
+        Effect.flatMap((ids) =>
+          Effect.forEach(ids, (appId) =>
+            inspectAppliedPlan(stateStore, appId).pipe(Effect.map((read) => ({ appId, read }))),
+          ),
+        ),
+        Effect.map(
+          (reads): AppliedStateInventory => ({
+            plans: reads.flatMap(({ read }) => (read.status === "readable" ? [read.plan] : [])),
+            unreadable: reads.flatMap(({ appId, read }) =>
+              read.status === "unreadable" ? [{ appId, path: read.path }] : [],
+            ),
+          }),
+        ),
       );
     return {
+      inspectAppliedPlan,
+      loadAppliedPlanStrict,
+      loadAppliedPlan,
+      listAppliedPlans: list,
+      listObservedPlans: (stateStore, stateDir) =>
+        list(stateStore, stateDir).pipe(
+          Effect.map((inventory) => inventory.plans),
+          Effect.catch(() => Effect.succeed([])),
+        ),
       persistAppliedPlan: (stateStore, plan) =>
         open(stateStore, plan.id).pipe(
           Effect.flatMap((bucket) =>
@@ -125,35 +233,10 @@ export function makeAppliedPlanStore(
           ),
           Effect.mapError((cause) => error("persist", cause)),
         ),
-      loadAppliedPlan: (stateStore, appId) =>
-        open(stateStore, appId).pipe(
-          Effect.flatMap((bucket) => bucket.get),
-          Effect.map((plan) => plan ?? undefined),
-          Effect.catch(() => Effect.succeed(undefined)),
-        ),
       removeAppliedPlan: (stateStore, appId) =>
         open(stateStore, appId).pipe(
           Effect.flatMap((bucket) => bucket.remove),
           Effect.mapError((cause) => error("remove", cause)),
-        ),
-      listAppliedPlans: (stateStore, stateDir) =>
-        Effect.tryPromise({ try: () => readdir(appliedPlansDir(stateDir)), catch: (cause) => cause }).pipe(
-          Effect.catchIf(
-            (cause: unknown) => isErrnoCode(cause, "ENOENT"),
-            () => Effect.succeed([]),
-          ),
-          Effect.mapError((cause) => error("list", cause)),
-          Effect.map((entries) =>
-            entries.flatMap((entry) => {
-              if (!entry.endsWith(".json")) return [];
-              return Option.match(Schema.decodeUnknownOption(AppId)(entry.slice(0, -5)), {
-                onNone: () => [],
-                onSome: (appId) => [appId],
-              });
-            }),
-          ),
-          Effect.flatMap((ids) => Effect.forEach(ids, (id) => loadForList(stateStore, id))),
-          Effect.map((plans) => plans.filter((plan): plan is AppPlanShape => plan !== undefined)),
         ),
     };
   }
@@ -166,11 +249,53 @@ export function makeAppliedPlanStore(
       codec: "json",
       mode: 0o600,
       lock: "advisory",
-      onCorrupt: "discard",
+      onCorrupt: "fail",
       onVersionMismatch: migrateAppliedPlansRecord,
-      default: {},
     });
+  const inspectRecord = (stateStore: PluginStateStore) =>
+    open(stateStore).pipe(
+      Effect.flatMap((bucket) =>
+        inspectBucket(bucket).pipe(
+          Effect.map(({ exists, value }) =>
+            exists && value === null
+              ? { status: "unreadable" as const, path: bucket.path }
+              : { status: "readable" as const, plans: value },
+          ),
+          Effect.catch(() => Effect.succeed({ status: "unreadable" as const, path: bucket.path })),
+        ),
+      ),
+      Effect.catch((cause: StateStoreError) =>
+        Effect.succeed({ status: "unreadable" as const, path: cause.path ?? APPLIED_PLANS_KEY }),
+      ),
+    );
+  const readRecord = (stateStore: PluginStateStore) =>
+    inspectRecord(stateStore).pipe(
+      Effect.flatMap((read) => {
+        switch (read.status) {
+          case "unreadable":
+            return Effect.fail(unreadableAppliedStateError({ ...options, path: read.path }));
+          case "readable":
+            return Effect.succeed(read.plans);
+        }
+      }),
+    );
+  const loadAppliedPlanStrict = (stateStore: PluginStateStore, appId: AppId) =>
+    readRecord(stateStore).pipe(Effect.map((plans) => plans?.[appId]));
   return {
+    loadAppliedPlanStrict,
+    inspectAppliedPlan: (stateStore, appId) =>
+      inspectRecord(stateStore).pipe(
+        Effect.map((read): AppliedPlanRead => {
+          switch (read.status) {
+            case "unreadable":
+              return read;
+            case "readable": {
+              const plan = read.plans?.[appId];
+              return plan === undefined ? { status: "missing" } : { status: "readable", plan };
+            }
+          }
+        }),
+      ),
     persistAppliedPlan: (stateStore, plan) =>
       open(stateStore).pipe(
         Effect.flatMap((bucket) =>
@@ -183,16 +308,22 @@ export function makeAppliedPlanStore(
         Effect.mapError((cause) => error("persist", cause)),
       ),
     loadAppliedPlan: (stateStore, appId) =>
-      open(stateStore).pipe(
-        Effect.flatMap((bucket) => bucket.get),
-        Effect.map((plans) => plans?.[appId]),
-        Effect.catch(() => Effect.succeed(undefined)),
-      ),
+      loadAppliedPlanStrict(stateStore, appId).pipe(Effect.catch(() => Effect.succeed(undefined))),
     listAppliedPlans: (stateStore: PluginStateStore) =>
-      open(stateStore).pipe(
-        Effect.flatMap((bucket) => bucket.get),
+      inspectRecord(stateStore).pipe(
+        Effect.map((read): AppliedStateInventory => {
+          switch (read.status) {
+            case "readable":
+              return { plans: Object.values(read.plans ?? {}), unreadable: [] };
+            case "unreadable":
+              return { plans: [], unreadable: [{ path: read.path }] };
+          }
+        }),
+      ),
+    listObservedPlans: (stateStore: PluginStateStore) =>
+      readRecord(stateStore).pipe(
         Effect.map((plans) => Object.values(plans ?? {})),
-        Effect.mapError((cause) => error("list", cause)),
+        Effect.catch(() => Effect.succeed([])),
       ),
     removeAppliedPlan: (stateStore, appId) =>
       open(stateStore).pipe(

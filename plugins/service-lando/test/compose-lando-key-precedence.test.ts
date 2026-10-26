@@ -49,6 +49,8 @@ test("prefers an authored Lando mount over a Compose volume at the same target",
     {
       type: "bind",
       source: resolve(appRoot, "a"),
+      origin: "authored",
+      relativeTo: "app",
       target: "/x",
       readOnly: false,
       realization: "passthrough",
@@ -71,7 +73,7 @@ test("suppresses Compose storage at an authored Lando storage target", async () 
 
   // Then
   expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
-    { type: "volume", store: "s", target: "/y", readOnly: false },
+    { type: "volume", store: "s", target: "/y", readOnly: false, origin: "authored" },
   ]);
   expect(plan.mounts.some((entry) => entry.type === "volume" && entry.store === "us469-v")).toBe(false);
   expect(plan.extensions?.compose).toBeUndefined();
@@ -89,6 +91,8 @@ test("replaces the app mount with an authored Compose volume", async () => {
     {
       type: "bind",
       source: resolve(appRoot, "x"),
+      origin: "authored",
+      relativeTo: "app",
       target: "/app",
       readOnly: false,
       realization: "passthrough",
@@ -108,6 +112,8 @@ test("applies a Compose volume when the app mount is disabled", async () => {
     {
       type: "bind",
       source: resolve(appRoot, "x"),
+      origin: "authored",
+      relativeTo: "app",
       target: "/app",
       readOnly: false,
       realization: "passthrough",
@@ -133,6 +139,8 @@ test("keeps exact-target precedence from suppressing descendant targets", async 
     {
       type: "bind",
       source: resolve(appRoot, "a"),
+      origin: "authored",
+      relativeTo: "app",
       target: "/app",
       readOnly: false,
       realization: "passthrough",
@@ -140,6 +148,8 @@ test("keeps exact-target precedence from suppressing descendant targets", async 
     {
       type: "bind",
       source: resolve(appRoot, "w"),
+      origin: "authored",
+      relativeTo: "app",
       target: "/app/web",
       readOnly: false,
       realization: "passthrough",
