@@ -22,7 +22,7 @@ services:
     home: false
     shm_size: 2gb
     healthcheck:
-      test: [CMD, curl, -fsS, http://localhost:4444/status]
+      test: [CMD, /opt/bin/check-grid.sh]
       interval: 5s
       retries: 24
 tooling:

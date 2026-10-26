@@ -257,7 +257,7 @@
     },
     {
       "fixture": "docs/guides/drupal-testing/fixtures/drupal-demo",
-      "digest": "4631970641d810d175006870a8c301057778ba44e4da01dce8b2de2bd1f64249"
+      "digest": "bed9f5e2d17248a89ef4bb97f7b3c1af43a447f3280c91990f592b1c1c1526d2"
     },
     {
       "fixture": "docs/guides/elasticsearch/fixtures/elasticsearch-demo",

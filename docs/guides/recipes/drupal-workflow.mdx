@@ -259,9 +259,9 @@ lando exec appserver -- php -v
 
 ## Run tests
 
-Unit, Kernel, Functional, and FunctionalJavascript tests run inside `appserver` once you add
-`drupal/core-dev`, a few `SIMPLETEST_*` variables, and a headless Chrome service. See
-[Run Drupal tests with PHPUnit and headless Chrome](./drupal-testing.mdx).
+Install `drupal/core-dev` to run Unit tests inside `appserver`. Add the database and web-server
+settings for Kernel and Functional tests, then a browser service for FunctionalJavascript tests.
+See [Run Drupal tests with PHPUnit and headless Chrome](./drupal-testing.mdx).
 
 ## Compile theme assets
 
