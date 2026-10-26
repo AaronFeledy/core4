@@ -160,13 +160,7 @@ const expectedCatalogRows = [
   ["platform-readiness-workflow", "committed-workflow", "build-platform-readiness-workflow.ts", "repo"],
   ["drupal-journey-workflow", "committed-workflow", "build-drupal-journey-workflow.ts", "repo"],
   ["rails-journey-workflow", "committed-workflow", "build-rails-journey-workflow.ts", "repo"],
-  [
-    "workflow-performance-workflow",
-    "committed-workflow",
-    "build-workflow-performance-workflow.ts",
-    "repo",
-    ["core-service-env-catalog"],
-  ],
+  ["workflow-performance-workflow", "committed-workflow", "build-workflow-performance-workflow.ts", "repo"],
 ] as const;
 
 describe("codegen catalog", () => {
@@ -265,7 +259,7 @@ describe("codegen catalog", () => {
     // Given: `@lando/sdk/schema` re-exports generated/core-service-env.ts, so any
     // generator that imports that barrel can observe a truncated write if it
     // shares a wave with the catalog writer.
-    const phpMetadataImporters = ["php-base-images", "workflow-performance-workflow"];
+    const phpMetadataImporters = ["php-base-images"];
     const schemaImporters = (
       await Promise.all(
         catalog.map(async (entry) => {

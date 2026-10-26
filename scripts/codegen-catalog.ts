@@ -286,7 +286,6 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
-    dependsOn: ["core-service-env-catalog"],
     id: "workflow-performance-workflow",
     ownership: "committed-workflow",
     script: "build-workflow-performance-workflow.ts",

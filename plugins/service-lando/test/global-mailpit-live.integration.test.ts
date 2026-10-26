@@ -78,9 +78,7 @@ const mailpitService = (): ServicePlan => ({
   extensions: {},
 });
 
-// A per-app service that stays alive so the test can exec an SMTP send from
-// inside its container, exercising the shared cross-app network DNS alias the
-// per-app `LANDO_MAIL_HOST` env var points at.
+// Prove SMTP reaches the explicitly addressed Mailpit service across app networks.
 const senderService = (): ServicePlan => ({
   name: ServiceName.make("web"),
   type: "compose",
@@ -99,9 +97,6 @@ const senderService = (): ServicePlan => ({
   extensions: {},
 });
 
-// Raw SMTP conversation piped to the global Mailpit service over the shared
-// cross-app network. Mailpit advertises PIPELINING, so the buffered commands are
-// processed in order even after the client half-closes the connection.
 const smtpPayload = [
   "HELO web.shop.internal",
   "MAIL FROM:<sender@example.lndo.site>",
@@ -183,6 +178,7 @@ describe("Mailpit cross-app capture — live integration", () => {
       const shopPlan = appPlan(senderSlug, senderService());
 
       try {
+        // Start the Mailpit test service.
         const mailpitApplied = await Effect.runPromise(bringUp(globalPlan, { api }));
         expect(mailpitApplied.changed).toBe(true);
 
