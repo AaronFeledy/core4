@@ -128,5 +128,7 @@ jobs:
           go_notices=(dist/container-helper-go-*)
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$RELEASE_TAG" --draft --prerelease --target "${{ github.event.workflow_run.head_sha }}" --title "Lando v4 dev ${{ github.run_number }}" --notes "Unsigned six-target dev prerelease from successful ci run ${{ github.event.workflow_run.id }}."
+          trap 'gh release delete "$RELEASE_TAG" --yes 2>/dev/null || true' ERR
           gh release upload "$RELEASE_TAG" dist/lando-darwin-arm64 dist/lando-darwin-x64 dist/lando-linux-arm64 dist/lando-linux-x64 dist/lando-windows-x64.exe dist/lando-windows-arm64.exe dist/SHA256SUMS dist/THIRD_PARTY_NOTICES.md plugins/service-lando/tomcat/LICENSE plugins/service-lando/tomcat/NOTICE "${go_notices[@]}"
           gh release edit "$RELEASE_TAG" --draft=false
+          trap - ERR

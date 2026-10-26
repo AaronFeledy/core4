@@ -133,8 +133,10 @@ jobs:
           go_notices=(dist/container-helper-go-*)
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$RELEASE_TAG" --draft --prerelease --target "\${{ github.event.workflow_run.head_sha }}" --title "Lando v4 dev \${{ github.run_number }}" --notes "Unsigned six-target dev prerelease from successful ci run \${{ github.event.workflow_run.id }}."
+          trap 'gh release delete "$RELEASE_TAG" --yes 2>/dev/null || true' ERR
           gh release upload "$RELEASE_TAG" ${releaseAssetArgs()}
           gh release edit "$RELEASE_TAG" --draft=false
+          trap - ERR
 `;
 
 const main = async (): Promise<void> => {

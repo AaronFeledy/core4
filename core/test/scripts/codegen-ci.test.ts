@@ -660,6 +660,9 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("dist/SHA256SUMS");
       expect(workflow).toContain("--prerelease");
       expect(workflow).toContain("--draft");
+      expect(workflow).toContain("set -euo pipefail");
+      expect(workflow).toContain(`trap 'gh release delete "$RELEASE_TAG" --yes 2>/dev/null || true' ERR`);
+      expect(workflow).toContain("trap - ERR");
       expect(workflow).toContain('gh release edit "$RELEASE_TAG" --draft=false');
       expect(workflow).not.toContain("cosign");
       expect(workflow).not.toContain("gpg");
@@ -782,6 +785,9 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
       expect(workflow).toContain("dist/SHA256SUMS");
       expect(workflow).toContain("--draft");
+      expect(workflow).toContain("set -euo pipefail");
+      expect(workflow).toContain(`trap 'gh release delete "$RELEASE_TAG" --yes 2>/dev/null || true' ERR`);
+      expect(workflow).toContain("trap - ERR");
       expect(workflow).toContain('gh release edit "$RELEASE_TAG" --draft=false');
       expect(workflow).not.toContain("sha256sum lando > SHA256SUMS");
       expect(workflow).not.toContain("if-no-files-found");
