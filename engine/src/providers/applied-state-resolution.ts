@@ -100,7 +100,14 @@ const groupOrphans = (
 type RuntimeEvidence = Effect.Success<ReturnType<typeof runtimeEvidence>>;
 
 const canonicalPath = (path: string): Effect.Effect<string> =>
-  Effect.tryPromise(() => realpath(path)).pipe(Effect.orElseSucceed(() => path));
+  Effect.tryPromise(() => realpath(path)).pipe(
+    Effect.catch(() =>
+      Effect.logDebug("applied-state canonicalPath falling back to lexical path").pipe(
+        Effect.annotateLogs({ path }),
+        Effect.as(path),
+      ),
+    ),
+  );
 
 const isSameOrDescendantPath = (ancestor: string, candidate: string): boolean => {
   const child = relative(ancestor, candidate);
@@ -156,11 +163,14 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
       }),
     );
   }
+  const lookupRoot = yield* canonicalPath(root);
   const plans = (yield* Effect.forEach(providers, gatherAppliedPlans)).flat();
   const belongsToApp = (providerId: string, appId: string) => {
     const plan = plans.find(
       (candidate) =>
-        candidate.provider === providerId && candidate.id === appId && candidate.identity?.appRoot === root,
+        candidate.provider === providerId &&
+        candidate.id === appId &&
+        candidate.identity?.appRoot === lookupRoot,
     );
     return plan === undefined
       ? app.kind !== "scratch" || app.id === appId
@@ -176,8 +186,8 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
       const provider = providers[index];
       if (
         provider === undefined ||
-        hints.appRoot !== root ||
-        hints.ownerKey !== appIdentityKey("owner", root) ||
+        hints.appRoot !== lookupRoot ||
+        hints.ownerKey !== appIdentityKey("owner", lookupRoot) ||
         hints.providerId !== provider.id
       )
         return yield* Effect.fail(orphanRefusal);
@@ -209,7 +219,6 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     return ownershipHints;
   });
   const teardownOwnership = ownership === "exact" ? yield* readOwnership : [];
-  const lookupRoot = yield* canonicalPath(root);
   const matches = (yield* Effect.forEach(plans, (plan) =>
     Effect.gen(function* () {
       if (!matchesAppPlanIdentity(plan, app)) return undefined;
