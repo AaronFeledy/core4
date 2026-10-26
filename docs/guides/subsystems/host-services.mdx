@@ -34,13 +34,15 @@ services:
 
 Lando adds `host.lando.internal` to every service and sets `LANDO_HOST_IP=host.lando.internal` when the provider can reach the host. You don't configure either one.
 
+[Reach your host from inside a service](../services/home-and-host.mdx#reach-your-host-from-inside-a-service) covers the alias and variable on their own.
+
 ```sh
 lando start
 ```
 
 ## Bind the host service to 0.0.0.0
 
-Start a demo HTTP server on the host, listening on all interfaces:
+Start a demo HTTP server on the host, listening on all interfaces (on Windows, use `python` or `py` instead of `python3`):
 
 ```sh
 python3 -m http.server 8000 --bind 0.0.0.0 &
@@ -54,7 +56,7 @@ lsof -nP -iTCP:8000 -sTCP:LISTEN       # macOS
 netstat -an | findstr :8000            # Windows
 ```
 
-On native Linux, the local address must be `0.0.0.0:8000` or `*:8000`, not `127.0.0.1:8000`. A server bound only to `127.0.0.1` refuses connections from containers, because container traffic arrives on the host's bridge interface, not on loopback. Change the server's listen address to `0.0.0.0`, or to the host's bridge IP if you don't want it on the LAN.
+On native Linux, the local address must be `0.0.0.0:8000` or `*:8000`, not `127.0.0.1:8000`. A server bound only to `127.0.0.1` refuses connections from containers, because container traffic arrives on the host's bridge interface, not on loopback. Change the server's listen address to `0.0.0.0`, or to the host's bridge IP if you don't want it on the LAN. A host firewall such as ufw or firewalld can still drop traffic from the container bridge; if the request times out, allow the port from that interface.
 
 A `0.0.0.0` bind also exposes the server to your network wherever the host firewall allows it. Stop the demo server when you finish.
 
@@ -119,7 +121,7 @@ lando destroy -y
 kill %1
 ```
 
-`kill %1` stops the demo server you started in the background from this shell.
+`kill %1` stops the demo server, but only from the shell that started it. Otherwise, stop the process listening on port 8000.
 
 ## Next
 

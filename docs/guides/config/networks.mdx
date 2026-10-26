@@ -117,7 +117,7 @@ The first line proves `web` sees the sibling project's network. The second prove
 
 ## Reach the stack through your host
 
-A stack on a different engine is only reachable through ports it publishes on your host. Publish them in that project (`ports: ["8025:8025"]`), then point your service at `host.lando.internal:8025`. See [Reach your host from inside a service](../services/home-and-host.mdx#reach-your-host-from-inside-a-service) for the alias and the `LANDO_HOST_IP` variable.
+A stack on a different engine is only reachable through ports it publishes on your host. Publish them in that project (`ports: ["8025:8025"]`), then point your service at `host.lando.internal:8025`. See [Reach your host from inside a service](../services/home-and-host.mdx#reach-your-host-from-inside-a-service) for the alias and the `LANDO_HOST_IP` variable. On native Linux, publish without a `127.0.0.1:` prefix; see [Reach host services and sibling stacks](../subsystems/host-services.mdx#reach-a-sibling-compose-stack).
 
 A supported way to run `docker compose` projects on Lando's own engine is still an open question. Don't plan on it; fold the stack in or use the host route.
 
