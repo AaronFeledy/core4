@@ -8,6 +8,7 @@ import { readAcquisitionState } from "./port-acquisition-state.ts";
 import { defaultDomainFile, defaultIssuerFile } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { decodeRouteSnapshot } from "./route-evidence-match.ts";
+import { advertisedRouterBindAddress, routerProbeHost } from "./router-bind-address.ts";
 import { routeSchemes } from "./routing.ts";
 import { normalizeDefaultDomain } from "./tls.ts";
 
@@ -25,12 +26,7 @@ export const readLiveRouteSnapshot = Effect.fn("TraefikRouter.readLiveRouteSnaps
     const ports = { http: acquisition.httpPort, https: acquisition.httpsPort };
     const http = HttpClient.withScope(dependencies.httpClient);
     const requestPolicy = yield* RequestPolicy;
-    const host =
-      acquisition.fingerprint.bindAddress === "0.0.0.0"
-        ? "127.0.0.1"
-        : acquisition.fingerprint.bindAddress === "::"
-          ? "::1"
-          : acquisition.fingerprint.bindAddress;
+    const host = routerProbeHost(advertisedRouterBindAddress(acquisition));
     const physical = {
       http: acquisition.bindHttpPort ?? ports.http,
       https: acquisition.bindHttpsPort ?? ports.https,

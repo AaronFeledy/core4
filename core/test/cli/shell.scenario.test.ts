@@ -36,6 +36,7 @@ import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/b
 import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
+import { DEFAULT_SERVICE_LOGIN_SHELL } from "../../src/cli/service-login-shell.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
@@ -292,7 +293,29 @@ describe("shellApp — shell modes", () => {
     expect(result.exitCode).toBe(0);
     expect(result.cwd).toBe("/app");
     expect(stdout).toBe("inside\n");
-    expect(calls).toEqual([{ service: "web", command: ["sh", "-l"], tty: true, stdin: "inherit" }]);
+    expect(calls).toEqual([
+      { service: "web", command: DEFAULT_SERVICE_LOGIN_SHELL, tty: true, stdin: "inherit" },
+    ]);
+  });
+
+  test("service mode respects an explicit shell override", async () => {
+    const calls: Array<{ command: ReadonlyArray<string> }> = [];
+    const provider = fakeProvider({
+      execStream: (_target, command) => {
+        calls.push({ command: command.command });
+        return Stream.make({ exitCode: 0 });
+      },
+    });
+
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        args: ["zsh", "-l"],
+        io: { writeStdout: () => {}, writeStderr: () => {} },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(calls).toEqual([{ command: ["zsh", "-l"] }]);
   });
 
   test.each([undefined, "/work"])(

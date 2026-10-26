@@ -7,6 +7,7 @@ import { podmanCapabilitiesForPlatform } from "@lando/provider-podman";
 import { GlobalServiceCapabilityError } from "@lando/sdk/errors";
 import {
   type AppPlan,
+  GlobalConfig,
   LANDO_SHARED_CROSS_APP_NETWORK,
   LandofileShape,
   PluginManifest,
@@ -14,8 +15,10 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
+import { AppPlanner, ConfigService } from "@lando/sdk/services";
 
+import { containerHostConfigFragment } from "@lando/container-runtime/plan";
+import { globalServices } from "@lando/proxy-traefik";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import { validateGlobalServiceContributions } from "../../src/services/global-services.ts";
@@ -306,3 +309,41 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
   });
 });
 import { planTestLandofile } from "../compiled-landofile.ts";
+
+test.each(["127.0.0.1", "192.0.2.24", "0.0.0.0", "::"])(
+  "plans Traefik %s publication through the provider request",
+  async (bindAddress) => {
+    const contribution = globalServices.get("traefik");
+    if (contribution === undefined) throw new Error("missing Traefik contribution");
+    const config = Schema.decodeUnknownSync(GlobalConfig)({ router: { bindAddress } });
+    const traefik = await Effect.runPromise(
+      contribution.pipe(
+        Effect.provideService(ConfigService, {
+          load: Effect.succeed(config),
+          get: (key) => Effect.succeed(config[key]),
+        }),
+      ),
+    );
+    const plan = await planApp(
+      {
+        name: "global",
+        services: {
+          traefik,
+          "traefik-diagnostics": {
+            type: "compose",
+            image: "nginx:alpine",
+            home: false,
+            healthcheck: { kind: "command", command: ["true"] },
+          },
+        },
+      },
+      providerLandoCapabilitiesForPlatform("linux"),
+    );
+    const service = plan.services[ServiceName.make("traefik")];
+    if (service === undefined) throw new Error("missing Traefik plan");
+    expect(containerHostConfigFragment(plan, service)).toHaveProperty("PortBindings", {
+      "80/tcp": [{ HostIp: bindAddress, HostPort: "38080" }],
+      "443/tcp": [{ HostIp: bindAddress, HostPort: "38443" }],
+    });
+  },
+);

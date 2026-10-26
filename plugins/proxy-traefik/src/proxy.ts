@@ -24,7 +24,12 @@ import { ensureDashboardFile } from "./dashboard.ts";
 import { TRAEFIK_DIAGNOSTICS_ID, renderTraefikFallbackConfig } from "./diagnostics.ts";
 import { prepareTraefikDiagnostics } from "./global-services/diagnostics.ts";
 import { makeRouteObserver } from "./observe-routes.ts";
-import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
+import { fingerprintsEqual } from "./port-acquisition-helpers.ts";
+import {
+  persistPortAcquisition,
+  readAcquisitionState,
+  writeAcquisitionState,
+} from "./port-acquisition-state.ts";
 import {
   ROUTE_FILE_PREFIX,
   ROUTE_FILE_SUFFIX,
@@ -49,6 +54,7 @@ import {
 } from "./proxy-setup.ts";
 import type { TraefikProxyDependencies, TraefikRouterLists, TraefikRouterPin } from "./proxy-types.ts";
 import { invalidateAcknowledgement, routeReloadLockKey } from "./route-reload-state.ts";
+import { advertisedRouterBindAddress, normalizeRouterBindAddress } from "./router-bind-address.ts";
 import { type AuthorityPorts, DEFAULT_AUTHORITY_PORTS } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
 import { stopSockets } from "./socket-proxy-install.ts";
@@ -113,6 +119,46 @@ const observeWatcherStartup = Effect.fn("TraefikRouter.observeWatcherStartup")(f
   return yield* Effect.fail(error);
 });
 
+const confirmRouterAcquisition = Effect.fnUntraced(function* (dependencies: TraefikProxyDependencies) {
+  const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+  if (
+    state === undefined ||
+    dependencies.readTraefikPublications === undefined ||
+    (state.appliedFingerprint !== undefined && fingerprintsEqual(state.fingerprint, state.appliedFingerprint))
+  )
+    return;
+  const observed = yield* dependencies.readTraefikPublications().pipe(
+    Effect.timeout("5 seconds"),
+    Effect.catch(() => Effect.succeed({ status: "unknown" as const })),
+  );
+  if (observed.status !== "present") return;
+  const bindAddress = advertisedRouterBindAddress(state);
+  const expected = [
+    { port: 80, hostPort: state.bindHttpPort ?? state.httpPort },
+    { port: 443, hostPort: state.bindHttpsPort ?? state.httpsPort },
+  ];
+  if (
+    !expected.every((target) => {
+      const bindings = observed.bindings.filter(
+        (binding) => binding.transport === "tcp" && binding.port === target.port,
+      );
+      return (
+        bindings.length > 0 &&
+        bindings.every(
+          (binding) =>
+            binding.hostPort === target.hostPort &&
+            normalizeRouterBindAddress(binding.bindAddress) === bindAddress,
+        )
+      );
+    })
+  )
+    return;
+  yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
+    ...state,
+    appliedFingerprint: state.fingerprint,
+  });
+});
+
 // observeWatcherStartup removes .lando-routing-state on failure; persistedStatus
 // reports stopped without it. Every successful observation must rewrite the
 // fallback config and routing marker together.
@@ -121,8 +167,9 @@ const finalizeRouterStartup = Effect.fn("TraefikRouter.finalizeRouterStartup")(f
   advertised: AuthorityPorts,
   context: "setup" | "revalidation",
 ) {
-  yield* assertAdvertisedForward(dependencies, advertised, context);
+  const ready = yield* assertAdvertisedForward(dependencies, advertised, context);
   yield* observeWatcherStartup(dependencies);
+  if (ready) yield* confirmRouterAcquisition(dependencies);
   yield* dependencies.fileSystem.writeAtomic(
     fallbackConfigFile(dependencies.paths),
     renderTraefikFallbackConfig(),
@@ -326,7 +373,11 @@ export const makeTraefikRouterService = (
       )(),
       applyRoutes: Effect.fn("RouterService.applyRoutes")(
         (nextRoutes, app) => {
-          const apply = applyRoutes(nextRoutes, app);
+          const apply = applyRoutes(nextRoutes, app).pipe(
+            Effect.tap(() =>
+              nextRoutes.length === 0 ? Effect.void : confirmRouterAcquisition(dependencies),
+            ),
+          );
           const guarded =
             dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
               ? dependencies.stateStore.withLock(routeReloadLockKey(), apply, {
@@ -445,6 +496,16 @@ export const layer = (stateStore: PluginStateStore) =>
         ...Option.match(registry, {
           onNone: () => ({}),
           onSome: (registry) => ({
+            readTraefikPublications: Effect.fn("TraefikRouter.readTraefikPublications")(function* () {
+              const provider = yield* registry.select(yield* globalApp.providerId);
+              const service = yield* provider.inspect({
+                app: AppId.make("global"),
+                service: ServiceName.make("traefik"),
+              });
+              return (service.state ?? service.status).toLowerCase() === "running"
+                ? service.publications
+                : { status: "unknown" as const };
+            }),
             readTraefikLogs: Effect.fn("TraefikRouter.readTraefikLogs")(function* () {
               const provider = yield* registry.select(yield* globalApp.providerId);
               if (provider.capabilities.serviceLogs !== true) {

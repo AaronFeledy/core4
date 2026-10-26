@@ -13,6 +13,7 @@ import { Effect, Result, Schema } from "effect";
 import { analyzeComposeRejections } from "./compose/rejections.ts";
 import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
 import { healthcheckWarnings } from "./lint-healthcheck.ts";
+import { routerBindWarnings } from "./lint-router.ts";
 import { attributeLintIssue, sourceCoordinates } from "./lint-source.ts";
 import { appNameOf, rejectionViolation, violationsFromSchema } from "./lint-violations.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
@@ -120,7 +121,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     const retained = getSourceDocuments(merged);
     violations.push(...retained.filter((document) => !roots.has(document.file)).flatMap(fragmentIssues));
     documents = retained;
-    violations.push(...healthcheckWarnings(merged, documents));
+    violations.push(...healthcheckWarnings(merged, documents), ...routerBindWarnings(merged, documents));
     const effective = yield* finalizeLandofile(file, merged, {
       appRoot: dirname(file),
       pendingSites: acquired.runtime.pendingSites,

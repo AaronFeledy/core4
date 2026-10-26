@@ -226,6 +226,32 @@ describe("bringUpRecreateReasons", () => {
     expect(reasons).toEqual(["publish-port", "bind-source", "network", "config"]);
   });
 
+  test("recreates when publication bindAddress changes on a running container", () => {
+    // Given a running container published on loopback.
+    const running = service;
+    const desired: ServicePlan = {
+      ...service,
+      endpoints: [
+        {
+          _tag: "published",
+          port: 8080,
+          protocol: "http",
+          name: "http",
+          publication: { bindAddress: "0.0.0.0", hostPort: 18080 },
+        },
+      ],
+    };
+    const snapshot = { labels: commonContainerLabels(plan, running) };
+    // When the desired bind changes.
+    const reasons = bringUpRecreateReasons(
+      { ...plan, services: { [desired.name]: desired } },
+      desired,
+      snapshot,
+    );
+    // Then create-config mismatch recreates the container.
+    expect(reasons).toEqual(["config"]);
+  });
+
   test("keeps a container with matching desired config labels", () => {
     // Given the labels actually emitted for the desired service.
     const snapshot = { labels: commonContainerLabels(plan, service) };

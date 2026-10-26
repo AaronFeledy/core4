@@ -250,6 +250,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | Landofile with zero services | `docs/guides/landofile/zero-services.mdx` | Shipped |
 | - | - | Drupal stack service and tooling overrides | `docs/guides/recipes/drupal-stack-overrides.mdx` | Shipped |
 | - | - | Drupal multisite configuration | `docs/guides/recipes/drupal-multisite.mdx` | Shipped |
+| - | - | Drupal PHPUnit suites with a headless Chrome service | `docs/guides/recipes/drupal-testing.mdx` | Shipped |
 | - | - | `app:config:migrate` recipe migration edges | `docs/guides/recipes/migrating-recipes.mdx` | Shipped |
 | - | - | PHP version selection matrix | `docs/guides/services/php-version-matrix.mdx` | Shipped |
 | - | - | Composer workflows in PHP services | `docs/guides/tooling/php-composer-workflows.mdx` | Shipped |

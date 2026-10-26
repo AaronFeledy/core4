@@ -243,6 +243,27 @@ describe("desired immutable create config", () => {
     expect(fingerprint(after)).not.toBe(fingerprint(before));
   });
 
+  test("changes the fingerprint when publication bindAddress changes", () => {
+    // Given two published endpoints that differ only in host bind.
+    const published = (bindAddress: string): ServicePlan => ({
+      ...service,
+      endpoints: [
+        {
+          _tag: "published",
+          port: 80,
+          protocol: "http",
+          publication: { bindAddress, hostPort: 8080 },
+        },
+      ],
+    });
+    // When both label sets are emitted.
+    const loopback = fingerprint(published("127.0.0.1"));
+    const lan = fingerprint(published("0.0.0.0"));
+    // Then a bind change is visible create-config drift.
+    expect(lan).not.toBe(loopback);
+    expect(lan).toMatch(/^v3:[a-f0-9]{64}$/u);
+  });
+
   test("ignores map order, metadata, runtime host ports, and unrelated extensions", () => {
     // Given identical desired create config with different runtime observations.
     const endpoint = { _tag: "published" as const, port: 8080, protocol: "http" as const, publication: {} };
