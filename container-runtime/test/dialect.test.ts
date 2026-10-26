@@ -155,6 +155,50 @@ describe("container engine dialects", () => {
   });
 
   describe.each([dockerPullDialect, libpodPullDialect])("digest decoding", (dialect) => {
+    const hubRepos = [
+      "php",
+      "library/php",
+      "docker.io/php",
+      "docker.io/library/php",
+      "index.docker.io/php",
+      "index.docker.io/library/php",
+    ];
+
+    test.each(hubRepos)("canonicalizes Docker Hub repository %s", (requested) => {
+      for (const reported of hubRepos) {
+        const inspect = {
+          RepoDigests: [
+            "registry.example/library/php@sha256:pinned",
+            `${reported}@sha256:first`,
+            `${reported}@sha256:pinned`,
+          ],
+        };
+        expect(dialect.inspect?.decodeDigest(inspect, `${requested}:8.2-apache-bookworm`)).toBe(
+          "sha256:first",
+        );
+        expect(dialect.inspect?.decodeDigest(inspect, `${requested}@sha256:pinned`)).toBe("sha256:pinned");
+      }
+    });
+
+    test.each([
+      "registry.example/php",
+      "localhost/php",
+      "localhost:5000/php",
+      "docker.io:5000/php",
+      "index.docker.io:5000/php",
+    ])("preserves non-Hub repository %s", (requested) => {
+      const unrelated = ["php@sha256:pinned", "docker.io/library/php@sha256:pinned"];
+      expect(
+        dialect.inspect?.decodeDigest({ RepoDigests: unrelated }, `${requested}@sha256:pinned`),
+      ).toBeUndefined();
+      expect(
+        dialect.inspect?.decodeDigest(
+          { RepoDigests: [...unrelated, `${requested}@sha256:first`, `${requested}@sha256:pinned`] },
+          `${requested}@sha256:pinned`,
+        ),
+      ).toBe("sha256:pinned");
+    });
+
     test.each([
       {
         reference: "php:8.2-apache-bookworm",

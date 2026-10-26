@@ -111,6 +111,10 @@ const normalizeImageRepo = (repo: string): string => {
   const slash = repo.indexOf("/");
   if (slash === -1) return `docker.io/library/${repo}`;
   const first = repo.slice(0, slash);
+  if (first === "docker.io" || first === "index.docker.io") {
+    const name = repo.slice(slash + 1);
+    return `docker.io/${name.includes("/") ? name : `library/${name}`}`;
+  }
   if (first.includes(".") || first.includes(":") || first === "localhost") return repo;
   return `docker.io/${repo}`;
 };
