@@ -66,6 +66,8 @@ Required behavior:
 
 Construction and requirement types MUST reflect the requested tier (§22.2). Hosts invoke `openExecutionSession` through `runtime.run`, whose existing Effect-provision meaning is unchanged.
 
+The host modules in §7.1.1 are process-owned: lazy `Bun.plugin` registration outlives runtime scopes. Multiple runtimes using the same loaded Lando library share SDK and Effect module identities, not caches, plugin registries, event buses, or scopes. Per-runtime selection of independent SDK or Effect versions is unsupported. Runtime teardown MUST NOT clear the process-wide plugin registry.
+
 `resolveApp(selector)` is the Layer-native equivalent of `runtime.app(selector)`. Selector precedence is `id` > `landofile` > `root` > `cwd`; lower-precedence fields MAY accompany a selector only when they validate against it. Unknown ids and mismatches fail with `AppResolveError`. A decoded Landofile MUST include an authoritative root. Resolution MUST use retained roots and cwd, never a later ambient `process.cwd()`. With no selector, resolution uses the runtime cwd or its configured scratch app.
 
 The returned opaque, SDK-published `App` handle captures app identity and runtime services. Hosts consume handles and MUST NOT implement them structurally.

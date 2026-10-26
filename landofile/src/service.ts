@@ -13,6 +13,7 @@ import type { LandofileRuntimeInputs } from "./ports.ts";
 
 export { LandofileService } from "@lando/sdk/services";
 export { validateLandofileReplacement } from "./replacement.ts";
+export type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 export {
   acquireLandofileRootLayers,
   composeLandofileRootLayers,

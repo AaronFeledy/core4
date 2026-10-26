@@ -627,7 +627,7 @@ Events are `pre-init-source-auth`, `post-init-source-auth`, `pre-init-source-acq
 
 #### 8.8.14 Programmatic recipes (`recipe.ts`)
 
-`recipe.ts` is mutually exclusive with `recipe.yml`. It default-exports a static `RecipeManifest` or async `RecipeContext -> RecipeManifest`, optionally wrapped by `defineRecipe` from `@lando/core/schema`/`@lando/sdk`; runtime output still decodes through the canonical schema.
+`recipe.ts` is mutually exclusive with `recipe.yml`. It default-exports a static `RecipeManifest` or async `RecipeContext -> RecipeManifest`, optionally wrapped by `defineRecipe` from `@lando/sdk/schema`; runtime output still decodes through the canonical schema. Evaluation uses the host-owned modules in §7.1.1 without a local SDK or Effect install; other bare packages resolve beside the author file.
 
 `ctx.prompt` is the only prompt path and delegates to `InteractionService`; raw init-only secrets remain outside factory data. `ctx.run` may invoke only ids in `runs`, else `RecipeForbiddenCommandError`. `ctx.fetch` permits HTTP GET only to `fetchAllowlist`, else `RecipeForbiddenFetchError`. Top-level side effects, arbitrary shell, plugin/global mutation, and other network access are forbidden. Evaluation is bounded.
 

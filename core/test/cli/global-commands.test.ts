@@ -56,6 +56,7 @@ import { PreAppStartEvent } from "@lando/sdk/events";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import * as AppCacheService from "@lando/engine/cache/service";
@@ -109,6 +110,7 @@ interface ProviderCalls {
 }
 
 type HarnessLayer = Layer.Layer<
+  | import("@lando/sdk/services").StateStore
   | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
@@ -402,6 +404,7 @@ const makeHarness = async (
     buildApp: () => Effect.void,
   });
   const layer = Layer.mergeAll(
+    testStateStoreLayer,
     PrivateFileAccessService.layer,
     Layer.succeed(PathsService, makeLandoPaths()),
     LandoConfigService.layer,
@@ -1685,6 +1688,19 @@ describe("meta:global command effects", () => {
       expect(result.userLandofile).toBe(join(harness.dataRoot, "global", ".lando.yml"));
       if (result.landofile === undefined) throw new Error("expected landofile");
       expect(result.landofile.services).toHaveProperty("proxy");
+    });
+  });
+
+  test("config reports a canonical TypeScript Landofile as the overlay path", async () => {
+    await withHarness(async (harness) => {
+      await materializeDist(harness);
+      const root = join(harness.dataRoot, "global");
+      await rm(join(root, ".lando.yml"), { force: true });
+      await writeFile(join(root, ".lando.ts"), "export default { runtime: 4 };\n");
+
+      const result = await Effect.runPromise(globalConfig().pipe(Effect.provide(harness.layer)));
+
+      expect(result.userLandofile).toBe(join(root, ".lando.ts"));
     });
   });
 

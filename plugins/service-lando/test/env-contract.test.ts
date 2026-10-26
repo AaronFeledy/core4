@@ -16,7 +16,12 @@ import { meilisearchServiceType } from "../src/services/meilisearch.ts";
 import { memcachedServiceType } from "../src/services/memcached.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
-import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
+import {
+  node22ServiceType,
+  node24ServiceType,
+  node26ServiceType,
+  nodeLtsServiceType,
+} from "../src/services/node.ts";
 import { opensearchServiceType } from "../src/services/opensearch.ts";
 import { php82ServiceType, php83ServiceType } from "../src/services/php.ts";
 import { postgresServiceType } from "../src/services/postgres.ts";
@@ -266,6 +271,22 @@ const cases: ReadonlyArray<CatalogCase> = [
     serviceType: node22ServiceType,
     landofileService: { type: "node:22" },
     expectedType: "node:22",
+    expectsAppPaths: true,
+    expectsWebroot: null,
+  },
+  {
+    id: "node:24",
+    serviceType: node24ServiceType,
+    landofileService: { type: "node:24" },
+    expectedType: "node:24",
+    expectsAppPaths: true,
+    expectsWebroot: null,
+  },
+  {
+    id: "node:26",
+    serviceType: node26ServiceType,
+    landofileService: { type: "node:26" },
+    expectedType: "node:26",
     expectsAppPaths: true,
     expectsWebroot: null,
   },
