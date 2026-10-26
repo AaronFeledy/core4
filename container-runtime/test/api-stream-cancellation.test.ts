@@ -13,7 +13,7 @@ import {
 import { makePodmanApiClient } from "../src/podman/api-client.ts";
 import { connectSocket, socketHttpConnection } from "../src/transport.ts";
 
-const ctx = { providerId: "test", remediation: "Start the test engine." };
+const ctx = { providerId: "test", remediation: "Start the test engine.", env: {} };
 
 const cases = (["podman", "docker-unix", "docker-http", "docker-npipe"] as const).flatMap((provider) =>
   (["interrupt", "eof", "error"] as const).map((mode) => [provider, mode] as const),

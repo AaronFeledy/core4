@@ -42,7 +42,12 @@ for (const [name, input, secret] of cases) {
       }
       const result = tail.finish() ?? "";
       const errors = [
-        new DataTransferError({ message: "Transfer failed", stderrTail: result, exitCode: 1 }),
+        new DataTransferError({
+          message: "Transfer failed",
+          stderrTail: result,
+          exitCode: 1,
+          remediation: "Fix the transfer fixture command.",
+        }),
         new SqlCommandFailedError({
           message: "SQL failed",
           service: "database",

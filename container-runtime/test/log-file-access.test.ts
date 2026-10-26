@@ -27,7 +27,7 @@ const resolveHelper = Effect.succeed({
   digest: "1".repeat(64),
 });
 const accessFor = (api: DataPlaneApiClient) =>
-  scopedDockerLogFileAccess({ providerId: "test", container: "service", api, resolveHelper });
+  scopedDockerLogFileAccess({ providerId: "test", container: "service", api, resolveHelper, sourceEnv: {} });
 
 async function* inputLines(input: AsyncIterable<Uint8Array> | undefined): AsyncGenerator<string> {
   if (input === undefined) return;
@@ -137,6 +137,8 @@ const makeFakeApi = () => {
             operation: "fixture",
             message: "fake stream failed",
             cause,
+            remediation:
+              "Re-run the command after checking `test` logs for the `fixture` failure; if it persists, report the error with that operation name.",
           }),
       ),
   };
@@ -164,6 +166,7 @@ describe("Docker-compatible scoped log file access", () => {
         Effect.gen(function* () {
           const access = yield* scopedDockerLogFileAccess({
             providerId: "test",
+            sourceEnv: {},
             container: "service",
             api: fake.api,
             resolveHelper: Effect.tap(resolveHelper, () =>
@@ -320,6 +323,8 @@ describe("Docker-compatible scoped log file access", () => {
               operation: "fixture",
               message: "stream failed",
               cause,
+              remediation:
+                "Re-run the command after checking `test` logs for the `fixture` failure; if it persists, report the error with that operation name.",
             }),
         ),
     };
@@ -403,6 +408,8 @@ describe("Docker-compatible scoped log file access", () => {
               operation: "fixture",
               message: "stream failed",
               cause,
+              remediation:
+                "Re-run the command after checking `test` logs for the `fixture` failure; if it persists, report the error with that operation name.",
             }),
         ),
     };
@@ -579,6 +586,8 @@ test("one scoped helper survives missing-file readiness, rotation, and truncatio
             operation: "fixture",
             message: "protocol failed",
             cause,
+            remediation:
+              "Re-run the command after checking `test` logs for the `fixture` failure; if it persists, report the error with that operation name.",
           }),
       ),
   };

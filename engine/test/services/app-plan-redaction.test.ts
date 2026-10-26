@@ -94,7 +94,6 @@ test("retained invocations read current containers again instead of caching regi
     provider: "test",
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: { resolvedAt: "2026-10-21T00:00:00Z", source: "test", runtime: 4 },

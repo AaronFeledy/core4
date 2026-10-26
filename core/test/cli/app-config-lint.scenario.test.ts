@@ -113,6 +113,28 @@ describe("renderConfigLintResult", () => {
 });
 
 describe("lando app:config:lint (source dispatch)", () => {
+  test("an unchanged wrong type is one readable machine finding with both scopes", async () => {
+    // Given
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: wrong-type\nservices:\n  api:\n    primary: maybe\n");
+      // When
+      const result = await runCli(["app:config:lint", "--format=json"], dir);
+      // Then
+      expect(result.exitCode).toBe(1);
+      const envelope = Schema.decodeUnknownSync(
+        Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
+      )(JSON.parse(result.stdout));
+      expect(envelope.result.violations).toEqual([
+        expect.objectContaining({
+          rule: "landofile.validation",
+          path: ["services", "api", "primary"],
+          message: "Expected boolean",
+          scopes: ["fragment", "effective"],
+        }),
+      ]);
+    });
+  });
+
   test("an overlay typo is one machine record listing both scopes", async () => {
     // Given
     await withTempCwd(async (dir) => {

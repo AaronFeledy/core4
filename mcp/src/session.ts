@@ -124,7 +124,7 @@ export const serveSession = Effect.fnUntraced(
         handle,
       });
     }
-    yield* registerResources(session.config.resources ?? [], runtimeContext, session.redactor).pipe(
+    yield* registerResources(session.config.resources ?? [], runtimeContext, session.deps).pipe(
       Effect.provideService(McpServer.McpServer, server),
     );
     yield* Deferred.await(terminal);

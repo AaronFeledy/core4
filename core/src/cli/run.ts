@@ -1,3 +1,5 @@
+import { type DiscoveryOperation, runDiscoveryOperation } from "@lando/landofile/operation-scope";
+import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
 import { Cause, Effect, Exit, Layer } from "effect";
 
 import {
@@ -140,14 +142,14 @@ const HELP_SPECIAL_FLAGS = {
 
 const readAppCommandCacheOrNull = async () => {
   const exit = await Effect.runPromiseExit(Effect.result(readFreshAppCommandCacheForCwd()));
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  if (Exit.isFailure(exit)) throw exit.cause;
   const cache = exit.value;
   return cache._tag === "Success" ? cache.success : null;
 };
 
 const resolveToolingRouteExit = async (token: string | undefined) => {
   const exit = await Effect.runPromiseExit(Effect.result(resolveToolingRoute(token)));
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  if (Exit.isFailure(exit)) throw exit.cause;
   return exit.value;
 };
 
@@ -504,6 +506,33 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 export interface RunCliOptions {
   readonly argv: ReadonlyArray<string>;
   readonly rootUrl: string;
+  readonly discovery?: DiscoveryOperation;
 }
 
-export const runCli = (options: RunCliOptions): Promise<void> => runCompiledCli(options.argv);
+export const runCli = async (options: RunCliOptions): Promise<void> => {
+  try {
+    await runDiscoveryOperation(
+      options.discovery ?? { cwd: process.cwd(), resolver: makeAppDiscoveryResolver() },
+      () => runCompiledCli(options.argv),
+    );
+  } catch (error) {
+    const cause = Cause.isCause(error) ? error : Cause.die(error);
+    const logLevel = Effect.runSync(
+      Effect.result(
+        Effect.try({
+          try: () => resolveLogLevel({ argv: options.argv, env: process.env }),
+          catch: (selectionError) => selectionError,
+        }),
+      ),
+    );
+    if (logLevel._tag === "Success" && logLevel.success.source !== "default") {
+      setActiveLogLevel(logLevel.success.level);
+    }
+    const output = preCommandOutputMode({ argv: options.argv, env: process.env });
+    setActiveRendererMode(output.rendererMode);
+    if (output.resultFormat !== undefined) setActiveResultFormat(output.resultFormat);
+    await runCompiledCommand(Effect.failCause(cause), Layer.empty, () => undefined, {
+      preCommand: true,
+    });
+  }
+};

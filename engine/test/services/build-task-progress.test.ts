@@ -77,7 +77,6 @@ const plan = Schema.decodeUnknownSync(AppPlan)({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: "2026-07-17T00:00:00.000Z", source: "build-task-progress.test", runtime: 4 },

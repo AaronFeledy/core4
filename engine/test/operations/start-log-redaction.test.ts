@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
@@ -45,7 +45,13 @@ const registryLayerFor = (harness: ReturnType<typeof makeHarness>) => {
     ]),
   };
   const unsupported = (name: string) =>
-    Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
+    Effect.fail(
+      new PluginLoadError({
+        message: "unused",
+        pluginName: name,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    );
   const dependencies = Layer.mergeAll(
     harness.layer,
     Layer.succeed(
@@ -86,7 +92,7 @@ test("start supplies a canonical redactor with registered plan secrets to provid
   const harness = makeHarness({
     plannedApp,
     applyEffect: Effect.gen(function* () {
-      const redactor = yield* StartFailureLogRedactor;
+      const redactor = Option.getOrThrow(yield* Effect.serviceOption(StartFailureLogRedactor));
       captured = redactor.redactString(`failed with ${password}`);
       return { changed: true };
     }),
@@ -112,7 +118,7 @@ test("selected provider apply redacts new plan and resolved environment secrets 
   let captured: string | undefined;
   const harness = makeHarness({
     applyEffect: Effect.gen(function* () {
-      const redactor = yield* StartFailureLogRedactor;
+      const redactor = Option.getOrThrow(yield* Effect.serviceOption(StartFailureLogRedactor));
       captured = redactor.redactString(`failed with ${password} and ${resolved}`);
       return { changed: true };
     }),

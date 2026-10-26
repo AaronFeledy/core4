@@ -75,7 +75,15 @@ const layers = (rec: ReturnType<typeof record>) =>
         exec: (command: string) => {
           rec.commands.push(command);
           if (rec.failOnCommand === command) {
-            return Effect.fail(new ShellExecError({ message: "open failed", command, exitCode: 1 }));
+            return Effect.fail(
+              new ShellExecError({
+                message: "open failed",
+                command,
+                exitCode: 1,
+                remediation:
+                  "Fix the shell command so it succeeds in the reported working directory, then re-run.",
+              }),
+            );
           }
           return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
         },
@@ -175,7 +183,6 @@ describe("openForPlan", () => {
             extensions: {},
           },
         },
-        networks: [],
         stores: [],
         fileSync: [],
         metadata,

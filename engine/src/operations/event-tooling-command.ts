@@ -1,10 +1,8 @@
-import { join } from "node:path";
-
-import { LANDOFILE_NAME } from "@lando/landofile/discovery";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import type { AppPlan, ToolingTaskShape } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
+import { toolingSourcePathForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 
@@ -38,7 +36,10 @@ export const runEventToolingCommand = Effect.fnUntraced(function* (
     task: resolved,
     args: raw,
     cwd: String(plan.root),
-    source: { path: join(String(plan.root), LANDOFILE_NAME), task: name },
+    source: {
+      path: toolingSourcePathForPlan(plan, name),
+      task: name,
+    },
   }).pipe(
     Effect.flatMap((compiled) =>
       runBracketedInvocations({

@@ -1,6 +1,11 @@
 import { completionIntentServices } from "@lando/container-runtime/dependency-gates";
 import type { AppPlan, ServiceState, StartedService } from "@lando/sdk/schema";
-import { RouterService, RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
+import {
+  RouterService,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+  type ServiceRuntimeInfo,
+} from "@lando/sdk/services";
 import { Effect } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
 import {
@@ -68,21 +73,25 @@ export const observeService = (plan: AppPlan, runtime: ServiceRuntimeInfo): Obse
         : serviceState(runtime.state ?? runtime.status),
 });
 
+export const collectPlanObservations = Effect.fn("Connections.observePlan")(function* (
+  plan: AppPlan,
+  completionPlan: AppPlan = plan,
+  selectedProvider?: RuntimeProviderShape,
+) {
+  const provider = selectedProvider ?? (yield* (yield* RuntimeProviderRegistry).select(plan));
+  return yield* Effect.forEach(Object.values(plan.services), (service) =>
+    provider
+      .inspect({ app: plan.id, service: service.name, plan })
+      .pipe(Effect.map((runtime) => observeService(completionPlan, runtime))),
+  );
+});
+
 export const collectPlanConnections = Effect.fn("Connections.collectPlan")(function* (
   plan: AppPlan,
   observations?: readonly ObservedService[],
   completionPlan: AppPlan = plan,
 ) {
-  const rows =
-    observations ??
-    (yield* Effect.gen(function* () {
-      const provider = yield* (yield* RuntimeProviderRegistry).select(plan);
-      return yield* Effect.forEach(Object.values(plan.services), (service) =>
-        provider
-          .inspect({ app: plan.id, service: service.name, plan })
-          .pipe(Effect.map((runtime) => observeService(completionPlan, runtime))),
-      );
-    }));
+  const rows = observations ?? (yield* collectPlanObservations(plan, completionPlan));
   return yield* collectObservedConnections(plan, rows);
 });
 

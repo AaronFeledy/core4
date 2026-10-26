@@ -94,7 +94,13 @@ describe("destroy progress topology", () => {
               }).pipe(
                 Effect.andThen(
                   veto && event._tag === "pre-destroy"
-                    ? Effect.fail(new EventError({ message: "veto" }))
+                    ? Effect.fail(
+                        new EventError({
+                          message: "veto",
+                          remediation:
+                            "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+                        }),
+                      )
                     : Effect.void,
                 ),
               ),
@@ -357,6 +363,8 @@ describe("destroy progress topology", () => {
       engineId: "mutagen",
       sessionRef: String(syncSession.ref),
       message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
     });
     const engine = {
       ...availableFileSync(),
@@ -628,6 +636,7 @@ describe("destroy progress topology", () => {
       providerId: "lando",
       operation: "destroy",
       message: "provider destroy failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
     });
     const harness = makeHarness({ destroyEffect: Effect.fail(providerFailure) });
 

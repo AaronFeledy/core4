@@ -166,6 +166,10 @@ const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError 
         ? "shell requires a service: the app has no services."
         : `shell requires a service: the app has no primary service (available: ${list}).`,
     tool: "app:shell",
+    remediation:
+      list.length === 0
+        ? "Add a service to the Landofile before running lando shell."
+        : `Pass --service with one of: ${list}, or mark a service primary: true.`,
   });
 };
 

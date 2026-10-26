@@ -48,6 +48,8 @@ describe("file-sync teardown", () => {
       engineId: "mutagen",
       sessionRef: String(ref),
       message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
     });
     const engine = {
       ...TestFileSyncEngine,

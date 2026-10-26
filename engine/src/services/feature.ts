@@ -167,6 +167,7 @@ export const composeService = Effect.fn("ServiceFeature.composeService")(functio
         message: endpointError.message,
         feature: "endpoints",
         cause: endpointError,
+        remediation: "Correct the `endpoints` feature configuration in the Landofile, then re-run.",
       }),
     );
   }

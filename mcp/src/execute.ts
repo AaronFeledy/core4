@@ -11,10 +11,12 @@ import { Cause, type Context, Effect, type Exit } from "effect";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { withAppDiscovery } from "@lando/landofile/operation-discovery";
 import {
   type CommandResultOutcome,
   type CompletedCommandResult,
   failureOutcomeFromCause,
+  normalizeDefect,
 } from "@lando/sdk/command-result";
 import type { McpExecute } from "./dispatch";
 import type { McpCommandExecutorShape } from "./port";
@@ -26,7 +28,7 @@ export const outcomeFromExit = (
     return Effect.succeed(exit.value);
   }
   if (Cause.hasInterruptsOnly(exit.cause)) return Effect.interrupt;
-  return Effect.succeed(failureOutcomeFromCause(exit.cause));
+  return Effect.succeed(failureOutcomeFromCause(exit.cause, normalizeDefect));
 };
 
 export const makeNestedExecute = (
@@ -39,22 +41,27 @@ export const makeNestedExecute = (
 ): McpExecute =>
   Effect.fnUntraced(
     function* (entry, runInput) {
+      const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
+      const cwd = runInput.appPath ?? (runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd());
       const completion = entry.spec.completion;
       const command = entry.spec.run(runInput);
       const rootAwareCommand =
         runInput.appPath === undefined
           ? command
           : command.pipe(Effect.provideService(RuntimeCwd, runInput.appPath));
-      const exit = yield* executor.execute(
-        rootAwareCommand.pipe(Effect.scoped, Effect.ensuring(Effect.suspend(output.finish))),
-        {
-          commandId: entry.spec.id,
-          argv: runInput.argv,
-          args: runInput.args,
-          flags: runInput.flags,
-          ...(runInput.appPath === undefined ? {} : { cwd: runInput.appPath }),
-          ...(completion === undefined ? {} : { completion: (value) => completion(value, runInput) }),
-        },
+      const exit = yield* withAppDiscovery(
+        cwd,
+        executor.execute(
+          rootAwareCommand.pipe(Effect.scoped, Effect.ensuring(Effect.suspend(output.finish))),
+          {
+            commandId: entry.spec.id,
+            argv: runInput.argv,
+            args: runInput.args,
+            flags: runInput.flags,
+            ...(runInput.appPath === undefined ? {} : { cwd: runInput.appPath }),
+            ...(completion === undefined ? {} : { completion: (value) => completion(value, runInput) }),
+          },
+        ),
       );
       return yield* outcomeFromExit(exit);
     },

@@ -16,12 +16,13 @@ test("outer failures redact registered values and secret patterns", async () => 
   expect(output).toContain("[redacted]");
 });
 
-test("outer failures print the error when the redactor cannot load, since nothing was registered", async () => {
+test("outer failures return the constant when the redactor cannot load", async () => {
   const output = await safeOuterFailure(new Error("module load failed"), async () => {
     throw new Error("import-detail");
   });
-  expect(output).toBe("Error: module load failed");
+  expect(output).toBe("Lando failed. Failure details could not be safely redacted.");
   expect(output).not.toContain("import-detail");
+  expect(output).not.toContain("module load failed");
 });
 
 test("outer failures fail closed when the loaded redactor throws", async () => {

@@ -17,6 +17,7 @@ import { ContainerTransportError } from "../src/transport.ts";
 const ctx = {
   providerId: "test-provider",
   remediation: "Run the provider doctor.",
+  env: {},
   get redactor() {
     return Effect.runSync(fixtureRedaction.forProfile("secrets"));
   },
@@ -106,6 +107,7 @@ describe("container engine error mapping", () => {
       providerId: "original",
       operation: "request",
       message: "Already classified.",
+      remediation: "Install or start the `original` provider and confirm it can perform `request`.",
     });
 
     // When

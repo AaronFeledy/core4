@@ -20,6 +20,7 @@ describe("@lando/sdk package exports", () => {
       message: "Ambiguous snapshot",
       snapshotId: "baseline",
       matchCount: 2,
+      remediation: "List snapshots in this scope and retry with an unambiguous id.",
     };
     expect(decode(original).candidateIds).toBeUndefined();
     const candidates = { ...original, candidateIds: ["newer", "older"] };

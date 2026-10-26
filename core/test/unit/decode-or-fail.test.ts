@@ -69,6 +69,7 @@ describe("decodeOrFail", () => {
         message: "The rendered scratch Landofile at /cache/scratch/app/root/.lando.yml is invalid.",
         operation: "materialize",
         cause,
+        remediation: "Correct Landofile schema errors in the rendered scratch Landofile.",
       });
 
     expect(

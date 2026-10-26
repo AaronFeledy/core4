@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { Cause, Context, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
+import { normalizeDefect } from "@lando/sdk/command-result";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -151,7 +152,6 @@ const eventPlan = (): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
@@ -404,7 +404,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     expect(Exit.isFailure(exit) ? exit.cause.reasons.every(Cause.isFailReason) : false).toBe(true);
     expect(
       Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error) : [],
-    ).toEqual([primary, defect]);
+    ).toEqual([primary, normalizeDefect(defect)]);
   });
 
   test("propagates target interruption", async () => {

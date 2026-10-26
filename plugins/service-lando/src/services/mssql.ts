@@ -133,6 +133,7 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
             },
           ],
           serviceType: id,
+          remediation: "Use an amd64 host or a provider with architecture emulation.",
         }),
       );
     }

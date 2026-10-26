@@ -202,7 +202,13 @@ test("omits a proxy-valued failure field without invoking traps before envelope 
       },
     },
   );
-  const error = { _tag: "ProxyFieldError", message: "failure", path: "/x", value: proxy };
+  const error = {
+    _tag: "ProxyFieldError",
+    message: "failure",
+    remediation: "Repair the field.",
+    path: "/x",
+    value: proxy,
+  };
 
   const envelope = Effect.runSync(
     inspectMcpCommandOutcome({ _tag: "failure", error, additionalErrors: [] }).pipe(
@@ -217,7 +223,12 @@ test("omits a proxy-valued failure field without invoking traps before envelope 
     ),
   );
 
-  expect(envelope.error).toEqual({ _tag: "ProxyFieldError", message: "failure", path: "/x" });
+  expect(envelope.error).toEqual({
+    _tag: "ProxyFieldError",
+    message: "failure",
+    remediation: "Repair the field.",
+    path: "/x",
+  });
   expect(trapCalls).toBe(0);
 });
 

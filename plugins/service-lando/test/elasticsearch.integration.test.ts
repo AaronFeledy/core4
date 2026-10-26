@@ -78,7 +78,6 @@ describe("elasticsearch service type — live integration: cluster health endpoi
           provider: providerId,
           services: { [search.name]: search },
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata: search.metadata,

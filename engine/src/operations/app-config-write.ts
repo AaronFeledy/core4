@@ -37,7 +37,7 @@ const missingKey = (verb: string) =>
   });
 
 const mutationIo = Effect.fnUntraced(function* (options: AppConfigWriteOptions, verb: "set" | "unset") {
-  const { appRoot, inputPath } = yield* resolveAppConfigFile(options.cwd ?? process.cwd(), verb);
+  const { appRoot, inputPath } = yield* resolveAppConfigFile(options.cwd, verb);
   return {
     file: inputPath,
     dryRun: options.dryRun === true,
@@ -105,7 +105,7 @@ export const appConfigUnset = Effect.fn("AppConfig.unset")(function* (options: A
 });
 
 export const appConfigValidate = Effect.fn("AppConfig.validate")(function* (options: AppConfigWriteOptions) {
-  const { appRoot, inputPath } = yield* resolveAppConfigFile(options.cwd ?? process.cwd(), "validate");
+  const { appRoot, inputPath } = yield* resolveAppConfigFile(options.cwd, "validate");
   yield* loadLandofileLayers(appRoot, inputPath).pipe(
     Effect.catchTag("LandofileValidationError", (error) =>
       Effect.fail(writeValidationErrorFromIssues({ file: error.file, issues: error.issues })),
@@ -115,7 +115,7 @@ export const appConfigValidate = Effect.fn("AppConfig.validate")(function* (opti
 });
 
 export const appConfigEdit = Effect.fn("AppConfig.edit")(function* (options: AppConfigWriteOptions) {
-  const { appRoot, inputPath } = yield* resolveAppConfigFile(options.cwd ?? process.cwd(), "edit");
+  const { appRoot, inputPath } = yield* resolveAppConfigFile(options.cwd, "edit");
   const content = yield* readAppConfigFile(inputPath);
   const runner = options.editorRunner;
   if (runner === undefined) return yield* Effect.fail(noEditorError(inputPath));

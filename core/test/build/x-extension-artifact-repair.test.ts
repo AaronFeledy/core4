@@ -35,9 +35,11 @@ import { evolveHistoricalContainerUser } from "./x-extension-container-user-proo
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
+import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
+import { evolveHistoricalToolingShorthand } from "./x-extension-tooling-shorthand-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
@@ -52,15 +54,20 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalEnvironment(
-    evolveHistoricalEndpointMetadata(
-      evolveHistoricalServicePort(
-        evolveHistoricalTimestamps(
-          evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
-          "bare",
+  evolveHistoricalToolingShorthand(
+    evolveHistoricalEnvironment(
+      evolveHistoricalEndpointMetadata(
+        evolveHistoricalServicePort(
+          evolveHistoricalTimestamps(
+            evolveHistoricalContainerUser(
+              evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+            ),
+            "bare",
+          ),
         ),
       ),
     ),
+    "bare",
   );
 
 describe("closed x-* extension artifact repair", () => {
@@ -99,8 +106,9 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("repairs the captured network map onto every current service schema", async () => {
-    const repaired = normalizeJsonSchema(
-      requireObject(repairClosedExtension(captured.networks), "repaired networks"),
+    const repaired = evolveHistoricalNetworks(
+      normalizeJsonSchema(requireObject(repairClosedExtension(captured.networks), "repaired networks")),
+      "bare",
     );
     for (const schemaId of NETWORK_SERVICE_CONFIGS) {
       const current = schemaAt(await loadNormalizedArtifact(`schema:${schemaId}`), "$.networks");

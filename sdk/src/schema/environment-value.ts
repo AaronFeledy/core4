@@ -17,7 +17,10 @@ export const SecretReference = Schema.String.check(
 export type SecretReference = typeof SecretReference.Type;
 
 export const SecretRef = Schema.Struct({
-  _tag: Schema.Literal("SecretRef").annotate({ description: "Secret reference discriminator." }),
+  _tag: Schema.Literal("SecretRef").annotate({
+    description: "Secret reference discriminator.",
+    expected: "a secret-reference discriminator",
+  }),
   reference: SecretReference.annotate({ description: "Raw SecretStore reference identifier." }),
 }).annotate({
   identifier: "SecretRef",
@@ -34,7 +37,10 @@ export const BoundTextReference = Schema.Struct({
 export type BoundTextReference = typeof BoundTextReference.Type;
 
 export const BoundText = Schema.Struct({
-  _tag: Schema.Literal("BoundText").annotate({ description: "Bound text discriminator." }),
+  _tag: Schema.Literal("BoundText").annotate({
+    description: "Bound text discriminator.",
+    expected: "a bound-text discriminator",
+  }),
   parts: layerMerge(Schema.Array(Schema.Union([Schema.String, BoundTextReference])), { kind: "replace" })
     .annotate({ description: "Flat literal and reference parts in output order, limited to 10000 parts." })
     .check(Schema.isMaxLength(10_000)),

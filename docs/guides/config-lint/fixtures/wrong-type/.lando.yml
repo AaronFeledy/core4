@@ -1,0 +1,5 @@
+# lando-lint: expect-invalid wrong boolean type proves fragment and effective message parity
+name: wrong-type
+services:
+  api:
+    primary: maybe

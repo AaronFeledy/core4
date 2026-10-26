@@ -7,6 +7,7 @@ import {
   type CacheError,
   type CommandAliasConflictError,
   type CommandAliasTargetError,
+  type LandofileFormConflictError,
   type NotImplementedError,
   ToolingCompileError,
   ToolingExecError,
@@ -175,6 +176,7 @@ const runDynamicToolingFailure = (
   error:
     | ToolingCompileError
     | CacheError
+    | LandofileFormConflictError
     | CommandAliasConflictError
     | CommandAliasTargetError
     | BunShellScriptEmptyError

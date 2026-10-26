@@ -182,7 +182,6 @@ export const startProxyDiagnosticsStack = async (socketPath: string): Promise<Pr
     provider: providerId,
     services,
     routes,
-    networks: [],
     networking: landoNetworkingPlan({
       slug,
       serviceNames: Object.keys(services),

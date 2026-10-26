@@ -47,7 +47,9 @@ export const layer = Layer.effect(
             new GlobalAppError({
               message: "Unable to resolve the global runtime provider.",
               operation: "placement",
-              remediation: taggedErrorRemediation(cause),
+              remediation:
+                taggedErrorRemediation(cause) ??
+                "Run `lando setup` and ensure a runtime provider is selected, then retry.",
               cause,
             }),
         ),
@@ -61,7 +63,8 @@ export const layer = Layer.effect(
                 message: "Unable to start the global service runtime before port selection.",
                 operation: "ensureProviderReady",
                 remediation:
-                  taggedErrorRemediation(cause) ?? "Check the selected runtime provider and retry.",
+                  taggedErrorRemediation(cause) ??
+                  "Run `lando doctor` and fix the selected runtime provider, then retry.",
                 cause,
               }),
         ),
@@ -76,7 +79,8 @@ export const layer = Layer.effect(
                   message: "Unable to inspect provider-host published TCP ports.",
                   operation: "occupiedPublishPorts",
                   remediation:
-                    taggedErrorRemediation(cause) ?? "Check the selected runtime provider and retry.",
+                    taggedErrorRemediation(cause) ??
+                    "Run `lando doctor` and fix the selected runtime provider, then retry.",
                   cause,
                 }),
           ),
@@ -122,7 +126,8 @@ export const layer = Layer.effect(
                 message: "Unable to inspect Lando-owned global service ports.",
                 operation: "ownedPublishPorts",
                 remediation:
-                  taggedErrorRemediation(cause) ?? "Check the selected runtime provider and retry.",
+                  taggedErrorRemediation(cause) ??
+                  "Run `lando doctor` and fix the selected runtime provider, then retry.",
                 cause,
               }),
           ),
@@ -152,7 +157,8 @@ export const layer = Layer.effect(
                 message: "Unable to reload the running global service.",
                 operation: "restartRunningService",
                 remediation:
-                  taggedErrorRemediation(cause) ?? "Check the selected runtime provider and retry.",
+                  taggedErrorRemediation(cause) ??
+                  "Run `lando doctor` and fix the selected runtime provider, then retry.",
                 cause,
               }),
           ),

@@ -5,7 +5,7 @@ import { Effect, Schema } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { engineApiFailure, missingApi, parseEngineJson } from "../engine-errors.ts";
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "../labels.ts";
-import { redactResponseDetails, withApiReason } from "../redact.ts";
+import { redactResponseDetails, redactorFor, withApiReason } from "../redact.ts";
 
 const Containers = Schema.Array(
   Schema.Struct({
@@ -39,8 +39,9 @@ export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(f
         message: withApiReason(
           `provider-${ctx.providerId} list failed with HTTP ${response.status}.`,
           response,
+          redactorFor(ctx),
         ),
-        details: redactResponseDetails(response),
+        details: redactResponseDetails(response, redactorFor(ctx)),
         remediation: ctx.remediation,
       }),
     );

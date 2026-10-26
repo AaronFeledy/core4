@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import { LandofileFormConflictError } from "@lando/sdk/errors";
 import { LANDOFILE_LAYER_ORDER } from "@lando/sdk/landofile";
+import { Effect } from "effect";
 
 import type { VersionConstraintEntry, VersionConstraintOrder } from "./version-constraint.ts";
 
@@ -60,30 +61,38 @@ export const landofileLayerPaths = (
     typescriptPath: join(appRoot, `${position.basename}.ts`),
   }));
 
-export const presentLandofileLayers = async (
+const fileExists = (path: string): Effect.Effect<boolean> => Effect.promise(() => Bun.file(path).exists());
+
+/** Whether the YAML and TypeScript forms of one layer exist, as `[yaml, typescript]`. */
+export const landofileLayerFormsPresent = (position: {
+  readonly yamlPath: string;
+  readonly typescriptPath: string;
+}): Effect.Effect<readonly [boolean, boolean]> =>
+  Effect.all([fileExists(position.yamlPath), fileExists(position.typescriptPath)], { concurrency: 2 });
+
+export const presentLandofileLayers = Effect.fn("Landofile.presentLayers")(function* (
   appRoot: string,
-): Promise<ReadonlyArray<PresentLandofileLayer>> => {
+): Effect.fn.Return<ReadonlyArray<PresentLandofileLayer>, LandofileFormConflictError> {
   const present: PresentLandofileLayer[] = [];
   for (const position of landofileLayerPaths(appRoot)) {
     const { yamlPath, typescriptPath } = position;
-    const [yamlExists, typescriptExists] = await Promise.all([
-      Bun.file(yamlPath).exists(),
-      Bun.file(typescriptPath).exists(),
-    ]);
+    const [yamlExists, typescriptExists] = yield* landofileLayerFormsPresent(position);
     if (yamlExists && typescriptExists) {
-      throw new LandofileFormConflictError({
-        message: `Both ${yamlPath} and ${typescriptPath} are present for the ${position.layer} Landofile layer.`,
-        layer: position.layer,
-        yamlPath,
-        typescriptPath,
-        remediation: `Remove either ${yamlPath} or ${typescriptPath}; each layer accepts exactly one form.`,
-      });
+      return yield* Effect.fail(
+        new LandofileFormConflictError({
+          message: `Both ${yamlPath} and ${typescriptPath} are present for the ${position.layer} Landofile layer.`,
+          layer: position.layer,
+          yamlPath,
+          typescriptPath,
+          remediation: `Remove either ${yamlPath} or ${typescriptPath}; each layer accepts exactly one form.`,
+        }),
+      );
     }
     const filePath = yamlExists ? yamlPath : typescriptExists ? typescriptPath : undefined;
     if (filePath !== undefined) present.push({ ...position, filePath });
   }
   return present;
-};
+});
 
 export const representativeLandofileLayer = (
   layers: ReadonlyArray<PresentLandofileLayer>,

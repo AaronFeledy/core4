@@ -28,7 +28,8 @@ import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../
 import { observedAppPlan } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
 import { resolveAppliedStateTarget } from "./applied-state-target.ts";
-import { collectPlanConnections } from "./connection-collector.ts";
+import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
+import { projectServiceMounts } from "./info-storage.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -113,11 +114,18 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(plan);
   const serviceLogSources = provider.capabilities.serviceLogSources === true;
-  const rows = yield* collectPlanConnections(plan, undefined, completionPlan);
+  const observations = yield* collectPlanObservations(plan, completionPlan, provider);
+  const rows = yield* collectObservedConnections(plan, observations);
   const services = rows.map((row) => {
     const service = Object.values(plan.services).find((service) => String(service.name) === row.name);
     if (service === undefined) throw new TypeError(`Missing service plan for ${row.name}`);
-    return toServiceInfo(plan, service, row.state, row.connections, serviceLogSources);
+    const runtime = observations.find((observed) => observed.name === row.name)?.runtime;
+    const mounts = projectServiceMounts(plan, service, runtime);
+    return {
+      ...toServiceInfo(plan, service, row.state, row.connections, serviceLogSources),
+      ...(mounts === undefined ? {} : { mounts }),
+      ...(service.appMount === undefined ? {} : { appMount: service.appMount }),
+    };
   });
 
   const hostProxy = hostProxyPlanExtension(plan);

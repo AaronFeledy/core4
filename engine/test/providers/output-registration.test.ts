@@ -42,7 +42,6 @@ const plan = Schema.decodeUnknownSync(AppPlan)({
   provider: "test",
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},
@@ -78,7 +77,13 @@ const registryLayer = (provider: RuntimeProviderShape, redaction = makeRedaction
   ];
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: id });
   const unsupported = (name: string) =>
-    Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
+    Effect.fail(
+      new PluginLoadError({
+        message: "unused",
+        pluginName: name,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    );
   return makeRuntimeProviderRegistry(modules, {
     enforce: async () => undefined,
     verify: async () => undefined,
@@ -183,6 +188,8 @@ test.each(Object.entries(calls))(
             providerId: "test",
             operation: "readAppEnvironment",
             message: "Read denied",
+            remediation:
+              "Install or start the `test` provider and confirm it can perform `readAppEnvironment`.",
           }),
         ),
     };
