@@ -113,9 +113,9 @@ describe("home", () => {
     expect(withHomeIntent(input, {}, ctx)).toBe(input);
   });
 
-  test("disables home with path remediation when the catalog user has no declared home", () => {
+  test("leaves home unset with path remediation when the catalog user has no declared home", () => {
     const result = withHomeIntent(lowered({ type: "php:8.3", user: "www-data" }), {}, ctx);
-    expect(result.patch).toEqual({ type: "php:8.3", user: "www-data", home: false });
+    expect(result.patch).toEqual({ type: "php:8.3", user: "www-data" });
     expect(summary(result.diagnostics)).toEqual(["needs-review services.web"]);
     expect(result.diagnostics[0]?.remediation).toContain("services.web.home.path");
   });
@@ -124,16 +124,25 @@ describe("home", () => {
     ["an image", { type: "lando", image: "custom:1" }],
     ["a build context", { type: "lando", build: { context: "." } }],
     ["a catalog override image", { type: "node:22", image: "custom:1" }],
-  ])("disables home with unknown-image remediation for %s", (_label, patch) => {
+  ])("leaves home unset with unknown-image remediation for %s", (_label, patch) => {
     const result = withHomeIntent(lowered(patch), { api: 4 }, ctx);
-    expect(result.patch.home).toBe(false);
+    expect(result.patch).toEqual(patch);
     expect(result.diagnostics[0]?.message).toContain("image comes from the Landofile");
   });
 
-  test("marks a raw Compose service homeless because Lando 3 never gave it a home", () => {
-    const result = withHomeIntent(lowered({ type: "compose", image: "redis:7" }), { type: "compose" }, ctx);
-    expect(result.patch.home).toBe(false);
-    expect(summary(result.diagnostics)).toEqual(["generated services.web"]);
+  test("leaves a raw Compose service unchanged because Lando 3 never persisted its home", () => {
+    const input = lowered({ type: "compose", image: "redis:7" });
+    const result = withHomeIntent(input, { type: "compose" }, ctx);
+    expect(result).toBe(input);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  test("keeps unknown types unchanged with a home review diagnostic", () => {
+    const input = lowered({ type: "unknown-service" });
+    const result = withHomeIntent(input, {}, ctx);
+    expect(result.patch).toEqual(input.patch);
+    expect(summary(result.diagnostics)).toEqual(["needs-review services.web"]);
+    expect(result.diagnostics[0]?.remediation).toContain("services.web.home.path");
   });
 
   test("leaves authored home and blocked services alone", () => {
@@ -225,10 +234,9 @@ describe("converted Landofile", () => {
             user: "www-data",
             scanner: { okCodes: [401], retries: 3, timeout: 8000 },
             environment: { XDEBUG_MODE: "debug" },
-            home: false,
           },
           node: { type: "node:22", scanner: false },
-          cache: { type: "compose", image: "redis:7", home: false },
+          cache: { type: "compose", image: "redis:7" },
         },
       },
     ]);

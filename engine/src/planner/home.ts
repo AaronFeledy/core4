@@ -5,10 +5,10 @@
  * say where that home is. The service type declares the identities inside the
  * image it ships; a service that supplies its own `image:` or Compose `build:`
  * is a custom image, so that declaration no longer describes it. When neither
- * the type nor the author names a home, planning fails before any provider
- * action rather than guessing a path.
+ * the type nor the author names a home for the planned user, no home store is
+ * planned rather than guessing a path.
  */
-import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError } from "@lando/sdk/errors";
 import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
@@ -16,7 +16,7 @@ import { plannedContainerDestination } from "./storage.ts";
 
 /** What planning knows about one service's home before the plan is finalized. */
 export interface ServiceHomeIntent {
-  /** Service type id, reported with a refusal. */
+  /** Service type id. */
   readonly serviceType: string;
   /** Identities declared by the service type, absent for a custom image. */
   readonly identity?: ServiceImageIdentity;
@@ -64,55 +64,24 @@ const userPrincipal = (user: string): string => {
 export const homeStoreName = (appSlug: string, serviceName: string): string =>
   `lando-${appSlug}-${serviceName}-home`;
 
-const refusal = (input: {
-  readonly serviceName: string;
-  readonly serviceType: string;
-  readonly user?: string | undefined;
-  readonly reason: string;
-}): HomePathCapabilityError =>
-  new HomePathCapabilityError({
-    message: `Service ${input.serviceName} persists its home directory, but ${input.reason}`,
-    service: input.serviceName,
-    serviceType: input.serviceType,
-    ...(input.user === undefined ? {} : { user: input.user }),
-    remediation: `Set services.${input.serviceName}.home: false to skip home persistence, or set services.${input.serviceName}.home.path to an absolute container path.`,
-  });
-
 /**
  * Resolves the home destination for one service. Returns `undefined` when home
- * persistence is off, and a tagged refusal when the destination is unknowable.
+ * persistence is off or the destination is unknown.
  */
 export const resolveHomePath = (input: {
   readonly serviceName: string;
   readonly intent: ServiceHomeIntent;
   readonly plannedUser: string | undefined;
-}): HomePathCapabilityError | string | undefined => {
+}): string | undefined => {
   const home = input.intent.home;
   if (home === false) return undefined;
   if (home?.path !== undefined) return home.path;
 
   const identity = input.intent.identity;
-  if (identity === undefined) {
-    return refusal({
-      serviceName: input.serviceName,
-      serviceType: input.intent.serviceType,
-      ...(input.plannedUser === undefined ? {} : { user: input.plannedUser }),
-      reason:
-        "its image is supplied by the Landofile, so Lando does not know which user runs it or where that user's home is.",
-    });
-  }
+  if (identity === undefined || input.intent.customImage) return undefined;
 
-  const user = input.plannedUser ?? identity.defaultUser;
-  const path = identity.homes[userPrincipal(user)];
-  if (path === undefined) {
-    return refusal({
-      serviceName: input.serviceName,
-      serviceType: input.intent.serviceType,
-      user,
-      reason: `service type ${input.intent.serviceType} does not declare a home directory for user ${user}.`,
-    });
-  }
-  return path;
+  const principal = userPrincipal(input.plannedUser ?? identity.defaultUser);
+  return Object.hasOwn(identity.homes, principal) ? identity.homes[principal] : undefined;
 };
 
 /**
@@ -126,13 +95,12 @@ export const applyServiceHome = (input: {
   readonly appSlug: string;
   readonly appRoot: string;
   readonly intent: ServiceHomeIntent;
-}): HomePathCapabilityError | LandofileValidationError | ServicePlan => {
+}): LandofileValidationError | ServicePlan => {
   const resolved = resolveHomePath({
     serviceName: input.serviceName,
     intent: input.intent,
     plannedUser: input.servicePlan.user,
   });
-  if (resolved instanceof HomePathCapabilityError) return resolved;
   if (resolved === undefined) return input.servicePlan;
 
   const target = plannedContainerDestination(resolved, input.appRoot, [

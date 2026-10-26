@@ -634,7 +634,6 @@
       "GuideHiddenScenarioReasonError",
       "HealthcheckError",
       "HealthcheckTimeoutError",
-      "HomePathCapabilityError",
       "HostProxyAllowlistConflictError",
       "HostProxyAuthenticationError",
       "HostProxyBackpressureError",

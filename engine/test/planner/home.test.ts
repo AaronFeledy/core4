@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
@@ -117,29 +117,33 @@ describe("resolveHomePath", () => {
     expect(resolved).toBe("/root");
   });
 
-  it("Given a planned user the identity does not declare, When resolved, Then it refuses by tag", () => {
+  it("Given a planned user the identity does not declare, When resolved, Then no home is persisted", () => {
     const resolved = resolveHomePath({
       serviceName: "web",
       intent: intentFor({} as ServiceConfig),
       plannedUser: "nobody",
     });
-    expect(resolved).toBeInstanceOf(HomePathCapabilityError);
-    const failure = resolved as HomePathCapabilityError;
-    expect(failure._tag).toBe("HomePathCapabilityError");
-    expect(failure.service).toBe("web");
-    expect(failure.user).toBe("nobody");
-    expect(failure.remediation).toContain("services.web.home: false");
-    expect(failure.remediation).toContain("services.web.home.path");
+    expect(resolved).toBeUndefined();
   });
 
-  it("Given a custom image and no explicit path, When resolved, Then it refuses before any provider action", () => {
+  it("Given a planned user named like an inherited object property, When resolved, Then no home is persisted", () => {
+    for (const plannedUser of ["constructor", "toString", "__proto__", "hasOwnProperty:www-data"]) {
+      const resolved = resolveHomePath({
+        serviceName: "web",
+        intent: intentFor({} as ServiceConfig),
+        plannedUser,
+      });
+      expect(resolved).toBeUndefined();
+    }
+  });
+
+  it("Given a custom image and no explicit path, When resolved, Then no home is persisted", () => {
     const resolved = resolveHomePath({
       serviceName: "web",
       intent: intentFor({ image: "my/app:1" } as ServiceConfig),
       plannedUser: undefined,
     });
-    expect(resolved).toBeInstanceOf(HomePathCapabilityError);
-    expect((resolved as HomePathCapabilityError).serviceType).toBe("node:22");
+    expect(resolved).toBeUndefined();
   });
 
   it("Given a custom image and home: false, When resolved, Then nothing is persisted and nothing fails", () => {

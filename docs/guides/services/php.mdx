@@ -93,12 +93,11 @@ services:
   appserver:
     type: php:8.3
     user: www-data
-    home: false
 ```
 
-`home: false` is there because Lando persists the planned user's home directory
-and only knows where `root`'s home is on the PHP images. Drop it and set
-`home.path:` instead when you want that directory to survive a rebuild.
+Lando plans no home store for `www-data` on the PHP images: that account's home
+is `/var/www`, which root owns. Set `home.path:` when you want a directory to
+survive a rebuild anyway.
 
 A non-root process still can't bind a port below 1024 on the default `lando`
 provider, and the image's own `ports.conf` says `Listen 80`. Set `port:` to
@@ -112,7 +111,6 @@ services:
   appserver:
     type: php:8.3
     user: www-data
-    home: false
     port: 8080
 ```
 
@@ -132,7 +130,6 @@ services:
     type: php:8.3
     via: fpm
     user: www-data
-    home: false
 ```
 
 FPM listens on `9000`, so there's no privileged port to worry about. Under a

@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -118,21 +118,7 @@ describe("AppPlanner home persistence and host reachability", () => {
         readOnly: false,
       });
       expect(db?.storage.filter((mount) => mount.store === store)).toHaveLength(1);
-    });
-  });
-
-  test("Given a compose image without a home path, When planned, Then HomePathCapabilityError is raised before provider action", async () => {
-    await withAppRoot(async (appRoot) => {
-      const failure = await planFailure(
-        appRoot,
-        landofile({ web: { type: "compose", image: "traefik/whoami:v1.10" } }),
-      );
-      expect(failure).toBeInstanceOf(HomePathCapabilityError);
-      expect(failure).toMatchObject({
-        _tag: "HomePathCapabilityError",
-        service: "web",
-        remediation: expect.stringContaining("services.web.home: false"),
-      });
+      expect(appPlan.stores).toContainEqual({ name: store, scope: "service", kind: "data" });
     });
   });
 
@@ -169,31 +155,31 @@ describe("AppPlanner home persistence and host reachability", () => {
     });
   });
 
-  test("Given apache running as an undeclared user, When planned, Then HomePathCapabilityError is raised", async () => {
-    await withAppRoot(async (appRoot) => {
-      const failure = await planFailure(
-        appRoot,
-        landofile({ web: { type: "apache", user: "lando-nonexistent" } }),
-      );
-      expect(failure).toBeInstanceOf(HomePathCapabilityError);
-      expect(failure).toMatchObject({
-        _tag: "HomePathCapabilityError",
-        service: "web",
-        user: "lando-nonexistent",
+  test.each([
+    { type: "compose", image: "traefik/whoami:v1.10" },
+    { type: "compose", image: "example/custom:1", home: {} },
+    { type: "apache", user: "lando-nonexistent" },
+    { type: "apache", image: "example/custom-httpd:1", user: "www-data" },
+    { type: "compose", build: { context: "." } },
+    { type: "php:8.3", user: "www-data" },
+    { type: "nginx", user: "nginx" },
+    { type: "static", user: "nobody" },
+  ])(
+    "Given an unknown home for %j, When planned, Then neither plan contains a home store",
+    async (service) => {
+      await withAppRoot(async (appRoot) => {
+        const appPlan = await plan(appRoot, landofile({ web: service }), {
+          ...capabilities,
+          artifactBuild: true,
+        });
+        const store = `lando-${appPlan.slug}-web-home`;
+        expect(
+          appPlan.services[ServiceName.make("web")]?.storage.some((mount) => mount.store === store),
+        ).toBe(false);
+        expect(appPlan.stores.some((entry) => entry.name === store)).toBe(false);
       });
-    });
-  });
-
-  test("Given apache with a custom image running as www-data, When planned, Then HomePathCapabilityError is raised", async () => {
-    await withAppRoot(async (appRoot) => {
-      const failure = await planFailure(
-        appRoot,
-        landofile({ web: { type: "apache", image: "example/custom-httpd:1", user: "www-data" } }),
-      );
-      expect(failure).toBeInstanceOf(HomePathCapabilityError);
-      expect(failure).toMatchObject({ _tag: "HomePathCapabilityError", service: "web", user: "www-data" });
-    });
-  });
+    },
+  );
 
   test("Given an explicit home.path that is the filesystem root, When planned, Then LandofileValidationError is raised before provider action", async () => {
     await withAppRoot(async (appRoot) => {

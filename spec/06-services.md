@@ -88,7 +88,7 @@ The realization is invisible in canonical config and MUST NOT expose engine or s
 
 Storage declarations use `destination`, optional `source`, `scope`, `type`, `owner`, `permissions`, `kind`, and `key`.
 
-`home: false | { path? }` controls planned-user home persistence and is enabled by default. Known catalog user/home metadata creates one idempotent service-scoped store. Unknown custom images fail with `HomePathCapabilityError` before provider action unless home storage is disabled or an explicit path is supplied. Equivalent authored storage is deduplicated. Home contents MUST NOT affect build keys. Legacy `/lando`, `/helpers`, and user-config-directory mounts MUST NOT return.
+`home: false | { path? }` controls planned-user home persistence and is enabled by default. Known catalog user/home metadata for the planned user creates one idempotent service-scoped store. Without `home.path`, a custom image, absent image-identity metadata, or a planned user with no declared home omits automatic home persistence without failing planning. An authored `image` equal to the selected catalog artifact reference keeps catalog home metadata; a different image reference or an authored Compose build context does not. `home.path` persists an explicit destination; `home: false` disables home persistence. Equivalent authored storage is deduplicated. Home contents MUST NOT affect build keys. Legacy `/lando`, `/helpers`, and user-config-directory mounts MUST NOT return.
 
 | Scope | Lifetime |
 |---|---|

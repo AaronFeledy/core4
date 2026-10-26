@@ -18,7 +18,6 @@ import {
 import { type Report, lowerText } from "./lowering-report.ts";
 import {
   droppedServiceKey,
-  generatedService,
   needsReviewServiceKey,
   rewrittenServiceKey,
   unsupportedServiceKey,
@@ -192,9 +191,9 @@ const principal = (user: unknown): string | undefined =>
 
 /**
  * Lando 3 persisted a home for every Lando service. Lando 4 does the same by
- * default, but only where it knows the planned user's home; anywhere else it
- * refuses to start. Such services get `home: false` plus the explicit path
- * remediation, so the converted app starts and the author decides.
+ * default only where it knows the planned user's home. Otherwise leave home
+ * unset and flag the persistence difference for review. Raw Lando 3 Compose
+ * services had no implicit home persistence and need no diagnostic.
  */
 export const withHomeIntent = (
   lowered: LoweringPatch,
@@ -203,27 +202,15 @@ export const withHomeIntent = (
 ): LoweringPatch => {
   const patch = lowered.patch;
   if (lowered.blocked === true || Object.hasOwn(patch, "home")) return lowered;
+  if (service.api !== 4 && service.type === "compose") return lowered;
   const typeId = typeof patch.type === "string" ? patch.type.split(":")[0] : undefined;
   const known =
     typeId === undefined || !Object.hasOwn(SERVICE_HOMES, typeId) ? undefined : SERVICE_HOMES[typeId];
   let reason: string | undefined;
-  if (suppliedImage(patch) || known === undefined) {
-    if (service.api !== 4 && service.type === "compose") {
-      return {
-        ...lowered,
-        patch: { ...patch, home: false },
-        diagnostics: [
-          ...lowered.diagnostics,
-          generatedService({
-            ctx,
-            relative: [],
-            message: "Set home: false because Lando 3 never persisted a home for a Compose service.",
-            remediation: `Set services.${ctx.serviceName}.home.path if this service should keep its home.`,
-          }),
-        ],
-      };
-    }
-    reason = "its image comes from the Landofile, so Lando 4 cannot tell where the user's home is";
+  if (suppliedImage(patch)) {
+    reason = "its image comes from the Landofile";
+  } else if (known === undefined) {
+    reason = `the ${typeId ?? "unknown"} service type does not declare home metadata`;
   } else {
     const user = principal(patch.user) ?? known.defaultUser;
     if (!known.users.includes(user)) {
@@ -233,14 +220,13 @@ export const withHomeIntent = (
   if (reason === undefined) return lowered;
   return {
     ...lowered,
-    patch: { ...patch, home: false },
     diagnostics: [
       ...lowered.diagnostics,
       needsReviewServiceKey({
         ctx,
         relative: [],
-        message: `Lando 3 persisted this service's home, but ${reason}; the converted service sets home: false.`,
-        remediation: `Set services.${ctx.serviceName}.home.path to that user's home directory (Lando 3 used /var/www) to keep persisting it, or keep home: false.`,
+        message: `Lando 3 persisted this service's home, but ${reason}, so Lando 4 does not persist it automatically.`,
+        remediation: `Set services.${ctx.serviceName}.home.path to keep persisting that user's home.`,
       }),
     ],
   };

@@ -28,7 +28,6 @@ services:
   e2e:
     type: "node:22"
     image: mcr.microsoft.com/playwright:v1.64.1-noble
-    home: false
     endpoints: []
 tooling:
   playwright:
@@ -171,7 +170,7 @@ lando playwright install --with-deps chromium
 
 `baseURL` is `http://web:3000` because the browser runs inside `e2e`. There, `localhost` means `e2e`, not `web`. The URL from `lando info` is for your host browser.
 
-The Node service type mounts the app at `/app` and keeps `e2e` running with an idle command. `home: false` skips home persistence because Lando cannot infer a home directory for a custom image. Without it or an explicit `home.path`, planning stops with `HomePathCapabilityError`.
+The Node service type mounts the app at `/app` and keeps `e2e` running with an idle command. Because the image comes from your Landofile, Lando plans no home store for `e2e`; set `home.path` if you want one. See [Keep a service home across rebuilds and reach your host](./home-and-host.mdx).
 
 `endpoints: []` opts `e2e` out of endpoint and route planning: the Node type's default `3000` listener is not planned, no route or host port is generated for it, and `lando info` lists nothing to connect to. The idle command still runs; this only changes what Lando plans and publishes. An explicit `endpoints:` list is the authoritative inventory for a service. `ports:` wouldn't do this: it only publishes host ports, and a typed service keeps its primary listener in the plan whether `ports:` is absent or empty. Browser tests make outgoing requests; they don't need a listening port on `e2e`.
 

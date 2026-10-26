@@ -16,7 +16,6 @@ import type {
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
   GlobalServiceMissingError,
-  HomePathCapabilityError,
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileParseError,
@@ -66,7 +65,6 @@ type ExpectedLoadGlobalPlanError =
   | AppPlacementError
   | LandofileCompileError
   | CapabilityError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | FileSystemError
@@ -85,7 +83,6 @@ type LegacyPlanAppChannel =
   | LandofileValidationError
   | RouteInputError
   | CapabilityError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
@@ -116,7 +113,6 @@ type ExpectedEnsureGlobalServicesError =
   | AppPlacementError
   | LandofileCompileError
   | ServiceNotReadyError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | CapabilityError
@@ -147,7 +143,6 @@ type LegacyRemoteSyncCommandError =
   | RemoteSyncError
   | UserLandofileError
   | CapabilityError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | NoProviderInstalledError
@@ -159,7 +154,6 @@ type LegacyShareListCommandError =
   | RouteProviderMismatchError
   | UserLandofileError
   | CapabilityError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | NoProviderInstalledError

@@ -212,6 +212,11 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   base: "lando",
   versions: SUPPORTED_PHP_VERSIONS,
   artifacts: PHP_ARTIFACTS,
+  // Verified /etc/passwd in php:8.3-apache-bookworm and php:8.3-fpm-bookworm (linux/amd64):
+  // configs sha256:8a992dacb2cb44f327c2f353176b825f52dec230383f37131db1c6cb9dda68a5
+  // and sha256:7d56462eb335f178afb9536578454ea1bc7d30136ac2153df2632b86e420dd12.
+  // www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin; image User and HOME are unset.
+  // /var/www is 0755 root:root (only html is www-data-owned), so declare no www-data home.
   identity: rootIdentity(),
   schema: PhpServiceConfig,
   resolve: (input) =>

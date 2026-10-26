@@ -728,7 +728,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       ]),
     ).annotate({
       description:
-        "Persist the planned user's home directory, or false to disable it. Set path to choose the destination when the image's home is not known.",
+        "Persist the planned user's home directory when the service type knows where it is. Set path to persist a home Lando cannot infer, or false to disable home persistence.",
     }),
 
     scanner: Schema.optionalKey(ScannerConfig).annotate({

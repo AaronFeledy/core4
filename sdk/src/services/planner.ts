@@ -6,7 +6,6 @@ import type {
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
-  HomePathCapabilityError,
   LandofileValidationError,
   NotImplementedError,
   PublicationUnsupportedError,
@@ -28,7 +27,6 @@ export type AppPlannerError =
   | CapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError;
 

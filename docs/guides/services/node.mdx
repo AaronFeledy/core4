@@ -197,8 +197,6 @@ tooling `dir:`. See [Compile PHP theme assets with Node](./node-theme-assets.mdx
 
 ## Pin the service type
 
-For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
-
 Use an explicit type when the Landofile, rather than project files, should own
 the version. Lando supports `node:lts` and `node:22` as explicit types:
 

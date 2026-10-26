@@ -4,7 +4,6 @@ import { type Context, Effect, Predicate, Schema } from "effect";
 import {
   type CapabilityError,
   DataTreeOwnershipCapabilityError,
-  HomePathCapabilityError,
   LandofileValidationError,
   PublicationUnsupportedError,
   type RouteInputError,
@@ -73,7 +72,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   FinalizedServices,
   | LandofileValidationError
   | CapabilityError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | RouteInputError
@@ -256,9 +254,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       appRoot: input.appRoot,
       intent: homeIntent,
     });
-    if (withHome instanceof HomePathCapabilityError) {
-      return yield* Effect.fail(withHome);
-    }
     if (withHome instanceof LandofileValidationError) {
       return yield* Effect.fail(withHome);
     }
