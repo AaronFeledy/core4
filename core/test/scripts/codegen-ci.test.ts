@@ -655,9 +655,16 @@ describe("ci workflow codegen", () => {
         expect(workflow).toContain(releaseBinaryFileName(platform));
       }
       expect(workflow).toContain("RELEASE_TAG: v4.0.0-dev.${{ github.run_number }}");
-      expect(workflow).toContain("gh release create");
+      expect(workflow).toContain("gh api --method POST repos/{owner}/{repo}/releases");
+      expect(workflow).toContain("gh release upload");
       expect(workflow).toContain("dist/SHA256SUMS");
-      expect(workflow).toContain("--prerelease");
+      expect(workflow).toContain("-F prerelease=true");
+      expect(workflow).toContain("-F draft=true");
+      expect(workflow).toContain("set -euo pipefail");
+      expect(workflow).not.toContain("trap ");
+      expect(workflow).not.toContain("--cleanup-tag");
+      expect(workflow).not.toContain("--method DELETE");
+      expect(workflow).toContain('gh api --method PATCH "$release_api" -F draft=false');
       expect(workflow).not.toContain("cosign");
       expect(workflow).not.toContain("gpg");
       expect(workflow).not.toContain("sbom");
@@ -774,9 +781,16 @@ describe("ci workflow codegen", () => {
         expect(workflow).toContain(`dist/${releaseBinaryFileName(platform)}`);
         expect(workflow).toContain(`test -f dist/${releaseBinaryFileName(platform)}`);
       }
-      expect(workflow).toContain("gh release create");
+      expect(workflow).toContain("gh api --method POST repos/{owner}/{repo}/releases");
+      expect(workflow).toContain("gh release upload");
       expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
       expect(workflow).toContain("dist/SHA256SUMS");
+      expect(workflow).toContain("-F draft=true");
+      expect(workflow).toContain("set -euo pipefail");
+      expect(workflow).not.toContain("trap ");
+      expect(workflow).not.toContain("--cleanup-tag");
+      expect(workflow).not.toContain("--method DELETE");
+      expect(workflow).toContain('gh api --method PATCH "$release_api" -F draft=false');
       expect(workflow).not.toContain("sha256sum lando > SHA256SUMS");
       expect(workflow).not.toContain("if-no-files-found");
     },

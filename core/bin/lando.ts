@@ -16,6 +16,7 @@ import { resolveLandoRoots } from "@lando/paths";
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 
 import { cliUserArgv } from "../src/cli/user-argv";
+import { derivedCodegenMessage, isModuleResolveError, missingDerivedCodegen } from "./derived-codegen.ts";
 
 ensureHostProxyNoProxy("127.0.0.1");
 ensureHostProxyNoProxy("localhost");
@@ -41,6 +42,8 @@ const writeLine = async (destination: "stdout" | "stderr", text: string): Promis
   const { writeStdioLine } = await import("@lando/renderer/native-stdio");
   writeStdioLine(destination, text);
 };
+const isCompiledEntry = Bun.isStandaloneExecutable;
+
 const main = async (): Promise<void> => {
   const { installBrokenPipeExitPolicy } = await import("@lando/renderer/native-stdio");
   installBrokenPipeExitPolicy();
@@ -151,6 +154,13 @@ const main = async (): Promise<void> => {
 main().catch(async (error: unknown) => {
   const { BROKEN_PIPE_EXIT_CODE, isBrokenPipeError } = await import("@lando/renderer/native-stdio");
   if (isBrokenPipeError(error)) process.exit(BROKEN_PIPE_EXIT_CODE);
+  if (!isCompiledEntry && isModuleResolveError(error)) {
+    const missing = missingDerivedCodegen(join(import.meta.dir, "../.."));
+    if (missing.length > 0) {
+      await writeLine("stderr", derivedCodegenMessage(missing));
+      process.exit(1);
+    }
+  }
   const { safeOuterFailure } = await import("../src/cli/outer-failure.ts");
   await writeLine("stderr", await safeOuterFailure(error));
   process.exit(1);

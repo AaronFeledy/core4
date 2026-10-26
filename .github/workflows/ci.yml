@@ -1978,6 +1978,7 @@ jobs:
       fail-fast: false
       matrix:
         runs-on: [ubuntu-26.04]
+        suite: [providers, services]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
@@ -2157,13 +2158,22 @@ jobs:
           bun test plugins/provider-podman/test/capabilities.test.ts
 
       - name: Run provider integration tests
+        env:
+          LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
-          bun test core/test/live | tee /tmp/lando-provider-test-logs/core-live.log
-          bun test plugins/provider-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
-          bun test plugins/provider-docker/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
-          bun test plugins/service-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+          case "$LANDO_PROVIDER_TEST_SUITE" in
+            providers)
+              bun test core/test/live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log
+              bun test plugins/provider-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
+              bun test plugins/provider-docker/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
+              ;;
+            services)
+              bun test plugins/service-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+              ;;
+            *) echo "Unknown provider test suite: $LANDO_PROVIDER_TEST_SUITE" >&2; exit 1 ;;
+          esac
 
       - name: Teardown Lando runtime
         if: always()
@@ -2175,7 +2185,7 @@ jobs:
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
 
       - name: Collect provider diagnostics
-        if: failure()
+        if: failure() || cancelled()
         run: |
           mkdir -p provider-diagnostics/test-logs
           dist/lando doctor --format json > provider-diagnostics/doctor.json 2>&1 || true
@@ -2200,7 +2210,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}
+          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}-${{ matrix.suite }}
           path: provider-diagnostics
           if-no-files-found: ignore
           retention-days: 7
@@ -2208,7 +2218,7 @@ jobs:
       - name: Report job timing
         if: always()
         run: |
-          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
+          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }}/${{ matrix.suite }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   provider-integration-linux-x64:
     needs: [selection, provider-integration-linux-x64-runner]
