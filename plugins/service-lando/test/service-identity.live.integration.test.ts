@@ -6,6 +6,7 @@ import type { ServiceImageIdentity } from "@lando/sdk/services";
 import { Effect, Schema, Stream } from "effect";
 import { serviceTypes } from "../src/index.ts";
 import { PHP_VIA_MODES, phpImageFor } from "../src/services/php-via.ts";
+import { STATIC_SERVER_IMAGES } from "../src/services/static.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const socket = resolveLiveProviderSocket();
@@ -16,9 +17,16 @@ const catalog = [...serviceTypes].flatMap(([id, type]) => {
   if (type.identity === undefined) return [];
   const version = id.split(":")[1] ?? type.versions?.[0];
   const artifact = version === undefined ? undefined : type.artifacts?.[version];
+  const staticServer =
+    id === "static:caddy" ? "caddy" : id === "static" || id === "static:nginx" ? "nginx" : undefined;
   // These single-image types select their artifact in the feature, not an artifacts map.
-  if (artifact === undefined && id !== "apache" && id !== "nginx") return [];
-  const images = artifact === undefined ? [] : [artifact];
+  if (artifact === undefined && staticServer === undefined && id !== "apache" && id !== "nginx") return [];
+  const images =
+    artifact !== undefined
+      ? [artifact]
+      : staticServer !== undefined
+        ? [STATIC_SERVER_IMAGES[staticServer]]
+        : [];
   if (id.startsWith("php:") && version !== undefined) {
     images.push(...PHP_VIA_MODES.map((via) => phpImageFor(version, via)));
   }

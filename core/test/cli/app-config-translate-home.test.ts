@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { layerWith as pluginRegistryLayer } from "@lando/engine/plugins/registry";
 import { makeConfigTranslators } from "@lando/lando3";
 import { configTranslators } from "@lando/lando4";
 import { ServiceName } from "@lando/sdk/schema";
@@ -12,6 +13,10 @@ import {
   AppConfigTranslateResultSchema,
   appConfigTranslate,
 } from "../../src/cli/commands/app-config-translate.ts";
+import { assessTranslateExpectations } from "../../src/config/translate-expectations.ts";
+
+// The bundled service catalog the CLI supplies through its plugin bootstrap.
+const bundledCatalog = pluginRegistryLayer({ user: false, app: false });
 
 test.each([
   [
@@ -42,7 +47,9 @@ test.each([
     const encoder = await encoderLoader();
     // When
     const result = await Effect.runPromise(
-      appConfigTranslate({ cwd: root, from: "lando3", translators: [translator, encoder] }),
+      appConfigTranslate({ cwd: root, from: "lando3", translators: [translator, encoder] }).pipe(
+        Effect.provide(bundledCatalog),
+      ),
     );
     // Then
     expect(result.mode).toBe("preview");
@@ -133,7 +140,9 @@ test.each([
       };
       // When
       const result = await Effect.runPromise(
-        appConfigTranslate({ cwd: root, from: "source", translators: [translator, encoder] }),
+        appConfigTranslate({ cwd: root, from: "source", translators: [translator, encoder] }).pipe(
+          Effect.provide(bundledCatalog),
+        ),
       );
       // Then
       if (result.mode !== "preview") throw new Error("Expected preview");
@@ -146,3 +155,24 @@ test.each([
     }
   },
 );
+
+test("reports an unavailable catalog instead of loading bundled plugins when no registry is supplied", async () => {
+  // Given a home expectation and no plugin registry in context
+  const expectation = {
+    _tag: "PersistedHome" as const,
+    sourceId: ".lando.yml",
+    keyPath: ["services", "web"],
+    service: ServiceName.make("web"),
+  };
+  // When
+  const diagnostics = await Effect.runPromise(
+    assessTranslateExpectations([expectation], { services: { web: { type: "node:22" } } }),
+  );
+  // Then
+  expect(diagnostics.map(({ kind, message }) => [kind, message])).toEqual([
+    [
+      "needs-review",
+      "Lando 3 kept this service's home; Lando 4 can't confirm it will keep it automatically (the service catalog is unavailable).",
+    ],
+  ]);
+});

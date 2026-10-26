@@ -25,15 +25,7 @@ export const assessTranslateExpectations = Effect.fn("ConfigTranslate.assessExpe
   context: Readonly<Record<string, unknown>>,
 ): Effect.fn.Return<readonly ConfigTranslateDiagnostic[]> {
   if (expectations === undefined || expectations.length === 0) return [];
-  const suppliedRegistry = yield* Effect.serviceOption(PluginRegistry);
-  const registry = Option.isSome(suppliedRegistry)
-    ? suppliedRegistry.value
-    : yield* Effect.gen(function* () {
-        const registryModule = yield* Effect.promise(() => import("@lando/engine/plugins/registry"));
-        return yield* PluginRegistry.pipe(
-          Effect.provide(registryModule.layerWith({ user: false, app: false })),
-        );
-      });
+  const registry = Option.getOrUndefined(yield* Effect.serviceOption(PluginRegistry));
   const diagnostics: ConfigTranslateDiagnostic[] = [];
   const seen = new Set<string>();
   for (const expectation of expectations) {
@@ -54,9 +46,15 @@ export const assessTranslateExpectations = Effect.fn("ConfigTranslate.assessExpe
         )
       : raw;
     const decoded = Schema.decodeUnknownResult(ServiceConfig)(fields);
-    const assessment = Result.isSuccess(decoded)
-      ? yield* assessServiceHome(registry, expectation.service, decoded.success)
-      : ({ kind: "unresolved", reason: "service configuration is expression-valued or incomplete" } as const);
+    const assessment =
+      registry === undefined
+        ? ({ kind: "unresolved", reason: "the service catalog is unavailable" } as const)
+        : Result.isSuccess(decoded)
+          ? yield* assessServiceHome(registry, expectation.service, decoded.success)
+          : ({
+              kind: "unresolved",
+              reason: "service configuration is expression-valued or incomplete",
+            } as const);
     const location = {
       sourceId: expectation.sourceId,
       keyPath: expectation.keyPath,

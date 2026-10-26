@@ -29,7 +29,27 @@ lando app:config:lint
 lando start
 ```
 
-The `app` service gets a persistent home because `node:22` ships a known image and Lando knows the `node` user lives in `/home/node`. The `cache` service supplies its own image, so Lando would plan no home store for it anyway; `home: false` says so on purpose, because a Redis container has no home worth keeping. Run `lando info` after `lando start` and the persisted home shows up under the `app` service's mounts as a retained store at `/home/node`.
+The `app` service gets a persistent home because `node:22` ships a known image and Lando knows the `node` user lives in `/home/node`. The `cache` service supplies its own image, so Lando would plan no home store for it anyway; `home: false` says so on purpose, because a Redis container has no home worth keeping.
+
+## Check what Lando keeps
+
+`lando info` shows the plan, so it answers the question before the app has ever started. Run it from the app directory:
+
+```sh
+lando info
+lando info --format=json
+```
+
+In the human view, the retained home mount is labeled `(home)` next to the other stores, for example `/root (home), /data (store)`. A service whose home Lando can't place gets a `home` row instead, such as `not kept automatically · image comes from your Landofile · set services.web.home.path to keep one`. The other two reasons read `<type> doesn't declare image users` and `<type> doesn't know where <user>'s home is`.
+
+In JSON, each entry under `services[]` carries a `home` object with one of four states:
+
+| `state` | Meaning | Extra fields |
+| --- | --- | --- |
+| `persisted` | Lando generated a home store | `target`, `store`, `user` |
+| `authored` | You already mount something at the home path, so Lando generates nothing | `target`, `mount` (`volume`, `bind`, or `tmpfs`) |
+| `disabled` | `home: false` | none |
+| `unknown` | Lando can't place the home | `reason` (`custom-image`, `no-identity`, `undeclared-user`), `user` when known |
 
 ## When Lando knows where home is
 
@@ -38,19 +58,53 @@ Catalog service types declare the users inside the image they ship and where eac
 | Your service | What happens |
 | --- | --- |
 | `type: "node:22"` | Home persists at `/home/node` or `/root`, depending on `user:` |
-| `type: "php:8.3"` | Home persists at `/root`. With `user: www-data`, no home store, because that account's home is root-owned |
+| `type: "php:8.3"` | Home persists at `/root`. With `user: www-data`, home persists at `/var/www` |
+| `type: apache` with `user: www-data` | Home persists at `/home/www-data` |
+| `type: nginx` or `type: static` with `user: nginx` | No home store; that account's home is nginx's cache directory. Root keeps `/root` |
 | `type: compose` | No home store; set `home.path` to keep one |
 | `type: "node:22"` with a different `image:` | No home store; set `home.path` to keep one |
 | A catalog type with a `user:` it does not document | No home store; set `home.path` to keep one |
 | Anything with `home: false` | No automatic home store; storage and mounts you declare still apply |
 
-The store is scoped to that one service in that one app, and it is created once. Planning the app again reuses it instead of stacking a second copy.
+The php image ships `/var/www` owned by root. Lando creates it for `www-data` in a root build step, so the fresh volume starts owned by `www-data` and the account can write to it from the first start.
+
+### One volume per user
+
+The store belongs to that one service in that one app, and to the user it was planned for. Its name is `lando-<app>-<service>-home-<user>-<8-hex digest>`; only an explicit `home.path` on a service with no known user drops the user part and gets `lando-<app>-<service>-home`. Planning the app again reuses the volume instead of stacking a second copy.
+
+Changing `user:` changes the home. The new user gets a fresh, empty volume, and the previous user's volume stays in place with its contents, so switching back finds everything where it was. Nothing is copied between them.
+
+When a service stops keeping its home, for example because you added your own `image:`, the next `lando start`, `lando rebuild`, or `lando restart` warns once:
+
+```text
+Service web will no longer keep its home at /home/node: its image now comes from your Landofile.
+Lando leaves lando-<app>-web-home-node-<digest> untouched. To mount it at its previous location, set storage: [{ store: "<that volume>", target: "/home/node" }] under services.web in your Landofile.
+```
+
+When the home moved instead, say after a `user:` change, the warning names both volumes: `Service web will use home volume <new volume> at <target> (previously <old volume> at <old target>).` You get no warning for `home: false` or when you mount something at the home path yourself.
+
+To reattach the old volume, declare it as storage with the name from the warning:
+
+```yaml
+services:
+  web:
+    type: "node:22"
+    image: my-org/web:dev
+    user: node
+    storage:
+      - store: lando-<app>-web-home-node-<digest>
+        target: /home/node
+```
+
+To get rid of it instead, `lando destroy --volumes` removes the app's volumes, old homes included.
 
 ## When Lando doesn't know where home is
 
 The moment you supply the image yourself, whether through `type: compose`, an `image:` other than the one the service type ships, or a Compose `build:` with a `context`, the service type's metadata stops describing your container. Lando will not guess a path and mount a volume over it, so it plans no home store for that service. That alone never fails planning; caches and credentials inside that home just don't survive a rebuild unless you declare storage for them.
 
-The same thing happens when a catalog service runs as a user the image does not document, for example `user: lando-nonexistent` on `type: apache`, and for non-root users whose home Lando knows it can't keep: php's `www-data` home is `/var/www`, which root owns, and nginx's `nginx` account points at its cache directory. On php, nginx, and static, root still keeps `/root`.
+Image references compare canonically, so repeating the image a versioned type already ships is not a custom image. With `type: "mariadb:11.4"`, both `image: mariadb:11.4` and `image: docker.io/library/mariadb:11.4` keep catalog behavior, home included. Without a version in `type:`, any `image:` counts as your own.
+
+The same thing happens when a catalog service runs as a user the image does not document, for example `user: lando-nonexistent` on `type: apache`, and for nginx's `nginx` account, whose home is its cache directory. On nginx and static, root still keeps `/root`. `lando info` tells you which case you hit; see [Check what Lando keeps](#check-what-lando-keeps).
 
 To keep a home Lando can't infer, name the path yourself:
 
@@ -113,6 +167,12 @@ Both exist only when your provider says it can reach the host. A provider that c
     <Step name="resolve-plan">
       <Run command="lando app:cache:refresh" />
     </Step>
+    <Step name="check-home-status">
+      <Run command="lando info --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"home\":\\s*\\{[^}]*\"state\":\\s*\"persisted\"[^}]*\\}" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"home\":\\s*\\{[^}]*\"target\":\\s*\"/home/node\"[^}]*\\}" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"home\":\\s*\\{[^}]*\"user\":\\s*\"node\"[^}]*\\}" } }} />
+    </Step>
     <Step name="cleanup">
       <Cleanup />
     </Step>
@@ -128,6 +188,11 @@ Both exist only when your provider says it can reach the host. A provider that c
     </Step>
     <Step name="plan-without-home-store">
       <Run command="lando app:cache:refresh" expectExit={0} />
+    </Step>
+    <Step name="check-unknown-home">
+      <Run command="lando info --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"home\":\\s*\\{[^}]*\"state\":\\s*\"unknown\"[^}]*\\}" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"home\":\\s*\\{[^}]*\"reason\":\\s*\"custom-image\"[^}]*\\}" } }} />
     </Step>
     <Step name="cleanup-unknown">
       <Cleanup />

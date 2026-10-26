@@ -52,11 +52,11 @@ export const publishHomeTransitionNotices = Effect.fn("AppOperation.homeTransiti
     let message: string;
     switch (home.state) {
       case "unknown":
-        message = `Service ${service.name} no longer keeps its home at ${old.target}: ${unknownReason(service, home)}.`;
+        message = `Service ${service.name} will no longer keep its home at ${old.target}: ${unknownReason(service, home)}.`;
         break;
       case "persisted":
         if (home.store === old.store && home.target === old.target) continue;
-        message = `Service ${service.name} now keeps its home in a new volume at ${home.target}.`;
+        message = `Service ${service.name} will use home volume ${home.store} at ${home.target} (previously ${old.store} at ${old.target}).`;
         break;
       case "disabled":
       case "authored":
@@ -72,7 +72,7 @@ export const publishHomeTransitionNotices = Effect.fn("AppOperation.homeTransiti
     const storage = `storage: [{ store: ${quoteYamlScalar(old.store)}, target: ${quoteYamlScalar(old.target)} }]`;
     yield* events.publish(
       MessageWarnEvent.make({
-        body: `${message}\nLando leaves ${old.store} untouched. To reattach it, set ${storage} under services.${service.name} in your Landofile.`,
+        body: `${message}\nLando leaves ${old.store} untouched. To mount it at its previous location, set ${storage} under services.${service.name} in your Landofile.`,
         timestamp: DateTime.nowUnsafe(),
       }),
     );

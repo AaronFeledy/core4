@@ -117,7 +117,18 @@ const lowerAuthoredHome = (
   ctx: ServiceLoweringContext,
   diagnostics: ConfigTranslateDiagnostic[],
 ): unknown => {
-  if (value === true) return undefined;
+  if (value === true) {
+    diagnostics.push(
+      droppedServiceKey({
+        ctx,
+        relative: ["home"],
+        message: "home: true is the Lando 4 default.",
+        remediation:
+          "Nothing to set: Lando 4 keeps the service user's home when it knows where that home is.",
+      }),
+    );
+    return undefined;
+  }
   const rawPath = hasPlainObjectPrototype(value) && !isLegacyTagged(value) ? value.path : value;
   const report: Report = (kind, relative, message, remediation) => {
     const input = { ctx, relative, message, remediation };

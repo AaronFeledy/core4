@@ -123,6 +123,8 @@ services:
 | `observation` | `present`, `missing`, `unknown` | Whether the container's mount table confirmed it, the container is absent, or evidence was unavailable. |
 | `lifetime` | `retained`, `container`, `unknown` | Bind mounts and declared stores are `retained`; `tmpfs` is `container`; a runtime-only volume is `unknown`. |
 
+The human view labels each retained mount by its role, so a persisted home reads `/home/node (home)` beside the stores you declared, and the JSON carries the same fact as `services[].home` with a `state` of `persisted`, `authored`, `disabled`, or `unknown`. A service whose home Lando can't place gets a `home` row in the human view that says why and names the `home.path` key to set. See [Keep a service home across rebuilds](../services/home-and-host.mdx#check-what-lando-keeps).
+
 A runtime-only volume with `lifetime: unknown` is unverified, not proven anonymous. Lando does not infer lifetime from a volume name, so decide from the image: if the path is an image `VOLUME` you have not declared, declare it as above. The agent-forwarding and host-proxy mounts Lando adds for its own SSH, GPG, and `lando` integration are not user data and need no declaration.
 
 ## Tear down

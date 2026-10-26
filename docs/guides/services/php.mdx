@@ -95,9 +95,13 @@ services:
     user: www-data
 ```
 
-Lando plans no home store for `www-data` on the PHP images: that account's home
-is `/var/www`, which root owns. Set `home.path:` when you want a directory to
-survive a rebuild anyway.
+Lando keeps `www-data`'s home at `/var/www`, the directory the account's
+passwd entry points at. The image ships it owned by root, so Lando creates it
+for `www-data` in a root build step and the fresh home volume starts owned by
+`www-data`. Composer and shell caches dropped there survive a rebuild. Run
+`lando info` to see the mount labeled `(home)`; see
+[Keep a service home across rebuilds](./home-and-host.mdx) for the volume
+naming and what happens when you change `user:`.
 
 A non-root process still can't bind a port below 1024 on the default `lando`
 provider, and the image's own `ports.conf` says `Listen 80`. Set `port:` to

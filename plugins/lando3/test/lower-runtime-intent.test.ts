@@ -162,13 +162,15 @@ describe("home", () => {
     // Then
     expect(result.expectations).toBeUndefined();
   });
-  test("keeps home true as an expectation, not an output setting", async () => {
+  test("keeps home true as an expectation and reports the dropped setting", async () => {
     // Given / When
     const result = await translate("name: legacy\nservices:\n  web:\n    type: node:22\n    home: true\n");
     // Then
     expect(result.expectations?.map(({ service }) => String(service))).toEqual(["web"]);
     expect(JSON.stringify(result.outputs)).not.toContain('"home"');
-    expect(result.diagnostics.filter(({ keyPath }) => keyPath.at(-1) === "home")).toEqual([]);
+    expect(
+      result.diagnostics.filter(({ keyPath }) => keyPath.at(-1) === "home").map(({ kind }) => kind),
+    ).toEqual(["dropped"]);
   });
 });
 

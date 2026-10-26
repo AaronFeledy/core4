@@ -30,7 +30,6 @@ services:
   web:
     type: compose
     image: traefik/whoami:v1.10
-    home: false
 ```
 
 `mailstack/compose.yaml` is a stock compose file. It needs no edits:
@@ -53,7 +52,7 @@ volumes:
   pgdata: {}
 ```
 
-Included services default to `type: compose`, `home: false`, and `appMount: false`, so Lando mounts nothing into them that the compose file didn't ask for. They join the app network and resolve by service key: `web` reaches the mail catcher as `mailpit`. Named volumes such as `pgdata` work as written.
+Included services default to `type: compose` and `appMount: false`, so Lando mounts nothing into them that the compose file didn't ask for. Because their image comes from the compose file, Lando plans no home store for them either. They join the app network and resolve by service key: `web` reaches the mail catcher as `mailpit`. Named volumes such as `pgdata` work as written.
 
 Relative paths in the included file resolve from that file's own directory, the way Docker Compose resolves them: `./data:/data` binds, `env_file`, `build` contexts, and `configs` or `secrets` `file:` entries. Only local compose files get this path handling; files pulled in through git or npm includes keep their paths as written.
 
@@ -81,7 +80,6 @@ services:
   web:
     type: compose
     image: traefik/whoami:v1.10
-    home: false
     networks:
       backend: {}
       shared:
@@ -89,7 +87,6 @@ services:
   cache:
     type: compose
     image: valkey/valkey:8-alpine
-    home: false
     networks: [backend]
 ```
 
@@ -197,7 +194,8 @@ Lint also reports provider capability problems under `landofile.capability`, suc
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"envFile\":\\s*\\[\\s*\"\\./mailstack/\\.env\\.mail\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"source\":\\s*\"\\./mailstack/data\",\\s*\"target\":\\s*\"/data\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"volume\",\\s*\"source\":\\s*\"pgdata\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appMount\":\\s*false,\\s*\"home\":\\s*false" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/data\"[\\s\\S]*?\"appMount\":\\s*false" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"home\":" } } }} />
     </Step>
     <Step name="plan">
       <Run command="lando app:cache:refresh --format=json" />

@@ -88,20 +88,23 @@ for (const path of paths) {
   test.each([
     [
       { state: "unknown", reason: "custom-image" },
-      "Service web no longer keeps its home at /home/node: its image now comes from your Landofile.",
+      "Service web will no longer keep its home at /home/node: its image now comes from your Landofile.",
     ],
     [
       { state: "unknown", reason: "no-identity" },
-      "Service web no longer keeps its home at /home/node: node doesn't declare image users.",
+      "Service web will no longer keep its home at /home/node: node doesn't declare image users.",
     ],
     [
       { state: "unknown", reason: "undeclared-user", user: "alice" },
-      "Service web no longer keeps its home at /home/node: node doesn't know where alice's home is.",
+      "Service web will no longer keep its home at /home/node: node doesn't know where alice's home is.",
     ],
-    [{ ...previousHome, store: "new-home" }, "Service web now keeps its home in a new volume at /home/node."],
+    [
+      { ...previousHome, store: "new-home" },
+      "Service web will use home volume new-home at /home/node (previously lando-test-web-home-node-old at /home/node).",
+    ],
     [
       { ...previousHome, target: "/new-home" },
-      "Service web now keeps its home in a new volume at /new-home.",
+      "Service web will use home volume lando-test-web-home-node-old at /new-home (previously lando-test-web-home-node-old at /home/node).",
     ],
   ] as const)(`${path} warns once before apply for %j`, async (home, message) => {
     // Given an applied persisted home and changed desired home metadata.
@@ -110,7 +113,7 @@ for (const path of paths) {
     const { warnings, timeline, appliedReads } = await runTransition(path, previous, withHome(home));
     // Then one warning names the old volume and an exact, parseable reattachment declaration.
     expect(warnings.map((event) => event.body)).toEqual([
-      `${message}\nLando leaves lando-test-web-home-node-old untouched. To reattach it, set storage: [{ store: "lando-test-web-home-node-old", target: "/home/node" }] under services.web in your Landofile.`,
+      `${message}\nLando leaves lando-test-web-home-node-old untouched. To mount it at its previous location, set storage: [{ store: "lando-test-web-home-node-old", target: "/home/node" }] under services.web in your Landofile.`,
     ]);
     expect(timeline.indexOf("warn")).toBeLessThan(timeline.indexOf("apply"));
     expect(appliedReads).toBe(path === "selected restart" ? 1 : 0);
