@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { layerWith as pluginRegistryLayer } from "@lando/engine/plugins/registry";
 import { makeConfigTranslators } from "@lando/lando3";
 import { configTranslators } from "@lando/lando4";
-import { ServiceName } from "@lando/sdk/schema";
+import { ConfigTranslateSourceId, ServiceName } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
@@ -160,7 +160,7 @@ test("reports an unavailable catalog instead of loading bundled plugins when no 
   // Given a home expectation and no plugin registry in context
   const expectation = {
     _tag: "PersistedHome" as const,
-    sourceId: ".lando.yml",
+    sourceId: ConfigTranslateSourceId.make(".lando.yml"),
     keyPath: ["services", "web"],
     service: ServiceName.make("web"),
   };
