@@ -663,6 +663,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("set -euo pipefail");
       expect(workflow).not.toContain("trap ");
       expect(workflow).not.toContain("--cleanup-tag");
+      expect(workflow).not.toContain("--method DELETE");
       expect(workflow).toContain('gh api --method PATCH "$release_api" -F draft=false');
       expect(workflow).not.toContain("cosign");
       expect(workflow).not.toContain("gpg");
@@ -788,6 +789,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("set -euo pipefail");
       expect(workflow).not.toContain("trap ");
       expect(workflow).not.toContain("--cleanup-tag");
+      expect(workflow).not.toContain("--method DELETE");
       expect(workflow).toContain('gh api --method PATCH "$release_api" -F draft=false');
       expect(workflow).not.toContain("sha256sum lando > SHA256SUMS");
       expect(workflow).not.toContain("if-no-files-found");

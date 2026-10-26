@@ -1,4 +1,4 @@
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -132,6 +132,7 @@ describe("release workflow", () => {
     expect(workflow).toContain("set -euo pipefail");
     expect(workflow).not.toContain("trap ");
     expect(workflow).not.toContain("gh release delete");
+    expect(workflow).not.toContain("--method DELETE");
     expect(workflow).not.toContain("--cleanup-tag");
     expect(workflow).toContain("group: dev-prerelease-${{ github.run_number }}");
     expect(workflow).toContain("cancel-in-progress: false");
@@ -176,25 +177,17 @@ describe("release workflow", () => {
     });
   }
 
-  shellTest("cleans only its draft after partial upload and permits a fresh rerun", async () => {
+  shellTest("preserves a complete draft after an ambiguous upload response and blocks rerun", async () => {
     await withRehearsal(async (root) => {
-      const failed = await rehearsePublish(root, "partial-upload");
-      expect(failed.code).toBe(42);
-      expect(failed.draft).toBeUndefined();
-      expect(failed.calls.at(-1)).toBe("api --method DELETE repos/{owner}/{repo}/releases/123");
-      expect(failed.calls.some((call) => call.includes("--method PATCH"))).toBe(false);
-      expect((await rehearsePublish(root)).code).toBe(0);
-    });
-  });
-
-  shellTest("retains the upload error after an uncertain cleanup and allows a fresh rerun", async () => {
-    await withRehearsal(async (root) => {
-      const result = await rehearsePublish(root, "cleanup-ambiguous");
+      const result = await rehearsePublish(root, "upload-complete-ambiguous");
       expect(result.code).toBe(42);
-      expect(result.draft).toBeUndefined();
-      expect(result.stderr).toContain("Draft cleanup failed");
-      expect(result.calls.at(-1)).toBe("api --method DELETE repos/{owner}/{repo}/releases/123");
-      expect((await rehearsePublish(root)).code).toBe(0);
+      expect(result.draft).toBe("true");
+      expect(result.calls).toHaveLength(3);
+      expect((await readdir(join(root, "release/assets"))).sort()).toEqual(releaseAssets);
+      const rerun = await rehearsePublish(root);
+      expect(rerun.code).toBe(1);
+      expect(rerun.calls).toHaveLength(1);
+      expect(rerun.draft).toBe("true");
     });
   });
 
@@ -229,19 +222,16 @@ describe("release workflow", () => {
     });
   }
 
-  for (const scenario of ["cleanup-failure", "state-failure", "upload-public"]) {
+  for (const scenario of ["partial-upload", "upload-ambiguous", "upload-public", "upload-public-race"]) {
     shellTest(`retains the upload failure and preserves the release on ${scenario}`, async () => {
       await withRehearsal(async (root) => {
         const result = await rehearsePublish(root, scenario);
         expect(result.code).toBe(42);
-        expect(result.draft).toBe(scenario === "upload-public" ? "false" : "true");
-        expect(result.calls.some((call) => call.includes("--method PATCH"))).toBe(false);
-        expect(result.calls.some((call) => call.includes("--method DELETE"))).toBe(
-          scenario === "cleanup-failure",
-        );
-        expect(result.stderr).toContain(
-          scenario === "cleanup-failure" ? "Draft cleanup failed" : "preserving it",
-        );
+        expect(result.draft).toBe(scenario.startsWith("upload-public") ? "false" : "true");
+        expect(result.calls).toHaveLength(3);
+        expect(result.calls.at(-1)).toStartWith("release upload ");
+        expect(await readdir(join(root, "release/assets"))).toHaveLength(1);
+        expect(result.stderr).toContain("preserving it");
         const rerun = await rehearsePublish(root);
         expect(rerun.code).toBe(1);
         expect(rerun.calls).toHaveLength(1);

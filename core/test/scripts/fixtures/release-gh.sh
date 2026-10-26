@@ -19,10 +19,16 @@ if [ "$1 $2" = 'release upload' ]; then
     [ -s "$asset" ] || fail "Missing asset: $asset" 42
     cp "$asset" "release/assets/$(basename "$asset")"
     case "$scenario" in
-      partial-upload|cleanup-failure|cleanup-ambiguous|state-failure) fail 'Upload failed after one asset' 42 ;;
+      partial-upload) fail 'Upload failed after one asset' 42 ;;
+      upload-ambiguous) fail 'Asset uploaded, but response lost' 42 ;;
       upload-public) echo false > release/draft; fail 'Release was published externally' 42 ;;
+      upload-public-race)
+        (sleep 0.05; if [ -d release ]; then echo false > release/draft; fi) &
+        fail 'Upload failed while external publication is pending' 42
+        ;;
     esac
   done
+  [ "$scenario" != upload-complete-ambiguous ] || fail 'All assets uploaded, but response lost' 42
   exit 0
 fi
 
@@ -48,15 +54,12 @@ case "$method $endpoint" in
     ;;
   'GET repos/{owner}/{repo}/releases/123')
     [ "$*" = '--jq .draft' ] || fail 'Unexpected release query' 90
-    [ "$scenario" != state-failure ] || fail 'State unavailable' 45
     cat release/draft
+    if [ "$scenario" = upload-public-race ]; then echo false > release/draft; fi
     ;;
   'DELETE repos/{owner}/{repo}/releases/123')
     [ "$#" = 0 ] || fail 'Unexpected delete arguments' 90
-    [ "$(cat release/draft)" = true ] || fail 'Attempt to delete a public release' 90
-    [ "$scenario" != cleanup-failure ] || fail 'Cleanup rejected' 44
     rm -r release
-    [ "$scenario" != cleanup-ambiguous ] || fail 'Deleted, but response lost' 44
     ;;
   'PATCH repos/{owner}/{repo}/releases/123')
     [ "$*" = '-F draft=false' ] || fail 'Unexpected publication fields' 90

@@ -143,13 +143,7 @@ jobs:
             :
           else
             upload_status=$?
-            if draft=$(gh api "$release_api" --jq .draft) && [ "$draft" = true ]; then
-              if ! gh api --method DELETE "$release_api"; then
-                echo "Draft cleanup failed for release $release_id; inspect it before rerunning." >&2
-              fi
-            else
-              echo "Release $release_id is public or its state is unknown; preserving it." >&2
-            fi
+            echo "Upload failed for release $release_id; preserving it for inspection before rerunning." >&2
             exit "$upload_status"
           fi
           # No cleanup after publication starts: a failed response may follow a successful publish.
