@@ -79,7 +79,10 @@ const planFile = (file: string, feature?: AppFeatureDefinition) =>
 test("preserves raw file, appEnv and plugin bytes below authored environment", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-raw-environment-"));
   try {
-    await writeFile(join(root, "shared.env"), `SHARED=${raw}\nORDER=shared\nSHARED_WINS=shared\n`);
+    await writeFile(
+      join(root, "shared.env"),
+      `SHARED=${raw}\nORDER=shared\nSHARED_WINS=shared\nESCAPED="\\\${secret:TEST}"\nQUOTED="{{ env.NOT_SET }}"\n`,
+    );
     await writeFile(join(root, "service.env"), `LOCAL=${raw}\nORDER=service\nSERVICE_WINS=service\n`);
     const file = join(root, ".lando.yml");
     await writeFile(
@@ -107,6 +110,8 @@ test("preserves raw file, appEnv and plugin bytes below authored environment", a
       PLUGIN: raw,
       ORDER: "authored",
       SHARED_WINS: "shared",
+      ESCAPED: "${secret:TEST}",
+      QUOTED: "{{ env.NOT_SET }}",
       SERVICE_WINS: "service",
     });
     expect(app.services[ServiceName.make("web")]?.environment).toEqual(resolved[ServiceName.make("web")]);
