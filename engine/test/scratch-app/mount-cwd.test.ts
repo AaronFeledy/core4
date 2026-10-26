@@ -6,7 +6,6 @@ import {
   PortablePath,
   serviceAppMount,
 } from "@lando/sdk/schema";
-import { Effect } from "effect";
 import { applyMountCwd } from "../../src/scratch-app/service.ts";
 import { plan, web } from "../operations/start-progress-topology-support.ts";
 
@@ -40,7 +39,7 @@ test("mount cwd removes only the rebound app bind's file-sync session", async ()
     ],
   };
   // When the cwd replaces the app source.
-  const result = await Effect.runPromise(applyMountCwd(input, undefined, "/cwd"));
+  const result = applyMountCwd(input, undefined, "/cwd");
   // Then only the app session disappears and its bind becomes ordinary.
   expect(result?.fileSync.map(({ session }) => session.mountKey)).toEqual(["other-key"]);
   const service = result?.services[web.name];
@@ -69,7 +68,7 @@ test("mount cwd replaces an occupied target when no app bind exists", async () =
     },
   };
   // When cwd is mounted over the occupied target.
-  const result = await Effect.runPromise(applyMountCwd(input, "/work/app", "/cwd"));
+  const result = applyMountCwd(input, "/work/app", "/cwd");
   // Then the replacement is unique and sorted after its parent.
   expect(result?.services[web.name]?.mounts).toEqual([
     { type: "tmpfs", target: PortablePath.make("/work"), readOnly: false },
@@ -83,8 +82,8 @@ test("mount cwd replaces an occupied target when no app bind exists", async () =
   ]);
 });
 
-test("mount cwd fails when moving the app bind collides with a planned target", async () => {
-  // Given an app bind and another mount at the destination.
+test("mount cwd at another target adds a bind there and leaves the app mount alone", () => {
+  // Given an app bind with a sync session and another mount at the requested target.
   const input: AppPlan = {
     ...plan,
     services: {
@@ -93,12 +92,35 @@ test("mount cwd fails when moving the app bind collides with a planned target", 
         mounts: [appBind, { type: "tmpfs", target: PortablePath.make("/occupied"), readOnly: false }],
       },
     },
+    fileSync: [
+      {
+        engineId: "mutagen",
+        session: {
+          app: { kind: "user" as const, id: plan.id, root: plan.root },
+          service: web.name,
+          mountKey: "custom-app-key",
+          source: AbsolutePath.make("/old"),
+          target: { _tag: "volume" as const, name: "sync", path: PortablePath.make("/app") },
+          mode: "two-way-safe" as const,
+          excludes: [],
+        },
+      },
+    ],
   };
   // When cwd requests that destination.
-  const result = await Effect.runPromise(applyMountCwd(input, "/occupied", "/cwd").pipe(Effect.result));
-  // Then the subsystem reports its tagged failure instead of duplicating mounts.
-  expect(result._tag).toBe("Failure");
-  if (result._tag === "Failure") expect(result.failure._tag).toBe("ScratchAppError");
+  const result = applyMountCwd(input, "/occupied", "/cwd");
+  // Then the app bind and its session stay, and the cwd bind replaces the occupant.
+  expect(result?.services[web.name]?.mounts).toEqual([
+    appBind,
+    {
+      type: "bind",
+      source: "/cwd",
+      target: PortablePath.make("/occupied"),
+      readOnly: false,
+      realization: "passthrough",
+    },
+  ]);
+  expect(result?.fileSync.map(({ session }) => session.mountKey)).toEqual(["custom-app-key"]);
 });
 
 test("mount cwd moves binds that mirror the app source and keeps unrelated binds", async () => {
@@ -124,7 +146,7 @@ test("mount cwd moves binds that mirror the app source and keeps unrelated binds
     fileSync: [],
   };
   // When the cwd replaces the app source at the same target.
-  const result = await Effect.runPromise(applyMountCwd(input, undefined, "/cwd"));
+  const result = applyMountCwd(input, undefined, "/cwd");
   // Then the mirrored bind follows the cwd and the unrelated bind is untouched.
   const binds = result?.services[web.name]?.mounts.flatMap((mount) =>
     mount.type === "bind" ? [{ source: mount.source, target: mount.target }] : [],

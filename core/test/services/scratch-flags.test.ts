@@ -278,22 +278,22 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
     });
   });
 
-  test("mount-cwd with an explicit target rebinds the app mount at that target", async () => {
+  test("mount-cwd with an explicit target appends a bind mount and leaves appMount intact", async () => {
     await withScratchEnv(undefined, async (dir) => {
       const appliedPlans: AppPlan[] = [];
       await Effect.runPromise(acquireRecipe(appliedPlans, { mountCwd: { target: "/srv/site" } }));
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch acquire did not apply a plan");
       const primary = primaryService(appliedPlan);
-      expect(String(serviceAppMount(primary)?.source)).toBe(dir);
-      expect(serviceAppMount(primary)?.target).toBe(PortablePath.make("/srv/site"));
-      expect(primary.mounts.some((mount) => mount.target === "/app")).toBe(false);
+      expect(String(serviceAppMount(primary)?.source)).not.toBe(dir);
+      expect(serviceAppMount(primary)?.target).toBe(PortablePath.make("/app"));
       const added = primary.mounts.find((mount) => mount.target === "/srv/site");
       expect(added).toBeDefined();
       expect(added?.type).toBe("bind");
       if (added?.type === "bind") {
         expect(added.source).toBe(dir);
         expect(added.realization).toBe("passthrough");
+        expect(added.role).toBeUndefined();
       }
     });
   });

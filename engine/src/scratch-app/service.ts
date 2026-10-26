@@ -18,6 +18,7 @@ import {
   AbsolutePath,
   type AppPlan,
   AppPlan as AppPlanSchema,
+  type BindMountPlan,
   type IsolateMode,
   type LandofileShape,
   type NetworkingPlan,
@@ -25,7 +26,6 @@ import {
   type ProviderCapabilities,
   type RouterConfig,
   ServiceName,
-  duplicateMountTarget,
   landoNetworkingPlan,
   orderMounts,
   serviceAppMount,
@@ -305,54 +305,48 @@ export const findPrimaryServiceName = (plan: AppPlan): ServiceName | undefined =
   return names.find((name) => plan.services[name]?.primary === true) ?? names[0];
 };
 
-export const applyMountCwd = Effect.fnUntraced(function* (
+export const applyMountCwd = (
   plan: AppPlan,
   target: string | undefined,
   hostCwd: string,
-): Effect.fn.Return<AppPlan | undefined, ScratchAppError> {
+): AppPlan | undefined => {
   const primaryName = findPrimaryServiceName(plan);
   if (primaryName === undefined) return undefined;
   const primary = plan.services[primaryName];
   if (primary === undefined) return undefined;
-  const source = AbsolutePath.make(hostCwd);
   const appMount = serviceAppMount(primary);
   const containerTarget = PortablePath.make(target ?? appMount?.target ?? "/app");
-  const { mountKey: _mountKey, ...appBind } = appMount ?? {};
+  // The cwd at the app mount's own target replaces the app source; any other
+  // target adds a plain bind there and leaves the app mount alone. Either way
+  // the cwd bind replaces whatever was planned at its target.
+  const rebound = appMount !== undefined && appMount.target === containerTarget ? appMount : undefined;
+  let cwdBind: BindMountPlan = {
+    type: "bind",
+    source: hostCwd,
+    target: containerTarget,
+    readOnly: false,
+    realization: "passthrough",
+  };
+  if (rebound !== undefined) {
+    const { mountKey: _mountKey, ...bind } = rebound;
+    cwdBind = { ...bind, source: hostCwd, realization: "passthrough" };
+  }
   const mounts = orderMounts([
     ...primary.mounts.flatMap((mount) => {
-      if (appMount === undefined ? mount.target === containerTarget : mount === appMount) return [];
-      if (mount.type !== "bind" || appMount === undefined || containerTarget !== appMount.target)
+      if (mount.target === containerTarget) return [];
+      if (rebound === undefined || mount.type !== "bind" || !mount.target.startsWith(`${containerTarget}/`))
         return [mount];
       // Binds that mirror a path of the app source (nested includes, `./vendor/x` at
       // `/app/vendor/x`) follow the app source when it moves to the host cwd.
-      const appPrefix = `${appMount.target}/`;
-      if (!mount.target.startsWith(appPrefix)) return [mount];
-      const rel = mount.target.slice(appPrefix.length);
+      const rel = mount.target.slice(containerTarget.length + 1);
       return [
-        relative(appMount.source, mount.source).replaceAll("\\", "/") === rel
+        relative(rebound.source, mount.source).replaceAll("\\", "/") === rel
           ? { ...mount, source: join(hostCwd, rel) }
           : mount,
       ];
     }),
-    {
-      ...appBind,
-      type: "bind" as const,
-      source: String(source),
-      target: containerTarget,
-      readOnly: appMount?.readOnly ?? false,
-      realization: "passthrough" as const,
-    },
+    cwdBind,
   ]);
-  const duplicate = duplicateMountTarget(mounts);
-  if (duplicate !== undefined)
-    return yield* Effect.fail(
-      scratchAppError(
-        "start",
-        `Unable to mount the current working directory: duplicate mount target ${duplicate}.`,
-        undefined,
-        "Choose a --mount-cwd target that does not collide with another planned mount.",
-      ),
-    );
   const nextPrimary = {
     ...primary,
     mounts,
@@ -364,12 +358,12 @@ export const applyMountCwd = Effect.fnUntraced(function* (
       (entry) =>
         !(
           entry.session.service === primaryName &&
-          appMount?.mountKey !== undefined &&
-          entry.session.mountKey === appMount.mountKey
+          rebound?.mountKey !== undefined &&
+          entry.session.mountKey === rebound.mountKey
         ),
     ),
   };
-});
+};
 
 const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
   const built = landoNetworkingPlan({
@@ -424,7 +418,7 @@ const applyScratchStartFlags = Effect.fnUntraced(function* (
   let next = plan;
   const mountCwd = resolveScratchAcquireIsolation(input) === "cwd" ? (input.mountCwd ?? {}) : input.mountCwd;
   if (mountCwd !== undefined) {
-    const mounted = yield* applyMountCwd(next, mountCwd.target, hostCwd);
+    const mounted = applyMountCwd(next, mountCwd.target, hostCwd);
     if (mounted === undefined) {
       return yield* Effect.fail(
         scratchAppError(
