@@ -20,6 +20,7 @@ import { ContainerTransportError } from "../src/transport.ts";
 const ctx = {
   providerId: "podman",
   remediation: "Run `lando setup` and retry.",
+  env: {},
   get redactor() {
     return Effect.runSync(fixtureRedaction.forProfile("secrets"));
   },
@@ -65,7 +66,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -249,6 +249,7 @@ describe("podman exec early stdin exit", () => {
       message: "attach reset",
       systemCode: "ECONNRESET",
     }),
+    remediation: "Install or start the `lando` provider and confirm it can perform `podman-api`.",
   });
   const makeResetApi = (options: {
     readonly head?: boolean;
@@ -267,6 +268,7 @@ describe("podman exec early stdin exit", () => {
                 providerId: "lando",
                 operation: "exec",
                 message: "inspect failed",
+                remediation: "Install or start the `lando` provider and confirm it can perform `exec`.",
               }),
             )
           : Effect.succeed({
@@ -299,6 +301,7 @@ describe("podman exec early stdin exit", () => {
           message: "attach closed",
           systemCode,
         }),
+        remediation: "Install or start the `lando` provider and confirm it can perform `podman-api`.",
       });
       const api = makeResetApi({ error });
       // When
@@ -533,6 +536,7 @@ describe("podman exec delayed output", () => {
       providerId: "podman",
       operation: "exec",
       message: "attach stream failed",
+      remediation: "Install or start the `podman` provider and confirm it can perform `exec`.",
     });
     const attached = Stream.make(attachFrame(1, "first")).pipe(
       Stream.concat(

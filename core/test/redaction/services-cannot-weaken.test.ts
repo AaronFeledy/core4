@@ -18,9 +18,11 @@ import {
   makeDownloaderEvents,
   makeDownloaderService,
 } from "@lando/http-client/downloader";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { redactDetails, redactString } from "../../src/cli/redact.ts";
+
+const patternRedactor = () => createStandaloneRedactor("secrets", { sourceEnv: {} });
 
 /**
  * These assertions target each surface's shipped redaction point:
@@ -77,7 +79,13 @@ const capturingDownloaderEvents = (): {
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
   } satisfies Context.Service.Shape<typeof EventService>;
-  return { events: makeDownloaderEvents(Option.some(eventService)), captured };
+  return {
+    events: makeDownloaderEvents(
+      Option.some(eventService),
+      createStandaloneRedactor("secrets", { sourceEnv: {} }),
+    ),
+    captured,
+  };
 };
 
 const fakeHttpClient = (url: string, payload: string): HttpClient.HttpClient =>
@@ -209,8 +217,8 @@ describe("audited services compose canonical redaction", () => {
       cause: new Error(`dns setup failed ${PATTERN_SOUP}`),
       details: { authorization: UNREGISTERED_BEARER, token: REGISTERED_SECRET },
     };
-    const renderedDetails = JSON.stringify(redactDetails(diagnostic));
-    const renderedMessage = redactString(`host-proxy diagnostic ${PATTERN_SOUP}`);
+    const renderedDetails = JSON.stringify(redactDetails(diagnostic, patternRedactor()));
+    const renderedMessage = redactString(`host-proxy diagnostic ${PATTERN_SOUP}`, patternRedactor());
 
     assertPatternSecretsGone(renderedDetails);
     assertPatternSecretsGone(renderedMessage);
@@ -225,8 +233,8 @@ describe("audited services compose canonical redaction", () => {
       cause: new Error(`nested ${PATTERN_SOUP}`),
     });
 
-    const redactedDetails = JSON.stringify(redactDetails(error));
-    const redactedMessage = redactString(error.message);
+    const redactedDetails = JSON.stringify(redactDetails(error, patternRedactor()));
+    const redactedMessage = redactString(error.message, patternRedactor());
 
     assertPatternSecretsGone(redactedDetails);
     assertPatternSecretsGone(redactedMessage);

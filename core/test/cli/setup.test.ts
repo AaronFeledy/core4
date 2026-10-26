@@ -686,6 +686,8 @@ describe("meta:setup command", () => {
                         new SshError({
                           sshId: "sidecar",
                           message: `${message} HTTP_PROXY_PASSWORD=super-secret`,
+                          remediation:
+                            "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
                         }),
                       ),
                   },
@@ -1199,7 +1201,6 @@ describe("meta:setup command", () => {
         provider: ProviderId.make("podman"),
         services: {},
         routes: [],
-        networks: [],
         stores: [],
         fileSync: [],
         extensions: {},
@@ -3062,6 +3063,7 @@ describe("meta:setup command", () => {
       const cancellation = new InteractionCancelledError({
         message: "Provider selection cancelled.",
         promptName: "provider",
+        remediation: "Run lando setup --provider=docker to select a provider without this prompt.",
       });
       const interaction = {
         ...recordingPrompter("lando").prompter,
@@ -3363,6 +3365,7 @@ describe("meta:setup command", () => {
             message:
               "Cannot negotiate a Docker Engine API version. Lando supports 1.43-1.44; this daemon reports 1.50-1.55.",
             details: { kind: "docker-api-version", ourRange: "1.43-1.44", daemonRange: "1.50-1.55" },
+            remediation: "Install or start the `docker` provider and confirm it can perform `docker-api`.",
           }),
         ),
       };

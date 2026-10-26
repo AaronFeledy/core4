@@ -80,7 +80,8 @@ test("round trips actual info without redundant fields or runtime leakage", asyn
     },
   });
   const encoded = result.services.map((row) => Schema.encodeSync(ServiceInfo)(row));
-  expect(result.services).toEqual(encoded);
+  const decoded = encoded.map((row) => Schema.decodeUnknownSync(ServiceInfo)(row));
+  expect(result.services).toEqual(decoded);
   expect(Object.keys(result.services[0] ?? {}).sort()).toEqual([
     "api",
     "app",

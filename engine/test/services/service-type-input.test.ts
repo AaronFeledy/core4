@@ -10,7 +10,11 @@ import { planApp } from "../../src/planner/assemble.ts";
 import { resolveHostFacts } from "../../src/planner/service-types.ts";
 
 const missingPlugin = (id: string) =>
-  new PluginLoadError({ message: `Plugin ${id} is not registered.`, pluginName: id });
+  new PluginLoadError({
+    message: `Plugin ${id} is not registered.`,
+    pluginName: id,
+    remediation: "Install or register the plugin, then retry.",
+  });
 
 describe("service type resolve input", () => {
   test("Given host facts, when resolved, then arch matches process.arch", () => {

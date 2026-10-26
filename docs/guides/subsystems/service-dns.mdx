@@ -33,7 +33,8 @@ The default provider is `lando` (managed Podman).
 | Where you are | Name to use | Example |
 | --- | --- | --- |
 | Another service in this app | The service key | `database` |
-| Another app, or Traefik's backend | `<service>.<app>.internal` | `database.service-dns-demo.internal` |
+| Another app, Traefik's backend, or anywhere a bare key could be ambiguous | `<service>.<app>.internal` | `database.service-dns-demo.internal` |
+| A network you joined with `networks:` | `<service>.<app>.internal` or an authored alias | `api.service-dns-demo.internal` |
 | Host browser | `*.lndo.site` | `https://app.service-dns-demo.lndo.site` |
 
 Use the service key inside the app. Use `<service>.<app>.internal` across apps and for Traefik backends. Use `LANDO_MAIL_HOST` for Mailpit. Use `*.lndo.site` only in the host browser.
@@ -78,6 +79,10 @@ Global Mailpit is `mailpit.global.internal`. Non-global `type: lando` services g
 
 Issued leaf certs list the service name and `<service>.<app>.internal` as SANs.
 
+## Join another network
+
+To reach the containers of another Compose project on the same engine, or to give a few services a private network, declare it under top-level `networks:` and list it on the service. The service stays on its app network. On the extra network it answers to `<service>.<app>.internal` and any `aliases` you set, not to its bare service key, because other projects share that network. `<service>.<app>.internal` also resolves inside the app, so it's the safe name when a joined network has a service with the same bare name as one of yours. If the other stack is only used by this app, fold it in with `include:` instead and reach its services by key. See [Reach another project's services](../config/networks.mdx).
+
 Routes need shared cross-app networking and the same provider as the host router. The default `lando` provider advertises shared networking on Linux, macOS, and Windows. A routed app pinned to a different provider fails planning with `RouteProviderMismatchError`. See [Routing needs one provider](../setup/provider-selection.mdx#routing-needs-one-provider).
 
 ## Open `*.lndo.site` on this machine
@@ -94,7 +99,7 @@ These names are not service DNS:
 | `host.containers.internal` | Podman-native host-gateway hostname; availability depends on the runtime and platform |
 | `host.docker.internal` | Docker-native host-gateway hostname, unrelated to Lando's default Xdebug transport |
 
-Use `host.lando.internal` to reach the host from a Lando service. The planner adds it and sets `LANDO_HOST_IP` to that name only when the provider supports host reachability. Neither is supplied when the provider cannot reach the host.
+Use `host.lando.internal` to reach the host from a Lando service; it and `LANDO_HOST_IP` exist only when the provider can reach the host. See [Reach host services and sibling stacks](./host-services.mdx).
 
 Engine-native hostnames are not portable across every provider and platform. Keep an explicitly authored Xdebug host if your setup needs it. Use service DNS, not a host-gateway name, for databases running as Lando services.
 

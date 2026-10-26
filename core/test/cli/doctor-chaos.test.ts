@@ -50,6 +50,7 @@ const failingSelectRegistry = () => ({
         providerId: TestRuntimeProvider.id,
         operation: "select",
         message: "runtime socket is unreachable",
+        remediation: "Install or start the selected runtime provider and confirm it can perform `select`.",
       }),
     ),
 });
@@ -152,6 +153,8 @@ describe("doctor chaos: provider path", () => {
             providerId: TestRuntimeProvider.id,
             operation: "getStatus",
             message: "status probe exploded",
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `getStatus`.",
           }),
         ) as typeof TestRuntimeProvider.getStatus,
       ),
@@ -614,6 +617,8 @@ describe("doctor chaos: whole report", () => {
             providerId: TestRuntimeProvider.id,
             operation: "select",
             message: `socket auth failed using ${secret}`,
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `select`.",
           }),
         ),
     };

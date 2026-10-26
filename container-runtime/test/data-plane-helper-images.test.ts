@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Stream } from "effect";
 
 import {
@@ -10,7 +11,12 @@ import { dockerPullDialect } from "@lando/container-runtime/dialect";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { AppId } from "@lando/sdk/schema";
 
-const ctx = { providerId: "test", remediation: "Run `lando doctor` and retry." } as const;
+const passthroughRedactor = {
+  redactString: (value: string) => value,
+  redactValue: (value: unknown) => value,
+} satisfies Redactor;
+
+const ctx = { providerId: "test", remediation: "Run `lando doctor` and retry.", env: {} } as const;
 const encoder = new TextEncoder();
 
 interface FakeEngine {
@@ -83,7 +89,7 @@ const planeFor = (engine: FakeEngine) =>
     providerId: "test",
     api: engine.api,
     capabilities: { volumeSnapshot: "native" },
-    redactDetails: (value) => value,
+    redactor: passthroughRedactor,
     pullHelperImage: (ref) =>
       pullImage(engine.api, ref, { ctx, dialect: dockerPullDialect, policy: "missing" }),
   });
@@ -160,7 +166,7 @@ describe("data-plane helper image acquisition", () => {
       providerId: "test",
       api: engine.api,
       capabilities: { volumeSnapshot: "native" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
     });
 
     // When: a native snapshot runs.

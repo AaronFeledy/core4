@@ -40,7 +40,7 @@ Scratch ids MAY appear in user-facing output and are not secrets.
 
 Scratch state lives under `<userCacheRoot>/scratch/<id>/`, including the materialized root and the `scratch-app-plan`, `scratch-app-info`, and `scratch-build-results` caches (§12.1). Build transcripts live under the scratch branch of the standard build artifact root (§12.4).
 
-The entire scratch tree MUST be excluded from cwd discovery and `cwd-app-map`. Scope finalization removes the root, caches, and transcripts after resource destruction. A crash may leave them behind; `apps:scratch:gc` reaps them (§21.11).
+The entire scratch tree MUST be excluded from cwd discovery. Scope finalization removes the root, caches, and transcripts after resource destruction. A crash may leave them behind; `apps:scratch:gc` reaps them (§21.11).
 
 ### 21.4 Scratch sources
 
@@ -142,7 +142,7 @@ At plan time, scratch storage obeys this rewrite:
 | `global` | `app` by default | Removed. |
 | `global` with `--share-global-storage` | `global` | Preserved under §6.5. |
 
-Scratch destroy also removes the scratch app's catalogued snapshots, because the ephemeral root leaves nothing else that could reclaim them; this is the one retention exception to §10.11.2. Selection uses the plan's owner key and the scratch app id together, matching the volume selector, so a `--isolate=cwd` scratch that shares the source app's owner never removes the source app's snapshots. `--keep-volumes` keeps both volumes and snapshots. Without a plan, snapshot purge is skipped and reported as `unknown-owner`.
+Scratch destroy also removes the scratch app's catalogued snapshots, because the ephemeral root leaves nothing else that could reclaim them; this is the one retention exception to §10.11.2. Selection uses the plan's owner key and the scratch app id together, matching the volume selector, so a `--isolate=cwd` scratch that shares the source app's owner never removes the source app's snapshots. `--keep-volumes` keeps both named volumes and snapshots; it cannot keep an anonymous volume, which leaves with its container (§6.5). Without a plan, snapshot purge is skipped and reported as `unknown-owner`.
 
 The `scope: global` to `scope: app` rewrite is mandatory unless `--share-global-storage` is explicitly set. It MUST NOT be inferred from another flag. Scratch volumes carry the scratch labels and standard storage ownership labels using the effective scope.
 
@@ -168,7 +168,7 @@ Scratch `AppFeature` code may consume permitted `globalServices.<name>.*` expres
 |---|---|---|
 | `apps:scratch:start` | `scratch:start`, `scratch` | Acquire from exactly one of `--fork` or `--from`; foreground by default, detached with `--detach`. |
 | `apps:scratch:stop` | `scratch:stop` | Stop and destroy the selected scratch or the current foreground scratch. |
-| `apps:scratch:destroy` | `scratch:destroy` | Force resource destruction; `--keep-volumes` retains volumes for inspection. |
+| `apps:scratch:destroy` | `scratch:destroy` | Force resource destruction; `--keep-volumes` retains named volumes for inspection. |
 | `apps:scratch:list` | `scratch:list` | List registry entries and provider-label orphans; JSON is the canonical machine form. |
 | `apps:scratch:info` | `scratch:info` | Report runtime info with service and format selection. |
 | `apps:scratch:logs` | `scratch:logs` | Stream logs with standard service, follow, tail, and since filters. |

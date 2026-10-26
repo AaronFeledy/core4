@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import {
   AbsolutePath,
   AppId,
   type CurrentExecutableAppPlan,
   type DatabaseConnection,
   GlobalConfig,
+  type LoadScopedLandofile,
   PortNumber,
   PortablePath,
   ProviderId,
@@ -36,6 +38,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseCon
     readonly env?: Readonly<Record<string, string>>;
   }[] = [];
   const selections: number[] = [];
+  let discovery = compileTestLandofile({ name: "tooling-test", tooling: { custom: task } });
   const metadata = {
     resolvedAt: DateTime.makeUnsafe("2026-05-18T00:00:00Z"),
     source: "tooling.test",
@@ -77,7 +80,6 @@ const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseCon
           }),
     },
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     metadata,
@@ -104,7 +106,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseCon
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: compileTestLandofile({ name: "tooling-test", tooling: { custom: task } }),
+        discover: Effect.suspend(() => discovery),
       }),
     ),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
@@ -153,6 +155,9 @@ const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseCon
     setTooling: (tooling: Readonly<Record<string, ToolingTaskShape>>) => {
       plan = attachEffectiveTooling(plan, tooling);
     },
+    setLandofile: (compiled: LoadScopedLandofile) => {
+      discovery = Effect.succeed(compiled);
+    },
     run: (options: Omit<RunToolingOptions, "name"> = {}) =>
       Effect.runPromise(
         runTooling({ name: "custom", ...options }).pipe(Effect.provide(layer), Effect.result),
@@ -173,6 +178,46 @@ test("rejects a freshly disabled task even when the plan carries an enabled task
   });
   expect(f.selections).toHaveLength(0);
 });
+
+test.each([false, { disabled: true }])(
+  "attributes a fresh disabled value %j rather than the task root",
+  async (disabled) => {
+    const root = process.cwd();
+    const file = `${root}/.lando.local.yml`;
+    const compiled = await Effect.runPromise(
+      loadAuthoredDocuments(
+        [
+          {
+            file: `${root}/.lando.yml`,
+            value: { name: "tooling-test", tooling: { custom: { cmd: "echo base" } } },
+          },
+          { file, value: { tooling: { custom: disabled } } },
+          {
+            file: `${root}/.lando.user.yml`,
+            value: {
+              tooling:
+                disabled === false
+                  ? { other: { cmd: "echo user" } }
+                  : { custom: { description: "higher task root" } },
+            },
+          },
+        ],
+        { appRoot: root, file: `${root}/.lando.yml` },
+      ),
+    );
+    const f = fixture({ disabled: true });
+    f.setLandofile(compiled);
+    const result = await f.run();
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ToolingDisabledError",
+        source: { path: file, task: "custom" },
+        remediation: expect.stringContaining(file),
+      },
+    });
+  },
+);
 
 test("resolves app and proxy expressions in a freshly authored task", async () => {
   // Given a fresh declaration carrying deferred-scope expressions

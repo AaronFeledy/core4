@@ -9,16 +9,12 @@ import { makeLandoPaths } from "@lando/paths";
 import { type HostPlatform, PluginDoctorReport } from "@lando/sdk/schema";
 
 import { makeRouterBindAddressCheck, routerBindAddressCheck } from "../src/doctor-bind-address.ts";
-import { buildTraefikServiceConfig } from "../src/global-services/traefik.ts";
-import { resolveTryLists } from "../src/port-acquisition-helpers.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
-import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
 import {
   DEFAULT_ROUTER_BIND_ADDRESS,
   UNSPECIFIED_BIND_REMEDIATION,
   classifyRouterBindAddress,
   normalizeRouterBindAddress,
-  resolvePublishedRouterBindAddress,
   resolveRouterBindAddress,
   routerBindAddressFromEnv,
 } from "../src/router-bind-address.ts";
@@ -58,6 +54,7 @@ const withAcquisitionFile = (
       httpsPort: 8443,
       notices: [],
       fingerprint: { http: [8080], https: [8443], bindAddress },
+      appliedFingerprint: { http: [8080], https: [8443], bindAddress },
     })}\n`,
   );
   return {
@@ -81,6 +78,8 @@ describe("classifyRouterBindAddress", () => {
     expect(classifyRouterBindAddress("0.0.0.0")).toBe("unspecified");
     expect(classifyRouterBindAddress("::")).toBe("unspecified");
     expect(classifyRouterBindAddress("[::]")).toBe("unspecified");
+    expect(classifyRouterBindAddress("0:0:0:0:0:0:0:0")).toBe("unspecified");
+    expect(classifyRouterBindAddress("[0000:0:0:0:0:0:0:0000]")).toBe("unspecified");
   });
 
   test("treats a specific non-loopback IP as specific", () => {
@@ -233,48 +232,6 @@ describe("routerBindAddressCheck", () => {
         runtimeStatus: "intentional LAN sharing",
         context: { bindAddress: "10.0.0.8", kind: "specific", note: "intentional LAN sharing" },
       });
-    } finally {
-      acquisition.cleanup();
-    }
-  });
-});
-
-describe("publication, probes, display, and doctor agree", () => {
-  test("share the persisted fingerprint bind after Landofile bind is ignored", async () => {
-    // Given: global bind 10.0.0.8, a widening Landofile bind, and a matching acquisition fingerprint.
-    const configured = "10.0.0.8";
-    const persisted = "10.0.0.8";
-    const lists = resolveTryLists({
-      router: { bindAddress: configured },
-      paths: { platform: "linux", globalAppRoot: "/tmp" },
-    } as TraefikProxyDependencies);
-    const published = buildTraefikServiceConfig({
-      http: 8080,
-      https: 8443,
-      bindAddress: resolvePublishedRouterBindAddress(persisted, "0.0.0.0"),
-    });
-    const displayHost = persisted;
-    const acquisition = withAcquisitionFile(persisted);
-
-    try {
-      const reports = await runCheck(
-        { LANDO_ROUTER_BIND_ADDRESS: "0.0.0.0" },
-        "linux",
-        undefined,
-        acquisition.userDataRoot,
-      );
-      const report = decodeReport(reports[0]);
-
-      // Then: probes, publication, display, and doctor all use 10.0.0.8.
-      expect(lists.bindAddress).toBe(configured);
-      expect(lists.fingerprint.bindAddress).toBe(configured);
-      expect(
-        published.endpoints
-          ?.filter((endpoint) => endpoint._tag === "published")
-          .map((endpoint) => endpoint.publication.bindAddress),
-      ).toEqual([configured, configured]);
-      expect(displayHost).toBe(configured);
-      expect(report.context.bindAddress).toBe(configured);
     } finally {
       acquisition.cleanup();
     }

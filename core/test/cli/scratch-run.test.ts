@@ -1575,6 +1575,8 @@ describe("scratch run streaming spec", () => {
                 operation: "exec",
                 service: "toolbox",
                 message: "exec failed",
+                remediation:
+                  "Confirm service `toolbox` is running and the exec command is valid inside that container, then retry.",
               }),
             ),
         });

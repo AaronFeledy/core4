@@ -2,14 +2,17 @@ import { type NormalizedRoute, normalizeRoute } from "@lando/landofile/route-nor
 import { getLandofileValueSource } from "@lando/landofile/validation";
 import {
   DomainName,
+  LANDO_SHARED_CROSS_APP_NETWORK,
   type LandofileShape,
   type RouteInput,
   ServiceName,
   type ValidationIssue,
   type ValidationIssuePath,
+  landoAuthoredNetworkName,
 } from "@lando/sdk/schema";
 import { Iterable, Result, Schema } from "effect";
 import { deferredSiteKey } from "./landofile-scopes.ts";
+import { appNetworkName } from "./naming.ts";
 
 export type PlannerIssue = ValidationIssue & { readonly rule: string };
 
@@ -23,9 +26,13 @@ export const validateResolvedLandofile = (input: {
   readonly landofile: LandofileShape;
   readonly landofilePath: string;
   readonly blocked: ReadonlySet<string>;
+  readonly appSlug?: string;
 }) => {
   const { landofile, blocked } = input;
   const issues: PlannerIssue[] = [];
+  const networkIssue = (path: ValidationIssuePath, message: string, suggestion: string) => {
+    if (!isBlocked(path)) issues.push({ path, rule: "landofile.network", message, suggestion });
+  };
   const routes = new Map<string, ReadonlyArray<NormalizedRoute> | undefined>();
   const isBlocked = (path: ValidationIssuePath) => {
     const key = deferredSiteKey(path);
@@ -49,7 +56,77 @@ export const validateResolvedLandofile = (input: {
     }
     return normalized;
   };
+  const bridgeName = input.appSlug === undefined ? undefined : appNetworkName(input.appSlug);
+  for (const [key, network] of Object.entries(landofile.networks ?? {})) {
+    const path = ["networks", key];
+    if (key === "default")
+      networkIssue(
+        path,
+        "Lando owns the default app network.",
+        "Declare a separately keyed network and list it on the services that should join it.",
+      );
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u.test(key))
+      networkIssue(
+        path,
+        `Invalid network key ${JSON.stringify(key)}.`,
+        "Start network keys with a letter or digit and use only letters, digits, underscores, dots, and hyphens.",
+      );
+    if (network.external === true && network.driver !== undefined)
+      networkIssue(
+        [...path, "driver"],
+        "External networks cannot declare a driver.",
+        "Remove driver; the existing network owns its driver configuration.",
+      );
+    if (network.external !== true && network.name !== undefined)
+      networkIssue(
+        [...path, "name"],
+        "App-owned networks cannot declare a physical name.",
+        "Lando names the networks it creates. To join a network that already exists, set external: true.",
+      );
+    const name = network.name ?? key;
+    if (
+      network.external === true &&
+      input.appSlug !== undefined &&
+      name.startsWith(landoAuthoredNetworkName(input.appSlug, ""))
+    )
+      networkIssue(
+        path,
+        `External network ${name} uses a name Lando generates for this app's own networks.`,
+        "Remove external and name to let Lando manage this network, or join a network another project owns by its own name.",
+      );
+    if (network.external === true && (name === bridgeName || name === LANDO_SHARED_CROSS_APP_NETWORK))
+      networkIssue(
+        path,
+        `External network ${name} is already a Lando app or shared network.`,
+        "Remove this declaration; services already join Lando's app and shared networks.",
+      );
+  }
+  const joined = new Set(
+    Object.values(landofile.services ?? {}).flatMap((service) => Object.keys(service.networks ?? {})),
+  );
+  const physicalNames = new Map<string, string>();
+  for (const [key, network] of Object.entries(landofile.networks ?? {})) {
+    if (!joined.has(key) || input.appSlug === undefined) continue;
+    const name =
+      network.external === true ? (network.name ?? key) : landoAuthoredNetworkName(input.appSlug, key);
+    const other = physicalNames.get(name);
+    if (other !== undefined)
+      networkIssue(
+        ["networks", key],
+        `Networks ${other} and ${key} both resolve to network ${name}.`,
+        "Give each external network its own name, or join one network entry from every service that needs it.",
+      );
+    else physicalNames.set(name, key);
+  }
   for (const [name, service] of Object.entries(landofile.services ?? {})) {
+    for (const key of Object.keys(service.networks ?? {})) {
+      if (key !== "default" && !Object.hasOwn(landofile.networks ?? {}, key))
+        networkIssue(
+          ["services", name, "networks", key],
+          `Service ${name} joins undeclared network ${key}.`,
+          `Declare ${key} under top-level networks:, or remove the service attachment.`,
+        );
+    }
     const proxy = landofile.proxy?.[ServiceName.make(name)];
     const serviceRoutes = checkRoutes(service.routes, ["services", name, "routes"]);
     const proxyRoutes = checkRoutes(proxy, ["proxy", name]);

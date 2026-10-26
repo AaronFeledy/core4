@@ -6,6 +6,7 @@ import {
   type CacheError,
   type CommandAliasConflictError,
   type CommandAliasTargetError,
+  type LandofileFormConflictError,
   type NotImplementedError,
   ToolingCompileError,
 } from "@lando/sdk/errors";
@@ -124,12 +125,12 @@ export const resolveAppCommandHelpAliases = Effect.fnUntraced(function* (
   ReadonlyArray<readonly [string, string]> | undefined,
   CacheError | CommandAliasConflictError | CommandAliasTargetError
 > {
-  const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
+  const appRoot = yield* findAppRoot(options.cwd);
   if (appRoot === undefined) return undefined;
   const cache = yield* readFreshAppCommandCacheForCwd({
     cwd: appRoot,
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-  });
+  }).pipe(Effect.catchTag("LandofileFormConflictError", () => Effect.succeed(null)));
   if (cache === null) return undefined;
   const policyError = commandAliasPolicyError(cache);
   if (policyError !== undefined) return yield* Effect.fail(policyError);
@@ -148,6 +149,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
 ): Effect.fn.Return<
   ToolingRoute,
   | CacheError
+  | LandofileFormConflictError
   | CommandAliasConflictError
   | CommandAliasTargetError
   | BunShellScriptEmptyError
@@ -161,13 +163,19 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   if (token.startsWith("-")) return { _tag: "not-tooling" } as const;
   const name = toolingName(token);
 
-  const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
+  const appRoot = yield* findAppRoot(options.cwd);
   if (appRoot === undefined) return { _tag: "not-tooling" } as const;
 
   const cache = yield* readFreshAppCommandCacheForCwd({
     cwd: appRoot,
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-  });
+  }).pipe(
+    // A built-in owns its Landofile policy (teardown tolerates the conflict, start reports it),
+    // so only a tooling token fails here.
+    Effect.catchTag("LandofileFormConflictError", (error) =>
+      resolveBuiltInCommand(token) === undefined ? Effect.fail(error) : Effect.succeed(null),
+    ),
+  );
   if (cache === null) {
     const registeredAlias = resolveBuiltInCommand(token);
     if (registeredAlias !== undefined) {

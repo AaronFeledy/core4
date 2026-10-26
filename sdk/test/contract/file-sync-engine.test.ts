@@ -171,7 +171,15 @@ describe("FileSyncEngine contract", () => {
       ...engine,
       createSession(this: typeof TestFileSyncEngine, spec: ReturnType<typeof buildSpec>) {
         return spec.source === "/etc"
-          ? Effect.fail(new FileSyncStopError({ engineId: "test", sessionRef: "x", message: "wrong" }))
+          ? Effect.fail(
+              new FileSyncStopError({
+                engineId: "test",
+                sessionRef: "x",
+                message: "wrong",
+                remediation:
+                  "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
+              }),
+            )
           : createSession.call(this, spec);
       },
     } as typeof TestFileSyncEngine;
@@ -186,7 +194,13 @@ describe("FileSyncEngine contract", () => {
       ...engine,
       streamEvents(this: typeof TestFileSyncEngine, ref: FileSyncSessionRef) {
         return ref === "__CONFLICT__"
-          ? Stream.fail(new FileSyncStartError({ engineId: "test", message: "wrong" }))
+          ? Stream.fail(
+              new FileSyncStartError({
+                engineId: "test",
+                message: "wrong",
+                remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+              }),
+            )
           : streamEvents.call(this, ref);
       },
     } as typeof TestFileSyncEngine;
@@ -201,7 +215,13 @@ describe("FileSyncEngine contract", () => {
       ...engine,
       terminateSession(this: typeof TestFileSyncEngine, ref: FileSyncSessionRef) {
         return ref === "__STOP_FAIL__"
-          ? Effect.fail(new FileSyncStartError({ engineId: "test", message: "wrong" }))
+          ? Effect.fail(
+              new FileSyncStartError({
+                engineId: "test",
+                message: "wrong",
+                remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+              }),
+            )
           : terminateSession.call(this, ref);
       },
     } as typeof TestFileSyncEngine;

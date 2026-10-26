@@ -8,12 +8,12 @@ import {
   ProviderId,
   ResourceOwnership,
   ServiceName,
+  landoOwnedNetworkNames,
   planAppIdentity,
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { isSharedNetwork } from "./native-ownership.ts";
 import { serviceContainerName } from "./plan.ts";
-import { podmanNetworkNames } from "./podman/networks.ts";
 import { volumeClassForStore } from "./volume-classes.ts";
 
 const ResourceOwner = Schema.Struct({
@@ -28,7 +28,11 @@ const ContainerIdentity = Schema.Struct({
   kind: Schema.Literal("container"),
   service: ServiceName,
 });
-const NetworkIdentity = Schema.Struct({ ...ResourceOwner.fields, kind: Schema.Literal("network") });
+const NetworkIdentity = Schema.Struct({
+  ...ResourceOwner.fields,
+  kind: Schema.Literal("network"),
+  role: Schema.optionalKey(Schema.Literal("authored")),
+});
 const VolumeIdentity = Schema.Struct({
   ...ResourceOwner.fields,
   kind: Schema.Literal("volume"),
@@ -106,6 +110,8 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
                 reason: "version",
                 operation: "resource-ownership",
                 cause: version,
+                remediation:
+                  "Upgrade Lando or clear the resource-ownership state written by an incompatible build.",
               });
             },
           })
@@ -153,9 +159,19 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
             service: service.name,
           }),
         );
-      for (const name of podmanNetworkNames(attempt)) {
+      for (const name of landoOwnedNetworkNames(attempt)) {
+        const authored = attempt.networking?.authoredNetworks?.some(
+          (network) => !network.external && network.name === name,
+        );
         if (!isSharedNetwork(attempt, name))
-          resources.push(identify({ ...identity, kind: "network", nativeName: name }));
+          resources.push(
+            identify({
+              ...identity,
+              kind: "network",
+              nativeName: name,
+              ...(authored ? { role: "authored" as const } : {}),
+            }),
+          );
       }
       for (const store of attempt.stores)
         resources.push(

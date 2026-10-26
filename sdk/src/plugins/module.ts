@@ -55,6 +55,7 @@ export type RuntimeProviderFactoryRequirements =
 
 export interface RuntimeProviderContribution {
   readonly id: ProviderId;
+  readonly declaredCapabilities?: (platform: HostPlatform, arch?: string) => ProviderCapabilities;
   readonly resourceOwnership?: (
     ctx: LandoPluginContext,
     root: AbsolutePath,

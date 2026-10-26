@@ -30,7 +30,6 @@ test.each([17, 18, 19, 28, 29, 30])("rejects matching revision-%i persisted plan
       provider: ProviderId.make("lando"),
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: {

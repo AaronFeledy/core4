@@ -139,14 +139,21 @@ const toPublishState = (state: AcquisitionState): TraefikPublishState => ({
   ...(state.bindHttpsPort === undefined ? {} : { bindHttpsPort: state.bindHttpsPort }),
 });
 
+export const resolveTraefikPublication = (
+  state: AcquisitionState | undefined,
+  fallback: string,
+): TraefikPublishPorts => ({
+  ...resolveTraefikPublishPorts(state === undefined ? undefined : toPublishState(state)),
+  bindAddress:
+    state?.mode === "socket-helper"
+      ? DEFAULT_ROUTER_BIND_ADDRESS
+      : resolvePublishedRouterBindAddress(state?.fingerprint.bindAddress, fallback),
+});
+
 const traefikGlobalService: Effect.Effect<ServiceConfig> = Effect.gen(function* () {
   const state = yield* loadAcquisitionState;
   const fallback = yield* resolveEffectiveRouterBindAddress();
-  const bindAddress = resolvePublishedRouterBindAddress(state?.fingerprint.bindAddress, fallback);
-  return buildTraefikServiceConfig({
-    ...resolveTraefikPublishPorts(state === undefined ? undefined : toPublishState(state)),
-    bindAddress,
-  });
+  return buildTraefikServiceConfig(resolveTraefikPublication(state, fallback));
 });
 
 export default traefikGlobalService;

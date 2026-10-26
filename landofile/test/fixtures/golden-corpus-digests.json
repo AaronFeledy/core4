@@ -136,6 +136,20 @@
       "digest": "ab78ee10251571f12549ce10a6d9728201df7344889fe42eee427380bf283cb9"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/wrong-filter-prefix",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/wrong-type",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/config-translate/fixtures/lando3-compose-arguments",
       "invalid": {
         "status": "invalid",
@@ -242,6 +256,10 @@
       "digest": "c5d890ccf5168bac68eb47a4a55d47145d21cd7fee243fe96175b0b2bdf3514e"
     },
     {
+      "fixture": "docs/guides/drupal-testing/fixtures/drupal-demo",
+      "digest": "bed9f5e2d17248a89ef4bb97f7b3c1af43a447f3280c91990f592b1c1c1526d2"
+    },
+    {
       "fixture": "docs/guides/elasticsearch/fixtures/elasticsearch-demo",
       "invalid": {
         "status": "invalid",
@@ -324,7 +342,7 @@
     },
     {
       "fixture": "docs/guides/flags-and-args/fixtures/flags-demo",
-      "digest": "c5606017647f40a8e6a69bc7592efbc951ee0f83686e41c93c709b5cfb956cba"
+      "digest": "49fb4d290f20b8d94f80548c6c21dc10685a151bdb66e96b4254b6c2721b5440"
     },
     {
       "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",
@@ -365,6 +383,10 @@
     {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-unknown-home",
       "digest": "2fcfc6c5a00ae68feaaae6aea33fc3e6b0cf8770f8f5d54869a8e78530846aaf"
+    },
+    {
+      "fixture": "docs/guides/host-services/fixtures/host-reach-demo",
+      "digest": "bb717d18eb01d22992330342a66440aee195a7c6616a6af971dc4856cf2fc236"
     },
     {
       "fixture": "docs/guides/import-a-database/fixtures/import-a-database-demo",
@@ -510,6 +532,29 @@
     {
       "fixture": "docs/guides/mysql/fixtures/mysql-demo",
       "digest": "7a9fb91ab0023bac0648956ec7bd5c08d1694319d34e3f417038362492b516c2"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-demo",
+      "digest": "1a0e8d66f3e73cef88f44002d918e0522172dd2a39c25f9e5c6785545e0aed6f"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-include",
+      "digest": "cb069536a4627ca18f8601c497293d1b3ebb4802c1e70aae98184c0ee4ac6d1c"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-misdeclared",
+      "digest": "5c6f4865559c80cd10d6e618c2a948e35cfdaf784fe10c98c014e08ae3655eae"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-pinned-address",
+      "invalid": {
+        "status": "invalid",
+        "tag": "ComposeKeyRejectedError"
+      }
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-undeclared",
+      "digest": "1043e09b1fcfa6be384fb3bc16839209bc9df7e8b03a365c6d5655b236beaf93"
     },
     {
       "fixture": "docs/guides/nginx/fixtures/nginx-demo",
@@ -984,6 +1029,13 @@
       "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
     },
     {
+      "fixture": "docs/guides/your-landofile/fixtures/dual-form-conflict",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileFormConflictError"
+      }
+    },
+    {
       "fixture": "docs/guides/your-landofile/fixtures/empty-routes-overlay",
       "digest": "097f0e2646abd0984cb33c6aa15193c8018ddeb1883184e708d08ba82e85e98b"
     },
@@ -1001,6 +1053,10 @@
     {
       "fixture": "docs/guides/your-landofile/fixtures/schema-merge-rules",
       "digest": "4c084b4b9d168141c77cf669e80c2ee93bf0990725783b5d481bf6c12adfc937"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/typescript-local-layer",
+      "digest": "51d6daed4c54038988d6f35c326d769d1e8c1ba1e8389f548ac163abcb5be4bc"
     },
     {
       "fixture": "docs/guides/your-landofile/fixtures/your-landofile-demo",

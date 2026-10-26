@@ -35,6 +35,16 @@ lando info
 
 `lando info` prints URLs and connection details for the configured services. This example supplies a Node environment and Postgres; add your application code and startup command to make Node serve your application.
 
+A task that only needs a command can be a non-empty string. It uses your tooling defaults and the same service selection as an object task with only `cmd:`:
+
+```yaml
+tooling:
+  node: node
+  check: echo checking
+```
+
+Use the object form when you need `service:`, flags, args, or other task settings. An empty shorthand string is rejected; use `false` to turn a task off. The object form still accepts `cmd: ""`, but that is not a disabling shorthand.
+
 MySQL and Postgres already wait on their own probe. To wait on your app, set `healthcheck:` on the service. See [Make start wait for your app](../services/wait-for-your-app.mdx).
 
 ## Add a hostname
@@ -52,6 +62,27 @@ services:
 ```
 
 Top-level `proxy:` is the other spelling: a map of service name to the same route list. Set `routes: []` to give a service no hostname at all.
+
+## Stop discovery at a directory
+
+Run app commands from your app directory or any directory below it. Lando checks
+the current directory, then up to 64 parents, and uses the first directory with
+any Landofile layer. It never combines layers from different directories.
+
+To keep a workspace from picking up a Landofile above it, put an empty
+`.lando.stop` file at the workspace boundary:
+
+```sh
+touch .lando.stop
+lando app:config --format=json
+```
+
+Lando still checks that directory for a Landofile before stopping. Its own
+Landofile wins, and apps nested below it work normally. With no Landofile below
+or at the boundary, the command reports `LandofileNotFoundError`, the searched
+range, and the marker location. Run `lando init` to create an app, or move/remove
+the marker if you meant to use a parent app. Without a marker, discovery stops at
+the filesystem root or the 64-parent limit.
 
 ## Write maps as block YAML
 
@@ -87,9 +118,17 @@ That fails with `LandofileParseError`, the line number, and a remediation showin
 
 Put machine-local changes in `.lando.local.yml`. Layers load from low to high precedence: `.lando.base.yml`, `.lando.dist.yml`, `.lando.upstream.yml`, `.lando.yml`, `.lando.local.yml`, then `.lando.user.yml`.
 
+Each layer accepts YAML (`.yml`) or TypeScript (`.ts`), not both: Landofile loads fail with `LandofileFormConflictError` naming both files and telling you to remove one. `stop` and `destroy` can still tear down from applied state, skipping Landofile hooks with the conflict reason; a never-started app reports `unchanged`.
+
+If both `.lando.yml` and `.lando.ts` exist, run `lando app:config --format=json`
+to inspect the conflict without starting services. Remove one form from that
+layer, then run the command again to check the remaining configuration.
+
 Maps deep-merge and scalars use the later value. Collection rules come from each field's schema, not the properties of its entries. Included Landofiles follow the same rules.
 
 These are authored values: Lando merges before interpreting shorthand or adding defaults. A local `appMount: /site` replaces an inherited app-mount object, including its `excludes`. Changing `environment` or `labels` between a list and a map also replaces the earlier value. Use maps when you want individual keys to merge. Only literal `healthcheck: false` discards an inherited probe before later layers; disabled object spellings still participate in ordinary map merging.
+
+The same rule applies to tooling: `tooling.check: echo local` or `tooling.check: false` replaces an inherited task wholesale, including its `service`, `cmds`, and flags. Lando interprets those shorthands only after composing the layers. The bare string `disabled` is rejected; use `false` to disable a task.
 
 Inspect the effective result with `lando app:config --format=json`. A bad local value carries its effective `issues[].path` plus `issues[].source` with the original file, layer, and authored path. The error's `remediation` is separate from those locations. Source coordinates appear only when the parser actually recorded them.
 
@@ -189,7 +228,7 @@ lando app:config --format=json
 
 `services.web.routes` is exactly `["web.local.test"]`, and `environment` holds only `APP_ENV`. A plain `routes:` list would have merged by hostname and kept both inherited routes. The directives themselves never show up in `app:config`, plans, or containers; layer merging consumes them.
 
-A `.lando.*.ts` layer uses the same operations through helpers:
+A `.lando.*.ts` layer uses the same operations through helpers. Save this as `.lando.local.ts` next to the `.lando.yml` above and inspect the same merged result:
 
 ```ts
 import { defineLandofile, override, reset } from "@lando/sdk";
@@ -203,6 +242,12 @@ export default defineLandofile({
   },
 });
 ```
+
+```sh
+lando app:config --format=json
+```
+
+Lando supplies `@lando/sdk` and `effect` to every `.lando.*.ts` layer when it loads the file, from the compiled binary too, so the app needs no `node_modules` and no install step. That covers the `@lando/sdk` root and its public subpaths (`@lando/sdk/schema`, `@lando/sdk/landofile`, and the rest; `@lando/sdk/test` and `@lando/sdk/docs/components` are not provided), plus `effect`, `effect/http`, and the module subpaths those two entrypoints export, such as `effect/Effect`, `effect/Schema`, and `effect/http/HttpClient`. Other Effect subpaths are not supplied. Lando's own copies always win at load time, so a locally installed `@lando/sdk` or `effect` only helps your editor with types. Any other bare import resolves from a `node_modules` directory at or above the file; a package that isn't there fails the load with a remediation naming the package.
 
 Where they go:
 
@@ -235,6 +280,23 @@ lando info
 `app:config` prints the resolved Landofile. `info` prints URLs and connection details.
 
 <Guide>
+  <Scenario id="dual-form-conflict" render>
+    <Step name="inspect-conflicting-forms">
+      <UseFixture name="dual-form-conflict" />
+      <Run command="lando app:config --format=json" expectExit={1} />
+      <Verify errorTag="LandofileFormConflictError" expect={{ regex: "\\.lando\\.yml" }} />
+      <Verify errorTag="LandofileFormConflictError" expect={{ regex: "\\.lando\\.ts" }} />
+      <Verify command="lando app:config --format=json" expectExit={1} expect={{ stdout: { regex: "\"remediation\":\\s*\"[^\"\\s]" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="discovery-stop-marker" render>
+    <Step name="set-workspace-boundary">
+      <UseFixture name="discovery-stop-marker" />
+      <Run command="lando app:config --format=json" expectExit={1} />
+      <Verify errorTag="LandofileNotFoundError" expect={{ regex: "\\.lando\\.stop" }} />
+      <Verify errorTag="LandofileNotFoundError" expect={{ regex: "Searched from" }} />
+    </Step>
+  </Scenario>
   <Scenario id="landofile-shape" render>
     <Step name="scaffold">
       <UseFixture name="your-landofile-demo" />
@@ -257,6 +319,22 @@ lando info
       <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "DEBUG" } } }} />
     </Step>
     <Step name="cleanup-directive-layers">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="typescript-local-layer" render>
+    <Step name="scaffold-typescript-layer">
+      <UseFixture name="typescript-local-layer" />
+    </Step>
+    <Step name="inspect-typescript-merge">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"typescript-local-layer\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"routes\":\\s*\\[\\s*\"web\\.local\\.test\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "web\\.(a|b)\\.test" } } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"environment\":\\s*\\{\\s*\"APP_ENV\":\\s*\"dev\"\\s*\\}" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "DEBUG" } } }} />
+    </Step>
+    <Step name="cleanup-typescript-layer">
       <Cleanup />
     </Step>
   </Scenario>

@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { evaluateTemplateEither, parseExpressionEither } from "@lando/sdk/expressions";
 import { type ValueOrigins, isLandofileOverride, isLandofileReset } from "@lando/sdk/landofile";
 import { Effect, Predicate, Result } from "effect";
+import { composeIncludeDefaults } from "../src/include-compose-defaults.ts";
 import { LANDOFILE_LAYER_POSITIONS } from "../src/layers.ts";
 import { getOrigins } from "../src/pipeline/origins.ts";
 import type { AuthoredOrigin } from "../src/pipeline/prepare.ts";
@@ -61,9 +62,33 @@ function* scalarLeaves(value: unknown, path: Path = []): Generator<{ path: Path;
   yield { path, value: unwrapped };
 }
 
-function assertProvenance(document: object): number {
+// Local Compose fragments named by a document's top-level `include:` are prepared through the
+// Compose include transform (service defaults and fragment-relative paths) before composition.
+function composeFragmentDocuments(
+  documents: ReturnType<typeof getSourceDocuments>,
+  appRoot: string,
+): ReadonlyMap<string, unknown> {
+  const fragments = new Map<string, unknown>();
+  for (const { file, document } of documents) {
+    const entries = Predicate.isObject(document) ? Reflect.get(document, "include") : undefined;
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      if (typeof entry !== "string") continue;
+      const fragmentFile = resolve(dirname(file), entry);
+      const fragment = documents.find((candidate) => candidate.file === fragmentFile);
+      if (fragment === undefined || !Predicate.isObject(fragment.document)) continue;
+      fragments.set(
+        fragmentFile,
+        composeIncludeDefaults(fragment.document, { appRoot, sourceRoot: dirname(fragmentFile) }),
+      );
+    }
+  }
+  return fragments;
+}
+
+function assertProvenance(document: object, appRoot: string): number {
   const documents = getSourceDocuments(document);
   const origins = getOrigins(document);
+  const composeFragments = composeFragmentDocuments(documents, appRoot);
   let checked = 0;
   for (const { path, value } of scalarLeaves(document)) {
     const { source } = exactOriginAt(origins, path);
@@ -73,7 +98,12 @@ function assertProvenance(document: object): number {
       `Unretained source for ${JSON.stringify(path)}: ${JSON.stringify(source)}`,
     ).toBeDefined();
     if (retained === undefined) throw new Error(`Unretained source ${source.file}`);
-    const authored = authoredValueAt(retained.document, source.path);
+    const composeFragment = composeFragments.get(source.file);
+    const authored =
+      composeFragment === undefined
+        ? authoredValueAt(retained.document, source.path)
+        : // Injected defaults point at their service; extend the origin by the composed suffix.
+          authoredValueAt(composeFragment, [...source.path, ...path.slice(source.path.length)]);
     checked++;
     if (
       typeof authored === "string" &&
@@ -128,11 +158,13 @@ const fixtureRoots = [...new Set(fixtureFiles.map(dirname))];
 const outcomes: { fixture: string; leaves?: number; reason?: string }[] = [];
 const acquisitionExclusions = new Map([
   ["docs/guides/compose-service-block/fixtures/compose-service-block-rejected", "ComposeKeyRejectedError"],
+  ["docs/guides/networks/fixtures/networks-pinned-address", "ComposeKeyRejectedError"],
   ["docs/guides/includes-and-lockfile/fixtures/user-profile-demo", "LandofileIncludeError"],
   ["docs/guides/migrating-recipes/fixtures/programmatic-app", "LandofileFormConflictError"],
   ["docs/guides/timezone/fixtures/timezone-rejected-interpolation", "LandofileValidationError"],
   ["docs/guides/expressions/fixtures/expressions-unescaped-shell", "LandofileValidationError"],
   ["docs/guides/your-landofile/fixtures/flow-mapping-rejected", "LandofileParseError"],
+  ["docs/guides/your-landofile/fixtures/dual-form-conflict", "LandofileFormConflictError"],
 ]);
 
 describe("composed Landofile provenance invariant", () => {
@@ -148,7 +180,7 @@ describe("composed Landofile provenance invariant", () => {
         outcomes.push({ fixture, reason: `${result.failure._tag}: ${result.failure.message}` });
         return;
       }
-      outcomes.push({ fixture, leaves: assertProvenance(result.success.merged) });
+      outcomes.push({ fixture, leaves: assertProvenance(result.success.merged, root) });
     });
   }
 
@@ -185,7 +217,7 @@ describe("composed Landofile provenance invariant", () => {
     const { merged } = await Effect.runPromise(composeLandofileRootLayers(root, inputs));
     // Then: no composed entry may borrow the local includes ancestor's provenance.
     expect(merged.includes).toHaveLength(3);
-    expect(assertProvenance(merged)).toBeGreaterThanOrEqual(11);
+    expect(assertProvenance(merged, root)).toBeGreaterThanOrEqual(11);
   });
 
   test("load/import descendants point at expression sites despite escaped produced text", async () => {
@@ -202,7 +234,7 @@ describe("composed Landofile provenance invariant", () => {
     expect(merged["x-loaded"]).toEqual({ nested: ["{{ app.name }} ${VALUE}", 17] });
     expect(merged["x-imported"]).toEqual({ nested: ["{{ app.name }} ${VALUE}", 17] });
     expect(runtime.pendingSites).toEqual([]);
-    expect(assertProvenance(merged)).toBe(5);
+    expect(assertProvenance(merged, root)).toBe(5);
     for (const key of ["x-loaded", "x-imported"]) {
       expect(exactOriginAt(getOrigins(merged), [key, "nested", 0]).source.path).toEqual([key]);
     }
@@ -226,7 +258,7 @@ describe("composed Landofile provenance invariant", () => {
     // When: fold native directives and canonical aliases.
     const { merged } = await Effect.runPromise(composeLandofileRootLayers(root, inputs));
     // Then: authored cursor equality holds without special cases for either transformation.
-    expect(assertProvenance(merged)).toBeGreaterThanOrEqual(6);
+    expect(assertProvenance(merged, root)).toBeGreaterThanOrEqual(6);
     expect(exactOriginAt(getOrigins(merged), ["services", "other", "workingDirectory"]).source.path).toEqual([
       "services",
       "other",

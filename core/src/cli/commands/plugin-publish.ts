@@ -23,7 +23,7 @@ export class PluginPublishValidationError extends Schema.TaggedError<PluginPubli
   "PluginPublishValidationError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -32,7 +32,7 @@ export class PluginPublishAuthError extends Schema.TaggedError<PluginPublishAuth
   "PluginPublishAuthError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     registry: Schema.String,
   },
 ) {}
@@ -173,7 +173,8 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
         ? cause
         : new PluginManifestError({
             message: `Plugin manifest validation failed in ${pluginRoot}.`,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: `Check package.json in ${pluginRoot} and correct the reported manifest issues.`,
           }),
   });
   const pkg = yield* Effect.tryPromise({
@@ -183,7 +184,8 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
         ? cause
         : new PluginManifestError({
             message: `Unable to read package.json in ${pluginRoot}.`,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: `Make package.json in ${pluginRoot} readable and valid JSON.`,
           }),
   });
   const entries = yield* Effect.try({
@@ -193,7 +195,8 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
         ? cause
         : new PluginManifestError({
             message: `Invalid package exports in ${pluginRoot}.`,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: "Correct package.json exports to point to files inside the plugin package.",
           }),
   });
   const bunOptions = {

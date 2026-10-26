@@ -196,9 +196,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
             timestamp: DateTime.nowUnsafe(),
           }),
         );
-        yield* provider
-          .stop({ app: target.plan.id, service: service.name, plan: target.plan })
-          .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void));
+        yield* provider.stop({ app: target.plan.id, service: service.name, plan: target.plan });
         yield* events.publish(
           PostServiceStopEvent.make({
             eventName: "post-service-stop",

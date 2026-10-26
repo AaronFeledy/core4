@@ -84,9 +84,25 @@ const makeProvider = (
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "buildArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "buildArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
+        }),
+      ),
     pullArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "pullArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "pullArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `pullArtifact`.",
+        }),
+      ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
@@ -112,7 +128,14 @@ const makeProvider = (
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.empty,
     inspect: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "inspect",
+          message: "n/a",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `inspect`.",
+        }),
+      ),
     list: () => Effect.succeed([]),
   };
   return { provider, calls };
@@ -212,7 +235,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
     expect(whoami.appMount).toMatchObject({ target: "/app", readOnly: false });
     expect(whoami.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(false);
 
-    expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
+    expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-myapp", driver: "bridge" });
   });
 
   test("`lando whoami-probe` tooling alias routes a curl against the third-party service via provider.exec", async () => {
@@ -285,6 +308,6 @@ describe("compose passthrough — scenario: third-party image with default endpo
         publication: { hostPort: 9090 },
       },
     ]);
-    expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
+    expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-myapp", driver: "bridge" });
   });
 });

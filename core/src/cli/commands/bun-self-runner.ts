@@ -143,6 +143,8 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (
             "Lando could not prepare its private command directory. Check that the temp directory is writable.",
           path: tmpdir(),
           cause,
+          remediation:
+            "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
         }),
     }),
     (launcher) =>

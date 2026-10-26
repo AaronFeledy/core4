@@ -117,7 +117,7 @@ export const resolveTryLists = (dependencies: TraefikProxyDependencies): Resolve
         dependencies.router?.httpsFallbacks,
         DEFAULT_HTTPS_TRY_LIST,
       );
-    const fingerprint = dependencies.fingerprint ?? {
+    const fingerprint = {
       http: [...httpTryList],
       https: [...httpsTryList],
       bindAddress,

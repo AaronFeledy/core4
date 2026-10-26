@@ -5,7 +5,7 @@ import { escapeDiagnosticText } from "./diagnostic-text";
 export class UnknownCommandError extends Schema.TaggedError<UnknownCommandError>()("UnknownCommandError", {
   message: Schema.String,
   commandToken: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 export const unknownCommandError = (commandToken: string, suggestedCommandId?: string): UnknownCommandError =>

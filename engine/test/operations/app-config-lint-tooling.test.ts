@@ -60,7 +60,7 @@ test.each([
     message:
       "Service type reserved-tooling-test task run can't use the name run, which belongs to the built-in apps:scratch:run command.",
     suggestion:
-      "Set tooling.run.disabled: true in the Landofile to drop service type reserved-tooling-test's task, or redefine it under another name.",
+      "Set tooling.run: false in the Landofile to drop service type reserved-tooling-test's task, or redefine it under another name.",
     sourcePath: ["services", "web", "type"],
   },
 ])(
@@ -98,15 +98,37 @@ test.each([
   },
 );
 
-test("a disabled overlay drops a service type's reserved task", async () => {
+test.each(["false", "\n    disabled: true"])(
+  "overlay %s drops a service type's reserved task",
+  async (task) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-lint-tooling-disabled-"));
+    try {
+      await writeFile(
+        join(root, ".lando.yml"),
+        `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    home: false\n`,
+      );
+      await writeFile(join(root, ".lando.local.yml"), `tooling:\n  run: ${task}\n`);
+      // When
+      const result = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)),
+      );
+      // Then
+      expect(result).toMatchObject({ valid: true, violations: [] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("lint accepts all tooling task shorthands", async () => {
   // Given
-  const root = await mkdtemp(join(tmpdir(), "lando-lint-tooling-disabled-"));
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-tooling-shorthand-"));
   try {
     await writeFile(
       join(root, ".lando.yml"),
-      `name: tooling\nservices:\n  web:\n    type: ${serviceType.id}\n    home: false\n`,
+      "name: shorthand\ntooling:\n  foo: false\n  bar:\n    cmd: disabled\n  baz: echo hi\n",
     );
-    await writeFile(join(root, ".lando.local.yml"), "tooling:\n  run:\n    disabled: true\n");
     // When
     const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
     // Then

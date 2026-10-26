@@ -11,15 +11,19 @@ const describe = (error: unknown): string => {
 export const safeOuterFailure = async (
   error: unknown,
   loadRedaction = () => import("@lando/redaction/service"),
+  sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<string> => {
+  const environment = { ...sourceEnv };
   let redaction: Awaited<ReturnType<typeof loadRedaction>>;
   try {
     redaction = await loadRedaction();
   } catch {
-    return describe(error);
+    return UNREDACTABLE;
   }
   try {
-    return redaction.createStandaloneRedactor("secrets").redactString(String(error));
+    return redaction
+      .createStandaloneRedactor("secrets", { sourceEnv: environment })
+      .redactString(describe(error));
   } catch {
     return UNREDACTABLE;
   }

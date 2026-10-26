@@ -198,6 +198,7 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     "AppPlanner.planServices",
     "AppPlanner.applyPreparedFeatures",
     "AppPlanner.finalizeServices",
+    "AppPlanner.normalizeNetworks",
     "AppPlanner.validateServiceProbes",
   ]);
   const discover = spans.find((span) => span.name === "AppPlanner.discover");
@@ -402,13 +403,23 @@ const publishedEndpointServiceType = makeLegacyServiceTypeFake({
 const customPluginRegistry = {
   list: Effect.succeed([]),
   load: (pluginName: string) =>
-    Effect.fail(new PluginLoadError({ message: `Plugin ${pluginName} is not registered.`, pluginName })),
+    Effect.fail(
+      new PluginLoadError({
+        message: `Plugin ${pluginName} is not registered.`,
+        pluginName,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    ),
   loadServiceType: (id: string) => {
     if (id === appMountOnlyServiceType.id) return Effect.succeed(appMountOnlyServiceType);
     if (id === socketOnlyServiceType.id) return Effect.succeed(socketOnlyServiceType);
     if (id === publishedEndpointServiceType.id) return Effect.succeed(publishedEndpointServiceType);
     return Effect.fail(
-      new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+      new PluginLoadError({
+        message: `Service type ${id} is not registered.`,
+        pluginName: id,
+        remediation: "Install or register the plugin, then retry.",
+      }),
     );
   },
   loadServiceFeature: (id: string) => {
@@ -419,12 +430,22 @@ const customPluginRegistry = {
     ].find((candidate) => candidate.id === id);
     return feature === undefined
       ? Effect.fail(
-          new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+          new PluginLoadError({
+            message: `Service feature ${id} is not registered.`,
+            pluginName: id,
+            remediation: "Install or register the plugin, then retry.",
+          }),
         )
       : Effect.succeed(feature);
   },
   loadAppFeature: (id: string) =>
-    Effect.fail(new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id })),
+    Effect.fail(
+      new PluginLoadError({
+        message: `App feature ${id} is not registered.`,
+        pluginName: id,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    ),
 };
 
 const followLogSourceServiceType = (required: boolean): ServiceType => ({
@@ -1888,6 +1909,7 @@ describe("AppPlannerLayer.layer", () => {
                         new PluginLoadError({
                           message: `Service feature ${id} is not registered.`,
                           pluginName: id,
+                          remediation: "Install or register the plugin, then retry.",
                         }),
                       ),
                 loadAppFeature: () => Effect.die("not used"),
@@ -2022,6 +2044,7 @@ describe("AppPlannerLayer.layer", () => {
                         new PluginLoadError({
                           message: `Service feature ${id} is not registered.`,
                           pluginName: id,
+                          remediation: "Install or register the plugin, then retry.",
                         }),
                       ),
                 loadAppFeature: () => Effect.die("not used"),
@@ -2251,7 +2274,11 @@ describe("AppPlannerLayer.layer", () => {
           id === "test.smtp"
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -2306,7 +2333,11 @@ describe("AppPlannerLayer.layer", () => {
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -2379,19 +2410,31 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) =>
           id === serviceFeature.id
             ? Effect.succeed(serviceFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadAppFeature: (id: string) =>
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -2473,19 +2516,31 @@ describe("AppPlannerLayer.layer", () => {
           id === buildStepServiceType.id
             ? Effect.succeed(buildStepServiceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) =>
           id === buildStepServiceType.testFeature.id
             ? Effect.succeed(buildStepServiceType.testFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadAppFeature: (id: string) =>
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -2555,7 +2610,11 @@ describe("AppPlannerLayer.layer", () => {
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -2608,7 +2667,11 @@ describe("AppPlannerLayer.layer", () => {
           id === "test.php-only"
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -3045,7 +3108,11 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.testFeature.id
             ? Effect.succeed(serviceType.testFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadAppFeature: () => Effect.die("not used"),
       };
@@ -3695,7 +3762,7 @@ describe("AppPlannerLayer.layer", () => {
     await withTempCwd(async () => {
       const appPlan = await plan(landofileFixture);
 
-      expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-myapp", driver: "bridge" });
     });
   });
 
@@ -3709,7 +3776,7 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
 
-      expect(appPlan.networks).toEqual([{ name: "lando-my-app", shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-my-app", driver: "bridge" });
     });
   });
 
@@ -3737,7 +3804,7 @@ describe("AppPlannerLayer.layer", () => {
       expect(appPlan.name).toBe(name);
       expect(appPlan.id).toBe(AppId.make(slug));
       expect(appPlan.slug).toBe(slug);
-      expect(appPlan.networks).toEqual([{ name: `lando-${slug}`, shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: `lando-${slug}`, driver: "bridge" });
       expect(appPlan.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toContain(
         `web.${slug}.internal`,
       );
@@ -3753,7 +3820,7 @@ describe("AppPlannerLayer.layer", () => {
         services: {},
       });
 
-      expect(appPlan.networks).toEqual([]);
+      expect(appPlan.networking).toBeUndefined();
     });
   });
 
@@ -4068,13 +4135,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = features.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4082,7 +4157,11 @@ describe("AppPlannerLayer.layer", () => {
           id === appFeature.id
             ? Effect.succeed(appFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -4156,13 +4235,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = baseDefaultFeatures.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4255,13 +4342,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = features.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4269,7 +4364,11 @@ describe("AppPlannerLayer.layer", () => {
           id === appFeature.id
             ? Effect.succeed(appFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -4349,13 +4448,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = features.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4613,13 +4720,21 @@ describe("AppPlannerLayer.layer", () => {
           id === "fake-db"
             ? Effect.succeed(pinnedType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) =>
           id === basePinnedType.testFeature.id
             ? Effect.succeed(basePinnedType.testFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 

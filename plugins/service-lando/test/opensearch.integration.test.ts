@@ -80,7 +80,6 @@ describe("opensearch service type — live integration: cluster health endpoint"
           provider: providerId,
           services: { [search.name]: search },
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata: search.metadata,

@@ -149,6 +149,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@lando/engine": "workspace:*",
+        "@lando/landofile": "workspace:*",
         "@lando/redaction": "workspace:*",
         "@lando/sdk": "workspace:*",
         "effect": "catalog:",

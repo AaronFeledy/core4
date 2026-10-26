@@ -66,6 +66,8 @@ Required behavior:
 
 Construction and requirement types MUST reflect the requested tier (§22.2). Hosts invoke `openExecutionSession` through `runtime.run`, whose existing Effect-provision meaning is unchanged.
 
+The host modules in §7.1.1 are process-owned: lazy `Bun.plugin` registration outlives runtime scopes. Multiple runtimes using the same loaded Lando library share SDK and Effect module identities, not caches, plugin registries, event buses, or scopes. Per-runtime selection of independent SDK or Effect versions is unsupported. Runtime teardown MUST NOT clear the process-wide plugin registry.
+
 `resolveApp(selector)` is the Layer-native equivalent of `runtime.app(selector)`. Selector precedence is `id` > `landofile` > `root` > `cwd`; lower-precedence fields MAY accompany a selector only when they validate against it. Unknown ids and mismatches fail with `AppResolveError`. A decoded Landofile MUST include an authoritative root. Resolution MUST use retained roots and cwd, never a later ambient `process.cwd()`. With no selector, resolution uses the runtime cwd or its configured scratch app.
 
 The returned opaque, SDK-published `App` handle captures app identity and runtime services. Hosts consume handles and MUST NOT implement them structurally.
@@ -84,7 +86,7 @@ Inputs are option objects. One-shot methods require no runtime services after bi
 
 Remote methods MUST enforce §10.12.8 and retain applied-data/code side effects on failure. General approval MUST NOT assert protected typed confirmation. Non-interactive hosts MUST fail protected operations requiring that confirmation. Tether MUST NOT be exposed as a library method or through programmatic CLI dispatch, even with a custom interactive renderer. Session credentials and named overrides MUST remain with their owning scope; config pull MUST use the private file landing rules, not promise an overlay for a later start (§10.12.7).
 
-**Runtime reuse is the required performance shape for long-lived hosts.** Hosts SHOULD acquire one runtime at the lowest sufficient bootstrap level, reuse it across sequential programs, and close it only at host shutdown. Reuse avoids repeated bootstrap, discovery, and cache loading and is the basis of the §2.1 hot-path budgets. Isolation-sensitive tenants or tests use separate roots and runtimes. Hosts driving many scratch apps SHOULD reuse one non-scratch runtime and call `runtime.scratch` (§21.12).
+**Runtime reuse is the required performance shape for long-lived hosts.** Hosts SHOULD acquire one runtime at the lowest sufficient bootstrap level, reuse it across sequential programs, and close it only at host shutdown. Reuse avoids repeated bootstrap, plugin contribution-graph construction, and cache loading; Landofile app-root discovery stays operation-owned (§7.1) and is the basis of the §2.1 hot-path budgets. Isolation-sensitive tenants or tests use separate roots and runtimes. Hosts driving many scratch apps SHOULD reuse one non-scratch runtime and call `runtime.scratch` (§21.12).
 
 ### 16.4 Plugin behavior in library mode
 

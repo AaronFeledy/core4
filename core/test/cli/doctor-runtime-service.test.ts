@@ -145,6 +145,7 @@ describe("meta:doctor runtime-service check", () => {
           providerId: "lando",
           operation: "getStatus",
           message: "primary status unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `getStatus`.",
         }),
       ),
       getRuntimeServiceStatus: Effect.sync(() => {

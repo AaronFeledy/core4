@@ -62,6 +62,7 @@ const rejectUnsafeCores = (
     serviceType,
     message: coreNameRejection(core),
     issues: [{ path: ["cores", index], message: coreNameRejection(core), suggestion: CORE_NAME_REMEDIATION }],
+    remediation: CORE_NAME_REMEDIATION,
   });
 };
 

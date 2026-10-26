@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 
+import type { StateStore } from "@lando/sdk/services";
 import {
   globalConfigEdit,
   globalConfigSet,
@@ -13,13 +14,16 @@ import {
   globalConfigValidate,
 } from "../../../src/cli/commands/meta/global-config.ts";
 import type { EditorRunner } from "../../../src/recipes/prompts/editor-command.ts";
+import { testStateStoreLayer } from "../../_support/landofile-layer.ts";
 
 let dir = "";
 const filePath = (): string => join(dir, ".lando.yml");
 const seed = (content: string): Promise<void> => writeFile(filePath(), content, "utf8");
 const readFileText = (): Promise<string> => readFile(filePath(), "utf8");
 
-const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
+const run = <A, E>(effect: Effect.Effect<A, E, StateStore>): Promise<A> =>
+  Effect.runPromise(effect.pipe(Effect.provide(testStateStoreLayer)));
+const runExit = <A, E>(effect: Effect.Effect<A, E, StateStore>) => run(effect.pipe(Effect.exit));
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "lando-gcfg-"));
@@ -29,6 +33,63 @@ afterEach(async () => {
 });
 
 describe("meta global config set", () => {
+  test("fails fatally on a broken sibling without writing the candidate", async () => {
+    await seed("name: global\nruntime: 4\n");
+    const before = await readFileText();
+    const sibling = join(dir, ".lando.local.yml");
+    await writeFile(sibling, ":\n  - invalid\n::::\n");
+    const result = await run(
+      globalConfigSet({ key: "router.httpPort", value: "8080" }, filePath()).pipe(Effect.result),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "LandofileParseError", filePath: sibling },
+    });
+    expect(await readFileText()).toBe(before);
+  });
+
+  test("validates and sets with a TypeScript local layer", async () => {
+    await seed("runtime: 4\n");
+    await writeFile(
+      join(dir, ".lando.local.ts"),
+      'export default { services: { web: { image: "nginx:alpine" } } };\n',
+    );
+    expect((await run(globalConfigValidate(filePath()))).valid).toBe(true);
+    const result = await run(globalConfigSet({ key: "router.httpPort", value: "8080" }, filePath()));
+    expect(result.value).toBe(8080);
+    expect(Bun.YAML.parse(await readFileText())).toMatchObject({ router: { httpPort: 8080 } });
+  });
+
+  test.each(["set", "unset", "edit"] as const)(
+    "refuses %s for canonical TypeScript without seeding YAML",
+    async (verb) => {
+      await writeFile(join(dir, ".lando.ts"), 'export default { name: "other", runtime: 4 };\n');
+      const operation =
+        verb === "set"
+          ? globalConfigSet({ key: "name", value: "other" }, filePath())
+          : verb === "unset"
+            ? globalConfigUnset({ key: "name" }, filePath())
+            : globalConfigEdit(
+                {
+                  editorRunner: async () => {
+                    throw new Error("Editor must not run");
+                  },
+                },
+                filePath(),
+              );
+      const result = await run(operation.pipe(Effect.result));
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "NotImplementedError", commandId: "global:config" },
+      });
+      expect(existsSync(filePath())).toBe(false);
+    },
+  );
+
+  test("validates a canonical TypeScript Landofile", async () => {
+    await writeFile(join(dir, ".lando.ts"), 'export default { name: "other", runtime: 4 };\n');
+    expect((await run(globalConfigValidate(filePath()))).valid).toBe(true);
+  });
   test.each(["set", "unset"] as const)("keeps comments through global config %s", async (verb) => {
     // Given
     await seed("# global\nname: global\nruntime: 4\nrouter: # ports\n  httpPort: 8080 # chosen\n# tail\n");
@@ -98,7 +159,7 @@ describe("meta global config set", () => {
   test("schema violation is rejected, existing file untouched", async () => {
     await seed("name: global\nruntime: 4\n");
     const before = await readFileText();
-    const exit = await Effect.runPromiseExit(
+    const exit = await runExit(
       globalConfigSet({ subcommand: "set", key: "runtime", value: "nope" }, filePath()),
     );
     expect(Exit.isFailure(exit)).toBe(true);
@@ -108,7 +169,7 @@ describe("meta global config set", () => {
   test("serializer rejections fail with LandofileWriteValidationError, existing file untouched", async () => {
     await seed("name: global\nruntime: 4\nservices:\n  web:\n    type: php\n");
     const before = await readFileText();
-    const exit = await Effect.runPromiseExit(
+    const exit = await runExit(
       globalConfigSet(
         {
           subcommand: "set",
@@ -163,7 +224,7 @@ describe("meta global config validate", () => {
 
   test("invalid file fails", async () => {
     await seed("name: global\nruntime: 4\nbogus: nope\n");
-    const exit = await Effect.runPromiseExit(globalConfigValidate(filePath()));
+    const exit = await runExit(globalConfigValidate(filePath()));
     expect(Exit.isFailure(exit)).toBe(true);
   });
 });

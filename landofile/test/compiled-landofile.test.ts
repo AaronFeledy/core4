@@ -202,6 +202,60 @@ test("keeps namespaced tooling pending IDs and original fragment source paths", 
   }
 });
 
+test.each([
+  ["includes", "echo hi"],
+  ["toolingIncludes", "echo hi"],
+  ["includes", "echo {{ app.name }}"],
+  ["toolingIncludes", "echo {{ app.name }}"],
+])("retains deferred include vars from %s on scalar task %s", async (form, cmd) => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-compiled-tooling-vars-"));
+  try {
+    await Bun.write(join(root, "tasks.yml"), `tooling:\n  task: "${cmd}"\n`);
+    const entry =
+      form === "includes"
+        ? 'includes:\n  - source: ./tasks.yml\n    kind: tooling\n    namespace: ns\n    aliases: [alias]\n    vars:\n      NAME: "{{ app.name }}"\n'
+        : 'toolingIncludes:\n  ns:\n    file: ./tasks.yml\n    aliases: [alias]\n    vars:\n      NAME: "{{ app.name }}"\n';
+    await Bun.write(join(root, ".lando.yml"), entry);
+    // When
+    const compiled = await Effect.runPromise(
+      loadLandofileLayers(root, join(root, ".lando.yml"), {
+        ports: makeTestLandofilePorts(join(root, "cache")),
+        stateStore: makeTestLandofileStateStore(),
+        templates: { modules: [] },
+      }),
+    );
+    const result = advance(compiled);
+    // Then
+    const sites = compiled.pendingSites;
+    const paths = ["ns:task", "alias:task"].flatMap((name) => [
+      ...(cmd.includes("{{") ? [["tooling", name, "cmd"]] : []),
+      ["tooling", name, "vars", "NAME"],
+    ]);
+    expect(sites.map((site) => site.path)).toEqual(expect.arrayContaining(paths));
+    expect(sites).toHaveLength(paths.length);
+    expect(sites.find((site) => site.path.at(-1) === "NAME")?.source).toMatchObject({
+      file: join(root, ".lando.yml"),
+      path: form === "includes" ? ["includes", 0, "vars", "NAME"] : ["toolingIncludes", "ns", "vars", "NAME"],
+    });
+    if (cmd.includes("{{"))
+      expect(sites.find((site) => site.path.at(-1) === "cmd")?.source).toMatchObject({
+        file: join(root, "tasks.yml"),
+        path: ["tooling", "task"],
+      });
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result))
+      expect(result.success.document).toMatchObject({
+        tooling: {
+          "ns:task": { cmd: cmd === "echo hi" ? cmd : "echo resolved", vars: { NAME: "resolved" } },
+          "alias:task": { cmd: cmd === "echo hi" ? cmd : "echo resolved", vars: { NAME: "resolved" } },
+        },
+      });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("uses the same captured environment for mixed-scope sites", async () => {
   const before = process.env.LANE_B_SNAPSHOT;
   try {
@@ -243,5 +297,29 @@ test("maps schema-transform destinations from surviving origins rather than equa
   if (Result.isSuccess(result))
     expect(result.success.document).toMatchObject({
       services: { web: { appMount: { target: "resolved" }, healthcheck: { command: "echo resolved" } } },
+    });
+});
+
+test("relocates a retained tooling shorthand expression without changing its authored source", async () => {
+  // Given
+  const compiled = await load({ tooling: { greet: "echo {{ app.name }}", build: "echo {{ app.name }}" } });
+  // When
+  const result = advance(compiled);
+  // Then
+  expect(compiled.pendingSites.map((site) => site.path)).toEqual([
+    ["tooling", "greet", "cmd"],
+    ["tooling", "build", "cmd"],
+  ]);
+  expect(compiled.pendingSites.map((site) => site.source.path)).toEqual([
+    ["tooling", "greet"],
+    ["tooling", "build"],
+  ]);
+  expect(Result.isSuccess(result)).toBe(true);
+  if (Result.isSuccess(result))
+    expect(result.success.document).toMatchObject({
+      tooling: {
+        greet: { cmd: "echo resolved" },
+        build: { cmd: "echo resolved" },
+      },
     });
 });

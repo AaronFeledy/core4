@@ -43,5 +43,7 @@ export const writeAtomicCacheFile = (
         key: path,
         path,
         cause,
+        remediation:
+          "Clear the affected Lando cache entry under the user cache root, then re-run the command.",
       }),
   });

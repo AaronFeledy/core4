@@ -7,14 +7,16 @@ import type {
   PluginDoctorReport,
 } from "@lando/sdk/plugins";
 import type { HostPlatform } from "@lando/sdk/schema";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
+import { fingerprintsEqual } from "./port-acquisition-helpers.ts";
+import { AcquisitionState } from "./port-acquisition-state.ts";
 import { acquisitionStateFile } from "./proxy-paths.ts";
 import type { ProxyPaths } from "./proxy-types.ts";
 import {
   type RouterBindKind,
   UNSPECIFIED_BIND_REMEDIATION,
-  bindAddressFromAcquisition,
+  advertisedRouterBindAddress,
   classifyRouterBindAddress,
   resolveEffectiveRouterBindAddress,
   resolvePublishedRouterBindAddress,
@@ -59,14 +61,16 @@ const reportFor = (bindAddress: string, kind: RouterBindKind): PluginDoctorRepor
 export const persistedRouterBindFromUserData = (input: {
   readonly userDataRoot: string | undefined;
   readonly platform: HostPlatform;
-}): Effect.Effect<string | undefined> => {
+}): Effect.Effect<AcquisitionState | undefined> => {
   if (input.userDataRoot === undefined) return Effect.succeed(undefined);
   const paths: ProxyPaths = {
     platform: input.platform,
     globalAppRoot: globalAppRootPath(input.userDataRoot, input.platform),
   };
   return Effect.tryPromise(async () =>
-    bindAddressFromAcquisition(JSON.parse(await readFile(acquisitionStateFile(paths), "utf8"))),
+    Schema.decodeUnknownSync(AcquisitionState)(
+      JSON.parse(await readFile(acquisitionStateFile(paths), "utf8")),
+    ),
   ).pipe(Effect.catch(() => Effect.succeed(undefined)));
 };
 
@@ -76,13 +80,43 @@ export const makeRouterBindAddressCheck = (
   ) => Effect.Effect<string> = resolveEffectiveRouterBindAddress,
   loadPersisted: (
     input: Pick<PluginDoctorCheckInput, "userDataRoot" | "platform">,
-  ) => Effect.Effect<string | undefined> = persistedRouterBindFromUserData,
+  ) => Effect.Effect<AcquisitionState | undefined> = persistedRouterBindFromUserData,
 ): PluginDoctorCheckContribution => ({
   id: "router-bind-address",
   run: Effect.fnUntraced(function* (input) {
     const persisted = yield* loadPersisted(input);
     const fallback = yield* resolveBind(input.env);
-    const bindAddress = resolvePublishedRouterBindAddress(persisted, fallback);
+    const bindAddress = resolvePublishedRouterBindAddress(
+      persisted === undefined ? undefined : advertisedRouterBindAddress(persisted),
+      fallback,
+    );
+    if (
+      persisted !== undefined &&
+      (persisted.appliedFingerprint === undefined ||
+        !fingerprintsEqual(persisted.fingerprint, persisted.appliedFingerprint))
+    ) {
+      return [
+        {
+          name: "router-bind-address",
+          status: "warn",
+          severity: "warn",
+          runtimeStatus: "bind-application-unconfirmed",
+          context: {
+            bindAddress,
+            ...(persisted.appliedFingerprint === undefined
+              ? {}
+              : { lastAppliedBindAddress: persisted.appliedFingerprint.bindAddress }),
+          },
+          solutions: [
+            {
+              kind: "manual",
+              description:
+                "Run lando start to apply and verify the router bind before relying on its exposure.",
+            },
+          ],
+        },
+      ];
+    }
     return [reportFor(bindAddress, classifyRouterBindAddress(bindAddress))];
   }),
 });

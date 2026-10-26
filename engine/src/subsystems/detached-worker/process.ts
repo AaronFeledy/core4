@@ -1,6 +1,7 @@
 import { closeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Schema } from "effect";
@@ -137,6 +138,8 @@ export const spawnDetachedWorker = async <Ready, Encoded>(
   spec: DetachedWorkerSpawnSpec,
   options: DetachedWorkerOptions<Ready, Encoded>,
 ): Promise<DetachedWorkerProcess<Ready>> => {
+  const sourceEnv = { ...(spec.env ?? process.env) };
+  const redactor = spec.redactor ?? createStandaloneRedactor("secrets", { sourceEnv });
   // File-backed stderr: detached workers outlive the parent, so a pipe SIGPIPEs
   // after start. Keep writing to logsDir for the worker lifetime.
   const logsDir = spec.logsDir || join(tmpdir(), `lando-${options.logLabel}-worker-logs`);
@@ -152,7 +155,7 @@ export const spawnDetachedWorker = async <Ready, Encoded>(
         stdout: "pipe",
         stderr: stderrFd,
         detached: true,
-        ...(spec.env === undefined ? {} : { env: spec.env }),
+        env: sourceEnv,
       });
     } finally {
       closeSync(stderrFd);
@@ -163,7 +166,7 @@ export const spawnDetachedWorker = async <Ready, Encoded>(
     await proc.exited;
     const details = {
       exitCode: proc.exitCode,
-      stderrTail: await stderrTailFromLog(logPath, spec.redactor),
+      stderrTail: await stderrTailFromLog(logPath, redactor),
       logPath,
     };
     return (

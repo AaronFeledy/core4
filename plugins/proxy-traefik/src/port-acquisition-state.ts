@@ -40,6 +40,7 @@ export const AcquisitionState = Schema.Struct({
   httpsPort: PortNumber,
   notices: Schema.Array(Schema.String),
   fingerprint: AcquisitionFingerprintSchema,
+  appliedFingerprint: Schema.optionalKey(AcquisitionFingerprintSchema),
   helperInstalled: Schema.optionalKey(Schema.Boolean),
   socketsActive: Schema.optionalKey(Schema.Boolean),
   bindHttpPort: Schema.optionalKey(PortNumber),
@@ -96,6 +97,8 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
 ): Effect.fn.Return<AcquisitionDecision, unknown> {
   const lists = resolveTryLists(dependencies);
   const previous = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+  const applied =
+    previous?.appliedFingerprint === undefined ? {} : { appliedFingerprint: previous.appliedFingerprint };
   const routingExists = yield* dependencies.fileSystem.exists(routingStateFile(dependencies.paths));
   const pin = dependencies.routerPin;
   const previousPair =
@@ -119,7 +122,8 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
   const helperInstalled = unitsInstalled || (previous?.helperInstalled ?? false);
   const probed = yield* probeCurrent(dependencies, lists);
   const linuxLike = dependencies.paths.platform === "linux" || dependencies.paths.platform === "wsl";
-  if (linuxLike && helperInstalled && helperOwnsPreferred(probed)) {
+  const canUseHelper = linuxLike && lists.bindAddress === "127.0.0.1";
+  if (canUseHelper && helperInstalled && helperOwnsPreferred(probed)) {
     const fromUnits =
       dependencies.socketProxy === undefined
         ? undefined
@@ -136,6 +140,7 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
       };
       yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
         ...decision,
+        ...applied,
         helperInstalled: true,
         socketsActive: true,
         bindHttpPort,
@@ -144,7 +149,7 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
       return decision;
     }
   }
-  if (linuxLike && preferredEacces(probed) && dependencies.socketProxy !== undefined) {
+  if (canUseHelper && preferredEacces(probed) && dependencies.socketProxy !== undefined) {
     const hops = yield* Effect.try({
       try: () =>
         chooseHelperBindPorts({
@@ -164,6 +169,7 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
         const decision = { ...resolved.decision, fingerprint: lists.fingerprint };
         yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
           ...decision,
+          ...applied,
           helperInstalled: resolved.helperInstalled,
           socketsActive: resolved.socketsActive,
           bindHttpPort: hops.success.bindHttpPort,
@@ -177,6 +183,7 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
     options.rescan !== true &&
     previous !== undefined &&
     previousPair !== undefined &&
+    (previous.mode !== "socket-helper" || canUseHelper) &&
     compatibleOwnedPair(previous, lists) &&
     (yield* stillOwnPersisted(dependencies, previousPair, probed, lists.bindAddress))
   ) {
@@ -224,6 +231,7 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
   });
   yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
     ...decision,
+    ...applied,
     helperInstalled,
     socketsActive: false,
   });

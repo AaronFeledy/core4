@@ -172,7 +172,8 @@ test.each(["lando://app/config", "lando://app/info"])(
     expect(error.data).toEqual({
       _tag: "AppResolveError",
       message: error.message,
-      remediation: "Check the resource and retry.",
+      remediation:
+        "Run the command from an app directory with a Landofile, or pass an explicit root to the app.",
     });
   },
 );

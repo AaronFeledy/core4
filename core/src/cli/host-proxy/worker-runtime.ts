@@ -69,6 +69,7 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
   const runtime = makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
   // Runtime Layer scope must outlive session create (EventService acquires scoped resources).
   const owner = makeRedactionOwner();
+  const sourceEnv = { ...process.env };
   const redactionLayer = Layer.succeed(RedactionService, owner.service);
   try {
     await Effect.runPromise(
@@ -148,7 +149,7 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
       ).pipe(Effect.provide(runtime.pipe(Layer.provide(redactionLayer))), Effect.provide(redactionLayer)),
     );
   } catch (cause) {
-    const redactor = await Effect.runPromise(owner.service.forProfile("secrets"));
+    const redactor = await Effect.runPromise(owner.service.forProfile("secrets", { sourceEnv }));
     throw new Error(redactor.redactString(String(cause)));
   } finally {
     owner.dispose();
