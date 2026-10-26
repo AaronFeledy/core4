@@ -256,6 +256,10 @@
       "digest": "c5d890ccf5168bac68eb47a4a55d47145d21cd7fee243fe96175b0b2bdf3514e"
     },
     {
+      "fixture": "docs/guides/drupal-testing/fixtures/drupal-demo",
+      "digest": "4631970641d810d175006870a8c301057778ba44e4da01dce8b2de2bd1f64249"
+    },
+    {
       "fixture": "docs/guides/elasticsearch/fixtures/elasticsearch-demo",
       "invalid": {
         "status": "invalid",
