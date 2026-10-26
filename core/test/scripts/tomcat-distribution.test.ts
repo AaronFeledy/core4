@@ -53,7 +53,7 @@ const publishLocally = async (script: string, root: string): Promise<void> => {
       "-euc",
       `RELEASE_TAG=v4.0.0-dev.42
       gh() {
-        [ "$1 $2" = "release create" ] || return 0
+        [ "$1 $2" = "release create" ] || [ "$1 $2" = "release upload" ] || return 0
         shift 3
         for asset in "$@"; do
           case "$asset" in --*) break;; esac
@@ -101,8 +101,8 @@ test.skipIf(process.platform === "win32")(
   async () => {
     // Given: the CI binary artifacts and generated publication command.
     const workflow = renderReleaseWorkflow();
-    const publish = workflow.match(/^\s+(gh release create .+)$/m)?.[1];
-    if (publish === undefined) throw new Error("Missing dev publication command");
+    const publish = workflow.match(/^\s+(gh release upload .+)$/m)?.[1];
+    if (publish === undefined) throw new Error("Missing dev publication upload command");
     await withFixture(async (root) => {
       await mkdir(join(root, "dist"));
       for (const name of [

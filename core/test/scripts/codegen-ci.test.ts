@@ -656,8 +656,11 @@ describe("ci workflow codegen", () => {
       }
       expect(workflow).toContain("RELEASE_TAG: v4.0.0-dev.${{ github.run_number }}");
       expect(workflow).toContain("gh release create");
+      expect(workflow).toContain("gh release upload");
       expect(workflow).toContain("dist/SHA256SUMS");
       expect(workflow).toContain("--prerelease");
+      expect(workflow).toContain("--draft");
+      expect(workflow).toContain('gh release edit "$RELEASE_TAG" --draft=false');
       expect(workflow).not.toContain("cosign");
       expect(workflow).not.toContain("gpg");
       expect(workflow).not.toContain("sbom");
@@ -775,8 +778,11 @@ describe("ci workflow codegen", () => {
         expect(workflow).toContain(`test -f dist/${releaseBinaryFileName(platform)}`);
       }
       expect(workflow).toContain("gh release create");
+      expect(workflow).toContain("gh release upload");
       expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
       expect(workflow).toContain("dist/SHA256SUMS");
+      expect(workflow).toContain("--draft");
+      expect(workflow).toContain('gh release edit "$RELEASE_TAG" --draft=false');
       expect(workflow).not.toContain("sha256sum lando > SHA256SUMS");
       expect(workflow).not.toContain("if-no-files-found");
     },

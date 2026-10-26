@@ -34,10 +34,21 @@ describe("release workflow", () => {
       expect(workflow).toContain(`test -f dist/${releaseBinaryFileName(platform)}`);
     }
     expect(workflow).toContain("gh release create");
+    expect(workflow).toContain("gh release upload");
     expect(workflow).toContain("--name container-helper --dir dist/container-helper");
     expect(workflow).toContain("test -s dist/container-helper/licenses/go/LICENSE");
     expect(workflow).toContain("go_notices=(dist/container-helper-go-*)");
-    expect(workflow.match(/^\s+gh release create .+$/m)?.[0]).toContain('"${go_notices[@]}"');
+    const create = workflow.match(/^\s+gh release create .+$/m)?.[0];
+    const upload = workflow.match(/^\s+gh release upload .+$/m)?.[0];
+    expect(create).toContain("--draft");
+    expect(create).toContain("--prerelease");
+    expect(create).not.toContain("dist/SHA256SUMS");
+    expect(upload).toContain('"${go_notices[@]}"');
+    expect(upload).toContain("dist/SHA256SUMS");
+    expect(workflow).toContain('gh release edit "$RELEASE_TAG" --draft=false');
+    expect(workflow.indexOf("gh release delete")).toBeLessThan(workflow.indexOf("gh release create"));
+    expect(workflow.indexOf("gh release create")).toBeLessThan(workflow.indexOf("gh release upload"));
+    expect(workflow.indexOf("gh release upload")).toBeLessThan(workflow.indexOf("gh release edit"));
     expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
     expect(workflow).toContain("dist/SHA256SUMS");
     expect(workflow).toContain("dist/THIRD_PARTY_NOTICES.md");
