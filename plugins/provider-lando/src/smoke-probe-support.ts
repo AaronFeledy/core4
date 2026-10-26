@@ -7,9 +7,11 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { redactDetails } from "@lando/container-runtime/redact";
+import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
+
+const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
 export const DEFAULT_BASE_IMAGE = "docker.io/library/alpine:3.20.3";
 export const defaultSmokeRetryPolicy: RetryPolicy = {
@@ -35,7 +37,9 @@ export class ProviderLandoSmokeError extends ProviderUnavailableError {
       operation: "setup-smoke",
       message: input.message,
       remediation: input.remediation,
-      ...(input.details === undefined ? {} : { details: redactDetails(input.details) }),
+      ...(input.details === undefined
+        ? {}
+        : { details: redactDetails(input.details, hostSecretsRedactor()) }),
       ...(input.cause === undefined ? {} : { cause: input.cause }),
     });
     this.smokeOperation = input.smokeOperation;

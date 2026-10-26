@@ -113,9 +113,17 @@ test("reserves the encoder-owned role against an error's colliding field", () =>
       redactor: identityRedactor,
       outcome: {
         _tag: "failure",
-        error: { _tag: "Primary", message: "primary", role: "spoof" },
+        error: { _tag: "Primary", message: "primary", remediation: "Repair primary.", role: "spoof" },
         additionalErrors: [
-          { role: "rollback", error: { _tag: "Secondary", message: "secondary", role: "spoof" } },
+          {
+            role: "rollback",
+            error: {
+              _tag: "Secondary",
+              message: "secondary",
+              remediation: "Repair secondary.",
+              role: "spoof",
+            },
+          },
         ],
       },
     }),
@@ -124,7 +132,10 @@ test("reserves the encoder-owned role against an error's colliding field", () =>
   expect(envelope.error).toEqual({
     _tag: "Primary",
     message: "primary",
-    additionalErrors: [{ _tag: "Secondary", message: "secondary", role: "rollback" }],
+    remediation: "Repair primary.",
+    additionalErrors: [
+      { _tag: "Secondary", message: "secondary", remediation: "Repair secondary.", role: "rollback" },
+    ],
   });
 });
 
@@ -138,7 +149,8 @@ test.each([undefined, "other"])("rejects a missing or unknown machine role: %s",
     error: {
       _tag: "Primary",
       message: "primary",
-      additionalErrors: [{ _tag: "Secondary", message: "secondary", role }],
+      remediation: "Repair primary.",
+      additionalErrors: [{ _tag: "Secondary", message: "secondary", remediation: "Repair secondary.", role }],
     },
   });
   expect(decoded._tag).toBe("Failure");

@@ -26,6 +26,8 @@ const unsignedDecimalPattern = /^(0|[1-9][0-9]*)$/;
 
 export interface DockerLogFileAccessOptions {
   readonly redactor?: Redactor;
+  /** Explicit host env snapshot when building a standalone redactor. Never process.env. */
+  readonly sourceEnv: Readonly<Record<string, string | undefined>>;
   readonly providerId: string;
   readonly api: DataPlaneApiClient;
   readonly container: string;
@@ -166,11 +168,14 @@ export const scopedDockerLogFileAccess = (
         Effect.flatMap((id) =>
           Effect.gen(function* () {
             const service = yield* Effect.serviceOption(RedactionService);
+            const redactionOptions = {
+              sourceEnv: options.sourceEnv,
+            };
             const redactor =
               options.redactor ??
               (Option.isSome(service)
-                ? yield* service.value.forProfile("secrets")
-                : createStandaloneRedactor("secrets"));
+                ? yield* service.value.forProfile("secrets", redactionOptions)
+                : createStandaloneRedactor("secrets", redactionOptions));
             return new HelperSession(
               providerId,
               (stdin, signal) =>

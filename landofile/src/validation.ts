@@ -86,6 +86,7 @@ export const validateLandofile = (
         filePath: file,
         line: undefined,
         column: undefined,
+        remediation: `Edit the lando: field in ${file} to a valid npm semver range such as ">=4.1 <5", "^4", or "4.x".`,
       }),
     );
   }

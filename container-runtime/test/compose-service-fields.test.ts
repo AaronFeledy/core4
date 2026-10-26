@@ -14,7 +14,7 @@ import { renderCompose } from "../src/podman/compose.ts";
 import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const serviceName = ServiceName.make("web");
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"),

@@ -21,14 +21,14 @@ export class MalformedCliFlagValueError extends Schema.TaggedError<MalformedCliF
     message: Schema.String,
     flag: Schema.String,
     issue: Schema.Literals([...FLAG_VALUE_ISSUES]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
 export class UnknownCliFlagError extends Schema.TaggedError<UnknownCliFlagError>()("UnknownCliFlagError", {
   message: Schema.String,
   flag: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 type FlagDefinition = {

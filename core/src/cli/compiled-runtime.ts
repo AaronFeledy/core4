@@ -159,8 +159,10 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     ...(options.io === undefined ? {} : { io: options.io }),
     render,
-    formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) =>
-      commandErrorMessage(failure, activeCommandId),
+    formatError: (
+      failure: import("@lando/sdk/command-result").ProjectedFailure,
+      redactor: import("@lando/sdk/secrets").Redactor,
+    ) => commandErrorMessage(failure, activeCommandId, redactor),
     ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
   const selection = activeTrace();

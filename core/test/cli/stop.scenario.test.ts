@@ -217,6 +217,7 @@ const makeStopLayer = (
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -225,6 +226,7 @@ const makeStopLayer = (
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,
@@ -421,7 +423,7 @@ describe("lando stop", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain("LandofileNotFoundError");
-      expect(result.stderr).toContain("Run `lando init --full --name=<name>` to scaffold an app.");
+      expect(result.stderr).toContain(`Run \`lando init\` in ${dir} to create an app.`);
     });
   });
 
@@ -477,6 +479,7 @@ describe("lando stop", () => {
             providerId: "lando",
             operation: "buildArtifact",
             message: "unavailable",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
           }),
         ),
       pullArtifact: () =>
@@ -485,6 +488,7 @@ describe("lando stop", () => {
             providerId: "lando",
             operation: "pullArtifact",
             message: "unavailable",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
           }),
         ),
       removeArtifact: () => Effect.void,
@@ -591,6 +595,8 @@ describe("lando stop", () => {
                 engineId: "mutagen",
                 sessionRef: "session-web-app-mount",
                 message: "daemon unavailable",
+                remediation:
+                  "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
               }),
             ),
           ),
@@ -656,6 +662,8 @@ describe("lando stop", () => {
                     engineId: "mutagen",
                     sessionRef: String(ref),
                     message: "daemon unavailable",
+                    remediation:
+                      "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
                   }),
                 )
               : Effect.void,
@@ -749,6 +757,7 @@ describe("lando stop", () => {
             providerId: "lando",
             operation: "buildArtifact",
             message: "unavailable",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
           }),
         ),
       pullArtifact: () =>
@@ -757,6 +766,7 @@ describe("lando stop", () => {
             providerId: "lando",
             operation: "pullArtifact",
             message: "unavailable",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
           }),
         ),
       removeArtifact: () => Effect.void,

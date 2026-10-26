@@ -54,18 +54,18 @@ const encodeFragment = (value: typeof LandofileAuthoringFragment.Type) =>
 const encodeShape = Schema.encodeEffect(LandofileAuthoringShape);
 const decodeRecord = Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown));
 
-const translateError = (message: string, remediation?: string, cause?: unknown): ConfigTranslateError =>
+const translateError = (message: string, remediation: string, cause?: unknown): ConfigTranslateError =>
   new ConfigTranslateError({
     message,
     translator: LANDO4_TRANSLATOR_ID,
-    ...(remediation === undefined ? {} : { remediation }),
+    remediation,
     ...(cause === undefined ? {} : { cause }),
   });
 
 const asTranslateError =
-  (message: string) =>
+  (message: string, remediation: string) =>
   (cause: { readonly message: string }): ConfigTranslateError =>
-    translateError(`${message} ${cause.message}`, undefined, cause);
+    translateError(`${message} ${cause.message}`, remediation, cause);
 
 /** One root-scoped diagnostic; the empty key path leaves input order as the only sort key. */
 const rootDiagnostic = (
@@ -247,26 +247,57 @@ const encode = Effect.fn("Lando4ConfigTranslator.encode")(function* (
   // is not a Landofile. Only the fragment wire tree reaches the emitter, so
   // lower layers are never flattened.
   const context = yield* decodeShape(input.context, { onExcessProperty: "error" }).pipe(
-    Effect.mapError(asTranslateError("The lando4 encoder requires a complete authoring context:")),
+    Effect.mapError(
+      asTranslateError(
+        "The lando4 encoder requires a complete authoring context:",
+        "Provide a complete Landofile authoring context before encoding with the lando4 translator.",
+      ),
+    ),
   );
   const contextWire = yield* encodeShape(context).pipe(
-    Effect.mapError(asTranslateError("The lando4 encoder requires a complete authoring context:")),
+    Effect.mapError(
+      asTranslateError(
+        "The lando4 encoder requires a complete authoring context:",
+        "Provide a complete Landofile authoring context before encoding with the lando4 translator.",
+      ),
+    ),
   );
   yield* decodeRecord(contextWire).pipe(
-    Effect.mapError(asTranslateError("The lando4 encoder requires a Landofile mapping at the root:")),
+    Effect.mapError(
+      asTranslateError(
+        "The lando4 encoder requires a Landofile mapping at the root:",
+        "Pass a root object Landofile (not a scalar or sequence) to the lando4 encoder.",
+      ),
+    ),
   );
   const wire = yield* decodeFragment(input.fragment ?? contextWire, { onExcessProperty: "error" }).pipe(
     Effect.flatMap((value) =>
       Schema.encodeEffect(LandofileAuthoringFragmentNative)(value, { onExcessProperty: "error" }),
     ),
-    Effect.mapError(asTranslateError("The lando4 encoder received a non-authoring value:")),
+    Effect.mapError(
+      asTranslateError(
+        "The lando4 encoder received a non-authoring value:",
+        "Pass only Landofile authoring fields to the lando4 encoder.",
+      ),
+    ),
   );
   const record = yield* decodeRecord(wire).pipe(
-    Effect.mapError(asTranslateError("The lando4 encoder requires a Landofile mapping at the root:")),
+    Effect.mapError(
+      asTranslateError(
+        "The lando4 encoder requires a Landofile mapping at the root:",
+        "Pass a root object Landofile (not a scalar or sequence) to the lando4 encoder.",
+      ),
+    ),
   );
   const emitted = emitLandofileYamlEither(record, { sortKeys: true, leadingCommentBlock: "editor-schema" });
   if (Result.isFailure(emitted)) {
-    return yield* Effect.fail(translateError(emitted.failure.message, undefined, emitted.failure));
+    return yield* Effect.fail(
+      translateError(
+        emitted.failure.message,
+        "Correct the Landofile content so it can be emitted as YAML, then retry encoding.",
+        emitted.failure,
+      ),
+    );
   }
   return { text: emitted.success, diagnostics: [] };
 });

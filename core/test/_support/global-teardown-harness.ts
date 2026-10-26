@@ -148,6 +148,7 @@ export const globalTeardownHarness = async (
               message: "remove failed",
               providerId: "lando",
               operation: "removeObservedService",
+              remediation: "Remove failed",
             }),
           );
         removed.push(service);
@@ -203,7 +204,14 @@ export const globalTeardownHarness = async (
           Effect.gen(function* () {
             calls.push("removeRoutes");
             if (input.routeFailure)
-              return yield* Effect.fail(new ProxyError({ proxyId: "test", message: "route removal failed" }));
+              return yield* Effect.fail(
+                new ProxyError({
+                  proxyId: "test",
+                  message: "route removal failed",
+                  remediation:
+                    "Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
+                }),
+              );
           }),
       }),
     ),

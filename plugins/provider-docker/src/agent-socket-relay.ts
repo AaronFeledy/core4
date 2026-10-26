@@ -21,11 +21,12 @@ import { Duration, Effect, Match, Option, Schema, type Scope } from "effect";
 export const AGENT_RELAY_IMAGE =
   "alpine/socat@sha256:24220ef2c80a2a421ea08e4624488e985330c421b6aa3329bae14b0933a1d403";
 
-const failure = (message: string) =>
+const failure = (message: string, cause?: unknown) =>
   new ProviderUnavailableError({
     providerId: "docker",
     operation: "openAgentSocketBridge",
     message,
+    cause,
     remediation:
       "Provide the canonical app root and an authenticated loopback TCP broker; run `lando doctor --provider=docker` and retry.",
   });
@@ -106,7 +107,7 @@ export const makeDockerDesktopAgentSocketBridge = (options: {
           duration: Duration.seconds(15),
           orElse: () => Effect.fail((() => failure("Docker agent relay request timed out."))()),
         }),
-        Effect.mapError(() => failure("Docker agent relay API request failed.")),
+        Effect.mapError((cause) => failure("Docker agent relay API request failed.", cause)),
       );
     const checked = (req: EngineHttpRequest) =>
       request(req).pipe(
@@ -202,9 +203,13 @@ export const makeDockerDesktopAgentSocketBridge = (options: {
         const initial = yield* request(createRequest);
         if (initial.status === 404) {
           yield* pullImage(options.api, options.relayImage, {
-            ctx: { providerId: "docker", remediation: "Pull the agent relay image and retry." },
+            ctx: {
+              providerId: "docker",
+              remediation: "Pull the agent relay image and retry.",
+              env: { ...process.env },
+            },
             dialect: dockerPullDialect,
-          }).pipe(Effect.mapError(() => failure("Could not pull the Docker agent relay image.")));
+          }).pipe(Effect.mapError((cause) => failure("Could not pull the Docker agent relay image.", cause)));
         }
         const response = initial.status === 404 ? yield* checked(createRequest) : initial;
         if (response.status !== 201)

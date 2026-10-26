@@ -26,7 +26,7 @@ import {
   SSH_SIDECAR_READINESS_POLICY,
   awaitRuntimeSshAgent,
 } from "@lando/engine/subsystems/ssh-agent/session";
-import { redactString } from "../../redact";
+import { resolveSecretsRedactor } from "../../commands/secrets-redactor";
 import { inputBooleanFlag } from "./setup-inputs";
 import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";
 import type { SetupReadinessRecorder } from "./setup-steps";
@@ -178,16 +178,18 @@ export const runShellServiceSetupStep = Effect.fn("SetupCommand.runShellServiceS
       Effect.gen(function* () {
         yield* ssh.value.setup({ force: false });
         if (ssh.value.id !== "sidecar") return;
-        const state = yield* awaitRuntimeSshAgent();
+        const { state, detail } = yield* awaitRuntimeSshAgent();
         if (state !== "ready") {
           return yield* Effect.fail(
             new SshAgentUnavailableError({
               mode: "sidecar",
               reason: "sidecar-not-running",
+              ...(detail === undefined ? {} : { detail }),
               message:
-                state === "stopped"
+                (state === "stopped"
                   ? "The SSH agent sidecar stopped before its agent answered."
-                  : `The SSH agent sidecar started, but its agent did not answer within ${Duration.toSeconds(SSH_SIDECAR_READINESS_POLICY.timeout)} seconds.`,
+                  : `The SSH agent sidecar started, but its agent did not answer within ${Duration.toSeconds(SSH_SIDECAR_READINESS_POLICY.timeout)} seconds.`) +
+                (detail === undefined ? "" : ` Last probe failure: ${detail}`),
               remediation:
                 "Run `lando global:logs --service ssh-agent` to see why, fix the cause, then run `lando setup`.",
             }),
@@ -196,7 +198,8 @@ export const runShellServiceSetupStep = Effect.fn("SetupCommand.runShellServiceS
       }),
     );
     if (Result.isFailure(setup)) {
-      const evidence = redactString(setup.failure.message);
+      const { redact } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
+      const evidence = redact(setup.failure.message);
       const setupCommand =
         selectedProviderId in SYSTEM_RUNTIME_PROVIDERS
           ? `lando setup --provider=${selectedProviderId}`

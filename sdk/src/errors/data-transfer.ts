@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 /**
  * A `DataMover` transfer failed for a reason not covered by a more specific
@@ -12,7 +12,7 @@ export class DataTransferError extends Schema.TaggedError<DataTransferError>()("
   exitCode: Schema.optional(Schema.Number),
   stderrTail: Schema.optional(Schema.String),
   recoverySnapshotId: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -27,7 +27,13 @@ export class DataEndpointUnsupportedError extends Schema.TaggedError<DataEndpoin
     message: Schema.String,
     fromEndpoint: Schema.String,
     toEndpoint: Schema.String,
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+      Schema.withConstructorDefault(
+        Effect.succeed(
+          "Use a provider with the matching data-plane capability or choose a different endpoint pair.",
+        ),
+      ),
+    ),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -43,7 +49,11 @@ export class DataChecksumMismatchError extends Schema.TaggedError<DataChecksumMi
     actualSha256: Schema.String,
     archivePath: Schema.optional(Schema.String),
     snapshotId: Schema.optional(Schema.String),
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+      Schema.withConstructorDefault(
+        Effect.succeed("Retry the transfer from a trusted source; verification cannot be skipped."),
+      ),
+    ),
   },
 ) {}
 
@@ -57,7 +67,11 @@ export class DataSourceOutsideRootError extends Schema.TaggedError<DataSourceOut
     message: Schema.String,
     path: Schema.String,
     base: Schema.optional(Schema.String),
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+      Schema.withConstructorDefault(
+        Effect.succeed("Move the path inside the app root or use an explicitly trusted endpoint."),
+      ),
+    ),
   },
 ) {}
 
@@ -70,7 +84,11 @@ export class DataTargetExistsError extends Schema.TaggedError<DataTargetExistsEr
     message: Schema.String,
     store: Schema.String,
     app: Schema.optional(Schema.String),
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+      Schema.withConstructorDefault(
+        Effect.succeed("Pass overwrite:true only after confirming the existing data can be replaced."),
+      ),
+    ),
   },
 ) {}
 
@@ -83,7 +101,7 @@ export class SnapshotNotFoundError extends Schema.TaggedError<SnapshotNotFoundEr
     message: Schema.String,
     snapshotId: Schema.String,
     store: Schema.optional(Schema.String),
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -96,7 +114,7 @@ export class SnapshotAmbiguousError extends Schema.TaggedError<SnapshotAmbiguous
     candidateIds: Schema.optional(Schema.Array(Schema.String)).annotate({
       description: "Matching snapshot ids, newest first, when resolving an ambiguous label.",
     }),
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -107,7 +125,7 @@ export class SnapshotOwnershipError extends Schema.TaggedError<SnapshotOwnership
     snapshotId: Schema.String,
     sourceVolumeInstanceId: Schema.String,
     targetVolumeInstanceId: Schema.optional(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -118,7 +136,7 @@ export class VolumeNotFoundError extends Schema.TaggedError<VolumeNotFoundError>
   message: Schema.String,
   store: Schema.String,
   app: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 /**
@@ -128,6 +146,6 @@ export class ArchiveFormatError extends Schema.TaggedError<ArchiveFormatError>()
   message: Schema.String,
   format: Schema.optional(Schema.String),
   archivePath: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}

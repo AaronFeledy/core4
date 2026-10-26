@@ -633,6 +633,7 @@ describe("ensureRuntime", () => {
         providerId: "lando",
         operation: "setup",
         message: "simulated metadata write failure",
+        remediation: "Install or start the `lando` provider and confirm it can perform `setup`.",
       });
 
       const exit = await Effect.runPromiseExit(

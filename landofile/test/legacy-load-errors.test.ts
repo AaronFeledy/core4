@@ -189,6 +189,7 @@ test("preserves the exact original failure object when the hint is ambiguous", a
     filePath: sourceFile,
     line: 2,
     column: 3,
+    remediation: `Correct the YAML syntax in ${sourceFile} at line 2.`,
   });
   // When
   const result = await Effect.runPromise(

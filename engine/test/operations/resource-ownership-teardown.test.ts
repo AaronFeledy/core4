@@ -35,6 +35,7 @@ test("selected internal stop preserves the non-teardown orphan refusal", async (
     providerId: "lando",
     operation: "resolveAppliedPlan",
     message: "Orphaned resources have no applied state.",
+    remediation: "Install or start the `lando` provider and confirm it can perform `resolveAppliedPlan`.",
   });
   const provider = {
     ...TestRuntimeProvider,

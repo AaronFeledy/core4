@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import {
-  boundedDiagnostic,
-  makeCompletionDiagnosticContext,
-  redactCompletionString,
-} from "./completion-diagnostic.ts";
+import type { Redactor } from "@lando/sdk/secrets";
+import { boundedDiagnostic, makeCompletionDiagnosticContext } from "./completion-diagnostic.ts";
 import { removeRuntimeContainer } from "./container-removal.ts";
 import { tryParseJson } from "./engine-json.ts";
 import { type PinnedHelperImage, dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
@@ -22,7 +19,7 @@ import {
 } from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { serviceContainerName as namedServiceContainer } from "./plan.ts";
-import { redactString, withApiReason } from "./redact.ts";
+import { redactDetails, redactString, withApiReason } from "./redact.ts";
 import { listNativeSnapshots } from "./snapshot-images.ts";
 import { makeAttachDecoder } from "./streams.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
@@ -107,7 +104,7 @@ export interface ProviderDataPlaneOptions {
   readonly pullHelperImage?: (ref: string) => Effect.Effect<PulledImage, ProviderError>;
   readonly api: DataPlaneApiClient;
   readonly capabilities: Pick<ProviderCapabilities, "volumeSnapshot">;
-  readonly redactDetails: (value: unknown) => unknown;
+  readonly redactor: Redactor;
   readonly volumeCreationLabels?: (
     plan: AppPlan,
     store: AppPlan["stores"][number],
@@ -296,7 +293,7 @@ const volumeError = (
     operation,
     message,
     remediation: "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
-    ...(details === undefined ? {} : { details: options.redactDetails(details) }),
+    ...(details === undefined ? {} : { details: redactDetails(details, options.redactor) }),
     ...(cause === undefined ? {} : { cause }),
     ...(store === undefined ? {} : { store }),
   });
@@ -314,7 +311,7 @@ const copyError = (
     operation,
     message,
     remediation: "Retry the copy operation after verifying the target service is running.",
-    ...(details === undefined ? {} : { details: options.redactDetails(details) }),
+    ...(details === undefined ? {} : { details: redactDetails(details, options.redactor) }),
     ...(cause === undefined ? {} : { cause }),
     ...(service === undefined ? {} : { service }),
   });
@@ -332,7 +329,7 @@ const artifactError = (
     operation,
     message,
     remediation: "Retry the artifact transfer after checking provider runtime health with `lando doctor`.",
-    ...(details === undefined ? {} : { details: options.redactDetails(details) }),
+    ...(details === undefined ? {} : { details: redactDetails(details, options.redactor) }),
     ...(cause === undefined ? {} : { cause }),
     ...(artifactRef === undefined ? {} : { artifactRef }),
   });
@@ -499,7 +496,7 @@ const ensureHelperImage = (
       operation,
       message,
       remediation,
-      details: options.redactDetails(details),
+      details: redactDetails(details, options.redactor),
       ...(cause === undefined ? {} : { cause }),
       ...(store === undefined ? {} : { store }),
     });
@@ -664,7 +661,7 @@ const ephemeralCompletionFailure = (
   operation: string,
   outcome: { readonly exitCode: number; readonly stderr: string },
 ) => {
-  const stderrTail = boundedDiagnostic(outcome.stderr, options.redactDetails);
+  const stderrTail = boundedDiagnostic(outcome.stderr, (value) => options.redactor.redactValue(value));
   return new VolumeOperationError({
     providerId: options.providerId,
     operation,
@@ -711,10 +708,9 @@ const releaseEphemeralContainer = (release: EphemeralRelease) => {
       operation: `${operation}.remove`,
       remediation:
         "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
-      redactor: {
-        redactString: (value) => redactCompletionString(value, options.redactDetails),
-        redactValue: options.redactDetails,
-      },
+      // The retained redactor was built from the host environment, so no env snapshot is needed here.
+      env: {},
+      redactor: options.redactor,
     }),
   ).pipe(
     Effect.timeoutOrElse({
@@ -1373,18 +1369,18 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           const details = cause instanceof VolumeOperationError ? cause.details : undefined;
           if (isVolumeInUse(details)) {
             const base = "Provider volume remove failed.";
-            const message = withApiReason(base, details);
+            const message = withApiReason(base, details, options.redactor);
             return new VolumeOperationError({
               providerId: options.providerId,
               operation: "removeVolume",
               store: ref.store,
               message:
                 message === base && details.body.trim().length > 0
-                  ? `${base} ${redactString(details.body.trim())}`
+                  ? `${base} ${redactString(details.body.trim(), options.redactor)}`
                   : message,
               remediation:
                 "A container still uses this volume. Remove that container first (for a Lando app, run lando destroy for it; lando doctor lists leftovers), then retry.",
-              details: options.redactDetails(details),
+              details: redactDetails(details, options.redactor),
               cause,
             });
           }

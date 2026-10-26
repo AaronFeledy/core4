@@ -88,7 +88,14 @@ describe("runConfigTranslator", () => {
 
   test("propagates a translator's ConfigTranslateError", async () => {
     const failing = makeTranslator("x", {
-      translate: () => Effect.fail(new ConfigTranslateError({ message: "boom", translator: "x" })),
+      translate: () =>
+        Effect.fail(
+          new ConfigTranslateError({
+            message: "boom",
+            translator: "x",
+            remediation: "Fix the fixture translator input.",
+          }),
+        ),
     });
     const exit = await Effect.runPromiseExit(runConfigTranslator(failing, baseInput));
     expect(exit._tag).toBe("Failure");

@@ -34,7 +34,13 @@ const registrySpec = {
 const runDir = (): string => makeLandoPaths().tunnelRunDir;
 
 const stateError = (operation: string, path: string, cause: unknown): StateStoreError =>
-  new StateStoreError({ reason: "io", operation, path, cause });
+  new StateStoreError({
+    reason: "io",
+    operation,
+    path,
+    cause,
+    remediation: `Fix permissions on tunnel registry path ${path}, then retry the share command.`,
+  });
 
 const pidIsAlive = (pid: number): boolean => {
   if (pid <= 0) return false;

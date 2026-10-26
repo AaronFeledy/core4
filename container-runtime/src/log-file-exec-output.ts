@@ -16,16 +16,18 @@ const decoder = new TextDecoder();
 const stderrFrameError = (
   providerId: string,
   payload: StreamBytes,
-  redactor?: Redactor,
+  redactor: Redactor,
 ): ProviderInternalError =>
   new ProviderInternalError({
     providerId,
     operation: "logFileAccess",
     message: "Log helper wrote to stderr.",
     details: redactString(decoder.decode(payload), redactor),
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
-export const makeHelperExecOutputDecoder = (providerId: string, redactor?: Redactor) => {
+export const makeHelperExecOutputDecoder = (providerId: string, redactor: Redactor) => {
   const decodeAttach = makeAttachDecoder();
   let mode: OutputMode = "unknown";
 

@@ -15,7 +15,7 @@ import type {
 import { removeRuntimeContainer } from "./container-removal.ts";
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, missingService } from "./engine-errors.ts";
-import { redactDetails, withApiReason } from "./redact.ts";
+import { redactDetails, redactorFor, withApiReason } from "./redact.ts";
 
 export type ServiceLifecycleAction = "start" | "stop" | "restart";
 
@@ -65,9 +65,9 @@ const lifecycleRequest = (
           message: withApiReason(
             `${input.failureAction} failed with HTTP ${response.status}.`,
             response,
-            ctx.redactor,
+            redactorFor(ctx),
           ),
-          details: redactDetails({ ...input.details, body: response.body }, ctx.redactor),
+          details: redactDetails({ ...input.details, body: response.body }, redactorFor(ctx)),
           remediation: ctx.remediation,
         }),
       );
@@ -113,6 +113,8 @@ export const postServiceLifecycle = (
           operation: action,
           service: target.service,
           message: `Service ${target.service} was not found.`,
+          remediation:
+            "Add the missing service to the Landofile or correct the service name, then re-run the command.",
         }),
       ),
     },
@@ -150,6 +152,8 @@ export const postExactServiceLifecycle = (
           operation: action,
           service: target.service,
           message: `The inspected runtime for ${target.service} was not found.`,
+          remediation:
+            "Add the missing service to the Landofile or correct the service name, then re-run the command.",
         }),
       ),
     },

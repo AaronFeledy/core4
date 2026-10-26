@@ -60,7 +60,7 @@ const networkLabels = privateNetworkLabels({
   appId: plan.id,
   providerId: plan.provider,
 });
-const ctx = { providerId: "docker", remediation: "retry" };
+const ctx = { providerId: "docker", remediation: "retry", env: {} };
 
 const fakeApi = (observations: ReadonlyMap<string, object>) => {
   const calls: EngineHttpRequest[] = [];

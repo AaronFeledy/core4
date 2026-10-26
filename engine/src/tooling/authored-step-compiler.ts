@@ -14,8 +14,13 @@ export const compileAuthoredEventStepProgram = (
     const identity = identities?.[index] ?? { authoredIndex: index };
     return Effect.try({
       try: () => ({ ...identity, invocationSites: authoredInvocationSites(step, "<event-step>") }),
-      catch: (cause) =>
-        new EventStepCompileError({
+      catch: (cause) => {
+        const compileCause = new ToolingCompileError({
+          message: cause instanceof Error ? cause.message : "Invalid authored invocation.",
+          tool: typeof step !== "string" && "command" in step ? step.command : "event",
+          cause,
+        });
+        return new EventStepCompileError({
           message: cause instanceof Error ? cause.message : "Invalid authored invocation.",
           authoredIndex: identity.authoredIndex,
           ...(identity.source === undefined ? {} : { source: identity.source }),
@@ -27,11 +32,9 @@ export const compileAuthoredEventStepProgram = (
                 : "task" in step
                   ? "task"
                   : "cmd",
-          cause: new ToolingCompileError({
-            message: cause instanceof Error ? cause.message : "Invalid authored invocation.",
-            tool: typeof step !== "string" && "command" in step ? step.command : "event",
-            cause,
-          }),
-        }),
+          cause: compileCause,
+          remediation: compileCause.remediation,
+        });
+      },
     });
   }).pipe(Effect.flatMap((admitted) => compileEventStepProgram(steps, validateCommand, admitted)));

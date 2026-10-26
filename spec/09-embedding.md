@@ -84,7 +84,7 @@ Inputs are option objects. One-shot methods require no runtime services after bi
 
 Remote methods MUST enforce §10.12.8 and retain applied-data/code side effects on failure. General approval MUST NOT assert protected typed confirmation. Non-interactive hosts MUST fail protected operations requiring that confirmation. Tether MUST NOT be exposed as a library method or through programmatic CLI dispatch, even with a custom interactive renderer. Session credentials and named overrides MUST remain with their owning scope; config pull MUST use the private file landing rules, not promise an overlay for a later start (§10.12.7).
 
-**Runtime reuse is the required performance shape for long-lived hosts.** Hosts SHOULD acquire one runtime at the lowest sufficient bootstrap level, reuse it across sequential programs, and close it only at host shutdown. Reuse avoids repeated bootstrap, discovery, and cache loading and is the basis of the §2.1 hot-path budgets. Isolation-sensitive tenants or tests use separate roots and runtimes. Hosts driving many scratch apps SHOULD reuse one non-scratch runtime and call `runtime.scratch` (§21.12).
+**Runtime reuse is the required performance shape for long-lived hosts.** Hosts SHOULD acquire one runtime at the lowest sufficient bootstrap level, reuse it across sequential programs, and close it only at host shutdown. Reuse avoids repeated bootstrap, plugin contribution-graph construction, and cache loading; Landofile app-root discovery stays operation-owned (§7.1) and is the basis of the §2.1 hot-path budgets. Isolation-sensitive tenants or tests use separate roots and runtimes. Hosts driving many scratch apps SHOULD reuse one non-scratch runtime and call `runtime.scratch` (§21.12).
 
 ### 16.4 Plugin behavior in library mode
 

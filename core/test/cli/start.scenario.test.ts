@@ -506,6 +506,7 @@ const makeStartLayer = (
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -514,6 +515,7 @@ const makeStartLayer = (
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,
@@ -815,6 +817,7 @@ const makeAutoStartLayer = async (options: {
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -823,6 +826,7 @@ const makeAutoStartLayer = async (options: {
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,
@@ -1252,12 +1256,20 @@ describe("lando start", () => {
     const postFailure = new EventError({
       message: "subscriber rejected start",
       event: "post-app-start",
+      remediation:
+        "Fix the handler or emitter for event `post-app-start`, then re-run the operation that publishes it.",
     });
-    const cleanupFailure = new ProxyError({ message: "route cleanup failed", proxyId: "recording" });
+    const cleanupFailure = new ProxyError({
+      message: "route cleanup failed",
+      proxyId: "recording",
+      remediation:
+        "Install or repair the `recording` router plugin and ensure `defaultRouterService` points at an installed id.",
+    });
     const providerCleanupFailure = new ProviderUnavailableError({
       providerId: "lando",
       operation: "destroy",
       message: "provider cleanup failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
     });
     const harness = makeStartLayer({
       plannedApp: routedPlan,
@@ -1293,6 +1305,7 @@ describe("lando start", () => {
       app: { kind: "user", id: plan.id, root: plan.root },
       phase: "app",
       failures: [],
+      remediation: "Inspect the reported app-phase build step failures, fix them, and rebuild.",
     });
     const harness = makeStartLayer({ buildAppEffect: Effect.fail(failure) });
 
@@ -1765,6 +1778,7 @@ describe("lando start", () => {
         providerId: "lando",
         operation: "apply",
         message: "podman unreachable",
+        remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
       });
       const harness = makeStartLayer({ plannedApp: eligiblePlan, applyFailure: failure });
       const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
@@ -1792,6 +1806,7 @@ describe("lando start", () => {
           providerId: "lando",
           operation: "inspect",
           message: "podman inspect failed",
+          remediation: "Install or start the `lando` provider and confirm it can perform `inspect`.",
         }),
       });
 
@@ -1905,6 +1920,7 @@ describe("lando start", () => {
         providerId: "lando",
         operation: "apply",
         message: "podman unreachable",
+        remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
       }),
     });
     const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
@@ -2293,11 +2309,21 @@ describe("lando start", () => {
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "buildArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+          }),
         ),
       pullArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "pullArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+          }),
         ),
       removeArtifact: () => Effect.void,
       apply: () =>
@@ -2455,11 +2481,21 @@ describe("lando start", () => {
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "buildArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+          }),
         ),
       pullArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "pullArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+          }),
         ),
       removeArtifact: () => Effect.void,
       apply: () => Effect.succeed({ changed: true }),
@@ -2603,11 +2639,21 @@ describe("lando start", () => {
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "buildArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+          }),
         ),
       pullArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "pullArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+          }),
         ),
       removeArtifact: () => Effect.void,
       apply: () => Effect.succeed({ changed: true }),
@@ -2755,11 +2801,21 @@ describe("lando start", () => {
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "buildArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+          }),
         ),
       pullArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "pullArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+          }),
         ),
       removeArtifact: () => Effect.void,
       apply: () => Effect.succeed({ changed: true }),
@@ -2921,11 +2977,21 @@ describe("lando start", () => {
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "buildArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+          }),
         ),
       pullArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "pullArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+          }),
         ),
       removeArtifact: () => Effect.void,
       apply: () => Effect.succeed({ changed: true }),
@@ -3070,7 +3136,11 @@ describe("lando start", () => {
         },
       })),
     };
-    const failure = new FileSyncStartError({ engineId: "mutagen", message: "sync failed" });
+    const failure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "sync failed",
+      remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+    });
     const callLog: string[] = [];
     const fakeEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
@@ -3116,11 +3186,21 @@ describe("lando start", () => {
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "buildArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+          }),
         ),
       pullArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "pullArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+          }),
         ),
       removeArtifact: () => Effect.void,
       apply: () => Effect.succeed({ changed: true }),
@@ -3135,6 +3215,7 @@ describe("lando start", () => {
             providerId: "lando",
             operation: "destroy",
             message: "cleanup failed",
+            remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
           }),
         );
       }),
@@ -3253,7 +3334,11 @@ describe("lando start", () => {
       status: "paused",
       lastUpdatedAt: DateTime.makeUnsafe("2026-06-17T12:00:00.000Z"),
     };
-    const failure = new FileSyncStartError({ engineId: "mutagen", message: "sync failed" });
+    const failure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "sync failed",
+      remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+    });
     const callLog: string[] = [];
     const fakeEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
@@ -3298,11 +3383,21 @@ describe("lando start", () => {
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "buildArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+          }),
         ),
       pullArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "pullArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+          }),
         ),
       removeArtifact: () => Effect.void,
       apply: () => Effect.succeed({ changed: true }),

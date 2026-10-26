@@ -177,7 +177,7 @@ test("buildContainerArtifact preserves shell and exec RUN forms and rejects cont
         return { status: 200, body: "" };
       }),
   };
-  const providerOptions = { providerId, api };
+  const providerOptions = { providerId, api, sourceEnv: {} };
 
   await Effect.runPromise(
     buildContainerArtifact(
@@ -265,7 +265,7 @@ test("buildContainerArtifact renders an authored build step over a referenced ar
   await Effect.runPromise(
     buildContainerArtifact(
       { app: appId, service: serviceName, plan: plan(authored), buildKey: "authored-build-step" },
-      { providerId, api },
+      { providerId, api, sourceEnv: {} },
     ),
   );
 
@@ -296,7 +296,7 @@ test("buildContainerArtifact pins a resolved base digest in derived Dockerfiles"
   await Effect.runPromise(
     buildContainerArtifact(
       { app: appId, service: serviceName, plan: plan(derived), buildKey: "resolved-base" },
-      { providerId, api },
+      { providerId, api, sourceEnv: {} },
     ),
   );
 
@@ -314,6 +314,7 @@ test("buildContainerArtifact redacts raw and encoded build args from provider er
     operation: "buildArtifact",
     message: `/build?t=x&buildargs={\"TOKEN\":\"${rawSecret}\"}`,
     details: { path: `/build?t=x&buildargs=%7B%22TOKEN%22%3A%22${encodedSecret}%22%7D` },
+    remediation: "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
   });
   const api = { request: () => Effect.fail(error) };
 
@@ -335,7 +336,7 @@ test("buildContainerArtifact redacts raw and encoded build args from provider er
           ),
           buildKey: "secret-error",
         },
-        { providerId, api },
+        { providerId, api, sourceEnv: {} },
       ),
     ),
   );
@@ -375,7 +376,7 @@ test("injects the inline Dockerfile into the packed context and preserves real c
         ),
         buildKey: "inline-preserves-context",
       },
-      { providerId, api },
+      { providerId, api, sourceEnv: {} },
     ),
   );
 
@@ -423,7 +424,7 @@ test("uses a root-owned inline Dockerfile when the context contains a .lando sym
         ),
         buildKey: "inline-symlink-parent",
       },
-      { providerId, api },
+      { providerId, api, sourceEnv: {} },
     ),
   );
 
@@ -465,7 +466,7 @@ test("points the daemon dockerfile param at the Lando owned path", async () => {
         ),
         buildKey: "inline-daemon-path",
       },
-      { providerId, api },
+      { providerId, api, sourceEnv: {} },
     ),
   );
 
@@ -503,7 +504,7 @@ test("drops a colliding user entry at the Lando owned path", async () => {
         ),
         buildKey: "inline-collision",
       },
-      { providerId, api },
+      { providerId, api, sourceEnv: {} },
     ),
   );
 
@@ -544,7 +545,7 @@ test("builds from the packed context unchanged when specInline is absent", async
         ),
         buildKey: "file-spec-regression",
       },
-      { providerId, api },
+      { providerId, api, sourceEnv: {} },
     ),
   );
 

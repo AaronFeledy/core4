@@ -11,10 +11,12 @@ import { ensureImage, makeEnsureImage, serviceImagePlatform } from "../src/image
 const dockerCtx = {
   providerId: "docker",
   remediation: "Run `lando doctor --provider=docker` and retry.",
+  env: {},
 } as const;
 const podmanCtx = {
   providerId: "podman",
   remediation: "Run `lando doctor --provider=podman` and retry.",
+  env: {},
 } as const;
 
 const metadata = {

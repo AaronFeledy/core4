@@ -63,6 +63,27 @@ services:
 
 Top-level `proxy:` is the other spelling: a map of service name to the same route list. Set `routes: []` to give a service no hostname at all.
 
+## Stop discovery at a directory
+
+Run app commands from your app directory or any directory below it. Lando checks
+the current directory, then up to 64 parents, and uses the first directory with
+any Landofile layer. It never combines layers from different directories.
+
+To keep a workspace from picking up a Landofile above it, put an empty
+`.lando.stop` file at the workspace boundary:
+
+```sh
+touch .lando.stop
+lando app:config --format=json
+```
+
+Lando still checks that directory for a Landofile before stopping. Its own
+Landofile wins, and apps nested below it work normally. With no Landofile below
+or at the boundary, the command reports `LandofileNotFoundError`, the searched
+range, and the marker location. Run `lando init` to create an app, or move/remove
+the marker if you meant to use a parent app. Without a marker, discovery stops at
+the filesystem root or the 64-parent limit.
+
 ## Write maps as block YAML
 
 Indent every map, and put a value that contains `#` in YAML quotes:
@@ -96,6 +117,12 @@ That fails with `LandofileParseError`, the line number, and a remediation showin
 ## Override a list in a local layer
 
 Put machine-local changes in `.lando.local.yml`. Layers load from low to high precedence: `.lando.base.yml`, `.lando.dist.yml`, `.lando.upstream.yml`, `.lando.yml`, `.lando.local.yml`, then `.lando.user.yml`.
+
+Each layer accepts YAML (`.yml`) or TypeScript (`.ts`), not both: Landofile loads fail with `LandofileFormConflictError` naming both files and telling you to remove one. `stop` and `destroy` can still tear down from applied state, skipping Landofile hooks with the conflict reason; a never-started app reports `unchanged`.
+
+If both `.lando.yml` and `.lando.ts` exist, run `lando app:config --format=json`
+to inspect the conflict without starting services. Remove one form from that
+layer, then run the command again to check the remaining configuration.
 
 Maps deep-merge and scalars use the later value. Collection rules come from each field's schema, not the properties of its entries. Included Landofiles follow the same rules.
 
@@ -247,6 +274,23 @@ lando info
 `app:config` prints the resolved Landofile. `info` prints URLs and connection details.
 
 <Guide>
+  <Scenario id="dual-form-conflict" render>
+    <Step name="inspect-conflicting-forms">
+      <UseFixture name="dual-form-conflict" />
+      <Run command="lando app:config --format=json" expectExit={1} />
+      <Verify errorTag="LandofileFormConflictError" expect={{ regex: "\\.lando\\.yml" }} />
+      <Verify errorTag="LandofileFormConflictError" expect={{ regex: "\\.lando\\.ts" }} />
+      <Verify command="lando app:config --format=json" expectExit={1} expect={{ stdout: { regex: "\"remediation\":\\s*\"[^\"\\s]" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="discovery-stop-marker" render>
+    <Step name="set-workspace-boundary">
+      <UseFixture name="discovery-stop-marker" />
+      <Run command="lando app:config --format=json" expectExit={1} />
+      <Verify errorTag="LandofileNotFoundError" expect={{ regex: "\\.lando\\.stop" }} />
+      <Verify errorTag="LandofileNotFoundError" expect={{ regex: "Searched from" }} />
+    </Step>
+  </Scenario>
   <Scenario id="landofile-shape" render>
     <Step name="scaffold">
       <UseFixture name="your-landofile-demo" />

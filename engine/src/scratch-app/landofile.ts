@@ -16,6 +16,7 @@ export const decodeScratchLandofile = (
           operation: "materialize",
           message: `Unable to parse the rendered scratch Landofile at ${file}.`,
           cause,
+          remediation: `Fix YAML syntax in ${file}, then retry scratch acquisition.`,
         }),
     ),
     Effect.flatMap((parsed) =>
@@ -26,6 +27,7 @@ export const decodeScratchLandofile = (
               operation: "materialize",
               message: `The rendered scratch Landofile at ${file} is invalid.`,
               cause,
+              remediation: `Correct Landofile schema errors in ${file}, then retry scratch acquisition.`,
             }),
         ),
       ),

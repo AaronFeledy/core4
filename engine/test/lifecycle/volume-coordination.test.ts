@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Deferred, Effect, Exit, Fiber } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Option } from "effect";
 
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
@@ -55,6 +56,39 @@ const liveStore = (): Promise<StateStoreShape> =>
   Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
 
 describe("physical volume lifecycle coordination", () => {
+  test.each([0, 1, 2])("preserves provider failure on observation %i", async (failureAt) => {
+    // Given a provider that becomes unavailable during locate, lock verification, or body verification.
+    const store = await liveStore();
+    const failure = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "ensureRuntime",
+      message: "Managed runtime is unavailable",
+      remediation: "Run lando setup",
+    });
+    let calls = 0;
+    const provider = {
+      id: "lando",
+      locateVolume: () =>
+        Effect.suspend(() =>
+          calls++ === failureAt
+            ? Effect.fail(failure)
+            : Effect.succeed({ coordinationKey: "native", nativeName: "data" }),
+        ),
+    };
+    // When coordination reaches that observation.
+    const result = await Effect.runPromise(
+      withPlanVolumeCoordination({
+        plan: { ...plan, stores: plan.stores.slice(0, 1) },
+        provider,
+        stateStore: store,
+        body: (coordination) => coordination.verify,
+      }).pipe(Effect.result),
+    );
+    // Then the original tag, message, and remediation survive unchanged.
+    if (result._tag !== "Failure") throw new TypeError("expected provider failure");
+    expect(result.failure).toBe(failure);
+  });
+
   test("names the owning folder and recovery choices when another app owns a volume", async () => {
     // Given a store whose physical volume belongs to a different app root.
     const store = await liveStore();
@@ -221,6 +255,13 @@ describe("physical volume lifecycle coordination", () => {
 
     // Then the generation check fails before the lifecycle mutation runs.
     expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.findErrorOption(exit.cause);
+      if (Option.isNone(failure)) throw new TypeError("expected typed identity-change failure");
+      expect(failure.value).toMatchObject({
+        remediation: "Retry after the concurrent volume operation completes, then inspect volume ownership.",
+      });
+    }
     expect(mutated).toBe(false);
   });
 

@@ -31,7 +31,12 @@ const withFailingRemove = (state: PluginStateStore): PluginStateStore => ({
       Effect.map((bucket) => ({
         ...bucket,
         remove: Effect.fail(
-          new StateStoreError({ reason: "io", operation: "remove", path: String(bucket.path) }),
+          new StateStoreError({
+            reason: "io",
+            operation: "remove",
+            path: String(bucket.path),
+            remediation: "Injected bucket remove failure for applied-state fixture.",
+          }),
         ),
       })),
     ),

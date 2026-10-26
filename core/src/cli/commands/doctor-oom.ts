@@ -1,5 +1,4 @@
 import { APP_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
-import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { HostPlatform } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
@@ -133,8 +132,6 @@ export interface OomDoctorContext {
 
 export const OOM_CHECK_NAME = "runtime-oom";
 
-const secretsRedactor = createStandaloneRedactor("secrets");
-
 const baseSolution = (): DoctorSolution => ({
   kind: "manual",
   description:
@@ -158,7 +155,7 @@ const podmanDesktopSolution = (): DoctorSolution => ({
 export const buildOomDoctorCheck = (
   classification: DiedEventClassification,
   { provider, providerKind, platform }: OomDoctorContext,
-  redactor: Redactor = secretsRedactor,
+  redactor: Redactor,
 ): DoctorCheck | undefined => {
   if (classification.kind !== "oom") return undefined;
   const { correlation } = classification;
@@ -198,7 +195,7 @@ export const buildOomDoctorCheck = (
 export const collectOomDoctorChecks = (
   payloads: ReadonlyArray<unknown>,
   context: OomDoctorContext,
-  redactor: Redactor = secretsRedactor,
+  redactor: Redactor,
 ): ReadonlyArray<DoctorCheck> =>
   payloads.flatMap((payload) => {
     const check = buildOomDoctorCheck(classifyDiedEvent(payload), context, redactor);

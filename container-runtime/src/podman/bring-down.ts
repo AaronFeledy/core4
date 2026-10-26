@@ -28,7 +28,7 @@ import {
   isSharedNetwork,
   networkOwnershipLabels,
 } from "../native-ownership.ts";
-import { redactDetails, withApiReason } from "../redact.ts";
+import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
 import { planVolumeFilters } from "../volume-ownership.ts";
 import { pruneVolumes, volumeMatchesFilters } from "./volume-prune.ts";
@@ -83,9 +83,9 @@ const podmanFailure = (deps: BringDownDeps, operation: string, message: string, 
   new ProviderUnavailableError({
     providerId: deps.options.ctx.providerId,
     operation,
-    message: withApiReason(message, details),
+    message: withApiReason(message, details, redactorFor(deps.options.ctx)),
     remediation: deps.remediation,
-    ...(details === undefined ? {} : { details: redactDetails(details) }),
+    ...(details === undefined ? {} : { details: redactDetails(details, redactorFor(deps.options.ctx)) }),
   });
 
 const publish = (

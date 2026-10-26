@@ -22,7 +22,7 @@ export class KeymapConflictError extends Schema.TaggedError<KeymapConflictError>
   message: Schema.String.annotate({
     description: "Human-readable description of the same-surface chord collision.",
   }),
-  remediation: Schema.String.annotate({
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
     description: "Actionable guidance to remove or change one same-surface binding.",
   }),
 }) {}

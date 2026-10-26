@@ -12,10 +12,12 @@ export interface HttpTransports {
 class RedirectError extends Schema.TaggedError<RedirectError>()("RedirectError", {
   message: Schema.String,
   urlOrigin: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 class ConnectionTargetError extends Schema.TaggedError<ConnectionTargetError>()("ConnectionTargetError", {
   message: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 interface RequestNetwork {
@@ -51,7 +53,11 @@ export const requestWithNetworkTrust = async (
       url.password !== "" ||
       (headers.has("host") && headers.get("host") !== url.host)
     )
-      throw new ConnectionTargetError({ message: "Invalid connection target or conflicting authority" });
+      throw new ConnectionTargetError({
+        message: "Invalid connection target or conflicting authority",
+        remediation:
+          "Provide a connection target whose origin matches the request URL and does not set a conflicting Host header.",
+      });
     headers.set("host", url.host);
   }
   let body = request.body;
@@ -98,6 +104,10 @@ export const requestWithNetworkTrust = async (
       throw new RedirectError({
         message: request.redirect === "error" ? "redirect forbidden by request policy" : "too many redirects",
         urlOrigin: url.origin,
+        remediation:
+          request.redirect === "error"
+            ? "Set redirect to follow or manual if redirects are expected for this request policy."
+            : "Break the redirect loop at the origin or set redirect to manual so the client stops following Location hops.",
       });
     }
     const next = new URL(location, url);
@@ -106,7 +116,11 @@ export const requestWithNetworkTrust = async (
       next.username !== "" ||
       next.password !== ""
     ) {
-      throw new RedirectError({ message: "unsupported redirect target", urlOrigin: url.origin });
+      throw new RedirectError({
+        message: "unsupported redirect target",
+        urlOrigin: url.origin,
+        remediation: "Use an http(s) Location without embedded credentials for redirect targets.",
+      });
     }
     headers.delete("host");
     headers.delete("proxy-authorization");

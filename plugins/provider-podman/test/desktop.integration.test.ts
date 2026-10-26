@@ -310,6 +310,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       providerId: "podman",
       operation: "podman-api",
       message: "ENOENT: socket missing",
+      remediation: "Install or start the `podman` provider and confirm it can perform `podman-api`.",
     });
     const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
 
@@ -344,6 +345,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       providerId: "podman",
       operation: "podman-api",
       message: "Named pipe not found",
+      remediation: "Install or start the `podman` provider and confirm it can perform `podman-api`.",
     });
     const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
 
@@ -376,6 +378,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       providerId: "podman",
       operation: "podman-api",
       message: "Named pipe not found",
+      remediation: "Install or start the `podman` provider and confirm it can perform `podman-api`.",
     });
     const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
     const original = process.env.LANDO_PODMAN_MACHINE;
@@ -418,6 +421,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       providerId: "podman",
       operation: "podman-api",
       message: "Connection refused",
+      remediation: "Install or start the `podman` provider and confirm it can perform `podman-api`.",
     });
     const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
 

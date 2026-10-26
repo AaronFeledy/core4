@@ -7,7 +7,6 @@ import type { Redactor } from "@lando/sdk/secrets";
 import { DateTime, Effect, Option } from "effect";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
-import { redactString } from "../redact";
 
 export type SetupReadinessStepStatus =
   | "deferred"
@@ -56,9 +55,10 @@ export const writeSetupReadiness = Effect.fnUntraced(function* (
 ): Effect.fn.Return<void, never> {
   if (userDataRoot === undefined) return;
   const service = yield* Effect.serviceOption(RedactionService);
+  const sourceEnv = { ...process.env };
   const redactor = Option.isSome(service)
-    ? yield* service.value.forProfile("secrets")
-    : createStandaloneRedactor("secrets");
+    ? yield* service.value.forProfile("secrets", { sourceEnv })
+    : createStandaloneRedactor("secrets", { sourceEnv });
   const existing = yield* readSetupReadinessRaw(userDataRoot);
   const runtimeServiceBlock =
     runtimeService === undefined
@@ -93,9 +93,10 @@ export const readSetupReadiness = (
       Effect.gen(function* () {
         if (summary === undefined) return undefined;
         const service = yield* Effect.serviceOption(RedactionService);
+        const sourceEnv = { ...process.env };
         const redactor = Option.isSome(service)
-          ? yield* service.value.forProfile("secrets")
-          : createStandaloneRedactor("secrets");
+          ? yield* service.value.forProfile("secrets", { sourceEnv })
+          : createStandaloneRedactor("secrets", { sourceEnv });
         return redactSetupReadinessSummary(summary, redactor);
       }),
     ),
@@ -138,11 +139,9 @@ const redactSetupReadinessSummary = (
   })),
 });
 
-export const setupFailureEvidence = (stepId: string, cause: unknown, redactor?: Redactor): string => {
+export const setupFailureEvidence = (stepId: string, cause: unknown, redactor: Redactor): string => {
   const message = causeMessage(cause);
-  return redactor === undefined
-    ? redactString(`${stepId} setup failed: ${message}`)
-    : redactor.redactString(`${stepId} setup failed: ${message}`);
+  return redactor.redactString(`${stepId} setup failed: ${message}`);
 };
 
 const setupFailurePlatformHint = (stepId: string): string => {
@@ -159,6 +158,6 @@ const setupFailurePlatformHint = (stepId: string): string => {
 export const setupFailureRemediation = (
   stepId: string,
   cause: unknown,
-  redactor: Pick<Redactor, "redactString"> = { redactString },
+  redactor: Pick<Redactor, "redactString">,
 ): string =>
   redactor.redactString(`${setupFailurePlatformHint(stepId)} Last failure: ${causeMessage(cause)}`);

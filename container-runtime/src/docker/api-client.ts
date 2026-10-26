@@ -12,7 +12,7 @@ import type {
 import { engineByteStream } from "../engine-byte-stream.ts";
 import { engineApiFailure } from "../engine-errors.ts";
 import { tryParseJson } from "../engine-json.ts";
-import { httpResponseDetails, redactDetails, redactString, withApiReason } from "../redact.ts";
+import { httpResponseDetails, redactDetails, redactString, redactorFor, withApiReason } from "../redact.ts";
 import {
   type SocketHttpConnection,
   connectSocket,
@@ -65,8 +65,9 @@ const unavailable = (ctx: ProviderErrorContext) => (operation: string, message: 
   new ProviderUnavailableError({
     providerId: ctx.providerId,
     operation,
-    message: redactString(withApiReason(message, details, ctx.redactor), ctx.redactor),
-    ...(details === undefined ? {} : { details: redactDetails(details, ctx.redactor) }),
+    message: redactString(withApiReason(message, details, redactorFor(ctx)), redactorFor(ctx)),
+    ...(details === undefined ? {} : { details: redactDetails(details, redactorFor(ctx)) }),
+    remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 
 const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) =>
@@ -81,8 +82,10 @@ const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) 
             message: "Docker API returned malformed info JSON.",
             capability: "docker-info",
             requiredValue: "valid JSON Docker info response",
-            actualValue: redactString(response.body, ctx.redactor),
+            actualValue: redactString(response.body, redactorFor(ctx)),
             cause,
+            remediation:
+              "Choose a provider that supports `docker-info`, or remove that requirement from the app.",
           }),
       );
 
@@ -425,7 +428,9 @@ export const makeUnixDockerApiClient = (
                 providerId: ctx.providerId,
                 operation: "docker-api",
                 message: "Docker API response did not include an HTTP status code.",
-                details: redactString(spawned.stdout, ctx.redactor),
+                details: redactString(spawned.stdout, redactorFor(ctx)),
+                remediation:
+                  "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
               });
             }
             return parsed;

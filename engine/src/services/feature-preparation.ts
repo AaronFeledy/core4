@@ -42,6 +42,7 @@ export const decodeServiceFeatureConfig = (
         message: `Invalid service feature config: ${details}`,
         feature: feature.id,
         cause: decoded.failure,
+        remediation: "Correct the service feature configuration in the Landofile, then re-run.",
       }),
     );
   }
@@ -51,6 +52,7 @@ export const decodeServiceFeatureConfig = (
       new ServiceFeatureError({
         message: "Service feature config must decode to an object",
         feature: feature.id,
+        remediation: "Correct the service feature configuration in the Landofile, then re-run.",
       }),
     );
   return Effect.succeed(sortRecord(Object.fromEntries(Object.entries(value))));

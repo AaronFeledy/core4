@@ -45,20 +45,22 @@ test("post-init output masks a value registered after module loading", async () 
 test("OOM diagnostics mask registered correlation values", async () => {
   // Given
   const secret = "oom-registered-canary";
+  const envSecret = "oom-environment-canary";
   const service = makeRedactionService();
   await Effect.runPromise(service.registerValues([secret]));
   // When
   const check = buildOomDoctorCheck(
-    { kind: "oom", correlation: { app: secret } },
+    { kind: "oom", correlation: { app: secret, containerName: envSecret } },
     {
       provider: { id: "lando", displayName: "Lando", version: "0.0.0" },
       providerKind: "managed",
       platform: "linux",
     },
-    await Effect.runPromise(service.forProfile("secrets")),
+    await Effect.runPromise(service.forProfile("secrets", { sourceEnv: { P5_OOM_SECRET: envSecret } })),
   );
   // Then
   expect(check?.context?.app).toBe("[redacted]");
+  expect(check?.context?.containerName).toBe("[redacted]");
 });
 
 test("bundled Lando 3 translator ports observe later secret registration", async () => {

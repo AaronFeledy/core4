@@ -32,15 +32,19 @@ test("transcript read errors preserve their fields and rendering through schema 
   const path = AbsolutePath.make("/tmp/transcript.log");
   const cause = new Error("read failed");
   // When
+  const remediation =
+    "Ensure the transcript path is a readable regular file under the user-data root and retry the tail read.";
   const error = Schema.decodeUnknownSync(TranscriptTailReadError)({
     _tag: "TranscriptTailReadError",
     path,
     cause,
+    remediation,
   });
   // Then
   expect(error).toBeInstanceOf(TranscriptTailReadError);
   expect(error.path).toBe(path);
   expect(error.cause).toBe(cause);
+  expect(error.remediation).toBe(remediation);
   expect(error.message).toBe("");
   expect(String(error)).toBe("TranscriptTailReadError");
 });

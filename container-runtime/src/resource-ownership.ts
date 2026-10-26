@@ -106,6 +106,8 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
                 reason: "version",
                 operation: "resource-ownership",
                 cause: version,
+                remediation:
+                  "Upgrade Lando or clear the resource-ownership state written by an incompatible build.",
               });
             },
           })

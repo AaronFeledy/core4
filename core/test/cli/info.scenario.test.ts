@@ -264,6 +264,7 @@ const makeInfoLayer = (
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -272,6 +273,7 @@ const makeInfoLayer = (
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,
@@ -778,11 +780,21 @@ describe("lando info — resolved log sources", () => {
       getVersions: Effect.succeed({ provider: "0.0.0" }),
       buildArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "buildArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+          }),
         ),
       pullArtifact: () =>
         Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "pullArtifact",
+            message: "x",
+            remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+          }),
         ),
       removeArtifact: () => Effect.void,
       apply: () => Effect.succeed({ changed: false }),

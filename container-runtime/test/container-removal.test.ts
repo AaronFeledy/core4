@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { containerRemovalArgs, removeRuntimeContainer } from "../src/container-removal.ts";
 import type { EngineHttpRequest } from "../src/engine-api.ts";
 
-const ctx = { providerId: "podman", operation: "cleanup", remediation: "Retry cleanup." };
+const ctx = { providerId: "podman", operation: "cleanup", remediation: "Retry cleanup.", env: {} };
 
 describe("checked container removal", () => {
   for (const status of [200, 204, 404]) {

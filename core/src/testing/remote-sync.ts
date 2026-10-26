@@ -213,11 +213,22 @@ const makeRemoteSource = (input: {
     listEnvironments: () => Effect.succeed(environments),
     resolve: (_cfg, env, dataset) => {
       if (env === missingEnv) {
-        return Effect.fail(new RemoteEnvNotFoundError({ message: "Unknown environment", env }));
+        return Effect.fail(
+          new RemoteEnvNotFoundError({
+            message: "Unknown environment",
+            env,
+            remediation: "Create the remote environment or pass an existing --env name.",
+          }),
+        );
       }
       if ((capabilities.datasets as ReadonlyArray<string>).includes(dataset) === false) {
         return Effect.fail(
-          new RemoteDatasetUnsupportedError({ message: "Unsupported dataset", env, dataset }),
+          new RemoteDatasetUnsupportedError({
+            message: "Unsupported dataset",
+            env,
+            dataset,
+            remediation: "Choose a dataset kind this test remote supports.",
+          }),
         );
       }
       return Effect.succeed(locatorFor(env, dataset));
@@ -253,6 +264,7 @@ const makeRemoteSource = (input: {
                   remote: input.id,
                   tool: capabilities.tool,
                   cause,
+                  remediation: "Install the missing remote tool on the test remote host, then retry.",
                 }),
             ),
           );
@@ -264,6 +276,7 @@ const makeRemoteSource = (input: {
               message: "Remote fetch egress failed",
               remote: input.id,
               cause,
+              remediation: "Fix network egress to the test remote endpoint, then retry fetch.",
             }),
         ),
       );
@@ -293,6 +306,7 @@ const makeRemoteSource = (input: {
             remote: input.id,
             env: locator.env,
             dataset: locator.dataset,
+            remediation: "Enable push on the test remote or use pull instead.",
           }),
         );
       }
@@ -303,6 +317,7 @@ const makeRemoteSource = (input: {
             remote: input.id,
             env: locator.env,
             dataset: locator.dataset,
+            remediation: "Re-run with --yes after verifying the protected remote environment.",
           }),
         );
       }
@@ -337,18 +352,22 @@ const makeRemoteSource = (input: {
                     remote: input.id,
                     tool: capabilities.tool,
                     cause,
+                    remediation: "Install the missing remote tool on the test remote host, then retry.",
                   }),
               ),
             );
         }
-        yield* http
-          .get(locator.endpoint ?? `https://remote.example.test/${input.id}/send`)
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new RemoteUnreachableError({ message: "Remote send egress failed", remote: input.id, cause }),
-            ),
-          );
+        yield* http.get(locator.endpoint ?? `https://remote.example.test/${input.id}/send`).pipe(
+          Effect.mapError(
+            (cause) =>
+              new RemoteUnreachableError({
+                message: "Remote send egress failed",
+                remote: input.id,
+                cause,
+                remediation: "Fix network egress to the test remote endpoint, then retry send.",
+              }),
+          ),
+        );
         yield* datasetBridge.send(endpoint);
         if (opts?.expectedDigest === INTERRUPT_DIGEST) yield* Effect.never;
         input.captured.push(
@@ -498,6 +517,7 @@ export const makeTestDataset = () =>
             dataset: "test",
             service,
             path: ".",
+            remediation: "Bind the dataset to a volume path outside the app code tree.",
           })
         : undefined;
 
@@ -528,7 +548,12 @@ export const makeTestDataset = () =>
             })
             .pipe(
               Effect.mapError(
-                (cause) => new DatasetCaptureError({ message: "DataMover capture transfer failed", cause }),
+                (cause) =>
+                  new DatasetCaptureError({
+                    message: "DataMover capture transfer failed",
+                    cause,
+                    remediation: "Fix the capture source service command, then retry dataset capture.",
+                  }),
               ),
             );
           yield* dataMover
@@ -539,7 +564,12 @@ export const makeTestDataset = () =>
             .pipe(
               Stream.runCollect,
               Effect.mapError(
-                (cause) => new DatasetCaptureError({ message: "DataMover capture stream failed", cause }),
+                (cause) =>
+                  new DatasetCaptureError({
+                    message: "DataMover capture stream failed",
+                    cause,
+                    remediation: "Fix the capture stream source, then retry dataset capture.",
+                  }),
               ),
             );
           captured.push(
@@ -562,7 +592,13 @@ export const makeTestDataset = () =>
         const bindingError = rejectCodeTree(ctx);
         if (bindingError !== undefined) return Effect.fail(bindingError);
         if (endpoint._tag !== artifact._tag) {
-          return Effect.fail(new DatasetApplyError({ message: "Unsupported artifact", dataset: "test" }));
+          return Effect.fail(
+            new DatasetApplyError({
+              message: "Unsupported artifact",
+              dataset: "test",
+              remediation: "Pass a hostArchive artifact this test dataset can apply.",
+            }),
+          );
         }
         return Effect.fnUntraced(function* () {
           captured.push(
@@ -582,7 +618,12 @@ export const makeTestDataset = () =>
             })
             .pipe(
               Effect.mapError(
-                (cause) => new DatasetApplyError({ message: "DataMover apply transfer failed", cause }),
+                (cause) =>
+                  new DatasetApplyError({
+                    message: "DataMover apply transfer failed",
+                    cause,
+                    remediation: "Fix the apply target endpoint, then retry dataset apply.",
+                  }),
               ),
             );
           const changed = !sameBytes(appliedBytes, expectedBytes);

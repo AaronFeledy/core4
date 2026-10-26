@@ -62,7 +62,7 @@ test("projects mounts and connections from one container inspect request", async
               };
             }),
         },
-        ctx: { providerId: "podman", remediation: "Retry inspect." },
+        ctx: { providerId: "podman", remediation: "Retry inspect.", env: {} },
       },
     ),
   );
@@ -84,7 +84,7 @@ test("marks mounts missing only when the container is absent", async () => {
       { app: plan.id, service: service.name },
       {
         api: { request: () => Effect.succeed({ status: 404, body: "" }) },
-        ctx: { providerId: "podman", remediation: "Retry inspect." },
+        ctx: { providerId: "podman", remediation: "Retry inspect.", env: {} },
       },
     ),
   );
@@ -103,7 +103,7 @@ test.each([{}, { State: {} }, { State: { Status: "unrecognized" } }])(
         { app: plan.id, service: service.name },
         {
           api,
-          ctx: { providerId: "podman", remediation: "Retry inspect." },
+          ctx: { providerId: "podman", remediation: "Retry inspect.", env: {} },
         },
       ),
     );
@@ -130,7 +130,7 @@ test.each(["created", "exited", "dead", "stopped"])(
         { app: plan.id, service: service.name },
         {
           api,
-          ctx: { providerId: "podman", remediation: "Retry inspect." },
+          ctx: { providerId: "podman", remediation: "Retry inspect.", env: {} },
         },
       ),
     );

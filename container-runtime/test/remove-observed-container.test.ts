@@ -14,7 +14,7 @@ import {
   volumeClassFromLabels,
 } from "../src/volume-classes.ts";
 
-const ctx = { providerId: "podman", remediation: "Repair podman and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Repair podman and retry.", env: {} } as const;
 
 const observed = (
   overrides: Partial<Omit<ServiceRuntimeInfo, "containerId">> & { readonly withoutContainer?: true } = {},

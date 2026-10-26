@@ -8,7 +8,7 @@ import {
   mergeDiscoveredContainers,
 } from "../src/podman/discover.ts";
 
-const ctx = { providerId: "podman", remediation: "Check the runtime." };
+const ctx = { providerId: "podman", remediation: "Check the runtime.", env: {} };
 
 test("discovers labeled services with native container identity and runtime status", async () => {
   const calls: EngineHttpRequest[] = [];

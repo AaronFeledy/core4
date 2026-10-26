@@ -433,6 +433,7 @@ describe("lando restart", () => {
       providerId: "lando",
       operation: "buildArtifact",
       message: "build failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
     });
     const harness = makeRestartLayer({ buildEffect: Effect.fail(failure) });
 
