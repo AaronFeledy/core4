@@ -82,7 +82,7 @@ When a passthrough app mount's `.git` is a gitfile (a Git worktree or submodule 
 Every bind entry has `realization: passthrough | accelerated`. The app mount's realization is selected from `bindMountPerformance` (§5.4); every other bind, including authored directory binds and configuration files, is `passthrough`:
 
 - `native` uses provider binds and no `FileSyncEngine` or `pre-file-sync-*` events.
-- `slow` uses a provider-managed `<app>-<service>-<mountKey>` volume (characters outside `[A-Za-z0-9_.-]` become `-`) and a `FileSyncSessionSpec`; the bundled engine is `@lando/file-sync-mutagen` (§4.2).
+- `slow` uses a provider-managed `lando-sync-<app-id>-<service>-<mountKey>` volume and a `FileSyncSessionSpec`; the bundled engine is `@lando/file-sync-mutagen` (§4.2).
 - `none` fails with `CapabilityError`.
 
 The realization is invisible in canonical config and MUST NOT expose engine or session ids. Accelerated engines with `exclusionPatterns` receive the derived patterns, including non-directory paths; otherwise planning retains storage shadows. Exclude entries stay in mount intent and are never silently dropped.
