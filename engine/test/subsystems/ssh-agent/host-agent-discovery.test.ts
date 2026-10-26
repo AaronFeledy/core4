@@ -712,7 +712,7 @@ test("explicit regular file is socket-not-socket without probing or fallback", a
   const root = await mkdtemp(join(tmpdir(), "ssh-agent-file-"));
   const file = join(root, "plain");
   await writeFile(file, "not an agent");
-  const probes = 0;
+  let probes = 0;
   try {
     const result = await Effect.runPromise(
       Effect.result(
@@ -721,8 +721,8 @@ test("explicit regular file is socket-not-socket without probing or fallback", a
           home: root,
           env: { SSH_AUTH_SOCK: "/fallback" },
           explicitSocket: file,
-          probe: (upstream) => {
-            probes.push(upstream.path);
+          probe: () => {
+            probes += 1;
             return alive();
           },
         }),
