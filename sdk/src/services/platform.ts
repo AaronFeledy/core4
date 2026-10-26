@@ -2,6 +2,7 @@ import { Context, type Effect, type Scope } from "effect";
 import type { AppId } from "../schema/primitives.ts";
 
 import type {
+  AppPlacementError,
   CaError,
   HealthcheckError,
   HealthcheckTimeoutError,
@@ -26,7 +27,9 @@ import type {
   ProxyCapabilities,
   ProxyConfig,
   ProxyStatus,
+  RouteEvidence,
   RoutePlan,
+  ScanVerdict,
   ServiceName,
 } from "../schema/index.ts";
 import type { PrivilegeService } from "./process.ts";
@@ -67,7 +70,10 @@ export class RouterService extends Context.Service<
     /** Resolve and persist route publication ports before starting required global services. */
     readonly prepare?: (
       config: ProxyConfig,
-    ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>;
+    ) => Effect.Effect<
+      void,
+      AppPlacementError | ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch
+    >;
     readonly setup: (
       config: ProxyConfig,
       options?: {
@@ -77,7 +83,7 @@ export class RouterService extends Context.Service<
       },
     ) => Effect.Effect<
       void,
-      ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
+      AppPlacementError | ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
       Scope.Scope
     >;
     /**
@@ -91,6 +97,10 @@ export class RouterService extends Context.Service<
       appId: AppId,
     ) => Effect.Effect<ProxyApplyResult, ProxyApplyError>;
     readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
+    readonly observeRoutes: (
+      app: AppId,
+      requestedRoutes: ReadonlyArray<RoutePlan>,
+    ) => Effect.Effect<RouteEvidence, ProxyError>;
     readonly status: Effect.Effect<ProxyStatus, ProxyError>;
     readonly stop: Effect.Effect<void, ProxyError>;
   }
@@ -136,13 +146,18 @@ export class HealthcheckRunner extends Context.Service<
       plan: HealthcheckPlan,
       appId: AppId,
       service: ServiceName,
+      appPlan?: AppPlan,
     ) => Effect.Effect<HealthcheckResult, HealthcheckRunError>;
   }
 >()("@lando/core/HealthcheckRunner") {}
 
 export type HealthcheckRunnerShape = HealthcheckRunner["Service"];
 
+export type { ScanVerdict } from "../schema/networking.ts";
+
 export interface ScanEndpoint {
+  readonly verdict: ScanVerdict;
+  readonly routerMarker?: string;
   readonly service: ServiceName;
   readonly url: string;
   readonly reachable: boolean;
@@ -158,6 +173,19 @@ export interface ScanEndpoint {
    * transport error or `HTTP <code>`). Scanners MUST redact this through the
    * canonical redaction primitive before returning it.
    */
+  readonly detail?: string;
+}
+
+/** One completed probe attempt; detail is redacted by the scanner before notification. */
+export interface ScanAttempt {
+  readonly verdict: ScanVerdict;
+  readonly willRetry?: boolean;
+  readonly service: ServiceName;
+  readonly url: string;
+  readonly attempt: number;
+  readonly maxAttempts: number;
+  readonly outcome: ProbeOutcome;
+  readonly statusCode?: number;
   readonly detail?: string;
 }
 
@@ -186,6 +214,8 @@ export class UrlScanner extends Context.Service<
       options?: {
         readonly plan?: AppPlan;
         readonly urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+        /** Observe completed attempts without affecting probe verdicts; detail is redacted. */
+        readonly onAttempt?: (attempt: ScanAttempt) => Effect.Effect<void>;
       },
     ) => Effect.Effect<ScanResult, ScannerError>;
     readonly detectCollisions: (

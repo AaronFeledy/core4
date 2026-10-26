@@ -3,7 +3,10 @@ import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:f
 import { join } from "node:path";
 import { Cause, Clock, DateTime, Effect, Exit, Option } from "effect";
 
+import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
 import {
+  SnapshotAmbiguousError,
+  SnapshotNotFoundError,
   SqlCommandFailedError,
   SqlConfirmRequiredError,
   SqlDumpNotFoundError,
@@ -14,21 +17,33 @@ import {
   SqlServiceAmbiguousError,
   VolumeNotFoundError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  ServiceName,
+  SnapshotInfo,
+  appIdentityKey,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 
 import { dumpCommand, loadCommand } from "../src/families.ts";
-import { dbInputFromCommand, executeDbCommand } from "../src/run.ts";
+import { type SqlCommandDeps, dbInputFromCommand, executeDbCommand } from "../src/run.ts";
 import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
+import { sourcePlan } from "./support/source-plan.ts";
 
 const SECRET = "s3cret-pass";
 
 const writeCompressed = async (path: string, payload: string, compression: "gzip" | "zstd") => {
-  const bytes = Buffer.from(
-    await new Response(
-      new Blob([payload]).stream().pipeThrough(new CompressionStream(compression)),
-    ).arrayBuffer(),
-  );
-  writeFileSync(path, bytes);
+  switch (compression) {
+    case "gzip":
+      writeFileSync(path, Bun.gzipSync(payload));
+      return;
+    case "zstd":
+      writeFileSync(path, Bun.zstdCompressSync(payload));
+      return;
+    default:
+      return compression satisfies never;
+  }
 };
 
 afterEach(cleanupSqlTestDeps);
@@ -39,6 +54,261 @@ const run = (
 ) => Effect.runPromiseExit(Effect.scoped(executeDbCommand(deps, input)));
 
 describe("executeDbCommand", () => {
+  test("maps app seed source flags at the command boundary", () => {
+    // Given: command flags selecting a source app and service.
+    const command = {
+      argv: [],
+      parsedArgv: [],
+      flags: { "from-app": "shop", "from-service": "analytics" },
+      args: {},
+    };
+    // When: the command boundary produces SQL input.
+    const input = dbInputFromCommand("seed", command);
+    // Then: both selectors survive with their distinct meanings.
+    expect(input).toMatchObject({ action: "seed", fromApp: "shop", fromService: "analytics" });
+  });
+
+  test("inspects the applied source plan before any target database access", async () => {
+    // Given: a source inspection that records both identity and ordering.
+    const source = sourcePlan("/shop");
+    const inspected: Array<Parameters<SqlCommandDeps["inspectSource"]>[0]> = [];
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      appliedPlans: Effect.succeed([source]),
+      inspectSource: (target) =>
+        Effect.sync(() => {
+          inspected.push(target);
+          expect(harness.countAttempts()).toBe(0);
+          expect(harness.lifecycle()).toEqual([]);
+          return {
+            app: target.app,
+            service: target.service,
+            providerId: source.provider,
+            status: "running",
+            publications: { status: "unknown" as const },
+          };
+        }),
+    });
+    // When: seeding from the applied source.
+    const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+    // Then: inspection uses the exact source selector rather than the target plan.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(inspected).toEqual([{ app: source.id, service: ServiceName.make("database"), plan: source }]);
+  });
+
+  for (const family of ["mysql", "mariadb", "postgres", "mongodb"] as const) {
+    test(`seeds ${family} from a running app through one logical transfer`, async () => {
+      // Given: an unrelated running source app and a fresh target with distinct credentials.
+      const source = sourcePlan("/unrelated/shop", `${family}:8.0`);
+      const harness = makeSqlTestDeps({
+        password: SECRET,
+        type: `${family}:8.0`,
+        ...(family === "mariadb" ? { observedVersion: "8.0-MariaDB" } : {}),
+        environment: {
+          MYSQL_PASSWORD: SECRET,
+          POSTGRES_PASSWORD: SECRET,
+          MONGO_INITDB_ROOT_PASSWORD: SECRET,
+        },
+        appliedPlans: Effect.succeed([source]),
+      });
+      // When: seeding by app id.
+      const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+      // Then: a single credential-safe transfer crosses app ids and preserves seed semantics.
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (!Exit.isSuccess(exit)) return;
+      expect(exit.value.seedStatus).toBe("seeded");
+      expect(harness.transfers()).toHaveLength(1);
+      const transfer = harness.transfers()[0];
+      if (transfer?.from._tag !== "serviceCmd" || transfer.to._tag !== "serviceCmd")
+        throw new Error("expected command transfer");
+      expect([transfer.from.app, transfer.to.app]).toEqual([AppId.make("shop"), AppId.make("sql-app")]);
+      expect(transfer.from.command).toEqual(
+        dumpCommand(family, {
+          user: "source-user",
+          database: "source-db",
+          port: DATABASE_FAMILY_DEFAULT_PORTS[family],
+        }),
+      );
+      expect(transfer.to.command).toEqual(
+        loadCommand(
+          family,
+          { user: "lando", database: "sql-app", port: DATABASE_FAMILY_DEFAULT_PORTS[family] },
+          "source-db",
+        ),
+      );
+      expect(Object.values(transfer.from.env ?? {}).join(" ")).toContain("source-secret");
+      expect(Object.values(transfer.to.env ?? {}).join(" ")).toContain(SECRET);
+      expect([...transfer.from.command, ...transfer.to.command].join(" ")).not.toContain("source-secret");
+      expect([...transfer.from.command, ...transfer.to.command].join(" ")).not.toContain(SECRET);
+      expect(harness.lifecycle()).toEqual(["lock"]);
+      expect(harness.snapshots()).toEqual([]);
+    });
+  }
+
+  test("remaps mongodb namespaces when the source and target databases differ", async () => {
+    // Given: a worktree target database seeded from a source app with a different database name.
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      type: "mongodb:7",
+      environment: { MONGO_INITDB_ROOT_PASSWORD: SECRET },
+      appliedPlans: Effect.succeed([sourcePlan("/shop", "mongodb:7")]),
+    });
+    // When: seeding by app id.
+    const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+    // Then: the restore selects the source namespace and renames it into the target database.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const transfer = harness.transfers()[0];
+    if (transfer?.to._tag !== "serviceCmd") throw new Error("expected command transfer");
+    const command =
+      typeof transfer.to.command === "string" ? transfer.to.command : transfer.to.command.join(" ");
+    expect(command).toContain("--nsInclude='source-db.*' --nsFrom='source-db.*' --nsTo='sql-app.*'");
+    expect(command).not.toContain(SECRET);
+    expect(command).not.toContain("source-secret");
+  });
+
+  test("matches a source checkout by canonical root", async () => {
+    // Given: a path containing dot segments identifies an applied source root.
+    const harness = makeSqlTestDeps({ password: SECRET });
+    const source = sourcePlan(harness.root);
+    const deps = { ...harness.deps, appliedPlans: Effect.succeed([source]) };
+    // When: seeding by path instead of id.
+    const exit = await run(deps, { action: "seed", fromPath: `${harness.root}/.`, yes: false });
+    // Then: the source app id comes from the applied plan.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.transfers()[0]?.from).toMatchObject({ _tag: "serviceCmd", app: "shop" });
+  });
+
+  for (const [names, requested, expected] of [
+    [["database", "other"], undefined, "database"],
+    [["only"], undefined, "only"],
+    [["database", "other"], "other", "other"],
+  ] as const) {
+    test(`selects source service ${expected} from ${names.join(",")} with override ${requested}`, async () => {
+      // Given: a source with matching-name, sole-service, or explicitly selected candidates.
+      const harness = makeSqlTestDeps({
+        password: SECRET,
+        appliedPlans: Effect.succeed([sourcePlan("/shop", "mysql:8.0", names)]),
+      });
+      // When: seeding with the optional source service selector.
+      const exit = await run(harness.deps, {
+        action: "seed",
+        fromApp: "shop",
+        yes: false,
+        ...(requested === undefined ? {} : { fromService: requested }),
+      });
+      // Then: the selected source command targets the expected service.
+      expect(Exit.isSuccess(exit)).toBe(true);
+      expect(harness.transfers()[0]?.from).toMatchObject({ service: expected });
+    });
+  }
+
+  test("reports source SQL service ambiguity without touching the target", async () => {
+    // Given: neither of two source services matches the target name.
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      appliedPlans: Effect.succeed([sourcePlan("/shop", "mysql:8.0", ["one", "two"])]),
+    });
+    // When: no source service is selected.
+    const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+    // Then: source candidates and the source-specific selector are exposed.
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({
+      _tag: "SqlServiceAmbiguousError",
+      available: ["one", "two"],
+      remediation: "Pass --from-service <name>.",
+    });
+    expect(harness.lifecycle()).toEqual([]);
+  });
+
+  for (const [scenario, sourceType, remediation] of [
+    ["unknown", "mysql:8.0", "--from-path"],
+    ["unavailable", "mysql:8.0", "db:export"],
+    ["stopped", "mysql:8.0", "--from-path"],
+    ["mismatch", "postgres:16", "same family"],
+    ["mssql", "mssql:2022", "db:export"],
+    ["two-sources", "mysql:8.0", "--from-path"],
+  ] as const) {
+    test(`rejects ${scenario} app seed before touching the target`, async () => {
+      // Given: an invalid source or unsupported source/target combination.
+      const source = sourcePlan("/shop", sourceType);
+      const harness = makeSqlTestDeps({
+        password: SECRET,
+        ...(scenario === "mssql" ? { type: "mssql:2022" } : {}),
+        ...(scenario === "unavailable"
+          ? {}
+          : { appliedPlans: Effect.succeed(scenario === "unknown" ? [] : [source]) }),
+        ...(scenario === "stopped"
+          ? {
+              inspectSource: (target) =>
+                Effect.succeed({
+                  app: target.app,
+                  service: target.service,
+                  providerId: source.provider,
+                  status: "stopped",
+                  publications: { status: "unknown" as const },
+                }),
+            }
+          : {}),
+      });
+      // When: the invalid source is requested.
+      const exit = await run(harness.deps, {
+        action: "seed",
+        fromApp: "shop",
+        yes: false,
+        ...(scenario === "two-sources" ? { file: "dump.sql" } : {}),
+      });
+      // Then: a tagged source failure gives actionable remediation and no mutation occurs.
+      if (!Exit.isFailure(exit)) throw new Error("expected failure");
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(SqlSeedSourceError);
+      if (!(error instanceof SqlSeedSourceError)) return;
+      expect(error.remediation).toContain(remediation);
+      if (scenario === "unknown" || scenario === "stopped")
+        expect(error.remediation).toContain("lando start");
+      if (scenario === "unknown") expect(error.message).toBe("No applied source app matches shop.");
+      if (scenario === "unavailable") {
+        expect(error.message).toContain("Provider test");
+        expect(error.remediation).toContain("lando db:seed <file>");
+        expect(error.remediation).not.toContain("lando start");
+      }
+      expect(harness.lifecycle()).toEqual([]);
+      expect(harness.transfers()).toEqual([]);
+      expect(harness.countAttempts()).toBe(0);
+    });
+  }
+
+  for (const status of ["in-progress", "seeded", "failed"] as const) {
+    test(`rejects app seed when target initialization is ${status}`, async () => {
+      // Given: a running source but a target already claimed or consumed.
+      const harness = makeSqlTestDeps({
+        password: SECRET,
+        seedStatus: status,
+        appliedPlans: Effect.succeed([sourcePlan("/shop")]),
+      });
+      // When: app seeding is requested.
+      const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+      // Then: the existing freshness gate prevents transfer.
+      if (!Exit.isFailure(exit)) throw new Error("expected failure");
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlSeedStateError);
+      expect(harness.transfers()).toEqual([]);
+    });
+  }
+
+  test("rejects app seed when a fresh target contains data", async () => {
+    // Given: initialization says fresh but the target database is populated.
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      countStdout: "1",
+      appliedPlans: Effect.succeed([sourcePlan("/shop")]),
+    });
+    // When: app seeding is requested.
+    const exit = await run(harness.deps, { action: "seed", fromApp: "shop", yes: false });
+    // Then: the emptiness gate prevents transfer.
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlSeedStateError);
+    expect(harness.transfers()).toEqual([]);
+  });
+
   test("maps the db:seed snapshot flag to its physical source", () => {
     const input = dbInputFromCommand("seed", {
       argv: [],
@@ -67,18 +337,29 @@ describe("executeDbCommand", () => {
     expect({ fromApp, fromPath }).toEqual({ fromApp: "sibling", fromPath: "/workspace/sibling" });
   });
 
-  test("lists only snapshots owned by the current canonical app root by default", async () => {
-    // Given: snapshots stored under an app id shared by more than one worktree.
-    const harness = makeSqlTestDeps({ password: SECRET });
+  test.each([false, true])(
+    "lists only the current owner with an identity-less plan: %s",
+    async (legacyPlan) => {
+      // Given: snapshots stored under an app id shared by more than one worktree.
+      const harness = makeSqlTestDeps({ password: SECRET });
+      const { identity: _identity, ...planWithoutIdentity } = harness.deps.plan;
 
-    // When: the user lists snapshots without an explicit source selector.
-    await run(harness.deps, { action: "snapshots", yes: false });
+      // When: the user lists snapshots without an explicit source selector.
+      await run(
+        { ...harness.deps, plan: legacyPlan ? planWithoutIdentity : harness.deps.plan },
+        { action: "snapshots", yes: false },
+      );
 
-    // Then: the query is constrained by planner-owned app identity.
-    expect(harness.snapshotFilters()).toEqual([
-      { app: AppId.make("sql-app"), store: "sql-app_database_data", ownerKey: "owner:sql-app" },
-    ]);
-  });
+      // Then: the query is constrained by planner-owned app identity.
+      expect(harness.snapshotFilters()).toEqual([
+        {
+          app: AppId.make("sql-app"),
+          store: "sql-app_database_data",
+          ownerKey: appIdentityKey("owner", harness.root),
+        },
+      ]);
+    },
+  );
 
   test("constrains an explicit app source to sibling worktrees in the same repository", async () => {
     // Given: an app with a proven Git repository group.
@@ -138,7 +419,7 @@ describe("executeDbCommand", () => {
     // Then: the query uses the canonical physical source root.
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(harness.snapshotFilters()).toEqual([
-      { sourceRoot: AbsolutePath.make(sibling), service: ServiceName.make("database") },
+      { ownerKey: appIdentityKey("owner", sibling), service: ServiceName.make("database") },
     ]);
   });
 
@@ -166,16 +447,16 @@ describe("executeDbCommand", () => {
   test("previews and confirms retention within the current root and service", async () => {
     // Given: two manual snapshots and an automatic recovery point for the selected database.
     const harness = makeSqlTestDeps({ password: SECRET });
+    const owner = planAppIdentity({ root: AbsolutePath.make(harness.root) });
     const snapshots = [
       SnapshotInfo.make({
         id: "manual-new",
+        owner,
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:new",
         sizeBytes: 12,
         createdAt: DateTime.makeUnsafe("2026-09-11T03:00:00Z"),
         metadata: {
-          sourceRoot: AbsolutePath.make(harness.root),
-          ownerKey: "owner:sql-app",
           service: ServiceName.make("database"),
           volumeInstanceId: "volume-instance:database",
           family: "mysql",
@@ -186,13 +467,12 @@ describe("executeDbCommand", () => {
       }),
       SnapshotInfo.make({
         id: "manual-old",
+        owner,
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:old",
         sizeBytes: 12,
         createdAt: DateTime.makeUnsafe("2026-09-11T01:00:00Z"),
         metadata: {
-          sourceRoot: AbsolutePath.make(harness.root),
-          ownerKey: "owner:sql-app",
           service: ServiceName.make("database"),
           volumeInstanceId: "volume-instance:database",
           family: "mysql",
@@ -203,13 +483,12 @@ describe("executeDbCommand", () => {
       }),
       SnapshotInfo.make({
         id: "reset-recovery",
+        owner,
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:recovery",
         sizeBytes: 12,
         createdAt: DateTime.makeUnsafe("2026-09-11T00:00:00Z"),
         metadata: {
-          sourceRoot: AbsolutePath.make(harness.root),
-          ownerKey: "owner:sql-app",
           service: ServiceName.make("database"),
           volumeInstanceId: "volume-instance:database",
           family: "mysql",
@@ -246,7 +525,11 @@ describe("executeDbCommand", () => {
     expect(confirmed.value.retentionApplied).toBe(true);
     expect(policies).toEqual([
       {
-        filter: { app: AppId.make("sql-app"), store: "sql-app_database_data", ownerKey: "owner:sql-app" },
+        filter: {
+          app: AppId.make("sql-app"),
+          store: "sql-app_database_data",
+          ownerKey: appIdentityKey("owner", harness.root),
+        },
         keepLatest: 1,
       },
     ]);
@@ -275,7 +558,9 @@ describe("executeDbCommand", () => {
     expect(transfer?.from._tag).toBe("serviceCmd");
     expect(transfer?.to._tag).toBe("hostPath");
     if (transfer?.from._tag === "serviceCmd") {
-      expect(transfer.from.command).toEqual(dumpCommand("mysql", { user: "lando", database: "sql-app" }));
+      expect(transfer.from.command).toEqual(
+        dumpCommand("mysql", { user: "lando", database: "sql-app", port: 3306 }),
+      );
       expect(transfer.from.env?.MYSQL_PWD).toBe(SECRET);
       expect(JSON.stringify(transfer.from.command)).not.toContain(SECRET);
     }
@@ -297,7 +582,9 @@ describe("executeDbCommand", () => {
     const transfer = harness.transfers()[0];
     expect(transfer?.from._tag).toBe("serviceCmd");
     if (transfer?.from._tag === "serviceCmd") {
-      expect(transfer.from.command).toEqual(dumpCommand("postgres", { user: "lando", database: "sql-app" }));
+      expect(transfer.from.command).toEqual(
+        dumpCommand("postgres", { user: "lando", database: "sql-app", port: 5432 }),
+      );
       expect(transfer.from.env?.PGPASSWORD).toBe(SECRET);
     }
   });
@@ -322,7 +609,7 @@ describe("executeDbCommand", () => {
       const command = transfer.from.command;
       expect(Array.isArray(command)).toBe(true);
       if (!Array.isArray(command)) throw new Error("expected argv command");
-      expect(command[0]).toBe("sh");
+      expect(command[0]).toBe("bash");
       expect(command.join(" ")).toContain("mongodump --archive");
       expect(command.join(" ")).not.toContain("| gzip");
       expect(command.join(" ")).not.toContain("zstd");
@@ -347,7 +634,7 @@ describe("executeDbCommand", () => {
         .map(({ command }) => command)
         .slice(-2),
     ).toEqual([
-      ["mkdir", "-p", "/var/opt/mssql/backup"],
+      expect.arrayContaining(["/var/opt/mssql/backup", "/var/opt/mssql/backup/sql-app.bak"]),
       expect.arrayContaining(["/opt/mssql-tools18/bin/sqlcmd", "-C"]),
     ]);
     const transfer = harness.transfers()[0];
@@ -376,7 +663,7 @@ describe("executeDbCommand", () => {
         .map(({ command }) => command)
         .slice(-2),
     ).toEqual([
-      ["mkdir", "-p", "/var/opt/mssql/backup"],
+      expect.arrayContaining(["/var/opt/mssql/backup", "/var/opt/mssql/backup/sql-app.bak"]),
       expect.arrayContaining(["/opt/mssql-tools18/bin/sqlcmd", "-C"]),
     ]);
     expect(exit.value.sizeBytes).toBe(12);
@@ -412,7 +699,9 @@ describe("executeDbCommand", () => {
     const transfer = harness.transfers()[0];
     expect(transfer?.to._tag).toBe("serviceCmd");
     if (transfer?.to._tag === "serviceCmd") {
-      expect(transfer.to.command).toEqual(loadCommand("mysql", { user: "lando", database: "sql-app" }));
+      expect(transfer.to.command).toEqual(
+        loadCommand("mysql", { user: "lando", database: "sql-app", port: 3306 }),
+      );
     }
     if (transfer?.from._tag === "hostPath") expect(transfer.from.path).not.toBe(file);
   });
@@ -608,7 +897,9 @@ describe("executeDbCommand", () => {
     expect(transfer?.from._tag).toBe("hostPath");
     expect(transfer?.to._tag).toBe("serviceCmd");
     if (transfer?.to._tag === "serviceCmd") {
-      expect(transfer.to.command).toEqual(loadCommand("mysql", { user: "lando", database: "sql-app" }));
+      expect(transfer.to.command).toEqual(
+        loadCommand("mysql", { user: "lando", database: "sql-app", port: 3306 }),
+      );
       const command = transfer.to.command;
       expect(typeof command === "string" ? command : command.join(" ")).not.toContain("gunzip");
       expect(typeof command === "string" ? command : command.join(" ")).not.toContain("zstd");
@@ -616,14 +907,14 @@ describe("executeDbCommand", () => {
     expect(transfer?.expectedDigest).toMatch(/^[a-f0-9]{64}$/u);
   });
 
-  test("treats a failed count probe as non-empty and requires confirmation", async () => {
+  test("reports a failed count before requesting import confirmation", async () => {
     const harness = makeSqlTestDeps({ password: SECRET, countFails: true });
 
     const exit = await run(harness.deps, { action: "import", file: "dump.sql", yes: false });
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlConfirmRequiredError);
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlCommandFailedError);
     expect(harness.transfers()).toEqual([]);
   });
 
@@ -641,7 +932,7 @@ describe("executeDbCommand", () => {
     expect(harness.snapshots()[0]?.metadata?.recoveryReason).toBe("reset");
     const exec = harness.execs().find((entry) => entry.command.join(" ").includes("DROP DATABASE"));
     expect(exec?.command[0]).toBe("mysql");
-    expect(exec?.command.slice(0, 5)).toEqual(["mysql", "-h", "127.0.0.1", "-u", "root"]);
+    expect(exec?.command.slice(0, 7)).toEqual(["mysql", "-h", "127.0.0.1", "-P", "3306", "-u", "root"]);
     expect(exec?.env?.MYSQL_PWD).toBe(rootPassword);
     expect(exec?.command.join(" ")).not.toContain(SECRET);
     expect(exec?.command.join(" ")).not.toContain(rootPassword);
@@ -665,9 +956,9 @@ describe("executeDbCommand", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
     const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
-    expect(error).toBeInstanceOf(SqlRecoveryOperationError);
-    if (error instanceof SqlRecoveryOperationError) {
-      expect(error.cause).toBeInstanceOf(SqlCommandFailedError);
+    expect(error).toBeInstanceOf(SqlCommandFailedError);
+    if (error instanceof SqlCommandFailedError) {
+      expect(error.exitCode).toBe(1);
       expect(error.recoverySnapshotId).toMatch(/^snap-/u);
     }
   });
@@ -702,8 +993,9 @@ describe("executeDbCommand", () => {
     expect(exit.value.snapshotId).not.toBe("before-change");
     expect(harness.snapshots()[0]?.store).toBe("sql-app_database_data");
     expect(harness.snapshots()[0]?.format).toBe("tar.gz");
+    expect(harness.snapshots()[0]?.repoGroupKey).toBe("repository:sql-app");
     const metadata = harness.snapshots()[0]?.metadata;
-    expect(String(metadata?.sourceRoot)).toBe(harness.root);
+    expect(harness.snapshots()[0]?.owner.appRoot).toBe(AbsolutePath.make(harness.root));
     expect(String(metadata?.service)).toBe("database");
     expect(metadata?.volumeInstanceId).toBe("volume-instance:sql-app_database_data");
     expect(metadata?.family).toBe("mysql");
@@ -864,13 +1156,186 @@ describe("executeDbCommand", () => {
   });
 
   test("seeds a provenance-confirmed fresh volume from a compatible physical snapshot", async () => {
-    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      countStdout: "0",
+      snapshotVolumeInstance: "volume-instance:previous-generation",
+    });
 
     const exit = await run(harness.deps, { action: "seed", snapshotId: "seed-source", yes: false });
 
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(harness.lifecycle()).toEqual(["lock", "suspend", "restore", "resume"]);
+    expect(harness.restores()).toEqual([
+      {
+        id: "seed-source",
+        handle: {
+          id: "seed-source",
+          ownerKey: appIdentityKey("owner", harness.root),
+          store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
+        },
+        store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
+        opts: { mode: "seed" },
+      },
+    ]);
   });
+
+  for (const action of ["restore", "seed"] as const) {
+    test(`${action} prefers an exact id over matching labels`, async () => {
+      // Given: an exact id and a different snapshot with the same label.
+      const harness = makeSqlTestDeps({ password: SECRET });
+      const [source] = await Effect.runPromise(harness.deps.listSnapshots({ id: "baseline" }));
+      if (source === undefined) throw new Error("missing fixture snapshot");
+      const deps = {
+        ...harness.deps,
+        listSnapshots: (filter: Parameters<typeof harness.deps.listSnapshots>[0]) =>
+          Effect.succeed(
+            filter.id === undefined ? [{ ...source, id: "label-match", label: "baseline" }] : [source],
+          ),
+      };
+      // When: the reference could identify either snapshot.
+      const exit = await run(deps, { action, snapshotId: "baseline", yes: true });
+      // Then: the exact id wins.
+      expect(Exit.isSuccess(exit)).toBe(true);
+      expect(harness.restores()[0]).toMatchObject({ id: "baseline" });
+    });
+
+    test(`${action} resolves a unique label within the current app and store`, async () => {
+      // Given: a label whose id differs from the supplied reference.
+      const harness = makeSqlTestDeps({ password: SECRET });
+      const [source] = await Effect.runPromise(harness.deps.listSnapshots({ id: "source-id" }));
+      if (source === undefined) throw new Error("missing fixture snapshot");
+      const filters: unknown[] = [];
+      const deps = {
+        ...harness.deps,
+        listSnapshots: (filter: Parameters<typeof harness.deps.listSnapshots>[0]) => {
+          filters.push(filter);
+          return Effect.succeed(filter.id === undefined ? [{ ...source, label: "baseline" }] : []);
+        },
+      };
+      // When: either command is given the label.
+      const exit = await run(deps, { action, snapshotId: "baseline", yes: true });
+      // Then: resolution uses the default listing scope and mutation receives the resolved id.
+      expect(Exit.isSuccess(exit)).toBe(true);
+      expect(harness.restores()[0]).toMatchObject({ id: "source-id" });
+      expect(filters).toEqual([
+        {
+          id: "baseline",
+          app: AppId.make("sql-app"),
+          store: "sql-app_database_data",
+          ownerKey: appIdentityKey("owner", harness.root),
+        },
+        {
+          app: AppId.make("sql-app"),
+          store: "sql-app_database_data",
+          ownerKey: appIdentityKey("owner", harness.root),
+          label: "baseline",
+        },
+      ]);
+    });
+
+    test(`${action} reports ambiguous labels with newest matching ids first`, async () => {
+      // Given: two independently addressable snapshots sharing a label.
+      const harness = makeSqlTestDeps({ password: SECRET });
+      const [source] = await Effect.runPromise(harness.deps.listSnapshots({ id: "older" }));
+      if (source === undefined) throw new Error("missing fixture snapshot");
+      const deps = {
+        ...harness.deps,
+        listSnapshots: (filter: Parameters<typeof harness.deps.listSnapshots>[0]) =>
+          Effect.succeed(
+            filter.id !== undefined
+              ? []
+              : [
+                  { ...source, label: "baseline" },
+                  {
+                    ...source,
+                    id: "newer",
+                    label: "baseline",
+                    createdAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"),
+                  },
+                  { ...source, id: "unrelated", label: "other" },
+                ],
+          ),
+      };
+      // When: the shared label is selected.
+      const exit = await run(deps, { action, snapshotId: "baseline", yes: true });
+      // Then: ambiguity is actionable and fails before any physical mutation.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("expected ambiguity");
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(SnapshotAmbiguousError);
+      expect(error).toMatchObject({
+        snapshotId: "baseline",
+        matchCount: 2,
+        candidateIds: ["newer", "older"],
+      });
+      expect(harness.lifecycle()).toEqual([]);
+    });
+
+    test(`${action} reports unknown references as not found`, async () => {
+      // Given: neither an id nor a label exists.
+      const harness = makeSqlTestDeps({ password: SECRET });
+      const deps = { ...harness.deps, listSnapshots: () => Effect.succeed([]) };
+      // When: the missing reference is selected.
+      const exit = await run(deps, { action, snapshotId: "no-such-snapshot", yes: true });
+      // Then: the typed failure points to the discovery command.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("expected missing snapshot");
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(SnapshotNotFoundError);
+      if (error instanceof SnapshotNotFoundError) expect(error.remediation).toContain("lando db:snapshots");
+      expect(harness.lifecycle()).toEqual([]);
+    });
+  }
+
+  for (const mismatch of [
+    "version",
+    "ownerKey",
+    "imageIdentity",
+    "sourceRoot",
+    "service",
+    "family",
+  ] as const) {
+    test(`snapshot seed rejects mismatched ${mismatch} before claiming the fresh volume`, async () => {
+      // Given: a snapshot of a previous generation with one incompatible lineage field.
+      const harness = makeSqlTestDeps({ password: SECRET, snapshotVolumeInstance: "previous-generation" });
+      const [source] = await Effect.runPromise(harness.deps.listSnapshots({ id: "seed-source" }));
+      if (source?.metadata === undefined) throw new Error("missing fixture metadata");
+      const metadata = source.metadata;
+      const incompatible = {
+        version: { version: "5.7" },
+        ownerKey: {},
+        imageIdentity: { imageIdentity: "foreign-image" },
+        sourceRoot: {},
+        service: { service: ServiceName.make("other-service") },
+        family: { family: "postgres" },
+      };
+      const deps = {
+        ...harness.deps,
+        listSnapshots: () =>
+          Effect.succeed([
+            {
+              ...source,
+              owner: {
+                ...source.owner,
+                ...(mismatch === "ownerKey" ? { ownerKey: "foreign-owner" } : {}),
+                ...(mismatch === "sourceRoot" ? { appRoot: AbsolutePath.make("/foreign-root") } : {}),
+              },
+              metadata: { ...metadata, ...incompatible[mismatch] },
+            },
+          ]),
+      };
+      // When: a physical seed is attempted.
+      const exit = await run(deps, { action: "seed", snapshotId: "seed-source", yes: false });
+      // Then: compatibility fails before suspend or restore.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("expected incompatible snapshot");
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+        SqlRecoveryUnavailableError,
+      );
+      expect(harness.lifecycle()).toEqual(["lock"]);
+    });
+  }
 
   test("quarantines an interrupted seed instead of trusting an empty database", async () => {
     const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0", seedStatus: "in-progress" });

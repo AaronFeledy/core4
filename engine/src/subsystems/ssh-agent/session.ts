@@ -1,6 +1,8 @@
 import { chmod, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type RootOverrides, makeLandoPaths } from "@lando/paths";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { SshError, causeMessage } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import {
   type AgentSocketBridgeResult,
@@ -13,9 +15,8 @@ import {
   SSH_AGENT_SOCKET_NAME,
   ServiceName,
 } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Duration, Effect, Option, Ref } from "effect";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../../providers/managed.ts";
 import { probeSshAgent } from "./agent-probe.ts";
 import type { AgentRelayUpstream } from "./relay.ts";
 
@@ -43,42 +44,72 @@ export const agentSocketMountPlan = (mount: AgentSocketBridgeResult, target: Por
   }
 };
 
-export const runtimeSshAgentState = Effect.gen(function* () {
+export type SshSidecarState = "starting" | "stopped" | "ready";
+export interface SshSidecarReadiness {
+  readonly state: SshSidecarState;
+  readonly detail?: string;
+}
+
+export const runtimeSshAgentCheck = Effect.gen(function* () {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-  if (Option.isNone(registry)) return "stopped" as const;
-  const provider = yield* registry.value.select(MANAGED_PROVIDER_SELECT_PLAN);
+  if (Option.isNone(registry))
+    return { state: "stopped" as const, detail: "Runtime provider registry is unavailable." };
+  const globalApp = yield* Effect.serviceOption(GlobalAppService);
+  if (Option.isNone(globalApp))
+    return { state: "starting" as const, detail: "Global app service is unavailable." };
+  const provider = yield* registry.value.select(yield* globalApp.value.providerId);
   const target = { app: AppId.make("global"), service: ServiceName.make("ssh-agent") };
   const service = yield* provider.inspect(target);
   const status = service.state ?? service.status;
-  if (status === "restarting") return "starting" as const;
-  if (status !== "running") return "stopped" as const;
+  if (status !== "running")
+    return {
+      state: status === "restarting" ? ("starting" as const) : ("stopped" as const),
+      detail: `SSH agent sidecar container status: ${status}${service.exitCode === undefined ? "" : `; container exit code: ${service.exitCode}`}.`,
+    };
   const result = yield* provider.exec(target, {
     command: ["sh", "-c", "ssh-add -l >/dev/null 2>&1; result=$?; test $result -eq 0 -o $result -eq 1"],
     stdin: "ignore",
   });
-  return result.exitCode === 0 ? ("ready" as const) : ("starting" as const);
+  return result.exitCode === 0
+    ? { state: "ready" as const }
+    : {
+        state: "starting" as const,
+        detail: `SSH readiness shell probe exited with code ${result.exitCode}.${result.stderr ? ` ${result.stderr}` : ""}`,
+      };
 }).pipe(
   // Covers provider select, inspect, and an exec round-trip; a Podman machine exec can exceed 2s.
   Effect.timeout("5 seconds"),
-  // Only an observed non-running container is "stopped"; a failed or slow probe proves nothing yet.
+);
+
+export const runtimeSshAgentState = runtimeSshAgentCheck.pipe(
+  Effect.map(({ state }) => state),
   Effect.catch(() => Effect.succeed("starting" as const)),
 );
 
-// The sidecar always runs on the managed runtime, so its container state ends a wait early
-// even when the app reaches the agent through a host socket.
+export const sidecarSocketCheck = (upstream: AgentRelayUpstream, probe = probeSshAgent) =>
+  runtimeSshAgentCheck.pipe(
+    Effect.flatMap((sidecar): Effect.Effect<SshSidecarReadiness, SshError> => {
+      if (sidecar.state === "stopped") return Effect.succeed(sidecar);
+      return Effect.tryPromise({
+        try: () => probe(upstream, { timeoutMs: 2_000 }),
+        catch: (cause: unknown) =>
+          new SshError({
+            sshId: "sidecar",
+            message:
+              causeMessage(cause) +
+              (cause instanceof Error && cause.cause !== undefined ? ` ${causeMessage(cause.cause)}` : ""),
+            cause,
+            remediation:
+              "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+          }),
+      }).pipe(Effect.as({ state: "ready" as const }));
+    }),
+  );
+
 export const sidecarSocketState = (upstream: AgentRelayUpstream, probe = probeSshAgent) =>
-  runtimeSshAgentState.pipe(
-    Effect.flatMap((sidecar) =>
-      sidecar === "stopped"
-        ? Effect.succeed(sidecar)
-        : Effect.tryPromise({
-            try: () => probe(upstream, { timeoutMs: 2_000 }),
-            catch: (cause: unknown) => cause,
-          }).pipe(
-            Effect.as("ready" as const),
-            Effect.catch(() => Effect.succeed("starting" as const)),
-          ),
-    ),
+  sidecarSocketCheck(upstream, probe).pipe(
+    Effect.map(({ state }) => state),
+    Effect.catch(() => Effect.succeed("starting" as const)),
   );
 
 export const runtimeSshAgentReady = runtimeSshAgentState.pipe(Effect.map((state) => state === "ready"));
@@ -89,22 +120,44 @@ export const SSH_SIDECAR_READINESS_POLICY = {
   timeout: Duration.seconds(30),
 } as const;
 
-export type SshSidecarState = Effect.Success<typeof runtimeSshAgentState>;
-
 export const awaitRuntimeSshAgent = Effect.fnUntraced(function* (
-  check: Effect.Effect<SshSidecarState> = runtimeSshAgentState,
+  check: Effect.Effect<SshSidecarReadiness, unknown> = runtimeSshAgentCheck,
 ) {
   const lastState = yield* Ref.make<SshSidecarState>("starting");
-  yield* runProbe(
+  const lastFailure = yield* Ref.make<string | undefined>(undefined);
+  const sourceEnv = process.env;
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  const redactor = Option.isSome(redaction)
+    ? yield* redaction.value.forProfile("secrets", { sourceEnv })
+    : createStandaloneRedactor("secrets", { sourceEnv });
+  const result = yield* runProbe(
     {
       id: "ssh-sidecar-ready",
       policy: SSH_SIDECAR_READINESS_POLICY,
       // Green ends probing for both terminal states; the Ref preserves which terminal state won.
-      classify: { success: (state) => (state === "starting" ? "yellow" : "green"), failure: () => "yellow" },
+      classify: {
+        success: (state) => (state === "starting" ? "yellow" : "green"),
+        failure: () => "yellow",
+      },
     },
-    check.pipe(Effect.tap((state) => Ref.set(lastState, state))),
-  ).pipe(Effect.catch(() => Effect.void));
-  return yield* Ref.get(lastState);
+    check.pipe(
+      Effect.tap((value) =>
+        Effect.all([
+          Ref.set(lastState, value.state),
+          value.detail === undefined
+            ? Effect.void
+            : Ref.set(lastFailure, redactor.redactString(value.detail)),
+        ]),
+      ),
+      Effect.tapError((error) => Ref.set(lastFailure, redactor.redactString(causeMessage(error)))),
+      Effect.map(({ state }) => state),
+    ),
+  ).pipe(Effect.catch((error) => Effect.succeed({ lastError: error })));
+  const state = yield* Ref.get(lastState);
+  const detail =
+    (yield* Ref.get(lastFailure)) ??
+    (result.lastError === undefined ? undefined : redactor.redactString(causeMessage(result.lastError)));
+  return { state, ...(state === "ready" || detail === undefined ? {} : { detail }) };
 });
 
 export const sshAgentSessionPaths = (

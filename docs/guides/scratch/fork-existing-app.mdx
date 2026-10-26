@@ -8,13 +8,18 @@ tags: [beta, docs, scratch, fork]
 
 # Fork the current app into a scratch
 
-`lando scratch --fork` starts a scratch from the Landofile in this directory. `--fork` is a boolean. There is no `--fork=<app>`. A fork is a second table in the same kitchen.
+From an app root, run `lando scratch --fork` to start a scratch using that app's
+Landofile. The example below shares the source tree: code edits are visible to
+both apps. It creates separate containers and does not stop or rename the
+original app. Outside an app root, the command fails before creating a scratch.
 
 ```sh
 lando scratch --fork --detach
 ```
 
-You must be in an app root. Outside one, the command fails before it creates a scratch.
+After startup succeeds, run `lando scratch:list` to find the fork's id and use
+`lando scratch:info <id>` to inspect it. `--fork` is a boolean flag, not
+`--fork=<app>`.
 
 ## Start the fork
 
@@ -43,11 +48,17 @@ Service DNS uses the scratch slug (`web.<scratch-id>.internal`).
 
 ## Inspect and destroy
 
+Replace `<id>` with the fork's id from `lando scratch:list`. Inspect it before
+running the final command: destroy removes the fork's containers, volumes, and
+snapshots. Use `--keep-volumes` if you need its volumes and snapshots afterward.
+
 ```sh
 lando scratch:list
 lando scratch:info <id>
 lando scratch:destroy <id>
 ```
+
+`scratch:destroy` removes the fork's containers, volumes, and snapshots it took. Snapshots of the app you forked stay put, even with `--isolate=cwd`. Add `--keep-volumes` to keep the fork's named volumes and snapshots for inspection; an anonymous volume from an image `VOLUME` path still leaves with its container.
 
 To materialize a recipe instead of forking the app, use [Start a scratch app from a recipe](./scratch-from-recipe.mdx).
 

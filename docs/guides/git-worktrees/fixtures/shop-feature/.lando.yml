@@ -1,0 +1,10 @@
+name: shop
+services:
+  web:
+    type: php:8.4
+    primary: true
+    environment:
+      DB_HOST: database
+      DB_NAME: "{{ services.database.creds.database }}"
+  database:
+    type: postgres

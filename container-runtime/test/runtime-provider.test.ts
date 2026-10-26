@@ -19,13 +19,12 @@ const plan = {
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-06T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
 } satisfies AppPlan;
-const ctx = { providerId: "test", remediation: "Run doctor." } as const;
+const ctx = { providerId: "test", remediation: "Run doctor.", env: {} } as const;
 
 const noPlanError = (missingApp: AppId, operation: string) =>
   new ProviderUnavailableError({
@@ -59,11 +58,21 @@ const makeService = (calls: Call[]): ResolvedProviderOpsInput["service"] => ({
   },
   inspect: (resolvedPlan, selector) => {
     calls.push({ name: "inspect", args: [resolvedPlan, selector] });
-    return Effect.succeed({ app, service, providerId: ProviderId.make("test"), status: "running" });
+    return Effect.succeed({
+      app,
+      service,
+      providerId: ProviderId.make("test"),
+      status: "running",
+      publications: { status: "unknown" as const },
+    });
   },
 });
 
 const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
+  listVolumeSnapshots: () => {
+    calls.push({ name: "listVolumeSnapshots", args: [] });
+    return Effect.succeed([]);
+  },
   locateVolume: (ref) => {
     calls.push({ name: "locateVolume", args: [ref] });
     return Effect.succeed({ coordinationKey: '["endpoint:test","data"]', nativeName: ref.store });
@@ -96,6 +105,10 @@ const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
   },
   restoreVolume: (spec) => {
     calls.push({ name: "restoreVolume", args: [spec] });
+    return Effect.void;
+  },
+  removeVolumeSnapshot: (snapshot) => {
+    calls.push({ name: "removeVolumeSnapshot", args: [snapshot] });
     return Effect.void;
   },
   listVolumes: (filter) => {
@@ -134,6 +147,7 @@ const makeInput = (
     ctx,
     resolvePlan,
     noPlanError,
+    readAppEnvironment: () => Effect.succeed([]),
     before: Effect.sync(() => calls.push({ name: "before", args: [] })),
     service: makeService(calls),
     ...(dataPlane === undefined ? {} : { dataPlane }),
@@ -141,6 +155,45 @@ const makeInput = (
 };
 
 describe("resolved provider operations", () => {
+  test("secret read-back never invokes the runtime-starting before hook", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
+    expect(await Effect.runPromise(ops.readAppEnvironment({ app }, {}))).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+  // destroy --purge removes snapshot images before teardown, so removal must start a stopped runtime.
+  test.each([undefined, true, false])("snapshot removal honors startRuntime=%s", async (startRuntime) => {
+    // Given a provider with an observable runtime ensure hook.
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
+    const snapshot = {
+      provider: "test",
+      id: "snap",
+      digest: "sha256:snap",
+      sizeBytes: 1,
+      format: "native" as const,
+    };
+    // When removing with the requested startup policy.
+    await Effect.runPromise(
+      Effect.scoped(
+        ops.removeVolumeSnapshot(snapshot, startRuntime === undefined ? undefined : { startRuntime }),
+      ),
+    );
+    // Then only the opt-out bypasses runtime startup.
+    expect(calls.map((call) => call.name)).toEqual(
+      startRuntime === false ? ["removeVolumeSnapshot"] : ["before", "removeVolumeSnapshot"],
+    );
+  });
+  test("lists snapshot images without invoking the runtime-starting before hook", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps({
+      ...makeInput(calls),
+      before: Effect.die("must not start runtime"),
+    });
+    if (ops.listVolumeSnapshots === undefined) throw new Error("Expected snapshot listing adapter");
+    expect(await Effect.runPromise(ops.listVolumeSnapshots())).toEqual([]);
+    expect(calls).toEqual([{ name: "listVolumeSnapshots", args: [] }]);
+  });
   test("adoption requires canonical ownership rather than falling back to plan root", async () => {
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps(makeInput(calls));
@@ -170,6 +223,7 @@ describe("resolved provider operations", () => {
             providerId: ProviderId.make("test"),
             status: "stopped",
             containerId: "observed-id",
+            publications: { status: "unknown" as const },
           }),
       },
     });
@@ -194,6 +248,7 @@ describe("resolved provider operations", () => {
             providerId: ProviderId.make("test"),
             status: "stopped",
             containerId: "observed-id",
+            publications: { status: "unknown" as const },
           }),
       },
     });
@@ -332,7 +387,7 @@ describe("resolved provider operations", () => {
     expect(calls.filter((call) => call.name !== "before").every((call) => call.args[0] === plan)).toBe(true);
   });
 
-  test("runs before and delegates all data-plane members with their arguments", async () => {
+  test("delegates data-plane members with their arguments and startup policy", async () => {
     // Given
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps(makeInput(calls));
@@ -361,6 +416,8 @@ describe("resolved provider operations", () => {
     await Effect.runPromise(Effect.scoped(ops.runStream(runSpec).pipe(Stream.runDrain)));
     await Effect.runPromise(Effect.scoped(ops.snapshotVolume(snapshotSpec)));
     await Effect.runPromise(Effect.scoped(ops.restoreVolume(restoreSpec)));
+    if (ops.removeVolumeSnapshot === undefined) throw new TypeError("missing snapshot removal");
+    await Effect.runPromise(Effect.scoped(ops.removeVolumeSnapshot(restoreSpec.snapshot)));
     await Effect.runPromise(ops.listVolumes({ app }));
     await Effect.runPromise(ops.locateVolume(volume));
     await Effect.runPromise(ops.removeVolume(volume, generation));
@@ -370,12 +427,13 @@ describe("resolved provider operations", () => {
     await Effect.runPromise(Effect.scoped(ops.importArtifact(data)));
 
     // Then
-    expect(calls.filter(({ name }) => name === "before")).toHaveLength(11);
+    expect(calls.filter(({ name }) => name === "before")).toHaveLength(12);
     expect(calls.filter(({ name }) => name !== "before").map(({ name }) => name)).toEqual([
       "run",
       "runStream",
       "snapshotVolume",
       "restoreVolume",
+      "removeVolumeSnapshot",
       "listVolumes",
       "locateVolume",
       "removeVolume",
@@ -490,7 +548,7 @@ describe("resolved provider operations", () => {
       if (!Exit.isFailure(exit)) throw new Error("Expected unavailable failure");
       const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ProviderUnavailableError);
-      expect(error.providerId).toBe(ctx.providerId);
+      expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: ctx.providerId });
     }
   });
 });

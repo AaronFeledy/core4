@@ -1,15 +1,24 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option, Stream } from "effect";
+import type { Redactor } from "@lando/sdk/secrets";
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect";
 
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
-import { ArtifactTransferError, ServiceCopyError, VolumeOperationError } from "@lando/sdk/errors";
+import {
+  ArtifactTransferError,
+  ProviderCapabilityError,
+  ServiceCopyError,
+  VolumeOperationError,
+} from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { echoHelperPull } from "./helper-pull-support.ts";
+
+const passthroughRedactor = {
+  redactString: (value: string) => value,
+  redactValue: (value: unknown) => value,
+} satisfies Redactor;
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 const text = (value: Uint8Array): string => new TextDecoder().decode(value);
-const sha256 = (value: Uint8Array): string => createHash("sha256").update(value).digest("hex");
 
 const stdinBytes = (value: string): AsyncIterable<Uint8Array> => ({
   async *[Symbol.asyncIterator]() {
@@ -47,6 +56,122 @@ const volumeGeneration = "00000000-0000-4000-8000-000000000001";
 const adoptedGeneration = "00000000-0000-4000-8000-000000000009";
 const replacementGeneration = "00000000-0000-4000-8000-000000000010";
 const adoptedOwnerRoot = AbsolutePath.make("/canonical/app");
+const removableSnapshot = {
+  provider: "test",
+  id: "SNAP/name",
+  digest: "sha256:snap",
+  sizeBytes: 1,
+  format: "native" as const,
+};
+
+describe("snapshot artifact removal", () => {
+  test.each([
+    { capability: "none", operation: "snapshotVolume", format: "native" },
+    { capability: "none", operation: "restoreVolume", format: "native" },
+    { capability: "none", operation: "removeVolumeSnapshot", format: "native" },
+    { capability: "native", operation: "restoreVolume", format: "tar" },
+    { capability: "native", operation: "removeVolumeSnapshot", format: "tar" },
+  ] as const)(
+    "rejects $operation with capability $capability and format $format before HTTP",
+    async ({ capability, operation, format }) => {
+      let requests = 0;
+      const plane = makeProviderDataPlane({
+        providerId: "test",
+        capabilities: { volumeSnapshot: capability },
+        redactor: passthroughRedactor,
+        api: {
+          request: () => {
+            requests += 1;
+            return Effect.succeed({ status: 204, body: "" });
+          },
+        },
+      });
+      const snapshot = { ...removableSnapshot, format };
+      const action =
+        operation === "snapshotVolume"
+          ? plane.snapshotVolume({ volume: { app: appId, store: "data" } }).pipe(Effect.asVoid)
+          : operation === "restoreVolume"
+            ? plane.restoreVolume({
+                snapshot,
+                target: { app: appId, store: "data" },
+                expectedTargetGeneration: volumeGeneration,
+              })
+            : plane.removeVolumeSnapshot(snapshot);
+      const result = await Effect.runPromise(Effect.scoped(action).pipe(Effect.result));
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "ProviderCapabilityError",
+          operation,
+          capability: "volumeSnapshot",
+          requiredValue: "native",
+          actualValue: capability === "none" ? "none" : "tar",
+          remediation: expect.any(String),
+        },
+      });
+      if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(ProviderCapabilityError);
+      expect(requests).toBe(0);
+    },
+  );
+
+  test.each([200, 204, 404])("native removal accepts HTTP %s", async (status) => {
+    const requests: string[] = [];
+    const plane = makeProviderDataPlane({
+      providerId: "test",
+      capabilities: { volumeSnapshot: "native" },
+      redactor: passthroughRedactor,
+      api: {
+        request: (request) => {
+          requests.push(`${request.method} ${request.path}`);
+          return Effect.succeed({ status, body: "" });
+        },
+      },
+    });
+    await Effect.runPromise(Effect.scoped(plane.removeVolumeSnapshot(removableSnapshot)));
+    expect(requests).toEqual(["DELETE /images/localhost%2Flando-volume-snapshot%3Asnap-name"]);
+  });
+
+  test("native removal fails tagged on an image in use", async () => {
+    const plane = makeProviderDataPlane({
+      providerId: "test",
+      capabilities: { volumeSnapshot: "native" },
+      redactor: passthroughRedactor,
+      api: { request: () => Effect.succeed({ status: 409, body: "image in use" }) },
+    });
+    const result = await Effect.runPromise(
+      Effect.scoped(plane.removeVolumeSnapshot(removableSnapshot)).pipe(Effect.result),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "VolumeOperationError", operation: "removeVolumeSnapshot" },
+    });
+  });
+
+  test("foreign provider snapshots fail without HTTP requests", async () => {
+    let requests = 0;
+    const plane = makeProviderDataPlane({
+      providerId: "test",
+      capabilities: { volumeSnapshot: "native" },
+      redactor: passthroughRedactor,
+      api: {
+        request: () => {
+          requests += 1;
+          return Effect.succeed({ status: 204, body: "" });
+        },
+      },
+    });
+    const result = await Effect.runPromise(
+      Effect.scoped(plane.removeVolumeSnapshot({ ...removableSnapshot, provider: "docker" })).pipe(
+        Effect.result,
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "VolumeOperationError", remediation: "Remove this snapshot with provider docker." },
+    });
+    expect(requests).toBe(0);
+  });
+});
 const plan = {
   id: appId,
   name: "App Name",
@@ -55,7 +180,6 @@ const plan = {
   provider: providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -65,81 +189,6 @@ const plan = {
   },
   extensions: {},
 } satisfies AppPlan;
-
-const makeCopySnapshotApi = () => {
-  const containers = new Map<
-    string,
-    {
-      readonly body: { Cmd?: ReadonlyArray<string>; HostConfig?: { Binds?: ReadonlyArray<string> } };
-      exitCode: number;
-    }
-  >();
-  const volumes = new Map<string, Uint8Array>([["data", bytes("original")]]);
-  const snapshotFiles = new Map<string, Uint8Array>();
-  const api: DataPlaneApiClient = {
-    request: (request) =>
-      Effect.sync(() => {
-        if (request.path === "/volumes/data") {
-          return {
-            status: 200,
-            body: JSON.stringify({
-              Name: "data",
-              Labels: { "dev.lando.volume-instance": volumeGeneration },
-            }),
-          };
-        }
-        if (request.path.startsWith("/containers/create?name=")) {
-          const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
-          containers.set(name, { body: request.body as never, exitCode: 0 });
-          return { status: 201, body: "{}" };
-        }
-        if (request.path.startsWith("/containers/") && request.path.endsWith("/start")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/start".length));
-          const container = containers.get(name);
-          const command = container?.body.Cmd?.join(" ") ?? "";
-          const binds = container?.body.HostConfig?.Binds ?? [];
-          const dataStore = binds[0]?.split(":")[0];
-          const snapshotStore = binds[1]?.split(":")[0];
-          if (container !== undefined && dataStore !== undefined && snapshotStore !== undefined) {
-            if (command.includes("tar -C /lando-data -cf") && !command.includes("lando-restore")) {
-              snapshotFiles.set(`${snapshotStore}/snap.tar`, volumes.get(dataStore) ?? new Uint8Array());
-            } else if (command.includes("lando-restore") && command.includes("tar -C /lando-data -xf")) {
-              const snapshot = snapshotFiles.get(`${snapshotStore}/snap.tar`);
-              const expectedDigest = container.body.Cmd?.at(-2);
-              const expectedSize = Number(container.body.Cmd?.at(-1));
-              if (
-                snapshot === undefined ||
-                sha256(snapshot) !== expectedDigest ||
-                snapshot.byteLength !== expectedSize
-              ) {
-                container.exitCode = 1;
-              } else volumes.set(dataStore, snapshot);
-            }
-          }
-          return { status: 204, body: "" };
-        }
-        if (request.path.startsWith("/containers/") && request.path.endsWith("/wait")) {
-          return { status: 200, body: JSON.stringify({ StatusCode: 0 }) };
-        }
-        if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
-          return {
-            status: 200,
-            body: JSON.stringify({ State: { ExitCode: containers.get(name)?.exitCode ?? 0 } }),
-          };
-        }
-        if (request.path.startsWith("/containers/") && request.path.endsWith("?force=true")) {
-          return { status: 204, body: "" };
-        }
-        return { status: 500, body: "{}" };
-      }),
-    stream: (request) =>
-      request.path.includes("/logs?")
-        ? Stream.make(multiplexedStdoutFrame(bytes(`${sha256(bytes("original"))} 8\n`)))
-        : Stream.empty,
-  };
-  return { api, volumes, snapshotFiles };
-};
 
 const makeWitnessVolumeApi = (
   initialGeneration = adoptedGeneration,
@@ -169,7 +218,11 @@ const makeWitnessVolumeApi = (
             body: JSON.stringify({ Mounts: [{ Type: "volume", Destination: "/data", Name: "data" }] }),
           });
         }
-        if (request.path.startsWith("/images/")) return Effect.succeed({ status: 200, body: "{}" });
+        if (request.path.startsWith("/images/"))
+          return Effect.succeed({
+            status: 200,
+            body: JSON.stringify({ Id: "sha256:snapshot", Size: 8 }),
+          });
         if (request.path.startsWith("/containers/create?name=")) {
           return Effect.succeed({ status: 201, body: "{}" });
         }
@@ -211,8 +264,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     const ref = await Effect.runPromise(provider.importArtifact(Stream.make(bytes("tar payload"))));
@@ -229,6 +282,8 @@ describe("provider data plane", () => {
       providerId: "test",
       operation: "importArtifact",
       message: "Provider request did not start before the producer resumed.",
+      remediation:
+        "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
     });
     const source = Stream.fromAsyncIterable(
       (async function* () {
@@ -252,6 +307,8 @@ describe("provider data plane", () => {
               operation: "importArtifact",
               message: "Failed to consume artifact upload.",
               cause,
+              remediation:
+                "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
             }),
         });
       },
@@ -259,8 +316,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     // When: the artifact is imported through the provider data plane.
@@ -289,8 +346,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     // When: the real artifact-import path forwards the source to the provider API.
@@ -308,6 +365,8 @@ describe("provider data plane", () => {
       providerId: "test",
       operation: "produceArtifact",
       message: "Artifact producer failed.",
+      remediation:
+        "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
     });
     const api: DataPlaneApiClient = {
       request: (request) =>
@@ -322,14 +381,16 @@ describe("provider data plane", () => {
               operation: "importArtifact",
               message: "Artifact upload failed.",
               cause,
+              remediation:
+                "Confirm the image or artifact reference is reachable and credentials are valid, then retry the transfer.",
             }),
         }),
     };
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
     const source = Stream.concat(Stream.make(bytes("first")), Stream.fail(sourceError));
 
@@ -354,8 +415,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     const ref = await Effect.runPromise(provider.importArtifact(Stream.make(bytes("tar payload"))));
@@ -370,8 +431,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     const exit = await Effect.runPromiseExit(provider.importArtifact(Stream.make(bytes("tar payload"))));
@@ -384,10 +445,16 @@ describe("provider data plane", () => {
 
   test("treats native snapshot wait responses without StatusCode as successful", async () => {
     const paths: string[] = [];
+    const deletedImages: string[] = [];
+    const commits: unknown[] = [];
     const api: DataPlaneApiClient = {
       request: (request) => {
         paths.push(request.path);
+        if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+          deletedImages.push(request.path);
+        }
         if (request.path.startsWith("/commit?")) {
+          commits.push(request.body);
           return Effect.succeed({ status: 201, body: JSON.stringify({ Id: "sha256:native-snapshot" }) });
         }
         if (request.path.startsWith("/images/")) {
@@ -403,25 +470,191 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "native",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "native" },
+      redactor: passthroughRedactor,
+      pullHelperImage: echoHelperPull(),
     });
 
     const snapshot = await Effect.runPromise(
       Effect.scoped(
-        provider.snapshotVolume({ volume: { app: AppId.make("app"), store: "data" }, snapshotId: "snap" }),
+        provider.snapshotVolume({
+          volume: { app: AppId.make("app"), store: "data" },
+          snapshotId: "snap",
+          labels: {
+            custom: "value",
+            "dev.lando.snapshot-store": "store-key",
+            "dev.lando.volume-snapshot": "FALSE",
+            "dev.lando.volume-owner": "/forged/root",
+            "dev.lando.volume-selector": "forged",
+          },
+        }),
       ),
     );
 
     expect(snapshot.provider).toBe(ProviderId.make("test"));
     expect(snapshot.id).toBe("snap");
     expect(snapshot).toMatchObject({ digest: "sha256:native-snapshot", sizeBytes: 4096, format: "native" });
+    expect(deletedImages).toEqual([]);
     expect(paths.some((path) => path.includes("/commit?"))).toBe(true);
+    expect(commits).toEqual([
+      {
+        Labels: {
+          custom: "value",
+          "dev.lando.snapshot-store": "store-key",
+          "dev.lando.volume-snapshot": "TRUE",
+          "dev.lando.snapshot-id": "snap",
+          "dev.lando.app": "app",
+          "dev.lando.store": "data",
+          "dev.lando.provider": "test",
+        },
+      },
+    ]);
   });
 
-  test("closes ephemeral attach streams after stdin is consumed", async () => {
+  test.each([204, 404, 500, "transport failure"] as const)(
+    "rolls back a committed snapshot and preserves the inspect error when deletion returns %s",
+    async (deleteResult) => {
+      // Given: commit succeeds but the following image inspection fails.
+      const requests: string[] = [];
+      const inspectError = new VolumeOperationError({
+        providerId: "test",
+        operation: "inspect",
+        message: "Image inspection unavailable.",
+        remediation: "Inspect provider volume state and retry the `inspect` volume operation.",
+      });
+      const deleteError = new VolumeOperationError({
+        providerId: "test",
+        operation: "delete",
+        message: "Image deletion unavailable.",
+        remediation: "Inspect provider volume state and retry the `delete` volume operation.",
+      });
+      const provider = makeProviderDataPlane({
+        providerId: "test",
+        capabilities: { volumeSnapshot: "native" },
+        redactor: passthroughRedactor,
+        pullHelperImage: echoHelperPull(),
+        api: {
+          request: (request) =>
+            Effect.suspend(() => {
+              requests.push(`${request.method} ${request.path}`);
+              if (request.method === "DELETE" && request.path.startsWith("/containers/")) {
+                return Effect.succeed({ status: 204, body: "" });
+              }
+              if (request.path.startsWith("/images/")) {
+                if (request.method === "GET") return Effect.fail(inspectError);
+                return deleteResult === "transport failure"
+                  ? Effect.fail(deleteError)
+                  : Effect.succeed({ status: deleteResult, body: "" });
+              }
+              return Effect.succeed({ status: 201, body: "{}" });
+            }),
+        },
+      });
+
+      // When: the snapshot fails before a reference can be returned.
+      const result = await Effect.runPromise(
+        Effect.scoped(
+          provider.snapshotVolume({ volume: { app: appId, store: "data" }, snapshotId: "SNAP/name" }),
+        ).pipe(Effect.result),
+      );
+
+      // Then: rollback targets the committed tag without replacing the original failure.
+      expect(requests.some((request) => request.startsWith("POST /commit?"))).toBe(true);
+      expect(requests.filter((request) => request.startsWith("DELETE /images/"))).toEqual([
+        "DELETE /images/localhost%2Flando-volume-snapshot%3Asnap-name",
+      ]);
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "VolumeOperationError", cause: { cause: inspectError } },
+      });
+    },
+  );
+
+  test("rolls back a snapshot when interrupted during the commit request", async () => {
+    // Given: the daemon receives the commit but never returns a response.
+    const commitStarted = Deferred.makeUnsafe<void>();
+    const deletedImages: string[] = [];
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      capabilities: { volumeSnapshot: "native" },
+      redactor: passthroughRedactor,
+      pullHelperImage: echoHelperPull(),
+      api: {
+        request: (request) =>
+          Effect.suspend(() => {
+            if (request.path.startsWith("/commit?")) {
+              return Deferred.succeed(commitStarted, undefined).pipe(Effect.andThen(Effect.never));
+            }
+            if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+              deletedImages.push(request.path);
+            }
+            return Effect.succeed({ status: 201, body: "{}" });
+          }),
+      },
+    });
+
+    // When: the snapshot fiber is interrupted only after the commit request starts.
+    const exit = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkScoped(
+            provider.snapshotVolume({ volume: { app: appId, store: "data" }, snapshotId: "snap" }),
+          );
+          yield* Deferred.await(commitStarted);
+          yield* Fiber.interrupt(fiber);
+          return yield* Fiber.await(fiber);
+        }),
+      ),
+    );
+
+    // Then: cancellation stays cancellation, and the unreturned image is removed.
+    expect(Exit.hasInterrupts(exit)).toBe(true);
+    expect(deletedImages).toEqual(["/images/localhost%2Flando-volume-snapshot%3Asnap"]);
+  });
+
+  test.each([
+    { phase: "before commit", snapshotId: "snap" },
+    { phase: "inspect without caller id", snapshotId: undefined },
+  ])("leaves snapshot images alone on failure $phase", async ({ phase, snapshotId }) => {
+    // Given: either commit has not been reached or no caller-supplied id exists.
+    const deletedImages: string[] = [];
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      capabilities: { volumeSnapshot: "native" },
+      redactor: passthroughRedactor,
+      pullHelperImage: echoHelperPull(),
+      api: {
+        request: (request) =>
+          Effect.suspend(() => {
+            if (request.method === "DELETE" && request.path.startsWith("/images/")) {
+              deletedImages.push(request.path);
+            }
+            const failingRequest =
+              phase === "before commit"
+                ? request.path.endsWith("/start")
+                : request.method === "GET" && request.path.startsWith("/images/");
+            return Effect.succeed({ status: failingRequest ? 500 : 201, body: "{}" });
+          }),
+      },
+    });
+
+    // When: snapshot creation fails at the selected boundary.
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        provider.snapshotVolume({
+          volume: { app: appId, store: "data" },
+          ...(snapshotId === undefined ? {} : { snapshotId }),
+        }),
+      ).pipe(Effect.result),
+    );
+
+    // Then: failure propagates without deleting an image outside rollback ownership.
+    expect(result._tag).toBe("Failure");
+    expect(deletedImages).toEqual([]);
+  });
+
+  test("forwards ephemeral stdin and lets the transport end it without aborting the attach", async () => {
     let attached = "";
-    let attachAborted = false;
     const api: DataPlaneApiClient = {
       request: (request) =>
         Effect.succeed(
@@ -434,7 +667,9 @@ describe("provider data plane", () => {
           ? Stream.fromAsyncIterable(
               (async function* () {
                 attached = text(await collectAsyncBytes(request.stdin));
-                attachAborted = request.signal?.aborted === true;
+                // Like the socket transport: an aborted request surfaces as AbortError.
+                if (request.signal?.aborted === true)
+                  throw new DOMException("Socket stream aborted.", "AbortError");
                 yield new Uint8Array();
               })(),
               (cause) =>
@@ -451,11 +686,11 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
-    await Effect.runPromise(
+    const result = await Effect.runPromise(
       Effect.scoped(
         provider.run({
           image: "alpine:3.20",
@@ -467,7 +702,7 @@ describe("provider data plane", () => {
     );
 
     expect(attached).toBe("streamed stdin");
-    expect(attachAborted).toBe(true);
+    expect(result.exitCode).toBe(0);
   });
 
   test("does not leave ephemeral stdin open without a forwarded stream", async () => {
@@ -490,8 +725,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     await Effect.runPromise(
@@ -511,7 +746,7 @@ describe("provider data plane", () => {
 
   test("creates owned data-store volumes before ephemeral containers", async () => {
     // Given: an app-owned store and a provider API that records creation order and payloads.
-    const requests: Array<{ readonly path: string; readonly body?: unknown }> = [];
+    const requests: Array<{ readonly method: string; readonly path: string; readonly body?: unknown }> = [];
     const api: DataPlaneApiClient = {
       request: (request) => {
         requests.push(request);
@@ -526,8 +761,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
     const ownedPlan = {
       ...plan,
@@ -562,7 +797,68 @@ describe("provider data plane", () => {
         "dev.lando.volume-owner": "/canonical/app",
       },
     });
+    expect(requests[containerCreateIndex]?.body).toMatchObject({ HostConfig: { Binds: ["data:/data"] } });
+    expect(requests.filter(({ method }) => method === "DELETE")).toEqual([
+      { method: "DELETE", path: expect.stringMatching(/^\/containers\/[^/?]+\?force=true&v=true$/u) },
+    ]);
   });
+
+  for (const streaming of [false, true]) {
+    for (const outcome of ["success", "failure", "interruption"] as const) {
+      test.each([false, true])(
+        `ephemeral cleanup after ${outcome} (streaming=${streaming}, remove=%s)`,
+        async (remove) => {
+          const requests: Array<{ readonly method: string; readonly path: string }> = [];
+          const entered = Deferred.makeUnsafe<void>();
+          const provider = makeProviderDataPlane({
+            providerId: "test",
+            capabilities: { volumeSnapshot: "none" },
+            redactor: passthroughRedactor,
+            api: {
+              request: (request) => {
+                requests.push(request);
+                if (request.path.endsWith("/start")) {
+                  if (outcome === "interruption")
+                    return Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never));
+                  if (outcome === "failure") return Effect.succeed({ status: 500, body: "start failed" });
+                }
+                return Effect.succeed({
+                  status: 200,
+                  body: request.path.endsWith("/json") ? '{"State":{"ExitCode":0}}' : "{}",
+                });
+              },
+              stream: () => Stream.empty,
+            },
+          });
+          const spec = { image: "alpine:3.20", command: ["true"], remove };
+          const run = Effect.scoped(
+            streaming ? provider.runStream(spec).pipe(Stream.runDrain) : provider.run(spec),
+          );
+          const exit = await Effect.runPromise(
+            outcome === "interruption"
+              ? Effect.gen(function* () {
+                  const fiber = yield* Effect.forkChild(run);
+                  yield* Deferred.await(entered);
+                  yield* Fiber.interrupt(fiber);
+                  return yield* Fiber.await(fiber);
+                })
+              : Effect.exit(run),
+          );
+          expect(Exit.isSuccess(exit)).toBe(outcome === "success");
+          expect(requests.filter(({ method }) => method === "DELETE")).toEqual(
+            remove
+              ? [
+                  {
+                    method: "DELETE",
+                    path: expect.stringMatching(/^\/containers\/[^/?]+\?force=true&v=true$/u),
+                  },
+                ]
+              : [],
+          );
+        },
+      );
+    }
+  }
 
   test("preserves colon targets in ephemeral API Mounts", async () => {
     // Given
@@ -581,8 +877,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
     const ownedPlan: AppPlan = {
       ...plan,
@@ -631,8 +927,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
     const ownedPlan = {
       ...plan,
@@ -671,8 +967,8 @@ describe("provider data plane", () => {
         },
         stream: () => Stream.empty,
       },
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     // When: the caller asks to mount a named data store.
@@ -705,8 +1001,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     const result = await Effect.runPromise(
@@ -742,8 +1038,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     const result = await Effect.runPromise(
@@ -774,8 +1070,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     const chunks = await Effect.runPromise(
@@ -814,8 +1110,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     // When: a consumer asks for only the first streamed chunk.
@@ -832,118 +1128,13 @@ describe("provider data plane", () => {
     expect(waited).toBe(false);
   });
 
-  test("persists copy-mode snapshots in a provider volume across data-plane instances", async () => {
-    const fake = makeCopySnapshotApi();
-    const firstProvider = makeProviderDataPlane({
-      providerId: "test",
-      api: fake.api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
-    });
-    const secondProvider = makeProviderDataPlane({
-      providerId: "test",
-      api: fake.api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
-    });
-
-    const snapshot = await Effect.runPromise(
-      Effect.scoped(
-        firstProvider.snapshotVolume({
-          volume: { app: AppId.make("app"), store: "data" },
-          snapshotId: "snap",
-        }),
-      ),
-    );
-
-    expect(snapshot).toMatchObject({
-      digest: sha256(bytes("original")),
-      sizeBytes: bytes("original").byteLength,
-      format: "tar",
-    });
-    fake.volumes.set("data", bytes("changed"));
-    await Effect.runPromise(
-      Effect.scoped(
-        secondProvider.restoreVolume({
-          snapshot,
-          target: { app: AppId.make("app"), store: "data" },
-          expectedTargetGeneration: volumeGeneration,
-        }),
-      ),
-    );
-
-    expect(text(fake.volumes.get("data") ?? new Uint8Array())).toBe("original");
-  });
-
-  test("preserves existing copy-mode volume data when restore overwrite is false", async () => {
-    const fake = makeCopySnapshotApi();
-    const provider = makeProviderDataPlane({
-      providerId: "test",
-      api: fake.api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
-    });
-
-    const snapshot = await Effect.runPromise(
-      Effect.scoped(
-        provider.snapshotVolume({
-          volume: { app: AppId.make("app"), store: "data" },
-          snapshotId: "snap",
-        }),
-      ),
-    );
-    fake.volumes.set("data", bytes("changed"));
-    await Effect.runPromise(
-      Effect.scoped(
-        provider.restoreVolume({
-          snapshot,
-          target: { app: AppId.make("app"), store: "data" },
-          expectedTargetGeneration: volumeGeneration,
-          overwrite: false,
-        }),
-      ),
-    );
-
-    expect(text(fake.volumes.get("data") ?? new Uint8Array())).toBe("changed");
-  });
-
-  test("rejects changed copy snapshot bytes before target mutation", async () => {
-    // Given: a completed copy snapshot whose provider-owned archive is changed afterward.
-    const fake = makeCopySnapshotApi();
-    const provider = makeProviderDataPlane({
-      providerId: "test",
-      api: fake.api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
-    });
-    const snapshot = await Effect.runPromise(
-      Effect.scoped(
-        provider.snapshotVolume({ volume: { app: AppId.make("app"), store: "data" }, snapshotId: "snap" }),
-      ),
-    );
-    fake.snapshotFiles.set("lando-test-copy-snapshots/snap.tar", bytes("tampered"));
-    fake.volumes.set("data", bytes("target-before-restore"));
-
-    // When: restore checks the immutable source artifact and target generation.
-    const exit = await Effect.runPromiseExit(
-      Effect.scoped(
-        provider.restoreVolume({
-          snapshot,
-          target: { app: AppId.make("app"), store: "data" },
-          expectedTargetGeneration: volumeGeneration,
-        }),
-      ),
-    );
-
-    // Then: the helper fails without replacing the target bytes.
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(text(fake.volumes.get("data") ?? new Uint8Array())).toBe("target-before-restore");
-  });
-
   test("rejects restore and removal when the observed volume generation changed", async () => {
     const mutations: string[] = [];
     const api: DataPlaneApiClient = {
       request: (request) => {
+        if (request.path.startsWith("/images/") && request.method === "GET") {
+          return Effect.succeed({ status: 200, body: JSON.stringify({ Id: "sha256:snapshot", Size: 0 }) });
+        }
         if (request.path === "/volumes/data" && request.method === "GET") {
           return Effect.succeed({
             status: 200,
@@ -963,8 +1154,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "native" },
+      redactor: passthroughRedactor,
     });
     const staleGeneration = "00000000-0000-4000-8000-000000000002";
 
@@ -974,9 +1165,9 @@ describe("provider data plane", () => {
           snapshot: {
             provider: ProviderId.make("test"),
             id: "snap",
-            digest: "missing",
+            digest: "sha256:snapshot",
             sizeBytes: 0,
-            format: "tar",
+            format: "native",
           },
           target: { app: AppId.make("app"), store: "data" },
           expectedTargetGeneration: staleGeneration,
@@ -1020,8 +1211,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app") }));
@@ -1052,8 +1243,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app") }));
@@ -1075,8 +1266,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app"), store: "data" }));
@@ -1091,8 +1282,9 @@ describe("provider data plane", () => {
       providerId: "test",
       endpointNamespace: "unix:///run/test.sock",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
+      pullHelperImage: echoHelperPull(),
     });
 
     // When: a safety consumer performs an exact read-only list.
@@ -1125,8 +1317,9 @@ describe("provider data plane", () => {
       providerId: "test",
       endpointNamespace: "unix:///run/test.sock",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
+      pullHelperImage: echoHelperPull(),
     });
 
     // When: a consumer locates its exact native volume.
@@ -1154,8 +1347,8 @@ describe("provider data plane", () => {
       providerId: "test",
       endpointNamespace: "unix:///run/test.sock",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     // When: its exact identity is listed.
@@ -1174,8 +1367,9 @@ describe("provider data plane", () => {
       providerId: "test",
       endpointNamespace: "unix:///run/test.sock",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
+      pullHelperImage: echoHelperPull(),
     });
 
     // When: removal rechecks the matching witness.
@@ -1220,8 +1414,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
     const result = await Effect.runPromise(
       provider.removeVolume({ app: appId, store: "data" }, volumeGeneration).pipe(Effect.result),
@@ -1244,14 +1438,15 @@ describe("provider data plane", () => {
   });
 
   test("allows restore only while the elected witness generation still matches", async () => {
-    // Given: an adopted target volume and a verified copy snapshot.
+    // Given: an adopted target volume and a verified native snapshot.
     const { api, requests } = makeWitnessVolumeApi();
     const provider = makeProviderDataPlane({
       providerId: "test",
       endpointNamespace: "unix:///run/test.sock",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "native" },
+      redactor: passthroughRedactor,
+      pullHelperImage: echoHelperPull(),
     });
 
     // When: restore rechecks the matching witness before mutation.
@@ -1261,9 +1456,9 @@ describe("provider data plane", () => {
           snapshot: {
             provider: ProviderId.make("test"),
             id: "snapshot",
-            digest: sha256(bytes("snapshot")),
+            digest: "sha256:snapshot",
             sizeBytes: bytes("snapshot").byteLength,
-            format: "tar",
+            format: "native",
           },
           target: { app: AppId.make("app"), store: "data" },
           expectedTargetGeneration: adoptedGeneration,
@@ -1290,8 +1485,8 @@ describe("provider data plane", () => {
       providerId: "test",
       endpointNamespace: "unix:///run/test.sock",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
     replace();
 
@@ -1318,8 +1513,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     const exit = await Effect.runPromiseExit(
@@ -1356,8 +1551,8 @@ describe("provider data plane", () => {
     const provider = makeProviderDataPlane({
       providerId: "test",
       api,
-      snapshotMode: "copy",
-      redactDetails: (value) => value,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
     });
 
     await Effect.runPromise(

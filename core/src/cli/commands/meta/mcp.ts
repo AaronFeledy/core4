@@ -1,4 +1,5 @@
 import { serializeToolingInput } from "@lando/landofile/tooling-input";
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 /**
  * `meta:mcp` (`lando mcp`) command logic.
  *
@@ -103,7 +104,6 @@ const ToolingMcpResultSchema = Schema.Struct({
   exitCode: Schema.Number,
   stdout: Schema.String,
   stderr: Schema.String,
-  rendered: Schema.optionalKey(Schema.Boolean),
 });
 
 const toolingArgsFromInput = (input: unknown): ReadonlyArray<string> => {
@@ -113,7 +113,7 @@ const toolingArgsFromInput = (input: unknown): ReadonlyArray<string> => {
   return Array.isArray(values) ? values.filter((value): value is string => typeof value === "string") : [];
 };
 
-const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoCommandSpec => {
+const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoCommandSpec<RunToolingResult> => {
   let namespace: LandoCommandSpec["namespace"] = "app";
   if (command.id.startsWith("meta:")) namespace = "meta";
   else if (command.id.startsWith("apps:")) namespace = "apps";
@@ -155,11 +155,12 @@ const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoComm
           ),
         }),
     resultSchema: ToolingMcpResultSchema,
+    completion: (result) => commandCompletionFromExitCode(result.exitCode),
     run: (input) =>
       command.input === undefined
-        ? runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true })
+        ? runTooling({ name: command.id, args: toolingArgsFromInput(input) })
         : Effect.flatMap(Effect.fromResult(toolingArgvFromInput(command.id, command.input, input)), (args) =>
-            runTooling({ name: command.id, args, renderProgress: true }),
+            runTooling({ name: command.id, args }),
           ),
     redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
     render: (result) => renderRunToolingResult(result as RunToolingResult),
@@ -186,7 +187,7 @@ export const mcpFlagsFromParsed = (flags: Record<string, unknown>): McpCommandFl
 export const mcpRegistryFromBuiltIns = (
   entries: ReadonlyArray<{ readonly spec: McpCommandSpec }>,
 ): McpCommandRegistry => ({
-  commandEntries: entries.flatMap(({ spec }) => {
+  commandEntries: entries.flatMap<{ readonly spec: McpCommandSpec }>(({ spec }) => {
     assertMcpAllowlistSafe(spec);
     if (isAppConfigMcpUnsafeId(spec.id) && spec.id !== "app:config") return [];
     if (spec.id === "app:config") return appConfigMcpSpecs.map((projection) => ({ spec: projection }));
@@ -231,7 +232,7 @@ const resolveRegistryForCommand = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
   runtimeLayer: Layer.Layer<unknown>,
-): Effect.fn.Return<McpCommandRegistry, ConfigError | McpToolInputError, ConfigService> {
+): Effect.fn.Return<McpCommandRegistry, McpToolInputError, ConfigService> {
   const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
   const options = resolveMcpOptions(flags, config);
   return yield* resolveRegistryForEffectiveOptions(registry, options, runtimeLayer);
@@ -287,7 +288,7 @@ export const validateMcpAllowlistIds = (
 const resolveOptions = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
-): Effect.fn.Return<ResolvedMcpOptions, ConfigError | McpToolInputError, ConfigService> {
+): Effect.fn.Return<ResolvedMcpOptions, McpToolInputError, ConfigService> {
   const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
   const options = resolveMcpOptions(flags, config);
   yield* validateMcpAllowlistIds(options, knownIdsOf(registry));
@@ -308,7 +309,7 @@ export const buildMcpRuntimeConfig = (
 export const mcpListResult = Effect.fn("Mcp.list")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
-): Effect.fn.Return<McpListResult, ConfigError | McpToolInputError, ConfigService> {
+): Effect.fn.Return<McpListResult, McpToolInputError, ConfigService> {
   const options = yield* resolveOptions(registry, flags);
   return buildMcpListResult({
     defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
@@ -330,11 +331,7 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
   runtimeLayer: Layer.Layer<unknown>,
-): Effect.fn.Return<
-  void,
-  ConfigError | McpToolInputError | McpTransportError,
-  ConfigService | RedactionService
-> {
+): Effect.fn.Return<void, McpToolInputError | McpTransportError, ConfigService | RedactionService> {
   const options = yield* resolveOptions(registry, flags);
   const runtimeConfig = buildMcpRuntimeConfig(registry, runtimeLayer);
   const catalogOptions = {
@@ -361,15 +358,19 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
 
 export const dispatchMcpCommand = async (params: {
   readonly flags: McpCommandFlags;
+  readonly signal?: AbortSignal;
   readonly commandRuntime: Layer.Layer<
     ConfigService | RedactionService | BuiltInCommandCatalog,
-    LandoRuntimeBootstrapError
+    ConfigError | LandoRuntimeBootstrapError
   >;
   readonly retainedRuntime: Layer.Layer<unknown>;
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
   readonly invocation: CliInvocationSnapshot;
-  readonly formatError: (error: unknown) => string;
+  readonly formatError: (
+    failure: import("@lando/sdk/command-result").ProjectedFailure,
+    redactor: import("@lando/sdk/secrets").Redactor,
+  ) => string;
 }): Promise<void> => {
   if (params.flags.list === true) {
     const listEffect = Effect.gen(function* () {
@@ -404,16 +405,34 @@ export const dispatchMcpCommand = async (params: {
   const serveEffect =
     startupError === undefined
       ? Effect.gen(function* () {
+          const retainedScope = yield* Effect.scope;
+          const retainedContext = yield* Effect.cached(
+            Layer.buildWithScope(params.retainedRuntime, retainedScope),
+          );
+          const retainedRuntime = Layer.unwrap(Effect.map(retainedContext, Layer.succeedContext));
           const catalog = yield* BuiltInCommandCatalog;
           const registry = yield* resolveRegistryForCommand(
             mcpRegistryFromBuiltIns(catalog.entries),
             params.flags,
-            params.retainedRuntime,
+            retainedRuntime,
           );
-          yield* serveMcp(registry, params.flags, params.retainedRuntime);
-        })
+          yield* serveMcp(registry, params.flags, retainedRuntime);
+        }).pipe(Effect.scoped)
       : Effect.fail(startupError);
-  return runWithRendererHandling(serveEffect, {
+  const signal = params.signal;
+  const interrupted =
+    signal === undefined
+      ? Effect.never
+      : Effect.callback<never>((resume) => {
+          const abort = () => resume(Effect.interrupt);
+          if (signal.aborted) {
+            abort();
+            return;
+          }
+          signal.addEventListener("abort", abort, { once: true });
+          return Effect.sync(() => signal.removeEventListener("abort", abort));
+        });
+  await runWithRendererHandling(Effect.raceFirst(interrupted, serveEffect), {
     runtime: params.commandRuntime,
     rendererMode: params.rendererMode,
     resultFormat: "text",
@@ -424,4 +443,7 @@ export const dispatchMcpCommand = async (params: {
     render: () => undefined,
     formatError: params.formatError,
   });
+  if (signal?.aborted && (process.exitCode === undefined || process.exitCode === 0)) {
+    process.exitCode = signal.reason === "SIGTERM" ? 143 : 130;
+  }
 };

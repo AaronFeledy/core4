@@ -1,248 +1,253 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Schema } from "effect";
 
 import { ScannerError } from "@lando/sdk/errors";
-import { AppId } from "@lando/sdk/schema";
-import type { AppPlan } from "@lando/sdk/schema";
+import { LandoEvent } from "@lando/sdk/events";
 import { ServiceName } from "@lando/sdk/schema";
-import type { EventServiceShape, ScanEndpoint, ScanResult, UrlScannerShape } from "@lando/sdk/services";
+import type { EventServiceShape, ScanEndpoint, UrlScannerShape } from "@lando/sdk/services";
 
-import { runPostStartScan, startupScanUrls } from "../../src/operations/post-start-scan.ts";
+import { runPostStartScan } from "../../src/operations/post-start-scan.ts";
+import { plan, web } from "./start-progress-topology-support.ts";
 
-const appId = AppId.make("scan-demo");
-const plan = { id: appId, services: {} } as unknown as AppPlan;
-
-type PublishedEvent = Parameters<EventServiceShape["publish"]>[0];
-
-const collector = () => {
-  const published: PublishedEvent[] = [];
-  return {
-    published,
-    publish: (event: PublishedEvent) => Effect.asVoid(Effect.sync(() => void published.push(event))),
-  };
-};
-
-const warnBody = (event: PublishedEvent | undefined): string =>
-  (event as unknown as { readonly body?: string } | undefined)?.body ?? "";
-
-const endpoint = (overrides: Partial<ScanEndpoint>): ScanEndpoint => ({
-  service: ServiceName.make("web"),
-  url: "http://localhost:8080/",
+const url = "http://localhost:8080/";
+const target = { service: web.name, url };
+const parentId = `start-scan-${plan.id}`;
+const taskId = `${parentId}:web-1`;
+const label = `web ${url}`;
+const endpoint = (overrides: Partial<ScanEndpoint> = {}): ScanEndpoint => ({
+  ...target,
   reachable: true,
+  verdict: "ready",
   outcome: "green",
+  statusCode: 200,
   ...overrides,
 });
-
-const scannerReturning = (
-  endpoints: ReadonlyArray<ScanEndpoint>,
-  seen: {
-    appId?: AppId;
-    plan?: AppPlan | undefined;
-    urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
-  },
-): UrlScannerShape => ({
+const collector = () => {
+  const published: LandoEvent[] = [];
+  return {
+    published,
+    publish: (event: Parameters<EventServiceShape["publish"]>[0]) =>
+      Effect.sync(() => {
+        if (Schema.is(LandoEvent)(event)) published.push(event);
+      }),
+  };
+};
+const scannerReturning = (endpoints: ReadonlyArray<ScanEndpoint>): UrlScannerShape => ({
   id: "stub",
-  scan: (id, options) =>
-    Effect.sync((): ScanResult => {
-      seen.appId = id;
-      seen.plan = options?.plan;
-      if (options?.urls !== undefined) seen.urls = options.urls;
-      return { appId: id, endpoints };
+  scan: (appId, options) =>
+    Effect.succeed({
+      appId,
+      endpoints: endpoints.filter((row) =>
+        options?.urls?.some((url) => url.service === row.service && url.url === row.url),
+      ),
     }),
   detectCollisions: () => Effect.succeed([]),
 });
-
-const failingScanner = (): UrlScannerShape => ({
-  id: "stub",
-  scan: () => Effect.fail(new ScannerError({ message: "scan blew up", scannerId: "stub" })),
-  detectCollisions: () => Effect.succeed([]),
-});
+const project = (events: ReadonlyArray<LandoEvent>) =>
+  events.map((event) => {
+    switch (event._tag) {
+      case "task.tree.start":
+        return [event._tag, event.parentId, event.label, event.children];
+      case "task.start":
+        return [event._tag, event.taskId, event.label];
+      case "task.complete":
+        return [event._tag, event.taskId, event.summary, event.outcome];
+      case "task.fail":
+        return [event._tag, event.taskId, event.summary];
+      case "task.detail":
+        return [event._tag, event.taskId, event.stream, event.line];
+      case "task.tree.complete":
+        return [event._tag, event.summary, event.succeeded, event.failed];
+      case "message.warn":
+        return [event._tag, event.body];
+      default:
+        throw new Error(`Unexpected event: ${event._tag}`);
+    }
+  });
+const opening = [
+  ["task.tree.start", parentId, `Checking ${plan.name}`, [taskId]],
+  ["task.start", taskId, label],
+];
 
 describe("runPostStartScan", () => {
-  test("stays silent when every scanned endpoint passes", async () => {
-    const events = collector();
-    const seen: { appId?: AppId; plan?: AppPlan | undefined } = {};
-    await Effect.runPromise(
-      runPostStartScan({ scanner: scannerReturning([endpoint({})], seen), plan, events }),
-    );
-    expect(events.published).toHaveLength(0);
-  });
-
-  test("hands the plan to the scanner so per-service settings apply", async () => {
-    const events = collector();
-    const seen: { appId?: AppId; plan?: AppPlan | undefined } = {};
-    await Effect.runPromise(
-      runPostStartScan({ scanner: scannerReturning([endpoint({})], seen), plan, events }),
-    );
-    expect(seen.appId).toBe(appId);
-    expect(seen.plan).toBe(plan);
-  });
-
-  test("forwards supplied startup urls to the scanner", async () => {
-    const events = collector();
-    const seen: {
-      appId?: AppId;
-      plan?: AppPlan | undefined;
-      urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
-    } = {};
-    const urls = [{ service: ServiceName.make("web"), url: "https://web.demo.lndo.site/" }];
-    await Effect.runPromise(
-      runPostStartScan({ scanner: scannerReturning([endpoint({})], seen), plan, events, urls }),
-    );
-    expect(seen.urls).toEqual(urls);
-  });
-
-  test("warns once per endpoint that did not pass", async () => {
-    const events = collector();
-    const seen: { appId?: AppId; plan?: AppPlan | undefined } = {};
-    const scanner = scannerReturning(
-      [
-        endpoint({}),
-        endpoint({ url: "http://localhost:8081/", outcome: "yellow", detail: "HTTP 500" }),
-        endpoint({
-          service: ServiceName.make("api"),
-          url: "http://localhost:8082/",
-          reachable: false,
-          outcome: "red",
-          detail: "timeout after 5s",
-        }),
-      ],
-      seen,
-    );
-    await Effect.runPromise(runPostStartScan({ scanner, plan, events }));
-    expect(events.published).toHaveLength(2);
-    const bodies = events.published.map((event) => warnBody(event));
-    expect(bodies[0]).toContain("http://localhost:8081/");
-    expect(bodies[0]).toContain("HTTP 500");
-    expect(bodies[1]).toContain("api");
-    expect(bodies[1]).toContain("timeout after 5s");
-    expect(events.published.every((event) => event._tag === "message.warn")).toBe(true);
-  });
-
-  test("warns once and never fails when the scan itself fails", async () => {
+  test("app errors are neutral result data, not command warnings", async () => {
     const events = collector();
     const result = await Effect.runPromise(
-      Effect.result(runPostStartScan({ scanner: failingScanner(), plan, events })),
-    );
-    expect(result._tag).toBe("Success");
-    expect(events.published).toHaveLength(1);
-    expect(warnBody(events.published[0])).toContain("scan blew up");
-  });
-
-  test("succeeds even when publishing the warning fails", async () => {
-    const seen: { appId?: AppId; plan?: AppPlan | undefined } = {};
-    const scanner = scannerReturning([endpoint({ reachable: false, outcome: "red" })], seen);
-    const events: Pick<EventServiceShape, "publish"> = {
-      publish: () => Effect.die(new Error("bus down")),
-    };
-    const result = await Effect.runPromise(Effect.result(runPostStartScan({ scanner, plan, events })));
-    expect(result._tag).toBe("Success");
-  });
-
-  test("propagates scan interruption so a cancelled start can stop", async () => {
-    const events = collector();
-    const scanner: UrlScannerShape = {
-      id: "stub",
-      scan: () => Effect.interrupt,
-      detectCollisions: () => Effect.succeed([]),
-    };
-    const exit = await Effect.runPromise(Effect.exit(runPostStartScan({ scanner, plan, events })));
-    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-    expect(events.published).toHaveLength(0);
-  });
-});
-
-describe("startupScanUrls", () => {
-  test.each(["tcp", "udp", "redis", "valkey", "postgresql", "memcached"])(
-    "excludes %s endpoints while retaining HTTP and HTTPS targets",
-    (protocol) => {
-      // Given
-      const services = [
-        {
-          name: "web",
-          endpoints: [`${protocol}://localhost:16379`, "http://localhost:8080", "https://localhost:8443"],
-        },
-      ];
-      // When
-      const urls = startupScanUrls(plan, services);
-      // Then
-      expect(urls).toEqual([
-        { service: ServiceName.make("web"), url: "http://localhost:8080/" },
-        { service: ServiceName.make("web"), url: "https://localhost:8443/" },
-      ]);
-    },
-  );
-
-  test.each([
-    "http://*.wild.demo.lndo.site:8000",
-    "https://wild.*.demo.lndo.site:4443",
-    "http://web*.demo.lndo.site:8000/prefix",
-    "https://%2A.demo.lndo.site",
-  ])("skips wildcard hostname %s while keeping exact routes and provider endpoints", (wildcard) => {
-    // Given a displayed URL list containing a route pattern and concrete endpoints.
-    const endpoints = [wildcard, "https://web.demo.lndo.site", "http://localhost:8080"];
-    const services = [{ name: "web", endpoints }];
-
-    // When selecting startup scan targets.
-    const urls = startupScanUrls(plan, services);
-
-    // Then only concrete endpoints are scanned, without changing the displayed list.
-    expect(urls).toEqual([
-      { service: ServiceName.make("web"), url: "https://web.demo.lndo.site/" },
-      { service: ServiceName.make("web"), url: "http://localhost:8080/" },
-    ]);
-    expect(services[0]?.endpoints).toEqual([wildcard, "https://web.demo.lndo.site", "http://localhost:8080"]);
-  });
-
-  test("keeps an exact hostname when its path contains an asterisk", () => {
-    // Given an exact route whose path contains a literal asterisk.
-    const services = [{ name: "web", endpoints: ["https://web.demo.lndo.site/files/*"] }];
-
-    // When selecting startup scan targets.
-    const urls = startupScanUrls(plan, services);
-
-    // Then the path does not make the hostname a wildcard.
-    expect(urls).toEqual([{ service: ServiceName.make("web"), url: "https://web.demo.lndo.site/files/*/" }]);
-  });
-
-  test("forwards an empty target list when every displayed URL has a wildcard hostname", async () => {
-    // Given a service with only a wildcard route.
-    const services = [{ name: "web", endpoints: ["http://*.demo.lndo.site:8000"] }];
-    const seen: { urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }> } = {};
-    const events = collector();
-
-    // When the post-start scan runs with the selected targets.
-    await Effect.runPromise(
       runPostStartScan({
-        scanner: scannerReturning([], seen),
+        scanner: scannerReturning([endpoint({ verdict: "app-error", outcome: "yellow", statusCode: 500 })]),
         plan,
         events,
-        urls: startupScanUrls(plan, services),
+        urls: [target],
       }),
     );
-
-    // Then an explicit empty list prevents fallback endpoint discovery.
-    expect(seen.urls).toEqual([]);
+    expect(result).toMatchObject([
+      { id: `http:web:${url}`, kind: "http", verdict: "app-error", statusCode: 500 },
+    ]);
+    expect(project(events.published)).toEqual([
+      ...opening,
+      ["task.complete", taskId, `${label} · your app returned 500`, "info"],
+      ["task.tree.complete", `${plan.name} checked · 1 URL returned errors`, 1, 0],
+    ]);
   });
 
-  test("joins scanner paths onto published and routed bases", () => {
-    const urls = startupScanUrls(
-      {
-        ...plan,
-        services: {
-          web: { scanner: { enabled: true, path: "/ready", okCodes: [], retries: 0, timeoutMs: 1000 } },
-          api: { scanner: { enabled: true, path: "/", okCodes: [], retries: 0, timeoutMs: 1000 } },
-        },
-      } as unknown as AppPlan,
-      [
-        { name: "web", endpoints: ["http://localhost:8080", "https://web.demo.lndo.site:4443"] },
-        { name: "api", endpoints: ["https://web.demo.lndo.site/api"] },
-      ],
+  test.each([
+    ["no-route", "no route matched this hostname"],
+    ["upstream-unreachable", "the router could not reach web"],
+  ])("explains router marker %s as a Lando failure", async (routerMarker, detail) => {
+    const events = collector();
+    const result = await Effect.runPromise(
+      runPostStartScan({
+        scanner: scannerReturning([endpoint({ verdict: "lando-error", routerMarker, statusCode: 404 })]),
+        plan,
+        events,
+        urls: [target],
+      }),
     );
-    expect(urls.map((row) => row.url)).toEqual([
-      "http://localhost:8080/ready",
-      "https://web.demo.lndo.site:4443/ready",
-      "https://web.demo.lndo.site/api/",
+    expect(result[0]?.detail).toBe(detail);
+    expect(events.published.filter((event) => event._tag === "message.warn")).toMatchObject([
+      { body: `Lando could not reach ${url}: ${detail}` },
+    ]);
+  });
+  test("publishes the exact all-green task lifecycle and forwards plan and singleton URL", async () => {
+    const events = collector();
+    const scanner: UrlScannerShape = {
+      ...scannerReturning([]),
+      scan: (appId, options) => {
+        expect(appId).toBe(plan.id);
+        expect(options?.plan).toBe(plan);
+        expect(options?.urls).toEqual([target]);
+        return Effect.succeed({ appId, endpoints: [endpoint()] });
+      },
+    };
+    await Effect.runPromise(runPostStartScan({ scanner, plan, events, urls: [target] }));
+    expect(project(events.published)).toEqual([
+      ...opening,
+      ["task.complete", taskId, `${label} · 200`, undefined],
+      ["task.tree.complete", `${plan.name} answered on 1 URL`, 1, 0],
+    ]);
+  });
+
+  test("settles mixed verdicts independently and preserves envelope warnings", async () => {
+    const events = collector();
+    const endpoints = [
+      endpoint(),
+      endpoint({ url: `${url}yellow`, verdict: "service-error", outcome: "yellow", statusCode: 502 }),
+      endpoint({
+        service: ServiceName.make("api"),
+        url: `${url}red`,
+        outcome: "red",
+        verdict: "lando-error",
+        reachable: false,
+        detail: "connection refused",
+      }),
+    ];
+    await Effect.runPromise(
+      runPostStartScan({ scanner: scannerReturning(endpoints), plan, events, urls: endpoints }),
+    );
+    const ids = [taskId, `${parentId}:web-2`, `${parentId}:api-1`];
+    const summaries = [
+      `${label} · 200`,
+      `web ${url}yellow · web server returned 502`,
+      `api ${url}red · unreachable: connection refused`,
+    ];
+    expect(project(events.published)).toEqual([
+      ["task.tree.start", parentId, `Checking ${plan.name}`, ids],
+      ["task.start", ids[0], label],
+      ["task.complete", ids[0], summaries[0], undefined],
+      ["task.start", ids[1], `web ${url}yellow`],
+      ["task.complete", ids[1], summaries[1], "warn"],
+      ["task.start", ids[2], `api ${url}red`],
+      ["task.complete", ids[2], summaries[2], "warn"],
+      ["message.warn", `Lando could not reach ${url}red: connection refused`],
+      ["task.tree.complete", `${plan.name} checked · 1 URL returned errors, 1 unreachable`, 3, 0],
+    ]);
+  });
+
+  test("warns for one failed scan without failing start or losing other URL verdicts", async () => {
+    const events = collector();
+    const scanner: UrlScannerShape = {
+      ...scannerReturning([]),
+      scan: (appId, options) =>
+        options?.urls?.[0]?.url === url
+          ? Effect.fail(
+              new ScannerError({
+                message: "scan blew up",
+                scannerId: "stub",
+                remediation: "Start the app services, then re-run URL checks (scanner `stub`).",
+              }),
+            )
+          : Effect.succeed({ appId, endpoints: [endpoint({ url: `${url}ready` })] }),
+    };
+    await Effect.runPromise(
+      runPostStartScan({ scanner, plan, events, urls: [target, { ...target, url: `${url}ready` }] }),
+    );
+    expect(project(events.published)).toEqual([
+      ["task.tree.start", parentId, `Checking ${plan.name}`, [taskId, `${parentId}:web-2`]],
+      ["task.start", taskId, label],
+      ["task.complete", taskId, `${label} · unreachable: scan blew up`, "warn"],
+      ["message.warn", `Lando could not reach ${url}: scan blew up`],
+      ["task.start", `${parentId}:web-2`, `web ${url}ready`],
+      ["task.complete", `${parentId}:web-2`, `web ${url}ready · 200`, undefined],
+      ["task.tree.complete", `${plan.name} checked · 1 unreachable`, 2, 0],
+    ]);
+  });
+
+  test("publishes only non-green attempt details before settling", async () => {
+    const events = collector();
+    const scanner: UrlScannerShape = {
+      ...scannerReturning([]),
+      scan: (appId, options) =>
+        Effect.gen(function* () {
+          yield* options?.onAttempt?.({
+            ...target,
+            attempt: 1,
+            maxAttempts: 2,
+            outcome: "yellow",
+            verdict: "service-error",
+            statusCode: 502,
+            detail: "HTTP 502",
+          }) ?? Effect.void;
+          yield* options?.onAttempt?.({
+            ...target,
+            attempt: 2,
+            maxAttempts: 2,
+            outcome: "green",
+            verdict: "ready",
+            statusCode: 200,
+            detail: "HTTP 200",
+          }) ?? Effect.void;
+          return { appId, endpoints: [endpoint()] };
+        }),
+    };
+    await Effect.runPromise(runPostStartScan({ scanner, plan, events, urls: [target] }));
+    expect(project(events.published)).toEqual([
+      ...opening,
+      ["task.detail", taskId, "stderr", "attempt 1/2: HTTP 502"],
+      ["task.complete", taskId, `${label} · 200`, undefined],
+      ["task.tree.complete", `${plan.name} answered on 1 URL`, 1, 0],
+    ]);
+  });
+
+  test("external cancellation settles the tree and still interrupts", async () => {
+    const events = collector();
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const probing = yield* Deferred.make<void>();
+        const scanner: UrlScannerShape = {
+          ...scannerReturning([]),
+          scan: () => Deferred.succeed(probing, undefined).pipe(Effect.andThen(Effect.never)),
+        };
+        const fiber = yield* Effect.forkChild(runPostStartScan({ scanner, plan, events, urls: [target] }));
+        yield* Deferred.await(probing);
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.await(fiber);
+      }),
+    );
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+    expect(project(events.published)).toEqual([
+      ...opening,
+      ["task.fail", taskId, `${plan.name} check interrupted`],
+      ["task.tree.complete", `${plan.name} check interrupted`, 0, 1],
     ]);
   });
 });

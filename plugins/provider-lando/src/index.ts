@@ -1,12 +1,13 @@
 import { Semaphore } from "effect";
 import { type Context, Effect, Layer, Schema, Stream } from "effect";
 
-import { VOLUME_WITNESS_IMAGE } from "@lando/container-runtime/data-plane";
+import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineHttpRequest,
   EngineHttpResponse,
   PodmanApiClient,
+  ProviderErrorContext,
 } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
@@ -17,10 +18,9 @@ import {
   pullImage as runtimePullImage,
 } from "@lando/container-runtime/image-pull";
 import {
-  type LogFileHelperPayloads,
-  logFileHelperPayloadForTargets,
-} from "@lando/container-runtime/log-file-helper-payloads";
-import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
+  type ResolveContainerHelper,
+  makeProviderLogSourceBinding,
+} from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import {
@@ -33,7 +33,8 @@ import {
   bringUp as runtimeBringUp,
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
-import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
+import { presentLogicalCreateConfig } from "@lando/container-runtime/podman/bring-up-recreate";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import {
   type ContainerDiedEventsOptions,
   parseContainerEventPayloads,
@@ -74,12 +75,14 @@ import {
   bindResolvedProviderOps,
   forgetAppliedPlanUnlessKept,
   makeProviderPlanState,
+  makeResourceOwnershipStore,
   noPlanErrorFactory,
   notImplementedError,
   providerHostInputs,
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
-import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
+import { redactorFor, withApiReason } from "@lando/container-runtime/redact";
+import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -104,6 +107,7 @@ import {
   ProviderId,
   type ProviderSetupPlan,
   hostPlatformFamily,
+  landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
 import {
   Downloader,
@@ -123,6 +127,7 @@ import {
   windowsSyncPermissionsForUser,
 } from "./windows-sync-targets.ts";
 
+import { runtimeDiagnosticContext } from "@lando/container-runtime/redact";
 import {
   inspectAppliedPlan,
   listAppliedPlans,
@@ -153,7 +158,7 @@ import {
   inspectUidmapSetupPlan,
   readLinuxHostRelease,
 } from "./prerequisite-provision.ts";
-import { LANDO_CTX } from "./provider-context.ts";
+import { LANDO_CTX, LANDO_CTX_BASE, providerContextForEnv } from "./provider-context.ts";
 import {
   type RootlessProbes,
   classifyRootlessFailure,
@@ -246,7 +251,7 @@ export {
   buildVolumePruneRequest,
   isManagedNftMissingMessage,
   parseVolumePruneResult,
-  podmanComposeKnobs,
+  composeKnobsForDialect,
   scratchLabelsForPlan,
   startFailureRemediation,
   volumeMatchesFilters,
@@ -381,15 +386,20 @@ export {
 } from "./capabilities.ts";
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
-  makeRuntimePodmanApiClient(socketPath, LANDO_CTX);
+  makeRuntimePodmanApiClient(socketPath, providerContextForEnv({ ...process.env }));
 
 export const bringUp = (plan: AppPlan, options: Omit<BringUpOptions, "ctx" | "startFailureRemediation">) =>
-  runtimeBringUp(plan, { ...options, ctx: LANDO_CTX, startFailureRemediation: landoStartFailureRemediation });
+  runtimeBringUp(plan, {
+    ...options,
+    ctx: providerContextForEnv({ ...process.env }),
+    startFailureRemediation: landoStartFailureRemediation,
+  });
 
 export const bringDown = (
   plan: AppPlan,
   options: Omit<BringDownOptions, "ctx">,
-): ReturnType<typeof runtimeBringDown> => runtimeBringDown(plan, { ...options, ctx: LANDO_CTX });
+): ReturnType<typeof runtimeBringDown> =>
+  runtimeBringDown(plan, { ...options, ctx: providerContextForEnv({ ...process.env }) });
 
 const reapRemovedExecConmons = (runtimeBinDir: string | undefined, plan: AppPlan): Effect.Effect<number> =>
   runtimeBinDir === undefined
@@ -406,62 +416,77 @@ export const exec = (
   target: Parameters<typeof runtimeExec>[1],
   command: Parameters<typeof runtimeExec>[2],
   options: Omit<ExecOptions, "ctx">,
-) => runtimeExec(plan, target, command, { ...options, ctx: LANDO_CTX });
+) => runtimeExec(plan, target, command, { ...options, ctx: providerContextForEnv({ ...process.env }) });
 
 export const execStream = (
   plan: AppPlan,
   target: Parameters<typeof runtimeExecStream>[1],
   command: Parameters<typeof runtimeExecStream>[2],
   options: Omit<ExecOptions, "ctx">,
-) => runtimeExecStream(plan, target, command, { ...options, ctx: LANDO_CTX });
+) => runtimeExecStream(plan, target, command, { ...options, ctx: providerContextForEnv({ ...process.env }) });
 
 export const inspect = (
   plan: AppPlan,
   target: Parameters<typeof runtimeInspect>[1],
   options: Omit<InspectOptions, "ctx">,
-) => runtimeInspect(plan, target, { ...options, ctx: LANDO_CTX });
+) => runtimeInspect(plan, target, { ...options, ctx: providerContextForEnv({ ...process.env }) });
 
 export const logs = (
   plan: AppPlan,
   target: Parameters<typeof runtimeLogs>[1],
   options: Parameters<typeof runtimeLogs>[2],
   runtime: Omit<LogsOptions, "ctx">,
-) => runtimeLogs(plan, target, options, { ...runtime, ctx: LANDO_CTX });
+) => runtimeLogs(plan, target, options, { ...runtime, ctx: providerContextForEnv({ ...process.env }) });
 
 export const waitForExit = (
   plan: AppPlan,
   target: Parameters<typeof runtimeWaitForExit>[1],
   options: Omit<WaitForExitOptions, "ctx" | "dialect">,
-) => runtimeWaitForExit(plan, target, { ...options, ctx: LANDO_CTX, dialect: libpodWaitDialect });
+) =>
+  runtimeWaitForExit(plan, target, {
+    ...options,
+    ctx: providerContextForEnv({ ...process.env }),
+    dialect: libpodWaitDialect,
+  });
 
 export const postServiceLifecycle = (
   plan: AppPlan,
   target: Parameters<typeof runtimePostServiceLifecycle>[1],
   action: Parameters<typeof runtimePostServiceLifecycle>[2],
   options: Omit<ServiceLifecycleOptions, "ctx">,
-) => runtimePostServiceLifecycle(plan, target, action, { ...options, ctx: LANDO_CTX });
+) =>
+  runtimePostServiceLifecycle(plan, target, action, {
+    ...options,
+    ctx: providerContextForEnv({ ...process.env }),
+  });
 
 export const pullImage = <E = never>(
   api: PodmanApiClient,
   reference: string,
   options: Omit<PullImageOptions<E>, "ctx" | "dialect"> = {},
-) => runtimePullImage(api, reference, { ...options, ctx: LANDO_CTX, dialect: libpodPullDialect });
+) =>
+  runtimePullImage(api, reference, {
+    ...options,
+    ctx: providerContextForEnv({ ...process.env }),
+    dialect: libpodPullDialect,
+  });
 
 export const waitForServiceHealth = (
   plan: AppPlan,
   target: Parameters<typeof runtimeWaitForServiceHealth>[1],
   options: Omit<WaitForServiceHealthOptions, "ctx">,
-) => runtimeWaitForServiceHealth(plan, target, { ...options, ctx: LANDO_CTX });
+) =>
+  runtimeWaitForServiceHealth(plan, target, { ...options, ctx: providerContextForEnv({ ...process.env }) });
 
 export const getContainerDiedEvents = (
   api: PodmanApiClient,
   options: Omit<ContainerDiedEventsOptions, "ctx"> = {},
-) => runtimeGetContainerDiedEvents(api, { ...options, ctx: LANDO_CTX });
+) => runtimeGetContainerDiedEvents(api, { ...options, ctx: providerContextForEnv({ ...process.env }) });
 
 export { renderCompose, emitCompose, composePath } from "./provider-context.ts";
 
 export const pruneVolumes = (api: PodmanApiClient, options: Omit<VolumePruneOptions, "ctx">) =>
-  runtimePruneVolumes(api, { ...options, ctx: LANDO_CTX });
+  runtimePruneVolumes(api, { ...options, ctx: providerContextForEnv({ ...process.env }) });
 
 export { MINIMUM_PODMAN_VERSION, podmanVersionMeetsFloor };
 
@@ -533,7 +558,7 @@ export interface ProviderLayerOptions {
   readonly smokeRetryPolicy?: RetryPolicy;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
-  readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly resolveContainerHelper?: ResolveContainerHelper;
   readonly runtimeLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
   readonly runtimeGenerationStore?: RuntimeGenerationStore;
   readonly sanitizeAppliedPlan: (plan: AppPlan) => AppPlan;
@@ -549,7 +574,15 @@ type RuntimeProviderWithContainerEvents = RuntimeProviderWithServiceControls & {
   readonly getContainerDiedEvents: ReturnType<typeof getContainerDiedEvents>;
 };
 
-export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
+export const makeRuntimeProvider = Effect.fnUntraced(function* (options: ProviderLayerOptions) {
+  const ctx = yield* runtimeDiagnosticContext({
+    ...LANDO_CTX_BASE,
+    env: { ...process.env },
+  });
+  return yield* makeRuntimeProviderWithContext(options, ctx);
+});
+
+const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX: ProviderErrorContext) => {
   const providerId = ProviderId.make("lando");
   const platform = options.platform;
   const family = hostPlatformFamily(platform);
@@ -563,7 +596,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   const socketPath = externalSocketPath ?? managedSocketPath;
   const podmanApi =
     options.podmanApi ??
-    (socketPath === undefined ? undefined : (options.podmanApiFactory ?? makePodmanApiClient)(socketPath));
+    (socketPath === undefined
+      ? undefined
+      : options.podmanApiFactory === undefined
+        ? makeRuntimePodmanApiClient(socketPath, LANDO_CTX)
+        : options.podmanApiFactory(socketPath));
   const stateDir = options.stateDir;
   const runtimeBinDir = options.runtimeBinDir;
   const shouldManageRuntime = externalSocketPath === undefined && managedSocketPath !== undefined;
@@ -733,92 +770,120 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   };
   const ensureEffect = ensureEffectFor();
   const ensureBefore = <A, E, R>(effect: Effect.Effect<A, E, R>) => ensureEffect.pipe(Effect.andThen(effect));
-  const planState = makeProviderPlanState({
-    ctx: LANDO_CTX,
-    ...(podmanApi === undefined
-      ? {}
-      : {
-          api: podmanApi,
-          prepareWitnessImage: runtimePullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
-            ctx: LANDO_CTX,
-            dialect: libpodPullDialect,
-          }),
-        }),
-    ...(socketPath === undefined
-      ? {}
-      : { endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath }),
-    snapshotMode: "native",
-    redactDetails,
-    volumeCreationLabels: podmanVolumeCreationLabels,
-    providerId,
-    providerName: "provider-lando",
-    ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
-    sanitizeAppliedPlan: options.sanitizeAppliedPlan,
-    load: loadAppliedPlan,
-    persist: persistAppliedPlan,
-    remove: removeAppliedPlan,
-  });
-  const { appliedPlans } = planState;
-  const plans = appliedPlans.plans;
-  const resolvePlan = appliedPlans.resolvePlan;
-
-  const freshPlanForTeardown = Effect.fnUntraced(function* (
-    target: Parameters<RuntimeProviderShape["destroy"]>[0],
-    requireReceipt: boolean,
-  ): Effect.fn.Return<AppPlan | undefined, ProviderUnavailableError> {
-    const state = options.appliedPlanState;
-    if (state === undefined) {
-      if (!requireReceipt) return target.plan ?? (yield* resolvePlan(target.app));
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId,
-          operation: "quiesceForFileSync",
-          message: "Durable applied app state is unavailable; running writers cannot be verified.",
-          remediation: "Recover the applied provider state before stopping an app with file sync.",
-        }),
-      );
-    }
-    const prior = yield* inspectAppliedPlan(state, target.app);
-    if (prior.status === "unreadable" || (requireReceipt && prior.status === "missing")) {
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId,
-          operation: "applied-state.teardown",
-          message: "The applied app plan cannot be verified before teardown.",
-          remediation: "Recover the saved applied plan and retry without changing app volumes.",
-        }),
-      );
-    }
-    if (prior.status === "missing") return target.plan;
-    if (target.plan !== undefined && prior.plan.root !== target.plan.root) {
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId,
-          operation: "applied-state.teardown",
-          message: "The saved applied app plan belongs to a different app root.",
-          remediation: "Inspect the applied plan and retry from the original app directory.",
-        }),
-      );
-    }
-    return prior.plan;
-  });
-  const hydratePlansFromDisk: Effect.Effect<void, ProviderUnavailableError> =
-    options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
-      ? Effect.void
-      : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
-          Effect.tap((diskPlans) =>
-            Effect.sync(() => {
-              for (const diskPlan of diskPlans) {
-                if (!plans.has(diskPlan.id)) {
-                  plans.set(diskPlan.id, diskPlan);
-                }
-              }
-            }),
-          ),
-          Effect.asVoid,
-        );
-
   return Effect.gen(function* () {
+    const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
+    const capabilities =
+      shouldProbeCapabilities && podmanApi !== undefined
+        ? introspectProviderCapabilities(podmanApi, platform)
+        : Effect.succeed(mvpProviderCapabilities(platform, arch));
+    const { capabilities: resolvedCapabilities, logSourceBinding } = yield* capabilities.pipe(
+      Effect.map((resolved) => {
+        const logSourceBinding = makeProviderLogSourceBinding({
+          ...(LANDO_CTX.redactor === undefined ? {} : { redactor: LANDO_CTX.redactor }),
+          sourceEnv: LANDO_CTX.env,
+          providerId: LANDO_CTX.providerId,
+          logFileAccess: options.logFileAccess,
+          helperTarget: resolved.hostProxy?.containerTargets[0],
+          resolveHelper: options.resolveContainerHelper,
+        });
+        return {
+          capabilities: {
+            ...resolved,
+            artifactBuild: podmanApi !== undefined && resolved.artifactBuild,
+            artifactPull: podmanApi !== undefined && resolved.artifactPull,
+            serviceLogSources: logSourceBinding.supported,
+          },
+          logSourceBinding,
+        };
+      }),
+    );
+    const planState = makeProviderPlanState({
+      ctx: LANDO_CTX,
+      ...(podmanApi === undefined
+        ? {}
+        : {
+            api: podmanApi,
+            pullHelperImage: (ref) =>
+              runtimePullImage(podmanApi, ref, {
+                ctx: LANDO_CTX,
+                dialect: libpodPullDialect,
+                policy: "missing",
+              }),
+          }),
+      ...(socketPath === undefined
+        ? {}
+        : { endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath }),
+      capabilities: resolvedCapabilities,
+      redactor: redactorFor(LANDO_CTX),
+      volumeCreationLabels: podmanVolumeCreationLabels,
+      providerId,
+      providerName: "provider-lando",
+      ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
+      sanitizeAppliedPlan: options.sanitizeAppliedPlan,
+      load: loadAppliedPlan,
+      persist: persistAppliedPlan,
+      remove: removeAppliedPlan,
+    });
+    const { appliedPlans } = planState;
+    const plans = appliedPlans.plans;
+    const resolvePlan = appliedPlans.resolvePlan;
+
+    const freshPlanForTeardown = Effect.fnUntraced(function* (
+      target: Parameters<RuntimeProviderShape["destroy"]>[0],
+      requireReceipt: boolean,
+    ): Effect.fn.Return<AppPlan | undefined, ProviderUnavailableError> {
+      const state = options.appliedPlanState;
+      if (state === undefined) {
+        if (!requireReceipt) return target.plan ?? (yield* resolvePlan(target.app));
+        return yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId,
+            operation: "quiesceForFileSync",
+            message: "Durable applied app state is unavailable; running writers cannot be verified.",
+            remediation: "Recover the applied provider state before stopping an app with file sync.",
+          }),
+        );
+      }
+      const prior = yield* inspectAppliedPlan(state, target.app);
+      if (prior.status === "unreadable" || (requireReceipt && prior.status === "missing")) {
+        return yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId,
+            operation: "applied-state.teardown",
+            message: "The applied app plan cannot be verified before teardown.",
+            remediation: "Recover the saved applied plan and retry without changing app volumes.",
+          }),
+        );
+      }
+      if (prior.status === "missing") return target.plan;
+      if (target.plan !== undefined && prior.plan.root !== target.plan.root) {
+        return yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId,
+            operation: "applied-state.teardown",
+            message: "The saved applied app plan belongs to a different app root.",
+            remediation: "Inspect the applied plan and retry from the original app directory.",
+          }),
+        );
+      }
+      return prior.plan;
+    });
+    const hydratePlansFromDisk: Effect.Effect<void, ProviderUnavailableError> =
+      options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
+        ? Effect.void
+        : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
+            Effect.tap((diskPlans) =>
+              Effect.sync(() => {
+                for (const diskPlan of diskPlans) {
+                  if (!plans.has(diskPlan.id)) {
+                    plans.set(diskPlan.id, diskPlan);
+                  }
+                }
+              }),
+            ),
+            Effect.asVoid,
+          );
+
     const processRunnerOption =
       options.processRunner === undefined ? yield* Effect.serviceOption(ProcessRunner) : undefined;
     const processRunner =
@@ -840,34 +905,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         operation: "exec",
         service: target.service,
         message: "Managed Windows Podman stdin execution requires ProcessRunner.",
-        details: { remediation: "Retry with the standard Lando runtime layer." },
+        remediation: "Retry with the standard Lando runtime layer that provides ProcessRunner.",
       });
-    const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
-    const capabilities =
-      shouldProbeCapabilities && podmanApi !== undefined
-        ? introspectProviderCapabilities(podmanApi, platform)
-        : Effect.succeed(mvpProviderCapabilities(platform, arch));
-    const { capabilities: resolvedCapabilities, logSourceBinding } = yield* capabilities.pipe(
-      Effect.map((resolved) => {
-        const logSourceBinding = makeProviderLogSourceBinding({
-          providerId: LANDO_CTX.providerId,
-          logFileAccess: options.logFileAccess,
-          helperPayload: logFileHelperPayloadForTargets(
-            options.logFileHelperPayloads,
-            resolved.hostProxy?.containerTargets,
-          ),
-        });
-        return {
-          capabilities: {
-            ...resolved,
-            artifactBuild: podmanApi !== undefined && resolved.artifactBuild,
-            artifactPull: podmanApi !== undefined && resolved.artifactPull,
-            serviceLogSources: logSourceBinding.supported,
-          },
-          logSourceBinding,
-        };
-      }),
-    );
     const managedRuntimeStatusDeps =
       shouldManageRuntime &&
       managedSocketPath !== undefined &&
@@ -916,6 +955,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       target: Parameters<typeof runtimePostServiceLifecycle>[1],
     ) => Effect.Effect<void, ProviderError> = () => Effect.void;
     const resolvedOps = bindResolvedProviderOps(planState, {
+      readAppEnvironment: (target, names) =>
+        readAppEnvironment(target, names, { api: podmanApi, ctx: LANDO_CTX }),
       ctx: LANDO_CTX,
       noPlanError: makeNoPlanError,
       before: ensureEffect,
@@ -998,18 +1039,39 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         inspect: Effect.fnUntraced(function* (plan, target) {
           const physical = yield* physicalNetworkPlan(plan);
           const runtime = yield* runtimeInspect(plan, target, { ...apiOptions, ctx: LANDO_CTX });
-          if (physical === plan || runtime.networkNames === undefined) return runtime;
+          if (physical === plan) return runtime;
+          const logicalRuntime = {
+            ...runtime,
+            ...(runtime.labels === undefined
+              ? {}
+              : {
+                  labels: presentLogicalCreateConfig(runtime.labels, {
+                    physical,
+                    logical: plan,
+                    service: target.service,
+                  }),
+                }),
+          };
+          if (runtime.networkNames === undefined) return logicalRuntime;
           const logicalNames = new Map<string, string>();
           if (physical.networking !== undefined && plan.networking !== undefined) {
-            logicalNames.set(physical.networking.perAppBridge.name, plan.networking.perAppBridge.name);
+            if (physical.networking.perAppBridge !== null && plan.networking.perAppBridge !== null) {
+              logicalNames.set(physical.networking.perAppBridge.name, plan.networking.perAppBridge.name);
+            }
             const shared = physical.networking.sharedNetworkMembership;
             const logicalShared = plan.networking.sharedNetworkMembership;
             if (shared !== undefined && logicalShared !== undefined) {
               logicalNames.set(shared.name, logicalShared.name);
             }
+            for (const network of physical.networking.authoredNetworks ?? []) {
+              const logical = plan.networking.authoredNetworks?.find(
+                (candidate) => candidate.key === network.key,
+              );
+              if (logical !== undefined) logicalNames.set(network.name, logical.name);
+            }
           }
           return {
-            ...runtime,
+            ...logicalRuntime,
             networkNames: runtime.networkNames.map((name) => logicalNames.get(name) ?? name),
           };
         }),
@@ -1106,13 +1168,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         if (onlyService !== undefined && service.name !== onlyService) continue;
         if (
           !supportsWindowsPublishedRecovery({
-            appId: physicalPlan.id,
-            networks:
-              typeof service.extensions.compose === "object" &&
-              service.extensions.compose !== null &&
-              !Array.isArray(service.extensions.compose)
-                ? (service.extensions.compose as Readonly<Record<string, unknown>>).networks
-                : undefined,
+            networking: physicalPlan.networking,
+            attachments: landoServiceNetworkAttachments(physicalPlan, service),
             endpoints: service.endpoints,
           })
         )
@@ -1161,6 +1218,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             operation: "matchingPublishPorts",
             message: "Podman returned invalid container network metadata.",
             cause,
+            remediation:
+              "Install or start the `lando` provider and confirm it can perform `matchingPublishPorts`.",
           }),
       });
       if (
@@ -1203,8 +1262,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             )
         : undefined;
     const appliedPlanState = options.appliedPlanState;
-    const windowsSyncImage =
-      "docker.io/oven/bun@sha256:07235578f79ef8c6f97d94aee7938e76f5cdba5f21ae5dbfdd3d3d38058437eb";
+    const windowsSyncImage = volumeWitnessImage.ref;
     const windowsSyncTargets =
       shouldManageRuntime && family === "win32" && appliedPlanState !== undefined && podmanApi !== undefined
         ? makeWindowsSyncTargetOperations(podmanApi, appliedPlanState, (image) =>
@@ -1532,7 +1590,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             ? () => Effect.fail(makeUnavailable("buildArtifact"))
             : (spec) =>
                 ensureBefore(
-                  buildContainerArtifact(spec, { providerId: LANDO_CTX.providerId, api: podmanApi }),
+                  buildContainerArtifact(spec, {
+                    providerId: LANDO_CTX.providerId,
+                    api: podmanApi,
+                    sourceEnv: LANDO_CTX.env,
+                  }),
                 ),
         pullArtifact:
           podmanApi === undefined
@@ -1558,6 +1620,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
           yield* ensureEffect;
           const physicalPlan = yield* physicalNetworkPlan(plan);
+          const previous = yield* appliedPlans.resolvePlan(plan.id);
+          const previousPhysicalPlan =
+            previous === undefined ? undefined : yield* physicalNetworkPlan(previous);
+          yield* planState.ownership.prepare(physicalPlan, previousPhysicalPlan);
           const result = yield* withGlobalPublishedLifecycle(
             String(plan.id),
             "apply",
@@ -1577,13 +1643,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               ...(socketPath === undefined ? {} : { daemonUrl: socketPath }),
               ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
               ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
-              ...(applyOptions.serviceEnvironment === undefined
+              ...(applyOptions.resolveServiceEnvironment === undefined
                 ? {}
-                : { serviceEnvironment: applyOptions.serviceEnvironment }),
+                : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
               reconcile: applyOptions.reconcile,
+              onVolumeCreated: applyOptions.onVolumeCreated,
               ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
               completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
             }).pipe(
+              Effect.tap(() => planState.removeOrphanedNetworks(physicalPlan, previousPhysicalPlan)),
               Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)),
               Effect.tap(() => reconcilePublishedServices(physicalPlan)),
             ),
@@ -1620,6 +1688,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               );
             }),
           ),
+        cleanupOwnedResources: planState.cleanupOwnedResources,
         destroy: (target, destroyOptions) =>
           withGlobalPublishedLifecycle(
             String(target.app),
@@ -1787,12 +1856,14 @@ export const plugin = definePlugin({
       ProviderId.make("lando"),
       {
         id: ProviderId.make("lando"),
+        declaredCapabilities: mvpProviderCapabilities,
+        resourceOwnership: (ctx, root) => makeResourceOwnershipStore("lando", ctx.stateStore).summary(root),
         appliedPlans: (ctx) =>
           Effect.flatMap(PathsService, (paths) =>
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
-          const { paths, platform, logFileHelperPayloads, sanitizeAppliedPlan, eventService } =
+          const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan, eventService } =
             yield* providerHostInputs;
           const downloader = yield* Downloader;
           const runtimeState = yield* makePluginRuntimeState(ctx);
@@ -1810,7 +1881,7 @@ export const plugin = definePlugin({
             artifactDownload: makePluginArtifactDownload(downloader),
             ...(eventService === undefined ? {} : { eventService }),
             nftCacheDir: paths.toolDownloadsDir("nft"),
-            logFileHelperPayloads,
+            resolveContainerHelper,
             sanitizeAppliedPlan,
             ...runtimeState,
           });

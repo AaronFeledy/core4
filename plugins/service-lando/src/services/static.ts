@@ -1,15 +1,16 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
+  ServiceConfigIssue,
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
@@ -75,7 +76,11 @@ export const validateServer = (
   if ((SUPPORTED_STATIC_SERVERS as ReadonlyArray<string>).includes(server)) {
     return server as SupportedStaticServer;
   }
-  throw new Error(`Unsupported static server "${server}". ${REMEDIATION_SERVER(server)}`);
+  throw new ServiceConfigIssue(
+    ["type"],
+    `Unsupported static server "${server}".`,
+    REMEDIATION_SERVER(server),
+  );
 };
 
 const configFor = (ctx: ServiceFeatureContext): StaticFeatureConfig => ctx.config as StaticFeatureConfig;
@@ -95,7 +100,6 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   }
   ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port, service.user));
   applyAuthoredProcessFields(ctx, ["user"]);
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
@@ -110,6 +114,10 @@ export const staticServiceFeature: ServiceFeatureDefinition = {
   id: STATIC_FEATURE_ID,
   schema: StaticFeatureConfigSchema as Schema.Codec<unknown>,
   priority: STATIC_FEATURE_PRIORITY,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+    ),
   apply: serviceFeatureApply(STATIC_FEATURE_ID, "service-lando.static failed to apply", applyStaticFeature),
 };
 

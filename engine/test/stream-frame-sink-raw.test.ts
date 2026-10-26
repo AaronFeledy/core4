@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
@@ -15,7 +11,8 @@ import { StreamFrameSink } from "../src/operations/stream-frame-sink";
 const identityRedaction = Layer.succeed(
   RedactionService,
   RedactionService.of({
-    registerValues: registerRedactionValues,
+    ...makeRedactionService(),
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
   }),
 );
@@ -32,7 +29,7 @@ describe("RendererOutput.layerStreamFrameSink raw frames", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: "Downloading 12%\r", raw: true });
+        yield* sink.emit({ _tag: "stdout", chunk: "Downloading 12%\r", kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
 
@@ -49,7 +46,7 @@ describe("RendererOutput.layerStreamFrameSink raw frames", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stderr", chunk: "warning: lock\n", raw: true });
+        yield* sink.emit({ _tag: "stderr", chunk: "warning: lock\n", kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
 

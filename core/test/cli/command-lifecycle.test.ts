@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Layer, Queue, Schema, Stream } from "effect";
+import { FailureRoleAnnotation } from "@lando/sdk/command-result";
+import { Cause, Context, Effect, Layer, Option, Queue, Schema, Stream } from "effect";
 
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService, type EventServiceShape, type LandoEvent, Logger } from "@lando/sdk/services";
@@ -92,13 +93,33 @@ const optionsFor = <A>(
   invocation,
   io: createBufferedRendererIO(),
   render: () => undefined,
-  formatError: (error) => String(error),
+  formatError: ({ error }) => String(error),
   setExitCode: (code) => {
     harness.exitCodes.push(code);
   },
 });
 
 describe("generic CLI command lifecycle", () => {
+  test("projects roles and primary exit status independently of cause order", async () => {
+    const harness = makeRecordingHarness();
+    const primary = new CommandLifecycleExitError({ message: "start", exitCode: 7 });
+    const rollback = new CommandLifecycleTestError({ message: "rollback" });
+    const cause = Cause.combine(
+      Cause.annotate(Cause.fail(rollback), Context.make(FailureRoleAnnotation, "rollback")),
+      Cause.fail(primary),
+    );
+    await runWithRendererHandling(Effect.failCause(cause), {
+      ...optionsFor(harness),
+      failureExitCode: (error) => (error === primary ? 7 : 9),
+    });
+    expect(harness.events.at(-1)).toMatchObject({
+      _tag: "cli-app:start-error",
+      exitCode: 7,
+      failureTag: "CommandLifecycleExitError",
+      additionalFailures: [{ failureTag: "CommandLifecycleTestError", role: "rollback" }],
+    });
+    expect(harness.exitCodes).toEqual([7]);
+  });
   test("orders canonical init, command-specific, and canonical run events", async () => {
     // Given
     const harness = makeRecordingHarness();
@@ -162,7 +183,7 @@ describe("generic CLI command lifecycle", () => {
       effect: Effect.fail(new CommandLifecycleTestError({ message: "provider unavailable" })),
       failureTag: "CommandLifecycleTestError",
     },
-    { name: "defect", effect: Effect.die(new Error("unexpected defect")), failureTag: "Defect" },
+    { name: "defect", effect: Effect.die(new Error("unexpected defect")), failureTag: "LandoInternalError" },
     { name: "interruption", effect: Effect.interrupt, failureTag: "Interrupted" },
   ]) {
     test(`publishes one terminal error for ${scenario.name}`, async () => {
@@ -316,7 +337,7 @@ describe("generic CLI command lifecycle", () => {
 
     // Then
     expect(rendered).toEqual(["started"]);
-    expect(harness.exitCodes).toEqual([]);
+    expect(harness.exitCodes).toEqual([0]);
   });
 
   test("logs lifecycle publication failures at debug without changing command success", async () => {
@@ -338,7 +359,7 @@ describe("generic CLI command lifecycle", () => {
       "CLI lifecycle event publication failed.",
       "CLI lifecycle event publication failed.",
     ]);
-    expect(harness.exitCodes).toEqual([]);
+    expect(harness.exitCodes).toEqual([0]);
   });
 
   test("uses an internal event service for Layer.empty bootstrap-none commands", async () => {
@@ -360,7 +381,7 @@ describe("generic CLI command lifecycle", () => {
       streaming: StreamFrame,
       resultSchema: Schema.Struct({ version: Schema.String }),
       render: () => undefined,
-      formatError: (error: unknown) => String(error),
+      formatError: ({ error }) => String(error),
     } satisfies LifecycleOptions<{ readonly version: string }, never, never>;
 
     // When
@@ -379,8 +400,9 @@ describe("generic CLI command lifecycle", () => {
     const ordering: Array<string> = [];
     const harness = makeRecordingHarness(ordering);
     const io = {
-      writeStdout: (chunk: string) => {
-        ordering.push(chunk.includes('"_tag":"result"') ? "result-frame" : "stream-frame");
+      writeStdout: (chunk: string | Uint8Array) => {
+        const text = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+        ordering.push(text.includes('"_tag":"result"') ? "result-frame" : "stream-frame");
       },
       writeStderr: () => undefined,
     };
@@ -391,10 +413,10 @@ describe("generic CLI command lifecycle", () => {
       streamingMode: "live",
       resultSchema: Schema.Struct({ ok: Schema.Boolean }),
       io,
-    } satisfies LifecycleOptions<{ readonly ok: boolean }, EventService | StreamFrameSink, never>;
+    } satisfies LifecycleOptions<{ readonly ok: boolean }, EventService, never>;
     const command = Effect.gen(function* () {
-      const sink = yield* StreamFrameSink;
-      yield* sink.emit({ _tag: "stdout", chunk: "working" });
+      const sink = yield* Effect.serviceOption(StreamFrameSink);
+      if (Option.isSome(sink)) yield* sink.value.emit({ kind: "record", _tag: "stdout", chunk: "working" });
       return { ok: true };
     });
 

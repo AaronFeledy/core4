@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -47,7 +48,10 @@ const registryLayer = Layer.merge(services, PluginRegistryLayer.layer);
 const planFor = (landofile: LandofileShape, provider: "lando" | "docker") =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
-      planner.plan({ ...landofile, provider: ProviderId.make(provider) }, providerLandoCapabilities),
+      planner.plan(
+        compileTestLandofile({ ...landofile, provider: ProviderId.make(provider) }),
+        providerLandoCapabilities,
+      ),
     ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(registryLayer)),
   );
 
@@ -191,7 +195,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     ).toEqual([]);
     expect(worker?.environment.LANDO_HOST_IP).toBe("host.lando.internal");
 
-    expect(plan.networks).toEqual([{ name: "lando-composeapp", shared: false, driver: "bridge" }]);
+    expect(plan.networking?.perAppBridge).toEqual({ name: "lando-composeapp", driver: "bridge" });
   });
 
   test("appMount: false opts out — no appMount, no synthetic /app bind", async () => {
@@ -215,6 +219,6 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     expect(worker?.environment.LANDO_APP_ROOT).toBeUndefined();
     expect(worker?.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
 
-    expect(plan.networks).toEqual([{ name: "lando-composeapp", shared: false, driver: "bridge" }]);
+    expect(plan.networking?.perAppBridge).toEqual({ name: "lando-composeapp", driver: "bridge" });
   });
 });

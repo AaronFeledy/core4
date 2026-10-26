@@ -2,8 +2,8 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { describe, expect, spyOn, test } from "bun:test";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 
 import { makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
 import { ProviderUnavailableError } from "@lando/core/errors";
@@ -28,6 +28,10 @@ import {
   type RuntimeProviderShape,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import * as composition from "@lando/engine/composition";
+import { beginOrResumeAcceleratedStart } from "@lando/engine/operations/accelerated-start-journal";
+import * as hostProxyWorker from "@lando/engine/subsystems/host-proxy/worker";
+import { stubContainerHelper } from "@lando/engine/testing/container-helper";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
@@ -81,7 +85,6 @@ const planWithFileSync = (root: string): AppPlan => ({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [
     {
@@ -93,7 +96,7 @@ const planWithFileSync = (root: string): AppPlan => ({
         source: AbsolutePath.make(root),
         target: { _tag: "volume", name: "embedded-app-web-app-mount", path: PortablePath.make("/app") },
         mode: "two-way-safe",
-        excludes: [],
+        excludes: [".git"],
       },
     },
   ],
@@ -132,6 +135,7 @@ const planWithTwoFileSyncEntries = (root: string): AppPlan => {
           ...first.session,
           mountKey: "mount-0",
           target: { _tag: "volume", name: "embedded-app-web-mount-0", path: PortablePath.make("/app2") },
+          excludes: [],
         },
       },
     ],
@@ -178,8 +182,9 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
   let appliedPlan: AppPlan | undefined;
   return RuntimeProvider.of({
     ...provider,
+    appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
     prepareFileSyncTargets: (syncPlan: AppPlan) =>
-      Effect.succeed({ targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void }),
+      Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
     inspectAppliedFileSync: () =>
       Effect.succeed(
         appliedPlan === undefined
@@ -283,12 +288,26 @@ const appLayer = (
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: (root) =>
+              (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
+                Effect.map((plans) => plans.find((candidate) => candidate.root === root)),
+              ),
+            resolveTeardownEvidence: (root) =>
+              (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
+                Effect.map((plans) => {
+                  const applied = plans.find((candidate) => candidate.root === root);
+                  return applied === undefined
+                    ? { kind: "absent" as const }
+                    : { kind: "applied" as const, plan: applied };
+                }),
+              ),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
             capabilities: Effect.succeed(fixtureProvider.capabilities),
             select: () => Effect.succeed(fixtureProvider),
           }),
         ),
-        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
         Layer.succeed(FileSyncEngine, FileSyncEngine.of(engine)),
         Layer.succeed(RouterService, RouterService.of(TestRouterService)),
       ],
@@ -312,6 +331,237 @@ const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 };
 
 describe("App handle managed lifecycle scopes", () => {
+  test.each([false, true])(
+    "selected rebuild owns a fresh host-proxy worker without replacing current sessions, current=%s",
+    async (priorCurrent) => {
+      // Given a handle with no healthy worker and optionally an existing managed sync session.
+      await withTempApp(async (dir) => {
+        const tracking = makeTrackingEngine();
+        const base = planWithFileSync(dir);
+        const service = base.services[webService.name];
+        if (service === undefined) throw new TypeError("Missing web fixture");
+        const selected = {
+          ...base,
+          services: {
+            [webService.name]: {
+              ...service,
+              extensions: { "@lando/core/service-features": { featureIds: ["lando.host-proxy"] } },
+            },
+          },
+        };
+        const targets: Array<{ readonly os: "linux"; readonly arch: "x64" }> = [];
+        if (!priorCurrent) targets.push({ os: "linux", arch: "x64" });
+        let closed = 0;
+        const provider: RuntimeProviderShape = {
+          ...TestRuntimeProvider,
+          capabilities: {
+            ...TestRuntimeProvider.capabilities,
+            hostReachability: "emulated",
+            hostProxy: { containerTargets: targets },
+          },
+        };
+        const prepare = spyOn(composition, "resolveContainerHelper").mockReturnValue(
+          Effect.succeed(stubContainerHelper("/shim")),
+        );
+        const spawn = spyOn(hostProxyWorker, "startDetachedHostProxyWorker").mockImplementation((options) => {
+          const session = {
+            appId: base.id,
+            sessionId: "fresh-selected-worker",
+            token: "token",
+            controlToken: "control",
+            socketPath: "/relay/proxy.sock",
+            shimPath: "/shim",
+            transport: "unix-socket" as const,
+            closed: Promise.resolve(),
+            close: async () => {
+              closed++;
+            },
+          };
+          return (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session));
+        });
+        try {
+          // When selected rebuild starts a new worker under the library handle.
+          const inside = await Effect.runPromise(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const app = yield* resolveApp();
+                if (priorCurrent) yield* app.start();
+                if (priorCurrent) targets.push({ os: "linux", arch: "x64" });
+                yield* app.rebuild({ services: [webService.name] });
+                return { closed, sessions: tracking.sessions.size };
+              }),
+            ).pipe(Effect.provide(appLayer(tracking.engine, dir, selected, provider))),
+          );
+          // Then the old owner is undisturbed and the fresh worker closes with the handle.
+          expect(inside).toEqual({ closed: 0, sessions: priorCurrent ? 1 : 0 });
+          expect(spawn).toHaveBeenCalledTimes(1);
+          expect(closed).toBe(1);
+          expect(tracking.sessions.size).toBe(0);
+        } finally {
+          prepare.mockRestore();
+          spawn.mockRestore();
+        }
+      });
+    },
+  );
+  for (const method of ["restart", "rebuild"] as const) {
+    for (const priorCurrent of [false, true]) {
+      for (const mode of ["failure", "interrupt"] as const) {
+        test(`${method} retains pending resume ownership on ${mode}, current=${priorCurrent}`, async () => {
+          // Given a pending attempt, with either an existing owner or no current owner.
+          await withTempApp(async (dir) => {
+            const tracking = makeTrackingEngine();
+            const applying = Deferred.makeUnsafe<void>();
+            let resume = false;
+            let failApply = true;
+            let creates = 0;
+            let finalized = 0;
+            let terminated = 0;
+            const primary = new ProviderUnavailableError({
+              providerId: TestRuntimeProvider.id,
+              operation: "apply",
+              message: "pending resume failed",
+              remediation: "Repair and retry start.",
+            });
+            const provider: RuntimeProviderShape = {
+              ...TestRuntimeProvider,
+              apply: () =>
+                !failApply
+                  ? Effect.succeed({ changed: true })
+                  : resume && mode === "interrupt"
+                    ? Deferred.succeed(applying, undefined).pipe(Effect.andThen(Effect.never))
+                    : Effect.fail(primary),
+            };
+            const engine: FileSyncEngineShape = {
+              ...tracking.engine,
+              createSession: Effect.fnUntraced(function* (spec) {
+                creates++;
+                const ref = yield* tracking.engine.createSession(spec);
+                yield* Effect.addFinalizer(() =>
+                  Effect.sync(() => {
+                    finalized++;
+                  }),
+                );
+                return ref;
+              }),
+              terminateSession: (ref) =>
+                Effect.sync(() => {
+                  terminated++;
+                }).pipe(Effect.andThen(tracking.engine.terminateSession(ref))),
+            };
+            const observed = await Effect.runPromise(
+              Effect.scoped(
+                Effect.gen(function* () {
+                  const app = yield* resolveApp();
+                  if (priorCurrent) yield* Effect.result(app.start());
+                  else
+                    yield* beginOrResumeAcceleratedStart(planWithFileSync(dir), {
+                      kind: "user",
+                      id: app.id,
+                      root: AbsolutePath.make(dir),
+                    });
+                  resume = true;
+                  // When restart/rebuild fails or is interrupted during the pending resume.
+                  const fiber = yield* Effect.forkChild(app[method]());
+                  if (mode === "interrupt") {
+                    yield* Deferred.await(applying);
+                    yield* Fiber.interrupt(fiber);
+                  }
+                  const exit = yield* Fiber.await(fiber);
+                  const retained = { sessions: tracking.sessions.size, creates, finalized, terminated };
+                  failApply = false;
+                  yield* app.start();
+                  const createsAfterRetry = creates;
+                  if (mode === "failure") yield* app.stop();
+                  return { exit, retained, createsAfterRetry, finalized, terminated };
+                }),
+              ).pipe(Effect.provide(appLayer(engine, dir, planWithFileSync(dir), provider))),
+            );
+            // Then retry reuses its session; explicit stop or runtime closure closes its owner once.
+            expect(observed.retained).toEqual({ sessions: 1, creates: 1, finalized: 0, terminated: 0 });
+            expect(Exit.isFailure(observed.exit)).toBe(true);
+            if (Exit.isFailure(observed.exit)) {
+              if (mode === "interrupt") expect(Cause.hasInterruptsOnly(observed.exit.cause)).toBe(true);
+              else expect(Cause.findErrorOption(observed.exit.cause)).toMatchObject({ value: primary });
+            }
+            expect(observed.createsAfterRetry).toBe(1);
+            expect(observed.finalized).toBe(mode === "failure" ? 1 : 0);
+            expect(observed.terminated).toBe(mode === "failure" ? 1 : 0);
+            expect(finalized).toBe(1);
+            expect(tracking.sessions.size).toBe(0);
+          });
+        });
+      }
+    }
+  }
+  for (const method of ["start", "restart", "rebuild"] as const) {
+    for (const mode of ["failure", "interrupt"] as const) {
+      test(`${method} retains its current scope after apply ${mode} and reuses it on retry`, async () => {
+        await withTempApp(async (dir) => {
+          const tracking = makeTrackingEngine();
+          const applying = Deferred.makeUnsafe<void>();
+          let failApply = false;
+          let creates = 0;
+          const primary = new ProviderUnavailableError({
+            providerId: TestRuntimeProvider.id,
+            operation: "apply",
+            message: "apply failed",
+            remediation: "Repair and retry start.",
+          });
+          const provider: RuntimeProviderShape = {
+            ...TestRuntimeProvider,
+            apply: () =>
+              !failApply
+                ? Effect.succeed({ changed: true })
+                : mode === "failure"
+                  ? Effect.fail(primary)
+                  : Deferred.succeed(applying, undefined).pipe(Effect.andThen(Effect.never)),
+          };
+          const engine = {
+            ...tracking.engine,
+            createSession: (spec: FileSyncSessionSpec) =>
+              Effect.sync(() => {
+                creates++;
+              }).pipe(Effect.andThen(tracking.engine.createSession(spec))),
+          };
+          const inside = await Effect.runPromise(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const app = yield* resolveApp();
+                if (method !== "start") yield* app.start();
+                failApply = true;
+                const fiber = yield* Effect.forkChild(app[method]());
+                if (mode === "interrupt") {
+                  yield* Deferred.await(applying);
+                  yield* Fiber.interrupt(fiber);
+                }
+                const exit = yield* Fiber.await(fiber);
+                expect(Exit.isFailure(exit)).toBe(true);
+                if (Exit.isFailure(exit)) {
+                  if (mode === "interrupt") expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+                  else expect(Cause.findErrorOption(exit.cause)).toMatchObject({ value: primary });
+                }
+                const retained = tracking.sessions.size;
+                const createsBeforeRetry = creates;
+                failApply = false;
+                yield* app.start();
+                return {
+                  retained,
+                  createsBeforeRetry,
+                  createsAfterRetry: creates,
+                  sessions: tracking.sessions.size,
+                };
+              }),
+            ).pipe(Effect.provide(appLayer(engine, dir, planWithFileSync(dir), provider))),
+          );
+          expect(inside.retained).toBe(1);
+          expect(inside.sessions).toBe(1);
+          expect(inside.createsAfterRetry).toBe(inside.createsBeforeRetry);
+          expect(tracking.sessions.size).toBe(0);
+        });
+      });
+    }
+  }
   test("non-detached start keeps the file-sync session alive, then tears it down on runtime-scope close", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingEngine();
@@ -547,6 +797,8 @@ describe("App handle managed lifecycle scopes", () => {
                 providerId: TestRuntimeProvider.id,
                 operation: "destroy",
                 message: "stop failed",
+                remediation:
+                  "Install or start the selected runtime provider and confirm it can perform `destroy`.",
               }),
             );
           }),
@@ -775,7 +1027,7 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 
-  test("failed reused file-sync start retains the pending journal and blocks an unsafe retry", async () => {
+  test("failed reused file-sync start resumes its pending journal on retry", async () => {
     await withTempApp(async (dir) => {
       const sessions = new Map<FileSyncSessionRef, FileSyncSessionSpec>();
       let createCalls = 0;
@@ -810,7 +1062,13 @@ describe("App handle managed lifecycle scopes", () => {
         flushSession: Effect.fnUntraced(function* () {
           flushCalls += 1;
           if (flushCalls === 2) {
-            return yield* Effect.fail(new FileSyncStartError({ engineId: "test", message: "sync failed" }));
+            return yield* Effect.fail(
+              new FileSyncStartError({
+                engineId: "test",
+                message: "sync failed",
+                remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+              }),
+            );
           }
         }),
         pauseSession: () => Effect.void,
@@ -844,17 +1102,18 @@ describe("App handle managed lifecycle scopes", () => {
       );
 
       expect(insideScope.failedReuse).toBe("Failure");
-      expect(insideScope.blockedRetry).toBe("Failure");
-      expect(insideScope.blockedMessage).toContain("cannot reseed safely");
+      expect(insideScope.blockedRetry).toBe("Success");
+      expect(insideScope.blockedMessage).toBe("");
       expect(insideScope.createCalls).toBe(1);
-      expect(insideScope.flushCalls).toBe(2);
-      expect(insideScope.sessions).toBe(0);
+      expect(insideScope.flushCalls).toBe(3);
+      expect(insideScope.sessions).toBe(1);
+      expect(insideScope.finalizerCalls).toBe(0);
       expect(finalizerCalls).toBe(1);
       expect(sessions.size).toBe(0);
     });
   });
 
-  test("failed reused provider apply keeps the managed scope but blocks an unsafe retry", async () => {
+  test("failed reused provider apply keeps the managed scope and resumes on retry", async () => {
     await withTempApp(async (dir) => {
       const sessions = new Map<FileSyncSessionRef, FileSyncSessionInfo>();
       let applyCalls = 0;
@@ -870,6 +1129,8 @@ describe("App handle managed lifecycle scopes", () => {
                 providerId: TestRuntimeProvider.id,
                 operation: "apply",
                 message: "apply failed",
+                remediation:
+                  "Install or start the selected runtime provider and confirm it can perform `apply`.",
               }),
             );
           }
@@ -940,11 +1201,11 @@ describe("App handle managed lifecycle scopes", () => {
       );
 
       expect(insideScope).toEqual({
-        applyCalls: 2,
+        applyCalls: 3,
         createCalls: 1,
         failedReuse: "Failure",
-        blockedRetry: "Failure",
-        blockedMessage: expect.stringContaining("automatic recovery is not available"),
+        blockedRetry: "Success",
+        blockedMessage: "",
         finalizerCalls: 0,
         sessions: 1,
       });
@@ -1012,7 +1273,7 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 
-  test("failed managed start closes created sessions through the managed scope without double terminate", async () => {
+  test("failed managed start retains created sessions until the runtime scope closes", async () => {
     await withTempApp(async (dir) => {
       let finalizerCalls = 0;
       let terminateCalls = 0;
@@ -1031,7 +1292,13 @@ describe("App handle managed lifecycle scopes", () => {
         setup: () => Effect.void,
         createSession: (spec: FileSyncSessionSpec) =>
           spec.mountKey === "mount-0"
-            ? Effect.fail(new FileSyncStartError({ engineId: "test", message: "sync failed" }))
+            ? Effect.fail(
+                new FileSyncStartError({
+                  engineId: "test",
+                  message: "sync failed",
+                  remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+                }),
+              )
             : Effect.gen(function* () {
                 const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
                 sessions.set(ref, spec);
@@ -1054,16 +1321,17 @@ describe("App handle managed lifecycle scopes", () => {
         streamEvents: () => Stream.empty,
       };
 
-      const exit = await Effect.runPromiseExit(
+      const insideScope = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const app = yield* resolveApp();
-            yield* app.start();
+            const result = yield* Effect.result(app.start());
+            return { result: result._tag, finalizerCalls, sessions: sessions.size, terminateCalls };
           }),
         ).pipe(Effect.provide(appLayer(engine, dir, planWithTwoFileSyncEntries(dir)))),
       );
 
-      expect(exit._tag).toBe("Failure");
+      expect(insideScope).toEqual({ result: "Failure", finalizerCalls: 0, sessions: 1, terminateCalls: 0 });
       expect(finalizerCalls).toBe(1);
       expect(terminateCalls).toBe(0);
     });
@@ -1086,6 +1354,9 @@ describe("App handle managed lifecycle scopes", () => {
                   Layer.succeed(
                     RuntimeProviderRegistry,
                     RuntimeProviderRegistry.of({
+                      resolveAppliedPlan: () => Effect.succeed(undefined),
+                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                      appliedPlansFor: () => Effect.succeed([]),
                       list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
                       capabilities: Effect.succeed(fixtureProvider.capabilities),
                       select: () => Effect.succeed(fixtureProvider),
@@ -1093,7 +1364,7 @@ describe("App handle managed lifecycle scopes", () => {
                   ),
                   Layer.succeed(
                     AppPlanner,
-                    AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync(dir)) }),
+                    AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync(dir))) }),
                   ),
                   Layer.succeed(FileSyncEngine, FileSyncEngine.of(tracking.engine)),
                   Layer.succeed(RouterService, RouterService.of(TestRouterService)),
@@ -1112,3 +1383,4 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 });
+import { currentTestPlan } from "../_support/value-contracts.ts";

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 import { Effect } from "effect";
 
 import { Logger } from "@lando/sdk/services";
@@ -76,21 +77,39 @@ const withStderrTty = async <T>(isTTY: boolean, run: () => Promise<T>): Promise<
 
 describe("makeLandoRuntime structured logging", () => {
   test("json renderer plus debug writes structured json lines on stderr", async () => {
-    const captured = await withStderrTty(true, () =>
-      captureStreams(() =>
-        Effect.runPromise(
+    // Native TTY output uses writeSync(fd), so capture the actual descriptor,
+    // not a patched process.stderr.write method.
+    const child = Bun.spawn({
+      cmd: [
+        process.execPath,
+        "--eval",
+        `
+        import { Effect } from "effect";
+        import { Logger } from "@lando/sdk/services";
+        import { makeLandoRuntime } from "./core/src/runtime/layer.ts";
+        Object.defineProperty(process.stderr, "isTTY", { configurable: true, value: true });
+        await Effect.runPromise(
           Effect.flatMap(Logger, (logger) => logger.debug("json-debug-marker")).pipe(
             Effect.provide(makeLandoRuntime({ bootstrap: "minimal", renderer: "json", logLevel: "debug" })),
           ),
-        ),
-      ),
-    );
+        );
+      `,
+      ],
+      cwd: resolve(import.meta.dirname, "../../.."),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stdout, stderrText] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    expect(exitCode).toBe(0);
 
-    const stderrText = captured.stderr.join("");
     const markerLine = stderrText.split("\n").find((line) => line.includes("json-debug-marker"));
     expect(markerLine).toBeDefined();
     expect(JSON.parse(markerLine ?? "")).toMatchObject({ message: "json-debug-marker", level: "DEBUG" });
-    expect(captured.stdout.join("")).not.toContain("json-debug-marker");
+    expect(stdout).not.toContain("json-debug-marker");
   });
 
   test("non-json renderer plus debug uses pretty TTY stderr", async () => {

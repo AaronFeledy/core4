@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { startStdioClient } from "@lando/mcp/testing";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
+import { RedactionService } from "@lando/redaction/service";
 import { Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { requireConfirmation } from "../../src/cli/require-confirmation";
@@ -32,13 +31,7 @@ const fixture = () => {
             runtimeLayer: Layer.empty,
           }),
         ),
-        Layer.succeed(
-          RedactionService,
-          RedactionService.of({
-            registerValues: registerRedactionValues,
-            forProfile: () => Effect.succeed(createRedactor("secrets")),
-          }),
-        ),
+        RedactionService.layer,
       ),
     ),
   );

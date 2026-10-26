@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
 
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -10,6 +11,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { createPayloadRedactor } from "@lando/sdk/secrets";
 import {
   type CommandSpec,
   type ExecChunk,
@@ -23,7 +25,12 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "../../src/config/agent-env.ts";
 import { StreamFrameSink } from "../../src/operations/stream-frame-sink";
-import * as ProviderExecToolingEngine from "../../src/services/tooling-engine";
+import * as ProviderExecToolingEngineSource from "../../src/services/tooling-engine";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";
+
+const ProviderExecToolingEngine = {
+  layer: ProviderExecToolingEngineSource.layer.pipe(Layer.provide(testEnvironmentResolverLayer)),
+};
 
 const providerId = ProviderId.make("lando");
 const metadata = {
@@ -95,7 +102,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     provider: providerId,
     services: map as AppPlan["services"],
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     metadata,
@@ -164,6 +170,7 @@ const makeFakeProvider = (
     inspect: () => Effect.die("not used"),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
+    removeVolumeSnapshot: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
     listVolumes: () => Effect.succeed([]),
     removeVolume: () => Effect.void,
@@ -582,10 +589,68 @@ describe("ProviderExecToolingEngine.layer", () => {
       runEngine(invocation, plan, provider).pipe(Effect.provideService(StreamFrameSink, sink)),
     );
 
-    // Then: the sink receives the chunk before the command's exit frame, and stdout is still collected.
+    // Then: the sink receives the chunk before the command's exit frame; live sink skips collection.
     expect(order).toEqual(["chunk", "sink:downloading\n", "exit"]);
-    expect(result.stdout).toBe("downloading\n");
+    expect(result.stdout).toBe("");
     expect(result.exitCode).toBe(0);
+  });
+
+  test("keeps forwarded agent markers visible in split live bytes", async () => {
+    // Given
+    const prior = process.env.OPENCODE_CLIENT;
+    // Agent markers identify the client; they are not secrets (CI forwards values like `true`).
+    process.env.OPENCODE_CLIENT = "true";
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const base = makeFakeProvider([{ exitCode: 0, stdout: '{"ok":true}', stderr: "" }]);
+    const provider: RuntimeProviderShape = {
+      ...base,
+      execStream: (target, command) =>
+        base
+          .execStream(target, command)
+          .pipe(
+            Stream.flatMap(
+              (chunk): Stream.Stream<ExecChunk> =>
+                "exitCode" in chunk
+                  ? Stream.succeed(chunk)
+                  : Stream.make(
+                      { ...chunk, chunk: chunk.chunk.subarray(0, 3) },
+                      { ...chunk, chunk: chunk.chunk.subarray(3) },
+                    ),
+            ),
+          ),
+    };
+    const service = makeRedactionService();
+    const values = await Effect.runPromise(service.payloadValues());
+    const payload = createPayloadRedactor(values);
+    let stdout = "";
+    try {
+      // When
+      await Effect.runPromise(
+        runEngine(
+          { tool: "agent", commands: [["print-agent"]], agentEnvAllowlist: ["OPENCODE_CLIENT"] },
+          plan,
+          provider,
+        ).pipe(
+          Effect.provideService(RedactionService, service),
+          Effect.provideService(StreamFrameSink, {
+            emit: (frame) =>
+              Effect.sync(() => {
+                const bytes =
+                  typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk;
+                stdout += new TextDecoder().decode(payload.write(bytes));
+              }),
+          }),
+        ),
+      );
+      // Then
+      stdout += new TextDecoder().decode(payload.flush());
+      expect(base.calls[0]?.command.env?.OPENCODE_CLIENT).toBe("true");
+      expect(stdout).toBe('{"ok":true}');
+      expect([...values()]).not.toContain("true");
+    } finally {
+      if (prior === undefined) Reflect.deleteProperty(process.env, "OPENCODE_CLIENT");
+      else process.env.OPENCODE_CLIENT = prior;
+    }
   });
 
   test("does not allocate a TTY on the exec spec without a stream sink", async () => {

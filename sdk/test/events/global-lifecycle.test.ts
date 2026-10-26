@@ -54,7 +54,6 @@ const globalPlanFixture: typeof AppPlan.Encoded = {
   provider: "lando",
   services: { traefik: servicePlanFixture },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

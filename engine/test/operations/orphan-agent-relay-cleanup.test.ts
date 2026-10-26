@@ -17,6 +17,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Stream } from "effect";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
@@ -47,6 +48,7 @@ const orphanGroup = (root: string): AppliedOrphanGroup => ({
       service: ServiceName.make("web"),
       providerId,
       status: "running",
+      publications: { status: "unknown" },
       containerId: "container-web",
     },
   ],
@@ -58,6 +60,7 @@ const layerFor = (root: string) => {
     userDataRoot: join(root, "data"),
     userCacheRoot: join(root, "cache"),
     userConfRoot: join(root, "conf"),
+    systemPluginRoot: join(root, "sys"),
     platform: "linux",
     env: {},
   });
@@ -70,6 +73,7 @@ const layerFor = (root: string) => {
   return {
     paths,
     layer: Layer.mergeAll(
+      emptySnapshotsLayer,
       PrivateFileAccessService.layer,
       Layer.succeed(StateStore, makeTestStateStore().service),
       Layer.succeed(PathsService, paths),
@@ -83,6 +87,7 @@ const layerFor = (root: string) => {
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(provider),

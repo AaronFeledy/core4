@@ -93,7 +93,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: [],
   },
   "@lando/mcp": {
-    dependencies: ["@lando/sdk", "@lando/engine", "@lando/redaction"],
+    dependencies: ["@lando/sdk", "@lando/engine", "@lando/landofile", "@lando/redaction"],
     devDependencies: [],
   },
   "@lando/landofile": {
@@ -138,7 +138,11 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/ca-mkcert": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/file-sync-mutagen": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/notify-lando": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-  "@lando/sql": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
+  "@lando/sql": {
+    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],
+    // Recovery retention tests compose the real snapshot store without a live container runtime.
+    devDependencies: ["@lando/data-mover", "@lando/paths", "@lando/state-store"],
+  },
   "@lando/provider-docker": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
     devDependencies: PLUGIN_TEST_TARGETS,
@@ -147,9 +151,16 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   },
   "@lando/provider-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: PLUGIN_TEST_TARGETS,
-    // The exec-env integration test composes the bundled service plugin against the managed runtime.
-    testTargets: [...PLUGIN_RUNTIME_TARGETS, ...PLUGIN_TEST_TARGETS, "@lando/service-lando"],
+    devDependencies: [...PLUGIN_TEST_TARGETS, "@lando/data-mover", "@lando/redaction"],
+    // The exec-env integration test composes the bundled service plugin against the managed runtime;
+    // the volume-snapshot round trip drives the real DataMover against it.
+    testTargets: [
+      ...PLUGIN_RUNTIME_TARGETS,
+      ...PLUGIN_TEST_TARGETS,
+      "@lando/service-lando",
+      "@lando/data-mover",
+      "@lando/redaction",
+    ],
   },
   "@lando/provider-podman": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
@@ -162,14 +173,14 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   },
   "@lando/lando4": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/proxy-traefik": {
-    dependencies: PLUGIN_RUNTIME_TARGETS,
+    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/http-client"],
     devDependencies: [],
     // Diagnostic regressions register process-global canaries; runtime imports remain forbidden.
-    testTargets: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],
+    testTargets: [...PLUGIN_RUNTIME_TARGETS, "@lando/http-client", "@lando/redaction"],
   },
   "@lando/renderer-lando": {
-    dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: [...PLUGIN_TEST_TARGETS, "@lando/renderer", "@lando/paths"],
+    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/renderer"],
+    devDependencies: [...PLUGIN_TEST_TARGETS, "@lando/paths"],
   },
   "@lando/service-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,

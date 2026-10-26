@@ -1,20 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import { rm, symlink } from "node:fs/promises";
-import { FileSyncStopError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { EventError, FileSyncStopError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type FileSyncSessionInfo,
   FileSyncSessionRef,
   PortablePath,
   ServiceName,
+  SnapshotInfo,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import { type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
-import { DateTime, Effect, Exit, Fiber, Stream } from "effect";
+import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
+import { emptySnapshots } from "./data-mover-support.ts";
 
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import {
+  acceleratedPlan,
+  recoveryHarness,
+  target as retainedTarget,
+} from "./accelerated-start-recovery-support.ts";
 import {
   byTag,
   destroyTreeId,
@@ -63,6 +72,97 @@ const syncSession: FileSyncSessionInfo = {
   lastUpdatedAt: DateTime.makeUnsafe("2026-09-23T00:00:00Z"),
 };
 describe("destroy progress topology", () => {
+  test.each([false, true])(
+    "retained disposal publishes its bus pre-event before quiescence (veto=%s)",
+    async (veto) => {
+      const order: string[] = [];
+      const desired = withProjectEvents(
+        { ...acceleratedPlan },
+        {
+          "pre-init": [{ service: ":host", cmd: "exit 91" }],
+          "pre-destroy": [{ service: ":host", cmd: "exit 92" }],
+          "post-destroy": [{ service: ":host", cmd: "exit 93" }],
+        },
+      );
+      const harness = await Effect.runPromise(
+        recoveryHarness({
+          appliedState: "unknown",
+          harnessOptions: {
+            onPublish: (event) =>
+              Effect.sync(() => {
+                order.push(event._tag);
+              }).pipe(
+                Effect.andThen(
+                  veto && event._tag === "pre-destroy"
+                    ? Effect.fail(
+                        new EventError({
+                          message: "veto",
+                          remediation:
+                            "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+                        }),
+                      )
+                    : Effect.void,
+                ),
+              ),
+            quiesceRetainedFileSync: () =>
+              Effect.sync(() => {
+                order.push("quiesce-retained");
+                return { preparedVolumeNames: ["test-start-web-app-mount"] };
+              }),
+          },
+        }),
+      );
+      const result = await Effect.runPromiseExit(
+        destroyAppForTarget({ volumes: true }, { ...retainedTarget, plan: desired }).pipe(
+          Effect.provide(harness.layer),
+        ),
+      );
+      expect(byTag(harness.events, "pre-destroy")).toMatchObject([
+        { evidence: "retained", app: retainedTarget.app },
+      ]);
+      expect(byTag(harness.events, "pre-init")).toEqual([]);
+      expect(byTag(harness.events, "post-init")).toEqual([]);
+      if (veto) {
+        expect(Exit.isFailure(result)).toBe(true);
+        expect(order).not.toContain("quiesce-retained");
+        expect(harness.calls).toEqual([]);
+        expect(harness.sessions).toHaveLength(1);
+        expect(byTag(harness.events, "post-destroy")).toEqual([]);
+        expect(byTag(harness.events, "task.tree.start")).toEqual([]);
+      } else {
+        expect(Exit.isSuccess(result)).toBe(true);
+        expect(order.indexOf("pre-destroy")).toBeLessThan(order.indexOf("quiesce-retained"));
+        expect(order.at(-1)).toBe("post-destroy");
+        expect(harness.sessions).toEqual([]);
+        expect(harness.calls).toContain("dispose-targets");
+        expect(harness.calls).toContain("destroy:true");
+        expect(byTag(harness.events, "post-destroy")).toMatchObject([
+          { evidence: "retained", outcome: "destroyed" },
+        ]);
+        expect(byTag(harness.events, "task.tree.start")).toHaveLength(1);
+        expect(byTag(harness.events, "task.tree.start")[0]?.children).toEqual(
+          ["file-sync", "provider", "host-proxy", "routes"].map((id) =>
+            startChildTaskId(destroyTreeId(retainedTarget.app.id), id),
+          ),
+        );
+      }
+    },
+  );
+
+  test("retained session-coverage failure after quiescence leaves an open bracket without resuming", async () => {
+    const harness = await Effect.runPromise(
+      recoveryHarness({ appliedState: "unknown", preparedVolumeNames: ["uncovered"] }),
+    );
+    const result = await Effect.runPromiseExit(
+      destroyAppForTarget({}, retainedTarget).pipe(Effect.provide(harness.layer)),
+    );
+    expect(Exit.isFailure(result)).toBe(true);
+    expect(byTag(harness.events, "pre-destroy")).toMatchObject([{ evidence: "retained" }]);
+    expect(byTag(harness.events, "post-destroy")).toEqual([]);
+    expect(harness.calls).toEqual(["quiesce-retained"]);
+    expect(harness.sessions).toHaveLength(1);
+  });
+
   test("publishes one destroy tree between pre-destroy and post-destroy", async () => {
     // Given: a resolved destroy target with proxy cleanup and no file-sync.
     const harness = makeHarness();
@@ -72,19 +172,27 @@ describe("destroy progress topology", () => {
 
     // Then: a destroy tree opens after pre-destroy and closes before post-destroy.
     const parentId = destroyTreeId(String(plan.id));
-    const tags = harness.events.map((event) => event._tag);
+    // The target root holds no Landofile, so the skip notice precedes the lifecycle; order the rest.
+    const lifecycle = harness.events.filter((event) => !event._tag.startsWith("message."));
+    const tags = lifecycle.map((event) => event._tag);
     const pre = tags.indexOf("pre-destroy");
     const post = tags.indexOf("post-destroy");
-    const treeStart = harness.events.findIndex(
+    const treeStart = lifecycle.findIndex(
       (event) => event._tag === "task.tree.start" && event.parentId === parentId,
     );
-    const treeComplete = harness.events.findIndex(
+    const treeComplete = lifecycle.findIndex(
       (event) => event._tag === "task.tree.complete" && event.parentId === parentId,
     );
     expect(pre).toBeGreaterThan(-1);
     expect(treeStart).toBeGreaterThan(pre);
     expect(treeComplete).toBeGreaterThan(treeStart);
     expect(post).toBeGreaterThan(treeComplete);
+    expect(post).toBe(tags.length - 1);
+    expect(tags.slice(0, 3)).toEqual(["pre-init", "post-init", "pre-destroy"]);
+    expect(byTag(harness.events, "pre-destroy")).toMatchObject([{ evidence: "applied", app }]);
+    expect(byTag(harness.events, "post-destroy")).toMatchObject([
+      { evidence: "applied", outcome: "destroyed", app },
+    ]);
     expect(byTag(harness.events, "task.tree.start")[0]).toMatchObject({
       parentId,
       label: "Destroy test-destroy",
@@ -255,6 +363,8 @@ describe("destroy progress topology", () => {
       engineId: "mutagen",
       sessionRef: String(syncSession.ref),
       message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
     });
     const engine = {
       ...availableFileSync(),
@@ -417,6 +527,43 @@ describe("destroy progress topology", () => {
     expect(byTag(harness.events, "message.warn")[0]?.body).toContain("without route cleanup");
   });
 
+  test("purges snapshots before provider teardown when requested", async () => {
+    const order: string[] = [];
+    const snapshot = Schema.decodeUnknownSync(SnapshotInfo)({
+      id: "owned",
+      owner: { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) },
+      store: { app: plan.id, store: "database" },
+      digest: "sha256:snapshot",
+      sizeBytes: 1,
+      createdAt: "2026-05-15T00:00:00Z",
+      native: { provider: "lando", id: "owned", digest: "sha256:snapshot", sizeBytes: 1, format: "native" },
+    });
+    const harness = makeHarness({
+      dataMover: {
+        ...emptySnapshots,
+        listSnapshots: () => Effect.succeed([snapshot]),
+        removeSnapshot: () =>
+          Effect.sync(() => {
+            order.push("snapshots");
+          }),
+      },
+      destroyEffect: Effect.sync(() => {
+        order.push("provider");
+      }),
+    });
+    const result = await runDestroyTarget(harness, { purgeSnapshots: true });
+    const parentId = destroyTreeId(String(plan.id));
+    const snapshots = startChildTaskId(parentId, "snapshots");
+    const provider = startChildTaskId(parentId, "provider");
+    const children = byTag(harness.events, "task.tree.start")[0]?.children ?? [];
+    expect(children.indexOf(snapshots)).toBeGreaterThanOrEqual(0);
+    expect(children.indexOf(snapshots)).toBeLessThan(children.indexOf(provider));
+    const completed = byTag(harness.events, "task.complete").map((event) => event.taskId);
+    expect(completed.indexOf(snapshots)).toBeLessThan(completed.indexOf(provider));
+    expect(result.snapshotsRemoved).toBe(1);
+    expect(order).toEqual(["snapshots", "provider"]);
+  });
+
   test("preserves snapshots when destroying volumes", async () => {
     // Given
     const defaultHarness = makeHarness();
@@ -489,6 +636,7 @@ describe("destroy progress topology", () => {
       providerId: "lando",
       operation: "destroy",
       message: "provider destroy failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
     });
     const harness = makeHarness({ destroyEffect: Effect.fail(providerFailure) });
 

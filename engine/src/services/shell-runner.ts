@@ -1,9 +1,7 @@
-import { $ } from "bun";
-
 /**
  * Bun 1.4 `Bun.Terminal` was evaluated as a PTY backend for `ShellRunner` /
  * host-shell and rejected: there is no existing PTY/ConPTY path behind these
- * services (`exec` uses Bun `$`; interactive uses `Bun.spawn` + IPC `--eval`),
+ * services (`exec` uses embedded `bun exec`; interactive uses `Bun.spawn` + IPC `--eval`),
  * and a Terminal-backed PTY would dual-path the OpenTUI renderer terminal
  * (dynamic `import("@opentui/core")` only). Do not add `@opentui/core` here
  * or use `Bun.Terminal` in compiled cold-start files.
@@ -20,24 +18,17 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { runHostShellRepl } from "./host-shell-repl.ts";
 import { quoteShellPath } from "./shell-quote.ts";
-import { streamBunScript } from "./shell-script-stream.ts";
+import { streamBunCommand, streamBunScript } from "./shell-script-stream.ts";
 
-const decoder = new TextDecoder();
 const ShellRedactionTokens = Context.Reference<ReadonlyArray<string>>("@lando/engine/ShellRedactionTokens", {
   defaultValue: (): ReadonlyArray<string> => [],
 });
-
-interface ShellOutput {
-  readonly exitCode: number;
-  readonly stdout: Uint8Array;
-  readonly stderr: Uint8Array;
-}
 
 const shellError = (
   command: string,
@@ -53,16 +44,8 @@ const shellError = (
     ...(output?.stdout === undefined ? {} : { stdout: output.stdout }),
     ...(output?.stderr === undefined ? {} : { stderr: output.stderr }),
     cause,
+    remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
   });
-
-const toProcessResult = (output: ShellOutput): ProcessResult => ({
-  exitCode: output.exitCode,
-  stdout: decoder.decode(output.stdout),
-  stderr: decoder.decode(output.stderr),
-});
-
-const isShellExecError = (cause: unknown): cause is ShellExecError =>
-  typeof cause === "object" && cause !== null && "_tag" in cause && cause._tag === "ShellExecError";
 
 const redactorForOptions = Effect.fnUntraced(function* (options: ShellCommandOptions | undefined) {
   const redaction = yield* Effect.serviceOption(RedactionService);
@@ -121,43 +104,22 @@ const redactShellError = Effect.fnUntraced(function* (
     ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
     ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
     cause: error.cause,
+    remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
   });
 });
-
-const execShell = async (command: string, options?: ShellCommandOptions): Promise<ProcessResult> => {
-  let shell = (
-    options?.argv === undefined || options.argv.length === 0
-      ? $`${{ raw: command }}`
-      : $`${{ raw: command }} ${options.argv}`
-  )
-    .quiet()
-    .nothrow();
-
-  if (options?.cwd !== undefined) {
-    shell = shell.cwd(options.cwd);
-  }
-  if (options?.env !== undefined) {
-    shell = shell.env({ ...process.env, ...options.env });
-  }
-
-  const result = toProcessResult((await shell) as ShellOutput);
-  if (result.exitCode !== 0) {
-    throw shellError(
-      command,
-      options,
-      new Error(`Shell command exited with code ${result.exitCode}`),
-      result,
-    );
-  }
-
-  return result;
-};
 
 const execWithEvents = Effect.fn("ShellRunner.exec")(function* (
   command: string,
   options: ShellCommandOptions | undefined,
   execute: Effect.Effect<ProcessResult, ShellExecError>,
 ) {
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (redaction._tag === "Some") {
+    yield* redaction.value.registerValues([
+      ...(yield* ShellRedactionTokens),
+      ...collectSecretEnvValues(options?.env),
+    ]);
+  }
   yield* publishRedactedShellEvent(options, {
     _tag: "pre-shell-exec",
     ...shellEventShape(command, options),
@@ -184,22 +146,32 @@ export const makeShellRunnerService = (
       execWithEvents(
         command,
         options,
-        Effect.tryPromise({
-          try: () => execShell(command, options),
-          catch: (cause) => (isShellExecError(cause) ? cause : shellError(command, options, cause)),
+        Effect.gen(function* () {
+          const sink = yield* Effect.serviceOption(StreamFrameSink);
+          const result = yield* streamBunCommand(command, options, sink).pipe(
+            Effect.mapError((cause) => shellError(command, options, cause)),
+          );
+          return yield* result.exitCode === 0
+            ? Effect.succeed(result)
+            : Effect.fail(
+                shellError(
+                  command,
+                  options,
+                  new Error(`Shell command exited with code ${result.exitCode}`),
+                  result,
+                ),
+              );
         }),
       ),
     run: (command, options) => service.exec(command, options),
     runScript: Effect.fn("ShellRunner.runScript")(function* (path, options) {
       const command = `bun ${quoteShellPath(path)}`;
       const sink = yield* Effect.serviceOption(StreamFrameSink);
-      const redactor = yield* redactorForOptions(options);
       return yield* execWithEvents(
         command,
         options,
         streamBunScript(path, options, {
           sink: Option.getOrUndefined(sink),
-          redact: (text) => redactor.redactString(text),
         }).pipe(
           Effect.mapError((cause) => shellError(command, options, cause)),
           Effect.flatMap((result) =>

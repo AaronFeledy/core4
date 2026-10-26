@@ -18,7 +18,8 @@ import {
 } from "@lando/sdk/services";
 
 import { type ResolvedAppTarget, planDesiredApp } from "../landofile/app-resolution.ts";
-import { registerAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { observedAppPlan } from "../providers/app-placement.ts";
+import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { StreamFrameSink } from "./stream-frame-sink.ts";
 
 export type LogsAppError = SdkLogsAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -62,7 +63,10 @@ const unknownServiceError = (requested: string, plan: AppPlan): ToolingExecError
         ? `logs: service ${requested} is not in the app plan.`
         : `logs: service ${requested} is not in the app plan (available: ${available.join(", ")}).`,
     tool: "app:logs",
-    ...(first === undefined ? {} : { remediation: `Example: lando logs --service ${first}` }),
+    remediation:
+      first === undefined
+        ? "Add a service to the Landofile before running lando logs --service."
+        : `Example: lando logs --service ${first}`,
   });
 };
 
@@ -97,6 +101,7 @@ const validateSource = (
       new ToolingExecError({
         message: `logs: unknown log source "${requested}" (available: ${known.join(", ")}).`,
         tool: "app:logs",
+        remediation: `Pass --source with one of: ${known.join(", ")}.`,
       }),
     );
   }
@@ -111,6 +116,8 @@ const validateSource = (
     new ToolingExecError({
       message: `logs: log source "${requested}" is unavailable because the runtime provider does not advertise serviceLogSources.`,
       tool: "app:logs",
+      remediation:
+        "Use a provider that advertises serviceLogSources, or omit --source / use --source container.",
     }),
   );
 };
@@ -124,6 +131,7 @@ const invalidSinceError = (raw: string): ToolingExecError =>
   new ToolingExecError({
     message: `logs: invalid --since value "${raw}". Use a duration (e.g. 30s, 15m, 2h, 7d) or an RFC3339 timestamp (e.g. 2026-05-15T00:00:00Z).`,
     tool: "app:logs",
+    remediation: "Pass --since as a duration like 15m or an RFC3339 timestamp like 2026-05-15T00:00:00Z.",
   });
 
 const daysInUtcMonth = (year: number, month: number): number =>
@@ -209,7 +217,8 @@ const resolvePlanServices = Effect.fnUntraced(function* (
   LogsAppError,
   LogsAppServices
 > {
-  const plan = target?.plan ?? (yield* planDesiredApp).plan;
+  const observedTarget = target ?? (yield* resolveAppliedStateTarget);
+  const plan = yield* observedAppPlan(observedTarget?.plan ?? (yield* planDesiredApp).plan);
 
   const { services, provider } = yield* servicesForPlan(plan, options);
   return { plan, services, provider };
@@ -271,7 +280,6 @@ const collectLogLines = Effect.fnUntraced(function* (
   logOptions: LogOptions,
   requestedSource: string | undefined,
 ): Effect.fn.Return<LogsAppResult, SdkLogsAppError, never> {
-  yield* registerAppPlanRedactionTokens(plan);
   const perService = yield* Effect.forEach(services, (service) =>
     provider
       .logs(
@@ -304,26 +312,39 @@ const drainLogFollow = Effect.fnUntraced(function* (
   logOptions: LogOptions,
   requestedSource: string | undefined,
   signal: AbortSignal | undefined,
-): Effect.fn.Return<LogsAppResult, SdkLogsAppError, StreamFrameSink> {
-  yield* registerAppPlanRedactionTokens(plan);
-  const sink = yield* StreamFrameSink;
+): Effect.fn.Return<LogsAppResult, SdkLogsAppError> {
+  const sink = yield* Effect.serviceOption(StreamFrameSink);
+  const lines: LogsAppLine[] = [];
   const streams = services.map((service) =>
     provider.logs(
       { app: plan.id, service: service.name, plan },
       logOptionsForService(logOptions, service, provider.capabilities.serviceLogSources, requestedSource),
     ),
   );
-  const drain = Stream.runForEach(Stream.mergeAll(streams, { concurrency: "unbounded" }), (chunk: LogChunk) =>
-    sink.emit({
-      _tag: chunk.stream,
-      chunk: chunk.line,
-      service: String(chunk.service),
-      ...(chunk.source === undefined ? {} : { source: String(chunk.source) }),
-    }),
+  const drain = Stream.runForEach(
+    Stream.mergeAll(streams, { concurrency: "unbounded" }),
+    (chunk: LogChunk) =>
+      Option.isSome(sink)
+        ? sink.value.emit({
+            kind: "record",
+            _tag: chunk.stream,
+            chunk: chunk.line,
+            service: String(chunk.service),
+            ...(chunk.source === undefined ? {} : { source: String(chunk.source) }),
+          })
+        : Effect.sync(() => {
+            lines.push({
+              service: String(chunk.service),
+              stream: chunk.stream,
+              line: chunk.line,
+              ...(chunk.source === undefined ? {} : { source: String(chunk.source) }),
+              ...(chunk.timestamp === undefined ? {} : { timestamp: chunk.timestamp.getTime() }),
+            });
+          }),
   );
 
   yield* raceAbort(signal, Effect.scoped(drain));
-  return { app: plan.name, lines: [] };
+  return { app: plan.name, lines };
 });
 
 const collectLogsForPlan = Effect.fnUntraced(function* (
@@ -352,7 +373,7 @@ export const logsForPlan = Effect.fn("AppOperation.logsForPlan")(function* (
 export const followLogsForPlan = Effect.fn("AppOperation.followLogsForPlan")(function* (
   plan: AppPlan,
   options: FollowLogsAppOptions = {},
-): Effect.fn.Return<LogsAppResult, SdkLogsAppError, RuntimeProviderRegistry | StreamFrameSink> {
+): Effect.fn.Return<LogsAppResult, SdkLogsAppError, RuntimeProviderRegistry> {
   const since = yield* validateSince(options.since);
   const { services, provider } = yield* servicesForPlan(plan, options);
   return yield* drainLogFollow(
@@ -390,7 +411,7 @@ export const logsAppForTarget = Effect.fn("AppOperation.logsForTarget")(function
 export const followLogsApp = Effect.fn("AppOperation.followLogs")(function* (
   options: FollowLogsAppOptions = {},
   target?: ResolvedAppTarget,
-): Effect.fn.Return<LogsAppResult, LogsAppError, LogsAppServices | StreamFrameSink> {
+): Effect.fn.Return<LogsAppResult, LogsAppError, LogsAppServices> {
   const since = yield* validateSince(options.since);
   const { plan, services, provider } = yield* resolvePlanServices(options, target);
   return yield* drainLogFollow(

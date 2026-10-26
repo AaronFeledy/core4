@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import type {
   CacheError,
+  CommandAliasConflictError,
   CommandAliasTargetError,
   LandoCommandError,
   PluginManifestError,
@@ -28,6 +29,7 @@ import {
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { findAppRoot } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 
 export interface AppCacheRefreshOptions {
   readonly cwd?: string;
@@ -53,6 +55,7 @@ type AppCacheRefreshError =
   | ProviderError
   | ToolingCompileError
   | PluginManifestError
+  | CommandAliasConflictError
   | CommandAliasTargetError
   | CacheError
   | LandoCommandError;
@@ -65,7 +68,7 @@ export const renderAppCacheRefreshResult = (result: AppCacheRefreshResult): stri
 const discoverScripts = Effect.fnUntraced(function* (
   cwd: string,
 ): Effect.fn.Return<ReadonlyArray<DiscoveredBunShellScript>, never> {
-  const appRoot = yield* Effect.promise(() => findAppRoot(cwd));
+  const appRoot = yield* findAppRoot(cwd);
   if (appRoot === undefined) return [] as ReadonlyArray<DiscoveredBunShellScript>;
   return yield* discoverBunShellScripts({ appRoot }).pipe(
     Effect.catch(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),
@@ -84,24 +87,24 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const capabilities = yield* registry.capabilities;
   const plan = yield* planner.plan(landofile, capabilities);
 
-  const cwd = options.cwd ?? process.cwd();
+  const cwd = options.cwd ?? (yield* discoveryCwd());
   const scripts = yield* discoverScripts(cwd);
   const entries = yield* Effect.try({
-    try: () => compileAppCommands(landofile, scripts, effectiveToolingForPlan(plan)),
+    try: () => compileAppCommands(landofile.document, scripts, effectiveToolingForPlan(plan)),
     catch: (cause) => {
       if (cause instanceof ToolingCompileError) return cause;
       throw cause;
     },
   });
   const aliasError = commandAliasRegistrationError(
-    landofile.commandAliases,
+    landofile.document.commandAliases,
     entries.map((entry) => entry.id),
     entries,
   );
   if (aliasError !== undefined) yield* Effect.fail(aliasError);
 
   const appCachePath = yield* writeAppCommandCacheStrict({
-    landofile,
+    landofile: landofile.document,
     entries,
     cwd,
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),

@@ -113,7 +113,10 @@ describe("generalized interaction errors", () => {
         remediation: "r",
       })._tag,
     ).toBe("PromptValidationError");
-    expect(new InteractionCancelledError({ message: "m" })._tag).toBe("InteractionCancelledError");
+    expect(
+      new InteractionCancelledError({ message: "m", remediation: "Run lando init and complete its prompts." })
+        ._tag,
+    ).toBe("InteractionCancelledError");
     expect(
       new ChoicesUnavailableError({
         message: "m",

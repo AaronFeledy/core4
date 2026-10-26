@@ -105,7 +105,7 @@ export const resolveRendererMode = (options: ResolveRendererModeOptions = {}): R
     };
   }
   const configValue = options.configValue;
-  if (configValue !== undefined && configValue !== "") {
+  if (configValue !== undefined && isRendererMode(configValue)) {
     return {
       mode: validate(configValue, "config"),
       remainingArgv: flagResult.remainingArgv,

@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { yesFlag } from "../../spec/confirmation-flag";
 import { Args, Flags } from "../../spec/metadata";
 
 import type { InitAppOptions } from "../../commands/init";
@@ -108,7 +109,10 @@ export const initSpec: LandoCommandSpec<never> = {
   flags: {
     name: Flags.string({ description: "App name (slugified for the project id)." }),
     source: Flags.string({ description: "Init source id (cwd, git, tarball, npm, registry, template)." }),
-    url: Flags.string({ description: "Remote recipe source URL (for --source=git/tarball)." }),
+    url: Flags.string({
+      description:
+        "Remote recipe source URL (for --source=git/tarball); git accepts @ref (tag, branch, or full commit SHA).",
+    }),
     id: Flags.string({ description: "Recipe id for --source=registry." }),
     "registry-url": Flags.string({
       description: "Override the recipe registry base URL (for --source=registry).",
@@ -126,7 +130,7 @@ export const initSpec: LandoCommandSpec<never> = {
       description: "Install the Lando agent skill pack into the new app (off by default).",
       default: false,
     }),
-    yes: Flags.boolean({ description: "Accept every prompt's default without asking.", default: false }),
+    yes: yesFlag("Accept every prompt's default without asking."),
     "no-interactive": Flags.boolean({
       aliases: ["non-interactive"],
       description:
@@ -143,7 +147,7 @@ export const initSpec: LandoCommandSpec<never> = {
     }),
     answers: Flags.string({ description: "Path to a JSON answers file." }),
     interactive: Flags.boolean({
-      description: "Force interactive prompting even when stdin is not detected as a TTY.",
+      description: "Force interactive prompting even when stdin or stderr is not a terminal.",
       default: false,
     }),
   },

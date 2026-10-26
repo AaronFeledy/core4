@@ -31,6 +31,7 @@ const plan = async (
               message: "Failed to launch the Lando runtime service.",
               providerId: "test",
               operation: "listVolumes",
+              remediation: "Install or start the `test` provider and confirm it can perform `listVolumes`.",
             }),
           );
         }
@@ -40,6 +41,8 @@ const plan = async (
               message: "Volume lookup failed",
               providerId: "test",
               operation: "listVolumes",
+              remediation:
+                "Re-run the command after checking `test` logs for the `listVolumes` failure; if it persists, report the error with that operation name.",
             }),
           );
         }
@@ -60,6 +63,9 @@ const plan = async (
   const registry = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      appliedPlansFor: () => Effect.succeed([]),
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       list: Effect.succeed([ProviderId.make(provider.id)]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       select: () => Effect.succeed(provider),
@@ -68,7 +74,8 @@ const plan = async (
   calls.length = 0;
   const appPlan = await Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
-      planner.plan(
+      planTestLandofile(
+        planner,
         {
           name: "mysql-adoption",
           runtime: 4,
@@ -147,3 +154,4 @@ describe("MySQL volume adoption through the real planner", () => {
     expect(appPlan.stores.map((store) => store.name)).toEqual([scoped]);
   });
 });
+import { planTestLandofile } from "../compiled-landofile.ts";

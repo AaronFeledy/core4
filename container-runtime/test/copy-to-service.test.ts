@@ -1,12 +1,18 @@
 import { appendFileSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Redactor } from "@lando/sdk/secrets";
 
 import { afterEach, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+
+const passthroughRedactor = {
+  redactString: (value: string) => value,
+  redactValue: (value: unknown) => value,
+} satisfies Redactor;
 
 const roots: string[] = [];
 
@@ -46,8 +52,8 @@ test("keeps copy-in tar framing valid when the source grows before upload", asyn
   const provider = makeProviderDataPlane({
     providerId: "test",
     api,
-    snapshotMode: "copy",
-    redactDetails: (value) => value,
+    capabilities: { volumeSnapshot: "none" },
+    redactor: passthroughRedactor,
   });
   const plan = {
     id: app,
@@ -57,7 +63,6 @@ test("keeps copy-in tar framing valid when the source grows before upload", asyn
     provider: ProviderId.make("test"),
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: {
@@ -103,8 +108,8 @@ test("fails copy-in when the source shrinks before upload", async () => {
   const provider = makeProviderDataPlane({
     providerId: "test",
     api,
-    snapshotMode: "copy",
-    redactDetails: (value) => value,
+    capabilities: { volumeSnapshot: "none" },
+    redactor: passthroughRedactor,
   });
   const plan = {
     id: app,
@@ -114,7 +119,6 @@ test("fails copy-in when the source shrinks before upload", async () => {
     provider: ProviderId.make("test"),
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: {

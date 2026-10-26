@@ -8,13 +8,15 @@ tags: [beta, docs, cli, renderer]
 
 # Terminal UI polish
 
-This page is a contributor design-token dump for the bundled `lando` renderer. It stays off the user nav.
+Use these design tokens and presentation rules when contributing to the bundled `lando` renderer. This contributor reference stays off the user navigation.
 
 Everyday CLI work lives in [everyday commands](./everyday-commands.mdx). Do not treat the TTY rail, OpenTUI, or desktop-notification policy as something you configure from a Landofile.
 
-The default TTY path can draw a compact task tree on terminal stdout. plain, json, non-TTY, and CI output stay undecorated. Line-mode narration and renderer messages go to stderr, leaving stdout for command results and output. A missing native binding never fails the command. The process falls back to line input.
+You get a compact live task tree on the stderr terminal, even when you redirect stdout to a file. Piping stdout into another command switches to one line per event. plain, json, non-TTY, and CI output stay undecorated. All narration, prompts, and notification controls use stderr, leaving stdout for command results and output. Result summaries use stdout's terminal width and styling. A missing native binding never fails the command. The process falls back to line input.
 
-If you are changing renderer goldens, start from the contributing visual-QA page, not this dump.
+Redirect stderr to hide the tree without hiding your result summary. Prompts need terminal stdin and stderr, but still work with stdout redirected. Expand a task with Enter and collapse it with Escape; the alternate-screen tail and resize handling use the stderr terminal too.
+
+If you are changing renderer goldens, start from the contributing visual-QA page, then use this reference to check the presentation rules.
 
 ## Quiet rail tokens
 
@@ -42,4 +44,4 @@ The `@lando/notify-lando` plugin, not core or the renderer, decides when a comma
 
 `notify.enabled: false` silences desktop notification policy. Environment overrides `LANDO_NOTIFY_ENABLED`, `LANDO_NOTIFY_THRESHOLD_MS`, and `LANDO_NOTIFY_COMMANDS` map to `notify.enabled`, `notify.thresholdMs`, and the JSON-array `notify.commands` value.
 
-Only the outer invocation (`parentInvocationId` absent) may publish one success or failure notification. Nested events carry `parentInvocationId` and stay observable, but they never independently trigger foreground presentation. The renderer decides presentation through `renderer.capabilities.notifications`. The default `lando` renderer publishes all four capabilities as true on a TTY at construction, without importing OpenTUI or probing the terminal. Notifications use OSC 99 immediately; terminals without OSC 99 support ignore them. Non-TTY output publishes all four capabilities as false and drops desktop notifications.
+Only the outer invocation (`parentInvocationId` absent) may publish one success or failure notification. Nested events carry `parentInvocationId` and stay observable, but they never independently trigger foreground presentation. The renderer decides presentation through `renderer.capabilities.notifications`. The default `lando` renderer publishes all four capabilities as true when stderr is a terminal at construction, without importing OpenTUI or probing the terminal. Notifications use OSC 99 on stderr immediately; terminals without OSC 99 support ignore them. Non-terminal stderr publishes all four capabilities as false and drops desktop notifications.

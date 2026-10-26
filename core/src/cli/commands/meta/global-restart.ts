@@ -2,6 +2,8 @@ import { Effect } from "effect";
 
 import type { ProxyError, RouterWatcherError } from "@lando/sdk/errors";
 import { RouterService } from "@lando/sdk/services";
+
+import { globalCreateProviderId } from "@lando/engine/global-app/placement";
 import { lifecycleLine, serviceRowsText } from "../service-summary";
 
 import {
@@ -30,6 +32,8 @@ export const renderGlobalRestartResult = (result: GlobalRestartResult): string =
 export const globalRestart = Effect.fn("GlobalRestart.restart")(function* (
   options: GlobalRestartOptions = {},
 ): Effect.fn.Return<GlobalRestartResult, GlobalRestartError, GlobalRestartServices> {
+  // A placement mismatch would only surface in the start phase; refuse before stopping the router.
+  yield* globalCreateProviderId();
   yield* globalStop();
   const result = yield* globalStart(options.signal === undefined ? {} : { signal: options.signal }).pipe(
     Effect.catchTags({

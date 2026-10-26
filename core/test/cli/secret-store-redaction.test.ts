@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { makeTestRuntime } from "@lando/core/testing";
+import { execApp } from "@lando/engine/operations/exec";
 import { StartAppResultSchema, startApp } from "@lando/engine/operations/start";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -9,7 +11,14 @@ import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { AppPlan, CommandResultEnvelope, PluginManifest, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  CommandResultEnvelope,
+  CurrentExecutableAppPlan,
+  PluginManifest,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
+import { StreamFrame } from "@lando/sdk/schema";
 import {
   AppPlanner,
   BuildOrchestrator,
@@ -20,13 +29,18 @@ import {
 } from "@lando/sdk/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Redacted, Schema, Stream } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
 import * as TestLandofileLayers from "../_support/landofile-layer.ts";
 
-test.each([false, true])(
-  "start --format=json redacts scheme-store values when provider failure is %s",
-  async (failApply) => {
+test.each([
+  { failApply: false, providerState: "running", expectedState: "running" },
+  { failApply: false, providerState: "opaque", expectedState: "unknown" },
+  { failApply: true, providerState: "running", expectedState: "running" },
+])(
+  "start --format=json redacts scheme-store values (failure $failApply, state $providerState)",
+  async ({ failApply, providerState, expectedState }) => {
     // Given: an unguessable value, a neutral env key, and a store that cannot enumerate it.
     const value = `violet-${crypto.randomUUID()}`;
     const reference = "fake://Vault/Item/field";
@@ -62,8 +76,18 @@ test.each([false, true])(
     };
     const provider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
+      readAppEnvironment: () => Effect.succeed(applied.map((value) => Redacted.make(value))),
+      execStream: () =>
+        Stream.make(
+          { kind: "stdout" as const, chunk: new TextEncoder().encode(value.slice(0, 9)) },
+          { kind: "stdout" as const, chunk: new TextEncoder().encode(`${value.slice(9)}\n`) },
+          { exitCode: 0 },
+        ),
       apply: Effect.fnUntraced(function* (_plan, options) {
-        const resolved = options.serviceEnvironment?.[ServiceName.make("web")]?.DISPLAY_VALUE ?? "unresolved";
+        const web = _plan.services[ServiceName.make("web")];
+        if (web === undefined || options.resolveServiceEnvironment === undefined)
+          throw new TypeError("Expected web environment resolver");
+        const resolved = (yield* options.resolveServiceEnvironment(web)).DISPLAY_VALUE ?? "unresolved";
         applied.push(resolved);
         if (failApply)
           return yield* Effect.fail(
@@ -71,6 +95,8 @@ test.each([false, true])(
               providerId: TestRuntimeProvider.id,
               operation: "apply",
               message: `Provider observed ${resolved}`,
+              remediation:
+                "Install or start the selected runtime provider and confirm it can perform `apply`.",
             }),
           );
         return { changed: true };
@@ -81,8 +107,8 @@ test.each([false, true])(
           service: target.service,
           providerId: ProviderId.make(TestRuntimeProvider.id),
           status: "running",
-          state: `Provider observed ${applied[0]}`,
-          endpoints: [],
+          state: providerState === "opaque" ? `Provider observed ${applied[0]}` : providerState,
+          publications: { status: "present", bindings: [] },
         }),
     };
     const base = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
@@ -92,7 +118,8 @@ test.each([false, true])(
     );
     const redaction = RedactionService.layer.pipe(Layer.provide(store));
     const metadata = { resolvedAt: "2026-06-01T00:00:00Z", source: "cli-test", runtime: 4 };
-    const plan = Schema.decodeUnknownSync(AppPlan)({
+    const plan = Schema.decodeUnknownSync(CurrentExecutableAppPlan)({
+      valueModel: 1,
       id: "cli-secrets",
       name: "cli-secrets",
       slug: "cli-secrets",
@@ -104,10 +131,11 @@ test.each([false, true])(
           type: "test",
           provider: provider.id,
           primary: true,
-          environment: { DISPLAY_VALUE: `\${secret:${reference}}` },
+          environment: { DISPLAY_VALUE: { _tag: "SecretRef", reference } },
           mounts: [],
           storage: [],
-          endpoints: [],
+          // Keep a secret in the projected result even when the opaque provider state is discarded.
+          endpoints: [{ _tag: "internal", protocol: "tcp", port: 8080, name: value }],
           routes: [],
           dependsOn: [],
           hostAliases: [],
@@ -116,7 +144,6 @@ test.each([false, true])(
         },
       },
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata,
@@ -127,6 +154,7 @@ test.each([false, true])(
       paths,
       store,
       redaction,
+      EnvironmentValueResolverLayer.layer.pipe(Layer.fresh, Layer.provide(Layer.mergeAll(store, redaction))),
       TestLandofileLayers.layerTransactionGuard,
       Layer.succeed(StateStore, makeTestStateStore().service),
       Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
@@ -153,14 +181,14 @@ test.each([false, true])(
       resultFormat: "json",
       command: "app:start",
       resultSchema: StartAppResultSchema,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => {
         exits.push(code);
       },
     });
 
     // Then: resolution reached the provider, but neither output channel exposes the value.
-    expect(reads).toEqual([reference]);
+    expect(reads, io.stdout() + io.stderr()).toEqual([reference]);
     expect(applied).toEqual([value]);
     expect(io.stdout()).not.toContain(value);
     expect(io.stderr()).not.toContain(value);
@@ -177,10 +205,44 @@ test.each([false, true])(
             command: "app:start",
             ok: true,
             result: {
-              servicesStarted: [{ name: "web", state: "running", endpoints: [] }],
+              servicesStarted: [
+                {
+                  name: "web",
+                  state: expectedState,
+                  connections: [
+                    {
+                      scope: "app",
+                      source: "listener",
+                      endpoint: { names: ["[redacted]"] },
+                      state: expectedState === "running" ? "active" : "unknown",
+                    },
+                  ],
+                },
+              ],
             },
           },
     );
-    expect(exits).toEqual(failApply ? [1] : []);
+    expect(exits).toEqual(failApply ? [1] : [0]);
+    if (!failApply) {
+      const execIo = createBufferedRendererIO({ isTTY: false });
+      await runWithRendererHandling(execApp({ service: "web", command: ["printenv", "DISPLAY_VALUE"] }), {
+        runtime,
+        io: execIo,
+        rendererMode: "plain",
+        resultFormat: "text",
+        command: "app:exec",
+        resultSchema: EmptyResultSchema,
+        streaming: StreamFrame,
+        streamingMode: "live",
+        formatError: ({ error }) => String(error),
+        setExitCode: (code) => {
+          exits.push(code);
+        },
+      });
+      expect(execIo.stdout()).toBe("[redacted]\n");
+      expect(execIo.stderr()).not.toContain(value);
+      expect(reads).toEqual([reference]);
+      expect(exits).toEqual([0, 0]);
+    }
   },
 );

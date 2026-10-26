@@ -2,12 +2,7 @@ import { resolve } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import {
-  type ConfigError,
-  type LandoCommandError,
-  NotImplementedError,
-  PluginManifestError,
-} from "@lando/sdk/errors";
+import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
@@ -27,7 +22,7 @@ export class PluginLinkConflictError extends Schema.TaggedError<PluginLinkConfli
     commandId: Schema.Literal("meta:plugin:link"),
     pluginName: Schema.String,
     existingPath: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -58,7 +53,7 @@ export const pluginLink = Effect.fn("PluginLink.link")(function* (
   options: PluginLinkOptions = {},
 ): Effect.fn.Return<
   PluginLinkResult,
-  ConfigError | LandoCommandError | NotImplementedError | PluginManifestError | PluginLinkConflictError,
+  LandoCommandError | NotImplementedError | PluginManifestError | PluginLinkConflictError,
   ConfigService
 > {
   const pluginsRoot = yield* resolvePluginsRoot(options, "meta:plugin:link");
@@ -71,7 +66,8 @@ export const pluginLink = Effect.fn("PluginLink.link")(function* (
         ? cause
         : new PluginManifestError({
             message: `Plugin manifest validation failed in ${linkedPath}.`,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: `Check package.json in ${linkedPath} and correct the reported manifest issues.`,
           }),
   });
   const registryEntry = resolve(pluginsRoot, manifest.name);
@@ -88,7 +84,8 @@ export const pluginLink = Effect.fn("PluginLink.link")(function* (
         : new PluginManifestError({
             message: `Plugin ${manifest.name} link target resolves outside ${pluginsRoot}.`,
             pluginName: manifest.name,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: "Use an npm package name that stays inside the plugins directory.",
           }),
   });
 

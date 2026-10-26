@@ -4,22 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { ShellExecError } from "@lando/sdk/errors";
-import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 import type { LandoEvent, ShellCommandOptions, ShellReplInput } from "@lando/sdk/services";
 import * as BunShellRunner from "../../src/services/shell-runner";
 import { withShellRedactionTokens } from "../../src/services/shell-runner";
 
-const redactionLayer = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    forProfile: (profile, options) =>
-      Effect.succeed(createRedactor(profile, { values: ["topsecret", ...(options?.redactionTokens ?? [])] })),
-  }),
-);
+import { testRedactionLayer } from "../redaction.ts";
+
+const redactionLayer = testRedactionLayer(["topsecret"]);
 
 const unexpectedReplIO = () => {
   throw new TypeError("Interactive shell IO was not expected in this test.");

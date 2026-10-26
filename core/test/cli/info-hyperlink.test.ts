@@ -5,6 +5,7 @@ import type { InfoAppResult } from "@lando/sdk/app";
 
 import { renderInfoAppResult } from "../../src/cli/commands/info-render.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
+import { connections } from "./connection-fixtures";
 
 const ESC = String.fromCharCode(27);
 
@@ -19,7 +20,10 @@ const result: InfoAppResult = {
       provider: "lando",
       primary: true,
       status: "running",
-      endpoints: ["https://my-app.lndo.site", "http://localhost:3000", "tcp://localhost:5432"],
+      connections: [
+        ...connections(["https://my-app.lndo.site", "http://localhost:3000", "tcp://localhost:5432"]),
+        ...connections(["http://web:3000"], "app"),
+      ],
     },
   ],
 };
@@ -41,6 +45,17 @@ describe("renderInfoAppResult URL hyperlinks", () => {
     expect(out).not.toContain(`${ESC}]8;;tcp://`);
     expect(stripAnsi(out)).toContain("https://my-app.lndo.site");
     expect(stripAnsi(out)).toContain("http://localhost:3000");
+  });
+
+  test("prints an app-network HTTP address without a host hyperlink", () => {
+    // Given a service whose app-network listener speaks HTTP.
+    const out = renderInfoAppResult(result, tty());
+    // When painted on a capable TTY, then only host URLs are OSC 8 links.
+    expect(out).not.toContain(`${ESC}]8;;http://web:3000`);
+    expect(out).toContain(hyperlink("http://localhost:3000", "http://localhost:3000"));
+    const visible = stripAnsi(out);
+    expect(visible).toContain("http://web:3000");
+    expect(visible.indexOf("App Network")).toBeGreaterThan(visible.indexOf("Host"));
   });
 
   test("keeps endpoints plain when stdout is not a TTY", () => {
@@ -92,7 +107,7 @@ describe("renderInfoAppResult URL hyperlinks", () => {
           provider: "lando",
           primary: true,
           status: "running",
-          endpoints: [longUrl],
+          connections: connections([longUrl]),
         },
       ],
     };
@@ -100,7 +115,7 @@ describe("renderInfoAppResult URL hyperlinks", () => {
     expect(out).not.toContain(`${ESC}]8;;${longUrl}`);
     expect(out).not.toContain(`${ESC}]8;`);
     const visible = stripAnsi(out);
-    expect(visible).toContain("https://example.co");
+    expect(visible).toContain("https://example.");
     expect(visible).toContain("ss/columns");
     expect(visible).not.toContain(longUrl);
   });
@@ -116,7 +131,7 @@ describe("renderInfoAppResult URL hyperlinks", () => {
       provider: "lando",
       primary: true,
       status: "running",
-      endpoints,
+      connections: connections(endpoints),
     });
     const out = renderInfoAppResult(
       { app: "my-app", services: [service("web", [shortUrl]), service("api", [longUrl])] },

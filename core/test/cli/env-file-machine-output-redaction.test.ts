@@ -34,10 +34,12 @@ const dispatchDeps = (entry: McpCommandEntry): McpDispatchDeps => ({
   effective: new Set([entry.spec.id]),
   allowlistSource: "defaults",
   redactor: createRedactor("secrets", { values: [] }),
+  resultRedactor: (tokens) => Effect.succeed(createRedactor("secrets", { values: tokens })),
   execute: () =>
     Effect.succeed({
       _tag: "success",
       value: {
+        source: "resolved" as const,
         landofile: authoredLandofile,
       },
     } satisfies CommandResultOutcome),
@@ -45,6 +47,33 @@ const dispatchDeps = (entry: McpCommandEntry): McpDispatchDeps => ({
 });
 
 describe("env_file machine-output redaction", () => {
+  test("retains the invocation environment snapshot when the caller mutates its environment", async () => {
+    // Given: a caller-owned environment that will change during execution.
+    const secret = "invocation-snapshot-canary";
+    const sourceEnv = { API_SECRET: secret };
+    const io = createBufferedRendererIO();
+    // When: execution changes the caller's map before the final result is rendered.
+    await runWithRendererHandling(
+      Effect.sync(() => {
+        sourceEnv.API_SECRET = "replacement-environment-value";
+        return { value: secret };
+      }),
+      {
+        sourceEnv,
+        runtime: Layer.empty,
+        rendererMode: "plain",
+        resultFormat: "json",
+        command: "qa:snapshot",
+        resultSchema: Schema.Struct({ value: Schema.String }),
+        io,
+        formatError: ({ error }) => String(error),
+        setExitCode: () => undefined,
+      },
+    );
+    // Then: rendering masks the invocation's original secret, not only the replacement.
+    expect(JSON.parse(io.stdout())).toMatchObject({ result: { value: REDACTED } });
+  });
+
   test("redacts JSON exec stdout when tokens come from execSpec.redactionTokens", async () => {
     // Given
     const extractTokens = execSpec.redactionTokens;
@@ -72,7 +101,7 @@ describe("env_file machine-output redaction", () => {
       resultSchema: ExecJsonResultSchema,
       io,
       redactionTokens: extractTokens,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
 
@@ -103,7 +132,7 @@ describe("env_file machine-output redaction", () => {
         resultSchema: appConfigSpec.resultSchema,
         io,
         redactionTokens: appConfigRedactionTokens,
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       },
     );

@@ -2,8 +2,7 @@ import { expect, test } from "bun:test";
 import { deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { startStdioClient } from "@lando/mcp/testing";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
+import { RedactionService } from "@lando/redaction/service";
 import { Effect, Layer, Result, Schema } from "effect";
 import { logsSpec } from "../../src/cli/command-specs/app/logs";
 import { parseFlagValue } from "../../src/cli/compiled-argv";
@@ -87,13 +86,7 @@ test.each([7, 1.5, "7"])("validates real logsSpec tail %s through JSON-RPC trans
             runtimeLayer: Layer.empty,
           }),
         ),
-        Layer.succeed(
-          RedactionService,
-          RedactionService.of({
-            registerValues: registerRedactionValues,
-            forProfile: () => Effect.succeed(createRedactor("secrets")),
-          }),
-        ),
+        RedactionService.layer,
       ),
     ),
   );

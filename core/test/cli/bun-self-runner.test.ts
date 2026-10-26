@@ -5,9 +5,8 @@ import { dirname, join } from "node:path";
 import { Cause, Effect, Exit, Layer, Queue, Stream } from "effect";
 
 import { EventService } from "@lando/core/services";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { FileIoError } from "@lando/sdk/errors";
-import { createRedactor } from "@lando/sdk/secrets";
 import type { EventServiceShape, LandoEvent } from "@lando/sdk/services";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
@@ -148,11 +147,12 @@ test.skipIf(process.platform === "win32").each([0, 7])(
   },
 );
 
-const redactionLayer = Layer.succeed(
+const redactionLayer = Layer.effect(
   RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
+  Effect.gen(function* () {
+    const service = makeRedactionService();
+    yield* service.registerValues(["topsecret"]);
+    return service;
   }),
 );
 

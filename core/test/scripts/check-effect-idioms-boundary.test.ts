@@ -15,6 +15,18 @@ const write = async (root: string, path: string, content: string): Promise<void>
 const wrapperMatch = "Named wrapper only returns Effect.gen; use Effect.fn or Effect.fnUntraced";
 const importMatch = "Import @effect/platform; use effect subpaths";
 const failingFixtures = [
+  ...[
+    "promise.catch(() => null)",
+    "promise?.catch(() => (null))",
+    "promise.catch(() => { return null; })",
+  ].map(
+    (code) =>
+      [
+        `null-swallow-${code.length}`,
+        `const promise = Promise.resolve();\n${code};`,
+        "Zero-argument .catch returns null; narrow expected failures and propagate the rest",
+      ] as const,
+  ),
   [
     "data-tagged",
     'import { Data } from "effect";\nclass Bad extends Data.TaggedError("Bad") {}',
@@ -170,6 +182,36 @@ const failingFixtures = [
   ["effect-dynamic-import", '\nconst x = import("@effect/platform");', importMatch],
   ["effect-reexport", '\nexport { X } from "@effect/platform";', importMatch],
   ["effect-star-reexport", '\nexport * from "@effect/platform";', importMatch],
+  [
+    "cause-combine",
+    'import { Cause } from "effect";\nCause.combine(a, b);',
+    "Cause.combine; use role-aware failure helpers",
+  ],
+  [
+    "cause-reasons",
+    'import * as C from "effect/Cause";\nC.fromReasons([]);',
+    "Cause.fromReasons; use role-aware failure helpers",
+  ],
+  [
+    "cause-alias",
+    'import { combine as merge } from "effect/Cause";\nmerge(a, b);',
+    "Cause.combine; use role-aware failure helpers",
+  ],
+  [
+    "cause-destructure",
+    'import { Cause } from "effect";\nconst { combine } = Cause;\ncombine(a, b);',
+    "Cause.combine; use role-aware failure helpers",
+  ],
+  [
+    "cause-destructure-rename",
+    'import * as C from "effect/Cause";\nconst { fromReasons: build } = C;\nbuild([]);',
+    "Cause.fromReasons; use role-aware failure helpers",
+  ],
+  [
+    "data-destructure",
+    'import { Data } from "effect";\nconst { TaggedError } = Data;\nclass X extends TaggedError("X") {}',
+    "Data.TaggedError; use Schema.TaggedError",
+  ],
 ] as const;
 
 describe("effect idioms boundary lint gate", () => {
@@ -196,6 +238,7 @@ describe("effect idioms boundary lint gate", () => {
         'import { isObject } from "effect/Predicate"; isObject({}); const x = { isObject: true };',
         "export default class FooLive {}",
         'import("effect"); const now = Date.now();',
+        'promise.catch((cause) => { if (cause.code === "ENOENT") return null; throw cause; }); promise.catch(() => undefined); promise.catch(() => []);',
       ];
       for (const [index, content] of fixtures.entries()) {
         await write(root, `core/src/x/pass-${index}.ts`, content);
@@ -216,6 +259,25 @@ describe("effect idioms boundary lint gate", () => {
         'import { Data } from "effect"; export const FooLive = Data.Error;',
       );
 
+      expect(await checkEffectIdiomsBoundary({ root })).toEqual({ ok: true, offenders: [] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("allows cause assembly only in the failure owners", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-cause-owners-"));
+    try {
+      await write(
+        root,
+        "engine/src/lifecycle/failure-compensation.ts",
+        'import { Cause } from "effect"; Cause.combine(a, b);',
+      );
+      await write(
+        root,
+        "sdk/src/command-result/failure.ts",
+        'import { Cause } from "effect"; Cause.fromReasons([]);',
+      );
       expect(await checkEffectIdiomsBoundary({ root })).toEqual({ ok: true, offenders: [] });
     } finally {
       await rm(root, { recursive: true, force: true });

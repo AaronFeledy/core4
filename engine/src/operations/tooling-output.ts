@@ -1,24 +1,36 @@
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import type { ToolingEngineResult } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
-import type { StreamFrameSinkShape } from "./stream-frame-sink.ts";
+import { StreamFrameSink, createCollectingStreamFrameSink } from "./stream-frame-sink.ts";
 
-export const toolingOutputRedactor = Effect.fnUntraced(function* (redactionTokens: ReadonlyArray<string>) {
-  const redaction = yield* Effect.serviceOption(RedactionService);
-  return Option.isSome(redaction)
-    ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env, redactionTokens })
-    : createStandaloneRedactor("secrets", { sourceEnv: process.env, redactionTokens });
-});
-
-export const emitBufferedToolingOutput = (
-  sink: StreamFrameSinkShape,
-  redactionTokens: ReadonlyArray<string>,
-) =>
-  Effect.fnUntraced(function* (result: ToolingEngineResult) {
-    const redactor = yield* toolingOutputRedactor(redactionTokens);
-    for (const channel of ["stdout", "stderr"] as const) {
-      if (result[channel].length > 0) {
-        yield* sink.emit({ _tag: channel, chunk: redactor.redactString(result[channel]), raw: true });
-      }
-    }
+export const withToolingOutput = Effect.fnUntraced(function* <
+  A extends { readonly stdout: string; readonly stderr: string },
+  E,
+  R,
+>(effect: Effect.Effect<A, E, R>): Effect.fn.Return<A, E, Exclude<R, StreamFrameSink>> {
+  const provided = yield* Effect.serviceOption(StreamFrameSink);
+  const output = Option.match(provided, {
+    onNone: createCollectingStreamFrameSink,
+    onSome: (sink) => ({ sink, finish: () => Effect.void, result: () => ({ stdout: "", stderr: "" }) }),
   });
+  const sink = output.sink;
+  const emitted = { stdout: false, stderr: false };
+  // Children share one logical stream: only the task boundary may flush a secret prefix.
+  const result = yield* effect.pipe(
+    Effect.provideService(StreamFrameSink, {
+      emit: (frame) =>
+        Effect.suspend(() => {
+          if (frame.chunk.length > 0) emitted[frame._tag] = true;
+          return sink.emit(frame);
+        }),
+    }),
+    Effect.tap((returned) =>
+      Effect.forEach(["stdout", "stderr"] as const, (channel) =>
+        !emitted[channel] && returned[channel].length > 0
+          ? sink.emit({ _tag: channel, chunk: returned[channel], kind: "bytes" })
+          : Effect.void,
+      ),
+    ),
+    Effect.scoped,
+    Effect.ensuring(output.finish()),
+  );
+  return { ...result, ...output.result() };
+});

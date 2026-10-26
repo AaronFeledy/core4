@@ -3,8 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, Context, DateTime, Effect, Exit, Queue, Schema, Stream } from "effect";
+import { Cause, Context, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
+import { normalizeDefect } from "@lando/sdk/command-result";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -22,18 +23,15 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { runAppEvent } from "@lando/engine/operations/events";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
+import { withProjectEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { EnvironmentValueResolver } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
@@ -42,10 +40,12 @@ import { metaXSpec } from "../../src/cli/command-specs/meta/x.ts";
 import { defaultBunSelfSpawner } from "../../src/cli/commands/bun-self-runner.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
+import { ResultTerminal } from "../../src/cli/result-terminal.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { extractSpecParsedArgv } from "../../src/cli/spec/command-boundary.ts";
 import { Args, Flags } from "../../src/cli/spec/metadata.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+import { environmentResolverLayer } from "../_support/value-contracts.ts";
 
 class EventCommandTestError extends Schema.TaggedError<EventCommandTestError>()("EventCommandTestError", {
   message: Schema.String,
@@ -81,17 +81,21 @@ const makeHarness = (): Harness => {
       error: (body: string) => Effect.sync(() => presentation.push(`error:${body}`)),
     },
     output: {
-      stdout: (chunk: string) => Effect.sync(() => presentation.push(`stdout:${chunk}`)),
-      stderr: (chunk: string) => Effect.sync(() => presentation.push(`stderr:${chunk}`)),
+      stdout: (chunk: string | Uint8Array) =>
+        Effect.sync(() =>
+          presentation.push(`stdout:${typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)}`),
+        ),
+      stderr: (chunk: string | Uint8Array) =>
+        Effect.sync(() =>
+          presentation.push(`stderr:${typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)}`),
+        ),
     },
   } satisfies Context.Service.Shape<typeof Renderer>;
-  const redaction = {
-    registerValues: registerRedactionValues,
-    forProfile: (
-      profile: "secrets" | "telemetry" | "transcript",
-      options?: Parameters<typeof createStandaloneRedactor>[1],
-    ) => Effect.succeed(createStandaloneRedactor(profile, options)),
-  } satisfies Context.Service.Shape<typeof RedactionService>;
+  const redaction = makeRedactionService();
+  const resolver = Context.get(
+    Effect.runSync(Effect.scoped(Layer.build(environmentResolverLayer({}, redaction)))),
+    EnvironmentValueResolver,
+  );
   return {
     events,
     presentation,
@@ -99,6 +103,7 @@ const makeHarness = (): Harness => {
       Context.add(EventService, eventService),
       Context.add(Renderer, renderer),
       Context.add(RedactionService, redaction),
+      Context.add(EnvironmentValueResolver, resolver),
       Context.add(PrivateFileAccessService, ownerOnlyFileAccess),
       Context.add(
         ShellRunner,
@@ -147,7 +152,6 @@ const eventPlan = (): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
@@ -155,10 +159,34 @@ const eventPlan = (): AppPlan => ({
 });
 
 describe("EventCommandExecutorLayer.layer", () => {
+  test("uses the retained result terminal instead of narration capabilities or process stdout", async () => {
+    const harness = makeHarness();
+    const spec = {
+      ...testSpec(() => Effect.succeed("done")),
+      render: (
+        _value: unknown,
+        _input: unknown,
+        ctx?: { readonly isTTY: boolean; readonly columns: number | undefined },
+      ) => `${ctx?.isTTY}:${ctx?.columns}`,
+    } satisfies LandoCommandSpec;
+    const context = harness.context.pipe(Context.add(ResultTerminal, { isTTY: true, columns: 37 }));
+    const executor = makeEventCommandExecutor(context, [entryFor(spec)]);
+    await Effect.runPromise(
+      executor.run({
+        command: spec.id,
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: "/workspace/demo",
+      }),
+    );
+    expect(harness.presentation).toContain("stdout:true:37\n");
+  });
+
   test("retains the executor when a canonical command enters another command-backed lifecycle event", async () => {
     // Given
     const harness = makeHarness();
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-stop": [{ command: "meta:test:second" }],
     });
     let secondRan = false;
@@ -225,13 +253,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     const harness = makeHarness();
     const spec = {
       ...testSpec(() => Effect.succeed({ exitCode: 7 })),
-      successExitCode: (result: unknown) =>
-        typeof result === "object" &&
-        result !== null &&
-        "exitCode" in result &&
-        typeof result.exitCode === "number"
-          ? result.exitCode
-          : undefined,
+      completion: () => ({ ok: false, exitCode: 7 }),
     } satisfies LandoCommandSpec;
 
     // When
@@ -247,7 +269,7 @@ describe("EventCommandExecutorLayer.layer", () => {
 
     // Then
     expect(result.exitCode).toBe(7);
-    expect(harness.events.at(-1)).toMatchObject({ _tag: `cli-${spec.id}-run`, exitCode: 7 });
+    expect(harness.events.at(-1)).toMatchObject({ _tag: `cli-${spec.id}-error`, exitCode: 7 });
   });
 
   test("renders a successful target result through the provided renderer", async () => {
@@ -336,6 +358,55 @@ describe("EventCommandExecutorLayer.layer", () => {
     });
   });
 
+  test("preserves a nested command's complete combined cause", async () => {
+    // Given: a target whose operation and cleanup both fail.
+    const primary = new EventCommandTestError({ message: "target failed" });
+    const secondary = new EventCommandTestError({ message: "cleanup failed" });
+    const cause = Cause.combine(Cause.fail(primary), Cause.fail(secondary));
+    const harness = makeHarness();
+    const executor = executorFor(entryFor(testSpec(() => Effect.failCause(cause))), harness);
+    // When: the nested target executes.
+    const exit = await Effect.runPromiseExit(
+      executor.run({
+        command: "meta:test:event-command",
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: "/workspace/demo",
+      }),
+    );
+    // Then: the parent receives both reasons without squashing.
+    expect(
+      Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error) : [],
+    ).toEqual([primary, secondary]);
+  });
+
+  test("keeps a nested defect a typed failure after the primary failure", async () => {
+    // Given: a target whose operation fails and whose cleanup dies.
+    const primary = new EventCommandTestError({ message: "target failed" });
+    const defect = new Error("cleanup crashed");
+    const harness = makeHarness();
+    const executor = executorFor(
+      entryFor(testSpec(() => Effect.failCause(Cause.combine(Cause.fail(primary), Cause.die(defect))))),
+      harness,
+    );
+    // When: the nested target executes.
+    const exit = await Effect.runPromiseExit(
+      executor.run({
+        command: "meta:test:event-command",
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: "/workspace/demo",
+      }),
+    );
+    // Then: both values arrive as Fail reasons, so event-step error mapping still sees them.
+    expect(Exit.isFailure(exit) ? exit.cause.reasons.every(Cause.isFailReason) : false).toBe(true);
+    expect(
+      Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error) : [],
+    ).toEqual([primary, normalizeDefect(defect)]);
+  });
+
   test("propagates target interruption", async () => {
     // Given
     const harness = makeHarness();
@@ -366,7 +437,9 @@ describe("EventCommandExecutorLayer.layer", () => {
     const spec = {
       ...testSpec(() =>
         StreamFrameSink.pipe(
-          Effect.flatMap((sink) => sink.emit({ _tag: "stdout", service: "app", chunk: "before interrupt" })),
+          Effect.flatMap((sink) =>
+            sink.emit({ kind: "record", _tag: "stdout", service: "app", chunk: "before interrupt" }),
+          ),
           Effect.andThen(Effect.interrupt),
         ),
       ),
@@ -426,7 +499,7 @@ describe("EventCommandExecutorLayer.layer", () => {
       expect(process.exitCode).toBe(91);
     } finally {
       spawn.mockRestore();
-      process.exitCode = priorExitCode;
+      process.exitCode = priorExitCode ?? 0;
     }
   });
 
@@ -458,7 +531,7 @@ describe("EventCommandExecutorLayer.layer", () => {
       expect(process.exitCode).toBe(92);
     } finally {
       spawn.mockRestore();
-      process.exitCode = priorExitCode;
+      process.exitCode = priorExitCode ?? 0;
     }
   });
 
@@ -767,6 +840,9 @@ describe("EventCommandExecutorLayer.layer", () => {
     const invocations: string[] = [];
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -820,6 +896,9 @@ describe("EventCommandExecutorLayer.layer", () => {
     const invocations: ToolingInvocation[] = [];
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -862,7 +941,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     const secret = "--RAW-ARGV-SECRET";
     const invocations: ToolingInvocation[] = [];
     const plan = attachEffectiveTooling(
-      attachEffectiveEvents(
+      withProjectEvents(
         { ...eventPlan(), root: AbsolutePath.make(process.cwd()) },
         { "pre-start": [{ command: "app:inspect", raw: [secret] }] },
       ),
@@ -870,6 +949,9 @@ describe("EventCommandExecutorLayer.layer", () => {
     );
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -901,12 +983,12 @@ describe("EventCommandExecutorLayer.layer", () => {
     expect(harness.presentation).toEqual([]);
   });
 
-  test("redacts canonical tooling env secrets from detail and nonzero failure output", async () => {
+  test("omits canonical tooling details and redacts nonzero failure output", async () => {
     // Given
     const harness = makeHarness();
     const secret = "TOOLING-ENV-SECRET";
     const plan = attachEffectiveTooling(
-      attachEffectiveEvents(
+      withProjectEvents(
         { ...eventPlan(), root: AbsolutePath.make(process.cwd()) },
         { "pre-start": [{ command: "app:inspect" }] },
       ),
@@ -914,6 +996,9 @@ describe("EventCommandExecutorLayer.layer", () => {
     );
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -945,10 +1030,11 @@ describe("EventCommandExecutorLayer.layer", () => {
     if (error._tag !== "LandofileEventStepFailedError") throw error;
     expect(error.outputTail).toBe("stdout:[redacted]\nstderr:[redacted]");
     const details = harness.events.filter((event) => event._tag === "task.detail");
-    expect(details).toHaveLength(2);
+    expect(details).toEqual([]);
     const payload = JSON.stringify(details);
     expect(payload).not.toContain(secret);
-    expect(payload).toContain("[redacted]");
+    expect(JSON.stringify(error)).toContain("[redacted]");
+    expect(JSON.stringify(error)).not.toContain(secret);
     expect(harness.presentation).toEqual([]);
   });
 

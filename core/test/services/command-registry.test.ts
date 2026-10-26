@@ -769,6 +769,9 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
   });
 
   test("invalidates the app-command cache when include lock content changes", async () => {
+    // Two valid lockfiles that differ only in one pinned checksum.
+    const includeLock = (digit: string) =>
+      `includes:\n  - source: github:acme/fragments/php.yml\n    resolved: ${"c".repeat(40)}\n    checksum: ${digit.repeat(64)}\n`;
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         const landofile = {
@@ -788,10 +791,7 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
             "",
           ].join("\n"),
         );
-        await writeFile(
-          join(dir, ".lando.lock.yml"),
-          "checksum: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
-        );
+        await writeFile(join(dir, ".lando.lock.yml"), includeLock("a"));
         await writeFile(join(dir, "fragment.yml"), "lando: >=0\n");
         await Effect.runPromise(
           writeAppCommandCacheStrict({
@@ -802,10 +802,7 @@ describe("CommandRegistryLayer.layer cold-path cache writes", () => {
             now: () => 100,
           }),
         );
-        await writeFile(
-          join(dir, ".lando.lock.yml"),
-          "checksum: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n",
-        );
+        await writeFile(join(dir, ".lando.lock.yml"), includeLock("b"));
         process.chdir(dir);
 
         const commands = await listFromLive();

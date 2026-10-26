@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { Effect, Schema } from "effect";
 
 import { LandofileShape, ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
@@ -91,7 +92,12 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
     () => undefined,
     (error: unknown) => {
       rejected = true;
-      const message = error instanceof Error ? error.message : String(error);
+      const message =
+        error instanceof ServiceTypeError
+          ? [error.message, ...(error.issues ?? []).map((issue) => issue.suggestion ?? "")].join(" ")
+          : error instanceof Error
+            ? error.message
+            : String(error);
       expect(message).toMatch(pattern);
     },
   );
@@ -103,9 +109,9 @@ const unusedMutators = {
   addMount: () => undefined,
   setAppMount: () => undefined,
   addStorage: () => undefined,
-  addEndpoint: () => undefined,
   addHostAlias: () => undefined,
   setHealthcheck: () => undefined,
+  setReadiness: () => undefined,
   setCerts: () => undefined,
   setEntrypoint: () => undefined,
   setCommand: () => undefined,

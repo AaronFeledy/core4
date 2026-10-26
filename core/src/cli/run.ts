@@ -1,3 +1,5 @@
+import { type DiscoveryOperation, runDiscoveryOperation } from "@lando/landofile/operation-scope";
+import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
 import { Cause, Effect, Exit, Layer } from "effect";
 
 import {
@@ -140,20 +142,20 @@ const HELP_SPECIAL_FLAGS = {
 
 const readAppCommandCacheOrNull = async () => {
   const exit = await Effect.runPromiseExit(Effect.result(readFreshAppCommandCacheForCwd()));
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  if (Exit.isFailure(exit)) throw exit.cause;
   const cache = exit.value;
   return cache._tag === "Success" ? cache.success : null;
 };
 
 const resolveToolingRouteExit = async (token: string | undefined) => {
   const exit = await Effect.runPromiseExit(Effect.result(resolveToolingRoute(token)));
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  if (Exit.isFailure(exit)) throw exit.cause;
   return exit.value;
 };
 
 const printAllHelp = async (): Promise<void> => {
   const cache = await readAppCommandCacheOrNull();
-  emitResultLine(
+  await emitResultLine(
     renderColdAllHelp({
       thisAppRows: cache === null ? [] : thisAppHelpRowsFromCache(cache),
       ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
@@ -163,7 +165,7 @@ const printAllHelp = async (): Promise<void> => {
 
 const printTopicHelp = async (topic: HelpTopic): Promise<void> => {
   const cache = await readAppCommandCacheOrNull();
-  emitResultLine(
+  await emitResultLine(
     renderColdTopicHelp(topic, cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
   );
 };
@@ -184,11 +186,11 @@ const rejectUnknownHelpFlags = async (argv: ReadonlyArray<string>): Promise<bool
 };
 
 const printRootHelpPage = async (): Promise<void> => {
-  printRootHelp(undefined, await readAppCommandCacheOrNull());
+  await printRootHelp(undefined, await readAppCommandCacheOrNull());
 };
 
 const printHelpCatalogPage = async (): Promise<void> => {
-  printHelpCatalogJson(
+  await printHelpCatalogJson(
     await readAppCommandCacheOrNull(),
     isEnvelopeResultFormat(activeResultFormat) ? activeResultFormat : "json",
   );
@@ -201,13 +203,13 @@ const dispatchHelpTarget = async (token: string): Promise<void> => {
   }
   const helpCommand = resolveBuiltInCommand(token);
   if (helpCommand !== undefined) {
-    printCommandHelp(helpCommand);
+    await printCommandHelp(helpCommand);
     return;
   }
   const cache = await readAppCommandCacheOrNull();
   const tooling = cache === null ? undefined : toolingHelpEntryForToken(cache, token);
   if (tooling !== undefined) {
-    printToolingHelp(tooling, cache?.aliasPolicy);
+    await printToolingHelp(tooling, cache?.aliasPolicy);
     return;
   }
   if (await tryPluginOwnedCommand(token, ["--help"])) return;
@@ -446,7 +448,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   ) {
     const versionSpec = resolveBuiltInCommand("meta:version")?.spec;
     if (await rejectUnsupportedResultFormat("meta:version", versionSpec)) return;
-    if (emitJsonListModeIfRequested(versionSpec?.resultSchema)) return;
+    if (await emitJsonListModeIfRequested(versionSpec?.resultSchema)) return;
     await runMetaVersion();
     return;
   }
@@ -468,7 +470,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       });
       return;
     }
-    if (emitJsonListModeIfRequested(found[1].resultSchema)) return;
+    if (await emitJsonListModeIfRequested(found[1].resultSchema)) return;
   }
 
   if (builtInCommand?.status.kind === "deferred") {
@@ -477,7 +479,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined);
       return;
     }
-    emitDiagnosticLine(commandErrorMessage(error));
+    await emitDiagnosticLine(commandErrorMessage({ error, additionalErrors: [] }));
     process.exitCode = 1;
     return;
   }
@@ -504,6 +506,33 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 export interface RunCliOptions {
   readonly argv: ReadonlyArray<string>;
   readonly rootUrl: string;
+  readonly discovery?: DiscoveryOperation;
 }
 
-export const runCli = (options: RunCliOptions): Promise<void> => runCompiledCli(options.argv);
+export const runCli = async (options: RunCliOptions): Promise<void> => {
+  try {
+    await runDiscoveryOperation(
+      options.discovery ?? { cwd: process.cwd(), resolver: makeAppDiscoveryResolver() },
+      () => runCompiledCli(options.argv),
+    );
+  } catch (error) {
+    const cause = Cause.isCause(error) ? error : Cause.die(error);
+    const logLevel = Effect.runSync(
+      Effect.result(
+        Effect.try({
+          try: () => resolveLogLevel({ argv: options.argv, env: process.env }),
+          catch: (selectionError) => selectionError,
+        }),
+      ),
+    );
+    if (logLevel._tag === "Success" && logLevel.success.source !== "default") {
+      setActiveLogLevel(logLevel.success.level);
+    }
+    const output = preCommandOutputMode({ argv: options.argv, env: process.env });
+    setActiveRendererMode(output.rendererMode);
+    if (output.resultFormat !== undefined) setActiveResultFormat(output.resultFormat);
+    await runCompiledCommand(Effect.failCause(cause), Layer.empty, () => undefined, {
+      preCommand: true,
+    });
+  }
+};

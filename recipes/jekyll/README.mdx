@@ -7,7 +7,15 @@ tags: [recipe, jekyll, ruby, static]
 
 # Jekyll
 
-`lando init --recipe jekyll` scaffolds a Jekyll site with a Ruby builder and an nginx sidecar.
+Create the Lando services for Jekyll, with a Ruby builder and nginx for
+generated static files. The recipe writes `.lando.yml`, not a Jekyll site.
+Before starting it, follow the setup steps linked below to install gems and
+create the site.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe jekyll --name=my-jekyll --yes
@@ -20,7 +28,8 @@ The scaffold writes only `.lando.yml`. Its `builder` service carries a build ste
 
 For park, install, scaffold, build, browse, and cleanup steps, see [Run the Jekyll recipe](/guides/recipes/jekyll-workflow/).
 
-When you are finished:
+When you are finished, remove the app containers and networks. This keeps
+named volumes unless you also pass `--volumes` or `--purge`. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy):
 
 ```sh
 lando destroy -y

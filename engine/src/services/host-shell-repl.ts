@@ -23,7 +23,12 @@ const EXIT_LINE = /^exit(?:\s+([+-]?[0-9]+))?\s*$/;
 type HostShellReplSpec = Omit<ShellInteractiveSpec, "io"> & { readonly io: ShellReplIO };
 
 const shellError = (message: string, command: string, cause?: unknown): ShellExecError =>
-  new ShellExecError({ message, command, cause });
+  new ShellExecError({
+    message,
+    command,
+    cause,
+    remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
+  });
 
 const redactShellError = (redactor: Redactor, error: ShellExecError): ShellExecError =>
   new ShellExecError({
@@ -34,6 +39,7 @@ const redactShellError = (redactor: Redactor, error: ShellExecError): ShellExecE
     ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
     ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
     cause: redactor.redactValue(error.cause),
+    remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
   });
 
 const resolveSecrets = Effect.fnUntraced(function* (
@@ -255,6 +261,8 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
               stdout: result.stdout,
               stderr: result.stderr,
               cause: redactor.redactValue(cause),
+              remediation:
+                "Fix the shell command so it succeeds in the reported working directory, then re-run.",
             });
           } finally {
             spec.signal?.removeEventListener("abort", abort);

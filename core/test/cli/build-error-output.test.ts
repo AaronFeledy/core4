@@ -28,7 +28,6 @@ test.each(["text", "json"] as const)("surfaces the failing build step in %s outp
         metadata,
         extensions: {},
         routes: [],
-        networks: [],
         stores: [],
         fileSync: [],
         services: {
@@ -57,6 +56,7 @@ test.each(["text", "json"] as const)("surfaces the failing build step in %s outp
     },
     {
       providerId,
+      sourceEnv: {},
       api: {
         request: () =>
           Effect.succeed({
@@ -78,7 +78,8 @@ test.each(["text", "json"] as const)("surfaces the failing build step in %s outp
     io,
     command: "app:start",
     ...(format === "json" ? { resultFormat: "json" as const } : {}),
-    formatError: (error) => formatCommandError({ error, commandId: "app:start", rendererMode: "plain" }),
+    formatError: (failure) =>
+      formatCommandError({ ...failure, commandId: "app:start", rendererMode: "plain" }),
     setExitCode: () => undefined,
   });
 

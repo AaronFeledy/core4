@@ -36,7 +36,7 @@ import {
 } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { makeStdioClient } from "@lando/mcp/testing";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
@@ -65,7 +65,7 @@ const spec = (
 const directExecute = (): McpDispatchDeps["execute"] => (entry, runInput) =>
   entry.spec.run(runInput).pipe(
     Effect.map((value) => ({ _tag: "success", value }) as const),
-    Effect.catch((error) => Effect.succeed({ _tag: "failure", error } as const)),
+    Effect.catch((error) => Effect.succeed({ _tag: "failure", error, additionalErrors: [] } as const)),
   ) as ReturnType<McpDispatchDeps["execute"]>;
 
 interface Harness {
@@ -87,6 +87,8 @@ const harness = (
       effective: allowlist,
       allowlistSource: "defaults",
       redactor: createRedactor("secrets", { values: [...(options.secrets ?? [])] }),
+      resultRedactor: (tokens) =>
+        Effect.succeed(createRedactor("secrets", { values: [...(options.secrets ?? []), ...tokens] })),
       execute: directExecute(),
       publish: (event) =>
         Effect.sync(() => {
@@ -106,11 +108,12 @@ const allCommandEntries = (): ReadonlyArray<McpCommandEntry> =>
   mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries;
 
 const redactionLayer = (values: ReadonlyArray<string> = []) =>
-  Layer.succeed(
+  Layer.effect(
     RedactionService,
-    RedactionService.of({
-      registerValues: registerRedactionValues,
-      forProfile: () => Effect.succeed(createRedactor("secrets", { values })),
+    Effect.gen(function* () {
+      const service = makeRedactionService();
+      yield* service.registerValues(values);
+      return service;
     }),
   );
 

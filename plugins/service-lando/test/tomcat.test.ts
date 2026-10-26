@@ -5,6 +5,7 @@ import { composeService } from "@lando/engine/services/feature";
 import { LandofileShape, ProviderId, ServiceName, TomcatServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
+import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import {
   TOMCAT_FEATURE_ID,
   tomcat9ServiceType,
@@ -67,9 +68,9 @@ const resolveTomcatService = (serviceType: ServiceType, serviceDefinition: Recor
 
 describe("tomcat ServiceType", () => {
   test.each([
-    { webroot: 42, ownsImageConfig: true },
-    { webroot: "/app", ownsImageConfig: "true" },
-    { webroot: "/app", ownsImageConfig: true, unexpected: true },
+    { webroot: 42, ownsImageConfig: true, major: "11" },
+    { webroot: "/app", ownsImageConfig: "true", major: "11" },
+    { webroot: "/app", ownsImageConfig: true, major: "11", unexpected: true },
   ])("rejects malformed feature config %j before applying it", async (config) => {
     // Given: feature config that violates the declared Tomcat schema.
     // When: it crosses the engine's composition boundary.
@@ -102,10 +103,10 @@ describe("tomcat ServiceType", () => {
   });
 
   for (const [id, image, serviceType] of [
-    ["tomcat:9", "tomcat:9-jre21", tomcat9ServiceType],
-    ["tomcat:10", "tomcat:10-jre21", tomcat10ServiceType],
-    ["tomcat:11", "tomcat:11-jre21", tomcat11ServiceType],
-    ["tomcat", "tomcat:11-jre21", tomcatServiceType],
+    ["tomcat:9", TOMCAT_CATALOG["9"].image, tomcat9ServiceType],
+    ["tomcat:10", TOMCAT_CATALOG["10"].image, tomcat10ServiceType],
+    ["tomcat:11", TOMCAT_CATALOG["11"].image, tomcat11ServiceType],
+    ["tomcat", TOMCAT_CATALOG["11"].image, tomcatServiceType],
   ] as const) {
     describe(id, () => {
       test("plans the catalog defaults", async () => {
@@ -116,7 +117,7 @@ describe("tomcat ServiceType", () => {
         expect(plan.type).toBe("tomcat");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 8080, protocol: "http", name: "appserver" },
+          { _tag: "internal", port: 8080, protocol: "http", name: "appserver", primary: true },
         ]);
         expect(String(plan.appMount?.target)).toBe("/app");
         expect(plan.mounts).toEqual([]);
@@ -160,7 +161,7 @@ describe("tomcat ServiceType", () => {
 
         expect(plan.artifact).toEqual({ kind: "ref", ref: "tomcat:custom" });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 8888, protocol: "http", name: "appserver" },
+          { _tag: "internal", port: 8888, protocol: "http", name: "appserver", primary: true },
         ]);
         expect(String(plan.appMount?.target)).toBe("/app");
         expect(plan.command).toEqual(["catalina.sh", "run"]);
@@ -172,9 +173,9 @@ describe("tomcat ServiceType", () => {
   test("declares supported versions and artifacts", () => {
     expect(tomcatServiceType.versions).toEqual(["9", "10", "11"]);
     expect(tomcatServiceType.artifacts).toEqual({
-      "9": "tomcat:9-jre21",
-      "10": "tomcat:10-jre21",
-      "11": "tomcat:11-jre21",
+      "9": TOMCAT_CATALOG["9"].image,
+      "10": TOMCAT_CATALOG["10"].image,
+      "11": TOMCAT_CATALOG["11"].image,
     });
   });
 
@@ -222,25 +223,29 @@ describe("tomcat ServiceType", () => {
     // Given: a webroot requiring app code on a service that disables it.
     const definition = { type: "tomcat", appMount: false, ...(webroot === undefined ? {} : { webroot }) };
     // When / Then: planning rejects the contradictory settings with remediation.
-    await expect(planTomcatService(tomcatServiceType, definition)).rejects.toThrow(
-      `tomcat webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false. Set webroot to an absolute container path, or remove appMount: false.`,
-    );
+    await expect(planTomcatService(tomcatServiceType, definition)).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["webroot"],
+          message: `tomcat webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false.`,
+          suggestion: "Set webroot to an absolute container path, or remove appMount: false.",
+        },
+      ],
+    });
   });
 
   test("rejects a relative webroot outside the app mount", async () => {
     // Given / When / Then: an escaping document root fails type resolution.
     await expect(
       resolveTomcatService(tomcatServiceType, { type: "tomcat", webroot: "../x" }),
-    ).rejects.toThrow(
-      "tomcat webroot ../x leaves the app mount (/app); use an absolute container path instead.",
-    );
+    ).rejects.toThrow("tomcat webroot ../x leaves the app mount (/app).");
   });
 
   test("configures ROOT when the catalog image is explicitly authored", async () => {
     // Given / When: an explicitly authored image equal to the selected catalog image.
     const plan = await planTomcatService(tomcat10ServiceType, {
       type: "tomcat:10",
-      image: "tomcat:10-jre21",
+      image: TOMCAT_CATALOG["10"].image,
     });
     // Then: the image retains Lando-owned configuration.
     expect(plan.extensions["@lando/core/service-features"]).toMatchObject({

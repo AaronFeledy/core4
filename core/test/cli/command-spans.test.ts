@@ -66,7 +66,7 @@ const run = (effect: Effect.Effect<string, Error>, tracer?: Tracer.Tracer) => {
     resultFormat: "text",
     command: "app:info",
     invocation,
-    formatError: String,
+    formatError: ({ error }) => String(error),
     render: (result) => result,
     setExitCode: () => undefined,
     ...(tracer === undefined ? {} : { tracer }),

@@ -1,158 +1,72 @@
 import { randomUUID } from "node:crypto";
-
-import { Cause, Effect, Exit } from "effect";
-
-import { FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
+import { FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
-
+import { Effect } from "effect";
 import {
   type PendingStart,
   digest,
-  isRecoverableStart,
   journalRecovery,
   pendingStartBucketSpec,
-  verifyRetainedStart,
+  sameStartIdentity,
 } from "./accelerated-start-record.ts";
 import { appRootIdentityKey, canonicalAppRoot } from "./app-root-identity.ts";
-type PendingPhase = PendingStart["phase"];
 
-const journalError = (message: string, cause?: unknown, journalPath?: string) =>
+const journalError = (message: string, cause?: unknown, journalPath = "accelerated-starts") =>
   new FileSyncStartError({
     engineId: "mutagen",
     message,
-    remediation: `A prior accelerated start may have left sessions or sync targets. Inspect the saved start journal${journalPath === undefined ? "" : ` at "${journalPath}"`}, provider resources, and Mutagen ownership receipts before retrying.`,
+    remediation: journalRecovery(journalPath),
     ...(cause === undefined ? {} : { cause }),
   });
+const journalRoot = (root: string) =>
+  canonicalAppRoot(root).pipe(
+    Effect.mapError((cause) => journalError("The app root cannot be verified.", cause)),
+  );
 
 export const openJournal = (app: AppRef) =>
   canonicalAppRoot(String(app.root)).pipe(
     Effect.flatMap((canonicalRoot) =>
       StateStore.pipe(
-        Effect.flatMap((stateStore) =>
-          stateStore.open(pendingStartBucketSpec(`${digest(appRootIdentityKey(app, canonicalRoot))}.json`)),
+        Effect.flatMap((store) =>
+          store.open(pendingStartBucketSpec(`${digest(appRootIdentityKey(app, canonicalRoot))}.json`)),
         ),
       ),
     ),
     Effect.mapError((cause) => journalError("The accelerated-start journal cannot be opened.", cause)),
   );
 
-export const readJournal = (app: AppRef) =>
-  openJournal(app).pipe(
-    Effect.flatMap((bucket) =>
-      bucket.exists.pipe(
-        Effect.flatMap((exists) =>
-          exists
-            ? bucket.get.pipe(
-                Effect.flatMap((value) =>
-                  value === null
-                    ? Effect.fail(journalError("The accelerated-start journal has an unknown version."))
-                    : Effect.succeed(value),
-                ),
-              )
-            : Effect.succeed<PendingStart | null>(null),
-        ),
-        Effect.map((pending) => ({ pending, path: bucket.path })),
-      ),
-    ),
+export const readJournal = Effect.fnUntraced(function* (app: AppRef) {
+  const bucket = yield* openJournal(app);
+  const pending = yield* bucket.get.pipe(
     Effect.mapError((cause) =>
-      cause instanceof FileSyncStartError
-        ? cause
-        : journalError("The accelerated-start journal cannot be verified.", cause),
+      journalError("The accelerated-start journal cannot be verified.", cause, bucket.path),
     ),
   );
-
-/** Called under the app mutation lock before init hooks or mount fallback. */
-export const requireNoPendingAcceleratedStart = Effect.fnUntraced(function* (
-  app: AppRef,
-  plan?: AppPlan,
-  allowRetained = false,
-) {
-  if (plan !== undefined) {
-    const appRoot = yield* canonicalAppRoot(String(app.root)).pipe(
-      Effect.mapError((cause) => journalError("The resolved app root cannot be verified.", cause)),
-    );
-    const planRoot = yield* canonicalAppRoot(String(plan.root)).pipe(
-      Effect.mapError((cause) => journalError("The planned app root cannot be verified.", cause)),
-    );
-    if (app.id !== plan.id || appRoot !== planRoot) {
-      return yield* Effect.fail(journalError("The resolved app identity does not match the planned app."));
-    }
-  }
-  const { pending, path } = yield* readJournal(app);
-  if (allowRetained && isRecoverableStart(pending)) return pending;
-  if (pending !== null && pending.phase !== "completed") {
-    return yield* Effect.fail(
-      new FileSyncStartError({
-        engineId: pending.engineId,
-        message:
-          pending.recoveredFrom !== undefined
-            ? `Accelerated start attempt ${pending.attemptId} is an interrupted recovery from ${pending.recoveredFrom}, still ${pending.phase}.`
-            : pending.phase === "retained"
-              ? `Previous accelerated start attempt ${pending.attemptId} failed and its prepared targets could not be rolled back.`
-              : `Accelerated start attempt ${pending.attemptId} is still ${pending.phase}; automatic recovery is not available.`,
-        remediation:
-          pending.phase === "retained" || pending.recoveredFrom !== undefined
-            ? journalRecovery(path)
-            : `Inspect the saved journal \`${path}\`, provider targets, and session ledger before repairing this interrupted first attempt. Start and destroy remain blocked until its ownership state is verified; preserve volumes and session history.`,
-      }),
-    );
-  }
+  return { pending, path: bucket.path };
 });
 
-/** Stop and destroy must reject unresolved starts before hooks or provider actions. */
-export const requireNoPendingAcceleratedStop = (app: AppRef, plan?: AppPlan) =>
-  requireNoPendingAcceleratedStart(app, plan).pipe(
-    Effect.mapError(
-      (cause) =>
-        new FileSyncStopError({
-          engineId: "mutagen",
-          sessionRef: String(app.id),
-          message: cause.message,
-          remediation: cause.remediation,
-          cause,
-        }),
-    ),
-  );
-
-export const beginAcceleratedStart = Effect.fnUntraced(function* (plan: AppPlan, app: AppRef) {
+const plannedStartRecord = Effect.fnUntraced(function* (plan: AppPlan, app: AppRef) {
   const first = plan.fileSync[0];
-  if (first === undefined) {
+  if (first === undefined)
     return yield* Effect.fail(journalError("An accelerated-start journal requires planned sessions."));
-  }
-  const appRoot = yield* canonicalAppRoot(String(app.root)).pipe(
-    Effect.mapError((cause) => journalError("The resolved app root cannot be verified.", cause)),
-  );
-  const planRoot = yield* canonicalAppRoot(String(plan.root)).pipe(
-    Effect.mapError((cause) => journalError("The planned app root cannot be verified.", cause)),
-  );
-  const sessionRoots = yield* Effect.forEach(plan.fileSync, ({ session }) =>
-    canonicalAppRoot(String(session.app.root)).pipe(
-      Effect.mapError((cause) => journalError("A planned file-sync app root cannot be verified.", cause)),
-    ),
-  );
+  const appRoot = yield* journalRoot(String(app.root));
+  const planRoot = yield* journalRoot(String(plan.root));
+  const roots = yield* Effect.forEach(plan.fileSync, ({ session }) => journalRoot(String(session.app.root)));
   if (
     app.id !== plan.id ||
     appRoot !== planRoot ||
     plan.fileSync.some(
-      ({ session }, index) =>
-        session.app.kind !== app.kind || session.app.id !== app.id || sessionRoots[index] !== appRoot,
+      ({ session }, i) => session.app.kind !== app.kind || session.app.id !== app.id || roots[i] !== appRoot,
     )
-  ) {
+  )
     return yield* Effect.fail(
       journalError("Planned file-sync sessions do not share the target app identity."),
     );
-  }
-  const bucket = yield* openJournal(app);
-  const previous = yield* bucket.get.pipe(
-    Effect.mapError((cause) => journalError("Unable to read accelerated-start intent.", cause)),
-  );
-  const recovery = isRecoverableStart(previous) ? previous : undefined;
-  const record: PendingStart = {
+  return {
     attemptId: randomUUID(),
-    ...(recovery === undefined ? {} : { recoveredFrom: recovery.recoveredFrom ?? recovery.attemptId }),
     appId: String(plan.id),
-    appRoot: String(plan.root),
+    appRoot,
     providerId: String(plan.provider),
     engineId: first.engineId,
     mountPlanDigest: digest(plan.fileSync),
@@ -167,66 +81,74 @@ export const beginAcceleratedStart = Effect.fnUntraced(function* (plan: AppPlan,
       name: `${session.service}/${session.mountKey}`,
       specDigest: digest(session),
     })),
-  };
-  if (recovery !== undefined) yield* verifyRetainedStart(recovery, record, bucket.path);
-  const began = yield* bucket
-    .modify((current) =>
-      current !== null &&
-      current.phase !== "completed" &&
-      !(isRecoverableStart(current) && recovery !== undefined && digest(current) === digest(recovery))
-        ? ([false, current] as const)
-        : ([true, record] as const),
+  } satisfies PendingStart;
+});
+
+const identityError = (record: PendingStart, path: string) =>
+  new FileSyncStartError({
+    engineId: record.engineId,
+    message: "Recorded provider, engine, mount plan or app identity changed.",
+    remediation: `Restore the recorded provider ${record.providerId}, file-sync engine ${record.engineId}, and mount settings, then run \`lando start\` to finish attempt ${record.attemptId}. Journal: \`${path}\`.`,
+  });
+
+export const readPendingAcceleratedStart = Effect.fnUntraced(function* (app: AppRef, plan?: AppPlan) {
+  const root = yield* journalRoot(String(app.root));
+  if (plan !== undefined && (app.id !== plan.id || root !== (yield* journalRoot(String(plan.root)))))
+    return yield* Effect.fail(journalError("The resolved app identity does not match the planned app."));
+  const { pending, path } = yield* readJournal(app);
+  if (pending === null || pending.phase === "completed") return null;
+  if (pending.appId !== app.id || pending.appRoot !== root)
+    return yield* Effect.fail(identityError(pending, path));
+  if (plan !== undefined) {
+    if (plan.fileSync.length === 0) return yield* Effect.fail(identityError(pending, path));
+    const planned = yield* plannedStartRecord(plan, app);
+    if (!sameStartIdentity(pending, planned)) return yield* Effect.fail(identityError(pending, path));
+  }
+  return pending;
+});
+
+export const beginOrResumeAcceleratedStart = Effect.fnUntraced(function* (plan: AppPlan, app: AppRef) {
+  const planned = yield* plannedStartRecord(plan, app);
+  const bucket = yield* openJournal(app);
+  const result = yield* bucket
+    .modify<{ readonly record: PendingStart; readonly resumed: boolean; readonly matches: boolean }>(
+      (current) => {
+        if (current !== null && current.phase !== "completed")
+          return [
+            { record: current, resumed: true, matches: sameStartIdentity(current, planned) },
+            current,
+          ] as const;
+        return [{ record: planned, resumed: false, matches: true }, planned] as const;
+      },
     )
-    .pipe(Effect.mapError((cause) => journalError("Unable to persist accelerated-start intent.", cause)));
-  if (!began) return yield* Effect.fail(journalError("A previous accelerated-start journal already exists."));
-  const sameAttempt = (current: PendingStart | null): current is PendingStart =>
-    current !== null &&
-    current.attemptId === record.attemptId &&
-    current.recoveredFrom === record.recoveredFrom &&
-    current.appId === record.appId &&
-    current.appRoot === record.appRoot &&
-    current.providerId === record.providerId &&
-    current.engineId === record.engineId &&
-    current.mountPlanDigest === record.mountPlanDigest &&
-    digest(current.targets) === digest(record.targets) &&
-    digest(current.sessions) === digest(record.sessions);
-  const phase = (next: PendingPhase) =>
+    .pipe(
+      Effect.mapError((cause) =>
+        journalError("Unable to persist accelerated-start intent.", cause, bucket.path),
+      ),
+    );
+  if (!result.matches) return yield* Effect.fail(identityError(result.record, bucket.path));
+  const record = result.record;
+  const order = { preparing: 0, "sessions-ready": 1, "apply-intent": 2, completed: 3 } as const;
+  const advance = (next: PendingStart["phase"]) =>
     bucket
       .modify((current) => {
-        if (current === null) return [false, record] as const;
-        const allowed: Record<PendingPhase, ReadonlyArray<PendingPhase>> = {
-          preparing: ["sessions-ready", "retained", "completed"],
-          "sessions-ready": ["apply-intent", "retained", "completed"],
-          "apply-intent": ["retained", "completed"],
-          retained: [],
-          completed: [],
-        };
-        return sameAttempt(current) && allowed[current.phase].includes(next)
-          ? ([true, { ...current, phase: next }] as const)
-          : ([false, current] as const);
+        if (current === null || current.attemptId !== record.attemptId || !sameStartIdentity(current, record))
+          return [false, current ?? record] as const;
+        return [true, order[current.phase] >= order[next] ? current : { ...current, phase: next }] as const;
       })
       .pipe(
         Effect.mapError((cause) =>
           journalError("Unable to advance accelerated-start intent.", cause, bucket.path),
         ),
-        Effect.flatMap((advanced) =>
-          advanced
-            ? Effect.void
-            : Effect.fail(journalError("Accelerated-start journal ownership or phase changed.")),
+        Effect.flatMap((ok) =>
+          ok ? Effect.void : Effect.fail(journalError("Accelerated-start journal ownership changed.")),
         ),
       );
-  const clear = phase("completed");
-  const retainTargets = Effect.fnUntraced(function* <E>(
-    original: Cause.Cause<E>,
-  ): Effect.fn.Return<Cause.Cause<E | FileSyncStartError>> {
-    const saved = yield* Effect.exit(phase("retained"));
-    return Exit.isFailure(saved) ? Cause.combine(original, saved.cause) : original;
-  }, Effect.uninterruptible);
   return {
-    phase,
-    clear,
-    retainTargets,
     attemptId: record.attemptId,
-    retained: recovery,
+    ...(result.resumed ? { resumedFrom: record.phase } : {}),
+    record,
+    advance,
+    complete: advance("completed"),
   };
 });

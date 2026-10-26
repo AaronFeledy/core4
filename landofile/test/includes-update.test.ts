@@ -7,8 +7,8 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { updateLandofileIncludes as updateLandofileIncludesPackage } from "../src/includes.ts";
 import type { GitIncludeCloner } from "../src/includes.ts";
+import { updateAuthoredIncludes as updateLandofileIncludesPackage } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore, makeTestPublicationPort } from "./support.ts";
 
 const updateLandofileIncludes = (options: Parameters<typeof updateLandofileIncludesPackage>[0]) =>
@@ -67,12 +67,16 @@ describe("updateLandofileIncludes", () => {
   test("refresh rewrites a drifted git lock instead of failing closed", async () => {
     const fragment = "services:\n  database:\n    type: postgres\n";
     const source = "github:acme/fragments/postgres.yml";
-    await writeFile(join(appRoot, ".lando.lock.yml"), lockfile(source, "old123", "0".repeat(64)), "utf8");
+    await writeFile(
+      join(appRoot, ".lando.lock.yml"),
+      lockfile(source, "b".repeat(40), "0".repeat(64)),
+      "utf8",
+    );
     const gitCloner: GitIncludeCloner = {
       clone: async ({ stagingDir }) => {
         await mkdir(stagingDir, { recursive: true });
         await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-        return { commitSha: "new456" };
+        return { commitSha: "c".repeat(40) };
       },
     };
 
@@ -82,13 +86,13 @@ describe("updateLandofileIncludes", () => {
     );
 
     expect(report.entries).toEqual([
-      { source, resolved: "new456", checksum: sha256(fragment), status: "updated" },
+      { source, resolved: "c".repeat(40), checksum: sha256(fragment), status: "updated" },
     ]);
     expect(report.drift).toBe(true);
     expect(report.wrote).toBe(true);
     expect(report.checkMode).toBe(false);
     const written = await readFile(join(appRoot, ".lando.lock.yml"), "utf8");
-    expect(written).toContain("resolved: new456");
+    expect(written).toContain(`resolved: ${"c".repeat(40)}`);
     expect(written).toContain(`checksum: ${sha256(fragment)}`);
   });
 
@@ -98,7 +102,7 @@ describe("updateLandofileIncludes", () => {
       clone: async ({ stagingDir }) => {
         await mkdir(stagingDir, { recursive: true });
         await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-        return { commitSha: "abc123" };
+        return { commitSha: "a".repeat(40) };
       },
     };
 
@@ -110,7 +114,7 @@ describe("updateLandofileIncludes", () => {
     expect(report.entries).toEqual([
       {
         source: "github:acme/fragments/postgres.yml",
-        resolved: "abc123",
+        resolved: "a".repeat(40),
         checksum: sha256(fragment),
         status: "added",
       },
@@ -123,12 +127,16 @@ describe("updateLandofileIncludes", () => {
   test("leaves a matching fresh lock unchanged", async () => {
     const fragment = "services:\n  database:\n    type: postgres\n";
     const source = "github:acme/fragments/postgres.yml";
-    await writeFile(join(appRoot, ".lando.lock.yml"), lockfile(source, "abc123", sha256(fragment)), "utf8");
+    await writeFile(
+      join(appRoot, ".lando.lock.yml"),
+      lockfile(source, "a".repeat(40), sha256(fragment)),
+      "utf8",
+    );
     const gitCloner: GitIncludeCloner = {
       clone: async ({ stagingDir }) => {
         await mkdir(stagingDir, { recursive: true });
         await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-        return { commitSha: "abc123" };
+        return { commitSha: "a".repeat(40) };
       },
     };
 
@@ -145,14 +153,14 @@ describe("updateLandofileIncludes", () => {
   test("check mode reports drift without rewriting the lockfile", async () => {
     const fragment = "services:\n  database:\n    type: postgres\n";
     const source = "github:acme/fragments/postgres.yml";
-    const original = lockfile(source, "old123", "0".repeat(64));
+    const original = lockfile(source, "b".repeat(40), "0".repeat(64));
     const path = join(appRoot, ".lando.lock.yml");
     await writeFile(path, original, "utf8");
     const gitCloner: GitIncludeCloner = {
       clone: async ({ stagingDir }) => {
         await mkdir(stagingDir, { recursive: true });
         await writeFile(join(stagingDir, "postgres.yml"), fragment, "utf8");
-        return { commitSha: "new456" };
+        return { commitSha: "c".repeat(40) };
       },
     };
 
@@ -221,17 +229,20 @@ describe("updateLandofileIncludes", () => {
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
         sources: ["github:acme/one"],
-        deps: { gitCloner: clonerFor(fragOne, "new1", calls), publication: makeTestPublicationPort() },
+        deps: {
+          gitCloner: clonerFor(fragOne, "c".repeat(40), calls),
+          publication: makeTestPublicationPort(),
+        },
       }),
     );
 
     expect(report.requestedSources).toEqual(["github:acme/one"]);
     expect(report.entries.map((entry) => entry.source)).toEqual(["github:acme/one/postgres.yml"]);
-    expect(report.entries[0]?.resolved).toBe("new1");
+    expect(report.entries[0]?.resolved).toBe("c".repeat(40));
     expect(calls).toEqual(["https://github.com/acme/one.git"]);
     const written = await readFile(lockPath, "utf8");
     expect(written).toContain("source: github:acme/one/postgres.yml");
-    expect(written).toContain("resolved: new1");
+    expect(written).toContain(`resolved: ${"c".repeat(40)}`);
     expect(written).toContain("source: github:acme/two/postgres.yml");
     expect(written).toContain("resolved: old2");
   });
@@ -268,8 +279,12 @@ describe("updateLandofileIncludes", () => {
   test("--no-network resolves from cache without touching the network", async () => {
     const fragment = "services:\n  database:\n    type: postgres\n";
     const source = "github:acme/fragments/postgres.yml";
-    await writeFile(join(appRoot, ".lando.lock.yml"), lockfile(source, "abc123", sha256(fragment)), "utf8");
-    await seedGitCache("abc123", fragment);
+    await writeFile(
+      join(appRoot, ".lando.lock.yml"),
+      lockfile(source, "a".repeat(40), sha256(fragment)),
+      "utf8",
+    );
+    await seedGitCache("a".repeat(40), fragment);
     const calls: string[] = [];
     const throwingCloner: GitIncludeCloner = {
       clone: async ({ url }) => {
@@ -298,7 +313,11 @@ describe("updateLandofileIncludes", () => {
 
   test("--no-network with a missing cache artifact fails with remediation and no network", async () => {
     const source = "github:acme/fragments/postgres.yml";
-    await writeFile(join(appRoot, ".lando.lock.yml"), lockfile(source, "missing999", "a".repeat(64)), "utf8");
+    await writeFile(
+      join(appRoot, ".lando.lock.yml"),
+      lockfile(source, "d".repeat(40), "a".repeat(64)),
+      "utf8",
+    );
     const calls: string[] = [];
     const throwingCloner: GitIncludeCloner = {
       clone: async ({ url }) => {
@@ -360,7 +379,7 @@ describe("updateLandofileIncludes", () => {
       expect(exit._tag).toBe("Failure");
       if (exit._tag === "Failure") {
         const message = JSON.stringify(exit.cause);
-        expect(message).toContain("outside the include cache");
+        expect(message).toContain("LandofileLockMismatchError");
       }
     } finally {
       await rm(outsideRoot, { recursive: true, force: true });
@@ -375,7 +394,7 @@ describe("updateLandofileIncludes", () => {
     await writeFile(join(outsidePackage, "postgres.yml"), fragment, "utf8");
     await writeFile(
       join(appRoot, ".lando.lock.yml"),
-      lockfile(source, "../../../outside-npm", sha256(fragment)),
+      lockfile(`${source}/postgres.yml`, "../../../outside-npm", sha256(fragment)),
       "utf8",
     );
 
@@ -392,33 +411,33 @@ describe("updateLandofileIncludes", () => {
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
       const message = JSON.stringify(exit.cause);
-      expect(message).toContain("outside the include cache");
+      expect(message).toContain("LandofileLockMismatchError");
+      expect(message).toContain("exact npm package version");
     }
   });
 
-  test("--no-network composes with --check on a warm cache", async () => {
+  test("--no-network with --check rejects poisoned cached content", async () => {
     const fragment = "services:\n  database:\n    type: postgres\n";
     const source = "github:acme/fragments/postgres.yml";
     const lockPath = join(appRoot, ".lando.lock.yml");
-    const original = lockfile(source, "abc123", "0".repeat(64));
+    const original = lockfile(source, "a".repeat(40), "0".repeat(64));
     await writeFile(lockPath, original, "utf8");
-    await seedGitCache("abc123", fragment);
+    await seedGitCache("a".repeat(40), fragment);
 
-    const report = await Effect.runPromise(
-      updateLandofileIncludes({
-        landofile: { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
-        appRoot,
-        cacheRoot,
-        ports: makeTestLandofilePorts(cacheRoot),
-        noNetwork: true,
-        check: true,
-      }),
+    const error = await Effect.runPromise(
+      Effect.flip(
+        updateLandofileIncludes({
+          landofile: { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
+          appRoot,
+          cacheRoot,
+          ports: makeTestLandofilePorts(cacheRoot),
+          noNetwork: true,
+          check: true,
+        }),
+      ),
     );
 
-    expect(report.noNetwork).toBe(true);
-    expect(report.checkMode).toBe(true);
-    expect(report.drift).toBe(true);
-    expect(report.wrote).toBe(false);
+    expect(error._tag).toBe("LandofileLockMismatchError");
     expect(await readFile(lockPath, "utf8")).toBe(original);
   });
 });

@@ -7,7 +7,7 @@ tags: [beta, docs, mailpit, mailhog, service]
 
 # Add Mailpit
 
-Put `type: mailpit` in your services block. Lando routes the web UI so you can read captured SMTP:
+Add `type: mailpit` under `services` in `.lando.yml` to capture this app's outgoing mail. Lando gives the inbox a web URL:
 
 ```yaml
 name: mailpit-demo
@@ -71,14 +71,14 @@ services:
       - web
 ```
 
-Run `lando rebuild`, then send a message from `web`:
+Run `lando start`, then send a message from `web`:
 
 ```sh
 lando exec web -- php -r 'mail("you@example.test", "Mailpit check", "Hello from PHP");'
 lando info
 ```
 
-Open the inbox URL printed by `lando info` and check for the message. Only on selected services, Lando installs a pinned `msmtp` from a `snapshot.debian.org` snapshot matched to the PHP image's Debian family, then sets PHP's `sendmail_path`. Stock Lando PHP images are `bookworm`. A custom `image:` counts only when it is a canonical upstream `php:` tag ending in `-bookworm` or `-bullseye`; each family carries its own pin. If Lando can't prove a custom image's family, planning fails before any provider action instead of guessing. Use a canonical `php:` tag, or leave that service out with `mailFrom` (list the other services, or set `mailFrom: false`). Here, `worker` keeps its existing mail configuration. Duplicate names are removed in first-occurrence order. Unknown names and non-PHP targets fail planning before any provider action. An app with no PHP services needs no opt-out.
+Open the inbox URL printed by `lando info` and check for the message. For the PHP services selected by `mailFrom`, Lando installs a pinned `msmtp` from a `snapshot.debian.org` snapshot matched to the PHP image's Debian family, then sets PHP's `sendmail_path`. Stock Lando PHP images are `bookworm`. A custom `image:` counts only when it is a canonical upstream `php:` tag ending in `-bookworm` or `-bullseye`; each family carries its own pin. If Lando can't prove a custom image's family, planning fails before any provider action instead of guessing. Use a canonical `php:` tag, or leave that service out with `mailFrom` (list the other services, or set `mailFrom: false`). Here, `worker` keeps its existing mail configuration. Duplicate names are removed in first-occurrence order. Unknown names and non-PHP targets fail planning before any provider action. An app with no PHP services needs no opt-out.
 
 ## Open the UI
   <Scenario id="selected-php" render>
@@ -101,7 +101,9 @@ Open the inbox URL printed by `lando info` and check for the message. Only on se
 
 SMTP stays on `1025` unless you set `port:`. The UI stays on `8025`. Lando
 adds a default hostname route to that UI port; override `routes:` when you
-want a different URL.
+want a different URL. SMTP is the service's primary listener, but the route
+still lands on the UI because it's the only HTTP listener. `lando info` lists
+both as App Network connections, `tcp://inbox:1025` and `http://inbox:8025`.
 
 ## Replace MailHog
 

@@ -67,6 +67,7 @@ for (const status of ["running", "exited", "created"]) {
             service: ServiceName.make("ssh-agent"),
             containerId: "exact-container",
             status,
+            publications: { status: "unknown" },
           },
         ],
       });

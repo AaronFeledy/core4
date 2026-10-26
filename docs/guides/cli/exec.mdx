@@ -10,7 +10,7 @@ tags: [beta, docs, cli, exec]
 
 `lando exec` runs a one-off command inside a running service. At a terminal it doesn't attach your keyboard, so commands finish without waiting for input. Add `-i` when you want to type into the command. Piped or redirected input always reaches the command.
 
-A service name before `--` selects that service; otherwise the primary service is used. Everything after `--` is the exact argv handed to the service. The command spec is non-strict, so it parses no flags of its own past that point.
+Run these commands from your app directory on the host. A service name before `--` selects that service; otherwise Lando uses the primary service. Everything after `--` belongs to the command inside the service, including its flags. Replace `appserver`, the user, and the working directory with values from your app.
 
 ```sh
 lando exec -- echo hello world
@@ -35,9 +35,11 @@ The command gets a terminal only when your stdin and stdout are both terminals. 
 
 ## Back up and restore service files
 
-Redirected stdout is not a terminal, so `lando exec` allocates no PTY and writes raw bytes. Use that to archive a directory inside a service and land the archive on the host. `-C <path> .` stores the contents of that path, not a top-level folder named after it. The command still buffers the archive in memory for its result, so keep very large trees off this path. Binary output that is not valid UTF-8 is passed through unredacted. Always compress the archive (gzip or zstd): a plain `tar -cf -` of all-text files is valid UTF-8, so Lando redacts it and the archive is corrupt.
+Redirected stdout is not a terminal, so `lando exec` allocates no PTY and streams raw bytes without keeping a second copy in its result. Use that to archive a directory inside a service and land the archive on the host. `-C <path> .` stores the contents of that path, not a top-level folder named after it. Human formats mask only registered secret values, even across chunk boundaries. Uncompressed tar files and text assignments such as `PASSWORD=public` keep their bytes unless a registered value appears in them. Terminal and redirected output follow the same rule.
 
 These one-liners are for a POSIX shell (bash or zsh). PowerShell and cmd.exe are unverified.
+
+Warning: restoring into a non-empty target merges files and overwrites matching names. Files absent from the archive remain in the target. Move or empty the target first if you need an exact copy, and preserve any files you still need.
 
 ```sh
 lando exec appserver -- tar -czf - -C /app/web/sites/default/files . > files.tgz
@@ -59,8 +61,6 @@ Unverified: if the service image has `zstd`:
 lando exec appserver -- tar -c -I zstd -f - -C /app/web/sites/default/files . > files.tar.zst
 lando exec appserver -- tar -x -I zstd -f - -C /app/web/sites/default/files < files.tar.zst
 ```
-
-Warning: restore into a non-empty target merges and overwrites same-named files. Leftover files stay. Empty or move the target first when you want an exact copy.
 
 <Guide>
   <Scenario id="scaffold-and-start" render>
@@ -106,16 +106,20 @@ The fixture's `app` service is `node:22` and marked `primary: true`, so it is th
 
 ## Masked output
 
-Lando masks credentials in what `lando exec`, `lando logs`, and tooling print. A value from a service environment key named like a password, token, key, or secret prints as `[redacted]`, and so does the password in a connection URL. The service itself still gets the real value.
+Human modes for `lando exec`, tooling, and `lando run` mask only known secret values on the live byte stream. Pattern classes stay off that path so binary dumps keep their shape. `lando logs` and other structured surfaces still use the full secrets profile. The service itself still gets the real value.
 
-Lando's published default credentials, `lando` and `landolando`, print as-is. They're documented defaults, not secrets, and masking them would also blank `host.lando.internal` and every `lando doctor` hint. To keep a password masked, set your own or pull it from a [secret store](../config/secret-stores.mdx).
+Lando does not add its published defaults, `lando` and `landolando`, to the list of known secret values just because they appear under a sensitive configuration key. The same exception applies to a database password or root password that exactly matches its own user or database name. For example, with `creds: { user: magento, password: magento, database: magento }`, the word `magento` remains readable in package names and paths.
+
+These exceptions apply to values discovered from configuration, not values explicitly registered as secrets or resolved from a [secret store](../config/secret-stores.mdx). Those remain masked. Password fields in structured output, such as `lando info --format=json`, also remain masked.
 
 ## Machine-readable output
 
-`--format json` emits one JSON object per stdout/stderr chunk, then exactly one result frame:
+`--format json` emits newline-delimited JSON stream frames, then exactly one result frame:
 
 ```sh
 lando exec --format json -- <command>
 ```
 
-Each non-empty stdout chunk becomes one stdout frame tagged with the target service. A non-empty stderr chunk becomes one stderr frame the same way. An empty stream emits no frame for that stream. The stream always terminates with exactly one result frame carrying the app, service, command, exit code, stdout, and stderr.
+Each data frame carries a complete line of stdout or stderr, or up to 64 KiB when a line is longer. Registered values are masked on bytes first, including across frames. Invalid UTF-8 becomes the replacement character, then the full secrets profile masks the decoded text. A partial final line is emitted at end of stream. Pattern matching restarts at each 64 KiB fragment; the registered-value matcher does not.
+
+An empty stream emits no data frames. Exactly one result frame follows the data, carrying the app, service, command, and exit code. Its stdout and stderr are empty because the data frames already delivered them. YAML and library calls without a live sink collect stdout and stderr in the result instead; that uses memory proportional to the output.

@@ -2,11 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Context, Effect, Queue, Schema, Stream } from "effect";
 
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { EventService, type EventServiceShape, type LandoEvent, Renderer } from "@lando/sdk/services";
@@ -43,17 +39,13 @@ const makeHarness = (): Harness => {
       error: (body: string) => Effect.sync(() => output.push(body)),
     },
     output: {
-      stdout: (chunk: string) => Effect.sync(() => output.push(chunk)),
-      stderr: (chunk: string) => Effect.sync(() => output.push(chunk)),
+      stdout: (chunk: string | Uint8Array) =>
+        Effect.sync(() => output.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk))),
+      stderr: (chunk: string | Uint8Array) =>
+        Effect.sync(() => output.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk))),
     },
   } satisfies Context.Service.Shape<typeof Renderer>;
-  const redaction = {
-    registerValues: registerRedactionValues,
-    forProfile: (
-      profile: "secrets" | "telemetry" | "transcript",
-      options?: Parameters<typeof createStandaloneRedactor>[1],
-    ) => Effect.succeed(createStandaloneRedactor(profile, options)),
-  } satisfies Context.Service.Shape<typeof RedactionService>;
+  const redaction = makeRedactionService();
   return {
     output,
     context: Context.make(Context.Service<unknown>("test/runtime"), {}).pipe(
@@ -241,7 +233,7 @@ describe("event command executor regressions", () => {
       expect(embedded.exitCode).toBe(17);
       expect(process.exitCode).toBe(73);
     } finally {
-      process.exitCode = previousExitCode;
+      process.exitCode = previousExitCode ?? 0;
     }
   });
 });

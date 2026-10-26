@@ -23,7 +23,6 @@ const makePlan = (): AppPlan =>
       provider: ProviderId.make("test"),
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: {
@@ -58,6 +57,27 @@ const makeRuntimeContext = (id: string, load: ExecutableCommandLoader): Context.
   });
 
 describe("resolveEventCommandTarget", () => {
+  for (const [name, yes] of [
+    ["string type", { type: "string" }],
+    ["automatic confirmation", { type: "boolean", default: true }],
+    ["multiple", { type: "boolean", multiple: false }],
+    ["parser", { type: "boolean", parse: (value: string) => value }],
+    ["options", { type: "boolean", options: [] }],
+    ["required", { type: "boolean", required: false }],
+    ["value type", { type: "boolean", valueType: "string" }],
+  ] as const) {
+    test(`rejects a reserved yes declaration with ${name}`, async () => {
+      // Given
+      const spec = { ...makePluginSpec(), flags: { yes } };
+      const context = makeRuntimeContext(spec.id, async () => spec);
+      // When
+      const exit = await Effect.runPromiseExit(resolveEventCommandTarget(spec.id, context, []));
+      // Then
+      const error = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+      expect(error).toBeInstanceOf(PluginDescriptorMismatchError);
+    });
+  }
+
   test("preserves normalization failure tags instead of creating a fallback declaration", async () => {
     // Given
     const task = Schema.decodeUnknownSync(ToolingTaskShape)({
@@ -221,12 +241,14 @@ describe("resolveEventCommandTarget", () => {
         "namespace=db",
         "bootstrap=valid",
         "resultSchema=schema",
+        "flags.yes=absent-or-optional-boolean-default-false",
       ]);
       expect(error.provided).toEqual([
         "id=db:ship",
         "namespace=wrong",
         "bootstrap=bogus",
         "resultSchema=non-schema",
+        "flags.yes=absent",
       ]);
     }
   });

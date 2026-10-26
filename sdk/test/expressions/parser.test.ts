@@ -71,6 +71,8 @@ const helperCases: ReadonlyArray<{
   { callee: "startsWith", suffix: '("pre")', expectedArgs: 2 },
   { callee: "endsWith", suffix: '("post")', expectedArgs: 2 },
   { callee: "lower", suffix: "", expectedArgs: 1 },
+  { callee: "number", suffix: "", expectedArgs: 1 },
+  { callee: "boolean", suffix: "", expectedArgs: 1 },
   { callee: "upper", suffix: "", expectedArgs: 1 },
   { callee: "trim", suffix: "", expectedArgs: 1 },
   { callee: "split", suffix: '(",")', expectedArgs: 2 },

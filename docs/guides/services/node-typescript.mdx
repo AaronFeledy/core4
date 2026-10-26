@@ -158,10 +158,10 @@ services:
 
 The sample handles SIGTERM so the server can stop cleanly when it runs as the container's main process.
 
-Rebuild after you change `command:`:
+Start after you change `command:`:
 
 ```sh
-lando rebuild -y
+lando start
 lando info
 ```
 
@@ -232,5 +232,7 @@ lando destroy -y
 ## Keep developing with Node
 
 - [Add Node.js](./node.mdx) for version inference, `globals`, and `packageRoot`
+- [Run Playwright end-to-end tests against your app](./node-playwright.mdx) for browser tests from an `e2e` service
 - [Run the Node API recipe](../recipes/node-api-workflow.mdx) when you want Express, Fastify, or Hono with an optional database
+- [Run a TanStack Start app on Postgres](./node-tanstack-start.mdx) for a full-stack React app with Drizzle and a server function
 - [Start a Node app with environment expressions](/recipes/node-ts/) for a Landofile that reads `LANDO_NODE_VERSION` and `NODE_ENV`

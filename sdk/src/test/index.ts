@@ -28,6 +28,11 @@ export {
   runProviderContractMatrix,
 } from "./provider-contract.ts";
 export * from "./provider-data-plane.ts";
+export { runProviderVolumeCreationContract } from "./provider-volume-creation.ts";
+export {
+  type ProviderStartRetentionHooks,
+  runProviderStartRetentionContract,
+} from "./provider-start-retention.ts";
 export * from "./service-contract.ts";
 export * from "./file-sync-contract.ts";
 export * from "./network-service-fixtures.ts";
@@ -44,6 +49,7 @@ export * from "./doctor-tooling-plugin-source.ts";
 export * from "./http-client-contract.ts";
 export * from "./renderer-panel-protocol.ts";
 export * from "./renderer-panel-contract.ts";
+export * from "./renderer-contract.ts";
 /**
  * collectImportBoundaryViolations arguments:
  * - packageRoot: plugin package directory (has package.json + src/).

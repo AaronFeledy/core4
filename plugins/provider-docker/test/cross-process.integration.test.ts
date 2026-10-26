@@ -3,7 +3,7 @@ import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DateTime, Effect, Stream } from "effect";
+import { DateTime, Effect, Schema, Stream } from "effect";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
@@ -57,6 +57,7 @@ const web: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Cross Process App",
   slug: "crossprocessapp",
@@ -64,7 +65,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -84,10 +84,35 @@ const makeFakeApi = () => {
   const existing = new Set<string>();
   const running = new Set<string>();
   const images = new Set<string>();
+  const labels = new Map<string, Readonly<Record<string, string>>>();
+  const networks = new Map<
+    string,
+    { readonly Id: string; readonly Name: string; readonly Labels: Readonly<Record<string, string>> }
+  >();
+  const resolveContainer = (ref: string) =>
+    [...existing].find((name) => name === ref || `id-${name}` === ref) ?? ref;
   const calls: DockerHttpRequest[] = [];
 
-  const responseFor = (method: string, path: string): DockerHttpResponse => {
-    if (path === "/networks/create") return { status: 201, body: "" };
+  const responseFor = ({ method, path, body }: DockerHttpRequest): DockerHttpResponse => {
+    if (path === "/networks/create") {
+      const created = Schema.decodeUnknownSync(
+        Schema.Struct({
+          Name: Schema.String,
+          Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+        }),
+      )(body);
+      const network = { Id: `id-${created.Name}`, Name: created.Name, Labels: created.Labels ?? {} };
+      networks.set(created.Name, network);
+      return { status: 201, body: JSON.stringify({ Id: network.Id }) };
+    }
+    if (path.startsWith("/networks/") && (method === "GET" || method === "DELETE")) {
+      const ref = decodeURIComponent(path.slice("/networks/".length));
+      const network = [...networks.values()].find((entry) => entry.Name === ref || entry.Id === ref);
+      if (network === undefined) return { status: 404, body: "" };
+      if (method === "GET") return { status: 200, body: JSON.stringify(network) };
+      networks.delete(network.Name);
+      return { status: 204, body: "" };
+    }
     if (method === "POST" && path.startsWith("/networks/") && path.endsWith("/connect")) {
       return { status: 200, body: "" };
     }
@@ -112,12 +137,13 @@ const makeFakeApi = () => {
       return { status: 200, body: '{"status":"Pull complete"}\n' };
     }
     if (method === "GET" && path.startsWith("/containers/") && path.endsWith("/json")) {
-      const name = decodeURIComponent(path.slice("/containers/".length, -"/json".length));
+      const name = resolveContainer(decodeURIComponent(path.slice("/containers/".length, -"/json".length)));
       if (!existing.has(name)) return { status: 404, body: "" };
       return {
         status: 200,
         body: JSON.stringify({
           Id: `id-${name}`,
+          Config: { Labels: labels.get(name) },
           State: { Running: running.has(name), Status: running.has(name) ? "running" : "created" },
         }),
       };
@@ -125,7 +151,12 @@ const makeFakeApi = () => {
     if (method === "POST" && path.startsWith("/containers/create?")) {
       const created = new URL(`http://localhost${path}`).searchParams.get("name") ?? "";
       existing.add(created);
-      return { status: 201, body: "" };
+      labels.set(
+        created,
+        Schema.decodeUnknownSync(Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }))(body)
+          .Labels,
+      );
+      return { status: 201, body: JSON.stringify({ Id: `id-${created}` }) };
     }
     if (method === "POST" && path.endsWith("/start") && path.startsWith("/containers/")) {
       const name = decodeURIComponent(path.slice("/containers/".length, -"/start".length));
@@ -139,17 +170,19 @@ const makeFakeApi = () => {
       return { status: 200, body: JSON.stringify({ ExitCode: 0 }) };
     }
     if (method === "POST" && path.endsWith("/stop") && path.startsWith("/containers/")) {
-      const name = decodeURIComponent(path.slice("/containers/".length, -"/stop".length));
+      const name = resolveContainer(decodeURIComponent(path.slice("/containers/".length, -"/stop".length)));
       running.delete(name);
       return existing.has(name) ? { status: 204, body: "" } : { status: 404, body: "" };
     }
     if (method === "DELETE" && path.startsWith("/containers/")) {
-      const name = decodeURIComponent(path.slice("/containers/".length).split("?")[0] ?? "");
+      const name = resolveContainer(
+        decodeURIComponent(path.slice("/containers/".length).split("?")[0] ?? ""),
+      );
       const deleted = existing.delete(name);
+      labels.delete(name);
       running.delete(name);
       return { status: deleted ? 204 : 404, body: "" };
     }
-    if (method === "DELETE" && path.startsWith("/networks/")) return { status: 204, body: "" };
     return { status: 500, body: `unexpected ${method} ${path}` };
   };
 
@@ -157,12 +190,12 @@ const makeFakeApi = () => {
     info: Effect.succeed({}),
     request: (input) => {
       calls.push(input);
-      return Effect.succeed(responseFor(input.method, input.path));
+      return Effect.succeed(responseFor(input));
     },
     stream: (input) => {
       calls.push(input);
       if (input.method === "POST" && input.path.startsWith("/images/create?")) {
-        responseFor(input.method, input.path);
+        responseFor(input);
       }
       return Stream.empty;
     },

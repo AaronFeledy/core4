@@ -8,10 +8,11 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema
 import { AppPlanner, FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { loadGlobalPlan } from "../../src/operations/global-plan.ts";
-import { MANAGED_PROVIDER_ID } from "../../src/providers/managed.ts";
+import { HostProviderOverride } from "../../src/providers/host-provider.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
-describe("loadGlobalPlan managed provider", () => {
-  test("plans the global app on the Lando-managed provider even with leftover docker config", async () => {
+describe("loadGlobalPlan host provider", () => {
+  test("plans the global app on the selected host provider", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-796-plan-data-"));
     try {
       const globalRoot = join(dataRoot, "global");
@@ -22,6 +23,7 @@ describe("loadGlobalPlan managed provider", () => {
       const selected: Array<string | undefined> = [];
       const planned: Array<string | undefined> = [];
       const layer = Layer.mergeAll(
+        makeTestStateStore().layer,
         Layer.succeed(
           FileSystem,
           FileSystem.of({
@@ -45,6 +47,7 @@ describe("loadGlobalPlan managed provider", () => {
           GlobalAppService,
           GlobalAppService.of({
             id: "global",
+            providerId: Effect.succeed(ProviderId.make("docker")),
             root: Effect.succeed(AbsolutePath.make(globalRoot)),
             ensureRoot: Effect.void,
             paths: Effect.succeed({
@@ -59,11 +62,14 @@ describe("loadGlobalPlan managed provider", () => {
             ensureRunning: () => Effect.succeed([]),
             regenerateDist: () =>
               Effect.succeed({ path: AbsolutePath.make(distPath), status: "unchanged", serviceIds: [] }),
-          } as never),
+          }),
         ),
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            appliedPlansFor: () => Effect.succeed([]),
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
             capabilities: Effect.succeed({} as never),
             select: (plan) => {
@@ -80,16 +86,18 @@ describe("loadGlobalPlan managed provider", () => {
           AppPlanner.of({
             plan: (landofile) =>
               Effect.sync(() => {
-                planned.push(landofile.provider === undefined ? undefined : String(landofile.provider));
+                planned.push(
+                  landofile.document.provider === undefined ? undefined : String(landofile.document.provider),
+                );
                 return {
                   id: AppId.make("global"),
                   name: "global",
                   slug: "global",
                   root: AbsolutePath.make(globalRoot),
-                  provider: landofile.provider ?? ProviderId.make("docker"),
+                  provider: landofile.document.provider ?? ProviderId.make("docker"),
+                  valueModel: 1 as const,
                   services: {},
                   routes: [],
-                  networks: [],
                   stores: [],
                   fileSync: [],
                   metadata: {
@@ -104,14 +112,19 @@ describe("loadGlobalPlan managed provider", () => {
         ),
       );
 
-      const loaded = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(layer)));
+      const loaded = await Effect.runPromise(
+        loadGlobalPlan().pipe(
+          Effect.provide(layer),
+          Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+        ),
+      );
       expect(loaded.materialized).toBe(true);
       if (loaded.materialized) {
-        expect(String(loaded.plan.provider)).toBe("lando");
-        expect(String(loaded.landofile.provider)).toBe(String(MANAGED_PROVIDER_ID));
+        expect(String(loaded.plan.provider)).toBe("docker");
+        expect(String(loaded.landofile.document.provider)).toBe("docker");
       }
-      expect(selected).toEqual(["lando"]);
-      expect(planned).toEqual(["lando"]);
+      expect(selected).toEqual(["docker"]);
+      expect(planned).toEqual(["docker"]);
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
     }

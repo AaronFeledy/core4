@@ -1,15 +1,32 @@
 import { Schema } from "effect";
 
+import { ValidationIssue } from "../schema/validation-issue.ts";
+
+const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
+
+/**
+ * A service type rejected the service's configuration while resolving it.
+ * `issues` names the offending fields with paths relative to that service's
+ * own config (`["environment", "PGPORT"]`, not `["services", "db", ...]`);
+ * the planner places them under `services.<name>`. Without issues the
+ * failure is reported against the whole service.
+ */
 export class ServiceTypeError extends Schema.TaggedError<ServiceTypeError>()("ServiceTypeError", {
   message: Schema.String,
   serviceType: Schema.String,
   cause: Schema.optional(Schema.Unknown),
+  issues: Schema.optional(Schema.Array(ValidationIssue)).annotate({
+    description:
+      "Offending fields with paths relative to the service's own config; absent or empty means the whole service.",
+  }),
+  remediation: Remediation,
 }) {}
 
 export class ServiceFeatureError extends Schema.TaggedError<ServiceFeatureError>()("ServiceFeatureError", {
   message: Schema.String,
   feature: Schema.String,
   cause: Schema.optional(Schema.Unknown),
+  remediation: Remediation,
 }) {}
 
 /**
@@ -24,7 +41,7 @@ export class ServiceTypeCollisionError extends Schema.TaggedError<ServiceTypeCol
     message: Schema.String,
     serviceType: Schema.String,
     chain: Schema.Array(Schema.String),
-    remediation: Schema.optional(Schema.String),
+    remediation: Remediation,
   },
 ) {}
 
@@ -38,7 +55,7 @@ export class AppFeatureSelectorMatchedNothingError extends Schema.TaggedError<Ap
   {
     message: Schema.String,
     feature: Schema.String,
-    remediation: Schema.optional(Schema.String),
+    remediation: Remediation,
   },
 ) {}
 
@@ -56,7 +73,7 @@ export class AppFeatureMutationConflictError extends Schema.TaggedError<AppFeatu
     field: Schema.String,
     existing: Schema.optional(Schema.Unknown),
     incoming: Schema.optional(Schema.Unknown),
-    remediation: Schema.optional(Schema.String),
+    remediation: Remediation,
   },
 ) {}
 
@@ -68,7 +85,7 @@ export class AppFeatureMutationConflictError extends Schema.TaggedError<AppFeatu
 export class AppFeatureCycleError extends Schema.TaggedError<AppFeatureCycleError>()("CycleDetected", {
   message: Schema.String,
   cycle: Schema.Array(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Remediation,
 }) {}
 
 /**
@@ -77,7 +94,7 @@ export class AppFeatureCycleError extends Schema.TaggedError<AppFeatureCycleErro
  */
 export class PhpMyAdminHostsCredsError extends Schema.TaggedError<PhpMyAdminHostsCredsError>()(
   "PhpMyAdminHostsCredsError",
-  { message: Schema.String, feature: Schema.String, remediation: Schema.String },
+  { message: Schema.String, feature: Schema.String, remediation: Remediation },
 ) {}
 
 /**
@@ -87,7 +104,7 @@ export class PhpMyAdminHostsCredsError extends Schema.TaggedError<PhpMyAdminHost
  */
 export class MailpitMsmtpBaseFamilyError extends Schema.TaggedError<MailpitMsmtpBaseFamilyError>()(
   "MailpitMsmtpBaseFamilyError",
-  { message: Schema.String, feature: Schema.String, remediation: Schema.String },
+  { message: Schema.String, feature: Schema.String, remediation: Remediation },
 ) {}
 
 export type AppFeatureError =
@@ -109,7 +126,7 @@ export class HomePathCapabilityError extends Schema.TaggedError<HomePathCapabili
     service: Schema.String,
     serviceType: Schema.String,
     user: Schema.optional(Schema.String),
-    remediation: Schema.String,
+    remediation: Remediation,
   },
 ) {}
 
@@ -129,6 +146,6 @@ export class DataTreeOwnershipCapabilityError extends Schema.TaggedError<DataTre
     /** Fully qualified Landofile key the author has to change. */
     option: Schema.String,
     user: Schema.optional(Schema.String),
-    remediation: Schema.String,
+    remediation: Remediation,
   },
 ) {}

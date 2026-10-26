@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const DJANGO_RECIPE_VERSION = "0.1.0";
 export const DJANGO_CONTENT_DIGEST =
-  "sha256:d225c00e3555519cbaa3294a9ec84c7d60e2007e1f8205c4392ef4639d9faa9a";
+  "sha256:a38a3b61a2b74402b00ab37c4965c600bbde56629b3ec9a7280410b8c531b3c5";
 export const djangoProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-django",
@@ -26,7 +26,7 @@ const environment = (): ExpressionNode =>
     [
       "DATABASE_URL",
       lit(
-        "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+        "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
       ),
     ],
     ["REDIS_URL", lit("redis://cache:6379")],

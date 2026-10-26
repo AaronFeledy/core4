@@ -1,14 +1,10 @@
 import { expect, test } from "bun:test";
 import { runTooling } from "@lando/engine/operations/tooling";
-import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
+import { withProjectEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { configTranslators } from "@lando/lando3";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -33,6 +29,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+import { currentTestPlan, environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";
 
 /**
  * A converted Lando 3 app runs its tooling brackets through the real Lando 4
@@ -110,7 +107,7 @@ const run = (landofile: LandofileShape, failOn?: string) => {
     executed.push(label);
     return label === failOn ? 7 : 0;
   };
-  const plan: AppPlan = {
+  const basePlan: AppPlan = {
     id: AppId.make("brackets"),
     name: "brackets",
     slug: "brackets",
@@ -121,14 +118,15 @@ const run = (landofile: LandofileShape, failOn?: string) => {
       [ServiceName.make("node")]: service("node"),
     },
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     metadata,
     extensions: {},
   };
-  attachEffectiveTooling(plan, landofile.tooling ?? {});
-  attachEffectiveEvents(plan, landofile.events ?? {});
+  const plan = attachEffectiveTooling(
+    withProjectEvents(basePlan, landofile.events ?? {}),
+    landofile.tooling ?? {},
+  );
   const provider = {
     ...TestRuntimeProvider,
     execStream: (target: ExecTarget, spec: CommandSpec) =>
@@ -137,13 +135,7 @@ const run = (landofile: LandofileShape, failOn?: string) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
     LandoEventService.layer,
-    Layer.succeed(
-      RedactionService,
-      RedactionService.of({
-        registerValues: registerRedactionValues,
-        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-      }),
-    ),
+    Layer.succeed(RedactionService, makeRedactionService()),
     Layer.succeed(PrivateFileAccessService, PrivateFileAccessService.of(ownerOnlyFileAccess)),
     Layer.succeed(
       ToolingEngine,
@@ -162,8 +154,12 @@ const run = (landofile: LandofileShape, failOn?: string) => {
           }),
       }),
     ),
-    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    environmentResolverLayer(),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed(literalLandofile(landofile, plan.root)) }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
     Layer.succeed(
       ConfigService,
       ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
@@ -171,6 +167,9 @@ const run = (landofile: LandofileShape, failOn?: string) => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer, Option, Stream } from "effect";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
@@ -16,7 +12,8 @@ import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations
 const identityRedaction = Layer.succeed(
   RedactionService,
   RedactionService.of({
-    registerValues: registerRedactionValues,
+    ...makeRedactionService(),
+    payloadValues: () => Effect.succeed(() => []),
     forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
   }),
 );
@@ -64,37 +61,37 @@ describe("collectExecStream binary frames", () => {
     expect(concat(frames.filter((frame) => frame._tag === "stderr").map((frame) => frame.chunk))).toEqual(
       new Uint8Array([0x00, 0xff]),
     );
-    expect(frames.every((frame) => frame.raw === true)).toBe(true);
+    expect(frames.every((frame) => frame.kind === "bytes")).toBe(true);
   });
 
-  test("flushes the sink after the provider stream ends", async () => {
+  test("does not finish a supplied sink after the provider stream ends", async () => {
     // Given
     let flushed = 0;
-    const sink = StreamFrameSink.of({
+    const sink = {
       emit: () => Effect.void,
       flush: () =>
         Effect.sync(() => {
           flushed += 1;
         }),
-    });
+    };
 
     // When
     await Effect.runPromise(collectExecStream(Stream.fromIterable([{ exitCode: 0 }]), Option.some(sink)));
 
     // Then
-    expect(flushed).toBe(1);
+    expect(flushed).toBe(0);
   });
 
-  test("flushes the sink when the provider stream fails", async () => {
+  test("does not finish a supplied sink when the provider stream fails", async () => {
     // Given
     let flushed = 0;
-    const sink = StreamFrameSink.of({
+    const sink = {
       emit: () => Effect.void,
       flush: () =>
         Effect.sync(() => {
           flushed += 1;
         }),
-    });
+    };
 
     // When
     const exit = await Effect.runPromiseExit(
@@ -103,14 +100,14 @@ describe("collectExecStream binary frames", () => {
 
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(flushed).toBe(1);
+    expect(flushed).toBe(0);
   });
 
   test("writes held UTF-8 bytes when the provider stream fails", async () => {
     // Given: abc plus an unfinished 3-byte sequence, then the stream fails.
     const io = createBufferedRendererIO();
     const input = new Uint8Array([0x61, 0x62, 0x63, 0xe2, 0x82]);
-    const layer = RendererOutput.layerStreamFrameSink("text", io).pipe(
+    const layer = RendererOutput.layerStreamFrameSink("text").pipe(
       Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), identityRedaction)),
     );
 
@@ -130,5 +127,50 @@ describe("collectExecStream binary frames", () => {
     // Then: flush still writes the held tail so abc E2 82 is not truncated to abc.
     expect(Exit.isFailure(exit)).toBe(true);
     expect(io.stdoutBytes()).toEqual(input);
+  });
+
+  test("does not collect stdout or stderr when a live sink is present", async () => {
+    // Given
+    const frames: StreamFrameSinkFrame[] = [];
+    const sink = StreamFrameSink.of({
+      emit: (frame) => Effect.sync(() => frames.push(frame)),
+    });
+    const text = new TextEncoder().encode("hello");
+
+    // When
+    const result = await Effect.runPromise(
+      collectExecStream(
+        Stream.fromIterable([
+          { kind: "stdout" as const, chunk: text },
+          { kind: "stderr" as const, chunk: text },
+          { exitCode: 0 },
+        ]),
+        Option.some(sink),
+      ),
+    );
+
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+    expect(frames).toHaveLength(2);
+  });
+
+  test("collects stdout and stderr when no sink is present", async () => {
+    // Given
+    const text = new TextEncoder().encode("hello");
+
+    // When
+    const result = await Effect.runPromise(
+      collectExecStream(
+        Stream.fromIterable([
+          { kind: "stdout" as const, chunk: text },
+          { kind: "stderr" as const, chunk: new TextEncoder().encode("err") },
+          { exitCode: 0 },
+        ]),
+        Option.none(),
+      ),
+    );
+
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "hello", stderr: "err" });
   });
 });

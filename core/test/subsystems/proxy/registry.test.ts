@@ -38,6 +38,7 @@ const service = (id: string): RouterServiceShape =>
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
     setup: () => Effect.void,
     revalidateStartup: Effect.void,
+    observeRoutes: () => Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
     applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
     removeRoutes: () => Effect.void,
     status: Effect.succeed({ state: "running", authorities: [], configuredApps: [] }),
@@ -184,6 +185,7 @@ describe("RouterService registry selection", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       expect(result.failure).toBeInstanceOf(ProxyError);
+      if (!(result.failure instanceof ProxyError)) throw result.failure;
       expect(result.failure.proxyId).toBe("missing");
       expect(result.failure.message).toBe("Router service missing is not installed.");
     }
@@ -318,6 +320,8 @@ describe("RouterService registry selection", () => {
               new ProxyError({
                 message: "selection must not run",
                 proxyId: "unavailable",
+                remediation:
+                  "Install or repair the `unavailable` router plugin and ensure `defaultRouterService` points at an installed id.",
               }),
             ),
         },

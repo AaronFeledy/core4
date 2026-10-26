@@ -16,11 +16,11 @@ const doctorCheckFrameLine = (payload: Record<string, unknown>): string =>
   Effect.runSync(encodeStreamEventFrame({ event: "doctor.check", payload, redactor: identityRedactor }));
 
 const appConfigCheckLine = (result: ConfigLintResult): string => {
-  const warnings = result.warnings ?? [];
+  const warnings = result.violations.filter((issue) => issue.severity === "warning");
   return doctorCheckFrameLine({
     _tag: "doctor.check",
     name: "app-config-lint",
-    status: result.valid ? "pass" : "fail",
+    status: result.valid ? (warnings.length > 0 ? "warn" : "pass") : "fail",
     severity: result.valid ? (warnings.length > 0 ? "warn" : "info") : "error",
     context: {
       file: result.file,
@@ -29,7 +29,6 @@ const appConfigCheckLine = (result: ConfigLintResult): string => {
       warnings: String(warnings.length),
     },
     violations: result.violations,
-    warnings,
   });
 };
 
@@ -73,6 +72,10 @@ export const renderDoctorReportAsNdjson = (
   const timestamp = DateTime.formatIso(instant);
   const now = DateTime.toDateUtc(instant);
   const lines: string[] = [];
+  if (report.globalConfig !== undefined)
+    lines.push(doctorCheckFrameLine({ name: "global-config", ...report.globalConfig }));
+  for (const skipped of report.skipped ?? [])
+    lines.push(doctorCheckFrameLine({ name: skipped.section, ...skipped }));
   lines.push(
     ...checkLinesFromNdjson(renderDoctorResultAsNdjson(report.provider, { now })),
     ...checkLinesFromNdjson(renderSubsystemDoctorResultAsNdjson(report.subsystems, { now })),
@@ -98,7 +101,7 @@ export const renderDoctorReportAsNdjson = (
   ];
   const deprecationsCheckCount = report.deprecations === undefined ? 0 : 1;
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
-  const appConfigWarned = report.appConfig?.valid === true && (report.appConfig.warnings?.length ?? 0) > 0;
+  const appConfigWarned = report.appConfig?.violations.some((issue) => issue.severity === "warning") === true;
   const summary = {
     timestamp,
     checks:

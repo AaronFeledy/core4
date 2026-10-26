@@ -60,7 +60,7 @@ describe("resolveLiveProviderSocket", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  test("returns undefined when neither override nor managed socket exists", () => {
+  test("returns undefined when the override is unset", () => {
     process.env.LANDO_USER_DATA_ROOT = dir;
     expect(resolveLiveProviderSocket()).toBeUndefined();
     expect(hasLiveProviderSocket()).toBe(false);
@@ -76,17 +76,17 @@ describe("resolveLiveProviderSocket", () => {
     expect(hasLiveProviderSocket()).toBe(true);
   });
 
-  test("falls back to the managed Paths socket when the override is unset", async () => {
+  test("ignores a live managed socket when the override is unset", async () => {
     process.env.LANDO_USER_DATA_ROOT = dir;
     const managedSocketPath = makeLandoPaths().providerSocketPath;
     await mkdir(join(dir, "runtime", "run"), { recursive: true });
     servers.push(await listenOnSocket(managedSocketPath));
 
-    expect(resolveLiveProviderSocket()).toEqual({ socketPath: managedSocketPath, source: "paths" });
-    expect(hasLiveProviderSocket()).toBe(true);
+    expect(resolveLiveProviderSocket()).toBeUndefined();
+    expect(hasLiveProviderSocket()).toBe(false);
   });
 
-  test("ignores the override when it points at a non-socket path and falls back to Paths", async () => {
+  test("ignores a non-socket override even when the managed socket answers", async () => {
     process.env.LANDO_USER_DATA_ROOT = dir;
     const regularFile = join(dir, "not-a-socket");
     await writeFile(regularFile, "");
@@ -96,7 +96,7 @@ describe("resolveLiveProviderSocket", () => {
     await mkdir(join(dir, "runtime", "run"), { recursive: true });
     servers.push(await listenOnSocket(managedSocketPath));
 
-    expect(resolveLiveProviderSocket()).toEqual({ socketPath: managedSocketPath, source: "paths" });
+    expect(resolveLiveProviderSocket()).toBeUndefined();
   });
 
   test("ignores an empty override", async () => {
@@ -124,7 +124,7 @@ describe("resolveLiveProviderSocket", () => {
     expect(hasLiveProviderSocket()).toBe(false);
   });
 
-  test("falls through to a live managed socket when the override is dead", async () => {
+  test("ignores a live managed socket when the override is dead", async () => {
     process.env.LANDO_USER_DATA_ROOT = dir;
     const overridePath = join(dir, "dead-override.sock");
     await makeStaleSocket(join(dir, "listening.sock"), overridePath);
@@ -134,7 +134,7 @@ describe("resolveLiveProviderSocket", () => {
     await mkdir(join(dir, "runtime", "run"), { recursive: true });
     servers.push(await listenOnSocket(managedSocketPath));
 
-    expect(resolveLiveProviderSocket()).toEqual({ socketPath: managedSocketPath, source: "paths" });
+    expect(resolveLiveProviderSocket()).toBeUndefined();
   });
 
   test("keeps override precedence when both the override and the managed socket answer", async () => {
@@ -166,10 +166,11 @@ describe("resolveLiveProviderSocket", () => {
     const managedSocketPath = makeLandoPaths().providerSocketPath;
     await mkdir(join(dir, "runtime", "run"), { recursive: true });
     servers.push(await listenOnSocket(managedSocketPath));
+    process.env[LANDO_TEST_PODMAN_SOCKET_ENV] = managedSocketPath;
 
     const spawnSync = spyOn(Bun, "spawnSync");
     try {
-      expect(resolveLiveProviderSocket()).toEqual({ socketPath: managedSocketPath, source: "paths" });
+      expect(resolveLiveProviderSocket()).toEqual({ socketPath: managedSocketPath, source: "env" });
       expect(spawnSync).toHaveBeenCalledTimes(1);
     } finally {
       spawnSync.mockRestore();

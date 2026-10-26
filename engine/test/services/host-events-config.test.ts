@@ -5,12 +5,15 @@ import { join } from "node:path";
 
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
 import { isExcludedFromUserAppDefaults } from "../../src/planner/app-defaults.ts";
-import { layer, loadGlobalConfigSync, typoWarningsForConfig } from "../../src/services/config.ts";
+import { GlobalConfigSnapshot, layer } from "../../src/services/config.ts";
+
+const loadGlobalConfigSync = () =>
+  Effect.runSync(Effect.flatMap(ConfigService, (service) => service.load).pipe(Effect.provide(layer)));
 
 const previous = new Map<string, string>();
 
@@ -107,8 +110,10 @@ describe("config.yml hostEvents load", () => {
       () => {
         const parsed = parseMinimalYaml('userDataRoot: "C:\\temp\\new"\n');
         expect(String(parsed.userDataRoot)).toMatch(/\t|\n/);
-        const loaded = loadGlobalConfigSync();
-        const warnings = typoWarningsForConfig(loaded);
+        const snapshot = Effect.runSync(
+          Effect.flatMap(GlobalConfigSnapshot, Effect.succeed).pipe(Effect.provide(layer)),
+        );
+        const warnings = snapshot.warnings;
         expect(warnings.some((warning) => warning.includes("userDataRoot"))).toBe(true);
         expect(warnings.some((warning) => warning.includes("control characters"))).toBe(true);
       },
@@ -123,12 +128,16 @@ describe("config.yml hostEvents load", () => {
           'hostEvent:\n  pre-start:\n    - cmd: echo host\n      service: ":host"\n',
         ),
       () => {
-        const loaded = loadGlobalConfigSync();
-        expect(loaded.hostEvents).toBeUndefined();
-        const warnings = typoWarningsForConfig(loaded);
+        const snapshot = Effect.runSync(
+          Effect.flatMap(GlobalConfigSnapshot, Effect.succeed).pipe(Effect.provide(layer)),
+        );
+        expect(snapshot.config.hostEvents).toBeUndefined();
+        const warnings = snapshot.warnings;
         expect(warnings.some((warning) => warning.includes('Unknown config.yml key "hostEvent"'))).toBe(true);
         expect(warnings.some((warning) => warning.includes("hostEvents"))).toBe(true);
-        expect(typoWarningsForConfig(loaded)).toEqual(warnings);
+        expect(Effect.runSync(snapshot.takeWarnings)).toEqual(warnings);
+        expect(Effect.runSync(snapshot.takeWarnings)).toEqual([]);
+        expect(snapshot.warnings).toEqual(warnings);
       },
     );
   });
@@ -163,13 +172,18 @@ test("config load is fail-loud for hostEvents and still returns Effect failures"
   await withConfRoot(
     (dir) => writeFile(join(dir, "config.yml"), "hostEvents:\n  post-destroy:\n    - echo gone\n"),
     async () => {
-      const exit = await Effect.runPromiseExit(
-        Effect.gen(function* () {
-          const service = yield* ConfigService;
-          return yield* service.load;
-        }).pipe(Effect.provide(layer)),
+      const result = await Effect.runPromise(
+        Effect.result(
+          Effect.gen(function* () {
+            const service = yield* ConfigService;
+            return yield* service.load;
+          }).pipe(Effect.provide(layer)),
+        ),
       );
-      expect(Exit.isFailure(exit)).toBe(true);
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") return;
+      expect(result.failure.issues?.[0]?.path).toEqual(["hostEvents", "post-destroy", 0]);
+      expect(result.failure.remediation).toContain("lando config edit");
     },
   );
 });

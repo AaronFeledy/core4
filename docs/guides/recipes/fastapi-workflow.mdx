@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, fastapi, python, postgres, redis]
 
 # Run the FastAPI recipe
 
+Create a Python environment with Postgres and Redis, then serve a FastAPI application inside `web`. Run these commands from your host terminal.
+
 ```sh
 lando init --recipe fastapi --name=fastapi-demo --yes
 cd fastapi-demo
@@ -16,6 +18,60 @@ lando start
 `--yes` accepts every prompt default. The named init creates `fastapi-demo/` and writes only `.lando.yml` there. Change into that directory before app commands. Start brings up Python, Postgres, and Redis, creating `/app/.venv` on the app mount if it's missing. The recipe puts its `bin` directory first on `PATH`, so `lando pip`, `lando uvicorn`, and bare commands inside `web` use that environment. Existing packages survive restarts and container recreation. `web` still idles until you serve an app, so the URL answers only after uvicorn runs. No application files or dependencies are installed automatically, even if `requirements.txt` exists.
 
 If something else owns 80 or 443, Lando takes the next free port (usually `:8080` / `:8443`), and `lando info` shows it.
+
+## Scaffold FastAPI with pip
+
+Install into the running `web` service, then put a tiny app next to `.lando.yml`:
+
+```sh
+lando pip install 'fastapi>=0.115' 'uvicorn[standard]>=0.30' 'psycopg[binary]>=3' 'redis>=5'
+mkdir -p app
+```
+
+```python
+# app/main.py
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def root():
+    return {"hello": "lando"}
+```
+
+Add `.venv/` to `.gitignore`. Keep `requirements.txt` in git for reproducible installs on a fresh clone or after removing `.venv`:
+
+```sh
+lando pip freeze > requirements.txt
+lando pip install -r requirements.txt
+```
+
+Check the installed tools and both backing services:
+
+```sh
+lando pip --version
+lando uvicorn --version
+lando redis-cli ping
+lando psql -c 'SELECT 1'
+```
+
+`PONG` and a `1` row mean Redis and Postgres answer.
+
+## Serve it with uvicorn
+
+Bind every interface so the proxy can reach uvicorn (its default host is loopback only):
+
+```sh
+lando uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+It runs in the foreground, so use a second terminal for everything else. `--reload` restarts it on code edits. Open the URL from `lando info`. Expect JSON like `{"hello":"lando"}`.
+
+Lando reads `--log-level`, `--debug`, and `--verbose` itself, so pass uvicorn's log level through `lando exec`:
+
+```sh
+lando exec web -- uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level debug
+```
 
 ## See what the recipe writes
 
@@ -82,60 +138,6 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. The rec
   </Scenario>
 </Guide>
 
-## Scaffold FastAPI with pip
-
-Install into the running `web` service, then put a tiny app next to `.lando.yml`:
-
-```sh
-lando pip install 'fastapi>=0.115' 'uvicorn[standard]>=0.30' 'psycopg[binary]>=3' 'redis>=5'
-mkdir -p app
-```
-
-```python
-# app/main.py
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/")
-def root():
-    return {"hello": "lando"}
-```
-
-Add `.venv/` to `.gitignore`. Keep `requirements.txt` in git for reproducible installs on a fresh clone or after removing `.venv`:
-
-```sh
-lando pip freeze > requirements.txt
-lando pip install -r requirements.txt
-```
-
-Then the day-to-day tools work:
-
-```sh
-lando pip --version
-lando uvicorn --version
-lando redis-cli ping
-lando psql -c 'SELECT 1'
-```
-
-`PONG` and a `1` row mean Redis and Postgres answer.
-
-## Serve it with uvicorn
-
-Bind every interface so the proxy can reach uvicorn (its default host is loopback only):
-
-```sh
-lando uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-It runs in the foreground, so use a second terminal for everything else. `--reload` restarts it on code edits. Open the URL from `lando info`. Expect JSON like `{"hello":"lando"}`.
-
-Lando reads `--log-level`, `--debug`, and `--verbose` itself, so pass uvicorn's log level through `lando exec`:
-
-```sh
-lando exec web -- uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level debug
-```
-
 ## Serve on every start
 
 Install dependencies before setting a serving command. The recipe creates the venv, but it does not install `requirements.txt` for you. Keep the generated entrypoint and environment; give `web` a bare uvicorn `command` in `.lando.yml`:
@@ -146,10 +148,10 @@ services:
     command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000", --reload]
 ```
 
-Rebuild to pick up the new command:
+Start to pick up the new command:
 
 ```sh
-lando rebuild
+lando start
 lando info
 ```
 
@@ -179,10 +181,10 @@ services:
       REDIS_URL: redis://cache:6379/0
 ```
 
-The password never lands in your Landofile, and the URL follows an authored `creds:` block. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials). Rebuild so `web` picks them up, then check what it got:
+The password never lands in your Landofile, and the URL follows an authored `creds:` block. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials). Start so `web` picks them up, then check what it got:
 
 ```sh
-lando rebuild
+lando start
 lando exec web -- printenv DATABASE_URL REDIS_URL
 ```
 
@@ -196,19 +198,18 @@ Lando also sets `LANDO_APP_NAME`, `LANDO_APP_ROOT`, and `LANDO_SERVICE_NAME` in 
 
 ## Import, export, and snapshot the database
 
-The recipe has one SQL service, so `db:*` commands find `database` without `--service`. Importing into a non-empty database replaces its data and asks first; `--yes` skips the prompt:
+The recipe has one SQL service, so `db:*` commands find `database` without `--service`. Import executes the dump's SQL and can change or replace existing data. Importing into a non-empty database asks first; `--yes` skips the prompt:
 
 ```sh
 lando db:export dump.sql.gz
 lando db:import dump.sql.gz --yes
 ```
 
-Snapshots save the database volume to Lando's snapshot store. `lando db:snapshots` prints each snapshot's id and label, and restore takes the id. Restoring replaces the current data:
+Snapshots save the database volume to Lando's snapshot store, and `lando db:snapshots` lists each one's id and label. Restore takes either. Restoring replaces the current data:
 
 ```sh
 lando db:snapshot --label before-migrate
-lando db:snapshots
-lando db:restore <snapshot-id> --yes
+lando db:restore before-migrate --yes
 ```
 
 `lando db:reset --yes` empties the database when you want a clean slate.
@@ -240,7 +241,7 @@ lando db:snapshot --label before-migrate
 lando exec web -- alembic upgrade head
 ```
 
-A bad migration rolls back with `lando db:restore <snapshot-id> --yes`.
+To recover from a bad migration, run `lando db:restore before-migrate --yes`. This replaces the current database data with the snapshot; it does not undo edits to your migration files.
 
 ## Follow logs and open a shell
 

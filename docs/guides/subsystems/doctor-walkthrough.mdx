@@ -8,13 +8,15 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
 
 # Run lando doctor
 
+After `lando setup`, run `lando doctor` on the host to check the provider, proxy,
+certificates, and related setup state. Read the suggested action for each failing
+section; a failure does not prevent the remaining checks from running.
+
 ```sh
 lando doctor
 ```
 
-Doctor reports whether setup, the provider, the proxy, certs, and related checks are healthy. A failing section does not abort the rest of the report.
-
-Run it after `lando setup`. The default provider is `lando` (managed Podman). After a successful `lando setup --provider=docker`, bare `lando doctor` stays on Docker. `LANDO_PROVIDER` does not persist.
+Doctor checks the provider setup persisted, or the one `LANDO_PROVIDER` names for this command. See [Pick a container provider](../setup/provider-selection.mdx#what-persists).
 
 ## Read the report
 
@@ -26,56 +28,92 @@ Passing checks stay out of the way. To see every check, including the ones that 
 lando doctor --all
 ```
 
+A check passes only after doctor inspects it. Loading a healthcheck runner or an
+endpoint scanner does not prove either one works against your provider. Doctor
+reports `healthcheck` and `scanner` as `SKIPPED`, with a reason, because it does
+not run service probes or scan app endpoints. `lando start` runs those checks
+against the app's selected provider; rebuild also runs service readiness gates.
+`--fix` does not turn an uninspected check into a pass.
+
+JSON reports keep these entries in the report's `skipped` array, separate from
+`subsystems.checks`. The library `doctorReport()` skips the subsystem section
+when neither runtime subsystem services nor a host DNS resolver were supplied.
+
+The `host-proxy` check resolves `lando-doctor-probe.<proxy.defaultDomain>` through
+your host DNS resolver, even without a host-proxy service. It passes only when
+the answer is nonempty and every address matches the expected loopback address.
+Without that service, the context contains DNS observations, not service status.
+An unavailable resolver produces a `SKIPPED` entry with a reason.
+
+Selecting a certificate authority does not verify its installation or host trust.
+Doctor reports `certs` as `SKIPPED` when selection succeeds but no read-only trust
+inspection is available. Certificate selection errors still appear as findings.
+
 | Check | What to do |
 | --- | --- |
+| global-config | Your global config does not decode. Doctor prints the `ConfigError` and its fix, marks `provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, and `mcp` as `SKIPPED` (plus `app-config`, `app-version-constraints`, and `deprecations` under `--app` or `--deprecations`), still runs config-independent checks such as `filesystem-watch`, and exits `1`. Run `lando config validate`, repair with `lando config set`, `unset`, or `edit`, then rerun doctor. See [Repair an invalid global config](../config/global-config.mdx#repair-an-invalid-global-config). |
+| provider-bootstrap | Global config passed, but doctor could not build the provider runtime. Read this self check's failure and suggested repair. Doctor marks `provider`, `router`, `ssh`, `healthcheck`, `scanner`, `certificate-authority`, `missing-app-roots`, and `orphaned-volume-snapshots` as `SKIPPED`, plus requested `app-config` and `deprecations`. It does not invent router, SSH, or certificate warnings or suggest `--fix` for checks it never ran. Host DNS (`host-proxy`), filesystem watches, network trust, MCP, global-app files, accelerated-start journals, legacy snapshot catalogs, and requested app version constraints still get checked. Doctor exits `1`; repair the bootstrap failure, then rerun it. |
+| host-proxy | Host DNS did not resolve the probe hostname to loopback. Check connectivity and DNS-rebinding protection on your resolver, or add a local DNS rule for your configured domain. `lando setup` and `doctor --fix` do not write host DNS. See [Check host DNS](./host-proxy.mdx). |
 | proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. |
 | preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports in `config.yml`, then run `lando setup`. |
 | certs | Run `lando setup` to install and trust the local CA. |
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
 | filesystem-watch | Read the stage and errno. Windows can also report a missing file event after the watcher opens. On Linux or WSL, close unnecessary watchers first when allocation fails. See [Check filesystem watches on this host](#check-filesystem-watches-on-this-host). |
-| accelerated-start | In the reported app root, run `lando start` to recover a retained attempt or interrupted recovery, or `lando destroy` to discard it. |
+| accelerated-start | An accelerated file-sync start didn't finish. In the reported app root, run `lando start` to finish it. `lando stop` and `lando destroy` also work when the attempt's sessions and sync targets still check out as yours. |
 | missing-app-root | Move your app folder back to the reported path to keep using it, or remove its leftover resources with `lando destroy --root <path> --volumes`. |
 | missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
+| orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. |
+| legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
 
-Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`.
+Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
 
-`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config.
+## Inspect leftover snapshot images
 
-## Recover a retained or interrupted accelerated start
+Read the orphan report before deleting anything. Without `--prune`, this command only reports candidates:
+
+<Guide>
+  <Scenario id="inspect-snapshot-catalog-orphans" render>
+    <Step name="inspect">
+      <Run command="lando snapshots:gc --format=json" />
+      <Verify command="lando snapshots:gc --format=json" expect={{ stdout: { regex: "totalCount" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+**`lando snapshots:gc --prune` deletes eligible native images.** It does not prune your catalogued manual or recovery snapshots; use the [database snapshot commands](../tooling/db-import-export.mdx) for those.
+
+GC skips stopped runtimes during discovery. If a runtime stops after the removal recheck, GC reports that provider as failed and does not count the failed deletion as removed. It never starts or repairs the runtime. `lando destroy --purge` may start a stopped runtime to remove catalogued snapshots.
+
+The `legacy-snapshot-catalogs` check reads the filesystem only. It finds old `index.bin` catalogs outside the owner-keyed directories, even when no runtime is running. An unreadable legacy catalog blocks GC rather than risking its images. **Deleting a legacy catalog directory releases its image protection.** Keep it if you still need those images; otherwise delete the reported catalog's containing directory, then run `lando snapshots:gc` to review the newly eligible images. Run `lando doctor` again to check the remaining catalogs.
+
+## Finish an interrupted accelerated start
 
 ```sh
 lando doctor --format=json
 ```
 
-An `accelerated-start` check lists the app ID, app root, phase, attempt ID,
-recorded sessions and volumes, and journal path. It scans saved attempts across
-apps, even without `--app`. `doctor --fix` reports these records but does not
-start or destroy apps for you. An interrupted recovery also shows
-`recoveryState: interrupted recovery` and `recoveredFrom`, the original attempt
-ID. You can retry it even if its phase is `preparing`, `sessions-ready`, or
-`apply-intent`: Lando preserves that recovery marker across retries.
+An `accelerated-start` warning means provider apply did not finish successfully; some app containers may already have run and written to the sync targets. The check lists the app ID, app root, phase, attempt ID, provider, file-sync engine, recorded sessions and volumes, and the journal path. It scans every app, even without `--app`. `doctor --fix` reports these records; it doesn't start or destroy apps for you.
 
-For a `retained` attempt or an interrupted recovery, change to the reported app root and run:
+Change to the reported app root and run:
 
 ```sh
 lando start
 lando info
 ```
 
-Recovery requires the same mount plan, provider, and file-sync engine. Lando
-terminates the recorded sessions without flushing their stale contents back to
-your host. It then reseeds the targets from your host with `one-way-replica`
-before creating normal sessions. Unknown sessions or an engine without that mode
-block recovery. Stop, restart, and rebuild remain blocked until you recover or
-discard the attempt.
+That finishes the attempt with its existing sync sessions and history. `lando restart` and `lando rebuild` finish it first too, then do their own work.
 
-To discard a retained attempt or interrupted recovery instead, use `lando destroy`. This terminates its
-recorded sessions without copying target data to your host. Volumes stay unless
-you explicitly request their removal. **`--volumes` deletes app volume data**;
-use it only when you intend to discard that data too. Pending first attempts
-without a recovery marker are not automatically recovered or discarded.
-Keep the journal and inspect its resources rather
-than deleting the file by hand.
+`lando stop` and `lando destroy` work from any phase, as long as the attempt's sessions and sync targets still check out as this app's and nothing you wrote could be lost. Stop pauses the sessions and keeps the attempt for the next start. Destroy syncs each session's pending changes back to the project, then discards the attempt's sync sessions and sync targets. **`--volumes` still means your app's data volumes**; leave it off to keep that data.
+
+Start refuses to finish an attempt in three cases:
+
+| Refusal | What to restore |
+| --- | --- |
+| The provider, file-sync engine, or mount settings changed since the attempt | Put the recorded provider, engine, and mount settings back, then run `lando start`. |
+| A sync session is missing after the app may have written to its target | Restore that session's synchronization history in the file-sync engine, then run `lando start`. `lando stop` still stops the app's writers. `lando destroy` refuses until the history is back, because the target may hold the only copy of what the app wrote. Lando leaves the target alone. |
+| The engine lists a session Lando didn't record for this app | Lando leaves that session untouched. Inspect it, and clear it only once you know what owns it. |
+
+Keep the journal file. It's what tells the next command which sessions and volumes belong to the attempt.
 
 ## Clean up an app whose folder is gone
 

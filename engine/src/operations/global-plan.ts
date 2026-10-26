@@ -1,15 +1,7 @@
-import { join } from "node:path";
 import { Effect } from "effect";
 
-import { GlobalAppError, type LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
-import { type LandofileDecodedOverlay, decodeLandofileLayer, mergeLandofiles } from "@lando/sdk/landofile";
-import {
-  type AppPlan,
-  type LandofileShape,
-  LandofileShape as LandofileShapeSchema,
-  formatValidationIssueLine,
-  validationIssuesFromCause,
-} from "@lando/sdk/schema";
+import { type AppPlacementError, GlobalAppError, type LandofileParseError } from "@lando/sdk/errors";
+import type { AppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import {
   AppPlanner,
   type AppPlannerError,
@@ -19,13 +11,14 @@ import {
   GlobalAppService,
   type ProviderSelectionError,
   RuntimeProviderRegistry,
+  type StateStore,
 } from "@lando/sdk/services";
 
-import { decodeOrFail } from "@lando/landofile/decode";
-import { DEFAULT_LANDOFILE, DEFAULT_POST_LANDOFILES, DEFAULT_PRE_LANDOFILES } from "@lando/landofile/merge";
-import { parseLandofile } from "@lando/landofile/parser";
+import type { LandofileFinalizeOverrides } from "@lando/landofile/service";
 
-import { MANAGED_PROVIDER_ID, MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
+import { globalCreateProviderId, resolveGlobalPlacement } from "../global-app/placement.ts";
+import { hostProviderId } from "../providers/host-provider.ts";
+import { loadLandofileLayers } from "../services/landofile-live.ts";
 
 export interface MissingGlobalPlanResult {
   readonly materialized: false;
@@ -35,46 +28,32 @@ export interface MissingGlobalPlanResult {
 export interface LoadedGlobalPlanResult {
   readonly materialized: true;
   readonly paths: GlobalAppPaths;
-  readonly landofile: LandofileShape;
+  readonly landofile: LoadScopedLandofile;
   readonly plan: AppPlan;
 }
 
 export type LoadGlobalPlanResult = MissingGlobalPlanResult | LoadedGlobalPlanResult;
 
 export type LoadGlobalPlanError =
+  | AppPlacementError
   | AppPlannerError
+  | Effect.Error<ReturnType<typeof loadLandofileLayers>>
   | ProviderSelectionError
   | FileSystemError
   | GlobalAppError
   | LandofileParseError;
 
-export type LoadGlobalPlanServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
+export type LoadGlobalPlanServices =
+  | AppPlanner
+  | FileSystem
+  | GlobalAppService
+  | RuntimeProviderRegistry
+  | StateStore;
 
-const validationIssues = (cause: unknown) =>
-  validationIssuesFromCause(cause, { fallback: "Invalid Landofile." });
-
-const validateGlobalLandofile = (
-  filePath: string,
-  parsed: unknown,
-): Effect.Effect<LandofileShape, LandofileValidationError> =>
-  decodeOrFail(LandofileShapeSchema, (cause) => {
-    const issues = validationIssues(cause);
-    return new LandofileValidationError({
-      message: `Landofile contains unsupported MVP keys: ${issues.map(formatValidationIssueLine).join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
-      file: filePath,
-      issues,
-    });
-  })(parsed, { onExcessProperty: "error", errors: "all" });
-
-export const decodeGlobalLandofile = (input: {
-  readonly file: string;
-  readonly content: string;
-  readonly cwd: string;
-}): Effect.Effect<LandofileShape, LandofileParseError | LandofileValidationError> =>
-  parseLandofile(input).pipe(
-    Effect.flatMap((parsed) => decodeLandofileLayer(input.file, parsed)),
-    Effect.flatMap((overlay) => validateGlobalLandofile(input.file, mergeLandofiles([overlay]))),
-  );
+export const globalLandofileOverrides = Effect.map(
+  hostProviderId,
+  (provider): LandofileFinalizeOverrides => ({ name: "global", provider }),
+);
 
 const withProcessCwd = <A, E, R>(
   cwd: string,
@@ -92,6 +71,7 @@ const withProcessCwd = <A, E, R>(
           message: `Unable to enter the global app directory at ${cwd}.`,
           operation: "loadPlan",
           cause,
+          remediation: `Ensure the global app directory at ${cwd} exists and is accessible, then retry.`,
         }),
     }),
     () => use(),
@@ -100,8 +80,8 @@ const withProcessCwd = <A, E, R>(
 
 export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function* (): Effect.fn.Return<
   MissingGlobalPlanResult | Omit<LoadedGlobalPlanResult, "plan">,
-  GlobalAppError | FileSystemError | LandofileParseError | LandofileValidationError,
-  FileSystem | GlobalAppService
+  GlobalAppError | FileSystemError | Effect.Error<ReturnType<typeof loadLandofileLayers>>,
+  FileSystem | GlobalAppService | StateStore
 > {
   const globalApp = yield* GlobalAppService;
   const fileSystem = yield* FileSystem;
@@ -109,22 +89,11 @@ export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function
   const exists = yield* fileSystem.exists(paths.distLandofile);
   if (!exists) return { materialized: false, paths };
 
-  const layers: LandofileDecodedOverlay[] = [];
-  for (const basename of [...DEFAULT_PRE_LANDOFILES, DEFAULT_LANDOFILE, ...DEFAULT_POST_LANDOFILES]) {
-    const file = join(paths.root, basename);
-    if (!(yield* fileSystem.exists(file))) continue;
-    const content = yield* fileSystem.readText(file);
-    layers.push(
-      yield* parseLandofile({ file, content, cwd: paths.root }).pipe(
-        Effect.flatMap((parsed) => decodeLandofileLayer(file, parsed)),
-      ),
-    );
-  }
-  const landofile = yield* validateGlobalLandofile(paths.userLandofile, {
-    ...mergeLandofiles(layers),
-    name: "global",
-    provider: MANAGED_PROVIDER_ID,
-  });
+  const landofile = yield* loadLandofileLayers(
+    paths.root,
+    paths.userLandofile,
+    yield* globalLandofileOverrides,
+  );
   return { materialized: true, paths, landofile };
 });
 
@@ -133,13 +102,24 @@ export const loadGlobalPlan = Effect.fnUntraced(function* (): Effect.fn.Return<
   LoadGlobalPlanError,
   LoadGlobalPlanServices
 > {
+  yield* globalCreateProviderId();
   const loaded = yield* readGlobalLandofile();
   if (!loaded.materialized) return loaded;
   const { paths, landofile } = loaded;
   const registry = yield* RuntimeProviderRegistry;
-  const managed = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const provider = yield* registry.select(landofile.document.provider);
   const planner = yield* AppPlanner;
-  const plan = yield* withProcessCwd(paths.root, () => planner.plan(landofile, managed.capabilities));
+  const plan = yield* withProcessCwd(paths.root, () => planner.plan(landofile, provider.capabilities));
 
   return { materialized: true, paths, landofile, plan };
 });
+
+export const loadObservedGlobalPlan = Effect.fn("GlobalApp.loadObservedPlan")(function* () {
+  const globalApp = yield* GlobalAppService;
+  const paths = yield* globalApp.paths;
+  const { plan } = yield* resolveGlobalPlacement();
+  if (plan !== undefined) return { materialized: true as const, paths, plan };
+  return yield* loadGlobalPlan();
+});
+
+export type LoadObservedGlobalPlanError = Effect.Error<ReturnType<typeof loadObservedGlobalPlan>>;

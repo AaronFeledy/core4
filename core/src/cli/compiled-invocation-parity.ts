@@ -22,7 +22,7 @@ export class InvalidCliInvocationError extends Schema.TaggedError<InvalidCliInvo
   {
     message: Schema.String,
     commandId: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -90,12 +90,15 @@ export const invocationParityError = (commandId: string, argv: ReadonlyArray<str
   return undefined;
 };
 
-export const rejectInvalidInvocation = (commandId: string, argv: ReadonlyArray<string>): boolean => {
+export const rejectInvalidInvocation = async (
+  commandId: string,
+  argv: ReadonlyArray<string>,
+): Promise<boolean> => {
   const diagnostic = invocationParityError(commandId, argv);
   if (diagnostic === undefined) return false;
-  emitDiagnosticLine(diagnostic);
+  await emitDiagnosticLine(diagnostic);
   const example = commandStructureExample(commandId);
-  if (example !== undefined) emitDiagnosticLine(`  ↳ Example: ${example}`);
+  if (example !== undefined) await emitDiagnosticLine(`  ↳ Example: ${example}`);
   process.exitCode = 2;
   return true;
 };

@@ -69,7 +69,7 @@ const acceleratedPlanFor = (root: AbsolutePath): AppPlan => {
     source: root,
     target: { _tag: "volume", name: "canonical-sync-web-app-mount", path: PortablePath.make("/app") },
     mode: "two-way-safe",
-    excludes: [],
+    excludes: [".git"],
   };
   return {
     id,
@@ -91,7 +91,6 @@ const acceleratedPlanFor = (root: AbsolutePath): AppPlan => {
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [{ engineId: "mutagen", session }],
     metadata,

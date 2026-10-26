@@ -1,14 +1,15 @@
 import { expect, test } from "bun:test";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   GlobalConfig,
   type LandofileEvents,
   ProviderId,
   type ToolingTaskShape,
 } from "@lando/sdk/schema";
+import { createPayloadRedactor } from "@lando/sdk/secrets";
 import {
   AppPlanner,
   ConfigService,
@@ -22,14 +23,19 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { DateTime, Effect, Layer, Schema } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import * as EventRuntime from "../../src/services/event-service.ts";
 import { makeShellRunnerService } from "../../src/services/shell-runner.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
-const harness = (task: ToolingTaskShape, events?: LandofileEvents) => {
+const harness = (
+  task: ToolingTaskShape,
+  events?: LandofileEvents,
+  onFrame?: (frame: StreamFrameSinkFrame) => void,
+) => {
   const frames: StreamFrameSinkFrame[] = [];
-  const plan: AppPlan = {
+  const basePlan: CurrentExecutableAppPlan = {
+    valueModel: 1,
     id: AppId.make("host-output"),
     name: "host-output",
     slug: "host-output",
@@ -37,15 +43,15 @@ const harness = (task: ToolingTaskShape, events?: LandofileEvents) => {
     provider: ProviderId.make("test"),
     services: {},
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     extensions: {},
     metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"), source: "test", runtime: 4 },
   };
-  if (events !== undefined) attachEffectiveEvents(plan, events);
+  const plan = events === undefined ? basePlan : withProjectEvents(basePlan, events);
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
+    testEnvironmentResolverLayer,
     EventRuntime.layer,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
@@ -70,7 +76,7 @@ const harness = (task: ToolingTaskShape, events?: LandofileEvents) => {
     ),
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: plan.name, tooling: { probe: task } }) }),
+      LandofileService.of({ discover: compileTestLandofile({ name: plan.name, tooling: { probe: task } }) }),
     ),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
     Layer.succeed(
@@ -80,6 +86,9 @@ const harness = (task: ToolingTaskShape, events?: LandofileEvents) => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([plan.provider]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -92,56 +101,131 @@ const harness = (task: ToolingTaskShape, events?: LandofileEvents) => {
       emit: (frame) =>
         Effect.sync(() => {
           frames.push(frame);
+          onFrame?.(frame);
         }),
     }),
   );
-  const redaction = Layer.succeed(
-    RedactionService,
-    RedactionService.of({
-      registerValues: () => Effect.void,
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-    }),
-  );
+  const redactionService = makeRedactionService();
+  const redaction = Layer.succeed(RedactionService, redactionService);
   return {
     frames,
-    run: (options: { readonly sink?: boolean; readonly redaction?: boolean } = {}) =>
+    run: (
+      options: { readonly sink?: boolean; readonly redaction?: boolean; readonly payload?: boolean } = {},
+    ) =>
       Effect.runPromise(
-        runTooling({ name: "probe" }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              layer,
-              options.sink === false ? Layer.empty : sink,
-              options.redaction === false ? Layer.empty : redaction,
+        Effect.gen(function* () {
+          const values = yield* redactionService.payloadValues();
+          const payloads = { stdout: createPayloadRedactor(values), stderr: createPayloadRedactor(values) };
+          const protectedSink = Layer.succeed(StreamFrameSink, {
+            emit: (frame) =>
+              Effect.sync(() => {
+                const bytes =
+                  typeof frame.chunk === "string" ? new TextEncoder().encode(frame.chunk) : frame.chunk;
+                frames.push({ ...frame, kind: "bytes", chunk: payloads[frame._tag].write(bytes) });
+              }),
+          });
+          return yield* runTooling({ name: "probe" }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                layer,
+                options.sink === false ? Layer.empty : options.payload === true ? protectedSink : sink,
+                options.redaction === false ? Layer.empty : redaction,
+              ),
             ),
-          ),
-          Effect.result,
-        ),
+            Effect.result,
+            Effect.ensuring(
+              Effect.sync(() => {
+                if (options.payload === true)
+                  for (const tag of ["stdout", "stderr"] as const)
+                    frames.push({ kind: "bytes", _tag: tag, chunk: payloads[tag].flush() });
+              }),
+            ),
+          );
+        }),
       ),
   };
 };
 
-test.each([true, false])(
-  "redacts complete host channels once with redaction service %s",
-  async (redaction) => {
-    // Given a secret split across two separately executed host commands in both channels.
-    const h = harness({
+const joined = (frames: ReadonlyArray<StreamFrameSinkFrame>, tag: "stdout" | "stderr") =>
+  frames
+    .filter((frame) => frame._tag === tag)
+    .map((frame) => (typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk)))
+    .join("");
+
+test("keeps a registered secret masked across separately executed host commands", async () => {
+  // Given
+  const h = harness({
+    service: ":host",
+    env: { SECRET: "split-host-secret" },
+    cmds: ["printf split-host-; printf split-host- 1>&2", "printf secret; printf secret 1>&2"],
+  });
+  // When
+  const result = await h.run({ payload: true });
+  // Then
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0, stdout: "", stderr: "" } });
+  expect(joined(h.frames, "stdout")).toBe("[redacted]");
+  expect(joined(h.frames, "stderr")).toBe("[redacted]");
+});
+
+test("delivers a host partial line before the body is allowed to finish", async () => {
+  // Given
+  const gate = Promise.withResolvers<void>();
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: async () => {
+      await gate.promise;
+      return new Response("ok");
+    },
+  });
+  const h = harness(
+    {
       service: ":host",
-      env: { SECRET: "split-host-secret" },
-      cmds: ["printf split-host-; printf split-host- 1>&2", "printf secret; printf secret 1>&2"],
-    });
-    // When the buffered body completes.
-    const result = await h.run({ redaction });
-    // Then each complete channel is redacted once, while the collected result stays intact.
-    expect(h.frames).toEqual([
-      { _tag: "stdout", chunk: "[redacted]", raw: true },
-      { _tag: "stderr", chunk: "[redacted]", raw: true },
+      cmd: `printf one; bun -e 'await fetch("http://127.0.0.1:${server.port}")'; printf two`,
+    },
+    undefined,
+    () => {
+      if (joined(h.frames, "stdout") === "one") gate.resolve();
+    },
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    // When
+    const result = await Promise.race([
+      h.run(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("Host output was buffered")), 3000);
+      }),
     ]);
-    expect(result).toMatchObject({
-      _tag: "Success",
-      success: { stdout: "split-host-secret", stderr: "split-host-secret", exitCode: 0, rendered: true },
-    });
-  },
-);
+    // Then
+    expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0, stdout: "" } });
+    expect(joined(h.frames, "stdout")).toBe("onetwo");
+  } finally {
+    clearTimeout(timer);
+    gate.resolve();
+    server.stop(true);
+  }
+});
+
+test("streams host channels through the sink without collecting the body", async () => {
+  // Given a secret split across two separately executed host commands in both channels.
+  const h = harness({
+    service: ":host",
+    env: { SECRET: "split-host-secret" },
+    cmds: ["printf split-host-; printf split-host- 1>&2", "printf secret; printf secret 1>&2"],
+  });
+  // When the body runs with a live sink.
+  const result = await h.run();
+  // Then channels stream as authored and the collected result stays empty under a live sink.
+  expect(joined(h.frames, "stdout")).toBe("split-host-secret");
+  expect(joined(h.frames, "stderr")).toBe("split-host-secret");
+  expect(h.frames.every((frame) => frame.kind === "bytes")).toBe(true);
+  expect(result).toMatchObject({
+    _tag: "Success",
+    success: { stdout: "", stderr: "", exitCode: 0 },
+  });
+  if (result._tag === "Success") expect("rendered" in result.success).toBe(false);
+});
 
 test("emits failure stderr before returning the body exit code", async () => {
   // Given a nonzero body and a post hook that must not execute.
@@ -152,10 +236,10 @@ test("emits failure stderr before returning the body exit code", async () => {
   // When invoked.
   const result = await h.run();
   // Then only the nonempty channel is emitted and the body exit wins.
-  expect(h.frames).toEqual([{ _tag: "stderr", chunk: "diagnostic", raw: true }]);
+  expect(joined(h.frames, "stderr")).toBe("diagnostic");
   expect(result).toMatchObject({
     _tag: "Success",
-    success: { exitCode: 7, stderr: "diagnostic", rendered: true },
+    success: { exitCode: 7, stderr: "" },
   });
 });
 
@@ -174,7 +258,7 @@ test.each(["pre", "post"] as const)(
       _tag: "Failure",
       failure: { _tag: "LandofileEventStepFailedError", event: `${position}-probe` },
     });
-    expect(h.frames).toEqual(position === "pre" ? [] : [{ _tag: "stdout", chunk: "body", raw: true }]);
+    expect(joined(h.frames, "stdout")).toBe(position === "pre" ? "" : "body");
   },
 );
 
@@ -196,7 +280,7 @@ test("retains buffered result ownership when no sink exists", async () => {
   // Then the caller still owns rendering the collected body.
   expect(h.frames).toEqual([]);
   expect(result).toMatchObject({ _tag: "Success", success: { stdout: "body", exitCode: 0 } });
-  if (result._tag === "Success") expect(result.success.rendered).toBeUndefined();
+  if (result._tag === "Success") expect("rendered" in result.success).toBe(false);
 });
 
 test.each([
@@ -208,12 +292,16 @@ test.each([
     ],
   },
   { service: ":target", flags: { target: { default: "web" } }, cmd: "provider" },
-] satisfies ToolingTaskShape[])("does not replay provider or mixed body output: %j", async (task) => {
+] satisfies ToolingTaskShape[])("delivers returned provider and mixed body output once: %j", async (task) => {
   // Given a body with at least one resolved provider invocation.
   const h = harness(task);
   // When invoked with a sink.
   const result = await h.run();
-  // Then the top-level callback contributes no frames.
-  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0, rendered: true } });
-  expect(h.frames).toEqual([]);
+  // Then every invocation delivers its channel once, whether streamed or returned.
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
+  if (result._tag === "Success") expect("rendered" in result.success).toBe(false);
+  const hasHost = JSON.stringify(task).includes(":host");
+  expect(joined(h.frames, "stdout")).toBe(hasHost ? "hostprovider" : "provider");
 });
+import { compileTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

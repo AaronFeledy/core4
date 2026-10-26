@@ -82,7 +82,7 @@ describe("renderShareResult", () => {
               ...renderer.output,
               stdout: (text) =>
                 Effect.sync(() => {
-                  output.push(text);
+                  output.push(typeof text === "string" ? text : new TextDecoder().decode(text));
                 }),
             },
           }),
@@ -105,7 +105,7 @@ describe("renderShareResult", () => {
   ]) {
     test(`suppresses automatic QR for ${url} with a custom domain`, () => {
       // Given
-      const context = ctx({ proxyDefaultDomain: "Dev.Example.Test." });
+      const context = ctx({ proxyDefaultDomain: "Dev.Example.Test" });
       // When
       const output = renderShareResult(session({ publicUrl: url }), "text", context);
       // Then
@@ -126,7 +126,7 @@ describe("renderShareResult", () => {
     // Given
     const url = "https://web.dev.example.test";
     const runtime = makeTestRuntime({
-      config: Schema.decodeUnknownSync(GlobalConfig)({ proxy: { defaultDomain: "  Dev.Example.Test...  " } }),
+      config: Schema.decodeUnknownSync(GlobalConfig)({ proxy: { defaultDomain: "Dev.Example.Test" } }),
     });
     const io = createBufferedRendererIO({ isTTY: true });
     // When

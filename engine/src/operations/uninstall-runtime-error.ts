@@ -9,7 +9,7 @@ export class UninstallRuntimeDirError extends Schema.TaggedError<UninstallRuntim
   {
     message: Schema.String,
     path: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optionalKey(Schema.Unknown),
   },
 ) {}

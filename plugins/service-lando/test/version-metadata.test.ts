@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import { serviceTypeVersionMatrices } from "../../../scripts/build-service-type-reference.ts";
 import { serviceTypes } from "../src/index.ts";
+import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 
 const EXPECTED_OWNED_MATRICES = {
   dotnet: {
@@ -19,7 +20,7 @@ const EXPECTED_OWNED_MATRICES = {
     "2022": "mcr.microsoft.com/mssql/server:2022-latest",
   },
   mysql: { "8.0": "mysql:8.0", "8.4": "mysql:8.4", "9.7": "mysql:9.7" },
-  node: { lts: "node:lts", "22": "node:22" },
+  node: { lts: "node:24", "22": "node:22", "24": "node:24", "26": "node:26" },
   opensearch: { "2": "opensearchproject/opensearch:2" },
   php: {
     "8.1": "php:8.1-apache-bookworm",
@@ -36,7 +37,11 @@ const EXPECTED_OWNED_MATRICES = {
   redis: { "7": "redis:7" },
   ruby: { "3.3": "ruby:3.3-slim" },
   solr: { "9": "solr:9" },
-  tomcat: { "9": "tomcat:9-jre21", "10": "tomcat:10-jre21", "11": "tomcat:11-jre21" },
+  tomcat: {
+    "9": TOMCAT_CATALOG["9"].image,
+    "10": TOMCAT_CATALOG["10"].image,
+    "11": TOMCAT_CATALOG["11"].image,
+  },
   varnish: { "6": "varnish:6", "7": "varnish:7" },
 } as const;
 

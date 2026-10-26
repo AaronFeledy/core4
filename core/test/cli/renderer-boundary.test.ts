@@ -133,7 +133,7 @@ describe("runWithRendererHandling", () => {
     expect(io.stdout()).toBe("ready\n");
   });
 
-  test("plain event rendering keeps tooling output flat", async () => {
+  test("plain event consumer publishes the full tooling tree without a detail-only mode", async () => {
     const io = createBufferedRendererIO();
     await runWithRendererHandling(
       Effect.gen(function* () {
@@ -179,12 +179,14 @@ describe("runWithRendererHandling", () => {
         runtime: Layer.empty,
         rendererMode: "plain",
         io,
-        plainTaskEvents: "detail-only",
         render: () => undefined,
         formatError: () => "should not happen",
       },
     );
-    expect(io.stderr()).toBe("[tooling:composer:appserver] installing\n");
+    // Tree publication is always on; the consumer paints the full plain tree, not detail-only.
+    expect(io.stderr()).toContain("Tooling: composer");
+    expect(io.stderr()).toContain("appserver");
+    expect(io.stderr()).toContain("installing");
     expect(io.stdout()).toBe("");
   });
 
@@ -379,7 +381,7 @@ describe("runWithRendererHandling", () => {
         resultSchema: Schema.Struct({}),
         streaming: StreamFrame,
         render: () => undefined,
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: (code) => {
           exitCode = code;
         },
@@ -403,7 +405,7 @@ describe("runWithRendererHandling", () => {
       runtime: Layer.empty,
       rendererMode: "lando",
       io,
-      formatError: (e) => `error: ${String(e)}`,
+      formatError: ({ error }) => `error: ${String(error)}`,
       setExitCode: (code) => {
         exitCode = code;
       },
@@ -424,7 +426,7 @@ describe("runWithRendererHandling", () => {
       runtime: failingRuntime,
       rendererMode: "lando",
       io,
-      formatError: (e) => `boot: ${String(e)}`,
+      formatError: ({ error }) => `boot: ${String(error)}`,
       setExitCode: (code) => {
         exitCode = code;
       },
@@ -614,7 +616,7 @@ describe("native Windows TTY result newlines", () => {
         rendererMode,
         io: fixture.io,
         render: () => "Started\n  app is ready\n\nURLs\n  https://app.test",
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       });
       expect(fixture.stdout.join("")).toBe("Started\r\n  app is ready\r\n\r\nURLs\r\n  https://app.test\r\n");
@@ -633,7 +635,7 @@ describe("native Windows TTY result newlines", () => {
         resultSchema: Schema.Struct({ answer: Schema.String }),
         io: fixture.io,
         command: "app:info",
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       });
       const output = fixture.stdout.join("");
@@ -653,7 +655,7 @@ describe("native Windows TTY result newlines", () => {
       resultFormat: "ndjson",
       io: fixture.io,
       render: () => rows,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
     expect(fixture.stdout.join("")).toBe(`${rows}\n`);
@@ -667,7 +669,7 @@ describe("native Windows TTY result newlines", () => {
       rendererMode: "json",
       io: fixture.io,
       render: () => "first\nsecond",
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
     expect(fixture.stdout.join("")).toBe("first\nsecond\n");

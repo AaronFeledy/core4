@@ -1,0 +1,42 @@
+name: xhprof-demo
+services:
+  app:
+    type: "php:8.3"
+    primary: true
+    build:
+      artifact:
+        - "pecl install xhprof"
+        - "docker-php-ext-enable xhprof"
+    mounts:
+      - source: "./xhprof.ini"
+        target: "/usr/local/etc/php/conf.d/zz-xhprof.ini"
+        readOnly: true
+  xhgui:
+    type: compose
+    image: xhgui/xhgui:0.23
+    appMount: false
+    home: false
+    environment:
+      XHGUI_SAVE_HANDLER: pdo
+      XHGUI_PDO_DSN: "pgsql:host=profiles;dbname=xhgui"
+      XHGUI_PDO_USER: xhgui
+      XHGUI_PDO_PASS: xhgui
+    endpoints:
+      - _tag: internal
+        name: ui
+        protocol: http
+        port: 80
+    dependsOn:
+      profiles:
+        condition: service_healthy
+  profiles:
+    type: postgres
+    creds:
+      user: xhgui
+      password: xhgui
+      database: xhgui
+tooling:
+  composer:
+    service: app
+    cmd: [composer]
+    dir: /app

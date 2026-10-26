@@ -1,15 +1,19 @@
 import { expect, test } from "bun:test";
 import { makeTestRuntime } from "@lando/core/testing";
 import { StartAppResultSchema, startApp } from "@lando/engine/operations/start";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { SecretStoreUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { AppPlan, CommandResultEnvelope, PluginManifest } from "@lando/sdk/schema";
+import { CommandResultEnvelope, CurrentExecutableAppPlan, PluginManifest } from "@lando/sdk/schema";
+import { LandofileService } from "@lando/sdk/services";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
   AppPlanner,
   BuildOrchestrator,
@@ -33,10 +37,15 @@ const unavailable = new SecretStoreUnavailableError({
 const renderStartFailure = async (reference: string) => {
   const reads: string[] = [];
   const applies: string[] = [];
-  const provider = {
+  const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
-    apply: () =>
-      Effect.sync(() => {
+    apply: (plan, options) =>
+      Effect.gen(function* () {
+        for (const service of Object.values(plan.services)) {
+          if (options.resolveServiceEnvironment === undefined)
+            throw new TypeError("Expected creation environment resolver");
+          yield* options.resolveServiceEnvironment(service);
+        }
         applies.push("apply");
         return { changed: true };
       }),
@@ -71,44 +80,68 @@ const renderStartFailure = async (reference: string) => {
     Layer.provide(Layer.mergeAll(base.layer, paths, RoutedSecretStore.SecretStoreRegistry.layer([plugin]))),
   );
   const metadata = { resolvedAt: "2026-06-01T00:00:00Z", source: "cli-test", runtime: 4 };
-  const plan = Schema.decodeUnknownSync(AppPlan)({
-    id: "cli-secrets",
-    name: "cli-secrets",
-    slug: "cli-secrets",
-    root: process.cwd(),
-    provider: provider.id,
-    services: {
-      web: {
-        name: "web",
-        type: "test",
-        provider: provider.id,
-        primary: true,
-        environment: { DISPLAY_VALUE: reference },
-        mounts: [],
-        storage: [],
-        endpoints: [],
-        routes: [],
-        dependsOn: [],
-        hostAliases: [],
-        metadata,
-        extensions: {},
+  const plan = () =>
+    Schema.decodeUnknownSync(CurrentExecutableAppPlan)({
+      valueModel: 1,
+      id: "cli-secrets",
+      name: "cli-secrets",
+      slug: "cli-secrets",
+      root: process.cwd(),
+      provider: provider.id,
+      services: {
+        web: {
+          name: "web",
+          type: "test",
+          provider: provider.id,
+          primary: true,
+          environment: { DISPLAY_VALUE: { _tag: "SecretRef", reference } },
+          mounts: [],
+          storage: [],
+          endpoints: [],
+          routes: [],
+          dependsOn: [],
+          hostAliases: [],
+          metadata,
+          extensions: {},
+        },
       },
-    },
-    routes: [],
-    networks: [],
-    stores: [],
-    fileSync: [],
-    metadata,
-    extensions: {},
-  });
+      routes: [],
+      stores: [],
+      fileSync: [],
+      metadata,
+      extensions: {},
+    });
   const runtime = Layer.mergeAll(
     base.layer,
     paths,
     store,
     RedactionService.layer.pipe(Layer.provide(store)),
+    EnvironmentValueResolverLayer.layer.pipe(
+      Layer.fresh,
+      Layer.provide(Layer.mergeAll(store, RedactionService.layer)),
+    ),
     TestLandofileLayers.layerTransactionGuard,
     Layer.succeed(StateStore, makeTestStateStore().service),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: loadAuthoredDocuments(
+          [
+            {
+              file: `${process.cwd()}/.lando.yml`,
+              value: {
+                name: "cli-secrets",
+                services: {
+                  web: { image: "alpine:3.21", environment: { DISPLAY_VALUE: `\${secret:${reference}}` } },
+                },
+              },
+            },
+          ],
+          { appRoot: process.cwd(), file: `${process.cwd()}/.lando.yml` },
+        ),
+      }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.sync(plan) })),
     Layer.succeed(RouterService, RouterService.of(TestRouterService)),
     Layer.succeed(
       BuildOrchestrator,
@@ -130,7 +163,7 @@ const renderStartFailure = async (reference: string) => {
     resultFormat: "json",
     command: "app:start",
     resultSchema: StartAppResultSchema,
-    formatError: String,
+    formatError: ({ error }) => String(error),
     setExitCode: (code) => {
       exits.push(code);
     },
@@ -148,7 +181,7 @@ test("start renders the store tag, cli-missing reason and remediation in a JSON 
   // Given
   const reference = "fake://Vault/Item/field";
   // When
-  const result = await renderStartFailure(`\${secret:${reference}}`);
+  const result = await renderStartFailure(reference);
   // Then
   expect(result.reads).toEqual([reference]);
   expect(result.applies).toEqual([]);
@@ -161,11 +194,11 @@ test("start renders the store tag, cli-missing reason and remediation in a JSON 
   expect(result.io.stderr()).toBe("");
 });
 
-test("start renders SecretReferenceInvalidError for a malformed op reference before reading a store", async () => {
+test("start rejects a malformed authored op reference before reading a store", async () => {
   // Given
   const reference = "op://Vault";
   // When
-  const result = await renderStartFailure(`\${secret:${reference}}`);
+  const result = await renderStartFailure(reference);
   // Then
   expect(result.reads).toEqual([]);
   expect(result.applies).toEqual([]);
@@ -173,7 +206,7 @@ test("start renders SecretReferenceInvalidError for a malformed op reference bef
   expect(result.envelope).toMatchObject({
     command: "app:start",
     ok: false,
-    error: { _tag: "SecretReferenceInvalidError", remediation: expect.stringMatching(/\S/) },
+    error: { _tag: "ConfigExpressionError", remediation: expect.stringMatching(/\S/) },
   });
   expect(result.io.stderr()).toBe("");
 });

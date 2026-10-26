@@ -298,7 +298,7 @@ describe("LiveRegionController", () => {
     expect(out.split("one").length - 1).toBe(1);
   });
 
-  test("does not paint inline while full-tail acquisition is in flight", async () => {
+  test("clears inline before full-tail acquisition and defers replacement paint", async () => {
     const fixture = makeFixture();
     let releaseRenderer: ((renderer: FakeRenderer) => void) | undefined;
     const pendingRenderer = new Promise<FakeRenderer>((resolve) => {
@@ -315,7 +315,7 @@ describe("LiveRegionController", () => {
     fixture.writes.length = 0;
     const entering = controller.enterFullTail();
     controller.setFooter(["two"]);
-    expect(written(fixture)).toBe("");
+    expect(written(fixture)).toBe(`\r${ESC}[1A${ESC}[J`);
     releaseRenderer?.(fixture.renderer);
     await entering;
     expect(fixture.calls.some((call) => call.startsWith("footer:") && call.includes("two"))).toBe(true);

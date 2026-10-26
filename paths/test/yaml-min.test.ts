@@ -17,6 +17,20 @@ describe("parseScalar", () => {
 });
 
 describe("parseMinimalYaml", () => {
+  test("reports a location without rejected bytes when a flow value is malformed", () => {
+    // Given a secret in an unterminated flow collection.
+    const yaml = "tracing:\n  otlp:\n    headers: [opaque-canary-parser\n";
+    // When parsing the document.
+    const parse = () => parseMinimalYaml(yaml);
+    // Then only the category and source location are exposed.
+    expect(parse).toThrow("Unsupported YAML value at line 3, column 14");
+    try {
+      parse();
+    } catch (error) {
+      if (!(error instanceof MinimalYamlError)) throw error;
+      expect(String(error)).not.toContain("opaque-canary-parser");
+    }
+  });
   test("round-trips a config value written as an inline flow array", () => {
     expect(parseMinimalYaml('plugins: ["foo","bar"]')).toEqual({ plugins: ["foo", "bar"] });
   });

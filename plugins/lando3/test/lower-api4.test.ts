@@ -220,6 +220,10 @@ describe("API-4 service lowering", () => {
     expect(result.patch.healthcheck).toEqual({ command: "true", retries: 100, intervalSeconds: 1 });
     expect(paths(result, "dropped")).toEqual([path("healthcheck", "user")]);
   });
+  test("keeps disabled healthchecks as the canonical false switch", () => {
+    const result = lowerApi4Service({ healthcheck: false }, ctx);
+    expect(result.patch.healthcheck).toBe(false);
+  });
   test("canonicalizes CA aliases when cas is supplied", () => {
     const result = lowerApi4Service({ security: { cas: ["./ca.pem"] } }, ctx);
     expect(result.patch.security).toEqual({ ca: ["./ca.pem"] });

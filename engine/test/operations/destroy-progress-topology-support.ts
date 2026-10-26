@@ -17,8 +17,11 @@ import {
   type VolumeInfo,
 } from "@lando/sdk/schema";
 import {
+  AppPlanner,
+  DataMover,
   EventService,
   FileSyncEngine,
+  LandofileService,
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
@@ -28,6 +31,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 import { makeLandoPaths } from "@lando/paths";
 import { destroyTreeId } from "../../src/operations/destroy-progress.ts";
@@ -75,7 +79,6 @@ export const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [{ name: "database", scope: "service", kind: "data" }],
   fileSync: [],
   metadata,
@@ -88,6 +91,7 @@ export const byTag = <T extends LandoEvent["_tag"]>(events: ReadonlyArray<LandoE
 export const makeHarness = (
   options: {
     readonly destroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
+    readonly dataMover?: typeof DataMover.Service;
     readonly quiesceEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly proxyAvailable?: boolean;
     readonly fileSync?: typeof FileSyncEngine.Service;
@@ -125,7 +129,11 @@ export const makeHarness = (
     logs: () => Stream.empty,
   };
   const layer = Layer.mergeAll(
+    options.dataMover === undefined ? emptySnapshotsLayer : Layer.succeed(DataMover, options.dataMover),
     PrivateFileAccessService.layer,
+    // The app root holds no Landofile, so teardown skips Landofile events before it would plan.
+    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.die("not used") })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.die("not used") })),
     Layer.succeed(StateStore, options.stateStore ?? makeTestStateStore().service),
     Layer.succeed(
       PathsService,
@@ -133,11 +141,17 @@ export const makeHarness = (
         env: {},
         platform: "linux",
         userDataRoot: mkdtempSync(join(tmpdir(), "lando-destroy-harness-")),
+        userCacheRoot: join(testAppRoot, "cache"),
+        userConfRoot: join(testAppRoot, "conf"),
+        systemPluginRoot: join(testAppRoot, "sys"),
       }),
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(provider),

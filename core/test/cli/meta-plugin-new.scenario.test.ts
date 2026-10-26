@@ -30,8 +30,9 @@ const capturingWritable = () => {
 const serviceBackedPrompter = (
   stdin: NodeJS.ReadableStream,
   stdout: NodeJS.WritableStream,
+  stderr: NodeJS.WritableStream,
 ): InteractionPrompter => {
-  const service = makeInteractionService({ stdin, stdout });
+  const service = makeInteractionService({ stdin, stdout, stderr });
   return {
     promptAll: (specs, options) =>
       Effect.runPromise(Effect.scoped(service.promptAll(specs, { ...options, mode: "interactive" }))),
@@ -214,6 +215,7 @@ describe("meta:plugin:new command", () => {
 
   test("interactive mode prompts for name, template, cspace, and description", async () => {
     const stdout = capturingWritable();
+    const stderr = capturingWritable();
     const interaction = serviceBackedPrompter(
       scriptedStdin([
         "@acme/lando-plugin-interactive",
@@ -222,6 +224,7 @@ describe("meta:plugin:new command", () => {
         "Interactive plugin",
       ]),
       stdout.stream,
+      stderr.stream,
     );
 
     const result = await Effect.runPromise(
@@ -234,10 +237,11 @@ describe("meta:plugin:new command", () => {
     expect(result.name).toBe("@acme/lando-plugin-interactive");
     expect(result.template).toBe("template-engine");
     expect(result.cspace).toBe("interactive");
-    expect(stdout.text()).toContain("Plugin package name");
-    expect(stdout.text()).toContain("Template");
-    expect(stdout.text()).toContain("Contribution namespace");
-    expect(stdout.text()).toContain("Description");
+    expect(stderr.text()).toContain("Plugin package name");
+    expect(stderr.text()).toContain("Template");
+    expect(stderr.text()).toContain("Contribution namespace");
+    expect(stderr.text()).toContain("Description");
+    expect(stdout.text()).toBe("");
   });
 
   test("rejects a non-empty destination with NotImplementedError and no phase words", async () => {

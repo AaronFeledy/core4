@@ -7,26 +7,32 @@ const OPEN_COMMAND = "app:open" as const;
 
 export type OpenArgvParseResult =
   | { readonly _tag: "success"; readonly options: OpenAppOptions }
-  | { readonly _tag: "failure"; readonly error: LandoCommandError };
+  | { readonly _tag: "failure"; readonly error: LandoCommandError; readonly additionalErrors: readonly [] };
 
 const invalidOpenArgvError = (message: string): LandoCommandError =>
-  new LandoCommandError({ message, commandId: OPEN_COMMAND, exitCode: 2 });
+  new LandoCommandError({
+    message,
+    commandId: OPEN_COMMAND,
+    exitCode: 2,
+    remediation: `Correct the \`${OPEN_COMMAND}\` flags and arguments, then re-run.`,
+  });
 
 const invalidOpenArgv = (message: string): OpenArgvParseResult => ({
   _tag: "failure",
+  additionalErrors: [],
   error: invalidOpenArgvError(message),
 });
 
 type FormatParseResult =
   | { readonly _tag: "success"; readonly json: boolean }
-  | { readonly _tag: "failure"; readonly error: LandoCommandError };
+  | { readonly _tag: "failure"; readonly error: LandoCommandError; readonly additionalErrors: readonly [] };
 
 const parseEnvelopeFormat = (argv: ReadonlyArray<string>): FormatParseResult => {
   try {
     return { _tag: "success", json: isEnvelopeResultFormat(resolveResultFormat({ argv }).format) };
   } catch (cause) {
     if (cause instanceof RendererSelectionError)
-      return { _tag: "failure", error: invalidOpenArgvError(cause.message) };
+      return { _tag: "failure", error: invalidOpenArgvError(cause.message), additionalErrors: [] };
     throw cause;
   }
 };

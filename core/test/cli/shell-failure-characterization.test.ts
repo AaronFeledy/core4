@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createBufferedRendererIO } from "@lando/core/testing";
+import { internalErrorRemediation } from "@lando/sdk/command-result";
 import { Layer } from "effect";
 import { formatBugReport } from "../../src/cli/bug-report";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
@@ -29,16 +30,16 @@ describe("native shell failure characterization", () => {
             cwd: "/workspace",
           },
           io,
-          formatError: (error) =>
+          formatError: (failure) =>
             formatBugReport({
-              error,
+              ...failure,
               context: { commandId: "meta:characterize", cacheRoot: "/cache" },
               rendererMode: "plain",
             }),
           setExitCode: (code) => exitCodes.push(code),
         });
 
-        // Then: combined failures currently render only their first typed failure.
+        // Then: combined failures retain the primary identity and expose cleanup separately.
         expect(exitCodes).toEqual([1]);
         expect(harness.events.map((event) => event._tag)).toEqual([
           "cli-meta:characterize-init",
@@ -48,7 +49,7 @@ describe("native shell failure characterization", () => {
         if (format === "text") {
           expect(io.stdout()).toBe("");
           expect(io.stderr()).toBe(
-            `${scenario.text}\ncommandId: meta:characterize\nlogsDir: /cache/logs\ncacheDir: /cache\n`,
+            `${scenario.kind === "combined" ? `operation refused\n  ↳ Retry with valid input.\nAlso failed (LandoInternalError): cleanup defect\n  ↳ ${internalErrorRemediation}\ncode: ShellFailure` : scenario.text}\ncommandId: meta:characterize\nlogsDir: /cache/logs\ncacheDir: /cache\n`,
           );
         } else {
           expect(io.stderr()).toBe("");
@@ -56,7 +57,22 @@ describe("native shell failure characterization", () => {
             apiVersion: "v4",
             command: "meta:characterize",
             ok: false,
-            error: scenario.error,
+            error:
+              scenario.kind === "combined"
+                ? {
+                    _tag: "ShellFailure",
+                    message: "operation refused",
+                    remediation: "Retry with valid input.",
+                    additionalErrors: [
+                      {
+                        _tag: "LandoInternalError",
+                        role: "peer",
+                        message: "cleanup defect",
+                        remediation: internalErrorRemediation,
+                      },
+                    ],
+                  }
+                : scenario.error,
             warnings: [],
             deprecations: [],
           });
@@ -75,7 +91,7 @@ describe("native shell failure characterization", () => {
       rendererMode: "plain",
       io,
       suppressInterruptionDiagnostics: true,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => exitCodes.push(code),
     });
     // Then

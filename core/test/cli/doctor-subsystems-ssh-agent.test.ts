@@ -8,7 +8,8 @@ import { AbsolutePath, GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, SshService } from "@lando/sdk/services";
 import { makeTestSshService } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
-import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
+import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
+import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 test.each([true, false])(
   "doctor probes a real SSH protocol socket with sidecar=%s without exposing identities",

@@ -31,6 +31,8 @@ const validateDockerfileToken = (value: string, field: string, providerId: strin
           providerId,
           operation: "buildArtifact",
           message: `${field} cannot contain CR, LF, or control characters.`,
+          remediation:
+            "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
         }),
       )
     : Effect.void;
@@ -40,9 +42,22 @@ const runInstruction = (command: string | ReadonlyArray<string>, providerId: str
     ? validateDockerfileToken(command, "Build step shell command", providerId).pipe(
         Effect.as(`RUN ${command}`),
       )
-    : Effect.forEach(command, (part) => validateDockerfileToken(part, "Build step argv token", providerId), {
-        discard: true,
-      }).pipe(Effect.as(`RUN ${JSON.stringify(command)}`));
+    : Effect.forEach(
+        command,
+        (part) =>
+          part.includes("\0")
+            ? Effect.fail(
+                new ProviderInternalError({
+                  providerId,
+                  operation: "buildArtifact",
+                  message: "Build step argv token cannot contain NUL.",
+                  remediation:
+                    "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
+                }),
+              )
+            : Effect.void,
+        { discard: true },
+      ).pipe(Effect.as(`RUN ${JSON.stringify(command)}`));
 
 type DerivedDockerfileInput = {
   readonly providerId: string;
@@ -119,6 +134,8 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
         providerId: options.providerId,
         operation: "buildArtifact",
         message: `${options.providerId} buildArtifact requires a container API request client.`,
+        remediation:
+          "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
       }),
     );
   }
@@ -129,6 +146,8 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
         providerId: options.providerId,
         operation: "buildArtifact",
         message: `Service ${input.service} is not present in the app plan.`,
+        remediation:
+          "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
       }),
     );
   }
@@ -151,6 +170,8 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
           operation: "buildArtifact",
           message: "Unable to read artifact build context.",
           cause,
+          remediation:
+            "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
         }),
     });
     const stdin =
@@ -248,6 +269,8 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
         providerId: options.providerId,
         operation: "buildArtifact",
         message: `Service ${input.service} has no artifact build inputs.`,
+        remediation:
+          "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
       }),
     );
   }

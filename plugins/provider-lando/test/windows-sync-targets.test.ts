@@ -61,7 +61,6 @@ const plan = (): AppPlan => {
     provider,
     services: { [web.name]: web, [worker.name]: worker },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [web, worker].map((entry) => ({
       engineId: "mutagen",
@@ -76,7 +75,7 @@ const plan = (): AppPlan => {
           path: PortablePath.make("/app"),
         },
         mode: "two-way-safe" as const,
-        excludes: [],
+        excludes: [".git"],
       },
     })),
     metadata,

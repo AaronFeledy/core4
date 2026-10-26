@@ -1,11 +1,11 @@
 # Lando v4: Architecture Specification (Index)
 
-> **Status:** Living architecture and compatibility contract. When code and this spec disagree, the spec wins. Release status, sequencing, and milestone assignments belong only in [`ROADMAP.md`](./ROADMAP.md); this specification does not assert release readiness.
+> **Status:** Authored architecture planning contract, not a shipped artifact or evidence of implementation. It states the intended design when code differs; runtime compatibility remains governed by published contracts. Release status, sequencing, and milestone assignments belong only in [`ROADMAP.md`](./ROADMAP.md).
 > **Audience:** Lando Core maintainers, plugin authors, contributors, and embedding hosts integrating `@lando/core` as a library.
 
 This is an architecture-level specification: every public contract (services, schemas, errors, events, commands, manifest keys, and invariants) is named and its rules stated; shapes, bodies, and mechanics live in code and generated reference docs.
 
-The specification lives in nineteen focused parts. Files are canonical; **cross-references use stable `§N` section numbers independent of file numbers**, so a reference such as §4.2 remains valid when parts move. Use the topic lookup to map a section to its part.
+The specification lives in twenty focused parts. Files are canonical; **cross-references use stable `§N` section numbers independent of file numbers**, so a reference such as §4.2 remains valid when parts move. Use the topic lookup to map a section to its part.
 
 The split is almost one section per file, with these principled merges and additions:
 
@@ -17,6 +17,7 @@ The split is almost one section per file, with these principled merges and addit
 - **§19** is filed as part 17 because executable guides connect authored documentation to §13 scenario testing.
 - **§20** is filed as part 18 because the global app is a cross-cutting host-level app used by routing and shared services.
 - **§21** is filed as part 19 because scratch apps are scope-bounded peers to user and global apps with distinct identity and persistence rules.
+- **§22** is filed as part 20 because programmable execution composes existing environments, operations, and scopes without changing Lando's local-development focus.
 
 ---
 
@@ -28,14 +29,14 @@ The split is almost one section per file, with these principled merges and addit
 | 02 | [`02-toolchain.md`](./02-toolchain.md) | §2 | Sets Bun, TypeScript, Effect, schema, dependency, performance, dispatcher, documentation, and package-surface rules. |
 | 03 | [`03-architecture.md`](./03-architecture.md) | §3 + §11 | Defines runtime layers, bootstrap levels, core Effect services, imperative shells, redaction, the event taxonomy, subscriber model, and lifecycle ordering. |
 | 04 | [`04-pluggability.md`](./04-pluggability.md) | §4 | Catalogs every replaceable abstraction, its service tag and default, selection precedence, manifest registration, and mandatory plugin guarantees. |
-| 05 | [`05-runtime-providers.md`](./05-runtime-providers.md) | §5 | Specifies the provider contract, capability negotiation, provider-neutral plans, Compose boundary, error family, bundled providers, and one-provider-per-app limit. |
-| 06 | [`06-services.md`](./06-services.md) | §6 | Defines service bases and configuration, mounts, storage, routes, environment, types and features, the canonical catalog, build orchestration, and log sources. |
+| 05 | [`05-runtime-providers.md`](./05-runtime-providers.md) | §5 | Specifies the provider contract, capability negotiation, provider-neutral plans, create-config recreate, ownership teardown, Compose boundary, error family, bundled providers, and one-provider-per-app limit. |
+| 06 | [`06-services.md`](./06-services.md) | §6 | Defines service bases and configuration, mounts, storage, routes, environment, types and features, the canonical catalog, build orchestration, lifecycle commands, and log sources. |
 | 07 | [`07-landofile-and-config.md`](./07-landofile-and-config.md) | §7 | Covers Landofile discovery and merge, expressions and templates, translation, global config, includes, environment overrides, schema publication, and canonical serialization. |
 | 08 | [`08-cli-and-tooling.md`](./08-cli-and-tooling.md) | §8 | Defines command identity and dispatch, built-ins, tooling, recipes, rendering, interaction, help, and machine-readable output. |
 | 09 | [`09-embedding.md`](./09-embedding.md) | §16 | Defines the Effect-native library API, runtime and app handles, plugin/config policy, scope ownership, programmatic CLI access, testing exports, and compatibility. |
 | 10 | [`10-plugins.md`](./10-plugins.md) | §9 | Defines plugin identity, discovery, manifest keys, contribution surfaces, install and loading policy, constrained context, and authoring commands. |
-| 11 | [`11-subsystems.md`](./11-subsystems.md) | §10 | Specifies networking, routing, tunnels, trust and downloads, SSH, probes, file sync, setup, diagnostics, host proxy, data movement, managed files, remote sync, and MCP. |
-| 12 | [`12-caches-and-persistence.md`](./12-caches-and-persistence.md) | §12 | Catalogs caches and persistent artifacts, encoding and atomicity, managed-file transactions, hot-path budgets, offline state, and `StateStore`. |
+| 11 | [`11-subsystems.md`](./11-subsystems.md) | §10 | Specifies networking, routing, tunnels, trust and downloads, SSH, probes, file sync, setup, diagnostics, host proxy, data movement, managed files, remote sync with code sync and vendor tools, browser authorization, and MCP. |
+| 12 | [`12-caches-and-persistence.md`](./12-caches-and-persistence.md) | §12 | Catalogs caches and persistent artifacts, encoding and atomicity, managed-file transactions, the durable ownership manifest, hot-path budgets, offline state, and `StateStore`. |
 | 13 | [`13-testing-and-distribution.md`](./13-testing-and-distribution.md) | §13 | Defines test layers, schema/type/quality gates, synchronized binary and library distribution, CI cadences, release channels, and boundary enforcement. |
 | 14 | [`14-appendices.md`](./14-appendices.md) | §15 | Provides provider-neutral terminology, forbidden dependencies, the source-derived acceptance checklist, historical dispatcher rationale, and glossary. |
 | 15 | [`15-binary-build-and-release.md`](./15-binary-build-and-release.md) | §17 | Defines release stages, codegen ownership, embedded assets, signing, supply-chain artifacts, self-update, installation, release CI, and shipping criteria. |
@@ -43,6 +44,7 @@ The split is almost one section per file, with these principled merges and addit
 | 17 | [`17-executable-tutorials.md`](./17-executable-tutorials.md) | §19 | Defines prose-first executable guides, typed components, scenario context, transcripts, codegen, source maps, lint, recipe README generation, and variants. |
 | 18 | [`18-global-app.md`](./18-global-app.md) | §20 | Defines global-app identity and Landofile, plugin contributions, lifecycle and CLI, networking, storage, proxy realization, errors, and non-goals. |
 | 19 | [`19-scratch-apps.md`](./19-scratch-apps.md) | §21 | Defines scratch identity and sources, scoped lifecycle, isolation, storage rewriting, routing, CLI and library access, cleanup, errors, and non-goals. |
+| 20 | [`20-programmable-execution.md`](./20-programmable-execution.md) | §22 | Defines opt-in execution sessions, borrowed/owned environments, programmatic configuration, admission, process handles, private artifacts, and local-development compatibility. |
 
 ---
 
@@ -78,45 +80,62 @@ If you are looking for a public surface or policy:
 | Plugin manifest contribution registration | 04 | §4.4 |
 | Mandatory abstraction guarantees | 04 | §4.5 |
 | `RuntimeProvider` service and capability schema | 05 | §5.3 + §5.4 |
+| Early volume creation receipts and seed eligibility after failed apply | 05 + 11 | §5.3 + §10.7 |
 | Observed-state teardown, invalid configuration, and orphan cleanup | 05 | §5.3.1 |
+| Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
+| Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
 | `AppPlan` and `ServicePlan` schema families | 05 | §5.5 |
+| Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
 | Bundled providers and multi-provider non-goal | 05 | §5.8 + §5.9 |
 | Service bases and common service schema | 06 | §6.1 + §6.2 |
 | Artifact build contract | 06 | §6.3 |
 | App mounts and mount realization | 06 | §6.4 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
-| Endpoints, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
-| Healthchecks, certificates, and trust injection | 06 | §6.7 + §6.8 |
+| Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
+| Healthchecks, start-failure retention, certificates, and trust injection | 06 | §6.7 + §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
-| `ServiceInfo` schema | 06 | §6.10 |
+| `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
+| Provider-independent service/app endpoint declarations, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
+| Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
+| Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
+| Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
+| Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
 | Service log-source contracts | 06 | §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
+| Host-owned SDK and Effect modules for author code | 07 | §7.1.1 |
 | Six-layer Landofile merge | 07 | §7.2 |
+| Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
 | Top-level Landofile and Compose-subset keys | 07 | §7.4 |
 | Config translation contracts and diagnostics | 07 | §7.4.1 |
+| Translation sources, `translate:` refresh, and drift | 07 | §7.4.2 |
 | Global config keys, root defaults, and pure path resolution | 07 | §7.5 + §7.5.1 |
 | Environment override naming | 07 | §7.6 |
 | Includes, fragments, lockfile, cache, and security | 07 | §7.7 |
+| Include-entry failure paths and declaring-file attribution | 07 | §7.7.2 |
 | Schema and generated-reference publication | 07 | §7.8 |
+| Shared resolved-Landofile validation, lint rules, and machine diagnostics | 07 + 08 | §7.8 + §8.2.1 + §8.11.1 |
+| Authored HTTP route binding, indexed provenance, incomplete endpoint facts, and no-realization coverage | 06 + 07 + 13 | §6.6 + §7.8 + §13.1 |
 | Canonical Landofile parser and serializer | 07 | §7.8.1 |
 | Command kinds and namespaces | 08 | §8.1 |
 | Top-level aliases and collision errors | 08 | §8.1.2 |
 | Built-in command registry | 08 | §8.2 |
 | App config, global config, shell, Bun, open, and MCP commands | 08 | §8.2.1 + §8.2.6 |
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
+| CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
 | Single native dispatch and help projection | 08 | §8.4.1 + §8.4.2 |
 | Tooling schemas, positional argument round-tripping, steps, expressions, events, and scripts | 08 | §8.5 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
+| Init sources, source auth, and hoster init | 08 | §8.8.13 |
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
-| Machine-readable command envelopes, advertised formats, streams, and closed pipes | 08 | §8.11 |
+| Command completion, result projection, machine envelopes, bounded output capture, streams, and closed pipes | 08 + 11 | §8.3 + §8.11 + §10.14 |
 | Library entry points and runtime factory | 09 | §16.2 + §16.3 |
 | Library plugin/config policy and scope ownership | 09 | §16.4 + §16.6 |
 | Programmatic CLI and testing APIs | 09 | §16.7 + §16.8 |
@@ -125,24 +144,37 @@ If you are looking for a public surface or policy:
 | Plugin contribution surfaces | 10 | §9.5 |
 | Plugin install, loading, trust, and updates | 10 | §9.6 + §9.7 |
 | `LandoPluginContext` capabilities | 10 | §9.8 |
+| Durable `lando` grants, scope-local `lando-session`, and 1Password references | 10 | §9.5.1 |
 | Plugin authoring commands | 10 | §9.10 |
-| Networking, routers, tunnels, and host ports | 11 | §10.1 + §10.2 |
+| Networking, same-provider routes, provider mismatch rejection, tunnels, and host ports | 11 | §10.1 + §10.2 |
+| Exact route-application acceptance, bounded convergence, warm-route reuse, and stopped-router withdrawal | 11 | §10.2.1 |
 | Certificate authority, proxy trust, Effect HTTP client, request policy, and downloads | 11 | §10.3 |
-| SSH identity, sidecar and host agent forwarding, gpg agent | 11 | §10.4 |
-| Probe, healthcheck, and scanner contracts | 11 | §10.5 |
+| External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
+| SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |
+| Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
+| Accelerated-start journal, resume, and stop/destroy from any phase | 11 | §10.6.3 + §5.3.1 |
 | Setup and host integration | 11 | §10.8 |
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |
-| `DataMover`, endpoints, snapshots, and errors | 11 | §10.11 |
+| In-container helper: static Go client, Lando-built toolchain, embedding | 02 + 11 + 15 | §2.1 + §10.10.2 + §17.3 |
+| Host-proxy worker reuse, session recreation, and scoped rebuild | 11 | §10.10.1 + §12.4 |
+| `DataMover`, endpoints, owner-keyed snapshot sidecars, handle-only mutations, and orphan GC | 11 | §10.11 |
 | Remote source and dataset contracts | 11 | §10.12 |
+| Code sync, post-processing, remote setup, and vendor tools | 11 | §10.12.1 + §10.12.4 |
+| Service tunnels, tethered sessions, and environment operations | 11 | §10.12.5 + §10.12.6 |
+| Config datasets (private file pull, unreadable keys, explicit push keys) | 11 | §10.12.7 |
+| Effective remote protection and target-bound approval | 11 | §10.12.8 |
+| Browser authorization (loopback PKCE, device flow) | 11 | §10.3.5 |
+| Scope-owned per-service environment overrides | 06 | §6.9 |
 | Managed-file ownership, ledger, and errors | 11 | §10.13 |
 | MCP service, catalog, transport, and errors | 11 | §10.14 |
 | Cache catalog and encodings | 12 | §12.1 + §12.2 |
 | Atomic cache writes and persistent artifacts | 12 | §12.3 + §12.4 |
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |
+| Durable resource-ownership manifest | 12 | §12.4.2 |
 | Hot-path caches, compiled decoder targets, and offline-state policies | 12 | §12.5 + §12.6 |
-| `StateStore`, buckets, consumers, and plugin access | 12 | §12.7 |
+| `StateStore`, buckets, app/worker locks, consumers, and plugin access | 12 | §12.7 |
 | Test and contract-suite layers | 13 | §13.1 |
 | Schema, documentation, type, and PR gates | 13 | §13.2 + §13.4 |
 | Distribution forms, CI matrix, and release channels | 13 | §13.5 + §13.7 |
@@ -150,6 +182,7 @@ If you are looking for a public surface or policy:
 | Boundary gate policy | 13 | §13.8 |
 | Provider-neutral vocabulary, forbidden dependencies, acceptance, glossary | 14 | §15 |
 | Release pipeline, codegen ownership, and embedded assets | 15 | §17.1 + §17.3 |
+| Paired Tomcat image/config maintenance and offline catalog generation | 15 | §17.2 |
 | Signing, supply chain, update, and installation | 15 | §17.4 + §17.7 |
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |
@@ -158,7 +191,7 @@ If you are looking for a public surface or policy:
 | Transcripts, codegen, source maps, and lint | 17 | §19.6 + §19.10 |
 | Recipe README and library-guide integration | 17 | §19.13 + §19.14 |
 | Guide acceptance and tabbed variants | 17 | §19.15 + §19.16 |
-| Global-app identity, Landofile, and plugin contributions | 18 | §20.2 + §20.4 |
+| Global-app identity, Landofile, and plugin contributions | 18 | §20.2 + §20.3 + §20.4 |
 | Global service, lifecycle, CLI, networking, and storage | 18 | §20.5 + §20.9 |
 | Global restart/rebuild and router startup revalidation | 18 | §20.6.5 |
 | Selected global stop and its orphan fail-closed rule | 18 | §20.7 |
@@ -167,6 +200,22 @@ If you are looking for a public surface or policy:
 | Scratch lifecycle, isolation, storage, and routes | 19 | §21.6 + §21.9 |
 | Scratch CLI, registry, library mode, and errors | 19 | §21.10 + §21.14 |
 | Scratch non-goals | 19 | §21.15 |
+| Configuration-backed scratch and retained source provenance | 19 + 20 | §21.4.3 + §22.4 |
+| Programmable execution purpose and public contracts | 20 | §22.1 + §22.2 |
+| Borrowed and owned environment lifetime | 20 | §22.3 |
+| Typed operations, stdin, and scoped process handles | 20 | §22.5 |
+| Invocation-local admission and credential grants | 20 | §22.6 |
+| Execution observations, results, and events | 20 | §22.7 |
+| Private local artifact retention and fresh-runtime access | 20 | §22.8 |
+| Effect composition and future integration boundary | 20 | §22.9 |
+| Local-development UX/performance and execution acceptance | 20 | §22.10 + §22.12 |
+| Execution tagged errors | 20 | §22.11 |
+
+---
+
+## Plugin implementation plans
+
+- [GitHub Actions plugin](./github-actions-plugin-plan.md): a planned optional integration, evaluated against the completed execution-foundation contracts (§22). It is not a shipped feature, a new spec part, or a release commitment.
 
 ---
 
@@ -182,7 +231,7 @@ Public surfaces MUST have one canonical registry. Narrative sections may explain
 
 Canonical owners:
 
-- Built-in commands, aliases, flags, args, bootstrap levels, recipe post-init eligibility, and command docs metadata: the `LandoCommandSpec` registry (§8.2, §8.3).
+- Built-in commands, aliases, flags, args, bootstrap levels, completion policies, recipe post-init eligibility, and command docs metadata: the `LandoCommandSpec` registry (§8.2, §8.3).
 - Public schemas, event payload schemas, tagged errors, and plugin-facing contract metadata: the `@lando/sdk` schema, error, and event registries (§7.8, §13.2).
 - Core service tags and public service exports: §3.4 plus `@lando/core/services` (§16.2).
 - Secret and PII redaction: `@lando/sdk/secrets` owns the value layer, pattern-class catalog, `secrets`/`telemetry`/`transcript` profiles, and `[redacted]` sentinel, surfaced through `RedactionService` (§3.7, §3.4). This invariant is non-replaceable, has no `redactors:` plugin surface (§4.2), composes into every sensitive emitter, and is protected by the §13.4 boundary gate.
@@ -191,6 +240,7 @@ Canonical owners:
 - Acceptance checklist items: stable ids mapped to tests and public surfaces (§15, §17.9).
 - Deprecation notices: schema annotations, contract fields, manifest fields, or TSDoc tags per §18.5, merged by `DeprecationService` (§18.3) and published as `dist/schemas/deprecation-notice.json` (§18.2).
 - Executable-guide vocabulary: prop schemas, `GuideFrontmatter`, `ScenarioProps`, `MatcherSchema`, `Transcript`/`TranscriptFrame`, `TabAxis`/`TabAxisValue`, `TabsProps`/`TabProps`, and redactions belong to `@lando/sdk/docs/components` and `@lando/sdk/docs/redactions` (§19.3, §19.6, §19.16). JSX/Astro runtime implementations and Starlight integration belong to `@lando/core/docs/components`; `ScenarioContext` belongs to `@lando/core/testing` (§19.4, §16.8).
+- Programmable execution: schema-backed session options, policies, observations, process requests/results, artifact refs, errors, and opaque handles belong to `@lando/sdk/execution` and the canonical schema/error/event/service registries (§22.2, §22.11). `ExecutionSessionService` belongs to §3.4; the facade belongs to `@lando/core/execution` (§2.7, §16.2). Internal step/scheduler representations are not public. Implementation must add canonical exports and compatibility tests before advertising a planned surface as available.
 
 Surface change checklist:
 

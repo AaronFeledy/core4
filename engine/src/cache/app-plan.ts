@@ -6,14 +6,16 @@ import { deserialize, serialize } from "node:v8";
 
 import { Clock, Effect, Schema } from "effect";
 
-import { CacheError, isErrnoCode } from "@lando/sdk/errors";
+import { CacheError, type LandofileFormConflictError, isErrnoCode } from "@lando/sdk/errors";
 import {
   AppPlan,
+  CurrentExecutableAppPlan,
   type LandofileShape,
   type PluginManifest,
   type ProviderCapabilities,
 } from "@lando/sdk/schema";
-import { CacheService } from "@lando/sdk/services";
+import { CacheService, type FileSystem } from "@lando/sdk/services";
+import type { Context } from "effect";
 
 import { type LandofileIncludeSource, getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
@@ -29,6 +31,8 @@ import {
 } from "@lando/landofile/version-constraint";
 import { sha256Hex } from "@lando/sdk/digest";
 import { routerEnabled } from "../config/router-config.ts";
+import { GitHostCheck, readGitDirectories, sameGitDirectories } from "../planner/git-host-checks.ts";
+import { ShadowHostCheck, canShadowHostPath } from "../planner/shadow-host-checks.ts";
 import { CORE_VERSION } from "../version.ts";
 import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
 import { appPlanCachePath } from "./paths.ts";
@@ -37,18 +41,21 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 20n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 35n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
   readonly landoVersion: string;
   readonly key: string;
   readonly versionConstraints: ReadonlyArray<VersionConstraintEntry>;
+  readonly shadowHostChecks: readonly ShadowHostCheck[];
+  readonly gitHostChecks: readonly GitHostCheck[];
   readonly generatedAtMs: number;
   readonly plan: unknown;
 }
 
 export interface AppPlanCacheKeyInput {
+  readonly hostProvider: string;
   readonly appRoot: string;
   readonly landofile: LandofileShape;
   readonly providerCapabilities?: ProviderCapabilities;
@@ -59,6 +66,7 @@ export interface AppPlanCacheKeyInput {
   readonly includedFragmentShas?: ReadonlyArray<string>;
   readonly config?: unknown;
   readonly serviceInputs?: unknown;
+  readonly appFeatureEnv?: Readonly<Record<string, string | null>>;
   readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;
 }
 
@@ -100,32 +108,36 @@ const readIncludeLockChecksums = (path: string): Promise<ReadonlyArray<string>> 
 export const readAppPlanSourceFingerprint = (
   appRoot: string,
   landofile?: LandofileShape,
-): Effect.Effect<AppPlanSourceFingerprint, CacheError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const includeLockfilePath = join(appRoot, ".lando.lock.yml");
-      const layers = await presentLandofileLayers(appRoot);
-      return {
-        landofileContentHashes: await Promise.all(
-          layers.map(async (layer) => ({
-            source: layer.filePath,
-            hash: (await readOptionalHash(layer.filePath)) ?? "",
-          })),
-        ),
-        includeLockfileHash: await readOptionalHash(includeLockfilePath),
-        includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
-        referencedFiles: landofile === undefined ? [] : getLandofileReferencedFiles(landofile),
-        includeSources: landofile === undefined ? [] : getLandofileIncludeSources(landofile),
-      };
-    },
-    catch: (cause) =>
-      new CacheError({
-        message: `Failed to read app-plan cache source fingerprint for ${appRoot}.`,
-        key: "app-plan",
-        path: appRoot,
-        cause,
+): Effect.Effect<AppPlanSourceFingerprint, CacheError | LandofileFormConflictError> =>
+  presentLandofileLayers(appRoot).pipe(
+    Effect.flatMap((layers) =>
+      Effect.tryPromise({
+        try: async () => {
+          const includeLockfilePath = join(appRoot, ".lando.lock.yml");
+          return {
+            landofileContentHashes: await Promise.all(
+              layers.map(async (layer) => ({
+                source: layer.filePath,
+                hash: (await readOptionalHash(layer.filePath)) ?? "",
+              })),
+            ),
+            includeLockfileHash: await readOptionalHash(includeLockfilePath),
+            includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
+            referencedFiles: landofile === undefined ? [] : getLandofileReferencedFiles(landofile),
+            includeSources: landofile === undefined ? [] : getLandofileIncludeSources(landofile),
+          };
+        },
+        catch: (cause) =>
+          new CacheError({
+            message: `Failed to read app-plan cache source fingerprint for ${appRoot}.`,
+            key: "app-plan",
+            path: appRoot,
+            cause,
+            remediation: "Delete the Lando cache entry `app-plan` and re-run the command.",
+          }),
       }),
-  });
+    ),
+  );
 
 const normalizeManifest = (manifest: PluginManifest) => ({
   name: manifest.name,
@@ -153,6 +165,7 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       planningRuntime: input.planningRuntime ?? defaultPlanningRuntimeIdentity(),
       hostHome: input.hostHome ?? homedir(),
       appRoot: input.appRoot,
+      hostProvider: input.hostProvider,
       landofile: input.landofile,
       sourceFingerprint:
         input.sourceFingerprint === undefined
@@ -174,6 +187,7 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       pluginManifests: sortedManifests,
       config: input.config ?? null,
       serviceInputs: input.serviceInputs ?? input.landofile.services ?? {},
+      appFeatureEnv: input.appFeatureEnv ?? {},
     }),
   ).toString("hex");
 };
@@ -203,7 +217,7 @@ const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
   }
 };
 
-const withDerivedRouteRequirements = (plan: AppPlan): AppPlan => {
+const withDerivedRouteRequirements = (plan: CurrentExecutableAppPlan): CurrentExecutableAppPlan => {
   if (plan.routes.length === 0 || !routerEnabled(plan)) return plan;
 
   const current = plan.requires?.globalServices ?? [];
@@ -225,11 +239,12 @@ const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry>
 };
 
 export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
+  readonly fileSystem?: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly cacheRoot: string;
   readonly appName: string;
   readonly appRoot: string;
   readonly key: string;
-}): Effect.fn.Return<AppPlan | null, CacheError> {
+}): Effect.fn.Return<CurrentExecutableAppPlan | null, CacheError> {
   const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
   const bytes = yield* Effect.tryPromise({
     try: () => readFile(path),
@@ -239,6 +254,7 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
         key: "app-plan",
         path,
         cause,
+        remediation: "Delete the Lando cache entry `app-plan` and re-run the command.",
       }),
   }).pipe(
     Effect.catchIf(
@@ -252,14 +268,24 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
   if (payload.landoVersion !== CORE_VERSION || payload.key !== input.key) return null;
   if (!isVersionConstraintEntryArray(payload.versionConstraints)) return null;
   if (!versionConstraintsUsable(payload.versionConstraints)) return null;
+  if (!Schema.is(Schema.Array(ShadowHostCheck))(payload.shadowHostChecks)) return null;
+  for (const check of payload.shadowHostChecks) {
+    if ((yield* canShadowHostPath(check.path, input.fileSystem)) !== check.shadowed) return null;
+  }
+  if (!Schema.is(Schema.Array(GitHostCheck))(payload.gitHostChecks)) return null;
+  for (const check of payload.gitHostChecks) {
+    const current = yield* readGitDirectories(check.path, check.target, input.fileSystem);
+    if (!sameGitDirectories(current, check.directories)) return null;
+  }
   return yield* Effect.try({
-    try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(AppPlan)(payload.plan)),
+    try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(CurrentExecutableAppPlan)(payload.plan)),
     catch: (cause) =>
       new CacheError({
         message: `Cached app plan at ${path} failed schema decode.`,
         key: "app-plan",
         path,
         decodeError: cause,
+        remediation: "Delete the Lando cache entry `app-plan` and re-run the command.",
       }),
   }).pipe(Effect.catch(() => Effect.succeed(null)));
 });
@@ -272,6 +298,8 @@ export const writeCachedAppPlan = Effect.fnUntraced(function* (input: {
   readonly plan: AppPlan;
   readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;
   readonly now?: () => number;
+  readonly shadowHostChecks?: readonly ShadowHostCheck[];
+  readonly gitHostChecks?: readonly GitHostCheck[];
 }): Effect.fn.Return<string, CacheError, CacheService> {
   const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
   const cache = yield* CacheService;
@@ -283,6 +311,8 @@ export const writeCachedAppPlan = Effect.fnUntraced(function* (input: {
       landoVersion: CORE_VERSION,
       key: input.key,
       versionConstraints: input.versionConstraints ?? [],
+      shadowHostChecks: input.shadowHostChecks ?? [],
+      gitHostChecks: input.gitHostChecks ?? [],
       generatedAtMs,
       plan: Schema.encodeSync(AppPlan)(input.plan),
     }),

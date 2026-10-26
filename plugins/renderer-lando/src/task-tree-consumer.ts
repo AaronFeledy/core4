@@ -1,7 +1,7 @@
 import { Semaphore } from "effect";
-import { Effect, Fiber, Layer, Option, Queue } from "effect";
+import { DateTime, Effect, Fiber, Layer, Option, Queue } from "effect";
 
-import type { RendererIO } from "@lando/sdk/renderer";
+import type { RendererNarrationIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 
 import { renderLandoLine } from "./format.ts";
@@ -24,9 +24,22 @@ const taskIdOf = (event: LandoEvent): string | undefined => {
   return typeof value === "string" ? value : undefined;
 };
 
+const timestampOf = (event: LandoEvent): string => {
+  const value = Reflect.get(event, "timestamp");
+  return DateTime.isDateTime(value) ? String(DateTime.toEpochMillis(value)) : "";
+};
+
+/**
+ * Identity of an input-published expand/collapse event as it echoes back from
+ * the bus. The bus delivers a redacted copy, not the published object, so echo
+ * suppression keys on the event's fields rather than on object identity.
+ */
+const echoKeyOf = (event: LandoEvent): string =>
+  `${event._tag}\u0000${taskIdOf(event) ?? ""}\u0000${timestampOf(event)}`;
+
 // allow: SIZE_OK — terminal ownership and its shutdown barrier share one scoped consumer closure.
 export const layer = (
-  io: RendererIO,
+  io: RendererNarrationIO,
   stdout: NodeJS.WriteStream,
   createLiveRegion: (options: LiveRegionControllerOptions) => Promise<LiveRegionHandle>,
   raiseInterrupt: () => void,
@@ -112,7 +125,15 @@ export const layer = (
           isClosing: () => closing,
         });
         const input = new TaskTreeInputController(viewModel);
-        const publishedByInput = new WeakSet<LandoEvent>();
+        const awaitingEcho = new Map<string, number>();
+        const claimEcho = (event: LandoEvent): boolean => {
+          const key = echoKeyOf(event);
+          const pending = awaitingEcho.get(key);
+          if (pending === undefined) return false;
+          if (pending > 1) awaitingEcho.set(key, pending - 1);
+          else awaitingEcho.delete(key);
+          return true;
+        };
         const transition = Effect.fnUntraced(function* (
           event: LandoEvent,
           preferredInternalId?: string,
@@ -161,9 +182,8 @@ export const layer = (
           return true;
         });
         const consume = Effect.fnUntraced(function* (event: LandoEvent): Effect.fn.Return<void> {
-          if (publishedByInput.delete(event)) return;
           if (event._tag === "task.detail.expand" || event._tag === "task.detail.collapse") {
-            yield* transition(event);
+            if (!claimEcho(event)) yield* transition(event);
             return;
           }
           yield* Effect.tryPromise({
@@ -198,7 +218,8 @@ export const layer = (
                 }
                 for (const event of result.events) {
                   if (!(yield* transition(event, result.preferredInternalId))) continue;
-                  publishedByInput.add(event);
+                  const key = echoKeyOf(event);
+                  awaitingEcho.set(key, (awaitingEcho.get(key) ?? 0) + 1);
                   yield* events.publish(event);
                 }
               }),

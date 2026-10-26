@@ -13,6 +13,7 @@ import { unified } from "unified";
 import { parseLandofile } from "../landofile/src/parser.ts";
 import { type GuideFrontmatter, decodeGuideFrontmatterEither } from "../sdk/src/docs/components/index.ts";
 import { GuideFrontmatterValidationError } from "../sdk/src/errors/index.ts";
+import { validationIssuesFromCause } from "../sdk/src/schema/validation-issue.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const RECIPES_ROOT = "recipes";
@@ -116,7 +117,7 @@ const parseFrontmatter = (sourcePath: string, yaml: string | undefined): Record<
       sourcePath,
       field: "frontmatter",
       rejectedValue: yaml,
-      issues: [String(error)],
+      issues: [{ path: [], message: String(error) }],
       remediation: `Fix the YAML frontmatter in ${sourcePath}.`,
     });
   }
@@ -130,7 +131,7 @@ const decodeFrontmatter = (sourcePath: string, input: Record<string, unknown>): 
     sourcePath,
     field: "frontmatter",
     rejectedValue: input,
-    issues: [String(decoded.failure)],
+    issues: validationIssuesFromCause(decoded.failure),
     remediation: `Fix the recipe README frontmatter in ${sourcePath}.`,
   });
 };

@@ -19,6 +19,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { GlobalConfigSources } from "@lando/engine/services/config";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
@@ -83,6 +84,9 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
     }),
   );
   const registry = RuntimeProviderRegistry.of({
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make("lando")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -109,6 +113,8 @@ const makeConfigServiceLayer = () => {
       load,
       get: (key) => Effect.map(load, (c) => c[key]),
     }),
+  ).pipe(
+    Layer.provideMerge(Layer.succeed(GlobalConfigSources, { env: {}, sources: { user: false, env: false } })),
   );
 };
 
@@ -195,6 +201,7 @@ describe("meta:setup task tree progress", () => {
               providerId: "lando",
               operation: "setup",
               message: "Podman API unreachable in test fake.",
+              remediation: "Install or start the `lando` provider and confirm it can perform `setup`.",
             }),
           );
         }),
@@ -217,6 +224,9 @@ describe("meta:setup task tree progress", () => {
         }),
       );
       const registry = RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

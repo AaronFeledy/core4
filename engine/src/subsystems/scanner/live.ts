@@ -1,19 +1,20 @@
 import { Effect, Layer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
-import { ScannerError } from "@lando/sdk/errors";
-import type { AppId, ServiceName } from "@lando/sdk/schema";
+import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
+import { type AppId, type AppPlan, type ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import {
   type PortCollision,
-  type ProviderError,
-  RuntimeProvider,
+  RuntimeProviderRegistry,
   type RuntimeProviderShape,
   UrlScanner,
   type UrlScannerShape,
 } from "@lando/sdk/services";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { collectObservedConnections, observeService } from "../../operations/connection-collector.ts";
+import { observedPublicationConnection, serviceState } from "../../operations/service-connections.ts";
 import {
   SCANNER_ID,
   type ScanSourceEndpoint,
@@ -53,9 +54,9 @@ export const makeUrlScanner = (
         return { appId, endpoints: [] };
       }
       const redactor = yield* resolveRedactor;
-      const targets =
+      const candidates =
         options?.urls === undefined
-          ? (yield* deps.listEndpoints(appId)).flatMap((endpoint) => {
+          ? (yield* deps.listEndpoints(appId, options?.plan)).flatMap((endpoint) => {
               const scan = options?.plan?.services[endpoint.service]?.scanner;
               const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
               return resolved.enabled
@@ -64,14 +65,30 @@ export const makeUrlScanner = (
             })
           : options.urls.flatMap((supplied) => {
               const protocol = URL.parse(supplied.url)?.protocol;
-              if (protocol !== undefined && protocol !== "http:" && protocol !== "https:") return [];
+              const host = URL.parse(supplied.url)?.hostname;
+              if (
+                (protocol !== undefined && protocol !== "http:" && protocol !== "https:") ||
+                host?.includes("*")
+              )
+                return [];
               const scan = options.plan?.services[supplied.service]?.scanner;
               const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
               return resolved.enabled ? [{ target: supplied, config: resolved }] : [];
             });
+      const targets = [
+        ...new Map(
+          candidates.map((entry) => [`${entry.target.service}/${entry.target.url}`, entry]),
+        ).values(),
+      ];
       const scanned = yield* Effect.forEach(
         targets,
-        ({ target, config }) => scanTarget(deps, config, redactor, target),
+        ({ target, config }) =>
+          scanTarget(
+            { ...deps, ...(options?.onAttempt === undefined ? {} : { onAttempt: options.onAttempt }) },
+            config,
+            redactor,
+            target,
+          ),
         { concurrency: 4 },
       );
       return { appId, endpoints: scanned };
@@ -98,40 +115,99 @@ export const makeUrlScanner = (
   });
 };
 
-const providerListError = (error: ProviderError, redactor: Redactor): ScannerError =>
+const providerListError = (
+  error: { readonly message: string; readonly remediation?: string },
+  redactor: Redactor,
+): ScannerError =>
   new ScannerError({
-    message: redactor.redactString(
-      `URL scan could not list provider services: ${error.message}. Check the provider with \`lando doctor\` and re-run the scan.`,
-    ),
+    message: redactor.redactString(`App checks could not list provider services: ${error.message}`),
     scannerId: SCANNER_ID,
     cause: redactor.redactValue(error),
+    // The provider's own remediation names the real fix; the fallback covers untagged failures.
+    remediation: redactor.redactString(
+      error.remediation ?? "Run lando doctor to inspect the provider, then re-run the URL checks.",
+    ),
   });
 
 const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>
   Effect.fn("RuntimeProvider.listEndpoints")(function* (
     appId: AppId,
+    suppliedPlan?: AppPlan,
   ): Effect.fn.Return<ReadonlyArray<ScanSourceEndpoint>, ScannerError> {
     const redactor = yield* resolveRedactor;
-    const infos = yield* provider
-      .list({ app: appId })
-      .pipe(Effect.mapError((error) => providerListError(error, redactor)));
-    return infos.flatMap((info) =>
-      (info.state ?? info.status) === "stopped" || info.endpoints === undefined
+    const plans =
+      provider.appliedPlans === undefined
         ? []
-        : info.endpoints.flatMap((endpoint) =>
-            endpoint._tag === "published" ? [{ ...endpoint, service: info.service }] : [],
-          ),
+        : yield* provider.appliedPlans.pipe(Effect.mapError((error) => providerListError(error, redactor)));
+    const plan = suppliedPlan ?? plans.find((plan) => plan.id === appId);
+    const infos = yield* (
+      plan === undefined
+        ? provider.list({ app: appId })
+        : Effect.forEach(Object.values(plan.services), (service) =>
+            provider.inspect({ app: appId, service: service.name, plan }),
+          )
+    ).pipe(Effect.mapError((error) => providerListError(error, redactor)));
+    if (plan !== undefined) {
+      const rows = yield* collectObservedConnections(
+        plan,
+        infos.map((runtime) => observeService(plan, runtime)),
+      );
+      return rows.flatMap((row) =>
+        row.connections.map((connection) => ({ ...connection, service: ServiceName.make(row.name) })),
+      );
+    }
+    return infos.flatMap((runtime) =>
+      runtime.publications.status === "present"
+        ? runtime.publications.bindings.map((binding) => ({
+            ...observedPublicationConnection(binding, serviceState(runtime.state ?? runtime.status)),
+            service: runtime.service,
+          }))
+        : [],
     );
   });
 
-export const layer: Layer.Layer<UrlScanner, never, RuntimeProvider | HttpClient.HttpClient> = Layer.effect(
-  UrlScanner,
-  Effect.gen(function* () {
-    const provider = yield* RuntimeProvider;
-    const http = yield* HttpClient.HttpClient;
-    return makeUrlScanner({
-      http,
-      listEndpoints: listEndpointsFromProvider(provider),
-    });
-  }),
-);
+export const layer: Layer.Layer<UrlScanner, never, RuntimeProviderRegistry | HttpClient.HttpClient> =
+  Layer.effect(
+    UrlScanner,
+    Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      const http = yield* HttpClient.HttpClient;
+      return makeUrlScanner({
+        http,
+        listEndpoints: Effect.fn("UrlScanner.listEndpoints")(function* (appId, suppliedPlan) {
+          const redactor = yield* resolveRedactor;
+          const selected = Effect.gen(function* () {
+            if (suppliedPlan !== undefined) return yield* registry.select(suppliedPlan);
+            const inspectAppliedPlans = (id: ProviderId) =>
+              registry
+                .select(id)
+                .pipe(Effect.flatMap((candidate) => candidate.appliedPlans ?? Effect.succeed([])));
+            // The first provider that could not be inspected keeps its own tag and remediation.
+            let uninspected: Effect.Error<ReturnType<typeof inspectAppliedPlans>> | undefined;
+            for (const id of yield* registry.list) {
+              const inspected = yield* Effect.result(inspectAppliedPlans(id));
+              if (inspected._tag === "Failure") {
+                uninspected ??= inspected.failure;
+                continue;
+              }
+              const plan = inspected.success.find((plan) => plan.id === appId);
+              if (plan !== undefined) return yield* registry.select(plan);
+            }
+            if (uninspected !== undefined) return yield* Effect.fail(uninspected);
+            return yield* Effect.fail(
+              new ProviderUnavailableError({
+                providerId: "unknown",
+                operation: "scan",
+                message: `No applied provider plan was found for app ${appId}.`,
+                remediation: `Start app ${appId} before scanning its endpoints.`,
+              }),
+            );
+          });
+          const provider = yield* selected.pipe(
+            Effect.mapError((error) => providerListError(error, redactor)),
+          );
+          return yield* listEndpointsFromProvider(provider)(appId, suppliedPlan);
+        }),
+      });
+    }),
+  );

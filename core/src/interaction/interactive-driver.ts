@@ -7,7 +7,7 @@
  * assets, while loading or probing failures still degrade to the line reader.
  *
  * Resolution returns `undefined` — meaning "use the line-based prompt path" —
- * unless every gate passes: real TTY stdin, not CI, and no `--yes` /
+ * unless every gate passes: real TTY stdin and stderr, not CI, and no `--yes` /
  * `--no-interactive` deterministic override. Any import/probe failure also
  * yields `undefined`, so a missing or broken renderer plugin can never break a
  * command.

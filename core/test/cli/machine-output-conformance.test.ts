@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Arbitrary, Effect, Option, Schema } from "effect";
 
 import { makeTestRuntime } from "@lando/core/testing";
+import type { AppConfigResult } from "@lando/engine/operations/app-config-result";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { RedactionService, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { ScratchRunTargetError } from "@lando/sdk/errors";
-import { CommandResultEnvelope, StreamFrame, TunnelSession } from "@lando/sdk/schema";
+import { CommandResultEnvelope, LandofileShape, StreamFrame, TunnelSession } from "@lando/sdk/schema";
 
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { builtInCommandEntries, resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
@@ -43,17 +44,41 @@ const tunnelSessionSample = Schema.decodeUnknownSync(TunnelSession)({
   startedAt: "2026-01-01T00:00:00.000Z",
 });
 
-// These commands' result schemas embed an optional LandofileShape (directly, or via
-// GlobalConfigResultSchema's `landofile` field). LandofileShape is large enough that
-// FastCheck arbitrary generation for it is impractically slow/non-terminating for a
-// unit test, so every such command gets a fixed empty success value instead — {} is a
-// valid instance since every field on these schemas is optional.
-const landofileResultCommandIds = new Set<string>([
-  "app:config",
-  "app:config:edit",
-  "app:config:set",
-  "app:config:unset",
-  "app:config:validate",
+// Avoid arbitrary generation of the large Landofile schema. Match each app-config
+// producer, including the default full resolved view, rather than any union member.
+const appConfigSuccessValues = new Map<string, AppConfigResult>([
+  [
+    "app:config",
+    {
+      source: "resolved",
+      app: "demo-app",
+      sources: [],
+      landofile: Schema.decodeUnknownSync(LandofileShape)({ name: "demo-app", services: {} }),
+    },
+  ],
+  [
+    "app:config:edit",
+    { subcommand: "edit", filePath: "/demo/.lando.yml", changed: true, valid: true, dryRun: false },
+  ],
+  [
+    "app:config:set",
+    {
+      subcommand: "set",
+      filePath: "/demo/.lando.yml",
+      key: "name",
+      value: "demo-app",
+      changed: true,
+      dryRun: false,
+    },
+  ],
+  [
+    "app:config:unset",
+    { subcommand: "unset", filePath: "/demo/.lando.yml", key: "x-note", changed: true, dryRun: false },
+  ],
+  ["app:config:validate", { subcommand: "validate", filePath: "/demo/.lando.yml", valid: true, issues: [] }],
+]);
+// GlobalConfigResultSchema still has only optional fields, so {} remains valid.
+const globalConfigResultCommandIds = new Set<string>([
   "meta:global:config",
   "meta:global:config:edit",
   "meta:global:config:set",
@@ -72,7 +97,9 @@ const isWellFormedDeep = (value: unknown): boolean => {
 };
 
 const successValueFor = (spec: LandoCommandSpec): unknown => {
-  if (landofileResultCommandIds.has(spec.id)) return {};
+  const appConfigValue = appConfigSuccessValues.get(spec.id);
+  if (appConfigValue !== undefined) return appConfigValue;
+  if (globalConfigResultCommandIds.has(spec.id)) return {};
   if (spec.id === "app:share") return tunnelSessionSample;
   if (spec.id === "app:share:list") return [tunnelSessionSample];
   const arbitrary = Arbitrary.schema(spec.resultSchema).pipe(Arbitrary.filter(isWellFormedDeep));
@@ -130,7 +157,7 @@ describe("machine-output conformance", () => {
         resultSchema: spec.resultSchema,
         io,
         render: () => undefined,
-        formatError: (error) => `diagnostic: ${String(error)}`,
+        formatError: ({ error }) => `diagnostic: ${String(error)}`,
       });
       const line = io.stdoutLines()[0] ?? "{}";
       const envelope = decodeEnvelope(line);
@@ -155,7 +182,7 @@ describe("machine-output conformance", () => {
           resultSchema: spec.resultSchema,
           io,
           render: () => undefined,
-          formatError: (error) => `diagnostic: ${String(error)}`,
+          formatError: ({ error }) => `diagnostic: ${String(error)}`,
         });
         return io;
       };
@@ -163,7 +190,12 @@ describe("machine-output conformance", () => {
       const jsonIo = await emit("json");
       const yamlIo = await emit("yaml");
       const jsonLine = jsonIo.stdoutLines()[0] ?? "{}";
-      expect(Bun.YAML.parse(yamlIo.stdout())).toEqual(JSON.parse(jsonLine));
+      const jsonEnvelope = decodeEnvelope(jsonLine);
+      const yamlValue = Bun.YAML.parse(yamlIo.stdout());
+      const yamlEnvelope = Schema.decodeUnknownSync(CommandResultEnvelope)(yamlValue);
+      expect(jsonEnvelope.ok).toBe(true);
+      expect(yamlEnvelope.ok).toBe(true);
+      expect(yamlValue).toEqual(JSON.parse(jsonLine));
       expect(yamlIo.stderr()).toBe("");
     }
   });
@@ -181,7 +213,7 @@ describe("machine-output conformance", () => {
           command: spec.id,
           resultSchema: spec.resultSchema,
           io,
-          formatError: (error) => `diagnostic: ${String(error)}`,
+          formatError: ({ error }) => `diagnostic: ${String(error)}`,
           setExitCode: (code) => {
             exitCode = code;
           },
@@ -213,7 +245,7 @@ describe("machine-output conformance", () => {
       projectResultKeys: ["core"],
       io,
       render: () => undefined,
-      formatError: (error) => `diagnostic: ${String(error)}`,
+      formatError: ({ error }) => `diagnostic: ${String(error)}`,
     });
 
     // Then the envelope result contains only that key.
@@ -234,7 +266,7 @@ describe("machine-output conformance", () => {
         command: spec.id,
         resultSchema: spec.resultSchema,
         io,
-        formatError: (error) => `diagnostic: ${String(error)}`,
+        formatError: ({ error }) => `diagnostic: ${String(error)}`,
         setExitCode: (code) => {
           exitCode = code;
         },
@@ -270,10 +302,15 @@ describe("machine-output conformance", () => {
         ...(spec.streamingMode === "live" ? { streamingMode: "live" as const } : {}),
         ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
         ...(spec.redactionTokens === undefined ? {} : { redactionTokens: spec.redactionTokens }),
-        ...(spec.successExitCode === undefined ? {} : { successExitCode: spec.successExitCode }),
+        ...(spec.completion === undefined
+          ? {}
+          : {
+              completion: (value: unknown) =>
+                spec.completion?.(value, {}) ?? { ok: true as const, exitCode: 0 },
+            }),
         io,
         render: () => undefined,
-        formatError: (error) => `diagnostic: ${String(error)}`,
+        formatError: ({ error }) => `diagnostic: ${String(error)}`,
         ...(onExit === undefined ? {} : { setExitCode: onExit }),
       });
       return io;
@@ -296,13 +333,11 @@ describe("machine-output conformance", () => {
         if (Option.isSome(redaction)) yield* redaction.value.registerValues(value.redactionTokens ?? []);
         const sink = yield* Effect.serviceOption(StreamFrameSink);
         if (Option.isSome(sink)) {
-          yield* sink.value.emit({ _tag: "stdout", chunk: value.stdout, raw: true });
-          yield* sink.value.emit({ _tag: "stderr", chunk: value.stderr, raw: true });
+          yield* sink.value.emit({ _tag: "stdout", chunk: value.stdout, kind: "bytes" });
+          yield* sink.value.emit({ _tag: "stderr", chunk: value.stderr, kind: "bytes" });
         }
         return value;
       });
-
-    afterEach(resetRegisteredRedactionValuesForTesting);
 
     test("success emits stdout/stderr frames terminated by a result frame with scratch id and exit code", async () => {
       const io = await runScratchRunSpec(streamedResult(successValue(0)));
@@ -347,7 +382,7 @@ describe("machine-output conformance", () => {
       expect(exitCode).toBe(1);
     });
 
-    test("a non-zero tool exit stays ok:true in the result frame and propagates the exit code", async () => {
+    test("a non-zero tool exit retains the failed result and propagates the exit code", async () => {
       let exitCode: number | undefined;
       const io = await runScratchRunSpec(streamedResult(successValue(7)), (code) => {
         exitCode = code;
@@ -355,7 +390,7 @@ describe("machine-output conformance", () => {
       const frames = io.stdoutLines().map(decodeFrame);
       const result = frames.at(-1);
       if (result?._tag !== "result") throw new Error("expected a terminal result frame");
-      expect(result.envelope.ok).toBe(true);
+      expect(result.envelope.ok).toBe(false);
       const payload = result.envelope.result as { exitCode: number };
       expect(payload.exitCode).toBe(7);
       expect(exitCode).toBe(7);

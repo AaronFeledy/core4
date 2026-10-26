@@ -3,6 +3,30 @@ import { readFile } from "node:fs/promises";
 import { Schema } from "effect";
 
 describe("@lando/sdk package exports", () => {
+  test("snapshot restore options distinguish explicit seed from default restore", async () => {
+    const { SnapshotRestoreOptions } = await import("@lando/sdk/schema");
+    const decode = Schema.decodeUnknownSync(SnapshotRestoreOptions);
+    expect(decode({})).toEqual({});
+    expect(decode({ mode: "restore" })).toEqual({ mode: "restore" });
+    expect(decode({ mode: "seed" })).toEqual({ mode: "seed" });
+    expect(() => decode({ mode: "override" })).toThrow();
+  });
+
+  test("snapshot ambiguity preserves optional candidate ids through its public codec", async () => {
+    const { SnapshotAmbiguousError } = await import("@lando/sdk/errors");
+    const decode = Schema.decodeUnknownSync(SnapshotAmbiguousError);
+    const original = {
+      _tag: "SnapshotAmbiguousError" as const,
+      message: "Ambiguous snapshot",
+      snapshotId: "baseline",
+      matchCount: 2,
+      remediation: "List snapshots in this scope and retry with an unambiguous id.",
+    };
+    expect(decode(original).candidateIds).toBeUndefined();
+    const candidates = { ...original, candidateIds: ["newer", "older"] };
+    expect(Schema.encodeSync(SnapshotAmbiguousError)(decode(candidates))).toEqual(candidates);
+  });
+
   test("standard schema subpath resolves independently", async () => {
     const standard = await import("@lando/sdk/schema/standard");
     expect(await standard.LandofileStandardSchema["~standard"].validate({ name: "demo" })).toEqual({
@@ -12,12 +36,13 @@ describe("@lando/sdk package exports", () => {
   test("yaml entry point exports the shared scalar policy and document emitter", async () => {
     // Given / When: a consumer imports the public YAML entry point.
     const yaml = await import("@lando/sdk/yaml");
-    // Then: all six runtime exports are available through that subpath.
+    // Then: the shared lexer remains available alongside the emitter.
     expect(Object.keys(yaml).sort()).toEqual([
       "YamlEmitError",
       "emitYamlDocument",
       "isYamlPlainSafe",
       "quoteYamlScalar",
+      "stripYamlLineComment",
       "yamlMappingKeyText",
       "yamlScalarText",
     ]);
@@ -32,6 +57,8 @@ describe("@lando/sdk package exports", () => {
     expect(typeof landofile.resolveLayerMergeRule).toBe("function");
     expect(typeof landofile.routeMatchKey).toBe("function");
     expect(typeof landofile.parseRouteShorthand).toBe("function");
+    expect(typeof landofile.parseRouteHostname).toBe("function");
+    expect(typeof landofile.parseRoutePathPrefix).toBe("function");
     expect(typeof landofile.landofileLayerRank).toBe("function");
     expect(landofile.composeServiceDispositions).toBeDefined();
     expect(typeof landofile.compareKeyPaths).toBe("function");
@@ -130,6 +157,7 @@ describe("@lando/sdk package exports", () => {
     expect(schema.PrunePolicy).toBeDefined();
     expect(schema.SnapshotId).toBeDefined();
     expect(schema.SnapshotOptions).toBeDefined();
+    expect(schema.SnapshotRestoreOptions).toBeDefined();
     expect(schema.LabelMap).toBeDefined();
     expect(schema.RemoteCapabilities).toBeDefined();
     expect(schema.RemoteConfig).toBeDefined();
@@ -265,6 +293,7 @@ describe("@lando/sdk package exports", () => {
       "ServiceConfig",
       "RouteInput",
       "HealthcheckInput",
+      "AppMountInput",
       "ToolingTaskShape",
       "ExpressionTemplate",
       "ExpressionNode",
@@ -413,6 +442,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.AppLockTimeoutError).toBeDefined();
     expect(errors.AppResolveError).toBeDefined();
     expect(errors.GlobalAppError).toBeDefined();
+    expect(errors.AppPlacementError).toBeDefined();
     expect(errors.GlobalDestroyConfirmationError).toBeDefined();
     expect(errors.GlobalServiceCollisionError).toBeDefined();
     expect(errors.GlobalServiceMissingError).toBeDefined();
@@ -614,12 +644,12 @@ describe("@lando/sdk package exports", () => {
     expect(probe.ProbeTimeoutError).toBeDefined();
   });
 
-  test("database-creds entry point exports the pure family env helpers", async () => {
+  test("database-creds entry point exports service-type native aliases and defaults", async () => {
     const databaseCreds = await import("@lando/sdk/database-creds");
 
-    expect(databaseCreds.databaseEnvCreds).toBeDefined();
-    expect(databaseCreds.firstEnv).toBeDefined();
     expect(databaseCreds.DATABASE_FAMILY_ENV_KEYS).toBeDefined();
+    expect(databaseCreds.DATABASE_PORT_ENV_KEY).toBe("LANDO_DB_PORT");
+    expect(databaseCreds.DATABASE_FAMILY_DEFAULT_PORTS).toBeDefined();
   });
 
   test("digest entry point exports the hashing and canonical JSON helpers", async () => {
@@ -655,6 +685,8 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.runProviderContract).toBeDefined();
     expect(sdkTest.runProviderContractMatrix).toBeDefined();
     expect(sdkTest.runProviderDataPlaneContract).toBeDefined();
+    expect(sdkTest.runProviderVolumeCreationContract).toBeDefined();
+    expect(sdkTest.runProviderStartRetentionContract).toBeDefined();
     expect(sdkTest.TestRuntimeProvider).toBeDefined();
   });
 
@@ -794,6 +826,13 @@ describe("@lando/sdk package exports", () => {
 
     expect(sdkTest.runRendererPanelContract).toBeDefined();
     expect(sdkTest.makeRendererPanelContractSuite).toBeDefined();
+  });
+
+  test("test entry point exports the renderer contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runRendererContract).toBeDefined();
+    expect(sdkTest.makeRendererContractSuite).toBeDefined();
   });
 
   test("test entry point export gate lists every make*ContractSuite export", async () => {

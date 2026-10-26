@@ -13,9 +13,9 @@ test.each(["service", "standalone"] as const)(
     // Given
     const output: string[] = [];
     const secret = `executor-registration-${mode}`;
-    const write = (body: string) =>
+    const write = (body: string | Uint8Array) =>
       Effect.sync(() => {
-        output.push(body);
+        output.push(typeof body === "string" ? body : new TextDecoder().decode(body));
       });
     const renderer = {
       id: "plain",
@@ -23,12 +23,7 @@ test.each(["service", "standalone"] as const)(
       message: { info: write, warn: write, error: write },
       output: { stdout: write, stderr: write },
     } satisfies Context.Service.Shape<typeof Renderer>;
-    const service = makeRedactionService({
-      id: "empty",
-      get: () => Effect.succeed(""),
-      has: () => Effect.succeed(false),
-      list: Effect.succeed([]),
-    });
+    const service = makeRedactionService();
     const delegated: string[] = [];
     const base = Context.make(Context.Service<unknown>("test/runtime"), {}).pipe(
       Context.add(Renderer, renderer),
@@ -68,6 +63,11 @@ test.each(["service", "standalone"] as const)(
     // Then
     expect(output).toEqual(["[redacted]"]);
     expect(delegated).toEqual(mode === "service" ? [secret] : []);
-    expect(createStandaloneRedactor("secrets").redactString(secret)).toBe("[redacted]");
+    expect(createStandaloneRedactor("secrets").redactString(secret)).toBe(secret);
+    if (mode === "service") {
+      expect((await Effect.runPromise(service.forProfile("secrets"))).redactString(secret)).toBe(
+        "[redacted]",
+      );
+    }
   },
 );

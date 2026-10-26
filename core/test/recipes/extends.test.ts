@@ -99,7 +99,7 @@ const makeCloner = (
       await mkdir(dirname(join(stagingDir, link.path)), { recursive: true });
       await symlink(link.target, join(stagingDir, link.path));
     }
-    return { commitSha: options.commitSha ?? "abc123def456" };
+    return { commitSha: options.commitSha ?? "a".repeat(40) };
   },
 });
 
@@ -251,14 +251,14 @@ describe("mergeRecipeManifests — snapshot ownership", () => {
 });
 
 describe("flattenRecipe — remote git parent", () => {
-  test("given child YAML extends git+https, when flatten runs twice, then parent merges and cloner is called once", async () => {
+  test("given child YAML extends git+https, when flatten runs twice, then parent merges and refreshes on each load", async () => {
     await withTempRoot(async (dir) => {
       const userDataRoot = join(dir, "data");
       const calls: Array<{ readonly url: string; readonly stagingDir: string }> = [];
       const gitRecipeCloner = makeCloner({
         calls,
         manifest: PARENT_RECIPE,
-        commitSha: "feedface",
+        commitSha: "feedface".repeat(5),
       });
       const parsed = await Effect.runPromise(
         parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
@@ -274,14 +274,16 @@ describe("flattenRecipe — remote git parent", () => {
       );
       expect("extends" in first.value).toBe(false);
       expect(
-        await Bun.file(join(userDataRoot, "recipe-cache", "git", "feedface", "recipe.yml")).exists(),
+        await Bun.file(
+          join(userDataRoot, "recipe-cache", "git", "feedface".repeat(5), "recipe.yml"),
+        ).exists(),
       ).toBe(true);
 
       const second = await Effect.runPromiseExit(flattenThenValidate("test://remote-child", parsed, ctx));
       expect(Exit.isSuccess(second)).toBe(true);
       if (!Exit.isSuccess(second)) return;
       expect(second.value.id).toBe("remote-child");
-      expect(calls).toHaveLength(1);
+      expect(calls).toHaveLength(2);
       expect(calls[0]?.url).toBe("https://example.test/parent.git");
     });
   });
@@ -311,7 +313,7 @@ prompts:
 `,
           },
         ],
-        commitSha: "cafef00d",
+        commitSha: "cafef00d".repeat(5),
       });
       const parsed = await Effect.runPromise(
         parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
@@ -355,7 +357,7 @@ extends: ./hook
             ].join("\n"),
           },
         ],
-        commitSha: "deadbeef",
+        commitSha: "deadbeef".repeat(5),
       });
       const parsed = await Effect.runPromise(
         parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
@@ -379,7 +381,7 @@ description: Tries to escape the published tree.
 version: 0.1.0
 extends: ~/not-a-recipe
 `,
-        commitSha: "baddcafe",
+        commitSha: "baddcafe".repeat(5),
       });
       const parsed = await Effect.runPromise(
         parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
@@ -419,7 +421,7 @@ version: 0.1.0
 extends: ./hook
 `,
         extraSymlinks: [{ path: "hook", target: outside }],
-        commitSha: "symlink1",
+        commitSha: "b".repeat(40),
       });
       const parsed = await Effect.runPromise(
         parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),

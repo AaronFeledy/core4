@@ -55,13 +55,13 @@ const makePlan = (id: string): AppPlan => {
   };
   return {
     id: appId,
+    valueModel: 1,
     name: id,
     slug: id,
     root: AbsolutePath.make(`/tmp/${id}`),
     provider: providerId,
     services: { [serviceName]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -119,6 +119,7 @@ describe("managed Windows published lifecycle", () => {
           providerId,
           status: "running",
           containerId: "exact-global-id",
+          publications: { status: "unknown" },
         }),
       ),
     );
@@ -169,6 +170,35 @@ describe("managed Windows published lifecycle", () => {
         ping: Effect.void,
         request: (request) => {
           calls.push(`${request.method} ${request.path}`);
+          if (request.method === "GET" && request.path.startsWith("/containers/")) {
+            const reference = decodeURIComponent(
+              request.path.slice("/containers/".length).split("/")[0] ?? "",
+            );
+            const service = Object.values(newer.services).find((service) => {
+              const name = `lando-${newer.slug}-${service.name}`;
+              return reference === name || reference === `${name}-id`;
+            });
+            return Effect.succeed(
+              service === undefined
+                ? { status: 404, body: "{}" }
+                : {
+                    status: 200,
+                    body: JSON.stringify({
+                      Id: `lando-${newer.slug}-${service.name}-id`,
+                      Config: {
+                        Labels: {
+                          "dev.lando.app": newer.id,
+                          "dev.lando.app-root": newer.root,
+                          "dev.lando.service": service.name,
+                        },
+                      },
+                    }),
+                  },
+            );
+          }
+          if (request.method === "GET" && request.path.startsWith("/networks/")) {
+            return Effect.succeed({ status: 404, body: "{}" });
+          }
           return Effect.succeed({ status: 204, body: "" });
         },
       };
@@ -225,7 +255,7 @@ describe("managed Windows published lifecycle", () => {
         await Effect.runPromise(persistAppliedPlan(stateStore, newer));
         releaseLock.resolve();
         await teardown;
-        expect(calls).toContain("POST /containers/lando-global-metrics/stop");
+        expect(calls).toContain("POST /containers/lando-global-metrics-id/stop");
       } finally {
         releaseLock.resolve();
         await hold;
@@ -258,7 +288,11 @@ describe("managed Windows published lifecycle", () => {
               status: 200,
               body: JSON.stringify({ Os: "linux", Architecture: "amd64", RepoDigests: ["img@sha256:test"] }),
             };
-          if (request.method === "POST" && path === "/networks/create") return { status: 201, body: "{}" };
+          if (
+            request.method === "POST" &&
+            (path === "/networks/create" || path === "/libpod/networks/create")
+          )
+            return { status: 201, body: "{}" };
           if (request.method === "DELETE" && path.startsWith("/networks/")) return { status: 204, body: "" };
           if (request.method === "GET" && path === "/containers/router-id/json")
             return {

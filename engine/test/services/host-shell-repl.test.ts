@@ -8,7 +8,7 @@ import { SecretNotFoundError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, type ShellReplInput } from "@lando/sdk/services";
 
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { hostShellEvaluatorArgv, runHostShellLine } from "../../src/services/host-shell-line";
 import { makeStatefulShellRedactor } from "../../src/services/host-shell-redactor";
 import { runHostShellRepl as runHostShellReplWithPrivateFileAccess } from "../../src/services/host-shell-repl";
@@ -67,7 +67,8 @@ test("canonical redaction covers literal secrets in output, events, and history"
             Layer.succeed(
               RedactionService,
               RedactionService.of({
-                registerValues: registerRedactionValues,
+                ...makeRedactionService(),
+                payloadValues: () => Effect.succeed(() => ["topsecret"]),
                 forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
               }),
             ),

@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, joomla, php, mariadb]
 
 # Run the Joomla recipe
 
+Start PHP and MariaDB, then download and install a local Joomla site. Run these commands from your host terminal.
+
 ```sh
 lando init --recipe joomla --name=joomla-demo --yes
 cd joomla-demo
@@ -16,20 +18,6 @@ lando start
 The named init creates `joomla-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, and webroot `.`. Apache and MariaDB are up after start. Drop Joomla into the app root so `index.php` and `cli/joomla.php` exist, then open the URL `lando info` prints.
 
 If something else owns 80 or 443, `lando info` shows the fallback port it picked, usually `:8080` / `:8443`.
-
-## See what the recipe writes
-
-| Piece | What you get |
-| --- | --- |
-| `appserver` | `php:8.4`, `framework: joomla`, Apache on port `80`, depends on `database` |
-| `database` | `type: mariadb:11.4` |
-| Tooling | `lando joomla`, `lando composer`, and `lando php` on `appserver`, plus `lando mariadb` from the database service |
-
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` or `--answer=database=mysql:8.0` when you want those instead.
-
-For the MySQL answer path, use `lando mysql` instead of `lando mariadb` for database commands.
-
-`lando joomla` is `php cli/joomla.php`. That file arrives with the CMS package, not with init. Run it from the app root; a subdirectory changes the relative path.
 
 ## Download and install Joomla
 
@@ -46,7 +34,7 @@ lando exec appserver -- sh -lc '
 '
 ```
 
-A digest mismatch fails before extract. Generate an admin password locally, then run the installer. The generated value is printed once so you can save it. It stays out of shell history, but it's on the command line, so process lists can see it while the install runs.
+A digest mismatch stops extraction. The password-generation commands below require a POSIX shell with `openssl` on your host. Generate an admin password locally, then run the installer. The generated value is printed once so you can save it. It stays out of shell history, but it's on the command line, so process lists can see it while the install runs.
 
 ```sh
 JOOMLA_ADMIN_PASSWORD="$(openssl rand -base64 24)"
@@ -97,6 +85,20 @@ lando open --print
 
 Add `/administrator/` to the URL it prints and sign in as `admin` with the password you saved. If the proxy picked a fallback port, use the URL from `lando info` instead; it includes the port.
 
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.4`, `framework: joomla`, Apache on port `80`, depends on `database` |
+| `database` | `type: mariadb:11.4` |
+| Tooling | `lando joomla`, `lando composer`, and `lando php` on `appserver`, plus `lando mariadb` from the database service |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` or `--answer=database=mysql:8.0` when you want those instead.
+
+For the MySQL answer path, use `lando mysql` instead of `lando mariadb` for database commands.
+
+`lando joomla` is `php cli/joomla.php`. That file arrives with the CMS package, not with init. Run it from the app root; a subdirectory changes the relative path.
+
 ## Connect Joomla to MariaDB
 
 | Setting | Value |
@@ -111,6 +113,8 @@ Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is
 
 ## Import and export the database
 
+Import executes the dump's SQL, which can change or replace existing data. Export first if you need to keep it; `--yes` skips the import confirmation.
+
 ```sh
 lando db:export joomla.sql.gz
 lando db:import joomla.sql.gz --yes
@@ -123,11 +127,10 @@ Take a snapshot before an extension install or a core update:
 
 ```sh
 lando db:snapshot --label before-update
-lando db:snapshots
-lando db:restore <snapshot-id> --yes
+lando db:restore before-update --yes
 ```
 
-`db:restore` wants the snapshot id that `lando db:snapshots` lists, not the label. It asks before it replaces data; `--yes` skips the prompt.
+`db:restore` takes the label or the id `lando db:snapshots` lists. It asks before it replaces data; `--yes` skips the prompt.
 
 Want a browser UI too? Add a `type: phpmyadmin` service. See [Add phpMyAdmin](../services/phpmyadmin.mdx).
 
@@ -141,10 +144,10 @@ services:
     xdebug: true
 ```
 
-Rebuild, then check that it loaded:
+Start, then check that it loaded:
 
 ```sh
-lando rebuild
+lando start
 lando xdebug status
 ```
 
@@ -160,10 +163,10 @@ services:
     type: mailpit
 ```
 
-Rebuild, send a test message, then open the inbox URL `lando info` prints:
+Start, send a test message, then open the inbox URL `lando info` prints:
 
 ```sh
-lando rebuild
+lando start
 lando php -r 'mail("you@example.test", "Mailpit check", "Hello from Joomla");'
 lando info
 ```

@@ -5,20 +5,31 @@ import { join } from "node:path";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { makeLandoPaths } from "@lando/paths";
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, ServiceName, appMountSyncIgnores } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
 
-test.each([false, true])("Laravel vendor mounts when worker=%s", async (worker) => {
+test.each([
+  { worker: false, slow: false },
+  { worker: true, slow: false },
+  { worker: false, slow: true },
+  { worker: true, slow: true },
+])("Laravel vendor mounts when %j", async ({ worker, slow }) => {
   // Given the generated Laravel config, not manually authored mount overrides.
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-laravel-vendor-")));
   try {
     const preview = await previewBuiltinRecipe("laravel", "laravel-vendor", { worker });
     const landofile = Schema.decodeUnknownSync(LandofileShape)(Bun.YAML.parse(preview.text));
+    const compiled = await Effect.runPromise(
+      loadAuthoredDocuments([{ file: join(root, ".lando.yml"), value: Bun.YAML.parse(preview.text) }], {
+        appRoot: root,
+        file: join(root, ".lando.yml"),
+      }),
+    );
     const planner = AppPlannerLayer.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -32,7 +43,10 @@ test.each([false, true])("Laravel vendor mounts when worker=%s", async (worker) 
     // When the production planner resolves storage and app binds.
     const plan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (service) =>
-        service.plan(rememberLandofileAppRoot(landofile, root), TestRuntimeProvider.capabilities),
+        service.plan(compiled, {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: slow ? "slow" : "native",
+        }),
       ).pipe(Effect.provide(planner)),
     );
 
@@ -42,6 +56,12 @@ test.each([false, true])("Laravel vendor mounts when worker=%s", async (worker) 
       expect(service?.storage.filter(({ target }) => target === "/app/vendor")).toHaveLength(worker ? 0 : 1);
       expect(service?.appMount).toMatchObject({ source: root, target: "/app" });
       expect(service?.mounts.some((mount) => mount.type === "bind" && mount.source === root)).toBe(false);
+      if (slow) {
+        if (service === undefined) throw new Error("Expected Laravel service");
+        const ignores = plan.fileSync.find(({ session }) => session.service === name)?.session.excludes;
+        expect(ignores).toEqual(appMountSyncIgnores(service));
+        expect(ignores?.includes("vendor")).toBe(!worker);
+      }
     }
 
     // Then npm runs in a private Node service on the same project bind in either mode.

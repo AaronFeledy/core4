@@ -1,6 +1,8 @@
 # Boundary Rule Inventory
 
-`registry.ts` is the canonical list of boundary rules. This inventory classifies each live rule against the workspace package DAG so ownership checks do not survive as duplicate AST policy.
+Use this inventory to find the rule behind a boundary failure and decide whether a new package boundary can replace an existing scan. `registry.ts` is the canonical rule list. The package dependency graph (DAG) enforces which packages may depend on each other; the remaining rules enforce constraints that dependency direction cannot express.
+
+Run all rules from the repository root with `bun run check:boundaries`. To investigate one failure, run `bun run scripts/check-boundaries.ts <rule-id>`, replacing `<rule-id>` with a name in the table below.
 
 Verdicts describe the next action for the current rule:
 
@@ -12,7 +14,7 @@ The renderer rule is classified `keep` after the `@lando/renderer` extraction co
 
 | Rule | Kind | What it bans | Package edge carrying ownership | Verdict | Justification |
 | --- | --- | --- | --- | --- | --- |
-| `effect-idioms` | `behavioral` | Data errors, wall-clock Date in Effect-importing modules, named generator-only wrappers, local record guard definitions, exported `*Live` names, and `@effect/*` imports | None; source idioms apply inside any allowed package | `keep` | Package edges govern dependency direction; they cannot reject retired Effect idioms (Data errors, wall-clock Date in Effect modules, generator-only wrappers, hand-rolled record guards, *Live layer names, @effect/* imports) written inside an allowed package. |
+| `effect-idioms` | `behavioral` | Data errors, wall-clock Date in Effect-importing modules, named generator-only wrappers, local record guard definitions, exported `*Live` names, `@effect/*` imports, `Cause.combine`/`Cause.fromReasons` outside the failure-role owners, and zero-argument `.catch` handlers returning `null` | None; source idioms apply inside any allowed package | `keep` | Package edges cannot express these intra-package behaviors. The [error-swallow audit](./error-swallow-audit.md) found no legitimate null-swallow uses after narrowing filesystem probes. Other swallow shapes retain intentional validation, cleanup, or rejection-sink uses and are not banned. |
 | `env-helper` | `behavioral` | Service implementations importing the `lando.env` feature helpers directly | None; producer and consumers share `@lando/service-lando` | `keep` | A workspace edge cannot express an intra-package feature-ordering constraint. |
 | `import-cycle` | `structural` | Runtime module cycles across first-party source trees | None; package edges do not model module-level cycles | `keep` | Package-DAG controls allowed package direction, not cycles among modules inside an allowed edge. |
 | `machine-output` | `behavioral` | Direct command-envelope serialization in the shared shipped-runtime tier and command specs without result schemas | `@lando/sdk/command-result` owns encoding; package-DAG owns direction | `keep` | Canonical serialization moved behind @lando/sdk/command-result, eliminating the machine-output rule's final carve-out (one to zero); the strengthened rule scans every runtime consumer, including @lando/mcp, for direct serialization and missing command result schemas that package edges cannot express. |
@@ -31,11 +33,11 @@ The renderer rule is classified `keep` after the `@lando/renderer` extraction co
 
 ## Post-extraction ratchet audit
 
-The update, uninstall, config, and plugin extractions moved operation ownership into `@lando/engine`, while the native CLI spec split removed `core/src/cli/oclif/`. The audit below was run against that layout. A passing gate establishes that the live scope remains enforceable; the focused searches show the production subjects or owner residue that a package edge cannot replace.
+The update, uninstall, config, and plugin extractions moved operation ownership into `@lando/engine`, while the native CLI spec split removed `core/src/cli/oclif/`. The audit below records evidence from that layout, not a fresh measurement of the current tree. Its paths and findings are retained as historical evidence. Run the current rule to check today's scope; the recorded searches explain which behavioral constraints package edges could not replace.
 
 | Rule | Verdict | Evidence command and finding |
 | --- | --- | --- |
-| **effect-idioms** | keep | `bun run scripts/check-boundaries.ts effect-idioms` scans the shared runtime tier with no carve-outs. Source-level Effect API and naming choices remain behavioral constraints inside allowed packages; local, unexported `*Live` names are allowed. |
+| **effect-idioms** | keep | `bun run scripts/check-boundaries.ts effect-idioms` scans the shared runtime tier; only `engine/src/lifecycle/failure-compensation.ts` and `sdk/src/command-result/failure.ts` may assemble Causes. Source-level Effect API and naming choices remain behavioral constraints inside allowed packages; local, unexported `*Live` names are allowed. |
 | **env-helper** | keep | `grep -R -n -m 3 -e landoEnvFeature -e applyEnv plugins/service-lando/src/features plugins/service-lando/src/services --include='*.ts'` found the live feature helpers in the same package as the scanned services, so the intra-package ordering ban remains behavioral. |
 | **import-cycle** | keep | `grep -R -n -m 3 'from "\.' engine/src/operations core/src/cli/command-specs --include='*.ts'` found live module edges on both sides of the extraction; package-DAG still cannot detect module-level strongly connected components. |
 | **machine-output** | keep | `bun run scripts/check-boundaries.ts machine-output` scans the full shared runtime tier, including `mcp/src`, with no carve-outs. Canonical serialization lives behind `@lando/sdk/command-result`; the strengthened rule rejects direct serialization throughout the tier and missing `resultSchema` on core command specs. |

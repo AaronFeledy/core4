@@ -1,3 +1,6 @@
+import { LOG_LINE_TRUNCATED_MARKER } from "../log-follow/marker.ts";
+import type { LiteralMatcher } from "./literal-matcher.ts";
+
 const CHUNK_CODE_UNITS = 1_024;
 const SEGMENT_CODE_UNITS = 64 * 1_024;
 
@@ -70,21 +73,59 @@ const appendReplacement = (
   return builder.append(replacement(match[0], ...groups));
 };
 
-export const replaceLiteralBounded = (
+/** Mask overlapping occurrence unions, widening partial sentinel intersections. */
+export const replaceLiteralMatchesBounded = (
   text: string,
-  value: string,
-  replacement: string,
-  maxBytes: number,
+  matcher: LiteralMatcher,
+  { replacement, maxBytes }: { readonly replacement: string; readonly maxBytes: number },
 ): string | undefined => {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) return undefined;
-  if (value.length === 0) return retainWithinBytes(text, maxBytes);
-  const builder = new BoundedStringBuilder(maxBytes);
-  let start = 0;
-  for (let found = text.indexOf(value, start); found >= 0; found = text.indexOf(value, start)) {
-    if (!builder.append(text.slice(start, found)) || !builder.append(replacement)) return undefined;
-    start = found + value.length;
+  let builder: BoundedStringBuilder | undefined;
+  let copiedUntil = 0;
+  let unionStart = -1;
+  let unionEnd = -1;
+  let sentinel = text.indexOf(replacement);
+  let marker = text.indexOf(LOG_LINE_TRUNCATED_MARKER);
+  for (let index = matcher.nextStart(text, 0); index !== -1; index = matcher.nextStart(text, index + 1)) {
+    while (marker !== -1 && marker < index) {
+      marker = text.indexOf(LOG_LINE_TRUNCATED_MARKER, marker + LOG_LINE_TRUNCATED_MARKER.length);
+    }
+    let end = matcher.matchAt(text, index, marker).end;
+    if (end === index) continue;
+    while (sentinel !== -1 && sentinel + replacement.length <= index) {
+      sentinel = text.indexOf(replacement, sentinel + replacement.length);
+    }
+    if (sentinel !== -1 && index >= sentinel && end <= sentinel + replacement.length) continue;
+    const start = sentinel !== -1 && index >= sentinel ? sentinel : index;
+    for (
+      let intersecting = sentinel;
+      intersecting !== -1 && intersecting < end;
+      intersecting = text.indexOf(replacement, intersecting + replacement.length)
+    ) {
+      end = Math.max(end, intersecting + replacement.length);
+    }
+    if (start < unionEnd) {
+      unionEnd = Math.max(unionEnd, end);
+      continue;
+    }
+    builder ??= new BoundedStringBuilder(maxBytes);
+    if (unionStart !== -1) {
+      if (!builder.append(text.slice(copiedUntil, unionStart)) || !builder.append(replacement)) {
+        return undefined;
+      }
+      copiedUntil = unionEnd;
+    }
+    unionStart = start;
+    unionEnd = end;
   }
-  return builder.append(text.slice(start)) ? builder.finish() : undefined;
+  if (builder === undefined) {
+    return maxBytes === Number.MAX_SAFE_INTEGER ? text : retainWithinBytes(text, maxBytes);
+  }
+  return builder.append(text.slice(copiedUntil, unionStart)) &&
+    builder.append(replacement) &&
+    builder.append(text.slice(unionEnd))
+    ? builder.finish()
+    : undefined;
 };
 
 export const replacePatternsBounded = (

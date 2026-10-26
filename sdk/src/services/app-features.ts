@@ -9,7 +9,13 @@
 import type { Effect, Schema } from "effect";
 
 import type { AppFeatureError } from "../errors/index.ts";
-import type { ProviderCapabilities, ServiceConfig } from "../schema/index.ts";
+import type {
+  DatabaseConnection,
+  EndpointPlan,
+  EnvironmentValue,
+  ProviderCapabilities,
+  ServiceConfig,
+} from "../schema/index.ts";
 import type {
   ServiceAppMountIntent,
   ServiceBuildStepIntent,
@@ -18,10 +24,9 @@ import type {
 } from "./features.ts";
 
 /**
- * Gates whether an app-feature runs for a given app. Evaluated after the entire
- * per-service phase (service-type resolution + service-feature application) has
- * completed for every service, so `hasFeature` reads a service's final feature
- * set. A feature whose `activatedBy` does not match is a true no-op.
+ * Gates declarations and application against resolved service identities and
+ * their complete declared feature sets. Application cannot change these facts.
+ * A feature whose `activatedBy` does not match is a true no-op.
  */
 export interface AppFeatureActivation {
   readonly services?: { readonly type?: string; readonly hasFeature?: string };
@@ -29,8 +34,8 @@ export interface AppFeatureActivation {
 
 /**
  * Chooses which resolved service drafts an activated app-feature mutates.
- * Selectors are evaluated against the post-resolution, post-service-feature
- * drafts — never raw user config and never the finalized `AppPlan`.
+ * Selectors use immutable resolved facts shared by declarations and application,
+ * never raw user config or the finalized `AppPlan`.
  */
 export interface AppFeatureSelectors {
   readonly types?: ReadonlyArray<string>;
@@ -54,24 +59,25 @@ export interface AppFeatureServiceView {
   readonly primary: boolean;
   readonly featureIds: ReadonlyArray<string>;
   readonly normalizedConfig: ServiceConfig;
+  readonly connection?: DatabaseConnection | undefined;
 }
 
 /**
  * Per-selected-service mutator surface. Exposes the same provider-neutral
  * intent mutators as {@link ServiceFeatureContext} (env, mounts, build steps,
- * endpoints, healthcheck, …) but scoped to one selected service draft.
+ * healthcheck, and process settings) but scoped to one selected service draft.
  */
 export interface AppFeatureServiceMutators {
   readonly service: AppFeatureServiceView;
-  addEnv(name: string, value: string): void;
+  addEnv(name: string, value: EnvironmentValue): void;
   addMount(mount: ServiceMountIntent): void;
   setAppMount(mount: ServiceAppMountIntent): void;
   addBuildStep(step: ServiceBuildStepIntent): void;
   addStorage(storage: Parameters<ServiceFeatureContext["addStorage"]>[0]): void;
-  addEndpoint(endpoint: Parameters<ServiceFeatureContext["addEndpoint"]>[0]): void;
   addDependency(dependency: Parameters<ServiceFeatureContext["addDependency"]>[0]): void;
   addHostAlias(alias: Parameters<ServiceFeatureContext["addHostAlias"]>[0]): void;
   setHealthcheck(healthcheck: Parameters<ServiceFeatureContext["setHealthcheck"]>[0]): void;
+  setReadiness(readiness: Parameters<ServiceFeatureContext["setReadiness"]>[0]): void;
   setCerts(certs: Parameters<ServiceFeatureContext["setCerts"]>[0]): void;
   setEntrypoint(entrypoint: Parameters<ServiceFeatureContext["setEntrypoint"]>[0]): void;
   setCommand(command: Parameters<ServiceFeatureContext["setCommand"]>[0]): void;
@@ -110,9 +116,18 @@ export interface AppFeatureDefinition {
   readonly priority: number;
   readonly activatedBy?: AppFeatureActivation;
   readonly selectors?: AppFeatureSelectors;
+  /** Declare listeners for selected services without applying mutations or acquiring resources. */
+  readonly declareEndpoints?: (
+    ctx: AppEndpointDeclarationContext,
+  ) => Effect.Effect<Readonly<Record<string, readonly EndpointPlan[]>>, AppFeatureError>;
   readonly requires?: {
     readonly providerCapabilities?: ReadonlyArray<keyof ProviderCapabilities>;
     readonly globalServices?: ReadonlyArray<string>;
   };
   readonly apply: (ctx: AppFeatureContext) => Effect.Effect<void, AppFeatureError>;
 }
+
+export type AppEndpointDeclarationContext = Pick<
+  AppFeatureContext,
+  "featureId" | "appName" | "appRoot" | "config" | "selected"
+>;

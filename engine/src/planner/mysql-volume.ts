@@ -7,10 +7,10 @@ import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 
 /** Select an unambiguous existing identity; never mutate provider storage. */
-export const resolveMysqlVolume = (
-  plan: AppPlan,
+export const resolveMysqlVolume = <Plan extends AppPlan>(
+  plan: Plan,
   registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
-): Effect.Effect<AppPlan, LandofileValidationError | ProviderUnavailableError> => {
+): Effect.Effect<Plan, LandofileValidationError | ProviderUnavailableError> => {
   const mysqlServices = Object.values(plan.services).filter(
     (service) => service.type === "mysql" || service.type.startsWith("mysql:"),
   );
@@ -31,7 +31,7 @@ export const resolveMysqlVolume = (
       if (scopedVolumes.length > 0) return plan;
       const legacyVolumes = yield* provider.listVolumes({ app: plan.id, store: legacy });
       if (legacyVolumes.length === 0) return plan;
-      return {
+      const legacyPlan = {
         ...plan,
         services: {
           ...plan.services,
@@ -44,12 +44,14 @@ export const resolveMysqlVolume = (
         },
         stores: plan.stores.map((store) => (store.name === scoped ? { ...store, name: legacy } : store)),
       };
+      return legacyPlan;
     },
     Effect.mapError((cause): LandofileValidationError | ProviderUnavailableError =>
       cause._tag === "ProviderUnavailableError"
         ? cause
         : new LandofileValidationError({
             message: `Cannot select MySQL storage: ${cause.message}. Restore provider access and retry; no volumes have been changed.`,
+            remediation: "Restore provider access and retry; no volumes have been changed.",
             file: `${plan.root}/.lando.yml`,
             issues: [
               validationIssue(
@@ -63,10 +65,10 @@ export const resolveMysqlVolume = (
 };
 
 /** Keep configuration planning available while the selected runtime is offline. */
-export const adoptMysqlVolume = (
-  plan: AppPlan,
+export const adoptMysqlVolume = <Plan extends AppPlan>(
+  plan: Plan,
   registry: Context.Service.Shape<typeof RuntimeProviderRegistry> | undefined,
-): Effect.Effect<AppPlan, LandofileValidationError> =>
+): Effect.Effect<Plan, LandofileValidationError> =>
   registry === undefined
     ? Effect.succeed(plan)
     : resolveMysqlVolume(plan, registry).pipe(

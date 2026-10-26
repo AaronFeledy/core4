@@ -43,6 +43,7 @@ import {
 import { type DoctorOptions, doctor } from "../../src/cli/commands/doctor.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
+import { withCwd } from "../_support/temp-cwd.ts";
 
 const isolatedUserDataRoot = mkdtempSync(join(tmpdir(), "lando-doctor-report-"));
 
@@ -72,6 +73,9 @@ const decodeCommandEnvelope = (line: string) =>
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
   RuntimeProviderRegistry.of({
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -144,6 +148,61 @@ const useDeprecation = Effect.fnUntraced(function* (
 });
 
 describe("meta:doctor combined report", () => {
+  test.each([false, true])("renders canonical env warnings alongside errors=%s", async (withError) => {
+    const base = await run({ ...TestRuntimeProvider, id: "lando" });
+    const report: DoctorReport = {
+      ...base,
+      appConfig: {
+        app: "env",
+        file: "/app/.lando.yml",
+        valid: !withError,
+        violations: [
+          {
+            rule: "env-file.literal",
+            severity: "warning",
+            path: ["env_file", 0],
+            message: "Literal env warning",
+          },
+          ...(withError
+            ? [
+                {
+                  rule: "env-file.read",
+                  severity: "error" as const,
+                  path: ["env_file", 1],
+                  message: "Missing env file",
+                },
+              ]
+            : []),
+        ],
+      },
+    };
+    const text = renderDoctorReport(report);
+    expect(text).toContain(`app-config-lint: ${withError ? "fail" : "warn"}`);
+    expect(text).toContain("Literal env warning");
+    const decorated = renderDoctorReport(report, {
+      mode: "lando",
+      format: "text",
+      isTTY: true,
+      columns: 100,
+    });
+    expect(decorated).toContain("Literal env warning");
+    const ndjson = renderDoctorReportAsNdjson(report);
+    const payload = eventPayloads(ndjson).find((event) => event.name === "app-config-lint");
+    expect(payload).toMatchObject({
+      status: withError ? "fail" : "warn",
+      severity: withError ? "error" : "warn",
+    });
+    expect(payload?.violations).toEqual(report.appConfig?.violations);
+    expect(payload).not.toHaveProperty("warnings");
+    const baseSummary = resultEnvelope(renderDoctorReportAsNdjson(base)).result as {
+      warned: number;
+      failed: number;
+    };
+    expect(resultEnvelope(ndjson).result).toMatchObject({
+      warned: baseSummary.warned + 1,
+      failed: baseSummary.failed + (withError ? 1 : 0),
+    });
+  });
   test.each([
     { range: ">=0", skip: "0", status: "pass", severity: "info" },
     { range: ">=99", skip: "1", status: "warn", severity: "warn" },
@@ -196,21 +255,21 @@ describe("meta:doctor combined report", () => {
     },
   );
 
-  test("aggregates the selected provider checks, every subsystem check, and the global-app check", async () => {
+  test("aggregates inspected checks and skips runtime subsystems absent from the library runtime", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
 
     expect(report.provider.checks[0]?.name).toBe("selected-provider");
     expect(report.subsystems.checks.map((check) => check.name)).toEqual([
-      "router",
-      "certs",
-      "ssh",
-      "healthcheck",
-      "scanner",
-      "host-proxy",
       "network-trust",
+      "legacy-snapshot-catalogs",
       "filesystem-watch",
     ]);
+    expect(report.skipped).toContainEqual({
+      section: "subsystems",
+      status: "skipped",
+      reason: expect.any(String),
+    });
     expect(report.globalApp.checks[0]?.name).toBe("global-app");
     expect(report.mcp.checks[0]?.name).toBe("mcp");
     expect(report.mcp.checks[0]?.status).toBe("pass");
@@ -222,19 +281,19 @@ describe("meta:doctor combined report", () => {
     const text = renderDoctorReport(report);
 
     expect(text).toContain("selected-provider: pass");
-    for (const name of ["router", "certs", "ssh", "healthcheck", "scanner", "host-proxy", "network-trust"]) {
+    for (const name of ["network-trust", "subsystems"]) {
       expect(text).toContain(`${name}:`);
     }
     expect(text).toContain("global-app:");
     expect(text).toContain("solution[manual]:");
-    expect(text).toContain("lando setup");
+    expect(text).toContain("lando global:install");
     expect(text).not.toContain("[object Object]");
   });
 
   test("does not require app bootstrap — runs with only ConfigService + RuntimeProviderRegistry", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
-    expect(report.subsystems.checks.length).toBe(8);
+    expect(report.subsystems.checks.length).toBe(3);
     expect(report.globalApp.checks.length).toBe(1);
   });
 
@@ -254,15 +313,11 @@ describe("meta:doctor combined report", () => {
     const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
     const checks = eventPayloads(ndjson);
     expect(checks.map((line) => line.name)).toEqual([
+      "subsystems",
       "selected-provider",
       "runtime-service",
-      "router",
-      "certs",
-      "ssh",
-      "healthcheck",
-      "scanner",
-      "host-proxy",
       "network-trust",
+      "legacy-snapshot-catalogs",
       "filesystem-watch",
       "global-app",
       "mcp",
@@ -272,7 +327,7 @@ describe("meta:doctor combined report", () => {
       ok: true,
       result: {
         timestamp: "1970-01-01T00:00:00.000Z",
-        checks: 12,
+        checks: 7,
         failed: 0,
         warned: checks.filter((line) => line.status === "warn").length,
       },
@@ -312,7 +367,7 @@ describe("meta:doctor combined report", () => {
         renderCalled = true;
         return renderDoctorReport(report);
       },
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
 
     const envelope = decodeCommandEnvelope(io.stdoutLines()[0] ?? "{}");
@@ -339,7 +394,7 @@ describe("meta:doctor combined report", () => {
       resultSchema: metaDoctorSpec.resultSchema,
       io: textIo,
       render: renderDoctorReport,
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
     expect(textIo.stdoutLines().join("")).toContain("buildSecrets: true");
     expect(textIo.stdoutLines().join("")).not.toContain("buildSecrets: [redacted]");
@@ -353,7 +408,7 @@ describe("meta:doctor combined report", () => {
       resultSchema: metaDoctorSpec.resultSchema,
       io: jsonIo,
       render: renderDoctorReport,
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
     const envelope = decodeCommandEnvelope(jsonIo.stdoutLines()[0] ?? "{}");
     expect(envelope.ok).toBe(true);
@@ -381,57 +436,36 @@ describe("meta:doctor combined report", () => {
 
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
       expect(eventPayloads(ndjson).map((line) => line.name)).toContain("app-config-lint");
-      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 13, failed: 1 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 8, failed: 1 });
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  test("doctor --app renders env-file lint warnings in text and ndjson", async () => {
-    const provider = { ...TestRuntimeProvider, id: "lando" };
-    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-env-warn-")));
-    await writeFile(join(dir, ".lando.yml"), "name: doctor-env-warn\nenv_file: [runtime.env]\n");
-    await writeFile(join(dir, "runtime.env"), 'PATH="C:\\new"\n');
-    const previousCwd = process.cwd();
+  test("doctor receives unknown event violations from the shared lint pass", async () => {
+    // Given
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-event-")));
     try {
-      process.chdir(dir);
-      const report = await Effect.runPromise(
-        collectDoctorReport({
-          options: { app: true, env: {} },
-          provider: doctor({ app: true, env: {} }, []),
-          deprecations: doctorDeprecations(),
-          appConfig: appConfigForReport().pipe(
-            Effect.provide(Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer)),
-          ),
-        }).pipe(Effect.provide(buildLayers(provider))),
-      );
-
-      expect(report.appConfig?.valid).toBe(true);
-      expect(report.appConfig?.warnings).toEqual([
-        expect.objectContaining({
-          message: expect.stringContaining("decodes differently from its raw text"),
-        }),
-      ]);
-
-      const text = renderDoctorReport(report);
-      expect(text).toContain("app-config-lint: pass");
-      expect(text).toContain("1 warning.");
-      expect(text).toContain("decodes differently from its raw text");
-
-      const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
-      const payload = eventPayloads(ndjson).find((line) => line.name === "app-config-lint");
-      expect(payload?.severity).toBe("warn");
-      expect(payload?.warnings).toEqual([
-        expect.objectContaining({
-          message: expect.stringContaining("decodes differently from its raw text"),
-        }),
-      ]);
-      expect(payload?.context).toEqual(expect.objectContaining({ warnings: "1" }));
-      expect(resultEnvelope(ndjson).result).toMatchObject({ failed: 0 });
-      expect((resultEnvelope(ndjson).result as { warned: number }).warned).toBeGreaterThan(0);
+      await writeFile(join(dir, ".lando.yml"), "name: doctor-events\nevents:\n  pre-nope: [echo hi]\n");
+      await withCwd(dir, async () => {
+        // When
+        const result = await Effect.runPromise(
+          appConfigForReport().pipe(Effect.provide(PluginRegistryLayer.layer)),
+        );
+        // Then
+        expect(result.app).toBe("doctor-events");
+        expect(result.valid).toBe(false);
+        expect(result.violations).toEqual([
+          expect.objectContaining({
+            rule: "landofile.event",
+            path: ["events", "pre-nope"],
+            scopes: ["effective"],
+            source: expect.objectContaining({ file: join(dir, ".lando.yml") }),
+          }),
+        ]);
+      });
     } finally {
-      process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
     }
   });
@@ -461,7 +495,7 @@ describe("meta:doctor combined report", () => {
       expect(text).toContain("app-version-constraint: fail");
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
       expect(eventPayloads(ndjson).map((line) => line.name)).toContain("app-version-constraint");
-      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 14, failed: 1 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 9, failed: 1 });
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
@@ -663,7 +697,7 @@ describe("meta:doctor combined report", () => {
         resultSchema: DoctorReportSchema,
         io,
         render: () => undefined,
-        formatError: String,
+        formatError: ({ error }) => String(error),
       });
       const yaml = io.stdout();
       expect(
@@ -848,7 +882,7 @@ describe("meta:doctor combined report", () => {
         resultSchema: DoctorReportSchema,
         io,
         render: () => undefined,
-        formatError: String,
+        formatError: ({ error }) => String(error),
       });
       const yaml = io.stdout();
       expect(yaml).toContain("deprecations:");
@@ -878,7 +912,7 @@ describe("meta:doctor combined report", () => {
         severity: "warn",
         count: 1,
       });
-      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 13 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 8 });
     } finally {
       process.env.LANDO_DEPRECATION_WARNINGS = undefined;
     }
@@ -907,7 +941,7 @@ describe("meta:doctor combined report", () => {
           renderCalled = true;
           return "legacy-json-renderer";
         },
-        formatError: (error) => String(error),
+        formatError: ({ error }) => String(error),
         setExitCode: (code) => {
           exitCode = code;
         },
@@ -972,7 +1006,7 @@ describe("meta:doctor combined report", () => {
       resultSchema: DoctorReportSchema,
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
     });
 
     // Then

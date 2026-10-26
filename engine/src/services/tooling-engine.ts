@@ -4,6 +4,7 @@ import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type CommandSpec,
+  EnvironmentValueResolver,
   type RuntimeProviderShape,
   ToolingEngine,
   type ToolingEngineResult,
@@ -15,7 +16,6 @@ import { withTerminalEnv } from "../config/terminal-env.ts";
 import { collectExecStream } from "../operations/exec-stream.ts";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
-import { registerAppPlanRedactionTokens } from "./app-plan-redaction.ts";
 
 const findPrimary = (services: AppPlan["services"]): ReadonlyArray<ServicePlan> =>
   Object.values(services).filter((service) => service.primary === true);
@@ -30,6 +30,7 @@ export const noCommandsError = (tool: string): ToolingExecError =>
   new ToolingExecError({
     message: `Tooling task ${tool} has no commands to run.`,
     tool,
+    remediation: `Add at least one command under tooling.${tool}, then run \`lando app:cache:refresh\`.`,
   });
 
 const noPrimaryServiceError = (tool: string, services: AppPlan["services"]) => {
@@ -37,6 +38,10 @@ const noPrimaryServiceError = (tool: string, services: AppPlan["services"]) => {
   return new ToolingExecError({
     message: `Tooling task ${tool} did not declare service: and the app has no primary service. Set service: on the task or mark one of the available services as primary${available.length === 0 ? "." : `: ${available}.`}`,
     tool,
+    remediation:
+      available.length === 0
+        ? `Declare a service in the Landofile, or set service: on tooling.${tool}.`
+        : `Set service: on tooling.${tool} to one of: ${available}, or mark a service primary: true.`,
   });
 };
 
@@ -45,6 +50,10 @@ const unknownServiceError = (tool: string, requested: string, services: AppPlan[
   return new ToolingExecError({
     message: `Tooling task ${tool} declared service: ${requested} but no such service exists in the app plan${available.length === 0 ? "." : ` (available: ${available}).`}`,
     tool,
+    remediation:
+      available.length === 0
+        ? `Add service ${requested} to the Landofile, or change tooling.${tool}.service to an existing service.`
+        : `Change tooling.${tool}.service to one of: ${available}.`,
   });
 };
 
@@ -142,12 +151,13 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     return yield* Effect.fail(noCommandsError(invocation.tool));
   }
   const service = yield* resolveService(invocation, plan);
-  yield* registerAppPlanRedactionTokens(plan);
   const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
-  const env = withAgentContextEnv(invocation.env, process.env, {
+  const session = yield* (yield* EnvironmentValueResolver).openSession();
+  const typedEnv = withAgentContextEnv(invocation.env, process.env, {
     lowerThanEnv: service.environment,
     ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
   });
+  const env = typedEnv === undefined ? undefined : yield* session.resolveEnvironment(typedEnv);
   const sink = yield* Effect.serviceOption(StreamFrameSink);
   const tty = invocation.tty === true;
   let exitCode = 0;
@@ -190,12 +200,18 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     stderr,
   };
   return out;
-});
+}, Effect.scoped);
 
-export const layer = Layer.succeed(
+export const layer = Layer.effect(
   ToolingEngine,
-  ToolingEngine.of({
-    id: "providerExec",
-    run: providerExecRun,
+  Effect.gen(function* () {
+    const resolver = yield* EnvironmentValueResolver;
+    return ToolingEngine.of({
+      id: "providerExec",
+      run: (invocation, plan, provider) =>
+        providerExecRun(invocation, plan, provider).pipe(
+          Effect.provideService(EnvironmentValueResolver, resolver),
+        ),
+    });
   }),
 );

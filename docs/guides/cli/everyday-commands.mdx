@@ -7,27 +7,27 @@ tags: [beta, docs, cli]
 
 # Run the everyday CLI loop
 
-Start the app, inspect it, work inside it, then tear it down.
+Run these commands from an app directory with a Landofile after completing `lando setup`. Start the app, inspect its services and connection details, then run commands inside it.
 
 ```sh
 lando start
 lando info
 ```
 
-If you only memorize four of these, make them `start`, `info`, `exec`, and `destroy`.
+Use the URLs and connection details from `lando info` to reach your services. When you finish working, use `lando stop` to stop the app while keeping its named volumes. Use `lando destroy` only when you want to remove its containers and networks.
 
 ## Everyday commands
 
 | Command | What it does |
 | --- | --- |
-| `lando start` | Start this app. Alias of `app:start`. |
+| `lando start` | Start this app and apply changed container create configuration. Unchanged containers and named volumes stay. Alias of `app:start`. |
 | `lando info` | Print services, URLs, and connection details. Alias of `app:info`. |
 | `lando exec -- <cmd>` | Run a one-off command in the primary service. Alias of `app:exec`. |
 | `lando logs` | Stream service logs. Alias of `app:logs`. |
-| `lando stop` | Stop this app. Keeps volumes. Alias of `app:stop`. |
+| `lando stop` | Stop this app. Keeps named volumes. Alias of `app:stop`. |
 | `lando restart` | Stop then start. Alias of `app:restart`. Pass `-s` / `--service` to bounce one service. |
-| `lando rebuild` | Recreate containers from the current Landofile. Alias of `app:rebuild`. |
-| `lando destroy -y` | Remove this app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`. Alias of `app:destroy`. |
+| `lando rebuild` | Force an image pull, cache refresh, and app-build rerun, then recreate containers. Asks first. Alias of `app:rebuild`. |
+| `lando destroy -y` | Remove this app's containers and networks. Named volumes stay unless you pass `--volumes` or `--purge`. Alias of `app:destroy`. |
 | `lando doctor` | Report setup, provider, proxy, and cert health. Alias of `meta:doctor`. |
 | `lando poweroff -y` | Stop every Lando app on this host. Alias of `apps:poweroff`. |
 | `lando list` | List apps on this host. Alias of `apps:list`. |
@@ -41,7 +41,7 @@ lando exec db -- psql --version
 lando logs --service app --follow
 ```
 
-`lando ssh` opens an interactive `sh -l` in the primary service. See [Open a shell in a service](./ssh.mdx).
+`lando ssh` opens a login shell in the primary running service. It starts bash when available, or sh otherwise. See [Open a shell in a service](./ssh.mdx).
 
 ## Stop, restart, rebuild
 
@@ -52,19 +52,38 @@ lando restart
 lando rebuild
 ```
 
-Bare `restart` stops then starts the app, recreating its containers and reusing local images. `rebuild` also re-pulls the images your services reference so updated tags take effect, then reruns the build. Use `rebuild` after you change service types, images, or build steps. If the registry can't be reached, Lando warns and rebuilds from the local copies. Only an image that was never pulled needs network access; build steps that download packages still need it too.
+Bare `restart` stops then starts the app, removing and recreating its containers and reusing local images. It is not an in-place process restart. `lando start` applies a changed image, command, environment, user, working directory, mount, label, healthcheck, or other container create setting, and keeps unchanged containers and named volumes. `rebuild` re-pulls the images your services reference so updated tags take effect, then reruns the build even when the build key did not change. If the registry can't be reached, Lando warns and rebuilds from the local copies. Only an image that was never pulled needs network access; build steps that download packages still need it too. `start` does not take `-y`.
 
-`lando restart --service redis` (or `-s`, repeatable) stops and starts only those named services. Other services keep running and keep their host ports. Lando does not pull in dependencies. If a selected container is missing or needs recreation (published-port, bind-source, or network drift), the command refuses and tells you to run `lando rebuild -s <name>`.
+All of these keep named volumes and drop a removed container's anonymous volumes. For what counts as retained storage, how to declare it, and how to read `services[].mounts` in `lando info --format=json`, see [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
+
+## Recover from a failed start
+
+```sh
+lando info
+lando logs -s <service>
+lando start
+```
+
+A failed or interrupted `lando start` keeps what it built: created containers (started or not), networks, volumes, published routes, agent relays, and file-sync sessions. Creating a container is not the same as it being ready. After the error, the human report prints one warning that starts with `Start did not complete. Resources were left in place.` It lists `Running`, `created/stopped`, and `unverified` services, and says agent forwarding and file sync remain active where established. It tells you to inspect `lando info` and `lando logs`, fix the reported error, then run `lando start`. A service Lando could not observe within one second is unverified, never stopped. A failure before any app resource changed says `Start did not complete. No app resources changed.` instead of that inventory. JSON and YAML output don't carry the warning; use `lando info --format=json`.
+
+Fix the reported error, then run `lando start`. It converges rather than starting over: containers that match the plan are started as they are, only a container whose create config changed is recreated, an unfinished accelerated file-sync attempt resumes with its sessions, and healthy agent relays and host-proxy workers are reused. SSH and GPG forwarding stay enabled from the failed attempt until `lando stop` or `lando destroy`. Init steps and lifecycle hooks run again on every invocation, so write them to tolerate a rerun. `lando restart` and `lando rebuild` still stop first. If the start that follows fails, that failure does not remove routes.
+
+If you'd rather shut the half-started app down, `lando stop` does that and `lando destroy` removes it; add `--volumes` to drop data volumes too.
+
+`lando restart --service redis` (or `-s`, repeatable) restarts only those named services in place. Other services keep running and keep their host ports. Lando does not pull in dependencies. If a selected container is missing, or would have to be recreated for published-port, bind-source, network, or create-config drift, or because it has no `dev.lando.create-config` label, the command refuses with `ServiceRestartWouldRecreateError`. Create-config drift and a missing label use reason `config`. The error tells you to run `lando rebuild -s <name>`.
+
+`lando rebuild -s <name>` recreates the named services and the services they depend on. They rejoin the host proxy the running app already uses, so `lando` and `open` inside a rebuilt `type: lando` service still reach your host, and the services you did not rebuild keep working. Running `lando start` again on a running app reuses that host proxy too, even after you edit the Landofile.
 
 If another process takes a selected service's host port after it stops, restart fails and leaves that service down. Check `lando info`, free the port or run `lando rebuild -s <name>`, then check `lando info` again.
 
-Start, restart, and rebuild wait for every affected service's enabled healthcheck before reporting success or running post-start steps. Longer waits show readiness progress for each service. The summary reports `ready` for a passing healthcheck, `running` without one, and `completed` for a successful `service_completed_successfully` dependency target. Healthchecks probe immediately; the start period is a grace period for failures, not a mandatory sleep.
+Start, restart, and rebuild wait for every affected service's startup check before reporting success or running post-start steps. For most services that is its enabled healthcheck. A service type can declare a stronger startup check than the healthcheck it runs afterwards; MongoDB does, so start waits for a protocol ping while the ongoing check is a cheap port dial. An authored `healthcheck:` replaces both, and `healthcheck: false` turns both off. Longer waits show readiness progress for each service. The summary reports `ready` for a passing healthcheck, `running` without one, and `completed` for a successful `service_completed_successfully` dependency target. Healthchecks probe immediately; the start period is a grace period for failures, not a mandatory sleep.
 
-An unsupervised service that exits fails the command non-zero with `ServiceNotReadyError`. An exhausted healthcheck fails every service, even one with a restart policy. Applied user-app containers, routes, and volumes stay put: diagnose with `lando logs -s <service>` and `lando info`, fix the service or its `healthcheck:` configuration, then retry `lando start`. With `restart: always` or `unless-stopped`, an exit or observed restart produces a warning and a `restarting` row. `on-failure` does that only for a non-zero exit; exit 0 still fails readiness. Completion jobs must exit 0 regardless of restart policy.
+An unsupervised service that exits fails the command non-zero with `ServiceNotReadyError`. An exhausted healthcheck fails every service, even one with a restart policy. Nothing is removed: diagnose with `lando logs -s <service>` and `lando info`, fix the service or its `healthcheck:` configuration, then run `lando start` again. With `restart: always` or `unless-stopped`, an exit or observed restart produces a warning and a `restarting` row. `on-failure` does that only for a non-zero exit; exit 0 still fails readiness. Completion jobs must exit 0 regardless of restart policy.
 
-If the provider cannot inspect a service, the reason is `inspect-failed`: run `lando doctor` to restore the provider. That failure never counts as a supervised restart. Global services use `lando global:logs -s <service>` and `lando global:start`; failed groups lose their routes while independent ready groups stay applied. Scratch start and `lando run` also wait for readiness, but failed or interrupted acquisition cleans up unless you passed `scratch:start --keep-on-failure`. URL-scan warnings still do not fail start.
+If the provider cannot inspect a service, the reason is `inspect-failed`: run `lando doctor` to restore the provider. That failure never counts as a supervised restart. Global services use `lando global:logs -s <service>` and `lando global:start`; failed groups keep their established resources and published routes, while independent ready groups stay applied. Scratch start and `lando run` also wait for readiness, but failed or interrupted acquisition cleans up unless you passed `scratch:start --keep-on-failure`. URL-scan warnings still do not fail start.
 
-Pressing Ctrl-C during readiness stops waiting but leaves the applied app, routes, volumes, and sessions running. The command still exits as interrupted. Interrupting earlier startup phases keeps their normal cleanup.
+Pressing Ctrl-C at any point stops the start, cancels in-flight healthchecks and build steps, and leaves everything already established in place. The command still exits as interrupted.
+
 
 ## Fix an image pull failure
 
@@ -88,21 +107,27 @@ Already-pulled images can still work without registry access; see
 
 Read-only commands (`info`, `logs`, `app:config:lint`) do not take the lock.
 
+Lando reclaims a lock left by a killed command without printing a wait message. You don't need to delete the lock file.
+
 The lock key is the stable app id plus the canonical (realpath) app root at acquire time. If you move the app directory while a mutate is running, a command against the new path sees a different key and does not wait on the first lock.
 
 A mutating command that shells out to another `lando` mutate on the same app reuses the lock it already holds. It does not deadlock.
 
 ## Tear down
 
-`destroy` deletes this app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
-Run it again with `--volumes` when you want those volumes gone; Lando removes them from what the provider
+`destroy` deletes this app's containers and networks. Named volumes stay unless you pass `--volumes` or `--purge`.
+Run it again with `--volumes` when you want those named volumes gone; Lando removes them from what the provider
 still holds, and reports `unchanged` when there is nothing left to remove.
+
+Snapshots stay with plain `destroy` and `--volumes`. **`--purge` also deletes this folder's catalogued snapshots and their provider-stored data**, even when an earlier destroy left only ownership inventory. Selection uses the volume owner's canonical app root, not the app name, so another worktree's snapshots stay untouched. Native data is removed through the provider that recorded each snapshot; a failed deletion leaves its catalog entry available for retry.
 
 ```sh
 lando destroy -y
 ```
 
 `-y` skips the confirmation prompt.
+
+`pre-destroy` fires before anything is removed, and `post-destroy` only after everything, leftovers included, is gone. When Lando finds no trace of the app, destroy reports `unchanged` and fires neither.
 
 If you've deleted or moved an app folder before tearing it down, use its old path to
 remove the leftovers. `lando doctor` lists app folders that no longer exist.
@@ -113,6 +138,8 @@ you no longer need that data.
 ```sh
 lando destroy --root <path> --volumes
 ```
+
+`poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up. The next `lando start` brings back the global services that app uses, including Traefik and the SSH agent sidecar.
 
 To stop everything Lando is running:
 
@@ -202,15 +229,13 @@ Container-only discoveries may have no saved root.
   </Scenario>
 </Guide>
 
-`poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up. The next `lando start` brings back the global services that app uses, including Traefik and the SSH agent sidecar.
-
 ## Check the host
 
 ```sh
 lando doctor
 ```
 
-Run doctor after `lando setup`. The default provider is `lando` (managed Podman). After a successful `lando setup --provider=docker`, later doctor and start stay on Docker. `LANDO_PROVIDER` does not persist.
+Run doctor after `lando setup`. The default provider is `lando` (managed Podman). See [Pick a container provider](../setup/provider-selection.mdx).
 
 ## Next
 

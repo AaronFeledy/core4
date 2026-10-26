@@ -135,6 +135,7 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
         if (task === undefined) return;
         task.status = "done";
         task.warned = asString(event.outcome) === "warn";
+        task.info = event.outcome === "info";
         task.summary = asString(event.summary);
         task.durationMs = asNumber(event.durationMs);
         this.#spinningTaskIds.delete(taskId);

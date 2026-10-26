@@ -18,6 +18,20 @@ afterEach(async () => {
 });
 const load = () => loadLandofileLayers(root, join(root, ".lando.yml"));
 
+test("preserves dialect-mix detection for a legacy layer that fails during preparation", async () => {
+  // Given
+  const canonicalFile = join(root, ".lando.yml");
+  await writeFile(canonicalFile, "name: native\n");
+  await writeFile(join(root, ".lando.base.yml"), "recipe: lamp\nconfig: {}\nmounts:\n  - {a: 1}\n");
+  // When
+  const result = await Effect.runPromise(load().pipe(Effect.result));
+  // Then
+  expect(Result.isFailure(result) && result.failure).toMatchObject({
+    _tag: "LandofileDialectMixError",
+    canonicalFile,
+  });
+});
+
 test.each([
   "recipe: lamp\nconfig:\n  php: '8.3'\n",
   "services:\n  web:\n    api: 3\n",
@@ -86,7 +100,7 @@ test("loads v4 catalog types even when a legacy recipe filename exists", async (
   try {
     const result = await Effect.runPromise(load());
     // Then
-    expect(result.services).toMatchObject({ web: { type: "php:8.3" } });
+    expect(result.document.services).toMatchObject({ web: { type: "php:8.3" } });
     expect(check).not.toHaveBeenCalled();
   } finally {
     check.mockRestore();
@@ -175,6 +189,7 @@ test("preserves the exact original failure object when the hint is ambiguous", a
     filePath: sourceFile,
     line: 2,
     column: 3,
+    remediation: `Correct the YAML syntax in ${sourceFile} at line 2.`,
   });
   // When
   const result = await Effect.runPromise(

@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { type LanguageFrameworkPreset, makeLanguageRuntime } from "./_language-runtime.ts";
 
@@ -39,7 +39,8 @@ const RubyFeatureConfigSchema = Schema.Struct({
   webroot: Schema.optionalKey(Schema.String),
 });
 type RubyFeatureConfig = typeof RubyFeatureConfigSchema.Type;
-const configFor = (ctx: ServiceFeatureContext): RubyFeatureConfig => ctx.config as RubyFeatureConfig;
+const configFor = (ctx: { readonly config: Readonly<Record<string, unknown>> }): RubyFeatureConfig =>
+  ctx.config as RubyFeatureConfig;
 
 const runtime = makeLanguageRuntime({
   language: "ruby",

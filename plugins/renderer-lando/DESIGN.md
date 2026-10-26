@@ -1,7 +1,9 @@
 # Renderer-Lando Design System
 
-Quiet TTY task trees for the bundled `lando` renderer. Extracted from the existing
-left-rail painter and locked to the quiet grammar. Not a web surface.
+Use this contract when changing the bundled `lando` renderer's TTY task trees.
+The layout uses an open-right left rail, one status glyph per row, and a final
+verdict. It is a terminal surface, not a web interface; plain and machine output
+stay undecorated.
 
 ## 0. Research Log
 
@@ -18,8 +20,8 @@ A quiet operations rail. Identity at the top, one glyph per row, one verdict
 at the bottom. The signature is the Lando-pink open-right left rail: `╭─` /
 `│` / `╰─` with no right closure, no `LANDO OPS` banner, no status chips.
 
-Personas: a developer watching `lando start`, a contributor reading goldens,
-an agent consuming undecorated plain/JSON.
+The task tree serves developers watching `lando start`. Contributors verify its
+frames against golden fixtures; agents consume undecorated plain or JSON output.
 
 ## 2. Color
 
@@ -35,6 +37,7 @@ rail chrome, the active moving spinner glyph, and the opt-in brand icon, never a
 | Brand icon | `--rail-pink` | `95` | Opt-in Lando logo, using native terminal palette slot 13 |
 | Title text | `--text-bold` | `1` | Bold identity text in default foreground |
 | Success | `--status-success` | `32` | `✓` rows |
+| Info completion | `--text-dim` | `2` | `•` rows for neutral, reader-owned results; counted as succeeded |
 | Failure | `--status-error` | `31` | `✗` rows |
 | Live / cached | `--status-info` | `36` | Running labels, wrap continuations, static `·`, `cached` |
 | Pending | `--status-warning` | `33` | `◌` rows (ANSI yellow) |
@@ -87,10 +90,14 @@ Base unit is one terminal cell.
 Grid: one column, wrap by display width in `task-tree-frame.ts`. No right rail.
 CJK orphan rebalancing stays in the framer, not the grammar.
 
-Viewport: the live tree paints at the current cursor, immediately under the
+Viewport: the live tree paints on stderr at the current cursor, immediately under the
 typed command. It grows and shrinks in place. Logs commit above the tree, then
 the tree is rewritten below. Do not pin the tree to the terminal footer.
 Full-tail expand uses the alternate screen; leaving it returns to inline paint.
+A terminal stdout payload suspends the full-tail screen, and a partial payload line
+keeps it suspended until the line ends, the same rule inline paint follows.
+When stdout is a pipe or socket the tree does not paint; another process may be
+writing to the same terminal, so narration stays append-only lines on stderr.
 Native Windows TTY text writes use CRLF so every new line starts at column zero,
 including summaries printed after the live region closes. Existing CRLF and
 carriage-return progress remain intact; machine output and redirected streams
@@ -106,6 +113,7 @@ keep their original bytes.
   - pending: `│ ◌ {label}`
   - running: `│ {spinner|·} {label}` plus `│    {detail}`
   - success: `│ ✓ {label}{duration}`
+  - info: `│ • {label}{duration}` in dim default foreground, never success or warning color
   - cached: `│ ✓ {label}  cached{duration}`
   - skipped: `│ – {label}  skipped{duration}`
   - failed: `│ ✗ {label}{exitSuffix}{duration}` plus `│    ↳ {remediation}`
@@ -131,16 +139,18 @@ keep their original bytes.
 - **Copy**: `╰─ executing {tool}{duration}` using the quiet duration grammar (`  400ms` / `  12.4s`).
 - **Color**: pink rail chrome on `╰─`; dim footer copy, including the duration. No spinner in this footer.
 - **Lifecycle**: appears when a TTY tooling command starts; the elapsed duration ticks in place; the line is erased when the command completes. It does not remain as scrollback.
-- **Layout**: inline at the cursor, not pinned to the terminal bottom. Streaming stdout commits above, then the footer is rewritten below.
+- **Layout**: inline on stderr at the cursor, not pinned to the terminal bottom. The Renderer output channel owns text and byte payloads. For payloads targeting a terminal on either fd, erase the footer on stderr, write the original bytes to their original fd, then repaint on stderr. Redirected stdout never interacts with the footer. Partial payload lines defer repaint until their terminating newline, tracked from the final byte without decoding the payload.
 
 ### Machine modes
 
 plain, JSON, verbose, non-TTY, and CI stay undecorated. They do not use this
 rail, these glyphs, or these colors.
 
-Line-mode narration and every renderer message go to stderr. stdout carries
-only command results and payloads. The TTY live region is the exception: it
-paints on terminal stdout and commits interleaved output through journal scrollback.
+Every renderer message, live tree, prompt, alternate-screen tail, and OSC 99
+notification uses stderr. stdout carries only command results and payloads.
+Narration capabilities and dimensions describe stderr; result summaries use
+stdout's own terminal state and width. Rich prompts need terminal stdin and stderr;
+`--interactive` without them falls back to line prompts.
 
 ### Lando logo
 

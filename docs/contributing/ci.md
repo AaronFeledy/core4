@@ -5,25 +5,44 @@ description: Reproduce CI checks locally and inspect their failure artifacts.
 
 # CI runbook
 
-Use these commands to reproduce the CI jobs locally.
+Use this runbook to reproduce a failing CI job and find its diagnostics. Run commands from the repository root with the Bun version pinned in `.bun-version`. A clean checkout needs `bun install` and `bun run codegen`; tests that compile or run the container helper also need the [helper build](#in-container-helper).
+
+For a pre-PR check, use `bun run gate:pr` as described in the root repository instructions. To investigate a specific failure, go directly to [static checks](#static-checks), [generated schema checks](#generated-schema-and-bundled-codegen-gates), [guide scenarios](#guide-e2e-smoke-subset), or the [docs build](#docs-build). Live provider sections have additional host prerequisites; do not run their setup commands as part of a static-only check.
+
+## Choose the CI tier
+
+Pull requests select the highest profile needed by their changed paths:
+
+| Profile | Changes | Work |
+| --- | --- | --- |
+| `docs` | Markdown/MDX under `docs/`, except `docs/guides/`; static files under `docs/public/` and `docs/src/assets/` | Linux static checks and the docs build |
+| `guides` | Anything under `docs/guides/`, including fixtures | Docs work plus Linux guide scenarios, live `@smoke`, and their build prerequisites |
+| `runtime` | Everything else, including recipes, code, tests, scripts, workflows, lockfiles, configuration, and unknown paths | Guide work plus the complete unit shards, isolation regressions, and performance budgets |
+
+Mixed changes select the higher profile. Missing history or an empty comparison falls back to `runtime`. Deleted and renamed paths count too. There is no package-to-test map to maintain, and `bun test --changed` is a local convenience rather than the merge gate.
+
+Pushes to `main` and manual `ci` dispatches run broad hosted coverage, including all six binary artifacts required by the release workflow. Nightly and the scheduled evidence workflows own deep live suites and platform journeys. Use manual `ci` dispatch when a PR needs the broad hosted checks before merge.
+
+General Linux tests run on Ubuntu 26.04. Portable Linux x64 binaries still build on Ubuntu 24.04 for their older glibc baseline. The focused install/use/uninstall lifecycle also keeps Ubuntu 24.04 coverage without duplicating the broad test suite.
 
 ## Static checks
 
-CI pins Bun via `.bun-version` at 1.4.2; the Beta 1 floor is `>=1.4.2`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version. The default PR gate runs `static-checks-platform` as a six-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, and `windows-arm64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
+CI pins Bun via `.bun-version` at 1.4.2; the Beta 1 floor is `>=1.4.2`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version.
+
+Pull requests run portable static checks once on Linux x64. Broad runs retain the six-platform static matrix. The stable `static-checks` summary feeds the required `ci` check.
 
 Every platform cell runs the fork-safe portable static gates:
 
 ```bash
 bun run codegen:check
 bun run lint
-bun run audit
 bun run check:boundaries
 bun run check:telemetry-inventory
 bun run check:compose-coverage
 bun run check:runtime-bundle-manifest
 ```
 
-`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. `bun run audit` fails the static cell when Bun reports advisories; `bun run audit:fix` is a local recipe only and is never applied in CI. Deprecation checks run through `bun run lint`; typecheck remains a separate CI gate outside `static-checks-platform`.
+`bun run codegen:check` regenerates the full ordered codegen catalog and checks catalog-owned outputs, including committed workflows, for drift. Deprecation checks run through `bun run lint`. Root typecheck runs with the Linux static gate even when guide jobs are not selected. Dependency audits run separately and never block pull requests.
 
 Run typecheck separately:
 
@@ -31,9 +50,13 @@ Run typecheck separately:
 bun run typecheck
 ```
 
-`bun run check:boundaries` runs every boundary rule with one file walk and one TypeScript parse per file shared across rules; module edges come from that same parse, while rules may run their own AST visitors. Rule definitions remain in `scripts/boundary/rules/`. Debug one rule with `bun run scripts/check-boundaries.ts <rule-id>`. The per-rule `scripts/check-*.ts` shims remain programmatic test APIs, not package scripts.
+`bun run check:boundaries` runs every boundary rule with one file walk and one TypeScript parse per file shared across rules; module edges come from that same parse, while rules may run their own AST visitors. Rule definitions remain in `scripts/boundary/rules/`. Debug one rule with `bun run scripts/check-boundaries.ts <rule-id>`. The per-rule `scripts/check-*.ts` shims remain programmatic test APIs, not package scripts. Replace `<rule-id>` with a rule from the [boundary inventory](../../scripts/boundary/README.md).
 
-The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix that runs the unit-test layer split into balanced shards across `ubuntu-24.04` and `ubuntu-26.04`. Shards start immediately (no `needs:` on `static-checks`) so unit failures surface in parallel with the static gate, and the aggregate job keeps a single required status check name. The same dual-Ubuntu runner matrix applies to `library-api-tests-runner`, `recipe-tests-runner`, `guide-scenarios-linux-x64-runner`, and `provider-integration-linux-x64-runner`, each with a stable aggregate job matching the branch-protection check name. Builds stay on `ubuntu-24.04` for the older glibc reference. `scripts/test-shards.ts` collects that file set and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json` because native `--shard` does not know the exclusions: `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). Shard balance comes from the committed timings file, not a hand-maintained weight table. Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected because compiled-binary tests race on a shared outfile. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
+The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix on `ubuntu-26.04`. The selected profile controls whether those shards run; each selected suite still runs in full. Library, recipe, Linux guide, and provider test jobs also use Ubuntu 26.04 rather than running twice on different Ubuntu releases. Builds stay on `ubuntu-24.04` for the older glibc reference.
+
+`scripts/test-shards.ts` collects the unit file set and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json` because native `--shard` does not know the exclusions: `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). Shard balance comes from the committed timings file, not a hand-maintained weight table.
+
+Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected because compiled-binary tests race on a shared outfile. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
 
 `bun run test` prints the exact shard commands CI runs:
 
@@ -59,9 +82,19 @@ bun run test:unit
 
 Heavy meta-suites that re-run generators or other test files (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/linux-acceptance-criteria-10-14.test.ts`) run in the nightly `nightly-tier-unit-tests-linux-x64` job instead of per-PR shards; per-PR workflow drift is covered by `bun run codegen:check` in `static-checks-platform`.
 
+## Dependency maintenance
+
+Dependabot checks Bun dependencies and GitHub Actions weekly. Minor and patch updates are grouped per ecosystem; major updates get separate pull requests. Actions workflows are generated, so an Actions update PR must also update its owning generator or action-pin source and regenerate YAML before merge.
+
+The daily `dependency-audit` workflow runs `bun run scripts/dependency-audit.ts` from the trusted default branch. It can also be dispatched there manually. It is not a pull-request check. Bun version-update PRs do not replace Bun vulnerability detection; Dependabot does not currently support Bun security-update PRs.
+
+The audit maintains one bot-owned issue titled `Dependency audit findings`. New findings create it, changed findings update it, a clean audit closes it, and recurring findings reopen the same issue. Unchanged findings do not rewrite the issue. Ignore policy comes from the existing `audit` command in `package.json`. Registry errors, malformed output, and inconsistent audit exits fail the scheduled job without marking the issue resolved.
+
+Only the trusted audit reporting job receives `issues: write`. Serialized runs prevent competing issue creation. `bun run audit:fix` remains a local command and is never applied automatically in CI.
+
 ## Tell a skipped gate from a failed one
 
-Some maintainers run this repository through a workspace-local looper harness whose loop includes a `Drift Audit` step. That step is not a repository gate. It belongs to the harness, is configured per workspace by a gitignored `.local/looper/looper.yaml` (the repository `.gitignore` ignores `.local/`), and is owned by the maintainer running the loop. Nothing in this repository defines, schedules, or can fix it. The evidence: there is no `.looper/` directory; `package.json` declares no drift-audit script (only `audit`, `audit:fix`, `check:codegen-drift`, and `check:guide-drift`); and there is no `scripts/*audit*` file, the one tracked path matching `audit` being the unrelated `plugins/service-lando/DEFAULT_COMMAND_AUDIT.md`. Do not edit that automation from this repository.
+Some maintainers run this repository through a workspace-local looper harness whose loop includes a `Drift Audit` step. That step is not a repository gate. It belongs to the harness, is configured per workspace by a gitignored `.local/looper/looper.yaml` (the repository `.gitignore` ignores `.local/`), and is owned by the maintainer running the loop. Nothing in this repository defines, schedules, or can fix it. Do not edit that automation from this repository. The scheduled dependency audit is unrelated to that harness step.
 
 Do not confuse it with the three repository scripts whose names look similar:
 
@@ -81,9 +114,58 @@ CI fails if the generated schema artifact set or bundled plugin/recipe tables dr
 bun run codegen
 ```
 
-For focused local checks, CI regenerates the HEAD schemas with `bun run codegen:schema-snapshot`, checks only the committed bundled-plugin manifest fixture at `sdk/test/fixtures/bundled-plugin-manifests.json` with path-scoped `git status --porcelain`, then runs `bun run check:schema-compatibility` against `origin/main`. The checkout needs full git history (`fetch-depth: 0`) because the checker resolves the base ref. It creates a detached temporary worktree at that commit, installs its dependencies from `bun.lock` with `bun install --frozen-lockfile`, runs its `codegen:schema-snapshot` to materialize the base schemas, then removes the worktree and underlying OS temp directory. Set `LANDO_SCHEMA_COMPATIBILITY_BASE_REF=<ref>` to compare against another base locally. There is no fallback to committed artifacts, so any failure materializing the base schemas fails the gate closed. The checker fails on unaccepted `breaking` or `unknown` findings, with exact reviewed exceptions recorded in `sdk/compatibility-exceptions.json`. The only accepted skip is a base commit that predates `scripts/build-schema-snapshot.ts` and therefore has no generator; the summary reports the exact per-family counts skipped for that reason instead of comparing against a nonexistent generator.
+For focused local checks, CI regenerates the HEAD schemas with `bun run codegen:schema-snapshot`, checks only the committed bundled-plugin manifest fixture at `sdk/test/fixtures/bundled-plugin-manifests.json` with path-scoped `git status --porcelain`, then runs `bun run check:schema-compatibility` against `origin/main`. The checkout needs full git history (`fetch-depth: 0`) because the checker resolves the base ref.
+
+The checker creates a detached temporary worktree at that commit, installs its dependencies from `bun.lock` with `bun install --frozen-lockfile`, runs its `codegen:schema-snapshot` to materialize the base schemas, then removes the worktree and underlying OS temp directory.
+
+Set `LANDO_SCHEMA_COMPATIBILITY_BASE_REF=<ref>` to compare against another base locally. There is no fallback to committed artifacts, so any failure materializing the base schemas fails the gate closed. The checker fails on unaccepted `breaking` or `unknown` findings, with exact reviewed exceptions recorded in `sdk/compatibility-exceptions.json`. The only accepted skip is a base commit that predates `scripts/build-schema-snapshot.ts` and therefore has no generator; the summary reports the exact per-family counts skipped for that reason instead of comparing against a nonexistent generator.
 
 That fixture is the job's only porcelain path; modifying, deleting, or regenerating it as untracked fails the gate. The SDK schema and command-result schema trees, including both indexes, are ignored derived outputs validated by regeneration and semantic comparison rather than by git status. The job regenerates the command reference (`bun run codegen:command-registry-manifest` then `bun run codegen:command-reference`) and verifies `docs/reference/commands.mdx` with `git diff --exit-code`. It then regenerates the Compose key matrix (`bun run codegen:compose-key-matrix`) and applies the same check to `docs/reference/compose-key-matrix.mdx`. Other focused codegen checks run `bun run codegen:bundled-plugins`, `bun run codegen:bundled-recipes`, and `bun run codegen:mutagen-versions`.
+
+## Update the paired Tomcat catalog
+
+Run the explicit network updater from the repository root:
+
+```bash
+bun run update:tomcat
+```
+
+It resolves the public Docker Hub `9-jre21`, `10-jre21`, and `11-jre21` indexes without a container daemon, verifies manifest/config bytes and both Linux architectures, checks a consistent Tomcat version and distribution environment, and verifies that each exact version tag resolves to the same index. Registry blob redirects are restricted to Docker's `production.cloudfront.docker.com` storage host, with no pull token forwarded. It fetches `server.xml` from the matching Apache release tag's immutable commit. All three candidates must validate before any pin or baseline is written. Same-version image rebuilds count as updates. Network or validation failures leave the previous files untouched.
+
+Review `plugins/service-lando/tomcat/pins.json` and all three `server-*.xml` files together. Keep the Apache notices. The report separates upstream baseline changes from Lando's single intentional HTTP-port substitution. Comments-only classification requires byte-identical active text; formatting changes still require review. A new active config shape fails closed until the local template contract is reviewed.
+
+Regenerate and run the focused checks:
+
+```bash
+bun run codegen:tomcat-catalog
+bun run codegen:service-type-reference
+bun test plugins/service-lando/test/tomcat.test.ts plugins/service-lando/test/tomcat-port.test.ts core/test/scripts/tomcat-update.test.ts core/test/scripts/tomcat-catalog.test.ts core/test/build/tomcat-bump-workflow.test.ts
+LANDO_TEST_PODMAN_SOCKET=/path/to/podman.sock bun test plugins/service-lando/test/tomcat-config.integration.test.ts
+```
+
+Replace `/path/to/podman.sock` with a running Podman-compatible provider socket. The live test builds and starts each major at the default and nondefault ports, checks ROOT content and authored startup, and verifies the old port is closed. A skipped live test is not compatibility evidence.
+
+Normal codegen is offline: it checks local hashes and template invariants and derives the ignored embedded TypeScript catalog. Commit only paired inputs and the generated workflow, not the derived catalog. The daily/dispatch `tomcat-bump` workflow merges `main` into its rolling branch, prepares candidates, runs focused unit checks before proposing, then explicitly dispatches `ci.yml` on the proposal branch. That CI run includes service-lando live integration tests; the workflow does not auto-merge.
+
+## Extend the internal maintenance workflows
+
+`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts` and `build-compose-vendor-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and exact-title failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+
+Each consumer supplies its identity, schedule, branch, owned paths, and two trusted repository-authored shell hooks. `prepare` runs after branch reconciliation and may exit successfully when discovery finds nothing to do. The envelope then checks both working-tree and pending-branch owned-path differences. `checkAndReport` runs before any publication and must set `TITLE` (also the commit message) and `BODY_FILE`. Hook failures stop publication.
+
+Owned-path detection includes staged and untracked outputs. Commits include only owned paths, even when a hook stages an unrelated file.
+
+Tomcat keeps paired candidate validation in `update:tomcat`, captures the `main` baseline, runs codegen and focused candidate checks, and reports baseline changes. Compose keeps stable-tag selection through `selectNewerComposeGoTag`, skips schema fetching when current without a pending bump, reconciles pending bumps even without a newer tag, and reports schema-key differences with a versioned title. Compose does not run `check:compose-coverage` before proposing or classify new keys automatically. PR CI and human review own classification.
+
+To add another internal consumer, keep discovery, updating, checks, and reporting in its generator's local hooks; declare only paths it owns. Reuse the envelope rather than adding pipeline modes or a public configuration surface. Keep each real generator in `scripts/codegen-catalog.ts`; the shared renderer is not a generator entry. Regenerate YAML through the consumer generator, never by hand.
+
+Run the bounded shell coverage with:
+
+```bash
+bun test core/test/build/maintenance-workflow.test.ts core/test/build/maintenance-workflow-renderer.test.ts core/test/build/tomcat-bump-workflow.test.ts core/test/build/compose-vendor-bump-workflow.test.ts
+```
+
+The POSIX behavioral tests use Bash, Git, and jq. `core/test/build/support/maintenance-workflow-harness.ts` exports isolated real-Git/local-bare-remote fixtures with fake GitHub and domain I/O, plus extracted generated scripts for driver or PTY checks. It changes no global Git configuration or process cwd. Native shell cases skip Windows; YAML checks remain portable.
 
 ## Library API and recipe test layers
 
@@ -94,9 +176,31 @@ bun test core/test/library sdk/test/library
 bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 ```
 
+## In-container helper
+
+Every compiled `lando` embeds a static Go helper for `linux-x64` and `linux-arm64`. Inside a container it is the host-proxy `lando` client and the reader behind `lando logs --source`. You don't need Go installed: the helper builds with Lando itself, in the pinned `golang` image from `core/container-helper/.lando.yml`.
+
+Before building, run `bun install` and `bun run codegen` on a clean checkout and configure a working provider with `lando setup`. If default setup fails on Linux, use `lando setup --provider=docker` with a working system Docker. No host Go installation is needed.
+
+Build the helper before `bun test` on Linux or compiling `lando` on any host:
+
+```bash
+bun run --filter='@lando/core' build:container-helper
+```
+
+That starts the `lando-container-helper` builder app with the source-mode CLI, writes `core/container-helper/dist/linux-{x64,arm64}/lando-container-helper` plus the source digest they were built from, and destroys the builder. Every checkout shares that app name, so builds in several git worktrees work one after another, not at the same time. Pass `--test` (`bun run scripts/build-container-helper.ts --test`) to run `go vet` and `go test` first. `bun run build` doesn't run it: compiling embeds the helper already in `dist/` and refuses a missing or stale one, so rerun the helper build after editing `core/container-helper/` sources or `core/container-helper/.lando.yml`. To embed prebuilt binaries instead, set `LANDO_CONTAINER_HELPER_DIR` to a directory laid out the same way.
+
+Verify the host-architecture helper on Linux:
+
+```bash
+bun test core/test/container-helper/helper.integration.test.ts
+```
+
+In CI, the `container-helper` job sets up Lando with the Docker provider and no router, builds both architectures, runs the integration suite on x64, and uploads the `container-helper` artifact. The `container-helper-arm64` job downloads it and runs the same suite on `ubuntu-24.04-arm` without Lando or Docker setup. The required `static-checks` aggregate rejects any arm64 helper result other than success, including skipped and cancelled runs. Every job that compiles `lando` or runs live provider tests downloads that artifact into `core/container-helper/dist`.
+
 ## Platform binary builds
 
-CI builds and smokes one binary per required PR platform:
+Broad `main` and manual CI runs build and smoke all six binaries. A PR that selects guides or runtime builds Linux x64 only:
 
 - `build-darwin-arm64` on `macos-15` → `lando-darwin-arm64`
 - `build-darwin-x64` on `macos-15-intel` → `lando-darwin-x64`
@@ -143,7 +247,7 @@ Do not commit profile dumps or `*.metafile.md` artifacts.
 
 ## Startup and tooling perf budgets
 
-The `perf-budget-linux-x64` job in the PR and `main` workflow runs `bun run bench:opentui-startup -- --binary <binary>` and the tooling hot-path benchmark against the `build-linux-x64` binary artifact. The tracked budgets live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code. `openTuiStartup` keeps the 50 ms startup and first-output p95 budgets for `lando --version`. `ttyRendererOverhead` runs `lando version --renderer=lando` 20 times piped and 20 times under a Bun PTY, then requires the TTY median to stay within 150 ms of the piped median. The explicit renderer flag bypasses the app-free `version` fast path so every sample constructs the default renderer. This catches renderer work that keeps the process alive after output. The tooling gate checks its warm p95 baseline and regression budget separately.
+The `perf-budget-linux-x64` job runs for runtime-profile PRs and broad CI. It runs `bun run bench:opentui-startup -- --binary <binary>` and the tooling hot-path benchmark against the `build-linux-x64` binary artifact. The tracked budgets live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code. `openTuiStartup` keeps the 50 ms startup and first-output p95 budgets for `lando --version`. `ttyRendererOverhead` runs `lando version --renderer=lando` 20 times piped and 20 times under a Bun PTY, then requires the TTY median to stay within 150 ms of the piped median. The explicit renderer flag bypasses the app-free `version` fast path so every sample constructs the default renderer. This catches renderer work that keeps the process alive after output. The tooling gate checks its warm p95 baseline and regression budget separately.
 
 ```bash
 bun run build
@@ -175,7 +279,15 @@ Before publishing, the orchestrator runs dry-runs for every release package with
 
 Provider integration tests intentionally stay serial because they share Docker/Podman sockets, images, ports, and app names. Use `--parallel` and `--isolate` only for focused local experiments.
 
-`provider-integration-linux-x64` prepares the default Lando provider through `lando setup`, never a manually started `podman system service`. Linux Podman-backed jobs install the Podman 6 toolchain from the Homebrew `podman` formula (Podman >= 6.0.0 with Netavark v2 and Aardvark-dns v2 in its helper directory and `passt`/pasta, `crun`, `conmon` as dependencies) because Ubuntu 24.04 apt ships Podman 4.9.x and the OBS Kubic xUbuntu_24.04 repository does not publish Podman 6 packages yet; the shared install/assert steps live in `scripts/ci-podman-install.ts`, and every Podman-backed job asserts `podman --version` satisfies the >= 6.0.0 floor (numeric major.minor.patch, suffixes ignored) with remediation before any Podman-backed step runs. The managed runtime resolves its OCI runtime from the default system search list (`/usr/bin/crun` first) rather than the bundle or `helper_binaries_dir`, so the install step overwrites `/usr/bin/crun` with the Podman 6 toolchain `crun` — a runner's preinstalled pre-Podman-6 `crun` otherwise fails container start with `crun: unknown version specified`. The job additionally provisions the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, `fuse-overlayfs` for rootless overlay storage on AppArmor-constrained Linux runners, cgroups v2 delegation, and unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, sets `CONTAINERS_STORAGE_CONF` so Podman uses the staged `fuse-overlayfs` helper instead of kernel overlay, and runs `dist/lando setup --yes --provider=lando`. Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`; the integration and contract suites resolve that managed socket from Paths/setup state instead of an exported env var, and teardown is `dist/lando poweroff`.
+`provider-integration-linux-x64` prepares the default Lando provider through `lando setup`, never a manually started `podman system service`.
+
+Linux Podman-backed jobs install the Podman 6 toolchain from the Homebrew `podman` formula (Podman >= 6.0.0 with Netavark v2 and Aardvark-dns v2 in its helper directory and `passt`/pasta, `crun`, `conmon` as dependencies) because Ubuntu 24.04 apt ships Podman 4.9.x and the OBS Kubic xUbuntu_24.04 repository does not publish Podman 6 packages yet; the shared install/assert steps live in `scripts/ci-podman-install.ts`, and every Podman-backed job asserts `podman --version` satisfies the >= 6.0.0 floor (numeric major.minor.patch, suffixes ignored) with remediation before any Podman-backed step runs.
+
+The managed runtime resolves its OCI runtime from the default system search list (`/usr/bin/crun` first) rather than the bundle or `helper_binaries_dir`, so the install step overwrites `/usr/bin/crun` with the Podman 6 toolchain `crun`. A runner's preinstalled pre-Podman-6 `crun` otherwise fails container start with `crun: unknown version specified`.
+
+The job additionally provisions the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, `fuse-overlayfs` for rootless overlay storage on AppArmor-constrained Linux runners, cgroups v2 delegation, and unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, sets `CONTAINERS_STORAGE_CONF` so Podman uses the staged `fuse-overlayfs` helper instead of kernel overlay, and runs `dist/lando setup --yes --provider=lando`.
+
+Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`. Managed-CLI live suites require an explicit, answering `LANDO_TEST_PODMAN_SOCKET` that matches their Paths-resolved managed socket; a different socket does not enable them. Teardown is `dist/lando poweroff`.
 
 To reproduce the setup-driven provider preparation locally (requires a local Podman >= 6.0.0 on PATH, e.g. `brew install podman`; set `LANDO_CI_PODMAN_HELPER_DIR="$(brew --prefix)/opt/podman/libexec/podman"` so the Homebrew helper directory is staged):
 
@@ -213,17 +325,83 @@ bun test plugins/provider-docker/test --filter=integration
 bun test plugins/service-lando/test --filter=integration
 ```
 
-`LANDO_TEST_PODMAN_SOCKET` rehearsal fallback: in local or sandbox environments where rootless service launch is unavailable, point an existing Podman socket at the suites with the documented override; it takes precedence over the Paths-resolved managed socket:
+### Run the database journey spot checks
+
+After setup, retain the prepared runtime's Lando roots and opt in to its managed
+socket. Use the same compiled binary that performed setup; the example uses the
+integration job's `dist/lando` artifact:
+
+```bash
+export LANDO_TEST_PODMAN_SOCKET="$(bun -e 'import { makeLandoPaths } from "@lando/paths"; console.log(makeLandoPaths().providerSocketPath)')"
+LANDO_TEST_USE_REAL_ROOTS=1 \
+LANDO_SCENARIO_E2E_BINARY="$PWD/dist/lando" \
+bun test core/test/live/mssql-transfer-roundtrip-live.integration.test.ts \
+  core/test/live/mssql-transfer-failure-live.integration.test.ts \
+  core/test/live/postgres-transfer-gzip-live.integration.test.ts
+```
+
+Require five passing scenarios, not a skipped run. They cover SQL Server 2019
+and 2022, projected consumer credentials, gzip roundtrips, immediate warm reads,
+creation records, failure receipts, and PostgreSQL authentication/export
+atomicity. Each scenario purges only its unique app's volumes and snapshots.
+Set `LANDO_TEST_ARTIFACT_ROOT` to an existing caller-owned directory to retain
+sanitized per-command evidence after app teardown; remove that directory after
+review.
+
+### Run the MCP completion spot check
+
+With the same prepared roots and explicit managed socket, exercise the compiled
+CLI rather than a synthetic producer:
+
+```bash
+LANDO_TEST_USE_REAL_ROOTS=1 \
+LANDO_GUIDE_E2E=1 \
+LANDO_SCENARIO_E2E_BINARY="$PWD/dist/lando" \
+bun test core/test/live/mcp-command-completion-live.integration.test.ts
+```
+
+Require a positive passing test count. The journey covers final output with and
+without progress subscriptions, exact exec arguments, process failure status,
+redaction, bounded output tails, and quiet log followers canceled through the
+protocol, stdin EOF, and SIGTERM. Missing prerequisites fail this explicitly
+requested run. Tests create and destroy only their uniquely named app; they do
+not run setup or reset the host. `LANDO_TEST_ARTIFACT_ROOT` also retains sanitized
+protocol and shutdown evidence for this journey.
+
+`LANDO_TEST_PODMAN_SOCKET` rehearsal fallback: provider-port suites can target a
+different existing answering Podman socket with the override. This does not
+enable the managed-CLI suites under `core/test/live`:
 
 ```bash
 podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
 export LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock
-LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
+LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test plugins/service-lando/test/postgres-config.integration.test.ts
 ```
 
-Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (25 minutes for Linux jobs, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
+Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (35 minutes for the live linux-x64 job, 25 minutes for linux-arm64, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
+
+## Lint guide YAML and negative fixtures
+
+Run `bun run lint:guides` to validate identifiable Landofile fences and fixture files.
+Full `.lando.yml` documents keep full authoring requirements, including native
+`!reset` and `!override` placement checks. `.lando.*.yml` files are fragments.
+Unrelated YAML, such as Actions workflows, Kubernetes resources, recipe manifests,
+and command envelopes, is not validated as a Landofile. Unknown siblings do not
+exclude a document that has a Landofile-specific key such as `services` or `tooling`.
+
+For an intentionally invalid fixture, put `# lando-lint: expect-invalid REASON`
+on its first physical line. A UTF-8 BOM before the comment and CRLF line endings
+are accepted. Leading blank lines or license comments make the marker misplaced
+and produce `guide.fixture.landofile-marker-placement`. Every marker asserts a
+native authoring failure; its reason never selects another dialect, even when it
+starts with `lando3`. A body that validates produces
+`guide.fixture.landofile-unexpected-valid`. Keep the negative body invalid rather
+than hiding it behind a skip.
+
+Only a standalone `nolint` fence metadata token opts out. A title such as
+`title="nolint-example.yaml"` or a quoted value containing `nolint` does not.
 
 ## Guide e2e smoke subset
 
@@ -260,7 +438,7 @@ podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
 LANDO_GUIDE_E2E=1 LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\[e2e\]"
-bun test core/test/live
+LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
 ```
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
@@ -289,7 +467,7 @@ Compile smoke and relocated-binary smoke do not satisfy live `lando setup` or `l
 
 The generated workflow is `.github/workflows/platform-readiness.yml`, produced by `scripts/build-platform-readiness-workflow.ts`. Do not hand-edit the YAML.
 
-On pull request, `platform-readiness` runs linux-x64 on `ubuntu-24.04` and linux-arm64 on `ubuntu-24.04-arm` with the default provider `lando`.
+`platform-readiness` runs on its schedule and manual dispatch, not on pull requests. Linux x64 uses Ubuntu 26.04; Linux arm64 uses `ubuntu-24.04-arm`. Both use the default provider `lando`.
 
 Linux current-commit assemble uses the same Go, Rust, and Ubuntu snapshot source-build prerequisites as `runtime-bundle`.
 
@@ -297,7 +475,7 @@ Current-commit assembly (`scripts/assemble-runtime-bundle.ts`) downloads each pi
 
 This is separate from the product setup downloader that `lando setup` uses against the published manifest; that has its own cache, offline, and retry behavior. When assembly fails after exhausting retries, inspect the named component artifact upstream and the runner's connectivity. Do not change a pin just to make the job pass.
 
-On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
+On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. These cells accept only `main`; manually dispatching another branch cannot run its code on a self-hosted runner. A missing runner is a job error, not a skip.
 
 darwin-x64 already has Docker installed on the runner. The job must not install Docker Desktop. Use `--provider=docker` on that cell.
 
@@ -319,7 +497,7 @@ The generated workflow is `.github/workflows/drupal-journey.yml`, produced by `s
 
 The live path is `lando init --recipe drupal`, `lando start`, `lando info`, README scaffold plus Drush (`drupal-scaffold` then `drush`), then `lando destroy -y`. It runs on all six compile targets.
 
-On pull request, linux-x64 runs on `ubuntu-24.04` and linux-arm64 on `ubuntu-24.04-arm`. On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
+The journey runs on its schedule and manual dispatch, not on pull requests. Linux x64 uses Ubuntu 26.04; Linux arm64 uses `ubuntu-24.04-arm`. Darwin and Windows use self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`, restricted to `main`. A missing runner is a job error, not a skip.
 
 darwin-x64 uses `--provider=docker`. The job must not install Docker Desktop. Other cells use the default provider `lando`.
 
@@ -333,19 +511,29 @@ The generated workflow is `.github/workflows/rails-journey.yml`, produced by `sc
 
 The live path is `lando init --recipe rails`, `lando start`, `lando info`, README tooling (`lando rails` / `lando bundle`), then `lando destroy -y`. It runs on all six compile targets.
 
-On pull request, linux-x64 runs on `ubuntu-24.04` and linux-arm64 on `ubuntu-24.04-arm`. On `schedule` and `workflow_dispatch`, darwin and windows cells run on self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`. A missing runner is a job error, not a skip.
+The journey runs on its schedule and manual dispatch, not on pull requests. Linux x64 uses Ubuntu 26.04; Linux arm64 uses `ubuntu-24.04-arm`. Darwin and Windows use self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`, restricted to `main`. A missing runner is a job error, not a skip.
 
 darwin-x64 uses `--provider=docker`. The job must not install Docker Desktop. Other cells use the default provider `lando`.
 
 Isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` for that run. Timeout is 90 minutes. The path is not Composer-heavy.
 
+## Install, use, and uninstall on compatibility hosts
+
+The scheduled/manual `install-lifecycle` workflow runs one lifecycle on Ubuntu 24.04 and one on `[self-hosted, lando-virt, Windows, X64]`. Both accept only `main`. Windows needs a dedicated fresh WSL-capable runner with no existing `podman-lando` machine; missing virtualization is a failure, not a skip.
+
+The scenario installs the current compiled payload outside the checkout through the real installer, checks checksum and installer ownership, runs setup, starts nginx, checks its HTTP response through `lando exec`, destroys the app, and runs `uninstall --yes --purge`. It verifies removal of the executable, install record, runtime directory, and Windows machine registration. Each run uploads its JSON evidence, including failures.
+
+Distribution signatures use an explicitly labeled test-only verifier fixture. This checks installer publication and ownership with real SHA256, not release-signature validity. Signature trust remains covered independently by installer tests.
+
+Do not run this purge scenario on a workstation or shared runtime. Isolated Lando roots do not contain host-global socket-proxy/cgroups integration or all provider cleanup. The script requires `LANDO_LIFECYCLE_FRESH_RUNNER=1` and rejects existing host integration and Lando resources before installation. Inspect the command and prerequisites with `bun run scripts/install-lifecycle-journey.ts --help`.
+
 ## Alpha platform scope
 
-Public Alpha 1 live evidence is six compile targets, not Linux x64 only. Compile smoke is not an Alpha exit. Live `lando setup` and `lando doctor` run in `platform-readiness`. The Drupal canonical journey runs in `drupal-journey`. The Rails canonical journey runs in `rails-journey`. Each generated workflow covers all six compile targets. Darwin and Windows cells are fail-closed self-hosted `lando-virt` jobs; a missing runner is an error, not a skip. Beta PR CI still owns the broad multi-platform matrix documented above; nightly cron still owns full provider-lando e2e on Linux x64; the weekly provider matrix still owns cross-engine acceptance coverage.
+Public Alpha 1 live evidence is six compile targets, not Linux x64 only. Compile smoke is not an Alpha exit. Live `lando setup` and `lando doctor` run in `platform-readiness`. The Drupal canonical journey runs in `drupal-journey`. The Rails canonical journey runs in `rails-journey`. Each generated workflow covers all six compile targets. Darwin and Windows cells are fail-closed self-hosted `lando-virt` jobs; a missing runner is an error, not a skip. Main and manual CI own the broad hosted matrix; PR CI selects its smaller profile. Nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns cross-engine acceptance coverage.
 
 ## Docs build
 
-The `docs-build` job runs on Linux x64 and is a required status check for `main`. Reproduce it locally:
+The `docs-build` job runs on Linux x64 for every PR profile and broad CI. Its result is enforced by the required `ci` check. Reproduce it locally:
 
 ```bash
 bun run docs:check
@@ -360,34 +548,13 @@ test -f docs/dist/reference/schemas/app-plan/index.html
 
 ## Branch protection
 
-Protect `main` in GitHub with required status checks enabled. All required status checks must pass before a pull request can merge to `main`:
+Protect `main` in GitHub with required status checks enabled. Require this single status check before a pull request can merge to `main`:
 
-- `static-checks`
-- `unit-tests-linux-x64`
-- `schema-snapshot`
-- `bundled-codegen`
-- `docs-build`
-- `library-api-tests`
-- `recipe-tests`
-- `guide-scenarios-darwin-arm64`
-- `guide-scenarios-darwin-x64`
-- `guide-scenarios-linux-arm64`
-- `guide-scenarios-linux-x64`
-- `guide-scenarios-windows-x64`
-- `guide-scenarios-windows-arm64`
-- `build-darwin-arm64`
-- `build-darwin-x64`
-- `build-linux-arm64`
-- `build-linux-x64`
-- `build-windows-x64`
-- `build-windows-arm64`
-- `perf-budget-linux-x64`
-- `provider-integration-darwin-arm64`
-- `provider-integration-darwin-x64`
-- `provider-integration-linux-arm64`
-- `provider-integration-linux-x64`
-- `provider-integration-windows-x64`
-- `provider-integration-windows-arm64`
+- `ci`
+
+When adopting this workflow, replace the previous per-job required status checks with `ci` in the repository's branch protection or ruleset. Workflow edits do not change GitHub settings. Legacy job names remain visible, but an intentionally skipped legacy check is not proof that the selection passed.
+
+The final `ci` job always runs. It requires successful selection and every selected gate; a selected job that fails, is cancelled, or is unexpectedly skipped fails `ci`. Only policy-excluded jobs may be skipped. The dependency-audit workflow and scheduled self-hosted evidence workflows are not PR merge gates.
 
 ## Bun upgrade smoke checks
 

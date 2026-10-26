@@ -4,6 +4,9 @@ import type { PromptSpec, PromptType } from "../schema/index.ts";
 import { Renderer } from "../services/index.ts";
 import type { InteractionError, InteractionServiceShape } from "../services/index.ts";
 import { ContractFailure } from "./_shared.ts";
+import { makeInteractionContractRenderer } from "./interaction-renderer.ts";
+
+export { type InteractionContractRenderer, makeInteractionContractRenderer } from "./interaction-renderer.ts";
 
 const interactionContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({
@@ -18,43 +21,9 @@ const requireInteractionContract = (condition: boolean, assertion: string, detai
 type RendererServiceShape = Context.Service.Shape<typeof Renderer>;
 
 /**
- * Capturing renderer used by the contract to prove prompt chrome routes
- * through `Renderer.output.stdout` instead of a direct stdio write.
- */
-export interface InteractionContractRenderer {
-  readonly service: RendererServiceShape;
-  readonly stdout: () => string;
-}
-
-/** Build a capturing renderer the harness can inject for the routing assertion. */
-export const makeInteractionContractRenderer = (id = "plain"): InteractionContractRenderer => {
-  let out = "";
-  return {
-    stdout: () => out,
-    service: {
-      id,
-      capabilities: {
-        color: false,
-        interactive: false,
-        animation: false,
-        notifications: false,
-      },
-      message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
-      output: {
-        stdout: (chunk: string) =>
-          Effect.sync(() => {
-            out += chunk;
-          }),
-        stderr: () => Effect.void,
-      },
-    },
-  };
-};
-
-/**
  * Description of one interaction service instance the harness must construct.
  * The caller wires the real construction deps (scripted/never stdin, a capturing
- * stdout, an optional renderer, an optional dynamic-choices runner) so the
+ * stderr, an optional renderer, an optional dynamic-choices runner) so the
  * contract drives only the published `InteractionServiceShape` methods.
  */
 export interface InteractionServiceSpec {
@@ -62,10 +31,10 @@ export interface InteractionServiceSpec {
   readonly scriptedInput?: ReadonlyArray<string>;
   /** When true, the service must use a stdin that is never read (proves fail-fast). */
   readonly neverStdin?: boolean;
-  /** When true, the service's stdin reports `isTTY: true`. */
+  /** When true, the service's stdin and stderr report `isTTY: true`. */
   readonly tty?: boolean;
-  /** Stdout sink the service writes prompt chrome to when no renderer is present. */
-  readonly stdout?: (chunk: string) => void;
+  /** Stderr sink the service writes prompt chrome to when no renderer is present. */
+  readonly stderr?: (chunk: string) => void;
   /** Renderer to provide to the service effect (routing assertion). */
   readonly renderer?: RendererServiceShape;
   /** Dynamic-choices command result for `choicesFrom` prompts. */
@@ -126,7 +95,7 @@ const interactionFailureTag = <A>(exit: Exit.Exit<A, InteractionError>): string 
  * non-interactively); non-interactive fail-fast with `InteractionRequiredError`
  * and no stdin read; per-type validation (`number` rejects a non-numeric default);
  * `secret` non-echo + `Redacted` carriage; prompt output routes through
- * `Renderer.output.stdout` when a renderer is present; and (when the harness
+ * `Renderer.output.stderr` when a renderer is present; and (when the harness
  * declares support) external `Effect.interrupt` surfaces `InteractionCancelledError`
  * with TTY raw-mode restored, plus dynamic `choicesFrom` resolution and the
  * `InteractionRequiredError` manual fallback when choices cannot resolve
@@ -263,9 +232,9 @@ export const runInteractionContract = Effect.fnUntraced(function* (
       ),
     );
     yield* requireInteractionContract(
-      Exit.isSuccess(routedExit) && renderer.stdout().includes("RoutedQuestion?"),
-      "prompt chrome routes through Renderer.output.stdout when a renderer is present",
-      { exit: routedExit, captured: renderer.stdout() },
+      Exit.isSuccess(routedExit) && renderer.stderr().includes("RoutedQuestion?") && renderer.stdout() === "",
+      "prompt chrome routes through Renderer.output.stderr without writing stdout",
+      { exit: routedExit, captured: renderer.stderr(), stdout: renderer.stdout() },
     );
   }
 

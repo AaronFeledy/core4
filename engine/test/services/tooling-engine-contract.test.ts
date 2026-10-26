@@ -22,6 +22,7 @@ import {
 } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { withToolingOutput } from "../../src/operations/tooling-output.ts";
 import * as HostToolingEngine from "../../src/services/host-tooling-engine";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine";
 
@@ -91,7 +92,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     provider: providerId,
     services: map as AppPlan["services"],
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     metadata,
@@ -165,7 +165,9 @@ const inertProvider: RuntimeProviderShape = {
 };
 
 const runEngineLayer = (live: typeof ProviderExecToolingEngine.layer) =>
-  Effect.runPromise(ToolingEngine.pipe(Effect.provide(live)));
+  Effect.runPromise(
+    ToolingEngine.pipe(Effect.provide(live.pipe(Layer.provide(testEnvironmentResolverLayer)))),
+  );
 const hostToolingEngineLayer = HostToolingEngine.layer.pipe(Layer.provide(PrivateFileAccessService.layer));
 
 describe("ToolingEngine contract — built-in engines", () => {
@@ -174,6 +176,7 @@ describe("ToolingEngine contract — built-in engines", () => {
     const harness: ToolingEngineContractHarness = {
       name: "providerExec",
       engine,
+      captureOutput: withToolingOutput,
       okScenario: {
         invocation: {
           tool: "build",
@@ -242,6 +245,7 @@ describe("ToolingEngine contract — built-in engines", () => {
     const harness: ToolingEngineContractHarness = {
       name: "host",
       engine,
+      captureOutput: withToolingOutput,
       okScenario: {
         invocation: {
           tool: "build",
@@ -292,3 +296,4 @@ describe("ToolingEngine contract — built-in engines", () => {
     expect(exit._tag).toBe("Success");
   });
 });
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

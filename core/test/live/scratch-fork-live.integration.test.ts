@@ -86,7 +86,6 @@ const appPlan = (slug: string): AppPlan => {
     provider: providerId,
     services: { [web.name]: web, [db.name]: db },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

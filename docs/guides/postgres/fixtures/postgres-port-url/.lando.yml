@@ -1,0 +1,12 @@
+name: postgres-port-url
+services:
+  web:
+    type: "node:22"
+    primary: true
+    environment:
+      DATABASE_URL: "postgresql://{{ services.db.creds.user }}:{{ url.encodeComponent(services.db.creds.password) }}@db:{{ services.db.port }}/{{ services.db.creds.database }}"
+  db:
+    type: postgres
+    port: 5433
+    environment:
+      PGPORT: "5433"

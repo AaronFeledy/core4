@@ -1,6 +1,7 @@
 import { Effect, Stream } from "effect";
 
-import type { DataTransferSpec } from "@lando/sdk/schema";
+import { SnapshotNotFoundError } from "@lando/sdk/errors";
+import { AbsolutePath, type AppIdentity, type DataTransferSpec, planAppIdentity } from "@lando/sdk/schema";
 import { DataMover, type DataMoverShape } from "@lando/sdk/services";
 
 export interface TestDataMoverHandle {
@@ -9,7 +10,9 @@ export interface TestDataMoverHandle {
   readonly streams: () => Effect.Effect<ReadonlyArray<DataTransferSpec>>;
 }
 
-export const makeTestDataMover = (): TestDataMoverHandle => {
+export const makeTestDataMover = (
+  owner: AppIdentity = planAppIdentity({ root: AbsolutePath.make("/test") }),
+): TestDataMoverHandle => {
   const transfers: DataTransferSpec[] = [];
   const streams: DataTransferSpec[] = [];
 
@@ -27,10 +30,20 @@ export const makeTestDataMover = (): TestDataMoverHandle => {
           { phase: "completed" as const, transferredBytes: 0 },
         );
       }),
-    snapshot: (store) => Effect.succeed({ id: `test-${store.store}`, store }),
+    snapshot: (store) => Effect.succeed({ id: `test-${store.store}`, store, ownerKey: owner.ownerKey }),
     restore: () => Effect.void,
     listSnapshots: () => Effect.succeed([]),
-    removeSnapshot: (_id, _store?) => Effect.void,
+    resolveSnapshot: (reference, _scope) =>
+      Effect.fail(
+        new SnapshotNotFoundError({
+          message: `Snapshot ${reference} was not found.`,
+          snapshotId: reference,
+          remediation: "List snapshots in this scope and retry with an existing id or label.",
+        }),
+      ),
+    findOrphanedSnapshots: Effect.succeed([]),
+    removeOrphanedSnapshot: () => Effect.void,
+    removeSnapshot: (_handle) => Effect.void,
     pruneSnapshots: () => Effect.succeed([]),
   });
 

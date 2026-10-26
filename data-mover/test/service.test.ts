@@ -17,14 +17,17 @@ import {
   type Scope,
   Stream,
 } from "effect";
+import { TestClock } from "effect/testing";
 
-import { providerImages } from "@lando/data-mover/provider-images";
-import * as BunDataMover from "@lando/data-mover/service";
+import { libpodPullDialect } from "@lando/container-runtime/dialect";
+import type { EngineHttpApi, EngineHttpRequest } from "@lando/container-runtime/engine-api";
+import { pullImage } from "@lando/container-runtime/image-pull";
+import { providerImages } from "@lando/container-runtime/provider-images";
 import { __testOnlyEncodeTarOctal, __testOnlyUnarchivePayloadWithCap } from "@lando/data-mover/service";
 import { makeTestDataMover } from "@lando/data-mover/testing";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   ArchiveFormatError,
   DataChecksumMismatchError,
@@ -32,7 +35,11 @@ import {
   DataSourceOutsideRootError,
   DataTargetExistsError,
   ProviderUnavailableError,
+  SnapshotAmbiguousError,
+  SnapshotNotFoundError,
+  SnapshotOwnershipError,
   StateStoreError,
+  VolumeOperationError,
 } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -41,8 +48,12 @@ import {
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
+  type VolumeIdentity,
+  appIdentityKey,
+  snapshotHandle,
 } from "@lando/sdk/schema";
 import {
+  type ArtifactPullSpec,
   DataMover,
   type EventFor,
   EventService,
@@ -56,7 +67,10 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
+import * as BunDataMover from "./support.ts";
+import { fixtureOwnerKey, fixtureVolume } from "./support.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 const app = AppId.make("data-app");
@@ -148,6 +162,7 @@ const compressedTarFixture = async (
 
 const dataPlaneCapabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCapabilities => ({
   ...TestRuntimeProvider.capabilities,
+  volumeSnapshot: "none",
   ...overrides,
 });
 
@@ -156,17 +171,22 @@ const pinnedHelper = providerImages.images.dataHelper;
 const verifyingPullArtifact: Context.Service.Shape<typeof RuntimeProvider>["pullArtifact"] = (spec) =>
   Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref, digest: pinnedHelper.digest });
 
-const providerLayer = (overrides: Partial<Context.Service.Shape<typeof RuntimeProvider>> = {}) =>
+const providerLayer = (
+  overrides: Partial<Context.Service.Shape<typeof RuntimeProvider>> = {},
+  paths = makeLandoPaths(),
+) =>
   Layer.mergeAll(
     stateStoreLayer,
-    Layer.succeed(PathsService, PathsService.of(makeLandoPaths())),
+    Layer.succeed(PathsService, PathsService.of(paths)),
     Layer.succeed(
       RuntimeProvider,
       RuntimeProvider.of({
         ...TestRuntimeProvider,
+        listVolumes: (filter) =>
+          Effect.succeed([fixtureVolume({ app: filter.app ?? app, store: filter.store ?? "data" })]),
         pullArtifact: verifyingPullArtifact,
         ...overrides,
-        capabilities: overrides.capabilities ?? TestRuntimeProvider.capabilities,
+        capabilities: overrides.capabilities ?? dataPlaneCapabilities(),
       }),
     ),
   );
@@ -204,15 +224,12 @@ const captureEvents = () => {
   return { layer: serviceLayer, events: () => [...captured] };
 };
 
-const redactionLayer = Layer.succeed(
+const redactionLayer = Layer.effect(
   RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    forProfile: () =>
-      Effect.succeed({
-        redactString: (input: string) => input.replaceAll("secret-token", "[redacted]"),
-        redactValue: (input: unknown) => input,
-      }),
+  Effect.gen(function* () {
+    const service = makeRedactionService();
+    yield* service.registerValues(["secret-token"]);
+    return service;
   }),
 );
 
@@ -484,6 +501,8 @@ describe("BunDataMover.layer", () => {
                     providerId: "test",
                     operation: "listVolumes",
                     message: "volume listing unavailable",
+                    remediation:
+                      "Install or start the `test` provider and confirm it can perform `listVolumes`.",
                   }),
                 ),
             }),
@@ -668,6 +687,52 @@ describe("BunDataMover.layer", () => {
       expect(observedStdinMode).toBeUndefined();
       expect(observedStdin).toBe("service-input");
       expect(await readFile(target, "utf8")).toBe("service-output");
+    });
+  });
+
+  test("transfers serviceCmd source into a serviceCmd target", async () => {
+    await withTempDir(async (_dir) => {
+      // Given: a dump command streams bytes and a restore command consumes stdin.
+      let dumpCommand: ReadonlyArray<string> | undefined;
+      let restoreCommand: ReadonlyArray<string> | undefined;
+      let restoreStdin = "";
+      const dumpChunks: ExecChunk[] = [{ kind: "stdout", chunk: bytes("pipe-payload") }, { exitCode: 0 }];
+
+      // When: DataMover pipes serviceCmd -> serviceCmd.
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover.transfer({
+              from: { _tag: "serviceCmd", app, service, command: ["export-db"] },
+              to: { _tag: "serviceCmd", app, service, command: ["import-db"] },
+              overwrite: true,
+            });
+          }),
+        ).pipe(
+          Effect.provide(BunDataMover.layer),
+          Effect.provide(
+            providerLayer({
+              exec: (_target, command) =>
+                Effect.promise(async () => {
+                  restoreCommand = command.command;
+                  for await (const chunk of command.stdinStream ?? []) restoreStdin += text(chunk);
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                }),
+              execStream: (_target, command) => {
+                dumpCommand = command.command;
+                return Stream.fromIterable(dumpChunks);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      // Then: dump streamed and restore received the same payload off argv.
+      expect(dumpCommand).toEqual(["export-db"]);
+      expect(restoreCommand).toEqual(["import-db"]);
+      expect(restoreStdin).toBe("pipe-payload");
     });
   });
 
@@ -1190,6 +1255,69 @@ describe("BunDataMover.layer", () => {
     });
   });
 
+  test("rejects forced native snapshots before provider action when unsupported", async () => {
+    const calls: string[] = [];
+    const capture = captureEvents();
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const mover = yield* DataMover;
+          return yield* mover
+            .snapshot(
+              { app, store: "data" },
+              {
+                volumeSnapshot: "native",
+                metadata: {
+                  volumeInstanceId: "generation",
+                  service,
+                  family: "mysql",
+                  version: "8.0",
+                  imageIdentity: "mysql@sha256:source",
+                  recoveryReason: "manual",
+                },
+              },
+            )
+            .pipe(Effect.result);
+        }),
+      ).pipe(
+        Effect.provide(BunDataMover.layer),
+        Effect.provide(
+          providerLayer({
+            listVolumes: () =>
+              Effect.sync(() => {
+                calls.push("listVolumes");
+                return [];
+              }),
+            snapshotVolume: (spec) => {
+              calls.push("snapshotVolume");
+              return TestRuntimeProvider.snapshotVolume(spec);
+            },
+            run: (spec) => {
+              calls.push("run");
+              return TestRuntimeProvider.run(spec);
+            },
+            runStream: (spec) => {
+              calls.push("runStream");
+              return TestRuntimeProvider.runStream(spec);
+            },
+          }),
+        ),
+        Effect.provide(Layer.merge(capture.layer, redactionLayer)),
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "DataEndpointUnsupportedError",
+        fromEndpoint: "volume",
+        toEndpoint: "nativeSnapshot",
+        remediation: expect.any(String),
+      },
+    });
+    expect(calls).toEqual([]);
+    expect(capture.events()).toEqual([]);
+  });
+
   test("publishes volume snapshot lifecycle events", async () => {
     const capture = captureEvents();
 
@@ -1236,6 +1364,8 @@ describe("BunDataMover.layer", () => {
                   providerId: "test",
                   operation: "snapshotVolume",
                   message: "snapshot failed",
+                  remediation:
+                    "Install or start the `test` provider and confirm it can perform `snapshotVolume`.",
                 }),
               );
             },
@@ -1283,7 +1413,7 @@ describe("BunDataMover.layer", () => {
                 to: { _tag: "volume", app, store: "data" },
                 overwrite: true,
               });
-              yield* dataMover.restore(handle.id, { app, store: "data" });
+              yield* dataMover.restore(handle, { app, store: "data" });
               yield* dataMover.transfer({
                 from: { _tag: "volume", app, store: "data" },
                 to: { _tag: "hostPath", path: absolute(restored) },
@@ -1301,20 +1431,28 @@ describe("BunDataMover.layer", () => {
         expect(result.handle.id).not.toBe("snap-one");
         expect(result.listed[0]?.label).toBe("snap-one");
         expect(result.listed).toHaveLength(1);
-        const archivePath = join(dataRoot, "snapshots", String(app), "data", `${result.handle.id}.tar`);
+        const archivePath = join(
+          dataRoot,
+          "snapshots",
+          result.handle.ownerKey,
+          "data",
+          `${result.handle.id}.tar`,
+        );
         const archiveBytes = await readFile(archivePath);
         expect(result.listed[0]?.digest).toBe(sha256(archiveBytes));
         expect(result.listed[0]?.sizeBytes).toBe(archiveBytes.byteLength);
         expect(await readFile(restored, "utf8")).toBe("volume-payload");
-        expect(await Bun.file(join(dataRoot, "snapshots", String(app), "index.bin")).exists()).toBe(true);
+        expect(
+          await Bun.file(join(dataRoot, "snapshots", result.handle.ownerKey, "index.bin")).exists(),
+        ).toBe(false);
         expect(
           await Bun.file(
-            join(dataRoot, "snapshots", String(app), "data", `${result.handle.id}.tar`),
+            join(dataRoot, "snapshots", result.handle.ownerKey, "data", `${result.handle.id}.tar`),
           ).exists(),
         ).toBe(true);
         expect(
           await Bun.file(
-            join(dataRoot, "snapshots", String(app), "data", `${result.handle.id}.json`),
+            join(dataRoot, "snapshots", result.handle.ownerKey, "data", `${result.handle.id}.json`),
           ).exists(),
         ).toBe(true);
       } finally {
@@ -1350,7 +1488,13 @@ describe("BunDataMover.layer", () => {
                 overwrite: true,
               });
               yield* Effect.promise(async () => {
-                const archivePath = join(dataRoot, "snapshots", String(app), "tamper", `${handle.id}.tar`);
+                const archivePath = join(
+                  dataRoot,
+                  "snapshots",
+                  handle.ownerKey,
+                  "tamper",
+                  `${handle.id}.tar`,
+                );
                 const changed = new Uint8Array(await Bun.file(archivePath).arrayBuffer());
                 const lastIndex = changed.byteLength - 1;
                 changed[lastIndex] = (changed[lastIndex] ?? 0) ^ 0xff;
@@ -1436,7 +1580,7 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("restores copy-mode snapshots from the returned handle and prunes through the index", async () => {
+  test("restores copy-mode snapshots from the returned handle and prunes through sidecars", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       const restored = join(dir, "restored-from-handle.txt");
@@ -1548,7 +1692,12 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("pruneSnapshots preserves automatic recovery points while pruning manual snapshots", async () => {
+  test.each([
+    { name: "manual by default", recovery: undefined, retainOldest: false },
+    { name: "manual when recovery is false", recovery: false, retainOldest: false },
+    { name: "automatic when recovery is true", recovery: true, retainOldest: false },
+    { name: "automatic with a reserved undo point", recovery: true, retainOldest: true },
+  ])("pruneSnapshots selects $name", async ({ recovery: automatic, retainOldest }) => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       await writeFile(join(dir, "seed.txt"), "seed-payload");
@@ -1560,6 +1709,7 @@ describe("BunDataMover.layer", () => {
           Effect.scoped(
             Effect.gen(function* () {
               const dataMover = yield* DataMover;
+              yield* TestClock.setTime(1000);
               yield* dataMover.transfer({
                 from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
                 to: { _tag: "volume", app, store: "data" },
@@ -1570,7 +1720,6 @@ describe("BunDataMover.layer", () => {
                 {
                   format: "tar",
                   metadata: {
-                    sourceRoot: AbsolutePath.make(dir),
                     service: ServiceName.make("database"),
                     volumeInstanceId: "00000000-0000-4000-8000-000000000001",
                     family: "mysql",
@@ -1580,12 +1729,31 @@ describe("BunDataMover.layer", () => {
                   },
                 },
               );
+              const recoveries = [recovery];
+              for (const [index, recoveryReason] of (["import", "restore", "seed"] as const).entries()) {
+                yield* TestClock.setTime(2000 + index);
+                recoveries.push(
+                  yield* dataMover.snapshot(
+                    { app, store: "data" },
+                    {
+                      format: "tar",
+                      metadata: {
+                        service: ServiceName.make("database"),
+                        volumeInstanceId: "00000000-0000-4000-8000-000000000001",
+                        family: "mysql",
+                        version: "8.0",
+                        imageIdentity: "sha256:mysql-runtime",
+                        recoveryReason,
+                      },
+                    },
+                  ),
+                );
+              }
               const manual = yield* dataMover.snapshot(
                 { app, store: "data" },
                 {
                   format: "tar",
                   metadata: {
-                    sourceRoot: AbsolutePath.make(dir),
                     service: ServiceName.make("database"),
                     volumeInstanceId: "00000000-0000-4000-8000-000000000001",
                     family: "mysql",
@@ -1601,10 +1769,12 @@ describe("BunDataMover.layer", () => {
               );
               const pruned = yield* dataMover.pruneSnapshots({
                 filter: { app, store: "data" },
-                keepLatest: 0,
+                keepLatest: automatic === true ? 1 : 0,
+                ...(automatic === undefined ? {} : { recovery: automatic }),
+                ...(retainOldest ? { retainSnapshotIds: [recovery.id] } : {}),
               });
               const listed = yield* dataMover.listSnapshots({ app, store: "data" });
-              return { recovery, manual, ordinary, pruned, listed };
+              return { recoveries, manual, ordinary, pruned, listed };
             }),
           ).pipe(
             Effect.provide(BunDataMover.layer),
@@ -1628,11 +1798,23 @@ describe("BunDataMover.layer", () => {
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+            Effect.provide(TestClock.layer()),
           ),
         );
 
-        expect([...result.pruned].sort()).toEqual([result.manual.id, result.ordinary.id].sort());
-        expect(result.listed.map((entry) => entry.id)).toEqual([result.recovery.id]);
+        const automaticIds = result.recoveries.map((snapshot) => snapshot.id);
+        const retainedId = retainOldest ? automaticIds[0] : automaticIds[3];
+        if (retainedId === undefined) throw new Error("expected automatic snapshot fixture");
+        expect([...result.pruned].sort()).toEqual(
+          automatic === true
+            ? automaticIds.filter((id) => id !== retainedId).sort()
+            : [result.manual.id, result.ordinary.id].sort(),
+        );
+        expect(result.listed.map((entry) => entry.id).sort()).toEqual(
+          automatic === true
+            ? [retainedId, result.manual.id, result.ordinary.id].sort()
+            : automaticIds.sort(),
+        );
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
@@ -1646,6 +1828,7 @@ describe("BunDataMover.layer", () => {
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
       const generation = "00000000-0000-4000-8000-000000000009";
+      let snapshotLabels: Readonly<Record<string, string>> | undefined;
 
       try {
         // When: DataMover rechecks the source through the provider's canonical witness projection.
@@ -1658,7 +1841,6 @@ describe("BunDataMover.layer", () => {
                 {
                   volumeSnapshot: "native",
                   metadata: {
-                    sourceRoot: AbsolutePath.make(dir),
                     service,
                     volumeInstanceId: generation,
                     family: "mysql",
@@ -1688,14 +1870,16 @@ describe("BunDataMover.layer", () => {
                       provenance: "legacy",
                     },
                   ]),
-                snapshotVolume: ({ snapshotId }) =>
-                  Effect.succeed({
+                snapshotVolume: ({ snapshotId, labels }) => {
+                  snapshotLabels = labels;
+                  return Effect.succeed({
                     provider: ProviderId.make("test"),
                     id: snapshotId ?? "snapshot",
                     digest: sha256("adopted-volume"),
                     sizeBytes: bytes("adopted-volume").byteLength,
                     format: "native",
-                  }),
+                  });
+                },
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -1704,6 +1888,10 @@ describe("BunDataMover.layer", () => {
 
         // Then: snapshot creation proceeds with the witness generation without inventing a creation id.
         expect(handle.store).toEqual({ app, store: "data" });
+        expect(snapshotLabels).toMatchObject({
+          "dev.lando.app-root": dir,
+          "dev.lando.snapshot-store": sha256(join(dir, "data", "snapshots")),
+        });
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
@@ -1728,7 +1916,6 @@ describe("BunDataMover.layer", () => {
                 {
                   volumeSnapshot: "native",
                   metadata: {
-                    sourceRoot: AbsolutePath.make(dir),
                     service,
                     volumeInstanceId: generation,
                     family: "mysql",
@@ -1801,14 +1988,7 @@ describe("BunDataMover.layer", () => {
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
-                listVolumes: ({ store }) =>
-                  Effect.succeed([
-                    {
-                      ref: { app, store: store ?? "data" },
-                      instanceId: "00000000-0000-4000-8000-000000000001",
-                      provenance: "known",
-                    },
-                  ]),
+                listVolumes: ({ store }) => Effect.succeed([fixtureVolume({ app, store: store ?? "data" })]),
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -1826,10 +2006,12 @@ describe("BunDataMover.layer", () => {
           format: "native",
         });
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data", `${info?.id}.tar`)).exists(),
+          await Bun.file(join(dataRoot, "snapshots", info.owner.ownerKey, "data", `${info.id}.tar`)).exists(),
         ).toBe(false);
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data", `${info?.id}.json`)).exists(),
+          await Bun.file(
+            join(dataRoot, "snapshots", info.owner.ownerKey, "data", `${info.id}.json`),
+          ).exists(),
         ).toBe(true);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -1837,6 +2019,130 @@ describe("BunDataMover.layer", () => {
       }
     });
   });
+
+  for (const mode of ["native", "copy"] as const) {
+    for (const scenario of [
+      "in-progress",
+      "fresh",
+      "seeded",
+      "failed",
+      "absent",
+      "foreign-root",
+      "foreign-store",
+      "cross-store-handle",
+      "missing-identity",
+      "missing-metadata",
+      "restore",
+    ] as const) {
+      test(`${mode} physical seed checks ${scenario} on a new generation`, async () => {
+        // Given: a verified snapshot and a replacement volume in the same app lineage.
+        await withTempDir(async (dir) => {
+          const sourceStore = scenario === "cross-store-handle" ? "other" : "data";
+          const sourceIdentity: VolumeIdentity = {
+            coordinationKey: `daemon:${dir}`,
+            nativeName: sourceStore,
+            generation: "source-generation",
+            ownerRoot: absolute(dir),
+            origin: "created",
+          };
+          const targetIdentity: VolumeIdentity = {
+            ...sourceIdentity,
+            generation: "target-generation",
+            ownerRoot: scenario === "foreign-root" ? absolute(join(dir, "other")) : absolute(dir),
+            nativeName: scenario === "foreign-store" ? "other" : "data",
+          };
+          let identity = sourceIdentity;
+          let restoring = false;
+          let restoredGeneration: string | undefined;
+          const paths = makeLandoPaths({ userDataRoot: join(dir, "state") });
+          const exit = await Effect.runPromiseExit(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const mover = yield* DataMover;
+                const stateStore = yield* StateStore;
+                const handle = yield* mover.snapshot(
+                  { app, store: sourceStore },
+                  {
+                    volumeSnapshot: mode,
+                    ...(scenario === "missing-metadata"
+                      ? {}
+                      : {
+                          metadata: {
+                            service,
+                            volumeInstanceId: sourceIdentity.generation,
+                            family: "postgres" as const,
+                            version: "16",
+                            imageIdentity: "postgres:16",
+                            recoveryReason: "manual" as const,
+                          },
+                        }),
+                  },
+                );
+                identity = targetIdentity;
+                restoring = true;
+                const creation = yield* volumeInitialization(stateStore, targetIdentity);
+                if (scenario !== "absent") yield* creation.recordCreation;
+                if (scenario !== "fresh" && scenario !== "absent") yield* creation.begin("sql-seed");
+                if (scenario === "seeded" || scenario === "failed") {
+                  yield* creation.finish({ operationId: "sql-seed", outcome: scenario });
+                }
+                // When: the public lazy DataMover port restores into the replacement generation.
+                yield* mover.restore(
+                  handle,
+                  { app, store: "data" },
+                  scenario === "restore" ? undefined : { mode: "seed" },
+                );
+              }),
+            ).pipe(
+              Effect.provide(BunDataMover.layer),
+              Effect.provide(
+                Layer.mergeAll(
+                  stateStoreLayer,
+                  Layer.succeed(PathsService, paths),
+                  Layer.succeed(
+                    RuntimeProvider,
+                    RuntimeProvider.of({
+                      ...TestRuntimeProvider,
+                      pullArtifact: verifyingPullArtifact,
+                      capabilities: dataPlaneCapabilities({
+                        volumeSnapshot: mode === "native" ? "native" : "none",
+                      }),
+                      listVolumes: (filter) =>
+                        Effect.succeed([
+                          {
+                            ref: { app, store: filter?.store ?? "data" },
+                            ...(restoring && scenario === "missing-identity" ? {} : { identity }),
+                          },
+                        ]),
+                      restoreVolume: (spec) =>
+                        Effect.sync(() => {
+                          restoredGeneration = spec.expectedTargetGeneration;
+                        }),
+                    }),
+                  ),
+                  captureEvents().layer,
+                  redactionLayer,
+                ),
+              ),
+            ),
+          );
+          // Then: only a claimed seed may cross generations; restore remains strict.
+          if (scenario === "in-progress") {
+            expect(exit._tag).toBe("Success");
+            if (mode === "native") expect(restoredGeneration).toBe(targetIdentity.generation);
+          } else {
+            expect(exit._tag).toBe("Failure");
+            if (exit._tag === "Failure") {
+              expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+                SnapshotOwnershipError,
+              );
+            }
+            expect(restoredGeneration).toBeUndefined();
+          }
+        });
+      });
+    }
+  }
 
   test("rejects restoring a physical snapshot into a foreign volume instance", async () => {
     await withTempDir(async (dir) => {
@@ -1854,7 +2160,6 @@ describe("BunDataMover.layer", () => {
                 {
                   volumeSnapshot: "native",
                   metadata: {
-                    sourceRoot: absolute(dir),
                     service,
                     volumeInstanceId: "instance-source",
                     family: "mysql",
@@ -1876,6 +2181,13 @@ describe("BunDataMover.layer", () => {
                     {
                       ref: { app, store: store ?? "target" },
                       instanceId: store === "source" ? "instance-source" : "instance-target",
+                      identity: {
+                        coordinationKey: "provider:data",
+                        nativeName: store ?? "target",
+                        generation: store === "source" ? "instance-source" : "instance-target",
+                        ownerRoot: absolute(dir),
+                        origin: "created",
+                      },
                       provenance: "known",
                     },
                   ]),
@@ -1898,7 +2210,7 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("keeps distinct snapshot index rows when the same label is used on different stores", async () => {
+  test("keeps distinct snapshot sidecars when the same label is used on different stores", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -1933,7 +2245,7 @@ describe("BunDataMover.layer", () => {
         for (const info of listed) {
           expect(
             await Bun.file(
-              join(dataRoot, "snapshots", String(app), info.store.store, `${info.id}.tar`),
+              join(dataRoot, "snapshots", info.owner.ownerKey, info.store.store, `${info.id}.tar`),
             ).exists(),
           ).toBe(true);
         }
@@ -1968,7 +2280,7 @@ describe("BunDataMover.layer", () => {
               const before = yield* dataMover.listSnapshots({ app, label: "dup-id" });
               const selected = before[0];
               if (selected === undefined) return { before, after: before };
-              yield* dataMover.removeSnapshot(selected.id);
+              yield* dataMover.removeSnapshot(snapshotHandle(selected));
               const after = yield* dataMover.listSnapshots({ app, label: "dup-id" });
               return { before, after };
             }),
@@ -2012,7 +2324,7 @@ describe("BunDataMover.layer", () => {
                 handles.push(yield* dataMover.snapshot({ app, store }, { format: "tar", label: "same-id" }));
               }
               const drop = handles.find((handle) => handle.store.store === "drop");
-              if (drop !== undefined) yield* dataMover.removeSnapshot(drop.id, drop.store);
+              if (drop !== undefined) yield* dataMover.removeSnapshot(drop);
               return yield* dataMover.listSnapshots({ app, label: "same-id" });
             }),
           ).pipe(
@@ -2025,7 +2337,9 @@ describe("BunDataMover.layer", () => {
         expect(listed).toHaveLength(1);
         expect(listed[0]?.store.store).toBe("keep");
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "keep", `${listed[0]?.id}.tar`)).exists(),
+          await Bun.file(
+            join(dataRoot, "snapshots", fixtureOwnerKey, "keep", `${listed[0]?.id}.tar`),
+          ).exists(),
         ).toBe(true);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -2062,14 +2376,7 @@ describe("BunDataMover.layer", () => {
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
-                listVolumes: ({ store }) =>
-                  Effect.succeed([
-                    {
-                      ref: { app, store: store ?? "data" },
-                      instanceId: "00000000-0000-4000-8000-000000000001",
-                      provenance: "known",
-                    },
-                  ]),
+                listVolumes: ({ store }) => Effect.succeed([fixtureVolume({ app, store: store ?? "data" })]),
                 snapshotVolume: Effect.fn("RuntimeProvider.snapshotVolume")(function* (spec) {
                   const ref = yield* TestRuntimeProvider.snapshotVolume(spec);
                   yield* Effect.addFinalizer(() =>
@@ -2091,6 +2398,146 @@ describe("BunDataMover.layer", () => {
     });
   });
 
+  test.each([false, true])(
+    "removes provider artifacts before persistence (provider fails: %s)",
+    async (fails) => {
+      await withTempDir(async (dir) => {
+        const dataRoot = join(dir, "snapshots-data");
+        const paths = makeLandoPaths({ userDataRoot: dataRoot, env: {} });
+        let providerSawPersistence = false;
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const mover = yield* DataMover;
+              const handle = yield* mover.snapshot({ app, store: "data" }, { volumeSnapshot: "native" });
+              const removal = yield* mover.removeSnapshot(handle).pipe(Effect.result);
+              const indexed = yield* mover.listSnapshots({ app });
+              return { handle, removal, indexed };
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(
+              providerLayer(
+                {
+                  capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                  removeVolumeSnapshot: (snapshot) =>
+                    Effect.gen(function* () {
+                      providerSawPersistence = yield* Effect.promise(
+                        async () =>
+                          await Bun.file(
+                            join(paths.ownerSnapshotsDir(fixtureOwnerKey), "data", `${snapshot.id}.json`),
+                          ).exists(),
+                      );
+                      if (fails)
+                        return yield* Effect.fail(
+                          new ProviderUnavailableError({
+                            providerId: "test",
+                            operation: "removeVolumeSnapshot",
+                            message: "provider offline",
+                            remediation:
+                              "Install or start the `test` provider and confirm it can perform `removeVolumeSnapshot`.",
+                          }),
+                        );
+                    }),
+                },
+                paths,
+              ),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+        expect(providerSawPersistence).toBe(true);
+        expect(result.removal._tag).toBe(fails ? "Failure" : "Success");
+        expect(result.indexed.map((info) => info.id)).toEqual(fails ? [result.handle.id] : []);
+        expect(
+          await Bun.file(
+            join(paths.ownerSnapshotsDir(result.handle.ownerKey), "data", `${result.handle.id}.json`),
+          ).exists(),
+        ).toBe(fails);
+        if (!fails) expect(await readdir(paths.snapshotsDir)).not.toContain(result.handle.ownerKey);
+      });
+    },
+  );
+
+  test("removeSnapshot keeps the snapshot when the provider cannot remove its artifact", async () => {
+    await withTempDir(async (dir) => {
+      const paths = makeLandoPaths({ userDataRoot: join(dir, "snapshots-data"), env: {} });
+      const support = Layer.merge(captureEvents().layer, redactionLayer);
+      const handle = await Effect.runPromise(
+        Effect.scoped(
+          DataMover.pipe(
+            Effect.flatMap((mover) => mover.snapshot({ app, store: "data" }, { volumeSnapshot: "native" })),
+          ),
+        ).pipe(
+          Effect.provide(BunDataMover.layer),
+          Effect.provide(
+            providerLayer({ capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }) }, paths),
+          ),
+          Effect.provide(support),
+        ),
+      );
+      const withoutRemoval = {
+        ...TestRuntimeProvider,
+        removeVolumeSnapshot: () =>
+          Effect.fail(
+            new VolumeOperationError({
+              message: "Snapshot removal is unsupported",
+              providerId: "test",
+              operation: "removeVolumeSnapshot",
+              store: "data",
+              remediation: "Use a snapshot-capable provider.",
+            }),
+          ),
+      };
+      const result = await Effect.runPromise(
+        DataMover.pipe(
+          Effect.flatMap((mover) =>
+            mover.removeSnapshot(handle).pipe(
+              Effect.flip,
+              Effect.flatMap((error) =>
+                mover.listSnapshots({ app }).pipe(Effect.map((listed) => ({ error, listed }))),
+              ),
+            ),
+          ),
+        ).pipe(
+          Effect.provide(BunDataMover.layer),
+          Effect.provide(
+            Layer.mergeAll(
+              stateStoreLayer,
+              Layer.succeed(PathsService, PathsService.of(paths)),
+              Layer.succeed(RuntimeProvider, RuntimeProvider.of(withoutRemoval)),
+            ),
+          ),
+          Effect.provide(support),
+        ),
+      );
+      expect(result.error._tag).toBe("DataTransferError");
+      expect(result.listed.map((info) => info.id)).toEqual([handle.id]);
+      expect(
+        await Bun.file(join(paths.ownerSnapshotsDir(handle.ownerKey), "data", `${handle.id}.json`)).exists(),
+      ).toBe(true);
+    });
+  });
+
+  test("listSnapshots fails when the snapshot root cannot be read", async () => {
+    await withTempDir(async (dir) => {
+      const paths = makeLandoPaths({ userDataRoot: join(dir, "snapshots-data"), env: {} });
+      await mkdir(dirname(paths.snapshotsDir), { recursive: true });
+      await writeFile(paths.snapshotsDir, "not a directory");
+      const error = await Effect.runPromise(
+        DataMover.pipe(
+          Effect.flatMap((mover) => mover.listSnapshots({ ownerKey: appIdentityKey("owner", dir) })),
+          Effect.flip,
+        ).pipe(
+          Effect.provide(BunDataMover.layer),
+          Effect.provide(providerLayer({}, paths)),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+      expect(error._tag).toBe("DataTransferError");
+    });
+  });
+
   test("removeSnapshot calls removeVolumeSnapshot for native snapshots", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
@@ -2108,7 +2555,7 @@ describe("BunDataMover.layer", () => {
                 { app, store: "data" },
                 { volumeSnapshot: "native", label: "native-remove" },
               );
-              yield* dataMover.removeSnapshot(handle.id, handle.store);
+              yield* dataMover.removeSnapshot(handle);
               return yield* dataMover.listSnapshots({ app, store: "data" });
             }),
           ).pipe(
@@ -2142,7 +2589,7 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("rolls back native provider snapshots when snapshot index persistence fails", async () => {
+  test("rolls back the native provider snapshot when the sidecar write fails before writing", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -2165,10 +2612,10 @@ describe("BunDataMover.layer", () => {
         open: (spec) =>
           testStore.open(spec).pipe(
             Effect.map((bucket) =>
-              spec.key === "index.bin"
+              spec.key.endsWith(".json")
                 ? {
                     ...bucket,
-                    update: () =>
+                    set: () =>
                       Effect.fail(
                         new StateStoreError({
                           reason: "io",
@@ -2220,9 +2667,10 @@ describe("BunDataMover.layer", () => {
         );
 
         expect(exit._tag).toBe("Failure");
+        // Nothing was committed, so the provider image is not left without a catalog entry.
         expect(removeNativeCalls).toBe(1);
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "leak-test.json")).exists(),
+          await Bun.file(join(dataRoot, "snapshots", fixtureOwnerKey, "data", "leak-test.json")).exists(),
         ).toBe(false);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -2241,7 +2689,10 @@ describe("BunDataMover.layer", () => {
             Effect.scoped(
               Effect.gen(function* () {
                 const dataMover = yield* DataMover;
-                yield* dataMover.restore("missing", { app, store: "data" });
+                yield* dataMover.restore(
+                  { id: "missing", store: { app, store: "data" }, ownerKey: appIdentityKey("owner", dir) },
+                  { app, store: "data" },
+                );
               }),
             ).pipe(
               Effect.provide(BunDataMover.layer),
@@ -2261,6 +2712,205 @@ describe("BunDataMover.layer", () => {
           _tag: "SnapshotNotFoundError",
           snapshotId: "missing",
         });
+      }
+    });
+  });
+
+  test("resolveSnapshot prefers an exact id over a matching label", async () => {
+    await withTempDir(async (dir) => {
+      // Given: one snapshot id and another snapshot whose label equals that id.
+      const dataRoot = join(dir, "data");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+      await writeFile(join(dir, "seed.txt"), "resolve-id-payload");
+
+      try {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              const byId = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "other" },
+              );
+              yield* dataMover.snapshot({ app, store: "data" }, { format: "tar", label: byId.id });
+              const resolved = yield* dataMover.resolveSnapshot(byId.id, {
+                ownerKey: byId.ownerKey,
+                app,
+                store: "data",
+              });
+              return { byId, resolved };
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then: the id match wins over the label collision.
+        expect(result.resolved.id).toBe(result.byId.id);
+        expect(result.resolved.label).toBe("other");
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("resolveSnapshot returns a unique label match within scope", async () => {
+    await withTempDir(async (dir) => {
+      // Given: an unrelated label precedes the single matching snapshot in scope.
+      const dataRoot = join(dir, "data");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+      await writeFile(join(dir, "seed.txt"), "resolve-unique-payload");
+
+      try {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              yield* dataMover.snapshot({ app, store: "data" }, { format: "tar", label: "unrelated" });
+              const handle = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "baseline" },
+              );
+              // When: resolving the label rather than the first indexed snapshot.
+              const resolved = yield* dataMover.resolveSnapshot("baseline", { app, store: "data" });
+              return { handle, resolved };
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then: the unique label resolves to that snapshot id.
+        expect(result.resolved.id).toBe(result.handle.id);
+        expect(result.resolved.label).toBe("baseline");
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("resolveSnapshot reports ambiguous labels with newest matching ids first", async () => {
+    await withTempDir(async (dir) => {
+      // Given: two independently addressable snapshots sharing a label in scope.
+      const dataRoot = join(dir, "data");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+      await writeFile(join(dir, "seed.txt"), "resolve-ambiguous-payload");
+
+      try {
+        const expectedIds = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              yield* TestClock.setTime(1_000);
+              const older = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "baseline" },
+              );
+              yield* TestClock.setTime(2_000);
+              const newer = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "baseline" },
+              );
+              return [newer.id, older.id];
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+            Effect.provide(TestClock.layer()),
+          ),
+        );
+
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              return yield* dataMover.resolveSnapshot("baseline", { app, store: "data" });
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then: ambiguity is actionable with newest-first candidate ids.
+        expect(expectedIds).toHaveLength(2);
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure") {
+          const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+          expect(error).toBeInstanceOf(SnapshotAmbiguousError);
+          expect(error).toMatchObject({
+            snapshotId: "baseline",
+            matchCount: 2,
+            candidateIds: expectedIds,
+          });
+        }
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("resolveSnapshot reports unknown references as not found", async () => {
+    await withTempDir(async (dir) => {
+      // Given: an empty snapshot store for the app.
+      const dataRoot = join(dir, "data");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+
+      try {
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              return yield* dataMover.resolveSnapshot("no-such-snapshot", { app, store: "data" });
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then: the typed failure names the missing reference.
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure") {
+          const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+          expect(error).toBeInstanceOf(SnapshotNotFoundError);
+          expect(error).toMatchObject({
+            snapshotId: "no-such-snapshot",
+            remediation: expect.stringContaining("lando db:snapshots"),
+          });
+        }
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
       }
     });
   });
@@ -2309,6 +2959,7 @@ describe("DataMover helpers", () => {
         new ArchiveFormatError({
           message: "Archive fixture failed.",
           format: "tar",
+          remediation: "Recreate fixture.tar as a valid tar archive.",
           cause,
         }),
     );
@@ -2626,43 +3277,76 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
       overwrite: true,
     });
 
-  test("pulls and runs the digest-qualified pinned ref before the helper container runs", async () => {
-    await withTempDir(async (dir) => {
-      const source = join(dir, "seed.txt");
-      await writeFile(source, "pinned-helper-payload");
-      let pulledRef: string | undefined;
-      let ranImage: string | undefined;
-
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const dataMover = yield* DataMover;
-            yield* importToVolume(dataMover, source);
-          }),
-        ).pipe(
-          Effect.provide(BunDataMover.layer),
-          Effect.provide(
-            providerLayer({
-              capabilities: volumeCaps,
-              pullArtifact: (spec) =>
-                Effect.sync(() => {
-                  pulledRef = spec.ref;
-                  return { providerId: ProviderId.make("test"), ref: spec.ref, digest: pinned.digest };
-                }),
-              run: (spec) => {
-                ranImage = spec.image;
-                return TestRuntimeProvider.run(spec);
-              },
+  test.each([false, true])(
+    "transfers to a volume using the observed libpod helper digest (cached: %s)",
+    async (cached) => {
+      await withTempDir(async (dir) => {
+        // Given: the real pull path observes an engine-owned digest, never an echoed pin.
+        const source = join(dir, "seed.txt");
+        await writeFile(source, "pinned-helper-payload");
+        const pinnedRef = `${pinned.image}@${pinned.digest}`;
+        const inspectRequest: EngineHttpRequest = {
+          method: "GET",
+          path: `/libpod/images/${encodeURIComponent(pinnedRef)}/json`,
+        };
+        const pulls: ArtifactPullSpec[] = [];
+        const requests: EngineHttpRequest[] = [];
+        let present = cached;
+        let ranImage: string | undefined;
+        const api: EngineHttpApi = {
+          request: (request) =>
+            Effect.sync(() => {
+              requests.push(request);
+              if (request.method === "POST") {
+                present = true;
+                return { status: 200, body: '{"status":"Pull complete"}\n' };
+              }
+              return {
+                status: present ? 200 : 404,
+                body: JSON.stringify({ RepoDigests: ["other/helper@sha256:other", pinnedRef] }),
+              };
             }),
-          ),
-          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
-        ),
-      );
+        };
 
-      expect(pulledRef).toBe(`${pinned.image}@${pinned.digest}`);
-      expect(ranImage).toBe(`${pinned.image}@${pinned.digest}`);
-    });
-  });
+        // When
+        await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* importToVolume(dataMover, source);
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(
+              providerLayer({
+                capabilities: volumeCaps,
+                pullArtifact: (spec) => {
+                  pulls.push(spec);
+                  return pullImage(api, spec.ref, {
+                    ctx: { providerId: "test", remediation: "Check the test engine.", env: {} },
+                    dialect: libpodPullDialect,
+                    ...spec,
+                  }).pipe(Effect.map((image) => ({ ...image, providerId: ProviderId.make("test") })));
+                },
+                run: (spec) => {
+                  ranImage = spec.image;
+                  return TestRuntimeProvider.run(spec);
+                },
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then
+        expect(pulls).toEqual([{ ref: pinnedRef, policy: "missing" }]);
+        expect(requests).toEqual(
+          cached ? [inspectRequest] : [inspectRequest, libpodPullDialect.request(pinnedRef), inspectRequest],
+        );
+        expect(ranImage).toBe(pinnedRef);
+      });
+    },
+  );
 
   test("runs the digest-qualified pinned ref without pullArtifact when artifact pull is unavailable", async () => {
     await withTempDir(async (dir) => {
@@ -2689,6 +3373,8 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
                     providerId: "test",
                     operation: "pullArtifact",
                     message: "pullArtifact is unavailable",
+                    remediation:
+                      "Install or start the `test` provider and confirm it can perform `pullArtifact`.",
                   });
                 }).pipe(Effect.flatMap((error) => Effect.fail(error))),
               run: (spec) => {
@@ -2712,7 +3398,7 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
       await writeFile(source, "pinned-helper-payload");
       let runCalls = 0;
 
-      const exit = await Effect.runPromiseExit(
+      const failure = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
@@ -2736,10 +3422,11 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          Effect.flip,
         ),
       );
 
-      expect(exit._tag).toBe("Failure");
+      expect(failure).toMatchObject({ _tag: "DataTransferError", operation: "resolve-helper-image" });
       expect(runCalls).toBe(0);
     });
   });
@@ -2750,7 +3437,7 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
       await writeFile(source, "pinned-helper-payload");
       let runCalls = 0;
 
-      const exit = await Effect.runPromiseExit(
+      const failure = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
@@ -2769,10 +3456,11 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          Effect.flip,
         ),
       );
 
-      expect(exit._tag).toBe("Failure");
+      expect(failure).toMatchObject({ _tag: "DataTransferError", operation: "resolve-helper-image" });
       expect(runCalls).toBe(0);
     });
   });
@@ -2788,7 +3476,7 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
         capabilities: volumeCaps,
         pullArtifact: (spec) =>
           Effect.sync(() => {
-            if (!warmCache.has(spec.ref)) {
+            if (spec.policy !== "missing" || !warmCache.has(spec.ref)) {
               networkPulls += 1;
               warmCache.add(spec.ref);
             }

@@ -3,7 +3,7 @@ import { DateTime, Effect, Schema, Stream } from "effect";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   type PlanMetadata,
   PortablePath,
   ProviderCapabilities,
@@ -103,7 +103,7 @@ export const testCapabilities: ProviderCapabilities = {
   bindMountPerformance: "native",
   copyMounts: true,
   copyOnWriteAppRoot: false,
-  volumeSnapshot: "copy",
+  volumeSnapshot: "native",
   serviceFileCopy: "exec",
   artifactExport: true,
   artifactImport: true,
@@ -117,6 +117,7 @@ export const testCapabilities: ProviderCapabilities = {
   composeSpec: "native",
   composeKnobs: { supported: ["restart", "cap_add", "shm_size", "extra_hosts"] },
   composeServiceFields: { supported: ["labels", "configs"] },
+  authoredNetworks: true,
   composeProjectFields: { supported: ["configs"] },
   providerExtensions: [],
 };
@@ -127,17 +128,24 @@ export const planMetadata: PlanMetadata = {
   runtime: 4,
 };
 
+/** The contract service writes this line in two delayed pieces. */
+export const CONTRACT_SPLIT_LINE = "lando-contract-split-line";
+/** Longer than Docker's 16 KiB partial-message split, shorter than the 64 KiB line bound. */
+export const CONTRACT_LONG_LINE = "L".repeat(20_000);
+const CONTRACT_SERVICE_SCRIPT =
+  "process.stdout.write('lando-contract-split-'); setTimeout(() => { process.stdout.write('line\\n'); process.stdout.write('L'.repeat(20000) + '\\n'); console.log('lando-contract-ready'); setInterval(() => console.log('lando-contract-ready'), 1000); }, 300)";
+
+/** Whether a planned service runs the contract program, whose console output fakes simulate. */
+export const runsContractServiceScript = (service: ServicePlan | undefined): boolean =>
+  typeof service?.command !== "string" && service?.command?.[2] === CONTRACT_SERVICE_SCRIPT;
+
 export const makeTestServicePlan = (providerId: ProviderId): ServicePlan => ({
   name: TEST_SERVICE_NAME,
   type: "node",
   provider: providerId,
   primary: true,
   artifact: { kind: "ref", ref: "node:22-alpine" },
-  command: [
-    "node",
-    "-e",
-    "console.log('lando-contract-ready'); setInterval(() => console.log('lando-contract-ready'), 1000)",
-  ],
+  command: ["node", "-e", CONTRACT_SERVICE_SCRIPT],
   environment: {},
   mounts: [],
   storage: [],
@@ -149,10 +157,11 @@ export const makeTestServicePlan = (providerId: ProviderId): ServicePlan => ({
   extensions: {},
 });
 
-export const makeTestAppPlan = (providerId: ProviderId): AppPlan => {
+export const makeTestAppPlan = (providerId: ProviderId): CurrentExecutableAppPlan => {
   const testServicePlan = makeTestServicePlan(providerId);
 
   return {
+    valueModel: 1,
     id: TEST_APP_ID,
     name: "My App",
     slug: "myapp",
@@ -160,7 +169,6 @@ export const makeTestAppPlan = (providerId: ProviderId): AppPlan => {
     provider: providerId,
     services: { [TEST_SERVICE_NAME]: testServicePlan },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: planMetadata,

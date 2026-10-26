@@ -25,7 +25,9 @@ import type {
   SnapshotId,
   SnapshotInfo,
   SnapshotOptions,
+  SnapshotRestoreOptions,
   VolumeRef,
+  VolumeSnapshotArtifact,
 } from "../schema/index.ts";
 
 export type DataMoverError =
@@ -57,13 +59,23 @@ export class DataMover extends Context.Service<
       opts?: SnapshotOptions,
     ) => Effect.Effect<SnapshotHandle, DataMoverError, Scope.Scope>;
     readonly restore: (
-      handle: SnapshotHandle | SnapshotId,
-      store: VolumeRef,
+      handle: SnapshotHandle,
+      target: VolumeRef,
+      opts?: SnapshotRestoreOptions,
     ) => Effect.Effect<void, DataMoverError, Scope.Scope>;
     readonly listSnapshots: (
       filter: SnapshotFilter,
     ) => Effect.Effect<ReadonlyArray<SnapshotInfo>, DataMoverError>;
-    readonly removeSnapshot: (id: SnapshotId, store?: VolumeRef) => Effect.Effect<void, DataMoverError>;
+    /** Resolve ids and labels only within the supplied scope. */
+    readonly resolveSnapshot: (
+      reference: string,
+      scope: SnapshotFilter,
+    ) => Effect.Effect<SnapshotInfo, DataMoverError>;
+    readonly removeSnapshot: (handle: SnapshotHandle) => Effect.Effect<void, DataMoverError>;
+    readonly findOrphanedSnapshots: Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>, DataMoverError>;
+    readonly removeOrphanedSnapshot: (
+      artifact: VolumeSnapshotArtifact,
+    ) => Effect.Effect<void, DataMoverError>;
     readonly pruneSnapshots: (
       policy: PrunePolicy,
     ) => Effect.Effect<ReadonlyArray<SnapshotId>, DataMoverError>;
@@ -71,3 +83,4 @@ export class DataMover extends Context.Service<
 >()("@lando/core/DataMover") {}
 
 export type DataMoverShape = DataMover["Service"];
+export { SnapshotGcReport } from "../schema/data-transfer.ts";

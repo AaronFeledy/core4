@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
+import { Result } from "effect";
 
 import {
   applySetMutation,
   applyUnsetMutation,
-  decodeIssues,
   parseConfigPath,
   parseConfigValue,
 } from "../../src/config-write/write-core.ts";
@@ -80,19 +79,5 @@ describe("applyUnsetMutation", () => {
     const result = applyUnsetMutation({ tree: { a: 1 }, key: "z", file: FILE });
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isSuccess(result)) expect(result.success.changed).toBe(false);
-  });
-});
-
-describe("decodeIssues", () => {
-  const schema = Schema.Struct({ name: Schema.String, port: Schema.Number });
-  const decode = Schema.decodeUnknownResult(schema, { onExcessProperty: "error" });
-
-  test("returns [] when the tree is valid", () => {
-    expect(decodeIssues(decode({ name: "a", port: 1 }))).toEqual([]);
-  });
-
-  test("returns readable issue strings when invalid", () => {
-    const issues = decodeIssues(decode({ name: "a", port: "x" }));
-    expect(issues.length).toBeGreaterThan(0);
   });
 });

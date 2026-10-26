@@ -7,6 +7,12 @@
  */
 import { Cause, Effect, Exit } from "effect";
 
+import {
+  type ProjectedFailure,
+  failureOutcomeFromCause,
+  primaryFailureReason,
+} from "@lando/sdk/command-result";
+
 export interface InvokeOperationOptions<A, E> {
   readonly render?: (result: A) => string | undefined;
   readonly renderError?: (error: E) => string | undefined;
@@ -21,6 +27,7 @@ export type InvokeOperationResult<A, E> =
   | {
       readonly ok: false;
       readonly error: E;
+      readonly additionalErrors: ProjectedFailure["additionalErrors"];
       readonly output?: string;
     };
 
@@ -28,30 +35,29 @@ export const invokeOperation = <A, E, R>(
   operation: Effect.Effect<A, E, R>,
   options: InvokeOperationOptions<A, E> = {},
 ): Effect.Effect<InvokeOperationResult<A, E>, never, R> =>
-  Effect.map(Effect.exit(operation), (exit) => {
+  Effect.flatMap(Effect.exit(operation), (exit): Effect.Effect<InvokeOperationResult<A, E>> => {
     if (Exit.isSuccess(exit)) {
       const output = options.render?.(exit.value);
-      return {
-        ok: true,
+      return Effect.succeed({
+        ok: true as const,
         value: exit.value,
         ...(output === undefined ? {} : { output }),
-      };
+      });
     }
 
-    // Only treat the exit as a host-consumable typed failure when the Cause
-    // contains exactly one typed failure. Combined causes are propagated as
-    // defects with the original Cause so no failure information is discarded.
-    const failure = Cause.findErrorOption(exit.cause);
-    if (failure._tag === "Some" && exit.cause.reasons.length === 1) {
-      const output = options.renderError?.(failure.value);
-      return {
-        ok: false,
-        error: failure.value,
+    // Typed failures use the shared primary/additional projection; only untyped causes propagate as defects.
+    const primary = primaryFailureReason(exit.cause);
+    if (primary !== undefined && Cause.isFailReason(primary)) {
+      const output = options.renderError?.(primary.error);
+      return Effect.succeed({
+        ok: false as const,
+        error: primary.error,
+        additionalErrors: failureOutcomeFromCause(exit.cause).additionalErrors,
         ...(output === undefined ? {} : { output }),
-      };
+      });
     }
 
-    throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
+    return Effect.orDie(Effect.failCause(exit.cause));
   });
 
 export * from "@lando/engine/operations/start";

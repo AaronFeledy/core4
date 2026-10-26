@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { Cause, DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/core/cli/operations";
-import { ConfigError, LandofileValidationError, PluginManifestError } from "@lando/core/errors";
+import { LandofileValidationError, PluginManifestError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
   GlobalConfig,
-  type LandofileShape,
+  LandofileShape,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
@@ -40,10 +40,11 @@ import * as AppCacheService from "@lando/engine/cache/service";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
-import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { currentTestPlan, environmentResolverLayer } from "../_support/value-contracts.ts";
 import { configServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
@@ -113,7 +114,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
     services.map((service) => [String(service.name), service]),
   ) as AppPlan["services"],
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -190,7 +190,15 @@ const makeLayer = (options: {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: loadAuthoredDocuments(
+        [
+          {
+            file: `${options.plan.root}/.lando.yml`,
+            value: Schema.encodeSync(LandofileShape)(options.landofile),
+          },
+        ],
+        { appRoot: options.plan.root, file: `${options.plan.root}/.lando.yml` },
+      ),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -200,7 +208,7 @@ const makeLayer = (options: {
         options.planCalls?.push(1);
         options.planCwds?.push(process.cwd());
         return options.planError === undefined
-          ? Effect.succeed(options.plan)
+          ? Effect.succeed(currentTestPlan(options.plan))
           : Effect.fail(options.planError);
       },
     }),
@@ -208,6 +216,9 @@ const makeLayer = (options: {
   const registryLayer = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(options.provider),
@@ -218,7 +229,7 @@ const makeLayer = (options: {
     landofileLayer,
     plannerLayer,
     registryLayer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provideMerge(environmentResolverLayer())),
     options.configLayer ?? emptyConfigServiceLayer,
   );
 };
@@ -255,6 +266,7 @@ const cachedPlanKey = async (
   provider: RuntimeProviderShape,
 ): Promise<string> =>
   deriveAppPlanCacheKey({
+    hostProvider: "lando",
     appRoot,
     landofile: { ...landofile, provider: ProviderId.make(provider.id) },
     pluginManifests: [],
@@ -329,11 +341,9 @@ describe("runTooling — CLI rendering", () => {
     );
 
     // When
-    const result = await Effect.runPromise(
-      runTooling({ name: "composer", renderProgress: true }).pipe(runtimeFor(layer)),
-    );
+    const result = await Effect.runPromise(runTooling({ name: "composer" }).pipe(runtimeFor(layer)));
 
-    // Then
+    // Then: output stays on the result/sink path; the tree carries structure only.
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("bare-db-password");
     expect(result.stdout).toContain("bare-default-token");
@@ -342,43 +352,17 @@ describe("runTooling — CLI rendering", () => {
     expect(events.map((event) => event._tag)).toEqual([
       "task.tree.start",
       "task.start",
-      "task.detail",
-      "task.detail",
-      "task.detail",
-      "task.detail",
       "task.complete",
       "task.tree.complete",
     ]);
     expect(events.find((event) => event._tag === "task.tree.start")).toMatchObject({
       parentId: "tooling:composer",
-      label: "Tooling: composer",
-      children: ["tooling:composer:appserver"],
+      label: "composer",
+      children: ["tooling:composer:exec"],
     });
-    expect(events.filter((event) => event._tag === "task.detail")).toEqual([
-      expect.objectContaining({
-        taskId: "tooling:composer:appserver",
-        stream: "stdout",
-        line: "DB=[redacted]",
-      }),
-      expect.objectContaining({
-        taskId: "tooling:composer:appserver",
-        stream: "stdout",
-        line: "DEFAULT=[redacted]",
-      }),
-      expect.objectContaining({
-        taskId: "tooling:composer:appserver",
-        stream: "stdout",
-        line: "TASK=[redacted]",
-      }),
-      expect.objectContaining({
-        taskId: "tooling:composer:appserver",
-        stream: "stdout",
-        line: "REGION=us-east-1",
-      }),
-    ]);
+    expect(events.filter((event) => event._tag === "task.detail")).toEqual([]);
     expect(events.find((event) => event._tag === "task.complete")).toMatchObject({
-      taskId: "tooling:composer:appserver",
-      summary: "completed with exit code 0",
+      taskId: "tooling:composer:exec",
     });
     expect(events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
       parentId: "tooling:composer",
@@ -387,7 +371,7 @@ describe("runTooling — CLI rendering", () => {
     });
   });
 
-  test("publishes stderr detail and task.fail for non-zero provider-exec tooling", async () => {
+  test("publishes task.fail for non-zero provider-exec tooling without body detail events", async () => {
     const events: LandoEvent[] = [];
     const { provider } = makeProvider([{ exitCode: 7, stdout: "before\n", stderr: "boom\n" }]);
     const landofile: LandofileShape = {
@@ -399,18 +383,13 @@ describe("runTooling — CLI rendering", () => {
       recordingEventLayer(events),
     );
 
-    const result = await Effect.runPromise(
-      runTooling({ name: "composer", renderProgress: true }).pipe(runtimeFor(layer)),
-    );
+    const result = await Effect.runPromise(runTooling({ name: "composer" }).pipe(runtimeFor(layer)));
 
     expect(result.exitCode).toBe(7);
-    expect(events.find((event) => event._tag === "task.detail" && event.stream === "stderr")).toMatchObject({
-      taskId: "tooling:composer:appserver",
-      line: "boom",
-    });
+    expect(result.stderr).toContain("boom");
+    expect(events.filter((event) => event._tag === "task.detail")).toEqual([]);
     expect(events.find((event) => event._tag === "task.fail")).toMatchObject({
-      taskId: "tooling:composer:appserver",
-      summary: "failed with exit code 7",
+      taskId: "tooling:composer:exec",
       exitCode: 7,
     });
     expect(events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
@@ -518,7 +497,11 @@ describe("runTooling — CLI rendering", () => {
           PluginRegistry,
           PluginRegistry.of({
             list: Effect.fail(
-              new PluginManifestError({ message: "plugin registry unavailable", issues: ["not used"] }),
+              new PluginManifestError({
+                message: "plugin registry unavailable",
+                issues: [{ path: [], message: "not used" }],
+                remediation: "Correct the plugin manifest.",
+              }),
             ),
             load: () => Effect.die("not used"),
             loadServiceType: () => Effect.die("not used"),
@@ -617,13 +600,19 @@ describe("runTooling — CLI rendering", () => {
     const landofile: LandofileShape = {
       name: "scenario",
       toolingDefaults: {
-        env: { DEFAULT_API_TOKEN: "bare-default-token", NUMERIC_SECRET: 12_345_678 },
+        env:
+          Schema.decodeUnknownSync(LandofileShape)({
+            toolingDefaults: { env: { DEFAULT_API_TOKEN: "bare-default-token", NUMERIC_SECRET: 12_345_678 } },
+          }).toolingDefaults?.env ?? {},
       },
       tooling: {
         composer: {
           service: "appserver",
           cmd: "composer",
-          env: { TASK_PASSWORD: "bare-task-password", BOOLEAN_SECRET: true },
+          env:
+            Schema.decodeUnknownSync(LandofileShape)({
+              tooling: { task: { env: { TASK_PASSWORD: "bare-task-password", BOOLEAN_SECRET: true } } },
+            }).tooling?.task?.env ?? {},
         },
       },
     };
@@ -664,7 +653,10 @@ describe("runTooling — CLI rendering", () => {
       tooling: { inspect: { cmd: "env" } },
     };
     const landofile = await Effect.runPromise(
-      resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario" }),
+      loadAuthoredDocuments(
+        [{ file: "/tmp/scenario/.lando.yml", value: Schema.encodeSync(LandofileShape)(authoredLandofile) }],
+        { appRoot: "/tmp/scenario", file: "/tmp/scenario/.lando.yml" },
+      ).pipe(Effect.map((compiled) => compiled.document)),
     );
     const layer = makeLayer({ landofile, plan, provider });
 
@@ -700,7 +692,10 @@ describe("runTooling — CLI rendering", () => {
       },
     };
     const landofile = await Effect.runPromise(
-      resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario" }),
+      loadAuthoredDocuments(
+        [{ file: "/tmp/scenario/.lando.yml", value: Schema.encodeSync(LandofileShape)(authoredLandofile) }],
+        { appRoot: "/tmp/scenario", file: "/tmp/scenario/.lando.yml" },
+      ).pipe(Effect.map((compiled) => compiled.document)),
     );
     const layer = makeLayer({ landofile, plan, provider });
 
@@ -921,8 +916,8 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       const brokenConfig = Layer.succeed(
         ConfigService,
         ConfigService.of({
-          load: Effect.fail(new ConfigError({ message: "config unavailable" })),
-          get: () => Effect.fail(new ConfigError({ message: "config unavailable" })),
+          load: Effect.die("Unexpected config read on script shortcut"),
+          get: () => Effect.die("Unexpected config read on script shortcut"),
         }),
       );
       const layer = makeLayer({ landofile, plan, provider, planCalls, configLayer: brokenConfig });
@@ -984,6 +979,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       };
       const planError = new LandofileValidationError({
         message: "planned failure",
+        remediation: "Fix the service configuration.",
         file: join(root, ".lando.yml"),
         issues: [{ path: [], message: "service planning failed" }],
       });
@@ -1011,6 +1007,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       };
       const planError = new LandofileValidationError({
         message: "original planning failure",
+        remediation: "Fix the service configuration.",
         file: join(root, ".lando.yml"),
         issues: [{ path: [], message: "service planning failed" }],
       });
@@ -1041,23 +1038,17 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       const landofile: LandofileShape = { name: "scenario" };
       const layer = Layer.mergeAll(makeLayer({ landofile, plan, provider }), recordingEventLayer(events));
 
-      const result = await Effect.runPromise(
-        runTooling({ name: "greet", renderProgress: true }).pipe(runtimeFor(layer)),
-      );
+      const result = await Effect.runPromise(runTooling({ name: "greet" }).pipe(runtimeFor(layer)));
 
       expect(result.service).toBe(":host");
+      expect(result.stdout).toContain("hi-from-bun-sh");
       expect(events.map((event) => event._tag)).toEqual([
         "task.tree.start",
         "task.start",
-        "task.detail",
         "task.complete",
         "task.tree.complete",
       ]);
-      expect(events.find((event) => event._tag === "task.detail")).toMatchObject({
-        taskId: "tooling:app:greet::host",
-        stream: "stdout",
-        line: "hi-from-bun-sh",
-      });
+      expect(events.filter((event) => event._tag === "task.detail")).toEqual([]);
     });
   });
 

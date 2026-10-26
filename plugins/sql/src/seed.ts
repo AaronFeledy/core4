@@ -2,18 +2,37 @@ import { randomUUID } from "node:crypto";
 import { Effect, Exit } from "effect";
 
 import { SqlSeedStateError } from "@lando/sdk/errors";
-import type { VolumeRef } from "@lando/sdk/schema";
+import {
+  AppId,
+  type DataTransferSpec,
+  type Environment,
+  ServiceName,
+  type SnapshotInfo,
+  type VolumeRef,
+  snapshotHandle,
+} from "@lando/sdk/schema";
 
 import { type SqlExec, runImport } from "./actions.ts";
+import { checkedSqlExecution } from "./checked-execution.ts";
 import { parseCount } from "./command-input.ts";
-import { countCommand } from "./families.ts";
+import { resolveSqlEnvironment } from "./environment.ts";
+import { countCommand, loadCommand } from "./families.ts";
 import type { SqlRecoveryContext, SqlRecoveryDeps } from "./recovery.ts";
-import { requireCompatibleSnapshot } from "./snapshot-compatibility.ts";
+import { requireSeedCompatibleSnapshot } from "./snapshot-compatibility.ts";
 
 export const executeSeed = Effect.fn("Sql.seed")(function* (
   deps: SqlRecoveryDeps & { readonly exec: SqlExec },
   context: SqlRecoveryContext,
-  input: Parameters<typeof runImport>[2] & { readonly snapshotId?: string; readonly store: VolumeRef },
+  input: Parameters<typeof runImport>[2] & {
+    readonly snapshot?: SnapshotInfo;
+    readonly source?: {
+      readonly endpoint: Omit<Extract<DataTransferSpec["from"], { readonly _tag: "serviceCmd" }>, "env"> & {
+        readonly env: Environment;
+      };
+      readonly database: string;
+    };
+    readonly store: VolumeRef;
+  },
 ) {
   const reject = (status: SqlSeedStateError["status"]) =>
     new SqlSeedStateError({
@@ -23,13 +42,18 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
       remediation: "Create a fresh database volume or explicitly import into the existing database.",
     });
   const identity = context.volumeIdentity;
-  if (!identity || identity.origin !== "created" || identity.ownerRoot !== context.metadata.sourceRoot)
+  if (identity.origin !== "created" || identity.ownerRoot !== context.owner.appRoot)
     return yield* Effect.fail(reject("unknown"));
   const state = yield* deps.initialization(identity);
   const status = (yield* state.read)?.state._tag ?? "unknown";
   if (status !== "fresh") return yield* Effect.fail(reject(status));
-  const counted = yield* deps.exec(input.service, countCommand(input.family, input.creds), input.env);
-  const count = counted.ok ? parseCount(counted.stdout) : undefined;
+  const command = countCommand(input.family, input.creds);
+  const counted = yield* checkedSqlExecution(deps.exec(input.service, command, input.env), {
+    service: input.service,
+    command,
+    env: input.env,
+  });
+  const count = parseCount(counted.stdout);
   if (count !== 0) {
     return yield* Effect.fail(
       new SqlSeedStateError({
@@ -40,12 +64,9 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
       }),
     );
   }
-  const seedSnapshotId = input.snapshotId;
-  if (seedSnapshotId !== undefined) {
-    const source = (yield* deps.listSnapshots({ id: seedSnapshotId })).find(
-      (candidate) => candidate.id === seedSnapshotId,
-    );
-    yield* requireCompatibleSnapshot(source, context);
+  const seedHandle = input.snapshot === undefined ? undefined : snapshotHandle(input.snapshot);
+  if (input.snapshot !== undefined) {
+    yield* requireSeedCompatibleSnapshot(input.snapshot, context);
   }
   const operationId = randomUUID();
   return yield* Effect.uninterruptibleMask((restore) =>
@@ -53,12 +74,29 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
       if (!(yield* state.begin(operationId))) return yield* Effect.fail(reject("in-progress"));
       const seeded = Effect.gen(function* () {
         yield* context.verifyVolume;
-        return yield* seedSnapshotId === undefined
+        if (input.source !== undefined) {
+          return yield* deps.transfer({
+            from: { ...input.source.endpoint, env: yield* resolveSqlEnvironment(input.source.endpoint.env) },
+            to: {
+              _tag: "serviceCmd",
+              app: AppId.make(input.plan.id),
+              service: ServiceName.make(input.service),
+              command: loadCommand(input.family, input.creds, input.source.database),
+              env: yield* resolveSqlEnvironment(input.env),
+            },
+            overwrite: true,
+          });
+        }
+        return yield* seedHandle === undefined
           ? runImport(deps, deps.exec, input)
           : Effect.gen(function* () {
               if (context.running) yield* context.suspend;
               yield* context.verifyVolume;
-              yield* deps.restore(seedSnapshotId, { ...input.store, store: identity.nativeName });
+              yield* deps.restore(
+                seedHandle,
+                { ...input.store, store: identity.nativeName },
+                { mode: "seed" },
+              );
               if (context.running) yield* context.resume;
               return undefined;
             });

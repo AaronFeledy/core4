@@ -1,12 +1,12 @@
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 
 import type { StartAppOptions } from "@lando/sdk/app";
 import { type BuildOptions, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { shouldRetainReadinessResources } from "../lifecycle/readiness-failure.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
+import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppInitEvents } from "./events.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
@@ -18,6 +18,7 @@ import {
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
 export { StartedServiceResultSchema, StartAppResultSchema } from "./start-internal.ts";
+export type { CheckResult } from "@lando/sdk/schema";
 export type { StartManagedScope } from "./start-file-sync.ts";
 
 export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(function* (
@@ -28,7 +29,6 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
     readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly beforeStart?: Effect.Effect<void>;
-    readonly onFailedStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
   } = {},
@@ -36,6 +36,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
   return yield* withAppMutationLock(
     appLockTarget(target.plan),
     Effect.gen(function* () {
+      yield* ensureAppPlacement(target.app, target.plan.provider);
       const context = yield* Effect.context<Effect.Services<ReturnType<typeof startAppForTargetUnlocked>>>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
@@ -47,20 +48,20 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
         provider,
         stateStore,
         body: () =>
-          preflightStartAppDrain(resolvedTarget, undefined, true)
+          preflightStartAppDrain(resolvedTarget)
             .pipe(
-              Effect.andThen(
-                execution.transactionPreflightDone === true
-                  ? Effect.void
-                  : ensureStartTransactionConsistent(resolvedTarget),
-              ),
-              Effect.andThen(execution.skipInitEvents === true ? Effect.void : runAppInitEvents(plan)),
-              Effect.andThen((execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible)),
-              Effect.andThen(startAppForTargetUnlocked(options, resolvedTarget, managed, execution)),
-              Effect.onExit((exit) =>
-                Exit.isFailure(exit) && !shouldRetainReadinessResources(exit.cause)
-                  ? (execution.onFailedStart ?? Effect.void).pipe(Effect.uninterruptible)
-                  : Effect.void,
+              Effect.flatMap((preparedTargets) =>
+                Effect.gen(function* () {
+                  yield* execution.transactionPreflightDone === true
+                    ? Effect.void
+                    : ensureStartTransactionConsistent(resolvedTarget);
+                  if (execution.skipInitEvents !== true) yield* runAppInitEvents(plan);
+                  yield* (execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible);
+                  return yield* startAppForTargetUnlocked(options, resolvedTarget, managed, {
+                    ...execution,
+                    ...(preparedTargets === undefined ? {} : { preparedTargets }),
+                  });
+                }),
               ),
             )
             .pipe(Effect.provide(context)),
@@ -77,7 +78,6 @@ export const startApp = Effect.fn("AppOperation.start")(function* (
     readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly beforeStart?: Effect.Effect<void>;
-    readonly onFailedStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
   } = {},

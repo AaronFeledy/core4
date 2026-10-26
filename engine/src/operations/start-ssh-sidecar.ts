@@ -1,5 +1,4 @@
-import { RedactionService } from "@lando/redaction/service";
-import { identityRedactor } from "@lando/sdk/command-result";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import type { AppId } from "@lando/sdk/schema";
 import { EventService, type SshService } from "@lando/sdk/services";
@@ -9,8 +8,8 @@ import type { AgentRelayUpstream } from "../subsystems/ssh-agent/relay.ts";
 import {
   SSH_SIDECAR_READINESS_POLICY,
   awaitRuntimeSshAgent,
-  runtimeSshAgentState,
-  sidecarSocketState,
+  runtimeSshAgentCheck,
+  sidecarSocketCheck,
 } from "../subsystems/ssh-agent/session.ts";
 import { startSshSidecarTreeId } from "./start-progress.ts";
 
@@ -35,8 +34,8 @@ export const startSshSidecar = Effect.fnUntraced(function* (
             Effect.gen(function* () {
               const redaction = yield* Effect.serviceOption(RedactionService);
               const redactor = Option.isSome(redaction)
-                ? yield* redaction.value.forProfile("secrets")
-                : identityRedactor;
+                ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
+                : createStandaloneRedactor("secrets", { sourceEnv: process.env });
               return yield* Effect.fail(
                 new SshAgentUnavailableError({
                   mode: "sidecar",
@@ -49,18 +48,20 @@ export const startSshSidecar = Effect.fnUntraced(function* (
             }),
           ),
         );
-        const state = yield* awaitRuntimeSshAgent(
-          upstream._tag === "volume" ? runtimeSshAgentState : sidecarSocketState(upstream),
+        const { state, detail } = yield* awaitRuntimeSshAgent(
+          upstream._tag === "volume" ? runtimeSshAgentCheck : sidecarSocketCheck(upstream),
         );
         if (state !== "ready")
           return yield* Effect.fail(
             new SshAgentUnavailableError({
               mode: "sidecar",
               reason: "sidecar-not-running",
+              ...(detail === undefined ? {} : { detail }),
               message:
-                state === "stopped"
+                (state === "stopped"
                   ? "The SSH agent sidecar stopped before its agent answered."
-                  : `The SSH agent sidecar started, but its agent did not answer within ${Duration.toSeconds(SSH_SIDECAR_READINESS_POLICY.timeout)} seconds.`,
+                  : `The SSH agent sidecar started, but its agent did not answer within ${Duration.toSeconds(SSH_SIDECAR_READINESS_POLICY.timeout)} seconds.`) +
+                (detail === undefined ? "" : ` Last probe failure: ${detail}`),
               remediation:
                 "Run `lando global:logs --service ssh-agent` to see why, fix the cause, then run `lando restart`.",
             }),

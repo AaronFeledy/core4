@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Context, Effect, Option, Schema } from "effect";
 
 import {
@@ -57,20 +58,38 @@ const loadPluginSpec = (
       if (!Schema.is(BootstrapLevel)(spec.bootstrap))
         issues.push(`bootstrap ${String(spec.bootstrap)} is not valid`);
       if (!Schema.isSchema(spec.resultSchema)) issues.push("resultSchema is not a schema instance");
+      const yes = spec.flags?.yes;
+      const compatibleYes =
+        yes === undefined ||
+        (yes.type === "boolean" &&
+          (yes.default === undefined || yes.default === false) &&
+          Object.keys(yes).every((key) => key === "type" || key === "default" || key === "description"));
+      if (!compatibleYes) issues.push("flag yes must be an optional boolean defaulting to false");
       if (issues.length > 0) {
+        let yesDeclaration = "absent";
+        if (yes !== undefined) {
+          yesDeclaration = compatibleYes ? "optional-boolean-default-false" : "incompatible";
+        }
         throw new PluginDescriptorMismatchError({
           pluginName,
           kind: "commands",
-          declared: [`id=${id}`, `namespace=${namespace}`, "bootstrap=valid", "resultSchema=schema"],
+          declared: [
+            `id=${id}`,
+            `namespace=${namespace}`,
+            "bootstrap=valid",
+            "resultSchema=schema",
+            "flags.yes=absent-or-optional-boolean-default-false",
+          ],
           provided: [
             `id=${String(spec.id)}`,
             `namespace=${String(spec.namespace)}`,
             `bootstrap=${String(spec.bootstrap)}`,
             `resultSchema=${Schema.isSchema(spec.resultSchema) ? "schema" : "non-schema"}`,
+            `flags.yes=${yesDeclaration}`,
           ],
           message: `Plugin ${pluginName} command loader ${id} returned an invalid executable command spec: ${issues.join("; ")}.`,
           remediation:
-            "Return an executable command spec whose id, namespace, bootstrap, and resultSchema match the manifest declaration.",
+            "Return a spec whose id, namespace, bootstrap, and resultSchema match the manifest declaration, and declare any `yes` flag as a plain boolean; the CLI owns --yes/-y.",
         });
       }
       if (cached === undefined) loaderCache.set(load, Promise.resolve(spec));
@@ -83,6 +102,7 @@ const loadPluginSpec = (
             pluginName,
             message: `Plugin ${pluginName} command loader ${id} failed.`,
             cause,
+            remediation: `Repair plugin ${pluginName} so command loader ${id} succeeds.`,
           }),
   });
 
@@ -122,13 +142,10 @@ const toolingSpec = (
       ),
       (raw) => runEventToolingCommand(plan, declaration.name, task, raw),
     ),
-  successExitCode: (result) =>
-    typeof result === "object" &&
-    result !== null &&
-    "exitCode" in result &&
-    typeof result.exitCode === "number"
-      ? result.exitCode
-      : undefined,
+  completion: (result) =>
+    commandCompletionFromExitCode(
+      Schema.decodeUnknownSync(Schema.Struct({ exitCode: Schema.Number }))(result).exitCode,
+    ),
 });
 
 const distance = (left: string, right: string): number => {

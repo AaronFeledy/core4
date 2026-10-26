@@ -1,3 +1,5 @@
+import { AbsolutePath, DatabaseConnection, Environment, planAppIdentity } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { Predicate } from "effect";
 import type { SqlCreds } from "./creds.ts";
 
@@ -15,7 +17,8 @@ export type SqlLandofile = {
 export type SqlPlanService = {
   readonly name: string;
   readonly type: string;
-  readonly environment: Readonly<Record<string, string>>;
+  readonly environment: Environment;
+  readonly connection?: DatabaseConnection;
   readonly storage: ReadonlyArray<{ readonly store: string; readonly target?: string }>;
 };
 
@@ -30,6 +33,14 @@ export type SqlPlan = {
   };
   readonly services: Readonly<Record<string, SqlPlanService>>;
 };
+
+export const sqlPlanIdentity = (plan: SqlPlan) =>
+  planAppIdentity({
+    root: AbsolutePath.make(plan.root),
+    ...(plan.identity === undefined
+      ? {}
+      : { identity: { ...plan.identity, appRoot: AbsolutePath.make(plan.identity.appRoot) } }),
+  });
 
 const objectOrArray = Predicate.or(Predicate.isObject, (value: unknown): value is Record<string, unknown> =>
   Array.isArray(value),
@@ -98,12 +109,9 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
   const mapped: Record<string, SqlPlanService> = {};
   for (const [name, service] of Object.entries(services)) {
     if (!objectOrArray(service)) continue;
-    const environment: Record<string, string> = {};
-    if (objectOrArray(service.environment)) {
-      for (const [key, item] of Object.entries(service.environment)) {
-        if (typeof item === "string") environment[key] = item;
-      }
-    }
+    const environment = Schema.decodeUnknownSync(Environment)(
+      Object.fromEntries(Object.entries(objectOrArray(service.environment) ? service.environment : {})),
+    );
     const storage = Array.isArray(service.storage)
       ? service.storage.flatMap((entry) => {
           if (!objectOrArray(entry) || typeof entry.store !== "string") return [];
@@ -115,6 +123,9 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
       name: asString(service.name) ?? name,
       type: asString(service.type) ?? name,
       environment,
+      ...(service.connection === undefined
+        ? {}
+        : { connection: Schema.decodeUnknownSync(DatabaseConnection)(service.connection) }),
       storage,
     };
   }

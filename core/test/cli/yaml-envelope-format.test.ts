@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 
-import { StreamFrame } from "@lando/sdk/schema";
+import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -10,6 +10,7 @@ import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { CommandWarnings } from "../../src/cli/command-warnings.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { preCommandOutputMode } from "../../src/cli/spec/command-boundary.ts";
+import { connections } from "./connection-fixtures";
 
 const infoResult = {
   app: "demo",
@@ -22,7 +23,10 @@ const infoResult = {
       provider: "lando",
       primary: true,
       status: "running",
-      endpoints: ["http://demo.lndo.site"],
+      connections: [
+        ...connections(["http://demo.lndo.site"]),
+        ...connections(["http://appserver:80"], "app"),
+      ],
     },
     {
       app: "demo",
@@ -32,7 +36,7 @@ const infoResult = {
       provider: "lando",
       primary: false,
       status: "running",
-      endpoints: [],
+      connections: connections(["tcp://database:3306"], "app"),
     },
   ],
 } as const;
@@ -61,7 +65,7 @@ describe("--format=yaml on a command with no bespoke format handling", () => {
       resultSchema: infoSpec.resultSchema,
       io,
       render: (value, ctx) => infoSpec.render?.(value, undefined, ctx),
-      formatError: String,
+      formatError: ({ error }) => String(error),
     });
 
     const stdout = io.stdout();
@@ -88,7 +92,7 @@ describe("--format=yaml on a command with no bespoke format handling", () => {
         resultSchema: infoSpec.resultSchema,
         io,
         render: (value, ctx) => infoSpec.render?.(value, undefined, ctx),
-        formatError: String,
+        formatError: ({ error }) => String(error),
       });
       return io.stdout();
     };
@@ -107,7 +111,7 @@ describe("--format=yaml on a command with no bespoke format handling", () => {
       resultSchema: infoSpec.resultSchema,
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => {
         exitCode = code;
       },
@@ -130,7 +134,7 @@ describe("--format=yaml on a command with no bespoke format handling", () => {
       resultSchema: infoSpec.resultSchema,
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
     });
 
     expect(Bun.YAML.parse(io.stdout())).toBeDefined();
@@ -139,13 +143,25 @@ describe("--format=yaml on a command with no bespoke format handling", () => {
 });
 
 describe("--format=yaml on a live-streaming command", () => {
-  const ResultSchema = Schema.Struct({ message: Schema.String });
+  const ResultSchema = Schema.Struct({ message: Schema.String, output: Schema.optional(Schema.String) });
 
   const streamingEffect = Effect.gen(function* () {
-    const sink = yield* StreamFrameSink;
-    yield* sink.emit({ _tag: "stdout", chunk: "raw-stdout-chunk\n", service: "appserver" });
-    yield* sink.emit({ _tag: "stderr", chunk: "raw-stderr-chunk\n", service: "appserver" });
-    return { message: "done" };
+    const sink = yield* Effect.serviceOption(StreamFrameSink);
+    if (Option.isSome(sink)) {
+      yield* sink.value.emit({
+        kind: "bytes",
+        _tag: "stdout",
+        chunk: "raw-stdout-chunk\n",
+        service: "appserver",
+      });
+      yield* sink.value.emit({
+        kind: "bytes",
+        _tag: "stderr",
+        chunk: "raw-stderr-chunk\n",
+        service: "appserver",
+      });
+    }
+    return { message: "done", output: Option.isSome(sink) ? "" : "raw-stdout-chunk\nraw-stderr-chunk\n" };
   });
 
   const runStreaming = async (resultFormat: "json" | "yaml") => {
@@ -160,7 +176,7 @@ describe("--format=yaml on a live-streaming command", () => {
       streamingMode: "live",
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
     return io;
@@ -181,8 +197,8 @@ describe("--format=yaml on a live-streaming command", () => {
     const yamlIo = await runStreaming("yaml");
     const stdout = yamlIo.stdout();
 
-    expect(stdout).not.toContain("raw-stdout-chunk");
-    expect(stdout).not.toContain("raw-stderr-chunk");
+    expect(stdout.split("\n")).not.toContain("raw-stdout-chunk");
+    expect(stdout.split("\n")).not.toContain("raw-stderr-chunk");
     expect(yamlIo.stderr()).toBe("");
 
     const terminal = jsonIo
@@ -190,7 +206,10 @@ describe("--format=yaml on a live-streaming command", () => {
       .filter((line) => line.length > 0)
       .map((line) => JSON.parse(line) as { readonly _tag: string; readonly envelope?: unknown })
       .find((frame) => frame._tag === "result");
-    expect(Bun.YAML.parse(stdout)).toEqual(terminal?.envelope);
+    expect(Bun.YAML.parse(stdout)).toEqual({
+      ...Schema.decodeUnknownSync(CommandResultEnvelope)(terminal?.envelope),
+      result: { message: "done", output: "raw-stdout-chunk\nraw-stderr-chunk\n" },
+    });
   });
 
   test("a live run with no frame schema still frames under json and documents under yaml", async () => {
@@ -208,7 +227,7 @@ describe("--format=yaml on a live-streaming command", () => {
         streamingMode: "live",
         io,
         render: () => undefined,
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: () => undefined,
       });
       return io.stdout();
@@ -234,7 +253,7 @@ describe("--format=yaml on a live-streaming command", () => {
       streamingMode: "live",
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
 
@@ -286,7 +305,7 @@ describe("documentOutput keeps a command's own document on success only", () => 
         io,
         ...(options.documentOutput === undefined ? {} : { documentOutput: options.documentOutput }),
         render: () => "name: demo",
-        formatError: String,
+        formatError: ({ error }) => String(error),
         setExitCode: (code) => {
           exitCode = code;
         },
@@ -299,7 +318,7 @@ describe("documentOutput keeps a command's own document on success only", () => 
     const { io, exitCode } = await run({ documentOutput: true });
     expect(io.stdout()).toBe("name: demo\n");
     expect(io.stdout()).not.toContain("apiVersion");
-    expect(exitCode).toBeUndefined();
+    expect(exitCode).toBe(0);
   });
 
   test("without the declaration the same command emits the envelope", async () => {
@@ -351,7 +370,7 @@ describe("the machine controls behave the same under yaml as under json", () => 
       resultSchema: ResultSchema,
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
       ...extra,
     });
@@ -384,7 +403,7 @@ describe("the machine controls behave the same under yaml as under json", () => 
       jqExpression: "this is not jq",
       io,
       render: () => undefined,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: (code) => {
         exitCode = code;
       },

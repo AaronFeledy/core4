@@ -2,15 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService } from "@lando/core/services";
+import * as EnvironmentResolver from "@lando/engine/services/environment-value-resolver";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { EventServiceShape, LandoEvent } from "@lando/sdk/services";
+import { EnvironmentValueResolver } from "@lando/sdk/services";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const secretEnv = { LANDO_SECRET_AC6: "ac6secretvalue" };
-const realRedactionLayer = RedactionService.layer.pipe(
+const realRedactionLayer = EnvironmentResolver.layer.pipe(
+  Layer.provideMerge(RedactionService.layer),
   Layer.provide(EnvSecretStore.layerWith({ env: secretEnv })),
 );
 
@@ -46,11 +49,21 @@ describe("redaction integration on emitting surfaces", () => {
 
   test("resolved SecretStore values are absent from rendered diagnostics", async () => {
     const io = createBufferedRendererIO();
-    await runWithRendererHandling(Effect.fail("ac6secretvalue failed"), {
+    const diagnostic = Effect.scoped(
+      Effect.gen(function* () {
+        const resolver = yield* EnvironmentValueResolver;
+        const session = yield* resolver.openSession();
+        const environment = yield* session.resolveEnvironment({
+          TOKEN: { _tag: "SecretRef", reference: "AC6" },
+        });
+        return yield* Effect.fail(`${environment.TOKEN} failed`);
+      }),
+    );
+    await runWithRendererHandling(diagnostic, {
       runtime: realRedactionLayer,
       rendererMode: "plain",
       io,
-      formatError: (error) => `diagnostic: ${String(error)}`,
+      formatError: ({ error }) => `diagnostic: ${String(error)}`,
       setExitCode: () => undefined,
     });
 

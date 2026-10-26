@@ -1,7 +1,12 @@
 import { Effect } from "effect";
 
 import type { LandofileEventName } from "@lando/sdk/schema";
-import type { RuntimeProviderRegistry, ToolingEngine, ToolingEngineResult } from "@lando/sdk/services";
+import type {
+  EnvironmentValueResolver,
+  RuntimeProviderRegistry,
+  ToolingEngine,
+  ToolingEngineResult,
+} from "@lando/sdk/services";
 
 import type { EventRuntimeError } from "../tooling/event-errors.ts";
 import { runAppEvent } from "./events.ts";
@@ -17,7 +22,6 @@ const bracket = (lookupKey: string, position: "pre" | "post"): LandofileEventNam
 export interface BracketedInvocationsInput extends ExecuteToolingInput {
   /** Effective-tooling key the `pre-`/`post-` bracket names derive from. */
   readonly lookupKey: string;
-  readonly onBodyComplete?: (result: ToolingEngineResult) => Effect.Effect<void>;
 }
 
 /**
@@ -33,11 +37,10 @@ export const runBracketedInvocations = Effect.fnUntraced(function* (
 ): Effect.fn.Return<
   ToolingEngineResult,
   ToolingExecutionError | EventRuntimeError,
-  ToolingEngine | RuntimeProviderRegistry
+  ToolingEngine | RuntimeProviderRegistry | EnvironmentValueResolver
 > {
   yield* runAppEvent(input.plan, bracket(input.lookupKey, "pre"));
   const result = yield* executeToolingInvocations(input);
-  if (input.onBodyComplete !== undefined) yield* input.onBodyComplete(result);
   if (result.exitCode === 0) yield* runAppEvent(input.plan, bracket(input.lookupKey, "post"));
   return result;
 });

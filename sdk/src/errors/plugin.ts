@@ -1,24 +1,27 @@
 import { Schema } from "effect";
 
 import { BootstrapLevel } from "../schema/primitives.ts";
+import { ValidationIssue } from "../schema/validation-issue.ts";
 
 export class PluginLoadError extends Schema.TaggedError<PluginLoadError>()("PluginLoadError", {
   message: Schema.String,
   pluginName: Schema.String,
   cause: Schema.optional(Schema.Unknown),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 export class PluginManifestError extends Schema.TaggedError<PluginManifestError>()("PluginManifestError", {
   message: Schema.String,
   pluginName: Schema.optional(Schema.String),
-  issues: Schema.Array(Schema.String),
+  issues: Schema.Array(ValidationIssue),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 export class SubscriberLevelMismatchError extends Schema.TaggedError<SubscriberLevelMismatchError>()(
   "SubscriberLevelMismatchError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     pluginName: Schema.String,
     subscriberId: Schema.String,
     selectedEvent: Schema.String,
@@ -35,7 +38,7 @@ export class PluginDescriptorMismatchError extends Schema.TaggedError<PluginDesc
     declared: Schema.Array(Schema.String),
     provided: Schema.Array(Schema.String),
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -50,7 +53,7 @@ export class NoCertificateAuthorityError extends Schema.TaggedError<NoCertificat
   {
     message: Schema.String,
     candidates: Schema.Array(CertificateAuthorityCandidate),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -59,6 +62,6 @@ export class AmbiguousCertificateAuthoritiesError extends Schema.TaggedError<Amb
   {
     message: Schema.String,
     candidates: Schema.Array(CertificateAuthorityCandidate),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

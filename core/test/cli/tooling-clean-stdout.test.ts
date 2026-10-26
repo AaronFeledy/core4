@@ -5,9 +5,10 @@ import { join } from "node:path";
 import { runBunShellTooling } from "@lando/engine/operations/tooling-bun-script";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { renderRunToolingResult } from "../../src/cli/commands/tooling.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { environmentResolverLayer } from "../_support/value-contracts.ts";
 
 test.each(["alpha\nbeta\n", "no-newline"])(
   "script tooling preserves %j through the default renderer boundary",
@@ -24,27 +25,28 @@ test.each(["alpha\nbeta\n", "no-newline"])(
 
       // When
       await runWithRendererHandling(
-        runBunShellTooling({ name: "gen", renderProgress: true }, root).pipe(
+        runBunShellTooling({ name: "gen" }, root).pipe(
           Effect.map((result) => {
             if (result === undefined) throw new Error("fixture script missing");
             return result;
           }),
         ),
         {
-          runtime: PrivateFileAccessService.layer,
+          runtime: Layer.mergeAll(PrivateFileAccessService.layer, environmentResolverLayer()),
           rendererMode: "lando",
           streamingMode: "live",
           io,
           render: renderRunToolingResult,
-          formatError: String,
+          formatError: ({ error }) => String(error),
           setExitCode: (code) => expect(code).toBe(0),
         },
       );
 
       // Then
       expect(io.stdout()).toBe(payload);
-      expect(io.stderr()).toContain("▼ app:gen (1 step)");
-      expect(io.stderr()).toContain("✓ complete");
+      expect(io.stderr()).toContain("▼");
+      expect(io.stderr()).toContain("complete");
+      expect(io.stdout()).not.toContain("▼");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

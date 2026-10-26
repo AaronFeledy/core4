@@ -43,7 +43,6 @@ const plan: AppPlan = {
     }),
   ),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -51,6 +50,56 @@ const plan: AppPlan = {
 };
 
 describe("log-follow completion", () => {
+  test("follow without a sink collects line metadata until abort and releases the stream", async () => {
+    // Given: a provider that stays open after its first line.
+    const controller = new AbortController();
+    const timestamp = new Date("2026-08-21T00:00:00Z");
+    let released = false;
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      logs: (target) =>
+        Stream.concat(
+          Stream.make({ service: target.service, stream: "stderr" as const, line: "ready", timestamp }),
+          Stream.fromEffect(
+            Effect.yieldNow.pipe(
+              Effect.andThen(Effect.sync(() => controller.abort())),
+              Effect.andThen(Effect.never),
+            ),
+          ),
+        ).pipe(
+          Stream.ensuring(
+            Effect.sync(() => {
+              released = true;
+            }),
+          ),
+        ),
+    };
+    const registry = RuntimeProviderRegistry.of({
+      appliedPlansFor: () => Effect.succeed([]),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    });
+    // When: follow runs without a renderer sink.
+    const result = await Effect.runPromise(
+      followLogsForPlan(
+        {
+          ...plan,
+          services: Object.fromEntries(Object.entries(plan.services).filter(([name]) => name === "web")),
+        },
+        { signal: controller.signal },
+      ).pipe(Effect.provideService(RuntimeProviderRegistry, registry)),
+    );
+    // Then: the terminal result retains the consumed line and cleanup completes.
+    expect(result).toEqual({
+      app: "Follow App",
+      lines: [{ service: "web", stream: "stderr", line: "ready", timestamp: timestamp.getTime() }],
+    });
+    expect(released).toBe(true);
+  });
+
   for (const mode of ["finite", "empty", "abort"] as const) {
     test(`${mode} streams finish and release every provider stream`, async () => {
       const frames: StreamFrameSinkFrame[] = [];
@@ -85,6 +134,9 @@ describe("log-follow completion", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            appliedPlansFor: () => Effect.succeed([]),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            resolveAppliedPlan: () => Effect.succeed(undefined),
             list: Effect.succeed([providerId]),
             capabilities: Effect.succeed(provider.capabilities),
             select: () => Effect.succeed(provider),
@@ -112,8 +164,8 @@ describe("log-follow completion", () => {
         mode === "empty"
           ? []
           : [
-              { _tag: "stdout", chunk: "database ready", service: "database" },
-              { _tag: "stdout", chunk: "web ready", service: "web" },
+              { kind: "record", _tag: "stdout", chunk: "database ready", service: "database" },
+              { kind: "record", _tag: "stdout", chunk: "web ready", service: "web" },
             ],
       );
     });
