@@ -19,11 +19,6 @@ const optionalStringArray = (value: unknown): readonly string[] | undefined | nu
   return value;
 };
 
-const optionalBoolean = (value: unknown): boolean | undefined | null => {
-  if (value === undefined) return undefined;
-  return typeof value === "boolean" ? value : null;
-};
-
 /** v1 kept service `tmpfs:` as a Compose runtime knob: strings `target[:options]` or long objects. */
 const legacyComposeTmpfs = (entry: unknown): MountPlan | null => {
   let target: unknown;
@@ -108,17 +103,17 @@ const migrateV1Service = (service: unknown): Record<string, unknown> | null => {
         if (realization !== "passthrough" && realization !== "accelerated") return null;
         // Accelerated non-app binds used index-derived mountKeys; never invent one.
         if (realization === "accelerated") return null;
-        const create = optionalBoolean(createHostPath);
+        if (createHostPath !== undefined && typeof createHostPath !== "boolean") return null;
         const excludes = optionalStringArray(mount.excludes);
         const includes = optionalStringArray(mount.includes);
-        if (create === null || excludes === null || includes === null) return null;
+        if (excludes === null || includes === null) return null;
         converted.push({
           type: "bind",
           source,
           target: portableTarget,
           readOnly,
           realization,
-          ...(create === undefined ? {} : { createHostPath: create }),
+          ...(createHostPath === undefined ? {} : { createHostPath }),
           ...(excludes === undefined ? {} : { excludes }),
           ...(includes === undefined ? {} : { includes }),
         });

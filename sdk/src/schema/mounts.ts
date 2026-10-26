@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { PortablePath } from "./primitives.ts";
 
@@ -58,7 +57,6 @@ export const TmpfsMountPlan = Schema.Struct({
 });
 export type TmpfsMountPlan = typeof TmpfsMountPlan.Type;
 
-/** One planned container mount. */
 export const MountPlan = Schema.Union([BindMountPlan, VolumeMountPlan, TmpfsMountPlan]);
 export type MountPlan = typeof MountPlan.Type;
 
@@ -86,7 +84,6 @@ export const DataStorePlan = Schema.Struct({
   key: Schema.optionalKey(Schema.String),
   /** Driver (provider-specific; `null` = default). */
   driver: Schema.optionalKey(Schema.String),
-  /** Optional driver opts. */
   driverOpts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 export type DataStorePlan = typeof DataStorePlan.Type;
@@ -113,7 +110,9 @@ export const orderMounts = <M extends MountPlan>(mounts: ReadonlyArray<M>): M[] 
   [...mounts].sort((left, right) => {
     const depth = targetDepth(left.target) - targetDepth(right.target);
     if (depth !== 0) return depth;
-    return left.target < right.target ? -1 : left.target > right.target ? 1 : 0;
+    if (left.target < right.target) return -1;
+    if (left.target > right.target) return 1;
+    return 0;
   });
 
 /** The first container target claimed by more than one mount, if any. */
@@ -132,8 +131,6 @@ export const effectiveExcludes = (bind: Pick<BindMountPlan, "excludes" | "includ
   return (bind.excludes ?? []).filter((entry) => !entry.startsWith("!") && !includes.has(entry));
 };
 
-const targetPrefix = (target: string): string => `${target.replace(/\/+$/u, "")}/`;
-
 /**
  * Ordered sync ignores for an accelerated bind: its effective excludes, the
  * relative target of every other mount beneath it, then `.git` unless included.
@@ -141,7 +138,7 @@ const targetPrefix = (target: string): string => `${target.replace(/\/+$/u, "")}
 export const bindSyncIgnores = (service: MountListOwner, bind: BindMountPlan): readonly string[] => {
   const includes = new Set(bind.includes ?? []);
   const ignores = new Set(effectiveExcludes(bind));
-  const prefix = targetPrefix(bind.target);
+  const prefix = `${bind.target.replace(/\/+$/u, "")}/`;
   for (const mount of service.mounts) {
     if (mount !== bind && mount.target.startsWith(prefix)) ignores.add(mount.target.slice(prefix.length));
   }

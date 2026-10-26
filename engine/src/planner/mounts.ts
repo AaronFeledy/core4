@@ -12,12 +12,8 @@ import {
 } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
-import {
-  type MountAuthoringContext,
-  compileAuthoredMounts,
-  excludeDestination,
-  literalIncludeError,
-} from "./authored-mounts.ts";
+import type { MountAuthoringContext } from "./authored-mount-entry.ts";
+import { compileAuthoredMounts, excludeDestination, literalIncludeError } from "./authored-mounts.ts";
 import { bindRealization } from "./compose-capabilities.ts";
 import { SERVICE_FEATURES_EXTENSION_KEY, serviceFeatureExtension } from "./extensions.ts";
 import { mergeDefaultExcludes } from "./file-sync.ts";

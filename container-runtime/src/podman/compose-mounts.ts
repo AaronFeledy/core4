@@ -6,10 +6,8 @@ import {
   type VolumeMountPlan,
   fileSyncVolumeName,
 } from "@lando/sdk/schema";
-import { duplicateServiceMountTarget } from "../container-mounts.ts";
-
+import { duplicateServiceMountTarget, mountSuffix } from "../container-mounts.ts";
 import { requiresLongMountSyntax } from "../mount-syntax.ts";
-import { mountSuffix } from "../plan.ts";
 
 export interface ComposeBindVolume {
   readonly type: "bind";
@@ -46,11 +44,8 @@ const shortVolumeSpec = (source: string, target: string, readOnly: boolean): str
 
 /** Plain-target tmpfs as Compose `tmpfs:` list entry: target or target[:ro][,options]. */
 export const shortTmpfsSpec = (mount: TmpfsMountPlan): string => {
-  const parts = [
-    ...(mount.readOnly ? (["ro"] as const) : []),
-    ...(mount.options === undefined || mount.options.length === 0 ? [] : [mount.options]),
-  ];
-  return parts.length === 0 ? mount.target : `${mount.target}:${parts.join(",")}`;
+  const options = [mount.readOnly ? "ro" : undefined, mount.options].filter(Boolean).join(",");
+  return options.length === 0 ? mount.target : `${mount.target}:${options}`;
 };
 
 /**
@@ -121,7 +116,7 @@ const bindVolumeEntry = (
         target: mount.target,
       });
     }
-    const source = fileSyncVolumeName(plan.name, String(service.name), mount.mountKey);
+    const source = fileSyncVolumeName(plan.name, service.name, mount.mountKey);
     return requiresLongMountSyntax(mount.target)
       ? { type: "volume", source, target: mount.target, read_only: mount.readOnly }
       : shortVolumeSpec(source, mount.target, mount.readOnly);
