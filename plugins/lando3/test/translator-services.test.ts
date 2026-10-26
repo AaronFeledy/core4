@@ -405,6 +405,7 @@ test("keeps the preview when a catalog service authors scanner, home, and meUser
     { kind: "dropped", keyPath: ["plugins"] },
     { kind: "needs-review", keyPath: ["services", "appserver", "type"] },
     { kind: "rewritten", keyPath: ["services", "appserver", "meUser"] },
+    { kind: "dropped", keyPath: ["services", "appserver", "home"] },
     { kind: "dropped", keyPath: ["services", "appserver", "moreHttpPorts"] },
   ]);
   expect<unknown>(result.expectations).toEqual([
