@@ -26,7 +26,6 @@ const plan = {
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [
     { name: "zeta", scope: "app", kind: "data" },
     { name: "alpha", scope: "app", kind: "data" },

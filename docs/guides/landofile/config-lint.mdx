@@ -16,7 +16,7 @@ lando app:config:lint
 
 Lint checks each retained root and include fragment against its authoring schema, then validates their effective composition and resolves every service type. It runs the same resolved-Landofile validation stage as `lando start` and `lando app:cache:refresh`, including event names and conflicts between tooling names and built-in commands.
 
-It does not run doctor checks, probe a provider, or start a container runtime. Every output format exits `1` when lint finds errors and `0` when it does not. JSON and YAML still return a successful report with `ok: true`: inspect `result.valid` and the violations list. Successful report generation is not itself a clean-lint verdict.
+It does not run doctor checks, probe a provider, or start a container runtime. Provider capability checks use the selected provider's offline capability declaration; when a provider has none, lint adds one `landofile.capability` warning that those checks run at `lando start`. Every output format exits `1` when lint finds errors and `0` when it does not. JSON and YAML still return a successful report with `ok: true`: inspect `result.valid` and the violations list. Successful report generation is not itself a clean-lint verdict.
 
 Lint resolves `{{ recipe.<option> }}` and `{{ env.* }}` expressions the same way `lando start` does, before validation, so a whole-value expression like `primary: "{{ recipe.flag }}"` or `httpPort: "{{ number(default(env.PORT, '8080')) }}"` lints as the boolean or number it resolves to. An unset env var with no `default()` is a violation at that path, reported against the layer file that wrote it. Planner-owned expressions (`app.*`, `proxy.*`, `services.<name>.creds.*`) evaluate too, so a route hostname built from `{{ app.name }}` is checked as the string it becomes. See [Landofile expressions](./expressions.mdx#whole-value-expressions-keep-their-type).
 
@@ -31,11 +31,13 @@ After expression materialization succeeds, lint collects independent findings fr
 | Rule | What it checks | Example path |
 | --- | --- | --- |
 | `landofile.validation` | Unknown keys, wrong literal types, missing required fields | `services.web.imgae` |
-| `landofile.compose-rejection` | Compose keys Lando rejects | `services.web.deploy.replicas` |
+| `landofile.compose-rejection` | Compose keys Lando rejects, including network attachment fields other than `aliases` | `services.web.deploy.replicas`, `services.web.networks.backend.ipv4_address` |
 | `landofile.expression` | Unresolvable `{{ }}` sites, type mismatches after evaluation | `tooling.t.cmd` |
 | `landofile.service` | Service-type configuration: native port vars, reserved ports, unsupported versions, storage scopes, duplicate log source ids, `appMount`, `webroot` on a type without support | `services.db.environment.PGPORT` |
 | `landofile.hostname` | Each `services.<name>.hostnames:` entry is a plain DNS name after evaluation | `services.web.hostnames[0]` |
 | `landofile.route` | Route syntax and authored HTTP endpoint selection in service `routes:` and top-level `proxy:` after evaluation | `services.web.routes[1]`, `proxy.web[0]` |
+| `landofile.network` | Service `networks:` keys are declared at the top level, no `networks.default`, `name` only with `external: true`, no `driver` on an external network, valid keys | `services.web.networks.backend`, `networks.backend.name` |
+| `landofile.capability` | Compose fields, routes, published ports, bind mounts, builds, storage, and agent forwarding the selected provider can't realize, checked against its offline capability declaration; one warning when that declaration is missing | `services.web.networks.default.aliases`, `services.web.ports` |
 | `landofile.healthcheck` | Authored `kind: http` or `kind: tcp` | `services.web.healthcheck.kind` |
 | `landofile.event` | Each key under `events:` is a lifecycle event or the `pre-`/`post-` bracket of a tooling task | `events.pre-buidl` |
 | `landofile.tooling` | No tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-`/`post-` events are reserved, such as `start` or `pull` | `tooling.run` |
@@ -47,9 +49,10 @@ An include failure points at the entry that declared it: `path` is `["includes",
 
 ## What only planning catches
 
-When the resolve pass completes, `lando start` and `lando app:cache:refresh` run the same shared checks, event and tooling names included, and fail with one `LandofileValidationError` listing the same issues: same `rule`, `path`, `message`, `suggestion`, and `source`. Planning then goes further than lint can without a provider or an assembled plan:
+When the resolve pass completes, `lando start` and `lando app:cache:refresh` run the same shared checks, event and tooling names included, and fail with one `LandofileValidationError` listing the same issues: same `rule`, `path`, `message`, `suggestion`, and `source`. Planning then goes further than lint can without an engine or an assembled plan:
 
-- provider capability checks and anything resolved from capabilities
+- whether an external network exists on the engine
+- capability checks for a provider that has no offline capability declaration
 - feature application
 - automatic route selection and route conflicts (`RouteInputError`)
 - `dependsOn` checks

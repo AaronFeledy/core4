@@ -198,7 +198,6 @@ const planFor = (providerId: string): AppPlan => ({
   provider: ProviderId.make(providerId),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

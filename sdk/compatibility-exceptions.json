@@ -4776,6 +4776,156 @@
     "justification": "Intentional pre-release diagnostic contract: subscriber-level recovery instructions cannot be whitespace-only."
   },
   {
+    "surface": "schema:NetworkPlan",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release E6 removes the duplicate NetworkPlan schema. AppPlan.networking is the sole network model; persisted plans tolerate the historical excess networks field."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "property-removed",
+    "path": "$.networks",
+    "justification": "Pre-release E6 removes the duplicate networks array in favor of AppPlan.networking. Persisted plans decode historical excess properties without requiring a migration."
+  },
+  {
+    "surface": "schema:CurrentExecutableAppPlan",
+    "changeKind": "property-removed",
+    "path": "$.networks",
+    "justification": "Pre-release E6 removes the inherited duplicate networks array in favor of AppPlan.networking. Desired-plan caches tolerate the historical excess property."
+  },
+  {
+    "surface": "schema:ProviderCapabilities",
+    "changeKind": "enum-narrowed",
+    "path": "$.composeServiceFields.supported.items",
+    "justification": "Pre-release E1 normalizes networks into AppPlan.networking and gates realization with authoredNetworks instead of the preserved Compose service-field family. Provider declarations must remove networks from composeServiceFields."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Pre-release E1 intentionally narrows network attachments to aliases and inert x-* metadata. ipv4_address, ipv6_address, link_local_ips, mac_address, driver_opts, priority, gw_priority and interface_name now fail validation with field-specific remediation instead of surviving as unrealized Compose data."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Pre-release E1 intentionally narrows authored network attachments to aliases and inert x-* metadata, rejecting address and interface settings with field-specific remediation; short and long network membership forms remain supported."
+  },
+  {
+    "surface": "schema:CompiledLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release E1 propagates the intentional ServiceConfig network attachment narrowing through compiled Landofile stages. Only aliases and inert x-* attachment metadata are supported; address and interface settings are rejected before planning."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.services.additionalProperties",
+    "justification": "Pre-release E1 propagates the intentional ServiceConfig attachment narrowing into identity-scoped documents. Addresses and interface settings are rejected; aliases and inert x-* metadata remain supported."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.services.additionalProperties",
+    "justification": "Pre-release E1 propagates the intentional ServiceConfig attachment narrowing into load-scoped documents. Addresses and interface settings are rejected; aliases and inert x-* metadata remain supported."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.services.additionalProperties",
+    "justification": "Pre-release E1 propagates the intentional ServiceConfig attachment narrowing into service-scoped documents. Addresses and interface settings are rejected; aliases and inert x-* metadata remain supported."
+  },
+  {
+    "surface": "schema:CurrentExecutableAppPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.networking.perAppBridge.anyOf",
+    "justification": "The existing pre-release network model permits a null perAppBridge for global plans. This mirrors the accepted NetworkingPlan/AppPlan exception on the executable-plan wrapper; persisted bridge objects remain accepted."
+  },
+  {
+    "surface": "schema:PostScratchDestroyEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "The existing pre-release network model permits a null perAppBridge. This mirrors the accepted NetworkingPlan/AppPlan exception in the scratch lifecycle event's embedded plan; previous bridge objects remain accepted."
+  },
+  {
+    "surface": "schema:PreScratchDestroyEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "The existing pre-release network model permits a null perAppBridge. This mirrors the accepted NetworkingPlan/AppPlan exception in the scratch lifecycle event's embedded plan; previous bridge objects remain accepted."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PostScratchDestroyEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PreScratchDestroyEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
     "surface": "command:app:info",
     "changeKind": "property-optional",
     "path": "$.services.items.appMount.excludes",

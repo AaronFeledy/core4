@@ -28,7 +28,6 @@ test.each(["text", "json"] as const)("surfaces the failing build step in %s outp
         metadata,
         extensions: {},
         routes: [],
-        networks: [],
         stores: [],
         fileSync: [],
         services: {

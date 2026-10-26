@@ -36,7 +36,6 @@ const planWithSteps = (buildSteps: ReadonlyArray<unknown>): AppPlan => {
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: {

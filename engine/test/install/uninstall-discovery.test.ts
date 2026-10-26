@@ -32,7 +32,6 @@ const fixture = () => {
         provider: ProviderId.make("podman"),
         services: {},
         routes: [],
-        networks: [],
         stores: [],
         fileSync: [],
         metadata: {

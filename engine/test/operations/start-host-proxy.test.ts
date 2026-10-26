@@ -96,7 +96,6 @@ const planFor = (eligible: boolean): AppPlan => {
     provider: ProviderId.make("lando"),
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

@@ -27,6 +27,7 @@ import {
   explicitDockerApiPrefixFromHost,
   isDockerApiPrefixFailure,
   learnDockerApiPrefix,
+  peekDockerDaemonApiVersion,
   resolveInitialDockerApiPrefix,
   resolvedPrefix,
   runDockerApiPrefixFlight,
@@ -34,6 +35,8 @@ import {
 import {
   DOCKER_API_PREFIX,
   type DockerApiNegotiationFail,
+  compareDockerApiVersion,
+  dockerApiPrefixFor,
   dockerApiVersionUnavailable,
 } from "./api-version.ts";
 
@@ -166,6 +169,15 @@ const initialPrefix = (session: DockerPrefixSession, ctx: ProviderErrorContext):
       ...(session.env === undefined ? {} : { env: session.env }),
     }),
   );
+
+const requestPrefix = (session: DockerPrefixSession, input: DockerHttpRequest, prefix: string): string => {
+  const advertised = peekDockerDaemonApiVersion(session.endpointKey);
+  return input.minimumApiVersion !== undefined &&
+    advertised !== undefined &&
+    (compareDockerApiVersion(advertised, input.minimumApiVersion) ?? -1) >= 0
+    ? dockerApiPrefixFor(input.minimumApiVersion)
+    : prefix;
+};
 
 const learnFromResponse = (
   session: DockerPrefixSession,
@@ -410,7 +422,11 @@ export const makeUnixDockerApiClient = (
       return yield* Effect.tryPromise({
         try: (signal) =>
           requestWithNegotiatedPrefix(session, ctx, async (prefix) => {
-            const spawned = await spawnCurl(prefix, input, combinedAbortSignal(input.signal, signal));
+            const spawned = await spawnCurl(
+              requestPrefix(session, input, prefix),
+              input,
+              combinedAbortSignal(input.signal, signal),
+            );
             if (spawned.exitCode !== 0) {
               throw unavailable(ctx)(
                 "docker-api",
@@ -466,7 +482,10 @@ export const makeNamedPipeDockerApiClient = (
       Effect.tryPromise({
         try: (signal) =>
           requestWithNegotiatedPrefix(session, ctx, (prefix) =>
-            clientFor(prefix).request({ ...input, signal: combinedAbortSignal(input.signal, signal) }),
+            clientFor(requestPrefix(session, input, prefix)).request({
+              ...input,
+              signal: combinedAbortSignal(input.signal, signal),
+            }),
           ),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
       }),
@@ -497,7 +516,10 @@ export const makeHttpDockerApiClient = (
       Effect.tryPromise({
         try: (signal) =>
           requestWithNegotiatedPrefix(session, ctx, (prefix) =>
-            clientFor(prefix).request({ ...input, signal: combinedAbortSignal(input.signal, signal) }),
+            clientFor(requestPrefix(session, input, prefix)).request({
+              ...input,
+              signal: combinedAbortSignal(input.signal, signal),
+            }),
           ),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
       }),

@@ -49,7 +49,6 @@ const planFor = (
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

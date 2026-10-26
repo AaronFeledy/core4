@@ -76,7 +76,6 @@ const runtimeAppPlan: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -89,6 +88,39 @@ const runtimeAppPlan: AppPlan = {
 
 const runWithCache = <A, E>(effect: Effect.Effect<A, E, import("@lando/sdk/services").CacheService>) =>
   Effect.runPromise(effect.pipe(Effect.provide(AppCacheService.layer)));
+
+test("reads a current cache containing the retired networks field", async () => {
+  // Given an old wire plan in an otherwise current cache envelope.
+  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-legacy-networks-"));
+  const appName = runtimeAppPlan.slug;
+  const appRoot = runtimeAppPlan.root;
+  const key = "legacy-networks";
+  const body = serialize({
+    schemaVersion: Number(APP_PLAN_CACHE_SCHEMA_VERSION),
+    landoVersion: CORE_VERSION,
+    key,
+    versionConstraints: [],
+    shadowHostChecks: [],
+    gitHostChecks: [],
+    generatedAtMs: 1,
+    plan: {
+      ...Schema.encodeSync(AppPlan)(runtimeAppPlan),
+      networks: [{ name: "lando-runtime-key", shared: false, driver: "bridge" }],
+    },
+  });
+  const header = Buffer.alloc(APP_PLAN_CACHE_HEADER_BYTES);
+  APP_PLAN_CACHE_MAGIC.copy(header, 0);
+  header.writeBigUInt64BE(APP_PLAN_CACHE_SCHEMA_VERSION, 4);
+  createHash("sha256").update(body).digest().copy(header, 12);
+  const path = appPlanCachePath(cacheRoot, appName, appRoot);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, Buffer.concat([header, body]));
+  // When the real cache reader decodes the persisted bytes.
+  const read = await Effect.runPromise(readCachedAppPlan({ cacheRoot, appName, appRoot, key }));
+  // Then this remains a cache hit with only the canonical network model.
+  expect(read?.id).toBe(runtimeAppPlan.id);
+  expect(read).not.toHaveProperty("networks");
+});
 
 test.each([6, 27, 28, 31])("ignores desired-plan revision %i without deleting it", async (revision) => {
   // Given
@@ -141,7 +173,6 @@ test.each([6, 27, 28, 31])("ignores desired-plan revision %i without deleting it
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

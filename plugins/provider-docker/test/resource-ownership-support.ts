@@ -46,7 +46,6 @@ const fixtureAt = (directory: string) => {
     identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
     provider: ProviderId.make("docker"),
     services: {},
-    networks: [],
     stores: [],
     routes: [],
     fileSync: [],

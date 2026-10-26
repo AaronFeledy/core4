@@ -95,7 +95,6 @@ export const layer = dataMoverLayer.pipe(
                 provider: ProviderId.make(provider.id),
                 services: {},
                 routes: [],
-                networks: [],
                 stores: [],
                 fileSync: [],
                 metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },

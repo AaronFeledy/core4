@@ -40,13 +40,25 @@ const PRESERVED_EXACT_PATH_ENTRY = {
 const preservedExactPaths: ReadonlySet<string> = new Set(ComposePreservedPathKey.literals);
 
 const preservedEntry = (path: string): ComposeDispositionEntry =>
-  path === "x-*"
-    ? PRESERVED_INERT_EXTENSION_ENTRY
-    : preservedExactPaths.has(path)
-      ? PRESERVED_EXACT_PATH_ENTRY
-      : PRESERVED_ENTRY;
+  path === "networks.*.x-*"
+    ? {
+        disposition: "preserved",
+        rationale: "Retained in the Landofile as inert metadata; never interpreted or capability-gated.",
+      }
+    : path === "x-*"
+      ? PRESERVED_INERT_EXTENSION_ENTRY
+      : preservedExactPaths.has(path)
+        ? PRESERVED_EXACT_PATH_ENTRY
+        : PRESERVED_ENTRY;
 
 const rejectedEntry = (path: string): ComposeDispositionEntry => {
+  if (path.startsWith("networks.*.")) {
+    return {
+      disposition: "rejected",
+      rationale: "Lando owns network address and interface settings.",
+      remediation: `Lando doesn't pin network addresses or interface settings. Remove ${path} and reach the service by its name or an alias.`,
+    };
+  }
   if (path === "extends" || path.startsWith("extends.")) {
     return {
       disposition: "rejected",
@@ -85,6 +97,9 @@ const rejectedEntry = (path: string): ComposeDispositionEntry => {
 type NormalizedServicePath = readonly [path: string, planTarget?: ReadonlyArray<string>];
 
 const normalizedServicePaths = [
+  ["networks", ["networking"]],
+  ["networks.*", ["networking"]],
+  ["networks.*.aliases", ["networking"]],
   ["build", ["artifact"]],
   ["build.args"],
   ["build.args.*"],
@@ -201,18 +216,6 @@ const preservedServicePaths = [
   "logging.options",
   "logging.options.*",
   "logging.x-*",
-  "networks",
-  "networks.*",
-  "networks.*.aliases",
-  "networks.*.driver_opts",
-  "networks.*.driver_opts.*",
-  "networks.*.gw_priority",
-  "networks.*.interface_name",
-  "networks.*.ipv4_address",
-  "networks.*.ipv6_address",
-  "networks.*.link_local_ips",
-  "networks.*.mac_address",
-  "networks.*.priority",
   "networks.*.x-*",
   "platform",
   "privileged",
@@ -242,6 +245,15 @@ const preservedServicePaths = [
 ] as const;
 
 const rejectedServicePaths = [
+  "networks.*.driver_opts",
+  "networks.*.driver_opts.*",
+  "networks.*.gw_priority",
+  "networks.*.interface_name",
+  "networks.*.ipv4_address",
+  "networks.*.ipv6_address",
+  "networks.*.link_local_ips",
+  "networks.*.mac_address",
+  "networks.*.priority",
   "annotations",
   "annotations.*",
   "attach",
@@ -510,7 +522,7 @@ export const composeTopLevelDispositions: Readonly<Record<string, ComposeDisposi
   },
   networks: {
     disposition: "normalized",
-    rationale: "Normalizes into AppPlan.networks.",
+    rationale: "Normalizes into AppPlan.networking when a service joins the declared network.",
   },
   configs: {
     disposition: "preserved",

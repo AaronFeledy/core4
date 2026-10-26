@@ -120,7 +120,6 @@ const makePlan = (appRoot: string): AppPlan => {
     provider: providerId,
     services: { [node.name]: node },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

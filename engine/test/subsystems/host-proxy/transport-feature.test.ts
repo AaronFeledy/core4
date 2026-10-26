@@ -272,7 +272,6 @@ describe("hostProxyRunLandoFeature", () => {
       provider: ProviderId.make("lando"),
       services: { [ServiceName.make("web")]: service },
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata,

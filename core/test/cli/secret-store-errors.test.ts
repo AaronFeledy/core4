@@ -105,7 +105,6 @@ const renderStartFailure = async (reference: string) => {
         },
       },
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata,

@@ -16,6 +16,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  landoNetworkingPlan,
 } from "@lando/sdk/schema";
 
 import { windowsMachineNetworkPlan } from "../src/windows-machine-network.ts";
@@ -52,15 +53,16 @@ const plan: AppPlan = {
   provider: service.provider,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
   extensions: {},
-  networking: {
-    perAppBridge: { name: "lando-restart-network", driver: "bridge" },
-    sharedNetworkMembership: { name: "lando_bridge_network", aliases: {} },
-  },
+  networking: landoNetworkingPlan({
+    slug: "restart-network",
+    serviceNames: ["web"],
+    sharedCrossAppNetwork: true,
+    authoredNetworks: [{ key: "extra", external: false, members: { web: [] } }],
+  }),
 };
 
 test.each([
@@ -70,73 +72,84 @@ test.each([
   { scenario: "old fingerprint version", missing: false, changed: false, proof: "old" },
   { scenario: "logical labels without physical proof", missing: false, changed: false, logicalLabels: true },
   { scenario: "missing network", missing: true, changed: false },
+  { scenario: "missing owned authored network", missing: false, missingAuthored: true, changed: false },
   {
     scenario: "changed immutable command versus old physical labels still reports config",
     missing: false,
     changed: true,
   },
-])("Windows restart preflight: $scenario", async ({ missing, changed, logicalLabels, proof }) => {
-  // Given a container attached to the current machine's physical networks.
-  const createdAt = "2026-10-09T00:00:00Z";
-  const physical = windowsMachineNetworkPlan(plan, createdAt);
-  const physicalService = physical.services[service.name];
-  if (physicalService === undefined) throw new Error("Missing physical web service fixture");
-  const desiredService: ServicePlan = changed ? { ...service, command: ["nginx", "-t"] } : service;
-  const desired: AppPlan = { ...plan, services: { [service.name]: desiredService } };
-  const names = [
-    physical.networking?.perAppBridge?.name,
-    physical.networking?.sharedNetworkMembership?.name,
-  ].filter((name): name is string => name !== undefined);
-  const labels = { ...commonContainerLabels(logicalLabels ? plan : physical, physicalService) };
-  if (proof === "missing") delete labels[CREATE_CONFIG_LABEL];
-  if (proof === "stale") labels[CREATE_CONFIG_LABEL] = "v2:stale";
-  if (proof === "old") {
-    labels[CREATE_CONFIG_LABEL] = labels[CREATE_CONFIG_LABEL]?.replace(/^v\d+:/, "v2:") ?? "v2:old";
-    expect(labels[CREATE_CONFIG_LABEL]).not.toBe(
-      commonContainerLabels(physical, physicalService)[CREATE_CONFIG_LABEL],
-    );
-  }
-  const api: PodmanApiClient = {
-    info: Effect.succeed({}),
-    ping: Effect.void,
-    request: () =>
-      Effect.succeed({
-        status: 200,
-        body: JSON.stringify({
-          Id: "existing-web",
-          Config: { Labels: labels },
-          State: { Running: true },
-          Mounts: [],
-          HostConfig: { PortBindings: {} },
-          NetworkSettings: {
-            Networks: Object.fromEntries((missing ? names.slice(1) : names).map((name) => [name, {}])),
-          },
+])(
+  "Windows restart preflight: $scenario",
+  async ({ missing, missingAuthored, changed, logicalLabels, proof }) => {
+    // Given a container attached to the current machine's physical networks.
+    const createdAt = "2026-10-09T00:00:00Z";
+    const physical = windowsMachineNetworkPlan(plan, createdAt);
+    const physicalService = physical.services[service.name];
+    if (physicalService === undefined) throw new Error("Missing physical web service fixture");
+    const desiredService: ServicePlan = changed ? { ...service, command: ["nginx", "-t"] } : service;
+    const desired: AppPlan = { ...plan, services: { [service.name]: desiredService } };
+    const names = [
+      physical.networking?.perAppBridge?.name,
+      physical.networking?.sharedNetworkMembership?.name,
+      ...(missingAuthored
+        ? []
+        : (physical.networking?.authoredNetworks ?? []).map((network) => network.name)),
+    ].filter((name): name is string => name !== undefined);
+    const labels = { ...commonContainerLabels(logicalLabels ? plan : physical, physicalService) };
+    if (proof === "missing") delete labels[CREATE_CONFIG_LABEL];
+    if (proof === "stale") labels[CREATE_CONFIG_LABEL] = "v2:stale";
+    if (proof === "old") {
+      labels[CREATE_CONFIG_LABEL] = labels[CREATE_CONFIG_LABEL]?.replace(/^v\d+:/, "v2:") ?? "v2:old";
+      expect(labels[CREATE_CONFIG_LABEL]).not.toBe(
+        commonContainerLabels(physical, physicalService)[CREATE_CONFIG_LABEL],
+      );
+    }
+    const api: PodmanApiClient = {
+      info: Effect.succeed({}),
+      ping: Effect.void,
+      request: () =>
+        Effect.succeed({
+          status: 200,
+          body: JSON.stringify({
+            Id: "existing-web",
+            Config: { Labels: labels },
+            State: { Running: true },
+            Mounts: [],
+            HostConfig: { PortBindings: {} },
+            NetworkSettings: {
+              Networks: Object.fromEntries((missing ? names.slice(1) : names).map((name) => [name, {}])),
+            },
+          }),
         }),
+    };
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "win32",
+        providerSocketPath: "\\\\.\\pipe\\podman-lando",
+        podmanApi: api,
+        podmanMachine: {
+          inspect: Effect.succeed("running"),
+          createdAt: Effect.succeed(createdAt),
+          create: Effect.void,
+          start: Effect.void,
+          stop: Effect.void,
+          upgrade: Effect.void,
+          teardown: Effect.void,
+        },
+        sanitizeAppliedPlan: (value) => value,
       }),
-  };
-  const provider = await Effect.runPromise(
-    makeRuntimeProvider({
-      platform: "win32",
-      providerSocketPath: "\\\\.\\pipe\\podman-lando",
-      podmanApi: api,
-      podmanMachine: {
-        inspect: Effect.succeed("running"),
-        createdAt: Effect.succeed(createdAt),
-        create: Effect.void,
-        start: Effect.void,
-        stop: Effect.void,
-        upgrade: Effect.void,
-        teardown: Effect.void,
-      },
-      sanitizeAppliedPlan: (value) => value,
-    }),
-  );
-  // When the public provider inspect surface supplies the restart preflight.
-  const runtime = await Effect.runPromise(
-    provider.inspect({ app: desired.id, service: service.name, plan: desired }),
-  );
-  // Then physical naming alone is not drift, but a missing attachment is.
-  expect(bringUpRecreateReasons(desired, desiredService, runtime, { skipAbsentFields: true })).toEqual(
-    changed || logicalLabels || proof !== undefined ? ["config"] : missing ? ["network"] : [],
-  );
-});
+    );
+    // When the public provider inspect surface supplies the restart preflight.
+    const runtime = await Effect.runPromise(
+      provider.inspect({ app: desired.id, service: service.name, plan: desired }),
+    );
+    // Then physical naming alone is not drift, but a missing attachment is.
+    expect(bringUpRecreateReasons(desired, desiredService, runtime, { skipAbsentFields: true })).toEqual(
+      changed || logicalLabels || proof !== undefined
+        ? ["config"]
+        : missing || missingAuthored
+          ? ["network"]
+          : [],
+    );
+  },
+);

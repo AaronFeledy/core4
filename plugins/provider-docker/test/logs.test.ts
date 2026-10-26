@@ -54,7 +54,6 @@ const makePlan = (): AppPlan => ({
   provider: providerId,
   services: { [serviceName]: makeService() },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

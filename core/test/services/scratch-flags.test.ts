@@ -101,7 +101,8 @@ const makeCapabilities = (sharedCrossAppNetwork: boolean): ProviderCapabilities 
   rootless: true,
   privilegedServices: false,
   architectureEmulation: false,
-  composeSpec: "portable",
+  composeSpec: "native",
+  authoredNetworks: true,
   providerExtensions: [],
 });
 
@@ -316,6 +317,34 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
 });
 
 describe("ScratchAppServiceLayer.layer --share-global-storage transform", () => {
+  test("preserves authored memberships and default aliases when sharing global storage", async () => {
+    const yaml = `${forkLandofile}\nnetworks:\n  peer:\n    external: true\n`;
+    const withNetworks = yaml.replace(
+      "    primary: true",
+      "    primary: true\n    networks:\n      peer:\n        aliases: [api]\n      default:\n        aliases: [www]",
+    );
+    await withScratchEnv(withNetworks, async () => {
+      const appliedPlans: AppPlan[] = [];
+      await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(
+            service.acquire({ source: { kind: "fork" }, detached: true, shareGlobalStorage: true }),
+          ),
+        ).pipe(Effect.provide(makeLayer(appliedPlans))),
+      );
+      const networking = appliedPlans.at(0)?.networking;
+      expect(networking?.authoredNetworks).toMatchObject([
+        {
+          key: "peer",
+          external: true,
+          name: "peer",
+          members: { appserver: { aliases: expect.arrayContaining(["api"]) } },
+        },
+      ]);
+      expect(networking?.perAppBridge?.aliases).toMatchObject({ appserver: ["www"] });
+      expect(networking?.sharedNetworkMembership?.name).toBe("lando_bridge_network");
+    });
+  });
   test("joins the shared cross-app network and stamps the share marker", async () => {
     await withScratchEnv(undefined, async () => {
       const appliedPlans: AppPlan[] = [];

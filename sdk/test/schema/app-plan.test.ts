@@ -66,7 +66,6 @@ const appPlanFixture: typeof AppPlan.Encoded = {
   provider: "lando",
   services: { web: servicePlanFixture },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -272,7 +271,7 @@ describe("AppPlan", () => {
     expect(web.mounts).toHaveLength(1);
     expect(web.endpoints).toHaveLength(1);
     expect(decoded.routes).toEqual([]);
-    expect(decoded.networks).toEqual([]);
+    expect(decoded.networking).toBeUndefined();
     expect(decoded.stores).toEqual([]);
     expect(decoded.metadata.runtime).toBe(4);
   });

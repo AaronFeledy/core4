@@ -101,7 +101,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     provider: providerId,
     services: map as AppPlan["services"],
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     metadata,

@@ -111,7 +111,6 @@ test("reconstructs trusted scope only from persisted connection facts including 
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },

@@ -37,7 +37,6 @@ const appPlan = (slug: string, service: ServicePlan, planRoutes: ReadonlyArray<R
   provider: providerId,
   services: { [service.name]: service },
   routes: planRoutes,
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

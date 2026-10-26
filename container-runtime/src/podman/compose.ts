@@ -13,7 +13,7 @@ import { ProviderInternalError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   type ServicePlan,
-  landoServiceNetworkAliases,
+  landoServiceNetworkAttachments,
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
@@ -176,11 +176,10 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
           depends_on: serviceDependsOn(service),
           labels: commonContainerLabels(plan, service),
           networks: Object.fromEntries(
-            networkNames.map((networkName) => {
-              const aliases =
-                networkName === sharedName ? landoServiceNetworkAliases(plan, service) : [service.name];
-              return [networkName, aliases.length > 0 ? { aliases } : {}];
-            }),
+            landoServiceNetworkAttachments(plan, service).map(({ name, aliases }) => [
+              name,
+              aliases.length > 0 ? { aliases } : {},
+            ]),
           ),
         }),
       ];
@@ -191,8 +190,11 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
       if (name === sharedName) {
         return [name, { external: true, name }];
       }
-      const planned = plan.networks.find((network) => network.name === name && network.shared === false);
-      return [name, { driver: planned?.driver ?? "bridge" }];
+      const authored = plan.networking?.authoredNetworks?.find((network) => network.name === name);
+      if (authored !== undefined) {
+        return [name, authored.external ? { external: true, name } : { driver: authored.driver ?? "bridge" }];
+      }
+      return [name, { driver: plan.networking?.perAppBridge?.driver ?? "bridge" }];
     }),
   );
   const volumes = Object.fromEntries([

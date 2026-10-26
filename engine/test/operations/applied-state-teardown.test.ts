@@ -161,7 +161,6 @@ const planAt = (root: string): AppPlan => ({
   provider: providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

@@ -51,7 +51,6 @@ const planWith = (mounts: ServicePlan["mounts"]): AppPlan => {
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -72,10 +71,10 @@ const makeFakeApi = () => {
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const action = containerMatch?.[2];
-        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+        if (request.method === "GET" && /^\/(libpod\/)?networks\//u.test(request.path)) {
           return { status: 404, body: "{}" };
         }
-        if (request.method === "POST" && request.path === "/networks/create") {
+        if (request.method === "POST" && /^\/(libpod\/)?networks\/create$/u.test(request.path)) {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && action === "json") {

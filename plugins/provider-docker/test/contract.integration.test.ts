@@ -136,7 +136,6 @@ const makePlan = (service = makeService()): AppPlan => ({
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -169,7 +168,6 @@ const makeAliasProbePlan = (): AppPlan => ({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -1025,7 +1023,6 @@ const makeMultiServicePlan = (opts: { includeStores?: boolean } = {}): AppPlan =
   provider: providerId,
   services: { [dbServiceName]: makeDbService(), [serviceName]: makeService() },
   routes: [],
-  networks: [],
   stores: opts.includeStores
     ? [
         { name: "myapp_db_data", scope: "app" as const, kind: "data" as const },
@@ -1756,7 +1753,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(compose).toContain("      custom-app-net:");
     expect(compose).toContain(
-      '      custom-shared-net:\n        aliases:\n          - "web.custom.internal"',
+      '      custom-shared-net:\n        aliases:\n          - "web.myapp.internal"\n          - "web.custom.internal"',
     );
     expect(compose).toContain('  custom-app-net:\n    driver: "bridge"');
     expect(compose).toContain('  custom-shared-net:\n    external: true\n    name: "custom-shared-net"');

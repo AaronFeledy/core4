@@ -13,6 +13,7 @@ import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-ext
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
+import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { evolveHistoricalToolingShorthand } from "./x-extension-tooling-shorthand-proof.ts";
@@ -79,7 +80,10 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
         evolveHistoricalIncludeChecksum(
           evolveHistoricalTimestamps(
             evolveHistoricalShorthand(
-              normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+              evolveHistoricalNetworks(
+                normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+                "authoring",
+              ),
             ),
             "authoring",
           ),
@@ -134,7 +138,10 @@ describe("embedded wire closed x-* artifact repair", () => {
       evolveHistoricalEndpointMetadata(
         evolveHistoricalTimestamps(
           evolveHistoricalShorthand(
-            normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+            evolveHistoricalNetworks(
+              normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+              "authoring",
+            ),
           ),
           "authoring",
         ),

@@ -163,12 +163,12 @@ const expectations = {
     ]);
   },
   "upstream/different_networks.compose.yaml": (context) => {
-    expect(valueAt(servicePlan(context, "entry").extensions.compose, "networks")).toEqual({
-      entrynetwork: {},
-    });
-    expect(valueAt(servicePlan(context, "target").extensions.compose, "networks")).toEqual({
-      targetnetwork: {},
-    });
+    expect(
+      context.plan.networking?.authoredNetworks?.map(({ key, members }) => [key, Object.keys(members)]),
+    ).toEqual([
+      ["entrynetwork", ["entry"]],
+      ["targetnetwork", ["target"]],
+    ]);
   },
   "upstream/simple_configfile.compose.yaml": (context) => {
     expect(valueAt(servicePlan(context, "entry").extensions.compose, "configs")).toEqual([
@@ -182,12 +182,9 @@ const expectations = {
     });
   },
   "upstream/simple_network.compose.yaml": (context) => {
-    expect(valueAt(servicePlan(context, "entry").extensions.compose, "networks")).toEqual({
-      mynetwork: {},
-    });
-    expect(valueAt(servicePlan(context, "target").extensions.compose, "networks")).toEqual({
-      mynetwork: {},
-    });
+    expect(
+      context.plan.networking?.authoredNetworks?.map(({ key, members }) => [key, Object.keys(members)]),
+    ).toEqual([["mynetwork", ["entry", "target"]]]);
   },
   "upstream/simple_secretfile.compose.yaml": (context) => {
     expect(valueAt(servicePlan(context, "entry").extensions.compose, "secrets")).toEqual([

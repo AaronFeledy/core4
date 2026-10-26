@@ -41,7 +41,6 @@ const plan: CurrentExecutableAppPlan = {
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

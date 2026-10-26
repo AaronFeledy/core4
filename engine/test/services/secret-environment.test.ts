@@ -80,7 +80,6 @@ const plan: AppPlan = {
   slug: "secret-app",
   provider: service.provider,
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: service.metadata,

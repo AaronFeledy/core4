@@ -117,7 +117,6 @@ const run = (landofile: LandofileShape, failOn?: string) => {
       [ServiceName.make("node")]: service("node"),
     },
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     metadata,

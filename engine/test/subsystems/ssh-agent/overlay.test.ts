@@ -41,7 +41,6 @@ const overlayFixture = (): AppPlan => {
       [ServiceName.make("db")]: service("db", {}),
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

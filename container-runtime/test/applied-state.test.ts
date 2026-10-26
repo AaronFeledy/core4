@@ -119,6 +119,7 @@ describe("applied plan state layouts", () => {
       };
       const encoded = {
         ...Schema.encodeSync(AppPlan)(current),
+        networks: [{ name: "lando-values", shared: false, driver: "bridge" }],
         services: {
           [service.name]: {
             ...Schema.encodeSync(AppPlan)(current).services[service.name],
@@ -151,6 +152,7 @@ describe("applied plan state layouts", () => {
       expect(observed?.root).toBe(current.root);
       expect(observed?.services[service.name]?.environment).toEqual({ TOKEN: "${secret:TOKEN}" });
       expect(observed).not.toHaveProperty("valueModel");
+      expect(observed).not.toHaveProperty("networks");
       expect(observed?.services[service.name]).not.toHaveProperty("environmentSecrets");
     },
   );
@@ -431,7 +433,6 @@ describe("applied plan records", () => {
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     events: { "pre-stop": [{ step: "echo bye", source: "project", sourceIndex: 0, status: "active" }] },

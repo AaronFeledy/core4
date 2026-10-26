@@ -36,11 +36,12 @@ const providerWithComposeServiceFields = {
   id: "lando",
   capabilities: {
     ...TestRuntimeProvider.capabilities,
-    composeServiceFields: { supported: ["networks", "configs", "secrets", "profiles", "labels"] },
+    composeServiceFields: { supported: ["configs", "secrets", "profiles", "labels"] },
   },
 } satisfies typeof TestRuntimeProvider;
 
 const OPTIONAL_CAPABILITY_FIELDS = new Set([
+  "authoredNetworks",
   "composePreservedPaths",
   "composeProjectFields",
   "hostProxy",

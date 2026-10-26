@@ -78,7 +78,6 @@ export const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [{ name: "database", scope: "service", kind: "data" }],
   fileSync: [],
   metadata,

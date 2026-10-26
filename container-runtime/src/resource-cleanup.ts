@@ -93,7 +93,7 @@ export const makeOwnedResourcesCleanup = (input: {
       if (
         resource.kind === "network" &&
         networkLabelsDecision(labels, expected) === "legacy" &&
-        (observed.Name ?? observed.name) !== resource.nativeName
+        (resource.role === "authored" || (observed.Name ?? observed.name) !== resource.nativeName)
       )
         return yield* Effect.fail(ownershipFailure(input.ctx.providerId));
       const nativeId =

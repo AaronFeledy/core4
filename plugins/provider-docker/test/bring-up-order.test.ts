@@ -58,7 +58,6 @@ const planWith = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
   provider: providerId,
   services: Object.fromEntries(services.map((entry) => [entry.name, entry])),
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "lando-bring-up-order-app", driver: "bridge" } },
   stores: [],
   fileSync: [],

@@ -3,18 +3,12 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
-import {
-  CapabilityError,
-  LandofileValidationError,
-  RouteProviderMismatchError,
-  causeMessage,
-} from "@lando/sdk/errors";
+import { LandofileValidationError, RouteProviderMismatchError, causeMessage } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   type CurrentExecutableAppPlan,
   type LoadScopedLandofile,
-  type NetworkPlan,
   type NetworkingPlan,
   type ProviderCapabilities,
   type ServicePlan,
@@ -61,11 +55,11 @@ import * as AppDefaults from "./app-defaults.ts";
 import { planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
+  assertAuthoredNetworksSupported,
   assertComposeKnobsSupported,
   assertComposePreservedPathsSupported,
   assertComposeProjectFieldsSupported,
   assertComposeServiceFieldsSupported,
-  missingCapability,
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
 import { loadComposeConfigFiles } from "./config-files.ts";
@@ -77,8 +71,9 @@ import { environmentCacheInput } from "./environment-cache-input.ts";
 import { resolveKnownEventSet } from "./event-set.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
-import { appNetworkName } from "./naming.ts";
+import { normalizeNetworks } from "./networks.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
+import { agentSocketCapabilityErrors, assertRouteNetworkingSupported } from "./resource-capabilities.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
@@ -234,36 +229,14 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       if (replacement !== undefined)
         applicationConfigs.set(feature.index, { _tag: "Materialized", config: replacement.config ?? {} });
     }
-    if (
-      sshAgentIntent.mode === "host" &&
-      prepared.features.some((feature) => feature.id === SSH_AGENT_FEATURE_ID) &&
-      !providerSatisfiesCapability(providerCapabilities, "agentSocket")
-    ) {
-      yield* Effect.fail(
-        missingCapability(
-          provider,
-          name,
-          SSH_AGENT_FEATURE_ID,
-          "agentSocket",
-          "Select a provider that advertises agentSocket delivery or set sshAgent.sidecar to true to use best-effort sidecar forwarding.",
-        ),
-      );
-    }
-    if (
-      gpgAgentIntent.forward &&
-      resolution.base === "lando" &&
-      providerSatisfiesCapability(providerCapabilities, "agentSocket") === false
-    ) {
-      yield* Effect.fail(
-        missingCapability(
-          provider,
-          name,
-          "lando.gpg-agent",
-          "agentSocket",
-          "Select a provider with agentSocket delivery or disable gpgAgent.forward.",
-        ),
-      );
-    }
+    for (const error of agentSocketCapabilityErrors(provider, providerCapabilities, {
+      name,
+      hostSsh:
+        sshAgentIntent.mode === "host" &&
+        prepared.features.some((feature) => feature.id === SSH_AGENT_FEATURE_ID),
+      gpgForward: gpgAgentIntent.forward && resolution.base === "lando",
+    }))
+      yield* Effect.fail(error);
     resolvedServices.push({
       routes,
       name,
@@ -354,6 +327,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       fileSystem,
     }).pipe(Effect.catch(() => Effect.succeed(null)));
     if (cached !== null) {
+      yield* assertAuthoredNetworksSupported(provider, providerCapabilities, cached.networking);
       yield* validateServiceDependencies(appRoot, cached.services);
       yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
@@ -412,22 +386,24 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       }),
     );
   }
-  if (routerEnabled && finalized.routes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
-    yield* Effect.fail(
-      new CapabilityError({
-        message: "Routes require provider capability sharedCrossAppNetwork.",
-        feature: "routes",
-        capability: "sharedCrossAppNetwork",
-        providerId: String(provider),
-        remediation: "Choose a provider with shared cross-app networking or remove the authored routes.",
-      }),
-    );
-  }
+  yield* assertRouteNetworkingSupported(
+    provider,
+    providerCapabilities,
+    routerEnabled && finalized.routes.length > 0,
+  );
   const serviceNames = Object.keys(finalized.services);
   const hasServices = serviceNames.length > 0;
   const perAppBridge = appId !== "global";
-  const networks: ReadonlyArray<NetworkPlan> =
-    hasServices && perAppBridge ? [{ name: appNetworkName(appSlug), shared: false, driver: "bridge" }] : [];
+  const authoredNetworking = yield* normalizeNetworks({
+    landofile,
+    services: Object.fromEntries(
+      resolvedServices
+        .filter(({ name }) => serviceNames.includes(name))
+        .map(({ name, service }) => [name, service]),
+    ),
+    appRoot,
+    perAppBridge,
+  });
   const networking: NetworkingPlan | undefined = hasServices
     ? landoNetworkingPlan({
         slug: appSlug,
@@ -435,6 +411,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         serviceNames,
         sharedCrossAppNetwork: providerCapabilities.sharedCrossAppNetwork,
         serviceHostnames: finalized.serviceHostnames,
+        ...authoredNetworking,
       })
     : undefined;
   const hostProxyExtension = hostProxyExtensionForCapabilities(providerCapabilities);
@@ -461,7 +438,6 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         router: { enabled: routerEnabled },
         services: finalized.services,
         routes: finalized.routes,
-        networks,
         ...(networking !== undefined ? { networking } : {}),
         stores: finalized.stores,
         fileSync: finalized.fileSync,
@@ -489,6 +465,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     effectiveEventsFor(planServices(finalized.services)),
   );
   yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
+  yield* assertAuthoredNetworksSupported(provider, providerCapabilities, plan.networking);
   yield* validateServiceProbes(plan);
   yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);

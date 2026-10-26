@@ -40,7 +40,6 @@ export const plan: AppPlan = {
     [ServiceName.make("db")]: service("db", false),
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},

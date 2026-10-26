@@ -155,6 +155,8 @@ export const normalizedSourceValue = (request: {
     }
     case "internal-endpoints":
       return service.expose;
+    case "networks":
+      return service.networks;
     case "published-endpoints": {
       if (match.matrixPath === "ports") return service.ports;
       const port = service.ports?.[matchedIndex(match, "ports")];

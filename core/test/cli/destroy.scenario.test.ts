@@ -151,7 +151,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [
     { name: "test_destroy_database_data", scope: "app", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },

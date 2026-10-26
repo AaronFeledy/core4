@@ -52,7 +52,6 @@ export const plan: AppPlan = {
     endpoint: 80,
     backend: { service: ServiceName.make(name), protocol: "http", port: 80 },
   })),
-  networks: [{ name: "shared", shared: true }],
   stores: [],
   fileSync: [],
   metadata,

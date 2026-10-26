@@ -195,7 +195,6 @@ const plan: AppPlan = {
     [valkey.name]: valkey,
   },
   routes: [],
-  networks: [],
   stores: [{ name: "test_info_postgres_data", kind: "data", scope: "app" }],
   fileSync: [],
   metadata,

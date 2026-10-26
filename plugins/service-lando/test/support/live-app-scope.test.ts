@@ -26,7 +26,6 @@ const plan = {
   provider: "lando" as AppPlan["provider"],
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: "2026-05-28T00:00:00Z", source: "test", runtime: 4 },

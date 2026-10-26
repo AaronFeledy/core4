@@ -35,6 +35,7 @@ import { evolveHistoricalContainerUser } from "./x-extension-container-user-proo
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
+import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
@@ -58,7 +59,9 @@ const expectedLandofile = (): JsonSchema =>
       evolveHistoricalEndpointMetadata(
         evolveHistoricalServicePort(
           evolveHistoricalTimestamps(
-            evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
+            evolveHistoricalContainerUser(
+              evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+            ),
             "bare",
           ),
         ),
@@ -103,8 +106,9 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("repairs the captured network map onto every current service schema", async () => {
-    const repaired = normalizeJsonSchema(
-      requireObject(repairClosedExtension(captured.networks), "repaired networks"),
+    const repaired = evolveHistoricalNetworks(
+      normalizeJsonSchema(requireObject(repairClosedExtension(captured.networks), "repaired networks")),
+      "bare",
     );
     for (const schemaId of NETWORK_SERVICE_CONFIGS) {
       const current = schemaAt(await loadNormalizedArtifact(`schema:${schemaId}`), "$.networks");

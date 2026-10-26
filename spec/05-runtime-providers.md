@@ -95,6 +95,8 @@ Before any provider `apply` mutates app containers, private networks, or volumes
 
 `RuntimeProviderContribution.resourceOwnership(ctx, root)` is a filesystem-only query and MUST NOT construct, initialize, or contact a runtime. It reads the provider-private `ctx.stateStore` `resource-ownership` namespace, keyed by canonical owner (§12.4.2). `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is the optional per-provider form of the same query, with the same filesystem-only restriction.
 
+`RuntimeProviderContribution.declaredCapabilities(platform, arch)` is optional. It returns the provider's capabilities for a host without IO and without constructing, initializing, or contacting a runtime, so it is a plain synchronous function rather than an Effect. `PluginRegistry.declaredProviderCapabilities(id, platform)` exposes it for offline config lint, which passes the resolved host platform (`PathsService.platform`), never a raw `process.platform`. A provider without it gets one lint warning that capability checks run at `lando start`.
+
 `RuntimeProviderRegistry` MUST provide all three evidence members. Callers pass canonical roots; app-kind and identity matching follows the shared placement predicate above.
 
 | Required member | Result and behavior | Failure channel |
@@ -107,15 +109,15 @@ Ambiguous applied claims and mismatched attribution MUST fail with `AppResolveEr
 
 Exact teardown queries every installed contribution's root inventory before any mutation, including an old applied app and a separate failed app. It validates ownership. An offline or corrupt nonempty hint fails with an actionable error and MUST NOT be treated as absent. Teardown evidence MAY be an applied plan, orphan observation plus ownership, or an ownership inventory alone (cleanup-only, no applied plan). Global teardown is the exception to the every-contribution inventory query: it consults only the realized global provider's inventory, or the host provider's when no applied global plan exists, through `RuntimeProviderRegistry.resourceOwnership`, and cleans up through that provider. It MUST NOT read or act on another provider's inventory.
 
-Inventories are teardown evidence only. Non-teardown resolution (selected restart, applied-state resolution) serves a matching applied plan without reading any provider's inventory; it consults inventories only when no applied plan matches, and a nonempty hint then produces the existing orphan refusal (`AppResolveError`). Only teardown probes the availability and cleanup capability of inventory providers. The internal whole-app stop that restart and rebuild run does not perform ownership cleanup.
+Inventories are teardown evidence only, except that a successful apply retires the entries of app-owned authored networks it removes (§10.1). Non-teardown resolution (selected restart, applied-state resolution) serves a matching applied plan without reading any provider's inventory; it consults inventories only when no applied plan matches, and a nonempty hint then produces the existing orphan refusal (`AppResolveError`). Only teardown probes the availability and cleanup capability of inventory providers. The internal whole-app stop that restart and rebuild run does not perform ownership cleanup.
 
-Whole-app `stop` and `destroy` combine verified cleanup outcomes. A network-only removal is not `unchanged`. An all-absent result stays `unchanged`. Verified absent or removed containers and private networks are retired from the inventory. Named volumes remain until the existing volume flags select them; a removed container's anonymous volumes go with it. Verification uses ownership labels, not trusted names, with one legacy exception for networks.
+Whole-app `stop` and `destroy` combine verified cleanup outcomes. A network-only removal is not `unchanged`. An all-absent result stays `unchanged`. Verified absent or removed containers and private networks are retired from the inventory. Named volumes remain until the existing volume flags select them; a removed container's anonymous volumes go with it. Verification uses ownership labels, not trusted names, with one legacy exception for per-app bridges.
 
 | Observed resource | Teardown action |
 |---|---|
 | Container with its app, root, and service ownership labels and an observed native id | Remove by observed native id. |
 | Container missing any of those labels or an observed native id | Refuse. No legacy exception. |
-| Network at the exact planned private network name with no labels at all | Legacy (created by an earlier build). Remove by observed native id during planful bring-down and ownership-inventory cleanup; a failed bring-up retains it like every other network. |
+| Per-app bridge at the exact planned private network name with no labels at all | Legacy (created by an earlier build). Remove by observed native id during planful bring-down and ownership-inventory cleanup; a failed bring-up retains it like every other network. |
 | Network with the expected ownership label set | Remove by observed native id. |
 | Network with any nonempty label set that is not the expected ownership set (partial, another app, root, owner, or provider) | MUST refuse. |
 | Shared network | Never removed. |
@@ -174,6 +176,7 @@ The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, 
 | `composeSpec` | Compose realization is `none`, `portable`, or `native`. |
 | `composeKnobs` | Exact supported preserved container-runtime knobs. |
 | `composeServiceFields` | Exact supported preserved service field families. |
+| `authoredNetworks` | Optional boolean for normalized authored network attachments and aliases; omission means unsupported. |
 | `composeProjectFields` | Exact supported preserved project fields. |
 | `composePreservedPaths` | Exact supported preserved descendant paths. |
 | `volumeSnapshot` | Volume snapshots are `native` or `none`. DataMover owns the host-archive fallback. |
@@ -230,8 +233,8 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `provider` | Selected provider id. |
 | `services` | Planned services keyed by service name. |
 | `routes` | Planner-resolved routes with explicit backend service, protocol, and port. |
-| `networks`, `stores` | Provider-neutral network and storage intent. |
-| `networking` | Explicit per-app bridge (or `null`) and optional shared-network membership with service aliases. |
+| `stores` | Provider-neutral storage intent. |
+| `networking` | Explicit per-app bridge (or `null`), optional shared-network membership with service aliases, and the authored networks services join (§10.1). |
 | `events` | Compiled Landofile `events:` and `hostEvents` steps with provenance and plan-time status (§8.5.7). Omitted from provider applied-state records. |
 | `metadata` | App planning metadata. |
 | `extensions` | Namespaced preserved provider intent. |

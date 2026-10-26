@@ -95,7 +95,6 @@ const acceleratedPlanFor = (root: AbsolutePath): AppPlan => {
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [{ engineId: "mutagen", session }],
     metadata,

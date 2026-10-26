@@ -1,9 +1,11 @@
 import { dirname } from "node:path";
 import { getLandofileValueSource } from "@lando/landofile/validation";
+import { normalizeHostPlatform } from "@lando/paths";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
 import { resolveLandofileForPlanning } from "../planner/event-set.ts";
 import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
+import { lintCapabilityIssues } from "../planner/lint-capabilities.ts";
 import { toolingAndEventIssues } from "../planner/tooling-event-issues.ts";
 
 import type {
@@ -12,7 +14,7 @@ import type {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import type { ConfigLintResult, ValidationIssue } from "@lando/sdk/schema";
+import type { ConfigLintResult, ProviderId, ValidationIssue } from "@lando/sdk/schema";
 
 import {
   type LintLandofileOptions,
@@ -53,6 +55,15 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     configService,
     fileSystem,
     pathsService,
+    ...(pluginRegistry.declaredProviderCapabilities === undefined
+      ? {}
+      : {
+          resolveCapabilities: (id: ProviderId) =>
+            pluginRegistry.declaredProviderCapabilities?.(
+              id,
+              pathsService?.platform ?? normalizeHostPlatform(),
+            ),
+        }),
     file: snapshot.landofilePath,
     appRoot: dirname(snapshot.landofilePath),
   }).pipe(Effect.result);
@@ -81,6 +92,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   const issues = [
     ...(resolved.success._tag === "Invalid" ? resolved.success.issues : []),
     ...toolingAndEventIssues(resolved.success.resolution),
+    ...(yield* lintCapabilityIssues(resolved.success.resolution)),
   ];
   const evaluated = issues.map((issue) => attributeEffectiveLintIssue(landofile, issue));
   const violations = mergeLintFindings([...result.violations, ...evaluated]);

@@ -89,7 +89,6 @@ const planWithFileSync = (root: string): AppPlan => ({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [
     {

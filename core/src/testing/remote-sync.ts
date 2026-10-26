@@ -71,7 +71,6 @@ const plan: AppPlan = {
   provider,
   services: {},
   routes: [],
-  networks: [],
   stores: [{ name: "database", scope: "app", kind: "data" }],
   fileSync: [],
   metadata: { resolvedAt: TIMESTAMP, source: "@lando/core/testing", runtime: 4 },

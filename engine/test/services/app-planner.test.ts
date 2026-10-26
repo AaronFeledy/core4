@@ -198,6 +198,7 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     "AppPlanner.planServices",
     "AppPlanner.applyPreparedFeatures",
     "AppPlanner.finalizeServices",
+    "AppPlanner.normalizeNetworks",
     "AppPlanner.validateServiceProbes",
   ]);
   const discover = spans.find((span) => span.name === "AppPlanner.discover");
@@ -3807,7 +3808,7 @@ describe("AppPlannerLayer.layer", () => {
     await withTempCwd(async () => {
       const appPlan = await plan(landofileFixture);
 
-      expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-myapp", driver: "bridge" });
     });
   });
 
@@ -3821,7 +3822,7 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
 
-      expect(appPlan.networks).toEqual([{ name: "lando-my-app", shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-my-app", driver: "bridge" });
     });
   });
 
@@ -3849,7 +3850,7 @@ describe("AppPlannerLayer.layer", () => {
       expect(appPlan.name).toBe(name);
       expect(appPlan.id).toBe(AppId.make(slug));
       expect(appPlan.slug).toBe(slug);
-      expect(appPlan.networks).toEqual([{ name: `lando-${slug}`, shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: `lando-${slug}`, driver: "bridge" });
       expect(appPlan.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toContain(
         `web.${slug}.internal`,
       );
@@ -3865,7 +3866,7 @@ describe("AppPlannerLayer.layer", () => {
         services: {},
       });
 
-      expect(appPlan.networks).toEqual([]);
+      expect(appPlan.networking).toBeUndefined();
     });
   });
 

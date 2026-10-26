@@ -28,7 +28,6 @@ const globalPlan: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("1970-01-01T00:00:00Z"), source: "test", runtime: 4 },

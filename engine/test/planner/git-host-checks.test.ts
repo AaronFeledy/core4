@@ -186,7 +186,6 @@ test("invalidates cached Git metadata paths when commondir changes", async () =>
       provider: "lando",
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       extensions: {},

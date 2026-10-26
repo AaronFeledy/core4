@@ -87,7 +87,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database, [node.name]: node },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -118,7 +117,7 @@ const makeFakeApi = () => {
             }),
           };
         }
-        if (request.path === "/networks/create") {
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && action === "json") {

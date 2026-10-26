@@ -54,7 +54,6 @@ const plan: AppPlan = {
     [database]: makeService(database),
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

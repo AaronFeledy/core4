@@ -46,7 +46,6 @@ const planWith = (extensions: Record<string, unknown>, appExtensions: Record<str
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

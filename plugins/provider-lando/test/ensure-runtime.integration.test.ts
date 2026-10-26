@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { DateTime, Duration, Effect, Stream } from "effect";
+import { DateTime, Duration, Effect, Schema, Stream } from "effect";
 
 import type { RetryPolicy } from "@lando/sdk/probe";
 
@@ -80,7 +80,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -148,8 +147,11 @@ const makeFakePodmanApi = (
             }),
           };
         }
-        if (request.path === "/networks/create") {
-          networks.add((request.body as { Name?: string }).Name ?? "");
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Union([Schema.Struct({ Name: Schema.String }), Schema.Struct({ name: Schema.String })]),
+          )(request.body);
+          networks.add("name" in body ? body.name : body.Name);
           return { status: 201, body: "{}" };
         }
         if (request.path === "/volumes/create") {

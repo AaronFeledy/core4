@@ -542,7 +542,6 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
           identity: { appRoot: globalRoot, ownerKey: "global-owner" },
           provider: ProviderId.make("docker"),
           services: {},
-          networks: [],
           stores: [],
           routes: [],
           fileSync: [],

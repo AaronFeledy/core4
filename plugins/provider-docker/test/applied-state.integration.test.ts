@@ -110,7 +110,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [{ name: "applied_state_db", scope: "app", kind: "data" }],
   fileSync: [],
   metadata,

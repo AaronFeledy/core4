@@ -22,7 +22,10 @@ export const normalizeBuildScripts = (value: BuildScript | undefined): ReadonlyA
   return value.map(normalizeBuildStep);
 };
 
-export const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+export const mergeComposeExtension = <S extends Pick<ServicePlan, "extensions">>(
+  servicePlan: S,
+  service: ServiceConfig,
+): S => {
   const startInterval = service.healthcheck === false ? undefined : service.healthcheck?.startInterval;
   const hasDependencyRestart =
     service.dependsOn?.some((dependency) => dependency.restart !== undefined) ?? false;
@@ -31,7 +34,6 @@ export const mergeComposeExtension = (servicePlan: ServicePlan, service: Service
     service.labels === undefined &&
     startInterval === undefined &&
     !hasDependencyRestart &&
-    service.networks === undefined &&
     service.configs === undefined &&
     service.secrets === undefined &&
     service.profiles === undefined &&
@@ -62,7 +64,6 @@ export const mergeComposeExtension = (servicePlan: ServicePlan, service: Service
     }
     compose.depends_on = dependsOn;
   }
-  if (service.networks !== undefined) compose.networks = service.networks;
   if (service.configs !== undefined) compose.configs = service.configs;
   if (service.secrets !== undefined) compose.secrets = service.secrets;
   if (service.profiles !== undefined) compose.profiles = service.profiles;

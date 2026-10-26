@@ -203,7 +203,6 @@ test("does not skip the provider when a version-1 persisted build result has the
       provider: provider.id,
       services: { [service.name]: input },
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: service.metadata,

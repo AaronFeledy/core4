@@ -6,6 +6,7 @@ export type ComposePlanAssertion =
   | "environment"
   | "healthcheck"
   | "internal-endpoints"
+  | "networks"
   | "published-endpoints"
   | "tmpfs"
   | "volumes";
@@ -25,6 +26,7 @@ export const COMPOSE_FIXTURE_ASSERTIONS: Readonly<Record<string, ComposeFixtureA
   expose: { assertion: "internal-endpoints" },
   healthcheck: { assertion: "healthcheck" },
   image: { assertion: "artifact-ref" },
+  networks: { assertion: "networks" },
   ports: { assertion: "published-endpoints" },
   tmpfs: { assertion: "tmpfs" },
   user: { assertion: "direct" },

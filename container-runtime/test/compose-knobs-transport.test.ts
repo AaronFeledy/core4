@@ -63,7 +63,6 @@ const plan: AppPlan = {
     } satisfies ServicePlan,
   },
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "compose-knob-transport-network", driver: "bridge" } },
   stores: [],
   fileSync: [],

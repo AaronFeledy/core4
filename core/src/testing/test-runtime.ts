@@ -314,7 +314,6 @@ const makeAppPlan = (input: {
     provider: input.providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: fixedMetadata,

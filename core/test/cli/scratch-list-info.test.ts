@@ -207,7 +207,6 @@ const planWithDetails = (cacheRoot: string, id: string): AppPlan => {
     provider: ProviderId.make("lando"),
     services: { [appserverName]: appserver, [databaseName]: database },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     networking: {

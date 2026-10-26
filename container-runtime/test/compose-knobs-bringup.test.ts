@@ -82,7 +82,6 @@ const planWithCompose = (
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     networking: { perAppBridge: { name: "compose-knob-network", driver: "bridge" } },
     stores: [],
     fileSync: [],
@@ -107,7 +106,10 @@ const makeFakeApi = () => {
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: 404, body: "{}" };
         }
-        if (request.method === "POST" && request.path === "/networks/create") {
+        if (
+          request.method === "POST" &&
+          ["/networks/create", "/libpod/networks/create"].includes(request.path)
+        ) {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && action === "json") {
@@ -142,7 +144,7 @@ const field = (value: unknown, key: string): unknown =>
 const hostConfig = (request: EngineHttpRequest | undefined): unknown => field(request?.body, "HostConfig");
 
 const BASELINE_CREATE_BODY_JSON =
-  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v3:de17a4c1806df6a0511617692d45d5b4e0219ef68e0c69ea894aea14b115d534"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
+  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v3:3e2372445af6dd3310469f2beb77aaf05f20bb4966d44abf792d00d1384f5c54"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web","web.compose-knob-bringup.internal"]}}}}';
 
 describe("Podman Compose knob bring-up realization", () => {
   test.each(["/workspace:v1", "/workspace", "/etc/config"])(

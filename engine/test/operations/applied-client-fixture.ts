@@ -111,7 +111,6 @@ export const appliedClientFixture = (
     provider: service.provider,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     extensions: {},
