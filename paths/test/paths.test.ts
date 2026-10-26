@@ -502,7 +502,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.providerPidPath).toBe(join(data, "runtime", "run", "podman.pid"));
     expect(paths.globalAppRoot).toBe(join(data, "global"));
     expect(paths.snapshotsDir).toBe(join(data, "snapshots"));
-    expect(paths.appSnapshotsDir("app-one")).toBe(join(data, "snapshots", "app-one"));
+    expect(paths.ownerSnapshotsDir("owner-one")).toBe(join(data, "snapshots", "owner-one"));
     expect(paths.managedFileLedger("app-one")).toBe(join(data, "managed-files", "app-one", "ledger.json"));
     expect(paths.tunnelRunDir).toBe(join(data, "run", "tunnels"));
   });
@@ -559,7 +559,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.pluginsDir).toBe("/iso/data/plugins");
     expect(paths.installRecordFile).toBe("/iso/data/install/record.json");
     expect(paths.snapshotsDir).toBe("/iso/data/snapshots");
-    expect(paths.appSnapshotsDir("app-one")).toBe("/iso/data/snapshots/app-one");
+    expect(paths.ownerSnapshotsDir("owner-one")).toBe("/iso/data/snapshots/owner-one");
     expect(paths.managedFileLedger("app-one")).toBe("/iso/data/managed-files/app-one/ledger.json");
     expect(paths.toolDownloadsDir("mutagen")).toBe("/iso/cache/tool-downloads/mutagen");
     expect(paths.scratchDir).toBe("/iso/cache/scratch");

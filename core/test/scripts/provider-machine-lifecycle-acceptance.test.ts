@@ -200,6 +200,6 @@ describe("provider machine lifecycle acceptance", () => {
     );
 
     expect(linuxCells.every((cell) => cell.releaseBlocking)).toBe(true);
-    expect(linuxCells.every((cell) => cell.runsOn === "ubuntu-24.04")).toBe(true);
+    expect(linuxCells.every((cell) => cell.runsOn === "ubuntu-26.04")).toBe(true);
   });
 });

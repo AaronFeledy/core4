@@ -1,0 +1,252 @@
+import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import * as Schema from "effect/Schema";
+import { renderCiWorkflow } from "../../../scripts/build-ci-workflow.ts";
+import { CI_JOB_TIERS, jobSelected, resultFailures, selectPaths } from "../../../scripts/ci-selection.ts";
+import { CiGitError, selectCi } from "../../../scripts/select-ci.ts";
+
+describe("CI selection", () => {
+  test.each([
+    ["docs/page.md", "docs"],
+    ["docs/page.mdx", "docs"],
+    ["docs/public/favicon.svg", "docs"],
+    ["docs/src/assets/logo.svg", "docs"],
+    ["docs/guides/start.mdx", "guides"],
+    ["docs/guides/start/fixtures/input.json", "guides"],
+    ["recipes/drupal/README.mdx", "runtime"],
+    ["docs/astro.config.ts", "runtime"],
+    ["scripts/build-ci-workflow.ts", "runtime"],
+    ["bun.lock", "runtime"],
+    ["core/test/foo.test.ts", "runtime"],
+    ["unknown", "runtime"],
+  ])("classifies %s as %s", (path, profile) => {
+    expect(selectPaths([path])).toMatchObject({ profile, broad: false });
+  });
+
+  test("widens mixed changes and empty diffs conservatively", () => {
+    expect(selectPaths(["docs/guides/start.mdx", "docs/intro.md"]).profile).toBe("guides");
+    expect(selectPaths(["docs/intro.md", "scripts/tool.ts"]).profile).toBe("runtime");
+    expect(selectPaths([])).toMatchObject({ profile: "runtime", reason: "empty diff" });
+  });
+
+  test("keeps the complete guide binary closure selected without broad provider coverage", () => {
+    const selection = selectPaths(["docs/guides/start.mdx"]);
+    for (const id of [
+      "schema-snapshot",
+      "bundled-codegen",
+      "library-api-tests",
+      "recipe-tests",
+      "container-helper",
+      "build-linux-x64",
+      "runtime-bundle-linux-x64",
+      "guide-scenarios-linux-x64-runner",
+    ]) {
+      const tier = CI_JOB_TIERS[id];
+      expect(tier && jobSelected(tier, selection)).toBe(true);
+    }
+    expect(jobSelected("broad", selection)).toBe(false);
+    expect(jobSelected("runtime", selection)).toBe(false);
+  });
+
+  test.each(["failure", "cancelled", "skipped"])("rejects selected %s results", (result) => {
+    expect(resultFailures(selectPaths(["docs/intro.md"]), { "docs-build": { result } })).toEqual([
+      `docs-build: ${result}`,
+    ]);
+  });
+
+  test("allows only policy-excluded skips and never hides failures or unknown jobs", () => {
+    const selection = selectPaths(["docs/intro.md"]);
+    expect(resultFailures(selection, { "build-linux-x64": { result: "skipped" } })).toEqual([]);
+    expect(resultFailures(selection, { "build-linux-x64": { result: "failure" } })).toHaveLength(1);
+    expect(resultFailures(selection, { selection: { result: "cancelled" } })).toHaveLength(1);
+    expect(resultFailures(selection, { surprise: { result: "success" } })).toHaveLength(1);
+  });
+
+  test("forces all jobs on push and dispatch even without history", () => {
+    for (const event of ["push", "workflow_dispatch"]) {
+      const selection = selectCi({ event, base: "", head: "", cwd: "/unusable" });
+      expect(selection.broad).toBe(true);
+      expect(Object.values(CI_JOB_TIERS).every((tier) => jobSelected(tier, selection))).toBe(true);
+    }
+  });
+
+  test("falls back for unusable SHAs without executing a diff", () => {
+    expect(selectCi({ event: "pull_request", base: "--bad", head: "", cwd: "/unusable" })).toMatchObject({
+      profile: "runtime",
+      broad: false,
+    });
+  });
+
+  test("does not mistake a broken git execution for unavailable history", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "ci-selection-broken-"));
+    try {
+      expect(() =>
+        selectCi({ event: "pull_request", base: "a".repeat(40), head: "b".repeat(40), cwd }),
+      ).toThrow(CiGitError);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test("uses merge-base history and classifies both sides of renames with NUL-safe names", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "ci-selection-"));
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(
+        ["git", "-c", "user.name=CI test", "-c", "user.email=ci@example.test", ...args],
+        { cwd },
+      );
+      expect(result.exitCode).toBe(0);
+      return result.stdout.toString().trim();
+    };
+    try {
+      git("init");
+      await mkdir(join(cwd, "docs"));
+      await writeFile(join(cwd, "runtime.ts"), "runtime");
+      git("add", ".");
+      git("commit", "-m", "base");
+      const ancestor = git("rev-parse", "HEAD");
+      git("checkout", "-b", "base");
+      await writeFile(join(cwd, "base-only.ts"), "base");
+      git("add", ".");
+      git("commit", "-m", "base advances");
+      const base = git("rev-parse", "HEAD");
+      git("checkout", "-b", "head", ancestor);
+      await writeFile(join(cwd, "docs/new\npage.md"), "docs");
+      git("add", ".");
+      git("commit", "-m", "docs");
+      expect(selectCi({ event: "pull_request", base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe(
+        "docs",
+      );
+      git("mv", "runtime.ts", "docs/moved.md");
+      git("commit", "-m", "move runtime to docs");
+      expect(selectCi({ event: "pull_request", base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe(
+        "runtime",
+      );
+      expect(selectCi({ event: "pull_request", base: "f".repeat(40), head: ancestor, cwd }).reason).toBe(
+        "missing commit history",
+      );
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test("generates a direct always-running final gate and explicit selection on every required job", () => {
+    const workflow = Schema.decodeUnknownSync(
+      Schema.Struct({
+        jobs: Schema.Record(
+          Schema.String,
+          Schema.Struct({
+            needs: Schema.optional(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+            if: Schema.optional(Schema.String),
+          }),
+        ),
+      }),
+    )(Bun.YAML.parse(renderCiWorkflow()));
+    expect(workflow.jobs.ci?.if).toBe("always()");
+    expect(workflow.jobs.ci?.needs).toEqual([
+      "selection",
+      ...Object.keys(CI_JOB_TIERS).filter((id) => id !== "bun-install-isolated-experiment"),
+    ]);
+    for (const id of Object.keys(CI_JOB_TIERS)) {
+      expect(workflow.jobs[id]?.needs).toContain("selection");
+      expect(workflow.jobs[id]?.if).toContain("always()");
+      expect(workflow.jobs[id]?.if).toContain("needs.selection.outputs");
+    }
+    expect(workflow.jobs["build-linux-x64"]?.if).toContain("!failure()");
+  });
+
+  test.each(["docs", "guides", "runtime", "broad"] as const)(
+    "executes the %s graph without cascading policy-intended skips",
+    (profile) => {
+      const jobs = Schema.decodeUnknownSync(
+        Schema.Struct({
+          jobs: Schema.Record(Schema.String, Schema.Struct({ if: Schema.optional(Schema.String) })),
+        }),
+      )(Bun.YAML.parse(renderCiWorkflow())).jobs;
+      const docs = ["static-checks-platform", "static-checks", "docs-build"];
+      const guides = [
+        ...docs,
+        "schema-snapshot",
+        "bundled-codegen",
+        "library-api-tests-runner",
+        "library-api-tests",
+        "recipe-tests-runner",
+        "recipe-tests",
+        "container-helper",
+        "build-linux-x64",
+        "runtime-bundle-linux-x64",
+        "guide-scenarios-linux-x64-runner",
+        "guide-scenarios-linux-x64",
+      ];
+      const runtime = [
+        ...guides,
+        "unit-tests-linux-x64-shard",
+        "unit-tests-linux-x64",
+        "test-isolation-linux-x64",
+        "perf-budget-linux-x64",
+      ];
+      const expected = { docs, guides, runtime, broad: Object.keys(CI_JOB_TIERS) }[profile];
+      const needs = {
+        ...Object.fromEntries(
+          Object.keys(CI_JOB_TIERS).map((id) => [
+            id,
+            { result: expected.includes(id) ? "success" : "skipped" },
+          ]),
+        ),
+        selection: {
+          result: "success",
+          outputs: { profile: profile === "broad" ? "runtime" : profile, broad: String(profile === "broad") },
+        },
+      };
+      for (const id of Object.keys(CI_JOB_TIERS)) {
+        const expression = jobs[id]?.if?.replace(/^\$\{\{ | \}\}$/g, "");
+        expect(expression).toBeDefined();
+        const evaluate = new Function("needs", "always", "cancelled", "failure", `return ${expression}`);
+        const actual: unknown = evaluate(
+          needs,
+          () => true,
+          () => false,
+          () => false,
+        );
+        expect({ id, selected: actual }).toEqual({ id, selected: expected.includes(id) });
+      }
+      expect(
+        resultFailures(
+          { profile: profile === "broad" ? "runtime" : profile, broad: profile === "broad", reason: "graph" },
+          needs,
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  test("typechecks docs-only PRs in the Linux static cell instead of repeating it in guide jobs", () => {
+    const jobs = Schema.decodeUnknownSync(
+      Schema.Struct({
+        jobs: Schema.Record(
+          Schema.String,
+          Schema.Struct({
+            steps: Schema.Array(
+              Schema.Struct({
+                name: Schema.optional(Schema.String),
+                run: Schema.optional(Schema.String),
+                if: Schema.optional(Schema.String),
+              }),
+            ),
+          }),
+        ),
+      }),
+    )(Bun.YAML.parse(renderCiWorkflow())).jobs;
+    expect(jobs["static-checks-platform"]?.steps.find((step) => step.run === "bun run typecheck")).toEqual({
+      name: "Typecheck",
+      if: "matrix.platform == 'linux-x64'",
+      run: "bun run typecheck",
+    });
+    expect(
+      Object.values(jobs)
+        .flatMap((job) => job.steps)
+        .filter((step) => step.run === "bun run typecheck"),
+    ).toHaveLength(1);
+  });
+});

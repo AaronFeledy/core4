@@ -66,7 +66,7 @@ const makeFakeHttpClient = (options: FakeOptions = {}) => {
       }
       return HttpClientResponse.fromWeb(
         request,
-        new Response(factory.data, { status: options.status ?? 200 }),
+        new Response(new Uint8Array(factory.data), { status: options.status ?? 200 }),
       );
     }),
   );

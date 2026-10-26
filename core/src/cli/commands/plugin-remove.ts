@@ -4,12 +4,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import {
-  type ConfigError,
-  type LandoCommandError,
-  NotImplementedError,
-  PluginManifestError,
-} from "@lando/sdk/errors";
+import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
@@ -188,13 +183,10 @@ const landofileReferencesPlugin = (content: string, name: string): boolean => {
   return false;
 };
 
-const activeLandofileRefusal = async (
-  name: string,
-  cwd: string,
-): Promise<NotImplementedError | undefined> => {
-  const landofilePath = await findLandofilePath(cwd);
+const activeLandofileRefusal = Effect.fnUntraced(function* (name: string, cwd: string) {
+  const landofilePath = yield* findLandofilePath(cwd);
   if (landofilePath === undefined) return undefined;
-  const content = await readFile(landofilePath, "utf8");
+  const content = yield* Effect.promise(() => readFile(landofilePath, "utf8"));
   if (!landofileReferencesPlugin(content, name)) return undefined;
   const appName =
     content.match(/^name:\s*['"]?([^'"#\n]+)['"]?/mu)?.[1]?.trim() ?? basename(dirname(landofilePath));
@@ -203,13 +195,16 @@ const activeLandofileRefusal = async (
     commandId: "meta:plugin:remove",
     remediation: `Remove ${name} from the plugins: block in app ${appName} (${landofilePath}), then retry \`lando plugin:remove ${name}\`.`,
   });
-};
+});
 
 export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
   options: PluginRemoveOptions,
 ): Effect.fn.Return<
   PluginRemoveResult,
-  ConfigError | LandoCommandError | NotImplementedError | PluginManifestError,
+  | LandoCommandError
+  | NotImplementedError
+  | PluginManifestError
+  | import("@lando/sdk/errors").LandofileFormConflictError,
   ConfigService
 > {
   if (options.name === "") {
@@ -226,8 +221,13 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
       new PluginManifestError({
         message: `Invalid plugin name: ${options.name}`,
         issues: [
-          "Plugin name must match the npm package-name grammar (`@scope/name` or `name`); path segments and version specifiers are rejected.",
+          {
+            path: [],
+            message:
+              "Plugin name must match the npm package-name grammar (`@scope/name` or `name`); path segments and version specifiers are rejected.",
+          },
         ],
+        remediation: "Pass an npm package name without a path or version specifier.",
       }),
     );
   }
@@ -241,7 +241,8 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
       new PluginManifestError({
         message: `Plugin name resolves outside ${modulesRoot}.`,
         pluginName: options.name,
-        issues: [`refusing to recursively remove ${moduleDir}`],
+        issues: [{ path: [], message: `refusing to recursively remove ${moduleDir}` }],
+        remediation: "Pass the installed plugin's npm package name, not a filesystem path.",
       }),
     );
   }
@@ -256,7 +257,8 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
       new PluginManifestError({
         message: `Plugin name resolves outside ${pluginsRoot}.`,
         pluginName: options.name,
-        issues: [`refusing to recursively remove ${versionedDir}`],
+        issues: [{ path: [], message: `refusing to recursively remove ${versionedDir}` }],
+        remediation: "Pass the installed plugin's npm package name, not a filesystem path.",
       }),
     );
   }
@@ -265,14 +267,15 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
       new PluginManifestError({
         message: `Plugin name "${options.name}" is reserved; refusing to remove shared/managed plugins root entries.`,
         pluginName: options.name,
-        issues: [`refusing to recursively remove managed plugins root entry ${versionedDir}`],
+        issues: [
+          { path: [], message: `refusing to recursively remove managed plugins root entry ${versionedDir}` },
+        ],
+        remediation: "Pass a plugin package name instead of a reserved plugins root entry.",
       }),
     );
   }
 
-  const activeRefusal = yield* Effect.promise(() =>
-    activeLandofileRefusal(options.name, options.cwd ?? process.cwd()),
-  );
+  const activeRefusal = yield* activeLandofileRefusal(options.name, options.cwd ?? process.cwd());
   if (activeRefusal !== undefined) return yield* Effect.fail(activeRefusal);
 
   if (!existsSync(pluginsRoot)) return { pluginName: options.name, removed: false };

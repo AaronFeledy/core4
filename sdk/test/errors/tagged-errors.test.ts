@@ -29,6 +29,7 @@ describe("DeprecatedSurfaceError", () => {
     expect(fields).toContain("kind");
     expect(fields).toContain("id");
     expect(fields).toContain("notice");
+    expect(fields).toContain("remediation");
   });
 
   test("constructs with the deprecated surface payload", () => {
@@ -36,6 +37,7 @@ describe("DeprecatedSurfaceError", () => {
       kind: "command",
       id: "app:start",
       notice: deprecationNoticeFixture,
+      remediation: 'Stop using command "app:start"; use the replacement surface.',
     });
 
     expect(error._tag).toBe("DeprecatedSurfaceError");
@@ -49,6 +51,7 @@ describe("DeprecatedSurfaceError", () => {
       kind: "command",
       id: "app:start",
       notice: deprecationNoticeFixture,
+      remediation: 'Stop using command "app:start"; use the replacement surface.',
     });
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
@@ -76,6 +79,8 @@ describe("DeprecationContradictionError", () => {
       canonicalId: "app:start",
       aliasId: "start",
       canonicalNotice: deprecationNoticeFixture,
+      remediation:
+        'Declare a deprecation notice for alias "start" that agrees with canonical "app:start", or stop registering the alias without its own notice.',
     });
 
     expect(error._tag).toBe("DeprecationContradictionError");
@@ -88,6 +93,8 @@ describe("DeprecationContradictionError", () => {
       canonicalId: "app:start",
       aliasId: "start",
       canonicalNotice: deprecationNoticeFixture,
+      remediation:
+        'Declare a deprecation notice for alias "start" that agrees with canonical "app:start", or stop registering the alias without its own notice.',
     });
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
@@ -118,12 +125,14 @@ describe("LandofileParseError", () => {
       message: "unexpected token",
       line: undefined,
       column: undefined,
+      remediation: "Correct the YAML syntax in /tmp/.lando.yml.",
     });
     expect(error._tag).toBe("LandofileParseError");
     expect(error.filePath).toBe("/tmp/.lando.yml");
     expect(error.message).toBe("unexpected token");
     expect(error.line).toBeUndefined();
     expect(error.column).toBeUndefined();
+    expect(error.remediation).toBe("Correct the YAML syntax in /tmp/.lando.yml.");
   });
 
   test("constructs with a structured payload (line/column populated)", () => {
@@ -132,14 +141,16 @@ describe("LandofileParseError", () => {
       message: "expected mapping value",
       line: 7,
       column: 12,
+      remediation: "Correct the YAML syntax in /tmp/.lando.yml at line 7.",
     });
     expect(error._tag).toBe("LandofileParseError");
     expect(error.filePath).toBe("/tmp/.lando.yml");
     expect(error.line).toBe(7);
     expect(error.column).toBe(12);
+    expect(error.remediation).toBe("Correct the YAML syntax in /tmp/.lando.yml at line 7.");
   });
 
-  test("carries optional parser remediation", () => {
+  test("carries constructor remediation", () => {
     const error = new LandofileParseError({
       filePath: "/tmp/.lando.yml",
       message: "unknown alias",
@@ -157,6 +168,7 @@ describe("LandofileParseError", () => {
       message: "unexpected token",
       line: 3,
       column: 1,
+      remediation: "Correct the YAML syntax in /app/.lando.yml at line 3.",
     });
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
@@ -188,6 +200,8 @@ describe("ProviderCapabilityError", () => {
       capability: "copyOnWriteAppRoot",
       requiredValue: true,
       actualValue: false,
+      remediation:
+        "Choose a provider that supports `copyOnWriteAppRoot`, or change the app so `provider-docker` is not asked for it.",
     });
     expect(error._tag).toBe("ProviderCapabilityError");
     expect(error.providerId).toBe("provider-docker");
@@ -204,6 +218,8 @@ describe("ProviderCapabilityError", () => {
       capability: "bindMountPerformance",
       requiredValue: "native",
       actualValue: "slow",
+      remediation:
+        "Choose a provider that supports `bindMountPerformance`, or change the app so `provider-docker` is not asked for it.",
     });
     expect(error._tag).toBe("ProviderCapabilityError");
     expect(error.requiredValue).toBe("native");
@@ -218,6 +234,8 @@ describe("ProviderCapabilityError", () => {
       capability: "sharedCrossAppNetwork",
       requiredValue: true,
       actualValue: false,
+      remediation:
+        "Choose a provider that supports `sharedCrossAppNetwork`, or change the app so `provider-docker` is not asked for it.",
     });
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
@@ -243,6 +261,8 @@ describe("LandoRuntimeBootstrapError", () => {
     const error = new LandoRuntimeBootstrapError({
       message: "plugin discovery failed",
       stage: "plugins",
+      remediation:
+        "Repair bundled or user plugin discovery (invalid manifests, missing modules) and re-run the command.",
     });
     expect(error._tag).toBe("LandoRuntimeBootstrapError");
     expect(error.message).toBe("plugin discovery failed");
@@ -255,6 +275,8 @@ describe("LandoRuntimeBootstrapError", () => {
       message: "could not enumerate plugin dirs",
       stage: "plugins",
       cause,
+      remediation:
+        "Repair bundled or user plugin discovery (invalid manifests, missing modules) and re-run the command.",
     });
     expect(error.cause).toBe(cause);
   });
@@ -263,6 +285,7 @@ describe("LandoRuntimeBootstrapError", () => {
     const error = new LandoRuntimeBootstrapError({
       message: "provider boot failed",
       stage: "provider",
+      remediation: "Install or select a working runtime provider (`lando setup`), then re-run the command.",
     });
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
@@ -290,6 +313,7 @@ describe("PluginLoadError", () => {
       message: "plugin entry threw on load",
       pluginName: "@lando/php",
       cause,
+      remediation: "Install or register the plugin, then retry.",
     });
     expect(error._tag).toBe("PluginLoadError");
     expect(error.pluginName).toBe("@lando/php");
@@ -301,6 +325,7 @@ describe("PluginLoadError", () => {
     const error = new PluginLoadError({
       message: "boom",
       pluginName: "@lando/php",
+      remediation: "Install or register the plugin, then retry.",
     });
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
@@ -319,25 +344,26 @@ describe("NoProviderInstalledError", () => {
   test("carries the payload fields needed to render a remediation hint", () => {
     const fields = Object.keys(NoProviderInstalledError.fields);
     expect(fields).toContain("message");
-    expect(fields).toContain("suggestion");
+    expect(fields).toContain("remediation");
+    expect(fields).not.toContain("suggestion");
   });
 
-  test("constructs with message and an optional suggestion", () => {
+  test("constructs with message and remediation", () => {
     const error = new NoProviderInstalledError({
       message: "no runtime provider installed",
-      suggestion: "run `lando setup` to install the bundled provider",
+      remediation: "run `lando setup` to install the bundled provider",
     });
     expect(error._tag).toBe("NoProviderInstalledError");
     expect(error.message).toBe("no runtime provider installed");
-    expect(error.suggestion).toBe("run `lando setup` to install the bundled provider");
+    expect(error.remediation).toBe("run `lando setup` to install the bundled provider");
   });
 
-  test("constructs without a suggestion (suggestion is optional)", () => {
+  test("constructs without remediation and supplies the default action", () => {
     const error = new NoProviderInstalledError({
       message: "no runtime provider installed",
     });
     expect(error._tag).toBe("NoProviderInstalledError");
-    expect(error.suggestion).toBeUndefined();
+    expect(error.remediation.trim().length).toBeGreaterThan(0);
   });
 
   test("survives Effect.failCause then Effect.runPromiseExit with _tag intact", async () => {
@@ -398,9 +424,14 @@ describe("MVP tagged-error catalog", () => {
   });
 
   test("each class exposes a stable _tag matching its own name", () => {
-    expect(new LandoRuntimeBootstrapError({ message: "x", stage: "minimal" })._tag).toBe(
-      "LandoRuntimeBootstrapError",
-    );
+    expect(
+      new LandoRuntimeBootstrapError({
+        message: "x",
+        stage: "minimal",
+        remediation:
+          "Fix the minimal runtime bootstrap failure (paths, permissions, or install layout) and re-run the command.",
+      })._tag,
+    ).toBe("LandoRuntimeBootstrapError");
     expect(
       new ProviderCapabilityError({
         providerId: "p",
@@ -409,6 +440,7 @@ describe("MVP tagged-error catalog", () => {
         capability: "c",
         requiredValue: true,
         actualValue: false,
+        remediation: "Choose a provider that supports `c`, or change the app so `p` is not asked for it.",
       })._tag,
     ).toBe("ProviderCapabilityError");
     expect(
@@ -417,9 +449,16 @@ describe("MVP tagged-error catalog", () => {
         message: "x",
         line: undefined,
         column: undefined,
+        remediation: "Correct the YAML syntax in /x.",
       })._tag,
     ).toBe("LandofileParseError");
-    expect(new PluginLoadError({ message: "x", pluginName: "p" })._tag).toBe("PluginLoadError");
+    expect(
+      new PluginLoadError({
+        message: "x",
+        pluginName: "p",
+        remediation: "Install or register the plugin, then retry.",
+      })._tag,
+    ).toBe("PluginLoadError");
     expect(new NoProviderInstalledError({ message: "x" })._tag).toBe("NoProviderInstalledError");
   });
 });
@@ -435,19 +474,27 @@ describe("GlobalServiceMissingError", () => {
     expect(fields).not.toContain("missing");
   });
 
-  test("decodes without remediation and without a missing payload", () => {
+  test("requires remediation and rejects a missing payload", () => {
     const decoded = Schema.decodeUnknownResult(GlobalServiceMissingError)({
       _tag: "GlobalServiceMissingError",
       message: "Global service(s) not available in the global app: mailpit.",
       requested: ["mailpit"],
       available: ["traefik"],
+      remediation: "Run lando global:install @lando/proxy-traefik to enable the router service.",
     });
 
     expect(Result.isSuccess(decoded)).toBe(true);
     if (Result.isSuccess(decoded)) {
-      expect(decoded.success.remediation).toBeUndefined();
+      expect(decoded.success.remediation).toContain("global:install");
       expect("missing" in decoded.success).toBe(false);
     }
+    const without = Schema.decodeUnknownResult(GlobalServiceMissingError)({
+      _tag: "GlobalServiceMissingError",
+      message: "Global service(s) not available in the global app: mailpit.",
+      requested: ["mailpit"],
+      available: ["traefik"],
+    });
+    expect(Result.isSuccess(without)).toBe(false);
   });
 });
 
@@ -457,6 +504,7 @@ describe("GlobalAutoStartError", () => {
       message: "Global service(s) not available in the global app: traefik.",
       requested: ["traefik"],
       available: [],
+      remediation: "Run lando global:install @lando/proxy-traefik to enable the router service.",
     });
     const error = new GlobalAutoStartError({
       message: "Failed to auto-start global services (traefik) required by test-start.",
@@ -467,7 +515,7 @@ describe("GlobalAutoStartError", () => {
 
     expect(error._tag).toBe("GlobalAutoStartError");
     expect(error.cause).toBe(cause);
-    expect(error.remediation).toBeUndefined();
+    expect(error.remediation.trim().length).toBeGreaterThan(0);
   });
 });
 
@@ -480,7 +528,11 @@ describe("AppResolveError", () => {
 
   test("constructs each documented reason variant", () => {
     for (const reason of ["ambiguous", "mismatch", "missing-root", "unknown-id", "not-found"] as const) {
-      const error = new AppResolveError({ message: `selector ${reason}`, reason });
+      const error = new AppResolveError({
+        message: `selector ${reason}`,
+        reason,
+        remediation: "Pass a valid app selector with a matching root, then retry.",
+      });
       expect(error._tag).toBe("AppResolveError");
       expect(error.reason).toBe(reason);
     }
@@ -491,6 +543,7 @@ describe("AppResolveError", () => {
       message: "decoded Landofile selector requires an explicit root",
       reason: "missing-root",
       detail: "landofile",
+      remediation: "Pass an explicit root with the landofile selector.",
     });
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);

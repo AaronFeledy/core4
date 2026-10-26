@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
-import { readFile } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { basename, relative, resolve } from "node:path";
 
 import { $ } from "bun";
 
+import { containerHelperNotices } from "../core/src/container-helper/notices.ts";
 import {
   type DeprecationReleaseOffender,
   type DeprecationReleaseResult,
@@ -273,8 +274,11 @@ const npmDevPublishScript = (): string =>
     "npm view @lando/core dist-tags.dev --json | grep -Eq '\"?4\\.0\\.0-dev\\.[0-9]+\"?'",
   ].join("\n");
 
-const libraryBundleCommands = (): ReadonlyArray<ReadonlyArray<string>> =>
-  releasePackageNames.map((packageName) => ["bun", "run", `--filter=${packageName}`, "build"]);
+const libraryBundleCommands = (): ReadonlyArray<ReadonlyArray<string>> => [
+  ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
+  ...releasePackageNames.map((packageName) => ["bun", "run", `--filter=${packageName}`, "build"]),
+  ["bun", "run", "scripts/check-compiled-binary-notices.ts", "--core-dist"],
+];
 
 const defaultRemediation = "Fix the failed release stage and rerun scripts/release.ts from a clean tree.";
 const compileBudgetMs = 10 * 60 * 1000;
@@ -312,8 +316,8 @@ const credentialSkipRequirements: Record<
   string,
   { readonly label: string; readonly credentials: CredentialRequirement }
 > = {
-  "10-notarize": { label: "Apple notarization credentials", credentials: appleNotarizationCredentials },
-  "12-provenance-sbom": { label: "provenance and cosign credentials", credentials: provenanceCredentials },
+  "11-notarize": { label: "Apple notarization credentials", credentials: appleNotarizationCredentials },
+  "13-provenance-sbom": { label: "provenance and cosign credentials", credentials: provenanceCredentials },
 };
 
 const macosReleaseArtifactPaths = (platforms: ReadonlyArray<CiPlatform>): ReadonlyArray<string> =>
@@ -365,7 +369,7 @@ const macosNotarizationCommands = (
 
 const DEFAULT_WINDOWS_TIMESTAMP_URL = "http://timestamp.digicert.com";
 const DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP =
-  "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$";
+  "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$";
 const COSIGN_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 
 const envValue = (env: ReleaseEnvironment, name: string): string | undefined => {
@@ -399,7 +403,7 @@ const spawnCommandsForStage = (
   platforms: ReadonlyArray<CiPlatform>,
   commands: ReadonlyArray<ReadonlyArray<string>>,
 ): ReadonlyArray<ReadonlyArray<string>> => {
-  if (stageId === "10-notarize") return macosNotarizationCommands(context.env, platforms);
+  if (stageId === "11-notarize") return macosNotarizationCommands(context.env, platforms);
   return commands;
 };
 
@@ -826,7 +830,9 @@ const uniqueAssetPaths = (assets: ReadonlyArray<string>): ReadonlyArray<string> 
   return unique;
 };
 
-const releaseGitHubAssetPaths = async (context: ReleaseStageContext): Promise<ReadonlyArray<string>> => {
+export const releaseGitHubAssetPaths = async (
+  context: ReleaseStageContext,
+): Promise<ReadonlyArray<string>> => {
   const version = releaseVersion(context.env);
   const manifest = await readReleaseManifest();
   const assets: Array<string> = [];
@@ -853,6 +859,7 @@ const releaseGitHubAssetPaths = async (context: ReleaseStageContext): Promise<Re
   }
 
   assets.push(
+    "dist/THIRD_PARTY_NOTICES.md",
     "dist/SHA256SUMS",
     "dist/SHA256SUMS.asc",
     "dist/SHA256SUMS.sig",
@@ -862,6 +869,15 @@ const releaseGitHubAssetPaths = async (context: ReleaseStageContext): Promise<Re
     "dist/release-artifacts.json",
   );
   if (context.target !== "library") {
+    const notices = await containerHelperNotices(
+      envValue(context.env, "LANDO_CONTAINER_HELPER_DIR") ?? "core/container-helper/dist",
+    );
+    await mkdir("dist", { recursive: true });
+    for (const notice of notices) {
+      const asset = `dist/container-helper-go-${basename(notice)}`;
+      await copyFile(notice, asset);
+      assets.push(asset);
+    }
     assets.push(
       "plugins/service-lando/tomcat/LICENSE",
       "plugins/service-lando/tomcat/NOTICE",
@@ -943,10 +959,10 @@ const releaseProvenanceScript = (context: ReleaseStageContext): string => {
     "--commit-sha",
     envValue(context.env, "GITHUB_SHA") ?? "",
     "--repository",
-    envValue(context.env, "GITHUB_REPOSITORY") ?? "lando-community/core4",
+    envValue(context.env, "GITHUB_REPOSITORY") ?? "AaronFeledy/core4",
     "--workflow-ref",
     envValue(context.env, "GITHUB_WORKFLOW_REF") ??
-      `lando-community/core4/.github/workflows/release.yml@${envValue(context.env, "GITHUB_REF") ?? ""}`,
+      `AaronFeledy/core4/.github/workflows/release.yml@${envValue(context.env, "GITHUB_REF") ?? ""}`,
     ...releaseSbomArtifacts(context, version).flatMap((artifact) => ["--artifact", artifact]),
   ];
   return args.map(shellQuote).join(" ");
@@ -1056,7 +1072,7 @@ const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<voi
   const windowsPlatforms = platforms.filter(isWindowsCiPlatform);
   if (windowsPlatforms.length > 0 && hostPlatform !== "win32") {
     throw new ReleaseStageError(
-      "7-compile",
+      "8-compile",
       artifactFamily,
       `compile ${windowsPlatforms.map((platform) => platform.id).join(", ")} on a ${hostPlatform} host`,
       "Bun embeds the Lando icon and Windows version info only when compiling on Windows. Run the Windows compile on a Windows host with LANDO_RELEASE_PLATFORM=windows-x64 (or windows-arm64), and the other targets with LANDO_RELEASE_PLATFORM on their hosts.",
@@ -1067,17 +1083,25 @@ const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<voi
   const version = configuredReleaseVersion(context.env);
 
   await context.runner.spawn({
-    stageId: "7-compile",
+    stageId: "8-compile",
     artifactFamily,
     summary: "install locked native packages for all release targets",
     remediation: defaultRemediation,
     cmd: ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
   });
 
+  await context.runner.spawn({
+    stageId: "8-compile",
+    artifactFamily,
+    summary: "generate compiled binary notices",
+    remediation: defaultRemediation,
+    cmd: ["bun", "run", "check:compiled-binary-notices"],
+  });
+
   for (const platform of platforms) {
     const startedAt = context.now();
     await context.runner.spawn({
-      stageId: "7-compile",
+      stageId: "8-compile",
       artifactFamily,
       summary: "build compiled release binary",
       remediation: defaultRemediation,
@@ -1091,7 +1115,7 @@ const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<voi
       throw new ReleaseCompileBudgetError(platform.id, durationMs, compileBudgetMs);
     }
     await context.runner.spawn({
-      stageId: "7-compile",
+      stageId: "8-compile",
       artifactFamily,
       summary: "sanitize compiled release binary",
       remediation: defaultRemediation,
@@ -1108,10 +1132,10 @@ const spawnStage =
   async (context: ReleaseStageContext): Promise<void> => {
     const { runner, target } = context;
     const requirement = credentialSkipRequirements[stage.id];
-    const platforms = stage.id === "10-notarize" ? releasePlatformsForContext(context) : [];
+    const platforms = stage.id === "11-notarize" ? releasePlatformsForContext(context) : [];
 
-    if (stage.id === "10-notarize" && !hasMacosPlatform(platforms)) {
-      context.logger("[release] skip 10-notarize (no macOS release platform selected)");
+    if (stage.id === "11-notarize" && !hasMacosPlatform(platforms)) {
+      context.logger("[release] skip 11-notarize (no macOS release platform selected)");
       return;
     }
 
@@ -1141,7 +1165,7 @@ const shellStage =
     const { runner, target } = context;
     const artifactFamily = artifactFamilyForStage(stage, target);
 
-    if (stage.id === "11-manifest") {
+    if (stage.id === "12-manifest") {
       const updateManifestPlatforms = updateManifestPlatformsForContext(context);
       await runner.shell({
         stageId: stage.id,
@@ -1152,7 +1176,7 @@ const shellStage =
       });
       if (
         !credentialGate(
-          "11-manifest signing",
+          "12-manifest signing",
           "checksum manifest signing credentials",
           manifestChecksumSigningCredentials,
           context,
@@ -1163,7 +1187,7 @@ const shellStage =
       if (
         shouldSignUpdateManifest(updateManifestPlatforms) &&
         !credentialGate(
-          "11-manifest signing",
+          "12-manifest signing",
           "update manifest cosign credentials",
           manifestCosignCredentials,
           context,
@@ -1181,7 +1205,7 @@ const shellStage =
       return;
     }
 
-    if (stage.id === "13-publish") {
+    if (stage.id === "14-publish") {
       if (
         target !== "binary" &&
         !credentialGate(stage.id, "publish credentials", libraryPublishCredentials, context)
@@ -1191,7 +1215,7 @@ const shellStage =
       if (!credentialGate(stage.id, "GitHub Releases credentials", githubReleaseCredentials, context)) return;
       if (context.localRehearsal) {
         context.logger(
-          "[release] warning LOCAL_REHEARSAL=1: skip 13-publish (local rehearsal never publishes)",
+          "[release] warning LOCAL_REHEARSAL=1: skip 14-publish (local rehearsal never publishes)",
         );
         return;
       }
@@ -1205,7 +1229,7 @@ const shellStage =
       });
 
       if (target === "binary") {
-        context.logger("[release] skip 13-publish npm packages (binary release target)");
+        context.logger("[release] skip 14-publish npm packages (binary release target)");
         return;
       }
     }
@@ -1216,7 +1240,7 @@ const shellStage =
       summary: stage.commandSummary,
       remediation: stage.remediation,
       script,
-      prepareNpmDevPackages: stage.id === "13-publish",
+      prepareNpmDevPackages: stage.id === "14-publish",
     });
   };
 
@@ -1289,7 +1313,7 @@ const platformSigningPlans: ReadonlyArray<PlatformSigningPlan> = [
 ];
 
 const platformSignStage: ReleaseStage = {
-  id: "9-sign",
+  id: "10-sign",
   label: "Sign",
   description: "macOS codesign, Windows Authenticode/keyless cosign, and manifest-layer Linux signing.",
   forBinary: true,
@@ -1301,19 +1325,19 @@ const platformSignStage: ReleaseStage = {
     const platforms = releasePlatformsForContext(context);
     const selectedPlans = platformSigningPlans.filter((plan) => plan.selected(platforms));
     const command = {
-      stageId: "9-sign",
+      stageId: "10-sign",
       artifactFamily: artifactFamilyForStage(platformSignStage, context.target),
       summary: platformSignStage.commandSummary,
       remediation: platformSignStage.remediation,
     };
 
     if (selectedPlans.length === 0) {
-      context.logger("[release] skip 9-sign (selected release platforms are signed at the manifest layer)");
+      context.logger("[release] skip 10-sign (selected release platforms are signed at the manifest layer)");
       return;
     }
 
     const gatedPlans = selectedPlans.filter((plan) =>
-      credentialGate("9-sign", plan.credentialLabel, plan.credentials, context),
+      credentialGate("10-sign", plan.credentialLabel, plan.credentials, context),
     );
 
     for (const plan of gatedPlans) {
@@ -1323,7 +1347,7 @@ const platformSignStage: ReleaseStage = {
 };
 
 const provenanceSbomStage: ReleaseStage = {
-  id: "12-provenance-sbom",
+  id: "13-provenance-sbom",
   label: "Provenance & SBOM",
   description: "CycloneDX SBOM + SLSA provenance + cosign signatures.",
   forBinary: true,
@@ -1334,7 +1358,7 @@ const provenanceSbomStage: ReleaseStage = {
   run: async (context): Promise<void> => {
     if (
       !credentialGate(
-        "12-provenance-sbom",
+        "13-provenance-sbom",
         "provenance and cosign credentials",
         provenanceCredentials,
         context,
@@ -1350,7 +1374,7 @@ const provenanceSbomStage: ReleaseStage = {
     await spawnCommands(
       context.runner,
       {
-        stageId: "12-provenance-sbom",
+        stageId: "13-provenance-sbom",
         artifactFamily,
         summary: "cosign-sign and verify release checksum manifest",
         remediation: provenanceSbomStage.remediation,
@@ -1361,7 +1385,7 @@ const provenanceSbomStage: ReleaseStage = {
       await spawnCommands(
         context.runner,
         {
-          stageId: "12-provenance-sbom",
+          stageId: "13-provenance-sbom",
           artifactFamily,
           summary: "cosign-sign and verify release binaries",
           remediation: provenanceSbomStage.remediation,
@@ -1369,7 +1393,7 @@ const provenanceSbomStage: ReleaseStage = {
         binaryCosignCommands(context.env, binarySignatureArtifacts),
       );
       await context.runner.shell({
-        stageId: "12-provenance-sbom",
+        stageId: "13-provenance-sbom",
         artifactFamily,
         summary: "write release-note binary verification commands",
         remediation: provenanceSbomStage.remediation,
@@ -1378,7 +1402,7 @@ const provenanceSbomStage: ReleaseStage = {
     }
     if (installerSignatureArtifacts.length > 0) {
       await context.runner.shell({
-        stageId: "12-provenance-sbom",
+        stageId: "13-provenance-sbom",
         artifactFamily,
         summary: "stage installer scripts and trust roots",
         remediation: provenanceSbomStage.remediation,
@@ -1387,7 +1411,7 @@ const provenanceSbomStage: ReleaseStage = {
       await spawnCommands(
         context.runner,
         {
-          stageId: "12-provenance-sbom",
+          stageId: "13-provenance-sbom",
           artifactFamily,
           summary: "cosign-sign and verify installer scripts",
           remediation: provenanceSbomStage.remediation,
@@ -1396,7 +1420,7 @@ const provenanceSbomStage: ReleaseStage = {
       );
     }
     await context.runner.shell({
-      stageId: "12-provenance-sbom",
+      stageId: "13-provenance-sbom",
       artifactFamily,
       summary: "generate CycloneDX SBOM artifacts and link release artifact entries",
       remediation: provenanceSbomStage.remediation,
@@ -1404,7 +1428,7 @@ const provenanceSbomStage: ReleaseStage = {
     });
     context.logger("[release] generated CycloneDX SBOM artifacts");
     await context.runner.shell({
-      stageId: "12-provenance-sbom",
+      stageId: "13-provenance-sbom",
       artifactFamily,
       summary: "generate SLSA provenance attestations and link release artifact entries",
       remediation: provenanceSbomStage.remediation,
@@ -1413,7 +1437,7 @@ const provenanceSbomStage: ReleaseStage = {
     await spawnCommands(
       context.runner,
       {
-        stageId: "12-provenance-sbom",
+        stageId: "13-provenance-sbom",
         artifactFamily,
         summary: "cosign-sign and verify SLSA provenance attestations",
         remediation: provenanceSbomStage.remediation,
@@ -1421,6 +1445,33 @@ const provenanceSbomStage: ReleaseStage = {
       provenanceCosignCommands(context.env, releaseProvenanceFiles(context)),
     );
     context.logger("[release] generated and signed SLSA provenance attestations");
+  },
+};
+
+const containerHelperStage: ReleaseStage = {
+  id: "2-container-helper",
+  label: "Container helper",
+  description: "Test and build static Linux helpers inside a Lando builder container.",
+  forBinary: true,
+  forLibrary: true,
+  kind: "spawn",
+  commandSummary: "bun run scripts/build-container-helper.ts --test",
+  remediation:
+    "Fix the Lando provider and run bun run scripts/build-container-helper.ts --test, or set LANDO_CONTAINER_HELPER_DIR to prebuilt helpers from the same commit.",
+  run: async (context): Promise<void> => {
+    const helperDir = envValue(context.env, "LANDO_CONTAINER_HELPER_DIR");
+    if (helperDir !== undefined) {
+      await containerHelperNotices(helperDir);
+      context.logger(`[release] skip 2-container-helper build (using prebuilt helpers from ${helperDir})`);
+      return;
+    }
+    await context.runner.spawn({
+      stageId: containerHelperStage.id,
+      artifactFamily: artifactFamilyForStage(containerHelperStage, context.target),
+      summary: containerHelperStage.commandSummary,
+      remediation: containerHelperStage.remediation,
+      cmd: ["bun", "run", "scripts/build-container-helper.ts", "--test"],
+    });
   },
 };
 
@@ -1436,8 +1487,9 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     remediation: defaultRemediation,
     command: ["bun", "run", "scripts/codegen.ts"],
   }),
+  containerHelperStage,
   defineStage({
-    id: "2-typecheck",
+    id: "3-typecheck",
     label: "Type-check",
     description: "tsc -b across the workspace.",
     forBinary: true,
@@ -1448,7 +1500,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     command: ["bun", "run", "typecheck"],
   }),
   defineStage({
-    id: "3-lint-format",
+    id: "4-lint-format",
     label: "Lint/format",
     description: "biome check (lint + format).",
     forBinary: true,
@@ -1459,7 +1511,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     command: ["bun", "run", "lint"],
   }),
   defineStage({
-    id: "4-test-gates",
+    id: "5-test-gates",
     label: "Test gates",
     description: "bun --no-orphans test (unit + library + scenario + smoke).",
     forBinary: true,
@@ -1470,7 +1522,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     command: ["bun", "--no-orphans", "test"],
   }),
   defineStage({
-    id: "5-schema-artifacts",
+    id: "6-schema-artifacts",
     label: "Schema artifacts",
     description:
       "Regenerate public schema artifacts (dist/schemas, dist/command-schemas) and the package mirror via codegen:schema-snapshot.",
@@ -1482,7 +1534,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     command: ["bun", "run", "codegen:schema-snapshot"],
   }),
   defineStage({
-    id: "6-library-bundle",
+    id: "7-library-bundle",
     label: "Library bundle",
     description: "bun build (no --compile) per package.json#exports entry.",
     forBinary: false,
@@ -1493,7 +1545,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     command: libraryBundleCommands(),
   }),
   {
-    id: "7-compile",
+    id: "8-compile",
     label: "Compile",
     description: "Build the main binary through the per-target compiled-binary wrapper.",
     forBinary: true,
@@ -1504,7 +1556,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     run: compileReleaseBinaries,
   },
   defineStage({
-    id: "8-strip",
+    id: "9-strip",
     label: "Strip",
     description: "Remove debug symbols where the platform supports it.",
     forBinary: true,
@@ -1512,11 +1564,11 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     kind: "skip",
     commandSummary: "strip release binaries",
     remediation: "Wire platform-specific strip commands before making this stage required.",
-    command: "[release] skip 8-strip (platform-specific stripping not yet wired)",
+    command: "[release] skip 9-strip (platform-specific stripping not yet wired)",
   }),
   platformSignStage,
   defineStage({
-    id: "10-notarize",
+    id: "11-notarize",
     label: "Notarize",
     description: "macOS only: notarytool submit + stapler staple.",
     forBinary: true,
@@ -1528,7 +1580,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     command: [],
   }),
   defineStage({
-    id: "11-manifest",
+    id: "12-manifest",
     label: "Manifest",
     description: "Write SHA256SUMS, SHA512SUMS, GPG-sign, write update-manifest.json.",
     forBinary: true,
@@ -1540,7 +1592,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
   }),
   provenanceSbomStage,
   defineStage({
-    id: "13-publish",
+    id: "14-publish",
     label: "Publish",
     description: "Publish @lando/core and bundled workspace packages to npm on the dev tag.",
     forBinary: true,

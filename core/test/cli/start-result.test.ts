@@ -5,6 +5,7 @@ import type { StartAppResult } from "@lando/sdk/app";
 import { startSpec } from "../../src/cli/command-specs/app/start.ts";
 import { buildStartSummary, renderStartAppResult } from "../../src/cli/commands/start-result.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
+import { connections } from "./connection-fixtures";
 
 const ESC = String.fromCharCode(27);
 const PINK = `${ESC}[95m`;
@@ -34,16 +35,24 @@ const decorated = (columns = 80): RenderContext => ({
 const readyResult: StartAppResult = {
   app: "my-app",
   servicesStarted: [
-    { name: "web", state: "running", endpoints: ["http://localhost:3000", "https://my-app.lndo.site"] },
-    { name: "database", state: "ready", endpoints: ["tcp://localhost:5432"] },
+    {
+      name: "web",
+      state: "running",
+      connections: connections(["http://localhost:3000", "https://my-app.lndo.site"]),
+    },
+    { name: "database", state: "ready", connections: connections(["tcp://localhost:5432"]) },
   ],
 };
 
 const mixedResult: StartAppResult = {
   app: "my-app",
   servicesStarted: [
-    { name: "web", state: "running", endpoints: ["http://localhost:3000"] },
-    { name: "database", state: "completed", endpoints: ["tcp://localhost:5432"] },
+    { name: "web", state: "running", connections: connections(["http://localhost:3000"]) },
+    {
+      name: "database",
+      state: "completed",
+      connections: connections(["tcp://localhost:5432"], "host", "inactive"),
+    },
   ],
 };
 
@@ -52,22 +61,51 @@ const emptyResult: StartAppResult = { app: "my-app", servicesStarted: [] };
 const duplicateResult: StartAppResult = {
   app: "my-app",
   servicesStarted: [
-    { name: "web", state: "running", endpoints: ["http://localhost:3000", "https://my-app.lndo.site"] },
-    { name: "api", state: "running", endpoints: ["http://localhost:3000", "http://localhost:8080"] },
+    {
+      name: "web",
+      state: "running",
+      connections: connections(["http://localhost:3000", "https://my-app.lndo.site"]),
+    },
+    {
+      name: "api",
+      state: "running",
+      connections: connections(["http://localhost:3000", "http://localhost:8080"]),
+    },
   ],
 };
 
 const cjkResult: StartAppResult = {
   app: "my-app",
   servicesStarted: [
-    { name: "你好世界-web", state: "running", endpoints: ["http://localhost:3000"] },
-    { name: "데이터베이스", state: "ready", endpoints: [] },
+    {
+      name: "你好世界-web",
+      state: "running",
+      connections: [
+        ...connections(["http://localhost:3000"]),
+        ...connections(["http://你好世界-web:3000"], "app"),
+      ],
+    },
+    { name: "데이터베이스", state: "ready", connections: connections(["tcp://데이터베이스:5432"], "app") },
   ],
 };
 
 const oneReadyResult: StartAppResult = {
   app: "my-app",
-  servicesStarted: [{ name: "web", state: "running", endpoints: ["http://localhost:3000"] }],
+  servicesStarted: [{ name: "web", state: "running", connections: connections(["http://localhost:3000"]) }],
+};
+
+// A moved database port: reachable from other services on the app network only.
+const appNetworkResult: StartAppResult = {
+  app: "my-app",
+  servicesStarted: [
+    {
+      name: "web",
+      state: "running",
+      connections: [...connections(["https://my-app.lndo.site"]), ...connections(["http://web:3000"], "app")],
+    },
+    { name: "db", state: "ready", connections: connections(["tcp://db:3307"], "app") },
+    { name: "worker", state: "completed", connections: [] },
+  ],
 };
 
 describe("renderStartAppResult decorated ready", () => {
@@ -81,7 +119,7 @@ describe("renderStartAppResult decorated ready", () => {
         "Started",
         "  my-app is ready",
         "",
-        "URLs",
+        "Host",
         "  https://my-app.lndo.site",
         "  http://localhost:3000",
         "  tcp://localhost:5432",
@@ -135,9 +173,9 @@ describe("renderStartAppResult completed jobs", () => {
         "Started",
         "  my-app is ready",
         "",
-        "URLs",
+        "Host",
         "  http://localhost:3000",
-        "  tcp://localhost:5432",
+        "  tcp://localhost:5432 [inactive]",
         "",
         "Services",
         "  web  running",
@@ -148,7 +186,7 @@ describe("renderStartAppResult completed jobs", () => {
         "  lando logs",
         "  lando exec <service> -- <command>",
         "",
-        "2 services ready",
+        "1 service ready; 1 completed",
       ].join("\n"),
     );
     expect(buildStartSummary(mixedResult).sections[1]?.rows[1]?.tone).toBe("ok");
@@ -170,7 +208,7 @@ describe("renderStartAppResult completed jobs", () => {
     const summary = buildStartSummary(mixedResult, "rebuild");
     expect(summary.title).toBe("Rebuilt");
     expect(summary.tone).toBe("ok");
-    expect(summary.footer).toBe("2 services ready");
+    expect(summary.footer).toBe("1 service ready; 1 completed");
   });
 });
 
@@ -189,7 +227,7 @@ describe("buildStartSummary service rows", () => {
     expect(summary.nextSteps).toBeUndefined();
     expect(summary.title).toBe("Started");
     expect(summary.subtitle).toBe("my-app is ready");
-    expect(summary.sections.map((section) => section.title)).toEqual(["URLs", "Services"]);
+    expect(summary.sections.map((section) => section.title)).toEqual(["Host", "Services"]);
   });
 
   test("uses Started when a job completed successfully", () => {
@@ -201,16 +239,83 @@ describe("buildStartSummary service rows", () => {
   });
 });
 
+describe("renderStartAppResult app-network addresses", () => {
+  test("lists app-network addresses under each service row, apart from host URLs", () => {
+    const out = renderStartAppResult(appNetworkResult, decorated());
+    expectQuiet(out, 80);
+    expect(visible(out)).toBe(
+      [
+        "",
+        "Started",
+        "  my-app is ready",
+        "",
+        "Host",
+        "  https://my-app.lndo.site",
+        "",
+        "Services",
+        "  web  running",
+        "    App Network : http://web:3000",
+        "  db  ready",
+        "    App Network : tcp://db:3307",
+        "  worker  completed",
+        "",
+        "Next",
+        "  lando info",
+        "  lando logs",
+        "  lando exec <service> -- <command>",
+        "",
+        "2 services ready; 1 completed",
+      ].join("\n"),
+    );
+  });
+
+  test("keeps an internal-only database out of the URL section", () => {
+    const summary = buildStartSummary(appNetworkResult);
+    expect(summary.sections[0]?.rows.map((row) => row.label)).toEqual(["https://my-app.lndo.site"]);
+    expect(summary.sections[0]?.notes).toBeUndefined();
+    expect(summary.sections[1]?.rows).toEqual([
+      {
+        label: "web",
+        tone: "ok",
+        value: "running",
+        fields: [{ label: "App Network", value: "http://web:3000" }],
+      },
+      { label: "db", tone: "ok", value: "ready", fields: [{ label: "App Network", value: "tcp://db:3307" }] },
+      { label: "worker", tone: "ok", value: "completed" },
+    ]);
+  });
+
+  test("notes missing host URLs even when every service has an app-network address", () => {
+    const summary = buildStartSummary({
+      app: "my-app",
+      servicesStarted: [{ name: "db", state: "ready", connections: connections(["tcp://db:3307"], "app") }],
+    });
+    expect(summary.sections[0]?.rows).toEqual([]);
+    expect(summary.sections[0]?.notes).toEqual(["No published endpoints."]);
+    expect(summary.sections[1]?.rows[0]?.fields).toEqual([{ label: "App Network", value: "tcp://db:3307" }]);
+  });
+
+  test("keeps the plain one-liner host-first with internal addresses after", () => {
+    expect(renderStartAppResult(appNetworkResult)).toBe(
+      "ready: my-app - web (running) Host: https://my-app.lndo.site App Network: http://web:3000; db (ready) App Network: tcp://db:3307; worker (completed) no endpoints",
+    );
+  });
+
+  test("wraps app-network fields within a small terminal width", () => {
+    expectQuiet(renderStartAppResult(appNetworkResult, decorated(36)), 36);
+  });
+});
+
 describe("renderStartAppResult non-decorated compatibility", () => {
   test("keeps the ready: one-liner without context", () => {
     expect(renderStartAppResult(readyResult)).toBe(
-      "ready: my-app - web (running) http://localhost:3000, https://my-app.lndo.site; database (ready) tcp://localhost:5432",
+      "ready: my-app - web (running) Host: http://localhost:3000, https://my-app.lndo.site; database (ready) Host: tcp://localhost:5432",
     );
   });
 
   test("uses ready: for running services and completed jobs", () => {
     expect(renderStartAppResult(mixedResult)).toBe(
-      "ready: my-app - web (running) http://localhost:3000; database (completed) tcp://localhost:5432",
+      "ready: my-app - web (running) Host: http://localhost:3000; database (completed) Host: tcp://localhost:5432 [inactive]",
     );
   });
 
@@ -226,7 +331,7 @@ describe("renderStartAppResult non-decorated compatibility", () => {
       isTTY: false,
     });
     expect(out).toBe(
-      "ready: my-app - web (running) http://localhost:3000, https://my-app.lndo.site; database (ready) tcp://localhost:5432",
+      "ready: my-app - web (running) Host: http://localhost:3000, https://my-app.lndo.site; database (ready) Host: tcp://localhost:5432",
     );
     expect(out).not.toContain("╭─");
   });

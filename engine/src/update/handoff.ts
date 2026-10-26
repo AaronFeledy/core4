@@ -37,6 +37,7 @@ const handoffError = (operation: string, cause: unknown): UpdateNetworkError =>
   new UpdateNetworkError({
     message: `Failed to ${operation} the one-shot update replacement receipt.`,
     url: "state://update/handoff",
+    remediation: "Clear the update handoff receipt under the user cache and retry `lando update`.",
     cause,
   });
 

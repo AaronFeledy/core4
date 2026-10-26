@@ -112,7 +112,7 @@ export const resolveLogLevel = (options: ResolveLogLevelOptions = {}): ResolveLo
   }
 
   const configValue = options.configValue;
-  if (configValue !== undefined && configValue !== "") {
+  if (configValue !== undefined && isLogLevel(configValue)) {
     return {
       level: validate(configValue, "config"),
       verbose,

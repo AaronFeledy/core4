@@ -10,11 +10,10 @@ import {
   type ProviderId,
   SSH_AGENT_SOCKET_NAME,
 } from "@lando/sdk/schema";
-import { EventService, PathsService, SshService } from "@lando/sdk/services";
+import { EventService, GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Option, Ref, type Scope } from "effect";
-import { MANAGED_PROVIDER_ID } from "../providers/managed.ts";
+import { DateTime, Effect, Option, type Scope } from "effect";
 import { probeSshAgent } from "../subsystems/ssh-agent/agent-probe.ts";
 import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-worker.ts";
 import {
@@ -30,7 +29,7 @@ import {
 import type { AgentRelayUpstream } from "../subsystems/ssh-agent/relay.ts";
 import { type AgentRelaySession, runtimeSshAgentReady } from "../subsystems/ssh-agent/session.ts";
 import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
-import { withRetainedSession } from "./retained-session.ts";
+import { type PublishSession, withRetainedSession } from "./retained-session.ts";
 import { startSshAgentTreeId } from "./start-progress.ts";
 import { startSshSidecar } from "./start-ssh-sidecar.ts";
 
@@ -50,7 +49,10 @@ type DiscoveryOptions = Partial<
     | "gpgTimeoutMs"
   >
 >;
-type SessionOptions = DiscoveryOptions & { readonly platform?: HostPlatform };
+type SessionOptions = DiscoveryOptions & {
+  readonly platform?: HostPlatform;
+  readonly managed?: { readonly scope: Scope.Scope };
+};
 
 export const validateAgentSocketCapability = (capabilities: Capabilities, intent: SshAgentIntent) =>
   capabilities.agentSocket === undefined
@@ -89,7 +91,27 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
       const ssh = yield* Effect.serviceOption(SshService);
       if (Option.isNone(ssh)) return yield* Effect.fail(unavailable());
       const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(Effect.mapError(unavailable));
-      if (input.provider === MANAGED_PROVIDER_ID && socket.runtimeVolume !== undefined) {
+      const globalApp = yield* Effect.serviceOption(GlobalAppService);
+      const globalProvider = Option.isSome(globalApp)
+        ? yield* globalApp.value.providerId.pipe(
+            Effect.mapError(
+              (cause) =>
+                new SshAgentUnavailableError({
+                  message: `Unable to resolve the global app provider for the SSH agent sidecar: ${cause.message}`,
+                  mode: "sidecar",
+                  reason: "sidecar-not-running",
+                  remediation:
+                    cause.remediation ??
+                    "Run `lando doctor` to inspect global app placement, then restart this app.",
+                }),
+            ),
+          )
+        : undefined;
+      if (
+        input.provider === globalProvider &&
+        globalProvider !== undefined &&
+        socket.runtimeVolume !== undefined
+      ) {
         const upstream = { _tag: "volume" as const, volume: socket.runtimeVolume };
         if (yield* runtimeSshAgentReady) return upstream;
         return yield* startSshSidecar(input, ssh.value, upstream);
@@ -168,7 +190,6 @@ export const startSshAgentSession = Effect.fnUntraced(function* (
   }
   const privateFileAccess = yield* PrivateFileAccessService;
   const events = yield* EventService;
-  const acquired = yield* Ref.make<AgentRelaySession | undefined>(undefined);
   return yield* runWithTaskTree(
     makeTaskTree(events, {
       parentId: startSshAgentTreeId(String(plan.id)),
@@ -179,29 +200,27 @@ export const startSshAgentSession = Effect.fnUntraced(function* (
     (tree) =>
       Effect.gen(function* () {
         yield* tree.startTask("session");
-        const session = yield* startDetachedAgentRelayWorker({
-          app,
-          plan,
-          upstream,
-          delivery,
-          kind: "ssh",
-          socketName: SSH_AGENT_SOCKET_NAME,
-          paths: { ...paths.roots, platform: options.platform ?? paths.platform },
-          privateFileAccess,
-        });
-        yield* Ref.set(acquired, session);
-        yield* tree.completeTask("session");
-        return session;
+        return yield* withRetainedSession(
+          (publish: PublishSession<AgentRelaySession>) =>
+            startDetachedAgentRelayWorker({
+              publish,
+              app,
+              plan,
+              upstream,
+              delivery,
+              kind: "ssh",
+              socketName: SSH_AGENT_SOCKET_NAME,
+              paths: { ...paths.roots, platform: options.platform ?? paths.platform },
+              privateFileAccess,
+            }),
+          (session) => tree.completeTask("session").pipe(Effect.as(session)),
+          {
+            close: (session) => Effect.promise(() => session.close()),
+            ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
+          },
+        );
       }),
     { success: "SSH agent ready", failure: "SSH agent unavailable", interrupt: "SSH agent interrupted" },
-  ).pipe(
-    Effect.onError(() =>
-      Ref.get(acquired).pipe(
-        Effect.flatMap((session) =>
-          session === undefined ? Effect.void : Effect.promise(() => session.close()),
-        ),
-      ),
-    ),
   );
 });
 
@@ -211,15 +230,25 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
   capabilities: Capabilities,
   intent: SshAgentIntent,
   options: SessionOptions & {
-    readonly managed?: { readonly scope: Scope.Scope };
     readonly use: (plan: AppPlan) => Effect.Effect<A, E, R>;
     readonly startSession?: () => Effect.Effect<AgentRelaySession | undefined, AgentError>;
   },
 ): Effect.fn.Return<A, E | AgentError, R | PathsService | PrivateFileAccessService | EventService> {
   if (app.kind === "global" || plan.id === "global" || sshAgentEligibleServices(plan).length === 0)
     return yield* options.use(plan);
+  const { startSession } = options;
   const acquire = (
-    options.startSession?.() ?? startSshAgentSession(plan, app, capabilities, intent, options)
+    startSession === undefined
+      ? startSshAgentSession(plan, app, capabilities, intent, options)
+      : withRetainedSession(
+          (publish: PublishSession<AgentRelaySession | undefined>) =>
+            startSession().pipe(Effect.tap(publish)),
+          Effect.succeed,
+          {
+            close: (session) => (session === undefined ? Effect.void : Effect.promise(() => session.close())),
+            ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
+          },
+        )
   ).pipe(
     Effect.catch((error) => {
       switch (intent.mode) {
@@ -243,13 +272,8 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
       }
     }),
   );
-  return yield* withRetainedSession(
-    acquire,
-    (session) =>
-      options.use(session === undefined ? stripSshAgentOverlay(plan) : withSshAgentOverlay(plan, session)),
-    {
-      close: (session) => (session === undefined ? Effect.void : Effect.promise(() => session.close())),
-      ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
-    },
+  const session = yield* acquire;
+  return yield* options.use(
+    session === undefined ? stripSshAgentOverlay(plan) : withSshAgentOverlay(plan, session),
   );
 });

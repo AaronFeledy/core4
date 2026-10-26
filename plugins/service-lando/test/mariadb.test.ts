@@ -12,6 +12,14 @@ import {
   mariadbServiceType,
 } from "../src/services/mariadb.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { nativeListenPortSuite } from "./support/listen-port.ts";
+
+nativeListenPortSuite({
+  serviceType: mariadbServiceType,
+  variable: "MYSQL_TCP_PORT",
+  defaultPort: 3306,
+  serverCommand: "mariadbd",
+});
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -80,7 +88,9 @@ describe("mariadb ServiceType", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-mariadb-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3306, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },
+    ]);
   });
 
   test("writes matching MARIADB_* and MYSQL_* when creds are authored", async () => {
@@ -182,7 +192,7 @@ describe("mariadb ServiceType", () => {
       description: "Open the MariaDB client for this service.",
       dir: PortablePath.make("/"),
       service: "db",
-      cmd: ["mariadb", "-h", "127.0.0.1", "-u", authoredCreds.user, authoredCreds.database],
+      cmd: ["mariadb", "-h", "127.0.0.1", "-P", "3306", "-u", authoredCreds.user, authoredCreds.database],
       env: { MYSQL_PWD: authoredCreds.password },
     });
   });
@@ -197,7 +207,13 @@ describe("mariadb ServiceType", () => {
     // Then
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["sh", "-c", 'mariadb-admin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
+      command: [
+        "sh",
+        "-c",
+        'MYSQL_PWD="$MYSQL_PASSWORD" exec mariadb-admin ping -h 127.0.0.1 -P "$1" -u "$MYSQL_USER" --silent',
+        "mariadb-healthcheck",
+        "3306",
+      ],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -205,7 +221,7 @@ describe("mariadb ServiceType", () => {
     });
   });
 
-  test("mounts config.server read-only at MARIADB_CONFIG_TARGET without changing command or entrypoint", async () => {
+  test("mounts config.server read-only and pins the default port without changing entrypoint", async () => {
     // Given
     const baseline = await planMariadb({ type: "mariadb" });
     const definition = { type: "mariadb", config: { server: "config/my.cnf" } };
@@ -224,7 +240,7 @@ describe("mariadb ServiceType", () => {
       },
     ]);
     expect(String(MARIADB_CONFIG_TARGET)).toBe("/etc/mysql/conf.d/99-lando.cnf");
-    expect(plan.command).toEqual(baseline.command);
+    expect(plan.command).toEqual(["mariadbd", "--port=3306"]);
     expect(plan.entrypoint).toEqual(baseline.entrypoint);
   });
 

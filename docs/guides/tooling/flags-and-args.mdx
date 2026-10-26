@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, flags]
 
 # Declare flags and args on a tooling task
 
-Add `flags:` and `args:` to a task when you want Lando to validate input before the command runs. Declared input shows up in `lando <task> --help`, gets checked against choices and requiredness, and is available to the task by name.
+Add `flags:` and `args:` to a task in your `.lando.yml` when you want Lando to validate input before the command runs. The following fragment assumes your app has a service named `web`. Declared input shows up in `lando <task> --help`, gets checked against choices and requiredness, and is available to the task by name.
 
 ```yaml
 tooling:
@@ -31,7 +31,7 @@ tooling:
     cmd: echo greeting
 ```
 
-With that in place:
+Save the file and run `lando app:cache:refresh` from the app directory. Check `lando greet --help` for the declared flags and argument, then start `web` before running these examples. The task below validates the inputs but always runs `echo greeting`; it does not interpolate them into the greeting:
 
 ```sh
 lando greet dev -n team
@@ -135,7 +135,17 @@ tooling:
 
 ## Turn a task off
 
-Set `disabled: true` to keep a task in the Landofile but refuse to run it. It disappears from `lando --help`, and calling it directly fails with a tagged error, even when a stale command cache still lists it.
+Set a task to `false` to drop an inherited or service-type task of the same name:
+
+```yaml
+tooling:
+  legacy: false
+  old-build: false
+```
+
+Both spellings replace the inherited definition wholesale. The task disappears from `lando --help` and the MCP tooling catalog. Calling it directly fails with `ToolingDisabledError`, even when a stale command cache still lists it.
+
+Use `disabled: true` inside an object when you want to keep your authored command and metadata in the Landofile but refuse to run it:
 
 ```yaml
 tooling:
@@ -146,7 +156,7 @@ tooling:
     cmd: echo legacy
 ```
 
-Delete the key when you no longer want the reminder.
+This object can merge with an object task from a lower config layer. An authored task always replaces a service-type task of the same name, so this does not preserve a service type's definition. Deleting the key lets an inherited task return; use `false` when it must stay off.
 
 <Guide>
   <Scenario id="run-with-flag-alias-and-positional" render>
@@ -235,6 +245,25 @@ Delete the key when you no longer want the reminder.
     <Step name="run-legacy-help">
       <Run command="lando legacy --help --format=json" expectExit={1} />
       <Verify errorTag="ToolingDisabledError" expect={{ regex: "legacy" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="hide-and-refuse-false-task" render>
+    <Step name="scaffold">
+      <UseFixture name="flags-demo" />
+    </Step>
+    <Step name="compile-tooling">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="hide-retired-task">
+      <Verify command="lando --help" expect={{ stdout: { not: { regex: "retired-shorthand" } } }} />
+    </Step>
+    <Step name="refuse-retired-task">
+      <Run command="lando retired-shorthand --format=json" expectExit={1} />
+      <Verify errorTag="ToolingDisabledError" expect={{ regex: "retired-shorthand" }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

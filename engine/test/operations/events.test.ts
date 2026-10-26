@@ -29,11 +29,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import {
@@ -41,7 +37,11 @@ import {
   publishAndRunPostAppEvent,
   runAppEvent,
 } from "../../src/operations/events.ts";
-import { attachEffectiveEvents, compileEffectiveEvents } from "../../src/planner/effective-events.ts";
+import {
+  compileEffectiveEvents,
+  withEventsPlan,
+  withProjectEvents,
+} from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import {
   EventCommandExecutor,
@@ -49,6 +49,7 @@ import {
 } from "../../src/services/event-command-executor.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
+import { compileAuthoredEventPlan } from "../authored-invocations.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const eventPlan = (): AppPlan => ({
@@ -59,7 +60,6 @@ const eventPlan = (): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
@@ -68,7 +68,7 @@ const eventPlan = (): AppPlan => ({
 
 test("publishes the supplied event before running its steps", async () => {
   // Given
-  const plan = attachEffectiveEvents(eventPlan(), { "pre-start": [{ command: "info" }] });
+  const plan = withProjectEvents(eventPlan(), { "pre-start": [{ command: "info" }] });
   const event = PreStartEvent.make({
     scope: "app",
     triggeredBy: "app:start",
@@ -99,7 +99,7 @@ test("publishes the supplied event before running its steps", async () => {
 
 test("publishes a post event and warns instead of failing when its step fails", async () => {
   // Given
-  const plan = attachEffectiveEvents(eventPlan(), { "post-start": ["fatal"] });
+  const plan = withProjectEvents(eventPlan(), { "post-start": ["fatal"] });
   const event = PostStartEvent.make({
     scope: "app",
     app: { kind: "user", id: plan.id, root: plan.root },
@@ -115,10 +115,11 @@ test("publishes a post event and warns instead of failing when its step fails", 
       return { post: yield* events.query("post-start"), warnings: yield* events.query("message.warn") };
     }).pipe(Effect.provide(eventRuntime(invocations, [], new Set(['fatal "$@"'])))),
   );
-  // Then
+  // Then the warning says why the step failed, not just which one
   expect(observed.post).toEqual([event]);
   expect(observed.warnings.map((warning) => warning.body)).toEqual([
-    "Event post-start step 1 failed with exit code 7. Fix post-start step 1, then rerun the lifecycle command.",
+    // The 4,000-byte output tail drops the leading byte of the fake's 4,001-byte output.
+    `Event post-start step 1 failed with exit code 7. ecret-output${"x".repeat(3_988)} Fix post-start step 1, then rerun the lifecycle command.`,
   ]);
   expect(invocations).toHaveLength(1);
 });
@@ -129,20 +130,24 @@ const runWithFakes = (
   enterEvent: AppLifecycleEventName,
   shellRuns: { count: number },
 ) => {
+  const redaction = makeRedactionService();
+  const resolver = testEnvironmentResolverLayerFor(redaction);
   const services = Layer.mergeAll(
-    LandoEventService.layer,
+    resolver,
+    LandoEventService.layer.pipe(Layer.provide(resolver)),
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+        ...redaction,
       }),
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -173,7 +178,7 @@ const runWithFakes = (
 describe("runAppEvent lifecycle reentry", () => {
   test("rejects lifecycle reentry before replaying earlier event steps", async () => {
     // Given
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": ["echo earlier", { command: "start" }],
     });
     const shellRuns = { count: 0 };
@@ -188,7 +193,7 @@ describe("runAppEvent lifecycle reentry", () => {
 
   test("names the invoking canonical command in the reentry error", async () => {
     // Given
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [{ command: "start" }],
     });
     const shellRuns = { count: 0 };
@@ -208,7 +213,7 @@ describe("runAppEvent lifecycle reentry", () => {
 
   test("allows a canonical command step to enter a different lifecycle event", async () => {
     // Given
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [{ command: "stop" }],
       "pre-stop": ["echo nested"],
     });
@@ -227,21 +232,25 @@ const eventRuntime = (
   canonical: EventCommandExecutorInput[] = [],
   failures: ReadonlySet<string> = new Set(),
   canonicalFailure?: ToolingCompileError | ToolingCommandLookupError,
-) =>
-  Layer.mergeAll(
-    LandoEventService.layer,
+) => {
+  const redaction = makeRedactionService();
+  const resolver = testEnvironmentResolverLayerFor(redaction);
+  return Layer.mergeAll(
+    resolver,
+    LandoEventService.layer.pipe(Layer.provide(resolver)),
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+        ...redaction,
       }),
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -279,6 +288,7 @@ const eventRuntime = (
       }),
     ),
   );
+};
 
 const hostShellRunnerLayer = BunShellRunner.layer(() => {
   throw new TypeError("Interactive shell IO was not expected in this test.");
@@ -287,7 +297,7 @@ const hostShellRunnerLayer = BunShellRunner.layer(() => {
 describe("runAppEvent tooling-step kernel", () => {
   test("bounds nested command events at the attempted seventeenth event", async () => {
     // Given
-    const plan = attachEffectiveEvents(
+    const plan = withProjectEvents(
       eventPlan(),
       Object.fromEntries(
         Array.from({ length: 20 }, (_, index) => [
@@ -327,7 +337,7 @@ describe("runAppEvent tooling-step kernel", () => {
 
   test("blames the immediately preceding edge of a multi-event cycle", async () => {
     // Given
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [{ command: "app:build" }],
       "pre-build": [{ command: "app:start" }],
     });
@@ -355,7 +365,7 @@ describe("runAppEvent tooling-step kernel", () => {
 
   test("does not ignore a nested cycle when ignoreError is authored", async () => {
     // Given
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [{ command: "start", ignoreError: true }],
     });
     // When
@@ -371,7 +381,7 @@ describe("runAppEvent tooling-step kernel", () => {
 
   test("allows the same command under different simultaneously active events", async () => {
     // Given
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [{ command: "app:info" }],
       "pre-build": [{ command: "app:info" }],
     });
@@ -396,7 +406,7 @@ describe("runAppEvent tooling-step kernel", () => {
   test("runs steps attached to a dynamic tooling event name", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), { "pre-build": ["echo build"] });
+    const plan = withProjectEvents(eventPlan(), { "pre-build": ["echo build"] });
     // When
     await Effect.runPromise(runAppEvent(plan, "pre-build").pipe(Effect.provide(eventRuntime(invocations))));
     // Then
@@ -407,7 +417,7 @@ describe("runAppEvent tooling-step kernel", () => {
   test("preserves the resolved user and working directory on direct command event steps", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [
         {
           cmd: "whoami",
@@ -432,7 +442,7 @@ describe("runAppEvent tooling-step kernel", () => {
   test("preserves working directories on looped and deferred cmd variants", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = await compileAuthoredEventPlan(eventPlan(), {
       "pre-start": [
         { cmd: "inspect-{{ item }}", for: ["web", "db"], dir: PortablePath.make("/workspace/loop") },
         { defer: "cleanup", dir: PortablePath.make("/workspace/deferred") },
@@ -453,11 +463,9 @@ describe("runAppEvent tooling-step kernel", () => {
   test("publishes resolved task output only after redacting task variables", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveTooling(
-      attachEffectiveEvents(eventPlan(), {
-        "pre-start": [{ task: "named", vars: { API_TOKEN: "resolved-secret-value" } }],
-      }),
-      { named: { cmd: "{{ vars.API_TOKEN }}" } },
+    const plan = await compileAuthoredEventPlan(
+      attachEffectiveTooling(eventPlan(), { named: { cmd: "{{ vars.API_TOKEN }}" } }),
+      { "pre-start": [{ task: "named", vars: { API_TOKEN: "resolved-secret-value" } }] },
     );
     const runtime = eventRuntime(invocations);
 
@@ -482,16 +490,14 @@ describe("runAppEvent tooling-step kernel", () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const secret = "resolved-host-secret";
-    const plan = attachEffectiveTooling(
-      attachEffectiveEvents(eventPlan(), {
-        "pre-start": [{ task: "named", vars: { EVENT_TASK_TOKEN: secret } }],
-      }),
-      {
+    const plan = await compileAuthoredEventPlan(
+      attachEffectiveTooling(eventPlan(), {
         named: {
-          cmd: `printf '{{ vars.EVENT_TASK_TOKEN }}'; printf '{{ vars.EVENT_TASK_TOKEN }}' 1>&2; printf ':%s' "\${EVENT_TASK_TOKEN-unset}"`,
+          cmd: `printf '{{ vars.EVENT_TASK_TOKEN }}'; printf '{{ vars.EVENT_TASK_TOKEN }}' 1>&2; printf ':%s' "{{ default(env.EVENT_TASK_TOKEN, 'unset') }}"`,
           service: ":host",
         },
-      },
+      }),
+      { "pre-start": [{ task: "named", vars: { EVENT_TASK_TOKEN: secret } }] },
     );
 
     // When
@@ -526,7 +532,7 @@ describe("runAppEvent tooling-step kernel", () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const hostCommands: Array<{ readonly command: string; readonly argv?: ReadonlyArray<string> }> = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [{ cmd: "printf host", service: ":host" }],
     });
     const shell = {
@@ -557,7 +563,7 @@ describe("runAppEvent tooling-step kernel", () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const hostCommands: string[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [{ cmd: 'printf "%s" "$1"', service: ":host" }],
     });
     const shell = {
@@ -593,8 +599,9 @@ describe("runAppEvent tooling-step kernel", () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const canonical: EventCommandExecutorInput[] = [];
-    const plan = attachEffectiveTooling(
-      attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(
+      attachEffectiveTooling(eventPlan(), { named: { cmds: ["named-one", "named-two"] } }),
+      {
         "pre-start": [
           { defer: "cleanup-first" },
           "body",
@@ -602,8 +609,7 @@ describe("runAppEvent tooling-step kernel", () => {
           { defer: "cleanup-second" },
           { task: "named" },
         ],
-      }),
-      { named: { cmds: ["named-one", "named-two"] } },
+      },
     );
 
     // When
@@ -628,8 +634,18 @@ describe("runAppEvent tooling-step kernel", () => {
     const invocations: ToolingInvocation[] = [];
     const canonical: EventCommandExecutorInput[] = [];
     const secrets = ["canonical-event-secret-one", "canonical-event-secret-two"] as const;
-    const plan = attachEffectiveEvents(eventPlan(), {
-      "pre-start": [{ command: "info", flags: { API_TOKENS: [...secrets] } }],
+    const plan = withProjectEvents(eventPlan(), {
+      "pre-start": [
+        {
+          command: "info",
+          flags: {
+            API_TOKENS: [...secrets],
+            key: "public-storage-name",
+            API_KEY: "private-event-api-key",
+            apiToken: "private-camel-event-token",
+          },
+        },
+      ],
     });
 
     // When
@@ -641,6 +657,8 @@ describe("runAppEvent tooling-step kernel", () => {
     const input = canonical[0];
     expect(input !== undefined && "redactionTokens" in input ? input.redactionTokens : undefined).toEqual([
       ...secrets,
+      "private-event-api-key",
+      "private-camel-event-token",
     ]);
   });
 
@@ -648,20 +666,20 @@ describe("runAppEvent tooling-step kernel", () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const payload = { _tag: "pre-start", nested: { value: "exact" }, sequence: 17 };
-    const plan = attachEffectiveTooling(
-      attachEffectiveEvents(eventPlan(), {
-        "pre-start": [
-          { for: ["a", "b"], cmd: "{{ event.nested.value }}-{{ item }}" },
-          { task: "named", vars: { selected: "{{ event.sequence }}" } },
-        ],
-      }),
-      {
+    const plan = await compileAuthoredEventPlan(
+      attachEffectiveTooling(eventPlan(), {
         named: {
           cmds: ["first-{{ vars.selected }}", "second-{{ vars.selected }}"],
           service: "svc-{{ vars.selected }}",
           dir: PortablePath.make("/tmp/{{ vars.selected }}"),
           env: { VALUE: "{{ vars.selected }}" },
         },
+      }),
+      {
+        "pre-start": [
+          { for: ["a", "b"], cmd: "{{ event.nested.value }}-{{ item }}" },
+          { task: "named", vars: { selected: "{{ event.sequence }}" } },
+        ],
       },
     );
 
@@ -702,7 +720,7 @@ describe("runAppEvent tooling-step kernel", () => {
   test("does not borrow an event-step payload from mutable event history", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = await compileAuthoredEventPlan(eventPlan(), {
       "pre-start": ["echo {{ event.sequence }}"],
     });
 
@@ -723,7 +741,7 @@ describe("runAppEvent tooling-step kernel", () => {
   test("wraps canonical lookup failures with the authored event-step identity", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": ["echo earlier", { command: "missing", args: {} }],
     });
     const lookupFailure = new ToolingCompileError({
@@ -753,7 +771,7 @@ describe("runAppEvent tooling-step kernel", () => {
   test("preserves lookup detail and remediation in the failure output tail", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [{ command: "app:confgi", args: {} }],
     });
     const lookupFailure = new ToolingCommandLookupError({
@@ -782,7 +800,7 @@ describe("runAppEvent tooling-step kernel", () => {
   test("reports the authored identity of a compile failure in the second event step", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": ["echo earlier", { for: { sources: true }, task: "scan" }],
     });
 
@@ -800,7 +818,7 @@ describe("runAppEvent tooling-step kernel", () => {
   test("rejects an invalid literal canonical input before earlier event steps run", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": ["echo earlier", { command: "app:info", flags: { bogus: true } }],
     });
     const literalFailure = new ToolingCompileError({
@@ -825,7 +843,7 @@ describe("runAppEvent tooling-step kernel", () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const canonical: EventCommandExecutorInput[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [{ command: "app:info", args: { target: ["{{ event.target }}"] } }],
     });
     const resolvedFailure = new ToolingCompileError({
@@ -848,10 +866,32 @@ describe("runAppEvent tooling-step kernel", () => {
     expect(invocations).toEqual([]);
   });
 
+  test.each(["API_TOKENS", "DB_PASS", "REDISCLI_AUTH", "dbPassword"])(
+    "registers step env %s with the env-name recognizer",
+    async (name) => {
+      // Given
+      const plan = withProjectEvents(eventPlan(), {
+        "pre-start": [{ cmd: "fatal", env: { [name]: "secret-output" }, silent: true }],
+      });
+
+      // When
+      const error = await Effect.runPromise(
+        Effect.flip(
+          runAppEvent(plan, "pre-start").pipe(Effect.provide(eventRuntime([], [], new Set(['fatal "$@"'])))),
+        ),
+      );
+
+      // Then
+      if (error._tag !== "LandofileEventStepFailedError") throw error;
+      expect(error.outputTail).not.toContain("secret-output");
+      expect(error.outputTail).toContain("[redacted]");
+    },
+  );
+
   test("redacts a secret straddling the output-tail cutoff while preserving failure identity", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [
         { cmd: "ignored", ignoreError: true, silent: true },
         { for: ["x"], cmd: "fatal", env: { SECRET: "secret-output" }, silent: true },
@@ -884,7 +924,7 @@ describe("runAppEvent tooling-step kernel", () => {
   test("does not publish task detail for a failing silent event step", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-start": [{ cmd: "quiet-fail", silent: true }],
     });
 
@@ -904,7 +944,7 @@ describe("runAppEvent tooling-step kernel", () => {
 
 describe("hostEvents runtime", () => {
   const hostPlan = (events: HostEvents, extras: { readonly skipHostEvents?: boolean } = {}) =>
-    attachEffectiveEvents(
+    withEventsPlan(
       {
         ...eventPlan(),
         services: {
@@ -949,6 +989,9 @@ describe("hostEvents runtime", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                appliedPlansFor: () => Effect.succeed([]),
+                resolveAppliedPlan: () => Effect.succeed(undefined),
+                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                 list: Effect.succeed([ProviderId.make("test")]),
                 capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),
@@ -1052,6 +1095,8 @@ describe("hostEvents runtime", () => {
             operation: "inspect",
             message: "no container",
             service: "web",
+            remediation:
+              "Add service `web` to the Landofile or correct the service name, then re-run the command.",
           }),
         ),
     };
@@ -1068,6 +1113,9 @@ describe("hostEvents runtime", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                appliedPlansFor: () => Effect.succeed([]),
+                resolveAppliedPlan: () => Effect.succeed(undefined),
+                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                 list: Effect.succeed([ProviderId.make("test")]),
                 capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),
@@ -1095,6 +1143,8 @@ describe("hostEvents runtime", () => {
             providerId: "test",
             operation: "inspect",
             message: `inspect exploded: ${secret}`,
+            remediation:
+              "Re-run the command after checking `test` logs for the `inspect` failure; if it persists, report the error with that operation name.",
           }),
         ),
     };
@@ -1102,13 +1152,19 @@ describe("hostEvents runtime", () => {
     // When
     const error = await Effect.runPromise(
       Effect.flip(
-        Effect.andThen(registerRedactionValues([secret]), runAppEvent(plan, "post-start")).pipe(
+        Effect.andThen(
+          Effect.flatMap(RedactionService, (service) => service.registerValues([secret])),
+          runAppEvent(plan, "post-start"),
+        ).pipe(
           Effect.provide(
             Layer.mergeAll(
               eventRuntime(invocations),
               Layer.succeed(
                 RuntimeProviderRegistry,
                 RuntimeProviderRegistry.of({
+                  appliedPlansFor: () => Effect.succeed([]),
+                  resolveAppliedPlan: () => Effect.succeed(undefined),
+                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                   list: Effect.succeed([ProviderId.make("test")]),
                   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                   select: () => Effect.succeed(inspecting),
@@ -1132,7 +1188,7 @@ describe("hostEvents runtime", () => {
   test("reports project compile failures separately from preceding host steps", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveEvents(
+    const plan = withEventsPlan(
       eventPlan(),
       compileEffectiveEvents({
         hostEvents: { "pre-start": [{ cmd: "echo host", service: ":host" }] },
@@ -1160,6 +1216,7 @@ describe("hostEvents runtime", () => {
           service: ServiceName.make("web"),
           providerId: ProviderId.make("test"),
           status,
+          publications: { status: "unknown" as const },
         }),
     };
     const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });
@@ -1175,6 +1232,9 @@ describe("hostEvents runtime", () => {
             Layer.succeed(
               RuntimeProviderRegistry,
               RuntimeProviderRegistry.of({
+                appliedPlansFor: () => Effect.succeed([]),
+                resolveAppliedPlan: () => Effect.succeed(undefined),
+                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
                 list: Effect.succeed([ProviderId.make("test")]),
                 capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                 select: () => Effect.succeed(inspecting),
@@ -1190,3 +1250,4 @@ describe("hostEvents runtime", () => {
     expect(invocations).toHaveLength(0);
   });
 });
+import { testEnvironmentResolverLayerFor } from "../environment-values.ts";

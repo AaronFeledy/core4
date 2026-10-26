@@ -1,4 +1,5 @@
 import { SchemaAST as AST, Schema } from "effect";
+import { authoringSource, recordAuthoringSource, recordExpressionSlot } from "./authoring-issue-metadata.ts";
 import {
   type AuthoringExpression,
   type AuthoringExpressionExpectedType,
@@ -164,12 +165,20 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
       node.context?.annotations ?? {},
     );
     const result = AST.isOptional(node) ? Schema.optionalKey(contextual).ast : contextual.ast;
+    const source = node.encoding === undefined ? node : AST.toEncoded(node);
+    recordAuthoringSource(walked, source);
+    recordAuthoringSource(result, source);
     memo.set(node, result);
     return result;
   };
   const member = (node: AST.AST, partialKey = true): AST.AST => {
     const derived = derive(node, true);
-    if (!options.directives) return derived;
+    if (!options.directives) {
+      if (!options.partial) return derived;
+      const partial = Schema.optionalKey(Schema.make<Schema.Codec<unknown>>(derived)).ast;
+      recordAuthoringSource(partial, authoringSource(derived) ?? node);
+      return partial;
+    }
     const schema = directiveMember(
       Schema.make<Schema.Codec<unknown>>(derived),
       options.nativeDirectives === true,
@@ -177,6 +186,11 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
     return (partialKey && options.partial) || AST.isOptional(derived)
       ? Schema.optionalKey(schema).ast
       : schema.ast;
+  };
+  const slot = (kind: AuthoringExpressionExpectedType): AST.AST => {
+    const ast = options.slotFor(kind);
+    recordExpressionSlot(ast);
+    return ast;
   };
   const walk = (node: AST.AST, allowExpression: boolean): AST.AST => {
     if (node.encoding !== undefined) return derive(AST.toEncoded(node), allowExpression);
@@ -193,7 +207,7 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
               }),
             ).ast
           : node;
-      return allowExpression ? union([leaf, options.slotFor(kind)]) : leaf;
+      return allowExpression ? union([leaf, slot(kind)]) : leaf;
     }
     switch (node._tag) {
       case "Declaration": {
@@ -205,15 +219,7 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
       case "Objects": {
         const object = new AST.Objects(
           node.propertySignatures.map(
-            (property) =>
-              new AST.PropertySignature(
-                property.name,
-                options.directives
-                  ? member(property.type)
-                  : options.partial
-                    ? Schema.optionalKey(Schema.make<Schema.Codec<unknown>>(derive(property.type, true))).ast
-                    : derive(property.type, true),
-              ),
+            (property) => new AST.PropertySignature(property.name, member(property.type)),
           ),
           node.indexSignatures.map(
             (index) =>
@@ -228,7 +234,9 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
           node.context,
         );
         const container = authoringJsonContainer(node, object) ?? object;
-        return allowExpression ? union([container, options.slotFor("object")]) : container;
+        recordAuthoringSource(object, node);
+        recordAuthoringSource(container, node);
+        return allowExpression ? union([container, slot("object")]) : container;
       }
       case "Arrays": {
         const tuple = new AST.Arrays(
@@ -241,7 +249,9 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
           node.context,
         );
         const container = authoringJsonContainer(node, tuple) ?? tuple;
-        return allowExpression ? union([container, options.slotFor("array")]) : container;
+        recordAuthoringSource(tuple, node);
+        recordAuthoringSource(container, node);
+        return allowExpression ? union([container, slot("array")]) : container;
       }
       case "Union":
         return union(

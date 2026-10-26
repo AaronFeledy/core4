@@ -5,12 +5,7 @@ import { ConfigLintResult } from "@lando/sdk/schema";
 import type { PluginRegistry } from "@lando/sdk/services";
 import type { Effect } from "effect";
 import { renderConfigLintResult } from "../../../commands/app-config-lint";
-import { isEnvelopeResultFormat } from "../../../format-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { specFlagsOf, stringFlag } from "../../../spec/input-coercion";
-
-const usesEnvelopeFormat = (input: unknown): boolean =>
-  isEnvelopeResultFormat(stringFlag(specFlagsOf(input), "format") ?? "");
 
 export const appConfigLintSpec: LandoCommandSpec<
   ConfigLintResult,
@@ -19,7 +14,7 @@ export const appConfigLintSpec: LandoCommandSpec<
 > = {
   resultSchema: ConfigLintResult,
   id: "app:config:lint",
-  summary: "Validate the current app's Landofile schema and resolved event names.",
+  summary: "Check Landofile configuration, declared listeners, routes, and event names.",
   namespace: "app",
   topLevelAlias: false,
   aliases: ["config:lint"],
@@ -31,6 +26,6 @@ export const appConfigLintSpec: LandoCommandSpec<
     }),
   },
   run: () => appConfigLint(),
-  successExitCode: (result, input) => (result.valid || usesEnvelopeFormat(input) ? undefined : 1),
+  completion: (result) => ({ ok: true, exitCode: result.valid ? 0 : 1 }),
   render: (result) => renderConfigLintResult(result as ConfigLintResult, "text"),
 };

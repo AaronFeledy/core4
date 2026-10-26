@@ -28,10 +28,22 @@ import {
   parseCapturedExtension,
   repairClosedExtension,
   schemaAt,
+  withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
+import { configOutputLandofile } from "./x-extension-config-output.ts";
+import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
+import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
+import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
+import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
+import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
+import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
+import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
+import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
+import { evolveHistoricalToolingShorthand } from "./x-extension-tooling-shorthand-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
+const capturedLandofile = withIntentionalChangesSinceCapture(captured.landofile);
 
 const requireObject = (value: unknown, label: string): JsonSchema => {
   if (!isJsonObject(value)) throw new Error(`${label} must be a JSON object`);
@@ -39,7 +51,24 @@ const requireObject = (value: unknown, label: string): JsonSchema => {
 };
 
 const repairedLandofile = (): JsonSchema =>
-  normalizeJsonSchema(requireObject(repairClosedExtension(captured.landofile), "repaired landofile"));
+  normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
+
+const expectedLandofile = (): JsonSchema =>
+  evolveHistoricalToolingShorthand(
+    evolveHistoricalEnvironment(
+      evolveHistoricalEndpointMetadata(
+        evolveHistoricalServicePort(
+          evolveHistoricalTimestamps(
+            evolveHistoricalContainerUser(
+              evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+            ),
+            "bare",
+          ),
+        ),
+      ),
+    ),
+    "bare",
+  );
 
 describe("closed x-* extension artifact repair", () => {
   test("records the captured base artifact provenance", () => {
@@ -47,16 +76,28 @@ describe("closed x-* extension artifact repair", () => {
     expect(captured.pattern).toBe(EXTENSION_PATTERN);
   });
 
+  test("pins historical repair independently of later shorthand evolution", () => {
+    const repairedCapture = normalizeJsonSchema(
+      requireObject(repairClosedExtension(captured.landofile), "repaired capture"),
+    );
+    expect(createHash("sha256").update(JSON.stringify(repairedCapture)).digest("hex")).toBe(
+      "3e1bf2dce0e33bc8d22bc9664928c429355c5866dda24640dd9e6372be4e7ba2",
+    );
+    expect(shorthandDelta.provenanceCommit).toBe("4b13bf3bf278475b194cf0d82a3bc01de83325b2");
+    expect(timestampsDelta.provenanceCommit).toBe("08d1490c6ae5773be71abfd3283faf8ebe4f9189");
+    expect(includeChecksumDelta.provenanceCommit).toBe("e397cae8cb39233d4ec3a693dc533549f7cbb7f3");
+  });
+
   test("repairs the captured landofile onto every current production embedding", async () => {
-    // Given the normalized base landofile captured from commit 15133ee26.
-    const repaired = repairedLandofile();
+    // Given the normalized base landofile captured from commit 15133ee26, plus reviewed shorthand and port narrowing.
+    const repaired = expectedLandofile();
     const surfaces = [
       ...CONFIG_COMMANDS.map((command) => `command:${command}`),
       "schema:TemplateRenderContext",
     ];
     // When each current embedding is normalized with the lawful normalizer.
     for (const surface of surfaces) {
-      const current = schemaAt(await loadNormalizedArtifact(surface), "$.landofile");
+      const current = configOutputLandofile(await loadNormalizedArtifact(surface));
       // Then the whole subtree matches, including the nested service map.
       expect(jsonEquals(repaired, current)).toBe(true);
     }
@@ -65,8 +106,9 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("repairs the captured network map onto every current service schema", async () => {
-    const repaired = normalizeJsonSchema(
-      requireObject(repairClosedExtension(captured.networks), "repaired networks"),
+    const repaired = evolveHistoricalNetworks(
+      normalizeJsonSchema(requireObject(repairClosedExtension(captured.networks), "repaired networks")),
+      "bare",
     );
     for (const schemaId of NETWORK_SERVICE_CONFIGS) {
       const current = schemaAt(await loadNormalizedArtifact(`schema:${schemaId}`), "$.networks");
@@ -110,7 +152,7 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("admits declared names and x- extensions on the current command schema", async () => {
-    const landofile = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
+    const landofile = configOutputLandofile(await loadNormalizedArtifact("command:app:config"));
     expect(admitsExtensionKey(landofile, "name")).toBe(true);
     expect(admitsDeclaredName(landofile, "myapp")).toBe(true);
     expect(admitsExtensionKey(landofile, "x-team")).toBe(true);
@@ -141,17 +183,32 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("still flags the old artifact unless the exception path and surface match", async () => {
-    const current = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
+    const current = configOutputLandofile(await loadNormalizedArtifact("command:app:config"));
     const findings = classifySchemaChange(
-      { type: "object", properties: { landofile: captured.landofile } },
+      { type: "object", properties: { landofile: capturedLandofile } },
       { type: "object", properties: { landofile: current } },
       "output",
     );
     expect(findings.map((finding) => `${finding.changeKind} ${finding.path}`).sort()).toEqual([
+      "unsupported-construct $.landofile.events.post-destroy.items.anyOf",
+      "unsupported-construct $.landofile.events.post-init.items.anyOf",
+      "unsupported-construct $.landofile.events.post-rebuild.items.anyOf",
+      "unsupported-construct $.landofile.events.post-restart.items.anyOf",
+      "unsupported-construct $.landofile.events.post-start.items.anyOf",
+      "unsupported-construct $.landofile.events.post-stop.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-destroy.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-init.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-rebuild.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-restart.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-start.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-stop.items.anyOf",
+      "unsupported-construct $.landofile.toolingDefaults.env.anyOf",
       "unsupported-keyword $.landofile.additionalProperties",
+      "unsupported-keyword $.landofile.events.additionalProperties",
       "unsupported-keyword $.landofile.patternProperties",
       "unsupported-keyword $.landofile.propertyNames",
       "unsupported-keyword $.landofile.services.additionalProperties",
+      "unsupported-keyword $.landofile.tooling.additionalProperties",
     ]);
     expect(findings.every((finding) => finding.accepted === false)).toBe(true);
     const exact: CompatibilityException = {
@@ -187,13 +244,66 @@ describe("closed x-* extension artifact repair", () => {
     expect(networkFindings.every((finding) => finding.accepted === false)).toBe(true);
   });
 
-  test("fails when an unrelated field in the repaired subtree changes", async () => {
+  test("replays the port narrowing onto the service config only", () => {
     const repaired = repairedLandofile();
-    const current = schemaAt(await loadNormalizedArtifact("command:app:config"), "$.landofile");
+    const evolved = evolveHistoricalServicePort(repaired);
+    const service = (graph: JsonSchema) =>
+      requireObject(schemaAt(graph, "$.services.additionalProperties").properties, "service properties");
+    expect(service(evolved).port).toEqual(CURRENT_SERVICE_PORT);
+    expect(service(evolved).healthcheck).toEqual(service(repaired).healthcheck);
+    expect(jsonEquals({ ...service(evolved), port: null }, { ...service(repaired), port: null })).toBe(true);
+    expect(
+      jsonEquals(
+        { ...evolved, properties: { ...requireObject(evolved.properties, "p"), services: null } },
+        { ...repaired, properties: { ...requireObject(repaired.properties, "p"), services: null } },
+      ),
+    ).toBe(true);
+  });
+
+  test("fails when an unrelated field in the repaired subtree changes", async () => {
+    const repaired = expectedLandofile();
+    const current = configOutputLandofile(await loadNormalizedArtifact("command:app:config"));
     expect(jsonEquals(repaired, current)).toBe(true);
     const properties = requireObject(current.properties, "properties");
     const mutated: JsonSchema = { ...current, properties: { ...properties, name: { type: "number" } } };
     expect(jsonEquals(repaired, mutated)).toBe(false);
+  });
+
+  test("rejects a constraint hidden inside the approved healthcheck union", async () => {
+    const expected = expectedLandofile();
+    const current = configOutputLandofile(await loadNormalizedArtifact("command:app:config"));
+    const properties = requireObject(current.properties, "properties");
+    const services = requireObject(properties.services, "services");
+    const serviceProperties = requireObject(services.additionalProperties, "service");
+    const fields = requireObject(serviceProperties.properties, "service properties");
+    const healthcheck = requireObject(fields.healthcheck, "healthcheck");
+    if (!Array.isArray(healthcheck.anyOf)) throw new Error("approved healthcheck union missing");
+    const argv = healthcheck.anyOf.find(
+      (branch) => isJsonObject(branch) && branch.type === "array" && isJsonObject(branch.items),
+    );
+    if (!isJsonObject(argv) || !isJsonObject(argv.items)) throw new Error("approved argv branch missing");
+    const tightened = { ...argv, items: { ...argv.items, type: "number" } };
+    const mutated: JsonSchema = {
+      ...current,
+      properties: {
+        ...properties,
+        services: {
+          ...services,
+          additionalProperties: {
+            ...serviceProperties,
+            properties: {
+              ...fields,
+              healthcheck: {
+                ...healthcheck,
+                anyOf: healthcheck.anyOf.map((branch) => (branch === argv ? tightened : branch)),
+              },
+            },
+          },
+        },
+      },
+    };
+    expect(jsonEquals(expected, current)).toBe(true);
+    expect(jsonEquals(expected, mutated)).toBe(false);
   });
 
   test("does not repair a tighter propertyNames constraint", () => {

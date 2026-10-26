@@ -1,0 +1,4 @@
+name: mongodb-e2e-default
+services:
+  db:
+    type: mongodb

@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test";
-import { Schema, SchemaIssue } from "effect";
+import { JsonSchema, Schema, SchemaIssue, SchemaRepresentation } from "effect";
 
 import {
+  AppMountInput,
   AppMountPlan,
   DataStoreMountPlan,
   LandofileAuthoringShape,
   MountPlan,
   ServiceConfig,
   appMountSyncIgnores,
+  getJsonSchema,
 } from "@lando/sdk/schema";
 
 const appMount = (excludes: readonly string[] = [], includes: readonly string[] = []) =>
@@ -31,6 +33,51 @@ test("cancels exact excludes when includes names the whole entry", () => {
   const ignores = appMountSyncIgnores(service);
   // Then only the exact entry is removed, with stable order and deduplication.
   expect(ignores).toEqual(["vendor/", "node_modules", ".git"]);
+});
+
+test.each([
+  { input: "/site", expected: { target: "/site" } },
+  { input: "disabled", expected: { target: "disabled" } },
+  { input: false, expected: false },
+  {
+    input: { target: "/app", readOnly: true, excludes: ["vendor"], includes: ["vendor/keep"] },
+    expected: { target: "/app", readOnly: true, excludes: ["vendor"], includes: ["vendor/keep"] },
+  },
+])("AppMountInput normalizes and repeatedly decodes $input", ({ input, expected }) => {
+  for (const options of [{}, { onExcessProperty: "error" as const }]) {
+    const decode = Schema.decodeUnknownSync(AppMountInput, options);
+    const decoded = decode(input);
+    expect(decoded).toEqual(expected);
+    expect(decode(decoded)).toEqual(expected);
+    expect(Schema.decodeUnknownSync(ServiceConfig, options)({ appMount: input }).appMount).toEqual(expected);
+  }
+});
+
+test.each([
+  { type: "bind", target: "/x" },
+  { source: "/host", target: "/x" },
+])("AppMountInput rejects unsupported generic mount input %j", (input) => {
+  for (const options of [{}, { onExcessProperty: "error" as const }]) {
+    expect(() => Schema.decodeUnknownSync(AppMountInput, options)(input)).toThrow();
+  }
+});
+
+test("published AppMountInput rejects generic mount keys while accepting destination strings", async () => {
+  const document = getJsonSchema("AppMountInput");
+  expect(
+    await Bun.file(new URL("../../../dist/schemas/app-mount-input.json", import.meta.url)).json(),
+  ).toEqual(document);
+  const projected = SchemaRepresentation.fromJsonSchemaDocument(JsonSchema.fromSchemaDraft2020_12(document));
+  const decode = Schema.decodeUnknownSync(Schema.make<Schema.Codec<unknown>>(projected.ast), {
+    onExcessProperty: "error",
+  });
+  expect(decode("disabled")).toBe("disabled");
+  expect(decode({ target: "/x" })).toEqual({ target: "/x" });
+  for (const input of [
+    { target: "/x", type: "bind" },
+    { target: "/x", source: "/host" },
+  ])
+    expect(() => decode(input)).toThrow();
 });
 
 test("derives relative ignores from storage and non-bind mounts under the app target", () => {

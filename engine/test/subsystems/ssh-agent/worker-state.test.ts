@@ -23,7 +23,8 @@ test("replaceExisting terminates a live owned worker and removes a stale record"
     sessionId: "first",
     kind: "ssh" as const,
     socketName: "agent.sock",
-    protocolVersion: 1 as const,
+    protocolVersion: 2 as const,
+    configDigest: "digest",
     controlToken: "token",
     controlPort: 12345,
     pid: 98765,
@@ -74,7 +75,8 @@ test("does not signal a reused PID when worker identity differs", async () => {
     sessionId: "first",
     kind: "ssh" as const,
     socketName: "agent.sock",
-    protocolVersion: 1 as const,
+    protocolVersion: 2 as const,
+    configDigest: "digest",
     controlToken: "token",
     controlPort: 12345,
     pid: 98765,
@@ -109,10 +111,11 @@ test("generic detached worker decodes its own readiness schema", async () => {
   const { spawnDetachedWorker } = await import("../../../src/subsystems/detached-worker/process.ts");
   // Given
   const root = await mkdtemp(join(tmpdir(), "generic-worker-"));
-  const worker = spawnDetachedWorker(
+  const worker = await spawnDetachedWorker(
     {
       argv: [process.execPath, "-e", 'process.stdout.write(JSON.stringify({answer:42}) + "\\n")'],
       logsDir: root,
+      privateFileAccess: { enforce: async (path) => chmod(path, 0o600), verify: async () => undefined },
     },
     { readySchema: Schema.Struct({ answer: Schema.Number }), logLabel: "agent-relay" },
   );
@@ -138,7 +141,8 @@ test("authenticates worker identity over a separate loopback control socket", as
     sessionId: "unique",
     kind: "ssh" as const,
     pid: process.pid,
-    protocolVersion: 1 as const,
+    protocolVersion: 2 as const,
+    configDigest: "digest",
   };
   const control = await createAgentRelayWorkerControl(identity, "secret-control-token");
   const record = {
@@ -178,7 +182,8 @@ test("removes stale worker state without signaling a dead process", async () => 
     sessionId: "dead",
     kind: "ssh" as const,
     socketName: "agent.sock",
-    protocolVersion: 1 as const,
+    protocolVersion: 2 as const,
+    configDigest: "digest",
     controlToken: "token",
     controlPort: 12345,
     pid: 98765,
@@ -220,7 +225,8 @@ test("writing a relay record keeps userDataRoot/run at mode 0700", async () => {
     sessionId: "first",
     kind: "ssh" as const,
     socketName: "agent.sock",
-    protocolVersion: 1 as const,
+    protocolVersion: 2 as const,
+    configDigest: "digest",
     controlToken: "token",
     controlPort: 12345,
     pid: 98765,

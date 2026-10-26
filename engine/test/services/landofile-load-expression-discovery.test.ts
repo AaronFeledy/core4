@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { LandofileLoadOutsideRootError, NotImplementedError } from "@lando/sdk/errors";
+import { LandofileLoadOutsideRootError, LandofileValidationError } from "@lando/sdk/errors";
 import { GlobalConfig, ServiceName } from "@lando/sdk/schema";
 import { ConfigService, LandofileService, Logger } from "@lando/sdk/services";
 
@@ -75,7 +75,12 @@ test("fails closed when an env expression names an unset variable", async () => 
     const failure = await discoverFailure();
 
     // Then
-    expect(String((failure as { message?: unknown }).message ?? "")).toContain("name");
+    expect(failure).toMatchObject({
+      _tag: "ConfigExpressionError",
+      filePath: join(appRoot, ".lando.yml"),
+      path: "name",
+      expression: "{{ env.LANDO_UNSET_FIXTURE }}",
+    });
   });
 });
 
@@ -88,7 +93,7 @@ test("keeps host-reaching Landofile expressions unsupported", async () => {
     const failure = await discoverFailure();
 
     // Then
-    expect(failure).toBeInstanceOf(NotImplementedError);
+    expect(failure).toBeInstanceOf(LandofileValidationError);
   });
 });
 
@@ -113,7 +118,7 @@ test("keeps context paths deferred when combined with load", async () => {
     const failure = await discoverFailure();
 
     // Then
-    expect(failure).toBeInstanceOf(NotImplementedError);
+    expect(failure).toBeInstanceOf(LandofileValidationError);
   });
 });
 
@@ -264,7 +269,10 @@ test("allows and logs an opted-in outside-root load", async () => {
 
     // When
     const landofile = await Effect.runPromise(
-      Effect.flatMap(LandofileService, (service) => service.discover).pipe(Effect.provide(layer)),
+      Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+        Effect.map((compiled) => compiled.document),
+        Effect.provide(layer),
+      ),
     );
 
     // Then
@@ -276,63 +284,74 @@ test("allows and logs an opted-in outside-root load", async () => {
   }
 });
 
-test("logs an opted-in outside-root load from an include fragment", async () => {
-  const root = await mkdtemp(join(tmpdir(), "lando-load-include-outside-opt-in-"));
-  const appRoot = join(root, "app");
-  const cwd = process.cwd();
-  const messages: string[] = [];
-  try {
-    // Given
-    await mkdir(join(appRoot, "fragments"), { recursive: true });
-    await writeFile(join(root, "corp.pem"), PEM);
-    await writeFile(
-      join(appRoot, "fragments", "service.yml"),
-      [
-        "services:",
-        "  web:",
-        "    type: node:22",
-        "    security:",
-        "      ca:",
-        "        - \"{{ load('../../corp.pem') }}\"",
-        "",
-      ].join("\n"),
-    );
-    await writeFile(
-      join(appRoot, ".lando.yml"),
-      ["name: trust-app", "includes:", "  - ./fragments/service.yml", ""].join("\n"),
-    );
-    process.chdir(appRoot);
-    const config = Schema.decodeUnknownSync(GlobalConfig)({ allowLoadOutsideRoot: true });
-    const layer = Layer.mergeAll(
-      TestLandofileServiceLayer.layer,
-      Layer.succeed(
-        ConfigService,
-        ConfigService.of({
-          load: Effect.succeed(config),
-          get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
-        }),
-      ),
-      Layer.succeed(
-        Logger,
-        Logger.of({
-          debug: () => Effect.void,
-          info: (message) => Effect.sync(() => messages.push(message)),
-          warn: () => Effect.void,
-          error: () => Effect.void,
-        }),
-      ),
-    );
+test.each(["landofile", "tooling"] as const)(
+  "logs an opted-in outside-root load from a %s fragment",
+  async (kind) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-load-include-outside-opt-in-"));
+    const appRoot = join(root, "app");
+    const cwd = process.cwd();
+    const messages: string[] = [];
+    try {
+      // Given
+      await mkdir(join(appRoot, "fragments"), { recursive: true });
+      await writeFile(join(root, "corp.pem"), PEM);
+      await writeFile(
+        join(appRoot, "fragments", "service.yml"),
+        kind === "tooling"
+          ? "tooling:\n  probe:\n    cmd: \"{{ load('../../corp.pem') }}\"\n"
+          : [
+              "services:",
+              "  web:",
+              "    type: node:22",
+              "    security:",
+              "      ca:",
+              "        - \"{{ load('../../corp.pem') }}\"",
+              "",
+            ].join("\n"),
+      );
+      await writeFile(
+        join(appRoot, ".lando.yml"),
+        kind === "tooling"
+          ? "name: trust-app\nincludes:\n  - source: ./fragments/service.yml\n    kind: tooling\n    namespace: qa\n"
+          : ["name: trust-app", "includes:", "  - ./fragments/service.yml", ""].join("\n"),
+      );
+      process.chdir(appRoot);
+      const config = Schema.decodeUnknownSync(GlobalConfig)({ allowLoadOutsideRoot: true });
+      const layer = Layer.mergeAll(
+        TestLandofileServiceLayer.layer,
+        Layer.succeed(
+          ConfigService,
+          ConfigService.of({
+            load: Effect.succeed(config),
+            get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
+          }),
+        ),
+        Layer.succeed(
+          Logger,
+          Logger.of({
+            debug: () => Effect.void,
+            info: (message) => Effect.sync(() => messages.push(message)),
+            warn: () => Effect.void,
+            error: () => Effect.void,
+          }),
+        ),
+      );
 
-    // When
-    const landofile = await Effect.runPromise(
-      Effect.flatMap(LandofileService, (service) => service.discover).pipe(Effect.provide(layer)),
-    );
+      // When
+      const landofile = await Effect.runPromise(
+        Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+          Effect.map((compiled) => compiled.document),
+          Effect.provide(layer),
+        ),
+      );
 
-    // Then
-    expect(landofile.services?.[ServiceName.make("web")]?.security?.ca).toEqual([PEM]);
-    expect(messages).toEqual(["Landofile load used outside-root policy override"]);
-  } finally {
-    process.chdir(cwd);
-    await rm(root, { recursive: true, force: true });
-  }
-});
+      // Then
+      if (kind === "tooling") expect(landofile.tooling?.["qa:probe"]?.cmd).toBe(PEM);
+      else expect(landofile.services?.[ServiceName.make("web")]?.security?.ca).toEqual([PEM]);
+      expect(messages).toEqual(["Landofile load used outside-root policy override"]);
+    } finally {
+      process.chdir(cwd);
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

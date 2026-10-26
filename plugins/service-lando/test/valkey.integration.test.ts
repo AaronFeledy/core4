@@ -135,7 +135,6 @@ describe("valkey service type — live integration: RESP ping/set/get", () => {
           provider: providerId,
           services: { [cache.name]: cache },
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata: cache.metadata,

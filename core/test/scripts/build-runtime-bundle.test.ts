@@ -130,19 +130,19 @@ describe("release-mode URL derivation", () => {
       LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT,
     );
     expect(resolveRuntimeBundleRepository({})).toBe(LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT);
-    expect(LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT).toBe("lando-community/core4");
+    expect(LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT).toBe("AaronFeledy/core4");
   });
 
   test("releaseBundleBaseUrl points at this repository's runtime-v<version> release path", () => {
-    expect(releaseBundleBaseUrl("0.1.0", "lando-community/core4")).toBe(
-      "https://github.com/lando-community/core4/releases/download/runtime-v0.1.0",
+    expect(releaseBundleBaseUrl("0.1.0", "AaronFeledy/core4")).toBe(
+      "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.0",
     );
   });
 
   test("releaseBundleUrl derives the in-repo asset URL when no base URL override is given", () => {
     const target = { key: "linux-x64", filename: "lando-runtime-linux-x64.tar.gz" };
-    expect(releaseBundleUrl(target, { runtimeVersion: "0.1.0", repository: "lando-community/core4" })).toBe(
-      "https://github.com/lando-community/core4/releases/download/runtime-v0.1.0/lando-runtime-linux-x64.tar.gz",
+    expect(releaseBundleUrl(target, { runtimeVersion: "0.1.0", repository: "AaronFeledy/core4" })).toBe(
+      "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.0/lando-runtime-linux-x64.tar.gz",
     );
   });
 
@@ -151,7 +151,7 @@ describe("release-mode URL derivation", () => {
     expect(
       releaseBundleUrl(target, {
         runtimeVersion: "0.1.0",
-        repository: "lando-community/core4",
+        repository: "AaronFeledy/core4",
         baseUrl: "https://example.test/bundles///",
       }),
     ).toBe("https://example.test/bundles/lando-runtime-win32-x64.zip");
@@ -161,11 +161,11 @@ describe("release-mode URL derivation", () => {
     for (const target of RUNTIME_BUNDLE_TARGETS) {
       const url = releaseBundleUrl(target, {
         runtimeVersion: "1.2.3",
-        repository: "lando-community/core4",
+        repository: "AaronFeledy/core4",
       });
-      expect(
-        url.startsWith("https://github.com/lando-community/core4/releases/download/runtime-v1.2.3/"),
-      ).toBe(true);
+      expect(url.startsWith("https://github.com/AaronFeledy/core4/releases/download/runtime-v1.2.3/")).toBe(
+        true,
+      );
       expect(url.endsWith(target.filename)).toBe(true);
     }
   });

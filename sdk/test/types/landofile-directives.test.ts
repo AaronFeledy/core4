@@ -52,6 +52,21 @@ describe("Landofile merge directive typing", () => {
     );
   });
 
+  test("defineLandofile accepts expression-bearing partial authored layers", () => {
+    assertType<Rejects<string>>(true);
+    const layer = sdk.defineLandofile({
+      services: {
+        web: {
+          primary: "{{ recipe.flag }}",
+          build: { args: { MODE: "development" } },
+          healthcheck: { retries: "{{ recipe.retries }}" },
+        },
+      },
+    });
+    assertType<Accepts<typeof layer>>(true);
+    expect(layer.services.web.primary).toBe("{{ recipe.flag }}");
+  });
+
   test("effective Landofile types stay marker-free", () => {
     // Given directive-bearing values; when checked against the effective shape.
     assertType<{ name: LandofileReset } extends LandofileShape ? false : true>(true);

@@ -18,7 +18,8 @@ import {
 } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { ProviderInternalError, StateStoreError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -90,7 +91,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [db.name]: db },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -122,6 +122,9 @@ const registryLayer = (provider = TestRuntimeProvider) =>
   Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      appliedPlansFor: () => Effect.succeed([]),
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -154,7 +157,7 @@ const layerWithRedaction = (provider: RuntimeProviderShape, redaction: Layer.Lay
 const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
-    registerValues: registerRedactionValues,
+    ...makeRedactionService(),
     payloadValues: () => Effect.succeed(() => ["topsecret"]),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
   }),
@@ -205,6 +208,15 @@ describe("BuildOrchestratorLayer.layer", () => {
         LANDO_CA_BUNDLE: "/etc/lando/certs/ca-bundle.pem",
         LANDO_CA_DIR: "/etc/lando/certs",
       };
+      const buildSteps = [
+        {
+          id: "lando.security:trust-store",
+          phase: "build",
+          command: "install-trust",
+          buildKeyInputs: { caDigests: [digest] },
+          caFiles: [{ path: "/host/corp.pem", digest, archiveName: `lando-${digest}.crt` }],
+        },
+      ];
       const trustService: ServicePlan = {
         ...web,
         artifact: { kind: "ref", ref: "debian:12" },
@@ -227,15 +239,7 @@ describe("BuildOrchestratorLayer.layer", () => {
         ],
         extensions: {
           "@lando/core/service-features": {
-            buildSteps: [
-              {
-                id: "lando.security:trust-store",
-                phase: "build",
-                command: "install-trust",
-                buildKeyInputs: { caDigests: [digest] },
-                caFiles: [{ path: "/host/corp.pem", digest, archiveName: `lando-${digest}.crt` }],
-              },
-            ],
+            buildSteps,
           },
         },
       };
@@ -284,7 +288,17 @@ describe("BuildOrchestratorLayer.layer", () => {
       expect(builtService?.environment.LANDO_CA_BUNDLE).toBe(caEnvironment.LANDO_CA_BUNDLE);
       expect(builtService?.environment.LANDO_CA_DIR).toBe(caEnvironment.LANDO_CA_DIR);
       expect(cachedService?.environment).toEqual(builtService?.environment);
-      expect(cachedService?.extensions).toEqual(trustService.extensions);
+      const expectedExtensions = {
+        ...trustService.extensions,
+        "@lando/container-runtime/create-artifact": {
+          source: sha256Hex(canonicalJson({ artifact: trustService.artifact, buildSteps })),
+          realized: sha256Hex(
+            canonicalJson({ artifact: { kind: "ref", ref: "debian:12-lando-ca" }, buildSteps }),
+          ),
+        },
+      };
+      expect(builtService?.extensions).toEqual(expectedExtensions);
+      expect(cachedService?.extensions).toEqual(expectedExtensions);
     });
   });
 
@@ -403,7 +417,11 @@ describe("BuildOrchestratorLayer.layer", () => {
 
   test("settles every artifact task when scratch cache access fails", async () => {
     // Given
-    const cacheFailure = new StateStoreError({ reason: "io", operation: "open" });
+    const cacheFailure = new StateStoreError({
+      reason: "io",
+      operation: "open",
+      remediation: "Injected state-store open failure for build orchestrator fixture.",
+    });
     const scratchPlan: AppPlan = {
       ...plan,
       id: AppId.make("scratch-cache-failure"),
@@ -470,8 +488,14 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "buildArtifact",
       message: "build failed",
+      remediation:
+        "Re-run the command after checking `test` logs for the `buildArtifact` failure; if it persists, report the error with that operation name.",
     });
-    const cacheFailure = new StateStoreError({ reason: "io", operation: "update" });
+    const cacheFailure = new StateStoreError({
+      reason: "io",
+      operation: "update",
+      remediation: "Injected state-store update failure for build orchestrator fixture.",
+    });
     const scratchPlan: AppPlan = {
       ...plan,
       id: AppId.make("scratch-cache-write-failure"),
@@ -523,6 +547,8 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "buildArtifact",
       message: "build failed",
+      remediation:
+        "Re-run the command after checking `test` logs for the `buildArtifact` failure; if it persists, report the error with that operation name.",
     });
     const calls: string[] = [];
     const siblingStarted = Deferred.makeUnsafe<void>();
@@ -596,6 +622,8 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "pullArtifact",
       message: "registry unavailable topsecret",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const pulls: ArtifactPullSpec[] = [];
     const provider = {
@@ -647,6 +675,8 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "pullArtifact",
       message: "registry unavailable topsecret",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const provider = {
       ...TestRuntimeProvider,
@@ -694,11 +724,15 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "pullArtifact",
       message: "registry unavailable",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const localFailure = new ProviderInternalError({
       providerId: "test",
       operation: "pullArtifact",
       message: "local copy missing",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const pulls: ArtifactPullSpec[] = [];
     const provider = {
@@ -921,7 +955,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const envRedactionLayer = Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
+        ...makeRedactionService(),
         payloadValues: (options) => Effect.succeed(() => [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""]),
         forProfile: (_profile, options) =>
           Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
@@ -972,7 +1006,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const lazyRedactionLayer = Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
+        ...makeRedactionService(),
         payloadValues: () => Effect.succeed(() => ["latersecret"]),
         forProfile: () =>
           Effect.sync(() => {
@@ -1387,6 +1421,8 @@ describe("BuildOrchestratorLayer.layer", () => {
         providerId: "test",
         operation: "pullArtifact",
         message: "pull failed",
+        remediation:
+          "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
       });
       const retryCalls: string[] = [];
       const failingProvider = {

@@ -1,0 +1,14 @@
+name: networks-misdeclared
+networks:
+  default: {}
+  backend:
+    name: my_backend
+  shared:
+    external: true
+    driver: bridge
+services:
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    home: false
+    networks: [backend, shared]

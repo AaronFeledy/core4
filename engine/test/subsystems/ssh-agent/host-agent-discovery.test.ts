@@ -1,6 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { lstatSync } from "node:fs";
-import { chown, lstat, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chown, lstat, mkdir, mkdtemp, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,20 +17,6 @@ const listen = async (path: string): Promise<{ readonly close: () => Promise<voi
   });
   return { close: () => new Promise((resolve) => server.close(() => resolve())) };
 };
-
-const rootOwnedSystemSocket = (): string | undefined => {
-  const self = process.getuid?.();
-  if (process.platform === "win32" || self === undefined || self === 0) return undefined;
-  for (const path of ["/run/dbus/system_bus_socket", "/run/host-services/ssh-auth.sock"]) {
-    try {
-      const stats = lstatSync(path);
-      if (stats.isSocket() && stats.uid === 0) return path;
-    } catch {}
-  }
-  return undefined;
-};
-
-const explicitRootOwnedTarget = rootOwnedSystemSocket();
 
 test("prefers explicit socket, then SSH_AUTH_SOCK, then 1Password path per platform", async () => {
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
@@ -333,40 +318,95 @@ test("explicit symlink owned by another user is socket-owner-mismatch", async ()
   expect(result.failure.message).toContain(`uid ${foreignUid}`);
 });
 
-test.skipIf(explicitRootOwnedTarget === undefined)(
-  "explicit symlink to a root-owned socket is socket-owner-mismatch",
+test.skipIf(process.platform === "win32")(
+  "explicit socket ownership is checked with real filesystem inspection",
   async () => {
     const { discoverHostSshAgent } = await import(
       "../../../src/subsystems/ssh-agent/host-agent-discovery.ts"
     );
-    // Given a link we own pointing at a uid-0 system socket, with no inspect override.
-    const target = explicitRootOwnedTarget as string;
-    const self = process.getuid?.() ?? 0;
-    const root = await mkdtemp(join(tmpdir(), "ssh-agent-root-owned-"));
-    const link = join(root, "link.sock");
-    await symlink(target, link);
+    const root = await mkdtemp(join(tmpdir(), "ssh-agent-owner-"));
+    const socket = join(root, "agent.sock");
+    const agent = await listen(socket);
+    const owner = (await lstat(socket)).uid;
+    const spy = spyOn(process, "getuid").mockReturnValue(owner + 1);
     try {
-      expect((await lstat(link)).uid).toBe(self);
-      expect((await lstat(await realpath(link))).uid).toBe(0);
-      // When the explicit socket is that symlink.
       const result = await Effect.runPromise(
         Effect.result(
           discoverHostSshAgent({
             platform: "linux",
             home: root,
             env: {},
-            explicitSocket: link,
+            explicitSocket: socket,
           }),
         ),
       );
-      // Then the target owner is named; reading the target uid from the link would pass.
       expect(result).toMatchObject({
         _tag: "Failure",
-        failure: { reason: "socket-owner-mismatch", socketPath: link },
+        failure: { reason: "socket-owner-mismatch", socketPath: socket },
       });
       if (result._tag !== "Failure") throw new Error("expected failure");
-      expect(result.failure.message).toContain("uid 0");
+      expect(result.failure.message).toContain(`uid ${owner}`);
     } finally {
+      spy.mockRestore();
+      await agent.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(process.platform === "win32")(
+  "relay reconnects through the authored symlink after its target changes",
+  async () => {
+    const { discoverHostSshAgent } = await import(
+      "../../../src/subsystems/ssh-agent/host-agent-discovery.ts"
+    );
+    const { createAgentRelay } = await import("../../../src/subsystems/ssh-agent/relay.ts");
+    const { probeSshAgent } = await import("../../../src/subsystems/ssh-agent/agent-probe.ts");
+    const root = await mkdtemp(join(tmpdir(), "ssh-agent-retarget-"));
+    const link = join(root, "link.sock");
+    const targets: string[] = [];
+    const servers = ["first", "second"].map((name) =>
+      createServer((socket) => {
+        targets.push(name);
+        socket.once("data", () => socket.end(Buffer.from([0, 0, 0, 5, 12, 0, 0, 0, 0])));
+      }),
+    );
+    for (const [index, server] of servers.entries()) {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(join(root, `${index}.sock`), resolve);
+      });
+    }
+    await symlink(join(root, "0.sock"), link);
+    const found = await Effect.runPromise(
+      discoverHostSshAgent({
+        platform: "linux",
+        home: root,
+        env: {},
+        explicitSocket: link,
+      }),
+    );
+    const relayPath = join(root, "relay.sock");
+    const relay = await createAgentRelay({
+      upstream: found.upstream,
+      listen: { _tag: "unix", path: relayPath, mode: 0o600 },
+    });
+    try {
+      expect(found.upstream.path).toBe(link);
+      expect((await probeSshAgent({ _tag: "unix", path: relayPath }, { timeoutMs: 1_000 })).identities).toBe(
+        0,
+      );
+      await unlink(link);
+      await symlink(join(root, "1.sock"), link);
+      expect((await probeSshAgent({ _tag: "unix", path: relayPath }, { timeoutMs: 1_000 })).identities).toBe(
+        0,
+      );
+      expect(targets).toEqual(["first", "first", "second"]);
+    } finally {
+      await relay.close();
+      await Promise.all(
+        servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
+      );
       await rm(root, { recursive: true, force: true });
     }
   },
@@ -666,3 +706,59 @@ test("explicit socket probe failure does not fall through", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("explicit regular file is socket-not-socket without probing or fallback", async () => {
+  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
+  const root = await mkdtemp(join(tmpdir(), "ssh-agent-file-"));
+  const file = join(root, "plain");
+  await writeFile(file, "not an agent");
+  const probes: string[] = [];
+  try {
+    const result = await Effect.runPromise(
+      Effect.result(
+        discoverHostSshAgent({
+          platform: "linux",
+          home: root,
+          env: { SSH_AUTH_SOCK: "/fallback" },
+          explicitSocket: file,
+          probe: (upstream) => {
+            probes.push(upstream.path);
+            return alive();
+          },
+        }),
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "socket-not-socket", socketPath: file },
+    });
+    expect(probes).toEqual([]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(process.platform !== "win32")(
+  "win32 explicit synthetic named pipe answers the agent probe",
+  async () => {
+    const { discoverHostSshAgent } = await import(
+      "../../../src/subsystems/ssh-agent/host-agent-discovery.ts"
+    );
+    const path = String.raw`\\.\pipe\lando-pr1439-${crypto.randomUUID()}`;
+    const agent = await listen(path);
+    try {
+      const result = await Effect.runPromise(
+        discoverHostSshAgent({
+          platform: "win32",
+          home: "C:\\synthetic",
+          env: {},
+          explicitSocket: path,
+        }),
+      );
+      expect(result.upstream).toEqual({ _tag: "named-pipe", path, source: "explicit" });
+      expect(result.identities).toBe(0);
+    } finally {
+      await agent.close();
+    }
+  },
+);

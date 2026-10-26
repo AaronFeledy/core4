@@ -44,7 +44,6 @@ const plan: AppPlan = {
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -251,7 +250,7 @@ test("sidecar mode uses SshService.getAgentSocket as upstream", async () => {
 });
 
 for (const failure of [false, true]) {
-  test(`use ${failure ? "failure closes" : "success retains"} the session`, async () => {
+  test(`use ${failure ? "failure" : "success"} retains the detached session`, async () => {
     // Given
     let closed = 0;
     const session: AgentRelaySession = {
@@ -281,7 +280,7 @@ for (const failure of [false, true]) {
       ),
     );
     // Then
-    expect(closed).toBe(failure ? 1 : 0);
+    expect(closed).toBe(0);
   });
 }
 
@@ -318,3 +317,30 @@ test.each(["sidecar", "host"] as const)(
     expect(result._tag).toBe(mode === "sidecar" ? "Success" : "Failure");
   },
 );
+
+test("host start retains the dangling env diagnostic when no fallback answers", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ssh-start-dangling-"));
+  const dangling = join(root, "gone.sock");
+  await symlink(join(root, "absent"), dangling);
+  try {
+    const result = await run(
+      Effect.result(
+        operation.resolveSshAgentUpstream({
+          appId: plan.id,
+          intent: { mode: "host" },
+          platform: "linux",
+          env: { SSH_AUTH_SOCK: dangling },
+          home: root,
+        }),
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { mode: "host", reason: "env-socket-dangling", socketPath: dangling },
+    });
+    if (result._tag !== "Failure") throw new Error("expected failure");
+    expect(result.failure.remediation).toContain("Open a new terminal");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

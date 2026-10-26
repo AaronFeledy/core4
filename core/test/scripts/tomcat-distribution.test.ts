@@ -18,6 +18,10 @@ const notices = ["LICENSE", "NOTICE"] as const;
 const withFixture = async (run: (root: string) => Promise<void>): Promise<void> => {
   const root = await mkdtemp(join(tmpdir(), "lando-tomcat-distribution-"));
   try {
+    const goNotices = join(root, "core/container-helper/dist/licenses/go");
+    await mkdir(goNotices, { recursive: true });
+    await writeFile(join(goNotices, "LICENSE"), "fixture Go license\n");
+    await writeFile(join(goNotices, "files.json"), '["licenses/go/LICENSE"]');
     await run(root);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -101,7 +105,11 @@ test.skipIf(process.platform === "win32")(
     if (publish === undefined) throw new Error("Missing dev publication command");
     await withFixture(async (root) => {
       await mkdir(join(root, "dist"));
-      for (const name of [...CI_PLATFORMS.map(releaseBinaryFileName), "SHA256SUMS"]) {
+      for (const name of [
+        ...CI_PLATFORMS.map(releaseBinaryFileName),
+        "SHA256SUMS",
+        "THIRD_PARTY_NOTICES.md",
+      ]) {
         await writeFile(join(root, "dist", name), name);
       }
 
@@ -114,6 +122,9 @@ test.skipIf(process.platform === "win32")(
           await readFile(resolve(repoRoot, tomcatPath, name), "utf8"),
         );
       }
+      expect(await readFile(join(root, "published/THIRD_PARTY_NOTICES.md"), "utf8")).toBe(
+        "THIRD_PARTY_NOTICES.md",
+      );
       for (const platform of CI_PLATFORMS) {
         expect(await readFile(join(root, "published", releaseBinaryFileName(platform)), "utf8")).toBe(
           releaseBinaryFileName(platform),
@@ -128,7 +139,7 @@ test.skipIf(process.platform === "win32")(
   "delivers complete Tomcat notices when the manual binary release is published",
   async () => {
     // Given: the manual release stage's binary manifest and companion artifacts.
-    const stage = RELEASE_STAGES.find(({ id }) => id === "13-publish");
+    const stage = RELEASE_STAGES.find(({ id }) => id === "14-publish");
     if (stage === undefined) throw new Error("Missing publish stage");
     await withFixture(async (root) => {
       await mkdir(join(root, "dist"));
@@ -153,6 +164,7 @@ test.skipIf(process.platform === "win32")(
         "update-manifest.json.sig",
         "update-manifest.json.crt",
         "release-notes.md",
+        "THIRD_PARTY_NOTICES.md",
       ])
         await writeFile(join(root, "dist", name), name);
       await writeFile(
@@ -163,7 +175,7 @@ test.skipIf(process.platform === "win32")(
         }),
       );
 
-      // When: stage 13 publishes through its real shell, without compiling or contacting GitHub.
+      // When: stage 14 publishes through its real shell, without compiling or contacting GitHub.
       await withCwd(root, () =>
         stage.run({
           target: "binary",
@@ -185,6 +197,9 @@ test.skipIf(process.platform === "win32")(
           await readFile(resolve(repoRoot, tomcatPath, name), "utf8"),
         );
       }
+      expect(await readFile(join(root, "published/THIRD_PARTY_NOTICES.md"), "utf8")).toBe(
+        "THIRD_PARTY_NOTICES.md",
+      );
     });
   },
 );

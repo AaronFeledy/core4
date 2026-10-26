@@ -9,7 +9,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { bringUp, makePodmanApiClient, layer as makeProviderLayer } from "@lando/provider-lando";
+import { bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import type { ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -19,8 +19,11 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import { type LandoEvent, RuntimeProvider } from "@lando/sdk/services";
+import { Schema } from "effect";
+import { makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("bringupapp");
@@ -117,6 +120,7 @@ const database = servicePlan("database");
 const node = servicePlan("node");
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "BringUp App",
   slug: "bringupapp",
@@ -124,7 +128,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database, [node.name]: node },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -132,6 +135,7 @@ const plan: AppPlan = {
 };
 
 const makeAliasProbePlan = (): AppPlan => ({
+  valueModel: 1,
   id: AppId.make("windows-host-alias-lando"),
   name: "Windows Host Alias Lando",
   slug: "windows-host-alias-lando",
@@ -157,7 +161,6 @@ const makeAliasProbePlan = (): AppPlan => ({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -199,6 +202,7 @@ console.log(body);
 `;
 
 interface CreateContainerBody {
+  readonly Labels?: Readonly<Record<string, string>>;
   readonly Cmd?: ReadonlyArray<string>;
   readonly Env?: ReadonlyArray<string>;
   readonly HostConfig?: {
@@ -221,8 +225,10 @@ const makeFakeApi = (hooks: FakeApiHooks = {}) => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const networks = new Set<string>();
+  const networkLabels = new Map<string, Readonly<Record<string, string>>>();
   const volumes = new Set<string>();
   const calls: EngineHttpRequest[] = [];
+  const labels = new Map<string, Readonly<Record<string, string>>>();
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
@@ -230,7 +236,8 @@ const makeFakeApi = (hooks: FakeApiHooks = {}) => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
-        const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
+        const reference = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
+        const name = Array.from(existing).find((name) => `${name}-id` === reference) ?? reference;
         const action = containerMatch?.[2];
 
         if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
@@ -243,13 +250,47 @@ const makeFakeApi = (hooks: FakeApiHooks = {}) => {
             }),
           };
         }
-        if (request.path === "/networks/create") {
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
           if (hooks.networkCreateFailureBody !== undefined) {
             return { status: 500, body: hooks.networkCreateFailureBody };
           }
-          const requestedName = (request.body as { Name?: string }).Name ?? "";
-          networks.add(requestedName);
-          return { status: 201, body: "{}" };
+          const payload =
+            request.path === "/libpod/networks/create"
+              ? Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    name: Schema.String,
+                    driver: Schema.Literal("bridge"),
+                    dns_enabled: Schema.Literal(true),
+                    options: Schema.Struct({ metric: Schema.Literal("50") }),
+                    labels: Schema.Record(Schema.String, Schema.String),
+                  }),
+                )(request.body)
+              : undefined;
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({
+              Name: Schema.String,
+              Labels: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+            }),
+          )(payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels });
+          networks.add(body.Name);
+          networkLabels.set(body.Name, body.Labels ?? {});
+          return { status: 201, body: JSON.stringify({ Id: `${body.Name}-id` }) };
+        }
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const network = Array.from(networks).find(
+            (name) => name === reference || `${name}-id` === reference,
+          );
+          return network === undefined
+            ? { status: 404, body: "{}" }
+            : {
+                status: 200,
+                body: JSON.stringify({
+                  Id: `${network}-id`,
+                  Name: network,
+                  Labels: networkLabels.get(network),
+                }),
+              };
         }
         if (request.path === "/volumes/create") {
           const requestedName = (request.body as { Name?: string }).Name ?? "";
@@ -258,8 +299,12 @@ const makeFakeApi = (hooks: FakeApiHooks = {}) => {
           return { status: existed ? 409 : 201, body: "{}" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
-          const network = decodeURIComponent(request.path.slice("/networks/".length));
-          const deleted = networks.delete(network);
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const network = Array.from(networks).find(
+            (name) => name === reference || `${name}-id` === reference,
+          );
+          const deleted = network !== undefined && networks.delete(network);
+          if (network !== undefined) networkLabels.delete(network);
           return { status: deleted ? 204 : 404, body: "" };
         }
         if (request.method === "GET" && action === "json") {
@@ -269,7 +314,9 @@ const makeFakeApi = (hooks: FakeApiHooks = {}) => {
           return {
             status: 200,
             body: JSON.stringify({
+              Id: `${name}-id`,
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "created" },
+              Config: { Labels: labels.get(name) },
             }),
           };
         }
@@ -285,6 +332,10 @@ const makeFakeApi = (hooks: FakeApiHooks = {}) => {
             return { status: 409, body: "already exists" };
           }
           existing.add(createdName);
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }),
+          )(request.body);
+          labels.set(createdName, body.Labels);
           return { status: 201, body: "{}" };
         }
         if (request.method === "POST" && action === "start") {
@@ -339,7 +390,7 @@ describe("provider-lando bringUp", () => {
       "pre-service-start",
       "post-service-start",
     ]);
-    expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
+    expect(fake.calls.some((call) => call.path === "/libpod/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path.includes("/start"))).toBe(true);
     const nodeCreate = fake.calls.find(
       (call) =>
@@ -356,11 +407,22 @@ describe("provider-lando bringUp", () => {
     });
     expect(
       fake.calls
-        .filter((call) => call.path === "/networks/create")
+        .filter((call) => call.path === "/networks/create" || call.path === "/libpod/networks/create")
         .slice(0, 2)
         .map((call) => call.body),
     ).toEqual([
-      { Name: "lando-bringupapp", Driver: "bridge" },
+      {
+        name: "lando-bringupapp",
+        driver: "bridge",
+        dns_enabled: true,
+        options: { metric: "50" },
+        labels: {
+          "dev.lando.app": plan.id,
+          "dev.lando.app-root": appRoot,
+          "dev.lando.owner": appIdentityKey("owner", appRoot),
+          "dev.lando.provider": providerId,
+        },
+      },
       { Name: "lando_bridge_network", Driver: "bridge" },
     ]);
   });
@@ -389,15 +451,26 @@ describe("provider-lando bringUp", () => {
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
     expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
       "custom-app-net": { Aliases: ["node"] },
-      "custom-shared-net": { Aliases: ["node.custom.internal"] },
+      "custom-shared-net": { Aliases: ["node.bringupapp.internal", "node.custom.internal"] },
     });
     expect(
       fake.calls
-        .filter((call) => call.path === "/networks/create")
+        .filter((call) => call.path === "/networks/create" || call.path === "/libpod/networks/create")
         .slice(0, 2)
         .map((call) => call.body),
     ).toEqual([
-      { Name: "custom-app-net", Driver: "bridge" },
+      {
+        name: "custom-app-net",
+        driver: "bridge",
+        dns_enabled: true,
+        options: { metric: "50" },
+        labels: {
+          "dev.lando.app": plan.id,
+          "dev.lando.app-root": appRoot,
+          "dev.lando.owner": appIdentityKey("owner", appRoot),
+          "dev.lando.provider": providerId,
+        },
+      },
       { Name: "custom-shared-net", Driver: "bridge" },
     ]);
   });
@@ -458,14 +531,27 @@ describe("provider-lando bringUp", () => {
     );
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
     expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
-      "custom-app-only": { Aliases: ["node"] },
+      "custom-app-only": { Aliases: ["node", "node.bringupapp.internal"] },
     });
     expect(
       fake.calls
-        .filter((call) => call.path === "/networks/create")
+        .filter((call) => call.path === "/networks/create" || call.path === "/libpod/networks/create")
         .slice(0, 1)
         .map((call) => call.body),
-    ).toEqual([{ Name: "custom-app-only", Driver: "bridge" }]);
+    ).toEqual([
+      {
+        name: "custom-app-only",
+        driver: "bridge",
+        dns_enabled: true,
+        options: { metric: "50" },
+        labels: {
+          "dev.lando.app": plan.id,
+          "dev.lando.app-root": appRoot,
+          "dev.lando.owner": appIdentityKey("owner", appRoot),
+          "dev.lando.provider": providerId,
+        },
+      },
+    ]);
   });
 
   test("realizes accelerated appMount and bind mounts as file-sync volumes", async () => {
@@ -535,9 +621,10 @@ describe("provider-lando bringUp", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(fake.calls.some((call) => call.path.startsWith("/containers/create"))).toBe(false);
-    expect(fake.networks.size).toBe(0);
+    expect(fake.networks.has("lando-bringupapp")).toBe(true);
+    expect(fake.networks.has("lando_bridge_network")).toBe(true);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
-      true,
+      false,
     );
   });
 
@@ -564,7 +651,7 @@ describe("provider-lando bringUp", () => {
     expect(nodeCreateBody?.Cmd).toEqual(["sh", "-lc", command]);
   });
 
-  test("cleans up already-started services when cancellation is observed", async () => {
+  test("retains already-started services when cancellation is observed", async () => {
     const fake = makeFakeApi();
     const controller = new AbortController();
     const eventService = {
@@ -581,48 +668,51 @@ describe("provider-lando bringUp", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.running.size).toBe(0);
-    expect(fake.calls.some((call) => call.path.includes("/stop"))).toBe(true);
+    expect(fake.running.size).toBe(1);
+    expect(fake.calls.some((call) => call.path.includes("/stop"))).toBe(false);
   });
 
-  test("rolls back containers and network when the first service start fails after network create", async () => {
+  test("retains the container and networks when the first service start fails", async () => {
     const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-database"]) });
 
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.existing.size).toBe(0);
-    expect(fake.networks.size).toBe(0);
+    expect(fake.existing.size).toBe(1);
+    expect(fake.running.size).toBe(0);
+    expect(fake.networks.has("lando-bringupapp")).toBe(true);
+    expect(fake.networks.has("lando_bridge_network")).toBe(true);
     expect(
       fake.calls.some(
         (call) => call.method === "DELETE" && call.path.startsWith("/containers/lando-bringupapp-database"),
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
-      true,
+      false,
     );
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
       false,
     );
   });
 
-  test("rolls back the first service and network when the second service start fails", async () => {
+  test("retains both containers and networks when the second service start fails", async () => {
     const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-node"]) });
 
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api }));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(fake.existing.size).toBe(0);
-    expect(fake.running.size).toBe(0);
-    expect(fake.networks.size).toBe(0);
+    expect(fake.existing.size).toBe(2);
+    expect(fake.running.size).toBe(1);
+    expect(fake.networks.has("lando-bringupapp")).toBe(true);
+    expect(fake.networks.has("lando_bridge_network")).toBe(true);
     const databaseDeleted = fake.calls.some(
       (call) => call.method === "DELETE" && call.path.startsWith("/containers/lando-bringupapp-database"),
     );
     const nodeDeleted = fake.calls.some(
       (call) => call.method === "DELETE" && call.path.startsWith("/containers/lando-bringupapp-node"),
     );
-    expect(databaseDeleted).toBe(true);
-    expect(nodeDeleted).toBe(true);
+    expect(databaseDeleted).toBe(false);
+    expect(nodeDeleted).toBe(false);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
       false,
     );
@@ -649,7 +739,8 @@ describe("provider-lando bringUp", () => {
     expect(startError.operation).toBe("bringUp.start");
     expect(startError.service).toBe("database");
     expect(typeof startError.message).toBe("string");
-    expect(startError.remediation).toMatch(/lando destroy/u);
+    expect(startError.remediation).not.toMatch(/lando destroy/u);
+    expect(startError.remediation).toMatch(/lando start/u);
     expect(startError.details).toEqual({
       status: 500,
       body: "forced start failure for lando-bringupapp-database",

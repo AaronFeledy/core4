@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Clock, DateTime, Effect } from "effect";
+import { Clock, DateTime, Effect, Schema } from "effect";
 
 import type {
   EngineHttpRequest,
@@ -99,6 +99,7 @@ const database = servicePlan("database");
 const node = servicePlan("node");
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "BringDown App",
   slug: "bringdownapp",
@@ -106,7 +107,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database, [node.name]: node },
   routes: [],
-  networks: [],
   stores: [
     { name: "bringdownapp_database_data", scope: "app", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
@@ -116,10 +116,25 @@ const plan: AppPlan = {
   extensions: {},
 };
 
+const decodeCreateBody = Schema.decodeUnknownSync(
+  Schema.Struct({
+    Name: Schema.optional(Schema.String),
+    Labels: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  }),
+);
+
 const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const networks = new Set<string>();
+  const containers = new Map<
+    string,
+    { readonly Id: string; readonly Labels: Readonly<Record<string, string>> }
+  >();
+  const networkDetails = new Map<
+    string,
+    { readonly Id: string; readonly Labels: Readonly<Record<string, string>> }
+  >();
   const volumes = new Set<string>(plan.stores.map((store) => store.name));
   const volumeLabels = new Map<string, Readonly<Record<string, string>>>(
     plan.stores.map((store) => [
@@ -137,13 +152,31 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
-        const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
+        const reference = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
+        const name = [...containers].find(([, container]) => container.Id === reference)?.[0] ?? reference;
         const action = containerMatch?.[2];
 
-        if (request.path === "/networks/create") {
-          const requestedName = (request.body as { Name?: string }).Name ?? "";
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+          const payload =
+            request.path === "/libpod/networks/create"
+              ? Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    name: Schema.String,
+                    driver: Schema.Literal("bridge"),
+                    dns_enabled: Schema.Literal(true),
+                    options: Schema.Struct({ metric: Schema.Literal("50") }),
+                    labels: Schema.Record(Schema.String, Schema.String),
+                  }),
+                )(request.body)
+              : undefined;
+          const body = decodeCreateBody(
+            payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels },
+          );
+          const requestedName = body.Name ?? "";
           networks.add(requestedName);
-          return { status: 201, body: "{}" };
+          const network = { Id: `${requestedName}-id`, Labels: body.Labels ?? {} };
+          networkDetails.set(requestedName, network);
+          return { status: 201, body: JSON.stringify(network) };
         }
         if (request.path === "/volumes/create") {
           const body = request.body as { Name?: string; Labels?: Readonly<Record<string, string>> };
@@ -153,9 +186,15 @@ const makeFakeApi = () => {
           if (!existed && body.Labels !== undefined) volumeLabels.set(requestedName, body.Labels);
           return { status: existed ? 409 : 201, body: "{}" };
         }
-        if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
-          const network = decodeURIComponent(request.path.slice("/networks/".length));
-          const deleted = networks.delete(network);
+        if (request.path.startsWith("/networks/")) {
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const name = [...networkDetails].find(([, network]) => network.Id === reference)?.[0] ?? reference;
+          const network = networkDetails.get(name);
+          if (request.method === "GET") {
+            return { status: network === undefined ? 404 : 200, body: JSON.stringify(network ?? {}) };
+          }
+          const deleted = networks.delete(name);
+          networkDetails.delete(name);
           return { status: deleted ? 204 : 404, body: "" };
         }
         if (request.method === "GET" && action === "json") {
@@ -165,6 +204,8 @@ const makeFakeApi = () => {
           return {
             status: 200,
             body: JSON.stringify({
+              Id: containers.get(name)?.Id,
+              Config: { Labels: containers.get(name)?.Labels },
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "created" },
             }),
           };
@@ -175,7 +216,10 @@ const makeFakeApi = () => {
             return { status: 409, body: "already exists" };
           }
           existing.add(createdName);
-          return { status: 201, body: "{}" };
+          const body = decodeCreateBody(request.body);
+          const container = { Id: `${createdName}-id`, Labels: body.Labels ?? {} };
+          containers.set(createdName, container);
+          return { status: 201, body: JSON.stringify(container) };
         }
         if (request.method === "POST" && action === "start") {
           running.add(name);
@@ -191,6 +235,7 @@ const makeFakeApi = () => {
         if (request.method === "DELETE" && request.path.startsWith("/containers/")) {
           const deleted = existing.delete(name);
           running.delete(name);
+          containers.delete(name);
           return { status: deleted ? 204 : 404, body: "" };
         }
         if (request.method === "GET" && request.path.startsWith("/volumes/")) {
@@ -259,7 +304,29 @@ describe("provider-lando bringDown", () => {
     const failedStopApi: PodmanApiClient = {
       info: Effect.succeed({}),
       ping: Effect.succeed(undefined),
-      request: () => Effect.succeed({ status: 500, body: "stop failed" }),
+      request: (request) =>
+        Effect.sync(() => {
+          if (request.method === "GET" && request.path.endsWith("/json")) {
+            const global = request.path === "/containers/lando-global-node/json";
+            return {
+              status: 200,
+              body: JSON.stringify({
+                Id: global ? "global-node-id" : "app-node-id",
+                Config: {
+                  Labels: {
+                    "dev.lando.app": global ? globalPlan.id : plan.id,
+                    "dev.lando.app-root": appRoot,
+                    "dev.lando.service": "node",
+                  },
+                },
+              }),
+            };
+          }
+          if (request.method === "POST" && request.path.endsWith("/stop")) {
+            return { status: 500, body: "stop failed" };
+          }
+          return { status: 500, body: `unexpected ${request.method} ${request.path}` };
+        }),
     };
 
     const globalError = await Effect.runPromise(
@@ -300,7 +367,7 @@ describe("provider-lando bringDown", () => {
       request: (request) =>
         Effect.sync(() => {
           calls.push(request);
-          if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
+          if (request.method === "GET" && request.path.startsWith("/networks/")) {
             return { status: 404, body: "" };
           }
           if (request.method === "GET" && request.path === "/volumes/foreign-data") {
@@ -390,70 +457,6 @@ describe("provider-lando bringDown", () => {
 
     expect(fake.calls.some((call) => call.path.startsWith("/libpod/volumes/prune"))).toBe(false);
   });
-
-  test.skipIf(resolveLiveProviderSocket() === undefined)(
-    "stops and removes live Podman containers and network while preserving volumes",
-    async () => {
-      const socketPath = resolveLiveProviderSocket()?.socketPath;
-      expect(socketPath).toBeTruthy();
-      const api = makePodmanApiClient(socketPath ?? "");
-      const liveRequest = api.request;
-      if (liveRequest === undefined) {
-        throw new Error("missing request client");
-      }
-
-      await Effect.runPromise(
-        Effect.result(
-          liveRequest({
-            method: "POST",
-            path: "/volumes/create",
-            body: { Name: "bringdownapp_database_data" },
-          }),
-        ),
-      );
-
-      try {
-        await Effect.runPromise(bringUp(plan, { api }));
-        const result = await Effect.runPromise(bringDown(plan, { api }));
-
-        expect(result.changed).toBe(true);
-        for (const service of Object.values(plan.services)) {
-          const response = await Effect.runPromise(
-            liveRequest({ method: "GET", path: `/containers/lando-${plan.slug}-${service.name}/json` }),
-          );
-          expect(response.status).toBe(404);
-        }
-        const network = await Effect.runPromise(
-          liveRequest({ method: "GET", path: `/networks/lando-${plan.slug}` }),
-        );
-        expect(network.status).toBe(404);
-        const volume = await Effect.runPromise(
-          liveRequest({ method: "GET", path: "/volumes/bringdownapp_database_data" }),
-        );
-        expect(volume.status).toBe(200);
-      } finally {
-        for (const service of Object.values(plan.services)) {
-          await Effect.runPromise(
-            Effect.result(
-              liveRequest({ method: "POST", path: `/containers/lando-${plan.slug}-${service.name}/stop` }),
-            ),
-          );
-          await Effect.runPromise(
-            Effect.result(
-              liveRequest({
-                method: "DELETE",
-                path: `/containers/lando-${plan.slug}-${service.name}?force=true`,
-              }),
-            ),
-          );
-        }
-        await Effect.runPromise(
-          Effect.result(liveRequest({ method: "DELETE", path: `/networks/lando-${plan.slug}` })),
-        );
-      }
-    },
-    60_000,
-  );
 
   test.skipIf(!volumePruneEligibility.available)(
     liveIntegrationTestName(

@@ -7,7 +7,7 @@ tags: [beta, docs, python, service, runtime, fastapi]
 
 # Add Python
 
-Put `type: python:3.12` on the primary service. Python has no bare `type: python` alias, so pin a version. Lando supports `python:3.12`. The default image is `python:3.12-slim`. Your repo mounts read-write at `/app`.
+Add `type: python:3.12` to your primary service in `.lando.yml`. Python has no bare `type: python` alias, so pin a version. Lando supports `python:3.12`. The default image is `python:3.12-slim`. Your repo mounts read-write at `/app`.
 
 ```yaml
 name: python-demo
@@ -19,7 +19,19 @@ services:
 
 Add `framework:` when you want FastAPI, Django, or Flask defaults for port and env. Keep-alive still runs until you set `command:` or serve with `lando exec`.
 
-Python publishes its port endpoint but has no default healthcheck, including for authored worker commands. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running.
+Python publishes its port endpoint but has no default healthcheck, including for authored worker commands. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running. The slim image has no `curl`, so probe with Python itself in argv form. This example serves the app directory with Python's built-in HTTP server:
+
+```yaml
+services:
+  app:
+    type: "python:3.12"
+    primary: true
+    port: 8000
+    command: [python, -m, http.server, "8000"]
+    healthcheck: [python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+```
+
+For an existing FastAPI project, save this complete service and tooling configuration in `.lando.yml`:
 
 ```yaml
 name: python-fastapi
@@ -127,13 +139,13 @@ lando exec app -- uv pip install --system -r requirements.txt
 
 ## Serve FastAPI
 
-Keep-alive holds the container open while you install. Then either exec Uvicorn once:
+The idle container lets you install dependencies before starting the server. The following commands assume your `requirements.txt` includes FastAPI and Uvicorn and your app root contains `main.py` with an ASGI object named `app`. Run Uvicorn once in the foreground:
 
 ```sh
 lando exec app -- /app/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-Or pin it as the service command and restart so the proxy URL stays hot:
+Or set it as the service command and restart so Lando starts Uvicorn with the service:
 
 ```yaml
 services:
@@ -184,6 +196,8 @@ lando exec app -- /app/.venv/bin/gunicorn --bind 0.0.0.0:5000 app:app
 ```
 
 ## Pin an image
+
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Slim is the default. Use the full image when wheels need build tools. A custom `image:` or a Dockerfile selected by `build.context` owns its toolchain, including `uv`; Lando only installs `uv` for the stock `python:3.12-slim` image:
 

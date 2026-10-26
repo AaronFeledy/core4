@@ -4,18 +4,13 @@ import type * as HttpClientError from "effect/http/HttpClientError";
 
 import { ScannerError } from "@lando/sdk/errors";
 import { type ProbeOutcome, ProbeTimeoutError, runProbe } from "@lando/sdk/probe";
-import type {
-  AppId,
-  BindAddress,
-  PortNumber,
-  PublishedEndpoint,
-  ScanPlan,
-  ServiceName,
-} from "@lando/sdk/schema";
+import type { AppId, AppPlan, ScanPlan, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ScanAttempt, ScanEndpoint, ScanVerdict } from "@lando/sdk/services";
 
 import { RequestPolicy } from "@lando/http-client/live";
+import type { ScanSourceEndpoint } from "./connection-targets.ts";
+export { type ScanSourceEndpoint, publishedHostPort, scanTargets } from "./connection-targets.ts";
 
 export const SCANNER_ID = "http-probe";
 
@@ -56,19 +51,12 @@ export const scanConfigFromPlan = (scan: ScanPlan, base: UrlScanConfig): UrlScan
   deadlineMs: scan.timeoutMs,
 });
 
-export type ScanSourceEndpoint = PublishedEndpoint & {
-  readonly service: ServiceName;
-  readonly materialization?:
-    | {
-        readonly bindAddress: BindAddress;
-        readonly hostPort: PortNumber;
-      }
-    | undefined;
-};
-
 export interface UrlScannerDeps {
   readonly http: HttpClient.HttpClient;
-  readonly listEndpoints: (appId: AppId) => Effect.Effect<ReadonlyArray<ScanSourceEndpoint>, ScannerError>;
+  readonly listEndpoints: (
+    appId: AppId,
+    plan?: AppPlan,
+  ) => Effect.Effect<ReadonlyArray<ScanSourceEndpoint>, ScannerError>;
   readonly onAttempt?: (attempt: ScanAttempt) => Effect.Effect<void>;
 }
 
@@ -84,32 +72,6 @@ export interface ScanTarget {
 
 const isAccepted = (status: number, okCodes: ReadonlyArray<number>): boolean =>
   (status >= 200 && status < 300) || okCodes.includes(status);
-
-const buildUrl = (protocol: "http" | "https", host: string, port: number, path: string): string => {
-  const urlHost = host.includes(":") ? `[${host}]` : host;
-  return `${protocol}://${urlHost}:${port}${path.startsWith("/") ? path : `/${path}`}`;
-};
-
-export const publishedHostPort = (endpoint: ScanSourceEndpoint): PortNumber | undefined =>
-  endpoint.materialization?.hostPort ?? endpoint.publication.hostPort;
-
-export const scanTargets = (
-  endpoints: ReadonlyArray<ScanSourceEndpoint>,
-  path: string,
-): ReadonlyArray<ScanTarget> =>
-  endpoints.flatMap((endpoint) =>
-    endpoint.protocol === "http" || endpoint.protocol === "https"
-      ? (() => {
-          const hostPort = publishedHostPort(endpoint);
-          if (hostPort === undefined) return [];
-          const resolvedHost =
-            endpoint.materialization?.bindAddress ?? endpoint.publication.bindAddress ?? "127.0.0.1";
-          const host =
-            resolvedHost === "127.0.0.1" || resolvedHost === "0.0.0.0" ? "localhost" : resolvedHost;
-          return [{ service: endpoint.service, url: buildUrl(endpoint.protocol, host, hostPort, path) }];
-        })()
-      : [],
-  );
 
 const transportMessage = (error: HttpClientError.HttpClientError): string => {
   const reason = error.reason;
@@ -219,6 +181,8 @@ const probeRunError = (url: string, cause: unknown, redactor: Redactor): Scanner
     ),
     scannerId: SCANNER_ID,
     cause: redactor.redactValue(cause),
+    remediation:
+      "Start the app services and ensure a scanner implementation is installed, then re-run URL checks.",
   });
 
 const redDetail = (finalStatus: AttemptStatus, elapsedMs: number): string => {

@@ -12,6 +12,7 @@ const SOURCES = [
   "plugins/service-lando/src/features/security.ts",
   "plugins/service-lando/src/app-features/mailpit.ts",
   "plugins/service-lando/src/services/_creds-helpers.ts",
+  "sdk/src/database-creds/index.ts",
   "engine/src/subsystems/networking.ts",
   "engine/src/subsystems/host-proxy/transport-feature.ts",
   "engine/src/subsystems/host-proxy/session-env.ts",

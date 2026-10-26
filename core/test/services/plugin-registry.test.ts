@@ -249,6 +249,17 @@ afterEach(async () => {
 });
 
 describe("PluginRegistryLayer.layer", () => {
+  test("lists plugins without loading conflicting Landofile forms", async () => {
+    // Given
+    await writeFile(join(appRoot, ".lando.ts"), 'export default { name: "conflict" };\n');
+    // When
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+    // Then
+    expect(manifests.map((manifest) => String(manifest.name))).toEqual([...EXPECTED_BUNDLED_PLUGIN_NAMES]);
+  });
+
   test("lists bundled plugin manifests", async () => {
     const manifests = await runWithPluginRegistry(
       Effect.flatMap(PluginRegistry, (registry) => registry.list),

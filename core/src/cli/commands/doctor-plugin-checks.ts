@@ -67,7 +67,10 @@ const PluginDoctorReports = Schema.Array(PluginDoctorReport).pipe(
 
 class PluginDoctorReportInvalidError extends Schema.TaggedError<PluginDoctorReportInvalidError>()(
   "PluginDoctorReportInvalidError",
-  { message: Schema.String },
+  {
+    message: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
 ) {}
 
 export const probeBudgetMs = (sectionBudgetMs: number): number =>
@@ -136,6 +139,7 @@ export const pluginDoctorReports = Effect.fnUntraced(function* (
                 () =>
                   new PluginDoctorReportInvalidError({
                     message: `Plugin doctor check returned an invalid payload. Reports are limited to ${MAX_REPORTS_PER_CHECK} entries; update the owning plugin to satisfy PluginDoctorReport.`,
+                    remediation: `Update the owning plugin so its doctor check returns at most ${MAX_REPORTS_PER_CHECK} PluginDoctorReport entries with a valid shape, or remove the plugin with \`lando plugin remove <name>\`.`,
                   }),
               ),
             ),

@@ -69,6 +69,10 @@ export const renderDoctorReportAsNdjson = (
   const timestamp = DateTime.formatIso(instant);
   const now = DateTime.toDateUtc(instant);
   const lines: string[] = [];
+  if (report.globalConfig !== undefined)
+    lines.push(doctorCheckFrameLine({ name: "global-config", ...report.globalConfig }));
+  for (const skipped of report.skipped ?? [])
+    lines.push(doctorCheckFrameLine({ name: skipped.section, ...skipped }));
   lines.push(
     ...checkLinesFromNdjson(renderDoctorResultAsNdjson(report.provider, { now })),
     ...checkLinesFromNdjson(renderSubsystemDoctorResultAsNdjson(report.subsystems, { now })),

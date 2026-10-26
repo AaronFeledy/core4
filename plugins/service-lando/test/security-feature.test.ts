@@ -71,7 +71,9 @@ const buildStepsFor = (plan: ServicePlan) =>
   Schema.decodeUnknownSync(FeatureExtension)(plan.extensions["@lando/core/service-features"]).buildSteps ??
   [];
 
-const caEnvironment = (plan: ServicePlan): Readonly<Record<string, string | undefined>> => ({
+const caEnvironment = (
+  plan: ServicePlan,
+): Readonly<Record<string, import("@lando/sdk/schema").EnvironmentValue | undefined>> => ({
   NODE_EXTRA_CA_CERTS: plan.environment.NODE_EXTRA_CA_CERTS,
   REQUESTS_CA_BUNDLE: plan.environment.REQUESTS_CA_BUNDLE,
   SSL_CERT_FILE: plan.environment.SSL_CERT_FILE,

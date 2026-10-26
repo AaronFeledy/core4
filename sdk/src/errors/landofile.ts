@@ -1,12 +1,15 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
-import { ValidationIssue } from "../schema/validation-issue.ts";
+import { LandofileLayer } from "../schema/landofile-reference.ts";
+import { ValidationIssue, ValidationIssuePath } from "../schema/validation-issue.ts";
 
 export class RouteInputError extends Schema.TaggedError<RouteInputError>()("RouteInputError", {
   message: Schema.String.annotate({ description: "Human-readable route input failure." }),
   key: Schema.String.annotate({ description: "Authored route key path, including its array index." }),
   file: Schema.optional(Schema.String).annotate({ description: "File containing the authored route." }),
-  remediation: Schema.String.annotate({ description: "Action required to correct the route input." }),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
+    description: "Action required to correct the route input.",
+  }),
 }) {}
 
 export class LandofileNotFoundError extends Schema.TaggedError<LandofileNotFoundError>()(
@@ -14,6 +17,11 @@ export class LandofileNotFoundError extends Schema.TaggedError<LandofileNotFound
   {
     message: Schema.String,
     cwd: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+      Schema.withConstructorDefault(
+        Effect.succeed("Run `lando init --full --name=<name>` to scaffold an app."),
+      ),
+    ),
   },
 ) {}
 
@@ -22,7 +30,7 @@ export class LandofileParseError extends Schema.TaggedError<LandofileParseError>
   filePath: Schema.String,
   line: Schema.UndefinedOr(Schema.Number),
   column: Schema.UndefinedOr(Schema.Number),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -33,7 +41,7 @@ export class Lando3LandofileDetected extends Schema.TaggedError<Lando3LandofileD
     appRoot: Schema.String,
     sourceFile: Schema.String,
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -45,7 +53,7 @@ export class LandofileDialectMixError extends Schema.TaggedError<LandofileDialec
     canonicalFile: Schema.String,
     conflictingLayer: Schema.String,
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -56,7 +64,7 @@ export class LandofileFormConflictError extends Schema.TaggedError<LandofileForm
     layer: Schema.Literals(["base", "dist", "upstream", "canonical", "local", "user"]),
     yamlPath: Schema.String,
     typescriptPath: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -68,7 +76,7 @@ export class LandofileExpressionParseError extends Schema.TaggedError<LandofileE
     line: Schema.optional(Schema.Number),
     column: Schema.optional(Schema.Number),
     expression: Schema.optional(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -79,7 +87,7 @@ export class LandofileExpressionForbiddenError extends Schema.TaggedError<Landof
     message: Schema.String,
     helper: Schema.String,
     filePath: Schema.optional(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -90,7 +98,7 @@ export class LandofileExpressionEvalError extends Schema.TaggedError<LandofileEx
     message: Schema.String,
     filePath: Schema.optional(Schema.String),
     expression: Schema.optional(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -105,7 +113,9 @@ export class LandofileLoadOutsideRootError extends Schema.TaggedError<LandofileL
     authoredPath: Schema.String.annotate({ description: "File path as authored in the expression." }),
     resolvedPath: Schema.optional(Schema.String).annotate({ description: "Resolved absolute file path." }),
     appRoot: Schema.String.annotate({ description: "App root that bounds local Landofile reads." }),
-    remediation: Schema.String.annotate({ description: "Action required to permit or contain the read." }),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
+      description: "Action required to permit or contain the read.",
+    }),
   },
 ) {}
 
@@ -126,7 +136,7 @@ export class LandofileLoadLimitError extends Schema.TaggedError<LandofileLoadLim
     authoredPath: Schema.optional(Schema.String).annotate({
       description: "File path as authored, when applicable.",
     }),
-    remediation: Schema.String.annotate({
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
       description: "Global config adjustment or expression change required.",
     }),
   },
@@ -145,7 +155,7 @@ export class LandofileImportRefMisuseError extends Schema.TaggedError<LandofileI
     acceptingPath: Schema.String.annotate({
       description: "Nearest configuration path that accepts ImportRef values.",
     }),
-    remediation: Schema.String.annotate({
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
       description: "Action required to use load or move the import.",
     }),
   },
@@ -161,7 +171,11 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
   {
     message: Schema.String,
     file: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
     issues: Schema.Array(ValidationIssue),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
+      description: "Action required to correct the authored configuration.",
+    }),
   },
 ) {}
 
@@ -172,7 +186,7 @@ export class ComposeKeyRejectedError extends Schema.TaggedError<ComposeKeyReject
     source: Schema.String,
     service: Schema.optional(Schema.String),
     keyPath: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -208,7 +222,7 @@ export class LandofileVersionConstraintError extends Schema.TaggedError<Landofil
     message: Schema.String,
     constraints: Schema.Array(VersionConstraintProvenance),
     runningVersion: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -226,7 +240,7 @@ export class LandofileWriteValidationError extends Schema.TaggedError<LandofileW
     file: Schema.String,
     path: Schema.optional(Schema.String),
     issues: Schema.Array(ValidationIssue),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -241,7 +255,7 @@ export class LandofileSandboxError extends Schema.TaggedError<LandofileSandboxEr
     message: Schema.String,
     filePath: Schema.String,
     violation: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -256,7 +270,7 @@ export class LandofileTimeoutError extends Schema.TaggedError<LandofileTimeoutEr
     message: Schema.String,
     filePath: Schema.String,
     timeoutMs: Schema.Number,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -268,7 +282,7 @@ export class LandofileLockMismatchError extends Schema.TaggedError<LandofileLock
     source: Schema.String,
     expected: Schema.String,
     actual: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -287,6 +301,15 @@ export class LandofileIncludeError extends Schema.TaggedError<LandofileIncludeEr
       "max-depth",
       "subpath-invalid",
     ]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+    path: Schema.optional(ValidationIssuePath).annotate({
+      description: "The failing include entry, as a path into the document that declares it.",
+    }),
+    file: Schema.optional(Schema.String).annotate({
+      description: "The document that declares the failing include entry.",
+    }),
+    layer: Schema.optional(LandofileLayer).annotate({
+      description: "The Landofile layer whose include resolution reached the failing entry.",
+    }),
   },
 ) {}

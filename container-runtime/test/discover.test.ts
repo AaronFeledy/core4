@@ -8,7 +8,7 @@ import {
   mergeDiscoveredContainers,
 } from "../src/podman/discover.ts";
 
-const ctx = { providerId: "podman", remediation: "Check the runtime." };
+const ctx = { providerId: "podman", remediation: "Check the runtime.", env: {} };
 
 test("discovers labeled services with native container identity and runtime status", async () => {
   const calls: EngineHttpRequest[] = [];
@@ -47,6 +47,8 @@ test("discovers labeled services with native container identity and runtime stat
       service: ServiceName.make("db"),
       containerId: "running-id",
       status: "running",
+      state: "running",
+      publications: { status: "unknown" },
       labels: { "dev.lando.app": "orphan", "dev.lando.service": "db", "dev.lando.app-root": "/tmp/deleted" },
     },
     {
@@ -55,6 +57,8 @@ test("discovers labeled services with native container identity and runtime stat
       service: ServiceName.make("worker"),
       containerId: "stopped-id",
       status: "stopped",
+      state: "exited",
+      publications: { status: "unknown" },
       labels: { "dev.lando.app": "orphan", "dev.lando.service": "worker" },
     },
   ]);
@@ -81,6 +85,7 @@ test("a container's app-root label overrides the planned root for the same conta
     service: ServiceName.make("web"),
     containerId,
     status: "running" as const,
+    publications: { status: "unknown" as const },
   });
 
   const result = labelOwnedSnapshots(
@@ -102,6 +107,7 @@ test.each([false, true])("merges label-owned containers with includeScratch=%s",
     service: ServiceName.make("web"),
     containerId: "planned",
     status: "running" as const,
+    publications: { status: "unknown" as const },
   };
   const labeled = { ...planned, appRoot: AbsolutePath.make("/label-root") };
   const unplanned = { ...planned, containerId: "unplanned" };

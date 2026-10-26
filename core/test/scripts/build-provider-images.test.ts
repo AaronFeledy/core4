@@ -16,6 +16,12 @@ describe("provider-image manifest", () => {
     expect(dataHelper?.digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
   });
 
+  test("pins the volume witness image by digest to the oven/bun alpine tag", () => {
+    const volumeWitness = PROVIDER_IMAGES.images.volumeWitness;
+    expect(volumeWitness?.image).toBe("docker.io/oven/bun:1.4.0-alpine");
+    expect(volumeWitness?.digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
+  });
+
   test("validates schemaVersion, non-empty image, and digest shape", () => {
     expect(() =>
       validateProviderImageManifest({

@@ -1,6 +1,6 @@
 # Lando v4: Deprecation and Surface Evolution
 
-> **Part 16 of 19** · [Index](./README.md)
+> **Part 16 of 20** · [Index](./README.md)
 > **Read next:** [17 Executable Guides and Scenarios](./17-executable-tutorials.md)
 
 This part defines the single machine-readable deprecation contract for every public surface.
@@ -19,6 +19,8 @@ This part defines the single machine-readable deprecation contract for every pub
 6. `removeIn` is release-enforced; due or overdue surfaces block publication.
 7. Plugin deprecations use the same schema and propagation rules as core deprecations.
 8. Telemetry consumption follows the normal Telemetry disablement and redaction rules (§4.2).
+
+`AppPlacementError`, required `RuntimeProviderRegistry.appliedPlansFor`, `resolveAppliedPlan`, and `resolveTeardownEvidence` members (§5.3.1), and `GlobalAppService.providerId` (§20.5) are additive pre-release SDK contract changes. Registry implementations MUST supply the required members; consumers MUST preserve the declared placement-error channels, including scratch acquisition. These unreleased contract additions require public-surface fixture updates, not a deprecation cycle or compatibility adapters.
 
 ### 18.2 The `DeprecationNotice` schema
 

@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, wordpress, php, mariadb]
 
 # Run the WordPress recipe
 
+Create a local WordPress site with PHP and MariaDB. Run these commands from your host terminal, then download and install WordPress below.
+
 ```sh
 lando init --recipe wordpress --name=wp-demo --yes
 cd wp-demo
@@ -16,17 +18,6 @@ lando start
 The named init creates `wp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4 and skips Redis. Start builds `appserver` with mysqli and checksum-verified WP-CLI, then brings up Apache and MariaDB. Confirm the tools below, then install WordPress.
 
 If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it.
-
-## See what the recipe writes
-
-| Piece | What you get |
-| --- | --- |
-| `appserver` | `php:8.4`, `framework: wordpress`, WP-CLI and mysqli, `memory_limit = 512M`, Apache on port `80`, depends on `database` (and `cache` with Redis) |
-| `database` | `type: mariadb` (MariaDB 11.4) |
-| `cache` (optional) | `type: redis` with `--answer=redis=true` |
-| Tooling | `lando wp` and `lando composer` on `appserver`, `lando mariadb` from `database`, `lando redis-cli` when `cache` exists |
-
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead.
 
 ## Confirm the tools
 
@@ -55,7 +46,7 @@ if ( ( $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' ) === 'https' ) {
 
 Skip it and the HTTPS page requests its CSS and JS over `http://`, which the browser blocks.
 
-Leave `--admin_password` off. WP-CLI generates one and prints it once on an `Admin password:` line, so save it in your password manager.
+Use the HTTPS endpoint from `lando info` for `--url`, including any fallback port. Leave `--admin_password` off: WP-CLI generates one and prints it once on an `Admin password:` line, so save it in your password manager.
 
 ```sh
 lando wp core install \
@@ -76,6 +67,17 @@ lando mariadb -e 'SHOW TABLES;'
 
 Open the HTTPS URL. A fresh install serves the site title you passed to `core install`.
 
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.4`, `framework: wordpress`, WP-CLI and mysqli, `memory_limit = 512M`, Apache on port `80`, depends on `database` (and `cache` with Redis) |
+| `database` | `type: mariadb` (MariaDB 11.4) |
+| `cache` (optional) | `type: redis` with `--answer=redis=true` |
+| Tooling | `lando wp` and `lando composer` on `appserver`, `lando mariadb` from `database`, `lando redis-cli` when `cache` exists |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead.
+
 ## Connect WordPress to MariaDB
 
 | Setting | Value |
@@ -92,7 +94,7 @@ Add Redis at init with `--answer=redis=true`. That adds a `cache` service on `re
 
 ## Import a database
 
-Import replaces what's in the app database, so snapshot it first:
+Import executes the dump's SQL, which can change or replace data in the app database. Snapshot it first:
 
 ```sh
 lando db:snapshot --label before-import
@@ -133,10 +135,10 @@ services:
     type: mailpit
 ```
 
-Lando installs `msmtp` in `appserver` and points PHP's `sendmail_path` at it, so `wp_mail()` lands in Mailpit. Rebuild, send a test message, and get the inbox URL:
+Lando installs `msmtp` in `appserver` and points PHP's `sendmail_path` at it, so `wp_mail()` lands in Mailpit. Start, send a test message, and get the inbox URL:
 
 ```sh
-lando rebuild
+lando start
 lando wp eval 'var_dump( wp_mail( "you@example.test", "Mailpit check", "Hello" ) );'
 lando info
 ```
@@ -153,10 +155,10 @@ services:
     xdebug: true
 ```
 
-Rebuild so the extension lands in the image, then check it:
+Start so the extension lands in the image, then check it:
 
 ```sh
-lando rebuild
+lando start
 lando xdebug status
 ```
 

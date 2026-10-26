@@ -6,7 +6,7 @@ export { HostProxyService };
 
 const HOST_PROXY_DISABLED_ID = "disabled" as const;
 const HOST_PROXY_DEFAULT_BASE_DOMAIN = "lndo.site";
-const HOST_PROXY_DEFAULT_LOOPBACK = "127.0.0.1";
+export const HOST_PROXY_DEFAULT_LOOPBACK = "127.0.0.1";
 
 export const HostProxyServiceDisabled = HostProxyService.of({
   id: HOST_PROXY_DISABLED_ID,
@@ -33,9 +33,7 @@ export type {
 export { type HostProxyMountInfo, remapContainerCwd } from "./cwd-remap.ts";
 export { buildRunLandoRequest, filterHostProxyEnv } from "./shim.ts";
 export {
-  HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_SOCKET,
-  HOST_PROXY_SHIM_SOURCE,
   connectHostProxyRunLando,
   createHostProxyRunLandoSession,
   hostProxyRunLandoFeature,

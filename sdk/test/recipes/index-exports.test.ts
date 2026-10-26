@@ -20,6 +20,7 @@ test("recipes exports every public helper", () => {
       "recipeFamilyKey",
       "recipeMigratability",
       "recipeVersionedKey",
+      "renderCompiledRecipeSnapshot",
       "renderRecipeSnapshot",
       "sameRecipeFamily",
       "sameRecipeVersion",

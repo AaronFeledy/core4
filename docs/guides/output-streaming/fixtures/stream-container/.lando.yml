@@ -1,6 +1,4 @@
 name: stream-container-demo
-router:
-  enabled: false
 services:
   app:
     type: compose

@@ -1,0 +1,25 @@
+name: Typed Values Demo
+recipe:
+  id: lamp
+  version: 0.1.0
+  producer:
+    sourceKind: bundled
+    packageName: "@lando/recipe-lamp"
+    recipeId: lamp
+    manifestVersion: 0.1.0
+    contentDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  options:
+    primary: false
+    port: 8088
+    mode: development
+services:
+  app:
+    type: "node:22"
+    primary: "{{ recipe.primary }}"
+    environment: "{{ { NODE_ENV: recipe.mode } }}"
+  worker:
+    type: "node:22"
+    primary: "{{ boolean(default(env.LANDO_EXPRESSIONS_UNSET_XDEBUG, 'on')) }}"
+router:
+  httpPort: "{{ recipe.port }}"
+  httpsPort: "{{ number(default(env.LANDO_EXPRESSIONS_UNSET_PORT, '8443')) }}"

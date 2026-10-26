@@ -150,8 +150,33 @@ const checkProjectsObjectSchema = (check: AST.Check<unknown>): boolean => {
   return typeof schema === "object" && schema !== null && "properties" in schema;
 };
 
+const propertyNameChecks = (check: AST.Check<unknown>): ReadonlyArray<AST.Check<unknown>> => {
+  switch (check._tag) {
+    case "FilterGroup":
+      return check.checks.flatMap(propertyNameChecks);
+    case "Filter": {
+      const output = check.annotations?.toJsonSchema?.({ type: "object", schemas: [] });
+      const projection = Array.isArray(output) ? output[0] : output;
+      return projection !== null &&
+        typeof projection === "object" &&
+        "propertyNames" in projection &&
+        Object.keys(projection).every((key) => key === "propertyNames")
+        ? [check.annotate({ "~structural": true })]
+        : [];
+    }
+    default:
+      return check satisfies never;
+  }
+};
+
 export const authoringJsonContainer = (source: AST.AST, runtime: AST.AST): AST.AST | undefined => {
-  if (source.checks === undefined || !source.checks.some(checkProjectsObjectSchema)) return undefined;
+  const [first, ...rest] = (source.checks ?? []).flatMap(propertyNameChecks);
+  const keyChecks: AST.Checks | undefined = first === undefined ? undefined : [first, ...rest];
+  const container =
+    keyChecks === undefined ? runtime : Schema.make<Schema.Codec<unknown>>(runtime).check(...keyChecks).ast;
+  if (source.checks === undefined || !source.checks.some(checkProjectsObjectSchema)) {
+    return keyChecks === undefined ? undefined : container;
+  }
   const projection =
     source._tag === "Objects"
       ? new AST.Objects(
@@ -160,16 +185,23 @@ export const authoringJsonContainer = (source: AST.AST, runtime: AST.AST): AST.A
           ),
           source.indexSignatures.map((index) => new AST.IndexSignature(index.parameter, index.type)),
           source.annotations,
+          keyChecks,
         )
       : source._tag === "Arrays"
-        ? new AST.Arrays(source.isMutable, [...source.elements], [...source.rest], source.annotations)
+        ? new AST.Arrays(
+            source.isMutable,
+            [...source.elements],
+            [...source.rest],
+            source.annotations,
+            keyChecks,
+          )
         : undefined;
   if (projection === undefined) return undefined;
-  const schema = Schema.make<Schema.Codec<unknown>>(runtime);
+  const schema = Schema.make<Schema.Codec<unknown>>(container);
   const decode = decodeUnknownEffect(schema);
   const encode = encodeUnknownEffect(schema);
   return new AST.Declaration(
-    [runtime],
+    [container],
     () => (input, _self, options) => decode(input, options),
     {
       [JSON_PROJECTION]: true,

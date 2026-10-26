@@ -76,8 +76,6 @@ const unavailable = (reason: DiscoveryReason, socketPath?: string, owner?: strin
             : DEFAULT_REMEDIATION,
   });
 
-const socketOwnerLabel = (uid: number): string => `uid ${uid}`;
-
 const explicitOwnerMismatch = (
   inspection: HostAgentInspection,
   path: string,
@@ -85,8 +83,7 @@ const explicitOwnerMismatch = (
   const self = process.getuid?.();
   if (self === undefined) return undefined;
   for (const uid of [inspection.uid, inspection.targetUid]) {
-    if (uid !== undefined && uid !== self)
-      return unavailable("socket-owner-mismatch", path, socketOwnerLabel(uid));
+    if (uid !== undefined && uid !== self) return unavailable("socket-owner-mismatch", path, `uid ${uid}`);
   }
   return undefined;
 };

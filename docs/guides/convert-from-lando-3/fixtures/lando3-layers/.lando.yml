@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid lando3 primary translation layer
 name: convert-demo
 services:
   cache:

@@ -85,7 +85,7 @@ describe("deferred proxy certificate authority", () => {
       const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure) && failure.value instanceof CaError).toBe(true);
       if (Option.isSome(failure) && failure.value instanceof CaError) {
-        expect(failure.value.message).toContain("Enable the mkcert plugin.");
+        expect(failure.value.remediation).toBe(selectionFailure.remediation);
         expect(failure.value.cause).toBe(selectionFailure);
       }
     }

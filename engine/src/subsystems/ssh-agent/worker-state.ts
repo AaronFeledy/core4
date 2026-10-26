@@ -1,19 +1,23 @@
 import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import type { RootOverrides } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
 import { SshAgentTransportError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import type { AgentSocketKind, AppRef } from "@lando/sdk/schema";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { Duration, Effect } from "effect";
+import { Duration, Effect, Option } from "effect";
 import {
+  isOwnerOnlyRecordFile,
   readDetachedWorkerRecord,
   withDetachedWorkerLock,
   writeDetachedWorkerRecord,
 } from "../detached-worker/state-file.ts";
 import { AGENT_RELAY_DIRECTORY_MODE, ensureAgentRelayRunRoot, sshAgentSessionPaths } from "./session.ts";
 import {
-  type AgentRelayWorkerIdentity,
   AgentRelayWorkerRecord,
+  type TerminableAgentRelayWorkerIdentity,
+  TerminableAgentRelayWorkerRecord,
   identifyAgentRelayWorker,
 } from "./worker-protocol.ts";
 
@@ -23,7 +27,9 @@ export interface AgentRelayWorkerStateOptions {
   readonly privateFileAccess: PrivateFileAccess;
 }
 export interface TerminateAgentRelayWorkerOptions extends AgentRelayWorkerStateOptions {
-  readonly identify?: (record: AgentRelayWorkerRecord) => Promise<AgentRelayWorkerIdentity>;
+  readonly identify?: (
+    record: TerminableAgentRelayWorkerRecord,
+  ) => Promise<TerminableAgentRelayWorkerIdentity>;
   readonly isAlive?: (pid: number) => boolean;
   readonly terminateProcess?: (pid: number, signal: NodeJS.Signals) => Promise<void>;
 }
@@ -34,7 +40,6 @@ const stateError = (cause: unknown) =>
         message: "Unable to safely manage the agent relay worker.",
         stage: "worker",
         remediation: "Inspect the app's relay worker state and stop its owning session before retrying.",
-        cause,
       });
 const recordPath = (app: Pick<AppRef, "id" | "root">, options: AgentRelayWorkerStateOptions) =>
   sshAgentSessionPaths(app, options.paths, options.kind).recordPath;
@@ -77,12 +82,13 @@ export const withAgentRelayWorkerLock = <A, E>(
     {
       path: recordPath(app, options),
       label: "agent-relay-worker",
+      paths: options.paths,
       privateFileAccess: options.privateFileAccess,
     },
     body,
   ).pipe(Effect.mapError(stateError));
 
-const processAlive = (pid: number): boolean => {
+export const agentRelayWorkerProcessAlive = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
     return true;
@@ -96,15 +102,17 @@ export const replaceExistingAgentRelayWorker = Effect.fnUntraced(function* (
   app: Pick<AppRef, "id" | "root">,
   options: TerminateAgentRelayWorkerOptions,
 ) {
-  const record = yield* readAgentRelayWorkerRecord(app, options);
+  const record = yield* readDetachedWorkerRecord(
+    recordPath(app, options),
+    TerminableAgentRelayWorkerRecord,
+  ).pipe(Effect.mapError(stateError));
   if (record !== undefined) {
+    yield* registerAgentRelayControlToken(record.controlToken);
     if (record.appId !== app.id || record.appRoot !== app.root || record.kind !== options.kind)
       return yield* Effect.fail(stateError("Worker record belongs to another app."));
-    yield* Effect.tryPromise({
-      try: () => options.privateFileAccess.verify(recordPath(app, options)),
-      catch: stateError,
-    });
-    const alive = options.isAlive ?? processAlive;
+    if (!(yield* isOwnerOnlyRecordFile(recordPath(app, options), options.privateFileAccess)))
+      return yield* Effect.fail(stateError("Worker record is not private and owned by this user."));
+    const alive = options.isAlive ?? agentRelayWorkerProcessAlive;
     if (yield* Effect.try({ try: () => alive(record.pid), catch: stateError })) {
       const identity = yield* Effect.tryPromise({
         try: () => (options.identify ?? identifyAgentRelayWorker)(record),
@@ -116,7 +124,8 @@ export const replaceExistingAgentRelayWorker = Effect.fnUntraced(function* (
         identity.appId !== app.id ||
         identity.appRoot !== app.root ||
         identity.kind !== options.kind ||
-        identity.protocolVersion !== 1
+        identity.protocolVersion !== record.protocolVersion ||
+        (record.protocolVersion === 2 && identity.configDigest !== record.configDigest)
       )
         return yield* Effect.fail(stateError("Live worker identity differs from its record."));
       const terminate =
@@ -139,6 +148,21 @@ export const replaceExistingAgentRelayWorker = Effect.fnUntraced(function* (
         );
     }
   }
+  const paths = sshAgentSessionPaths(app, options.paths, options.kind);
+  yield* Effect.tryPromise({
+    try: async () => {
+      if (record !== undefined) await rm(join(paths.socketDir, record.socketName), { force: true });
+      await rm(paths.recordPath, { force: true });
+    },
+    catch: stateError,
+  });
+});
+
+export const disposeAgentRelayWorker = Effect.fnUntraced(function* (
+  app: Pick<AppRef, "id" | "root">,
+  options: TerminateAgentRelayWorkerOptions,
+) {
+  yield* replaceExistingAgentRelayWorker(app, options);
   yield* Effect.tryPromise({
     try: () =>
       rm(sshAgentSessionPaths(app, options.paths, options.kind).stateDir, { recursive: true, force: true }),
@@ -149,5 +173,10 @@ export const replaceExistingAgentRelayWorker = Effect.fnUntraced(function* (
 export const terminateOwnedAgentRelayWorker = (
   app: Pick<AppRef, "id" | "root">,
   options: TerminateAgentRelayWorkerOptions,
-) => withAgentRelayWorkerLock(app, options, replaceExistingAgentRelayWorker(app, options));
+) => withAgentRelayWorkerLock(app, options, disposeAgentRelayWorker(app, options));
 export const removeOwnedAgentRelayWorkerState = terminateOwnedAgentRelayWorker;
+
+export const registerAgentRelayControlToken = Effect.fnUntraced(function* (token: string) {
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (Option.isSome(redaction)) yield* redaction.value.registerValues([token]);
+});

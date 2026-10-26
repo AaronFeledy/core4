@@ -13,7 +13,7 @@ import {
 } from "@lando/sdk/schema";
 import { FileSyncEngine, type FileSyncEngineShape } from "@lando/sdk/services";
 import { TestFileSyncEngine } from "@lando/sdk/test";
-import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Option, Ref, Scope } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Option, Scope } from "effect";
 import { startFileSyncSessions } from "../../src/operations/start-file-sync.ts";
 
 const root = AbsolutePath.make("/tmp/durable-sync-contract");
@@ -35,7 +35,6 @@ const plan: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: ["first", "second"].map((mountKey) => ({ engineId: "mutagen", session: spec(mountKey) })),
   metadata: {
@@ -105,10 +104,10 @@ describe("durable initial file-sync failure", () => {
       test(`preserves both sessions after second ${failureAt} fails (managed=${managed})`, async () => {
         const state = fixture();
         const scope = await Effect.runPromise(Scope.make());
-        const safe = await Effect.runPromise(Ref.make(true));
         const failure = new FileSyncStartError({
           engineId: "mutagen",
           message: "second session readiness failed",
+          remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
         });
         const engine: FileSyncEngineShape = {
           ...state.engine,
@@ -125,7 +124,7 @@ describe("durable initial file-sync failure", () => {
         };
         try {
           const exit = await Effect.runPromiseExit(
-            startFileSyncSessions(plan, events, managed ? { scope } : undefined, safe).pipe(
+            startFileSyncSessions(plan, events, managed ? { scope } : undefined).pipe(
               Effect.provideService(FileSyncEngine, engine),
             ),
           );
@@ -134,7 +133,6 @@ describe("durable initial file-sync failure", () => {
             expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBe(failure);
           expect([...state.sessions.keys()].map(String)).toEqual(["sync-first", "sync-second"]);
           expect(state.cleanup).toEqual([]);
-          expect(await Effect.runPromise(Ref.get(safe))).toBe(false);
         } finally {
           await Effect.runPromise(Scope.close(scope, Exit.void));
         }
@@ -147,7 +145,6 @@ describe("durable initial file-sync failure", () => {
     const entered = await Effect.runPromise(Deferred.make<void>());
     const release = await Effect.runPromise(Deferred.make<void>());
     const scope = await Effect.runPromise(Scope.make());
-    const safe = await Effect.runPromise(Ref.make(true));
     const engine: FileSyncEngineShape = {
       ...state.engine,
       createSession: (session) =>
@@ -159,7 +156,7 @@ describe("durable initial file-sync failure", () => {
         }),
     };
     const fiber = Effect.runFork(
-      startFileSyncSessions({ ...plan, fileSync: plan.fileSync.slice(0, 1) }, events, { scope }, safe).pipe(
+      startFileSyncSessions({ ...plan, fileSync: plan.fileSync.slice(0, 1) }, events, { scope }).pipe(
         Effect.provideService(FileSyncEngine, engine),
       ),
     );
@@ -176,7 +173,6 @@ describe("durable initial file-sync failure", () => {
       }
       expect([...state.sessions.keys()].map(String)).toEqual(["sync-first"]);
       expect(state.cleanup).toEqual([]);
-      expect(await Effect.runPromise(Ref.get(safe))).toBe(false);
     } finally {
       await Effect.runPromise(Deferred.succeed(release, undefined));
       await Effect.runPromise(Fiber.interrupt(fiber));

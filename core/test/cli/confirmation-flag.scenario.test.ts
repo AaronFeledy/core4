@@ -22,7 +22,8 @@ const cases = [
   {
     argv: ["db:restore", "snap", "-y"],
     command: "db:restore",
-    tag: "SqlServiceNotFoundError",
+    // SQL selection and credentials come from applied state, which this fixture lacks.
+    tag: "PlanReplanRequiredError",
   },
 ] as const;
 
@@ -81,6 +82,14 @@ for (const mode of ["source", "relocated compiled"] as const) {
             expect(exitCode, stderr).toBe(1);
             const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(stdout));
             expect(envelope).toMatchObject({ command, ok: false, error: { _tag: tag } });
+            if (command === "db:restore") {
+              expect(envelope.error).toMatchObject({
+                app: "confirmation",
+                providerId: "unobserved",
+                operation: "database connection",
+                remediation: "Run `lando start` to apply the database plan, then retry.",
+              });
+            }
           } finally {
             await rm(root, { recursive: true, force: true });
           }

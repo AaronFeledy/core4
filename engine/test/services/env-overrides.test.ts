@@ -172,7 +172,8 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
       const config = await loadConfig();
       expect(config.userConfRoot === dir).toBe(true);
       expect(config.telemetry.enabled).toBe(true);
-      expect(config.defaultProviderId).toBe(ProviderId.make("lando"));
+      // An unauthored provider stays absent so selection can tell it from an authored `lando`.
+      expect(config.defaultProviderId).toBeUndefined();
     });
   });
 
@@ -428,11 +429,15 @@ describe("network inject environment overrides", () => {
           if (failure._tag === "Some") {
             expect(failure.value).toBeInstanceOf(ConfigError);
             if (failure.value instanceof ConfigError) {
-              expect(failure.value.message).toBe(
-                `Invalid ${name} value. Expected "true" or "false"; set it to one of those values or unset it.`,
-              );
+              expect(failure.value.message).toContain(name);
+              expect(failure.value.message).toContain("environment override");
+              expect(failure.value.issues?.[0]?.path).toEqual([
+                "network",
+                name === "LANDO_NETWORK_CA_INJECT_INTO_SERVICES" ? "ca" : "proxy",
+                "injectIntoServices",
+              ]);
+              expect(failure.value.remediation).toContain(`Set ${name} to "true" or "false", or unset it.`);
               expect(failure.value.path).toBe(join(dir, "config.yml"));
-              expect(failure.value.cause).toMatchObject({ _tag: "SchemaError" });
             }
           }
         }

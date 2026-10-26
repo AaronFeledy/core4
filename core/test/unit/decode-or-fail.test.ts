@@ -3,7 +3,6 @@ import { Effect, Result, Schema } from "effect";
 
 import {
   BunShellScriptFrontMatterError,
-  LandofileValidationError,
   RecipeManifestValidationError,
   ScratchAppError,
 } from "@lando/sdk/errors";
@@ -16,11 +15,10 @@ import {
 } from "@lando/sdk/schema";
 
 import { decodeOrFail } from "@lando/landofile/decode";
+import { validationErrorFromCause } from "@lando/landofile/validation";
 
 const issuesWithMessages = (cause: unknown, fallback: string) =>
   validationIssuesFromCause(cause, { fallback });
-
-const globalIssues = (cause: unknown) => validationIssuesFromCause(cause, { fallback: "Invalid Landofile." });
 
 const legacyDecode = <A, I, E>(
   schema: Schema.Codec<A, I, never, never>,
@@ -40,14 +38,7 @@ const errorShape = async <A, E>(effect: Effect.Effect<A, E>) => {
 describe("decodeOrFail", () => {
   test("preserves LandofileService validation error bytes", async () => {
     const input = { name: "app", services: { web: { type: "apache", unsupported: true } } };
-    const onError = (cause: Schema.SchemaError) => {
-      const issues = issuesWithMessages(cause, "Invalid Landofile.");
-      return new LandofileValidationError({
-        message: `Landofile contains unsupported MVP keys: ${issues.map(formatValidationIssueLine).join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
-        file: "/app/.lando.yml",
-        issues,
-      });
-    };
+    const onError = (cause: Schema.SchemaError) => validationErrorFromCause("/app/.lando.yml", input, cause);
 
     expect(
       await errorShape(decodeOrFail(LandofileShape, onError)(input, { onExcessProperty: "error" })),
@@ -78,6 +69,7 @@ describe("decodeOrFail", () => {
         message: "The rendered scratch Landofile at /cache/scratch/app/root/.lando.yml is invalid.",
         operation: "materialize",
         cause,
+        remediation: "Correct Landofile schema errors in the rendered scratch Landofile.",
       });
 
     expect(
@@ -103,14 +95,8 @@ describe("decodeOrFail", () => {
 
   test("preserves global Landofile validation error bytes", async () => {
     const input = { name: "global", services: { proxy: { type: "compose", x: true } } };
-    const onError = (cause: Schema.SchemaError) => {
-      const issues = globalIssues(cause);
-      return new LandofileValidationError({
-        message: `Landofile contains unsupported MVP keys: ${issues.map(formatValidationIssueLine).join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
-        file: "/data/global/.lando.dist.yml",
-        issues,
-      });
-    };
+    const onError = (cause: Schema.SchemaError) =>
+      validationErrorFromCause("/data/global/.lando.dist.yml", input, cause);
 
     expect(
       await errorShape(decodeOrFail(LandofileShape, onError)(input, { onExcessProperty: "error" })),

@@ -23,7 +23,6 @@ const makePlan = (): AppPlan =>
       provider: ProviderId.make("test"),
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: {

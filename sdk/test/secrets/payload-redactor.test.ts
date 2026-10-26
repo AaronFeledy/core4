@@ -54,7 +54,7 @@ describe("payload byte redaction", () => {
     // When
     const output = redactor.write(encoder.encode("ababa!"));
     // Then
-    expect(decode(output)).toBe(`${REDACTED}ba!`);
+    expect(decode(output)).toBe(`${REDACTED}!`);
   });
 
   test("matches UTF-8 secrets split in the middle of a codepoint", () => {

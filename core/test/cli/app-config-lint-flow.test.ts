@@ -44,7 +44,7 @@ test.each([
         new Response(proc.stderr).text(),
       ]);
       // Then
-      expect(exitCode, stderr).toBe(0);
+      expect(exitCode, stderr).toBe(valid ? 0 : 1);
       const envelope = Schema.decodeUnknownSync(
         Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
       )(JSON.parse(stdout));

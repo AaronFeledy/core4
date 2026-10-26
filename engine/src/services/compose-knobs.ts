@@ -18,7 +18,10 @@ const compareKnobUses = (left: ComposeKnobUse, right: ComposeKnobUse): number =>
   return ComposeServiceKnobKey.literals.indexOf(left.key) - ComposeServiceKnobKey.literals.indexOf(right.key);
 };
 
-export const mergeComposeKnobs = (servicePlan: ServicePlan, serviceConfig: ServiceConfig): ServicePlan => {
+export const mergeComposeKnobs = <S extends Pick<ServicePlan, "extensions">>(
+  servicePlan: S,
+  serviceConfig: ServiceConfig,
+): S => {
   const currentCompose = servicePlan.extensions.compose;
   const compose = Predicate.isObject(currentCompose) ? { ...currentCompose } : {};
   let changed = false;
@@ -56,7 +59,7 @@ export const mergeComposeKnobs = (servicePlan: ServicePlan, serviceConfig: Servi
 };
 
 export const collectComposeKnobs = (
-  services: Readonly<Record<string, ServicePlan>>,
+  services: Readonly<Record<string, Pick<ServicePlan, "name" | "extensions">>>,
 ): ReadonlyArray<ComposeKnobUse> => {
   const uses: Array<ComposeKnobUse> = [];
 

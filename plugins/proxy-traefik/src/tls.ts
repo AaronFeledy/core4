@@ -8,6 +8,7 @@ import {
   certificateDir,
   defaultCertificateFiles,
   defaultCertificateNames,
+  defaultIssuerFile,
   defaultTlsFile,
   joinFor,
 } from "./proxy-paths.ts";
@@ -53,7 +54,8 @@ export const ensureTlsFiles = Effect.fn("TraefikRouter.ensureTlsFiles")(function
 
   const hasDefaultCertificate =
     (yield* dependencies.fileSystem.exists(defaultFiles.cert)) &&
-    (yield* dependencies.fileSystem.exists(defaultFiles.key));
+    (yield* dependencies.fileSystem.exists(defaultFiles.key)) &&
+    (yield* dependencies.fileSystem.exists(defaultIssuerFile(dependencies.paths, input.defaultDomain)));
   if (input.refreshDefaultCertificate || !hasDefaultCertificate) {
     const issued = yield* dependencies.certificateAuthority.issueCert({
       cn: `*.${input.defaultDomain}`,
@@ -61,6 +63,11 @@ export const ensureTlsFiles = Effect.fn("TraefikRouter.ensureTlsFiles")(function
     });
     yield* copyCertificate(dependencies, issued.certPath, defaultFiles.cert);
     yield* copyPrivateKey(dependencies, issued.keyPath, defaultFiles.key);
+    yield* copyCertificate(
+      dependencies,
+      issued.caPath,
+      defaultIssuerFile(dependencies.paths, input.defaultDomain),
+    );
   }
 
   const defaultNames = defaultCertificateNames(input.defaultDomain);

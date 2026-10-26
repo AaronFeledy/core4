@@ -2,16 +2,19 @@ import { Schema } from "effect";
 
 import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
+import { DatabaseConnection, ServiceCreds } from "./database-connection.ts";
+import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
+import { EventsPlan } from "./landofile-events.ts";
 import { LogSource } from "./log-source.ts";
 import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan } from "./mounts.ts";
 import {
+  type AuthoredNetworkPlan,
   CertificatePlan,
   DependencyPlan,
   EndpointPlan,
   HealthcheckPlan,
   HostAliasPlan,
-  NetworkPlan,
   NetworkingPlan,
   RoutePlan,
   RouteRef,
@@ -31,15 +34,19 @@ import {
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.
 
-export const ServicePlan = Schema.Struct({
+const ServicePlanFields = {
   name: ServiceName,
   type: Schema.String,
+  serviceTypeId: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1))).annotate({
+    description:
+      "Canonical registry ID of the effective service-type declaration or composed inheritance chain.",
+  }),
   provider: ProviderId,
   primary: Schema.Boolean,
   artifact: Schema.optionalKey(Schema.Union([ArtifactRef, ArtifactBuildSpec])),
   command: Schema.optionalKey(CommandSpec),
   entrypoint: Schema.optionalKey(CommandSpec),
-  environment: Schema.Record(Schema.String, Schema.String),
+  environment: Environment,
   user: Schema.optionalKey(Schema.String),
   workingDirectory: Schema.optionalKey(PortablePath),
   appMount: Schema.optionalKey(AppMountPlan),
@@ -49,6 +56,10 @@ export const ServicePlan = Schema.Struct({
   routes: Schema.Array(RouteRef),
   dependsOn: Schema.Array(DependencyPlan),
   healthcheck: Schema.optionalKey(HealthcheckPlan),
+  readiness: Schema.optionalKey(HealthcheckPlan).annotate({
+    description:
+      "Startup probe; defaults to healthcheck when absent. Ongoing native health uses healthcheck only.",
+  }),
   scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",
   }),
@@ -60,7 +71,25 @@ export const ServicePlan = Schema.Struct({
     description: "Service-type resolution inputs and selected artifact, excluding source file contents.",
   }),
   extensions: ProviderExtensionConfig,
-});
+};
+export const ServicePlan = Schema.Union([
+  Schema.Struct({
+    ...ServicePlanFields,
+    connection: Schema.optionalKey(DatabaseConnection).annotate({
+      description: "Canonical database connection resolved by the service type.",
+    }),
+    nonSqlCreds: Schema.optionalKey(Schema.Never).annotate({
+      description: "Non-SQL credentials cannot coexist with a database connection.",
+    }),
+  }),
+  Schema.Struct({
+    ...ServicePlanFields,
+    connection: Schema.optionalKey(Schema.Never),
+    nonSqlCreds: ServiceCreds.annotate({
+      description: "Published non-SQL credentials, mutually exclusive with a database connection.",
+    }),
+  }),
+]);
 export type ServicePlan = typeof ServicePlan.Type;
 
 // Shared file-sync naming and mount-target contract used by the planner and providers.
@@ -78,18 +107,67 @@ const serviceCrossAppAliases = (
 ): ReadonlyArray<string> => Array.from(new Set([`${serviceName}.${slug}.internal`, ...hostnames]));
 
 /**
- * Build the typed per-app `NetworkingPlan`: a per-app bridge network plus
+ * Lando-generated name for an app-owned authored network. App slugs never
+ * contain `_`, so the name cannot collide with any app's per-app bridge.
+ */
+export const landoAuthoredNetworkName = (slug: string, key: string): string => `lando-${slug}_${key}`;
+
+/** Authored intent for one top-level Landofile network that services join. */
+type AuthoredNetworkIntent = {
+  readonly key: string;
+  readonly external: boolean;
+  /** Physical name of an external network; defaults to `key`. Owned networks always use a Lando name. */
+  readonly name?: string | undefined;
+  readonly driver?: string | undefined;
+  /** Joined services and the aliases authored for each on this network. */
+  readonly members: Readonly<Record<string, ReadonlyArray<string>>>;
+};
+
+/**
+ * Build the typed `NetworkingPlan`: a private bridge unless explicitly disabled,
  * shared cross-app membership when the selected provider supports
- * `sharedCrossAppNetwork`. The planner emits this; providers consume it.
+ * `sharedCrossAppNetwork`, and the authored networks services join on top of
+ * both. The planner emits this; providers consume it.
  */
 export const landoNetworkingPlan = (input: {
   readonly slug: string;
   readonly serviceNames: ReadonlyArray<string>;
   readonly sharedCrossAppNetwork: boolean;
+  readonly perAppBridge?: boolean;
   readonly serviceHostnames?: Readonly<Record<string, ReadonlyArray<string>>> | undefined;
+  /** Extra per-service aliases on the per-app bridge (`networks.default.aliases`). */
+  readonly bridgeAliases?: Readonly<Record<string, ReadonlyArray<string>>> | undefined;
+  readonly authoredNetworks?: ReadonlyArray<AuthoredNetworkIntent> | undefined;
 }): NetworkingPlan => {
-  const perAppBridge = { name: perAppBridgeNetworkName(input.slug), driver: "bridge" };
-  if (!input.sharedCrossAppNetwork) return { perAppBridge };
+  const bridgeAliases = Object.fromEntries(
+    Object.entries(input.bridgeAliases ?? {}).filter(([, aliases]) => aliases.length > 0),
+  );
+  const perAppBridge =
+    input.perAppBridge === false
+      ? null
+      : {
+          name: perAppBridgeNetworkName(input.slug),
+          driver: "bridge",
+          ...(Object.keys(bridgeAliases).length === 0 ? {} : { aliases: bridgeAliases }),
+        };
+  const authoredNetworks = (input.authoredNetworks ?? []).map(
+    (network): AuthoredNetworkPlan => ({
+      key: network.key,
+      name: network.external
+        ? (network.name ?? network.key)
+        : landoAuthoredNetworkName(input.slug, network.key),
+      external: network.external,
+      ...(network.external ? {} : { driver: network.driver ?? "bridge" }),
+      members: Object.fromEntries(
+        Object.entries(network.members).map(([service, aliases]) => [
+          service,
+          { aliases: serviceCrossAppAliases(input.slug, service, aliases) },
+        ]),
+      ),
+    }),
+  );
+  const authored = authoredNetworks.length === 0 ? {} : { authoredNetworks };
+  if (!input.sharedCrossAppNetwork) return { perAppBridge, ...authored };
   const aliases: Record<string, ReadonlyArray<string>> = {};
   for (const serviceName of input.serviceNames) {
     aliases[serviceName] = serviceCrossAppAliases(
@@ -101,26 +179,51 @@ export const landoNetworkingPlan = (input: {
   return {
     perAppBridge,
     sharedNetworkMembership: { name: LANDO_SHARED_CROSS_APP_NETWORK, aliases },
+    ...authored,
   };
 };
 
-export const landoAppNetworkName = (plan: Pick<AppPlan, "slug" | "networking">): string =>
-  plan.networking?.perAppBridge.name ?? perAppBridgeNetworkName(plan.slug);
+export const landoAppNetworkName = (plan: Pick<AppPlan, "slug" | "networking">): string | undefined =>
+  plan.networking === undefined ? perAppBridgeNetworkName(plan.slug) : plan.networking.perAppBridge?.name;
 
-export const landoAppNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">): ReadonlyArray<string> => [
-  landoAppNetworkName(plan),
-];
+export const landoAppNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">): ReadonlyArray<string> => {
+  const name = landoAppNetworkName(plan);
+  return name === undefined ? [] : [name];
+};
 
+/** Every network the plan attaches any service to: per-app bridge, shared network, then authored networks. */
 export const landoNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">): ReadonlyArray<string> => {
   if (plan.networking !== undefined) {
-    const names = [plan.networking.perAppBridge.name];
+    const names = [...landoAppNetworkNames(plan)];
     if (plan.networking.sharedNetworkMembership !== undefined) {
       names.push(plan.networking.sharedNetworkMembership.name);
     }
+    for (const network of plan.networking.authoredNetworks ?? []) names.push(network.name);
     return Array.from(new Set(names));
   }
   return Array.from(new Set([...landoAppNetworkNames(plan), LANDO_SHARED_CROSS_APP_NETWORK]));
 };
+
+/** Networks the app owns: the per-app bridge and every non-external authored network. */
+export const landoOwnedNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">): ReadonlyArray<string> =>
+  Array.from(
+    new Set([
+      ...landoAppNetworkNames(plan),
+      ...(plan.networking?.authoredNetworks ?? [])
+        .filter((network) => !network.external)
+        .map((network) => network.name),
+    ]),
+  );
+
+/** Authored networks that exist outside Lando; Lando joins them but never creates or removes them. */
+export const landoExternalNetworkNames = (plan: Pick<AppPlan, "networking">): ReadonlyArray<string> =>
+  Array.from(
+    new Set(
+      (plan.networking?.authoredNetworks ?? [])
+        .filter((network) => network.external)
+        .map((network) => network.name),
+    ),
+  );
 
 export const landoSharedNetworkName = (plan: Pick<AppPlan, "networking">): string | undefined =>
   plan.networking !== undefined
@@ -132,9 +235,59 @@ export const landoServiceNetworkAliases = (
   service: Pick<ServicePlan, "name">,
 ): ReadonlyArray<string> => {
   if (plan.networking !== undefined) {
-    return plan.networking.sharedNetworkMembership?.aliases[service.name] ?? [];
+    const shared = plan.networking.sharedNetworkMembership;
+    return shared === undefined
+      ? []
+      : serviceCrossAppAliases(plan.slug, service.name, shared.aliases[service.name]);
   }
   return serviceCrossAppAliases(plan.slug, service.name);
+};
+
+export const ServiceNetworkAttachment = Schema.Struct({
+  name: Schema.String.annotate({ description: "Provider-visible name of the network the service joins." }),
+  aliases: Schema.Array(Schema.String).annotate({
+    description: "DNS aliases for this service on the network.",
+  }),
+}).annotate({
+  identifier: "ServiceNetworkAttachment",
+  description:
+    "One realized service network attachment, including its physical network name and DNS aliases.",
+});
+export type ServiceNetworkAttachment = typeof ServiceNetworkAttachment.Type;
+
+/**
+ * The networks one service joins and its DNS aliases on each, in attachment
+ * order: the per-app bridge (service name plus `networks.default.aliases`),
+ * the shared network (`landoServiceNetworkAliases`), then each authored
+ * network the service is a member of. This is the only derivation providers
+ * use for container create, connect, fingerprint, and recreate checks.
+ */
+export const landoServiceNetworkAttachments = (
+  plan: Pick<AppPlan, "slug" | "networking">,
+  service: Pick<ServicePlan, "name">,
+): ReadonlyArray<ServiceNetworkAttachment> => {
+  const attachments: ServiceNetworkAttachment[] = [];
+  const bridge = landoAppNetworkName(plan);
+  const shared = landoSharedNetworkName(plan);
+  if (bridge !== undefined) {
+    attachments.push({
+      name: bridge,
+      aliases: Array.from(
+        new Set([
+          service.name,
+          ...(shared === undefined ? [`${service.name}.${plan.slug}.internal`] : []),
+          ...(plan.networking?.perAppBridge?.aliases?.[service.name] ?? []),
+        ]),
+      ),
+    });
+  }
+  if (shared !== undefined)
+    attachments.push({ name: shared, aliases: landoServiceNetworkAliases(plan, service) });
+  for (const network of plan.networking?.authoredNetworks ?? []) {
+    const member = network.members[service.name];
+    if (member !== undefined) attachments.push({ name: network.name, aliases: member.aliases });
+  }
+  return attachments;
 };
 
 export const sameAppMountTarget = (
@@ -176,6 +329,10 @@ export type FileSyncPlan = typeof FileSyncPlan.Type;
 export const appIdentityKey = (kind: "owner" | "repository", canonicalPath: string): string =>
   sha256Hex(`${kind}\0${canonicalPath}`);
 
+/** Resolve ownership from a planned identity or an older plan's canonical root. */
+export const planAppIdentity = (plan: Pick<AppPlan, "root" | "identity">): AppIdentity =>
+  plan.identity ?? { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) };
+
 export const AppIdentity = Schema.Struct({
   appRoot: AbsolutePath.annotate({ description: "Canonical root that owns this app instance." }),
   ownerKey: Schema.String.annotate({
@@ -188,33 +345,54 @@ export const AppIdentity = Schema.Struct({
 export type AppIdentity = typeof AppIdentity.Type;
 
 export const AppPlan = Schema.Struct({
-  id: AppId,
-  name: Schema.String,
-  slug: Schema.String,
-  root: AbsolutePath,
+  valueModel: Schema.optionalKey(Schema.Literal(1)).annotate({
+    description:
+      "Environment descriptor model version; absence is historical observation only, never execution eligibility.",
+  }),
+  id: AppId.annotate({ description: "Stable application identifier." }),
+  name: Schema.String.annotate({ description: "User-facing application name." }),
+  slug: Schema.String.annotate({ description: "Normalized application runtime name." }),
+  root: AbsolutePath.annotate({ description: "Canonical application root." }),
   identity: Schema.optionalKey(AppIdentity).annotate({
     description: "Canonical ownership and optional repository grouping identity.",
   }),
-  provider: ProviderId,
-  services: Schema.Record(ServiceName, ServicePlan),
-  routes: Schema.Array(RoutePlan),
-  networks: Schema.Array(NetworkPlan),
+  provider: ProviderId.annotate({ description: "Provider selected to realize this application." }),
+  services: Schema.Record(ServiceName, ServicePlan).annotate({
+    description: "Service plans keyed by service name.",
+  }),
+  routes: Schema.Array(RoutePlan).annotate({ description: "Resolved application routes." }),
   /**
    * Typed per-app networking intent: the per-app bridge plus optional
    * shared cross-app network membership. Populated by the planner; omitted for
    * service-less apps and legacy/hand-built plans (providers then fall back to
    * slug-derived network names).
    */
-  networking: Schema.optionalKey(NetworkingPlan),
-  stores: Schema.Array(DataStorePlan),
+  networking: Schema.optionalKey(NetworkingPlan).annotate({
+    description: "Private bridge and shared network membership intent.",
+  }),
+  stores: Schema.Array(DataStorePlan).annotate({
+    description: "Named data stores owned or referenced by this application.",
+  }),
   /**
    * File-sync sessions auto-selected by the planner for accelerated mounts.
    * Empty when no file sync is needed (native bind-mount providers, or no
    * accelerated mounts on a slow provider).
    */
-  fileSync: Schema.Array(FileSyncPlan),
-  metadata: PlanMetadata,
-  extensions: ProviderExtensionConfig,
+  fileSync: Schema.Array(FileSyncPlan).annotate({
+    description: "File-sync sessions selected during planning.",
+  }),
+  /**
+   * Effective Landofile `events:` and `config.yml hostEvents` steps compiled
+   * by the planner. Omitted on hand-built plans. Provider applied state never
+   * records it: lifecycle operations resolve Landofile events from the current
+   * Landofile, not from what was applied.
+   */
+  events: Schema.optionalKey(EventsPlan).annotate({
+    description:
+      "Effective event steps resolved from current project and host configuration, never applied state.",
+  }),
+  metadata: PlanMetadata.annotate({ description: "Plan provenance and resolution timestamp." }),
+  extensions: ProviderExtensionConfig.annotate({ description: "Provider-specific extension intent." }),
   router: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.Boolean.annotate({ description: "Whether shared routing is enabled for this app." }),
@@ -233,6 +411,17 @@ export const AppPlan = Schema.Struct({
     Schema.Struct({
       globalServices: Schema.Array(Schema.String),
     }),
-  ),
+  ).annotate({ description: "Global services that must be running before application start." }),
 });
 export type AppPlan = typeof AppPlan.Type;
+
+export const CurrentExecutableAppPlan = Schema.Struct({
+  ...AppPlan.fields,
+  valueModel: Schema.Literal(1).annotate({
+    description: "Required current descriptor model marker; never defaulted during decoding.",
+  }),
+}).annotate({
+  identifier: "CurrentExecutableAppPlan",
+  description: "Current plan eligible for creation after environment resolution.",
+});
+export type CurrentExecutableAppPlan = typeof CurrentExecutableAppPlan.Type;

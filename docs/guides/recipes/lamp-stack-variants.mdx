@@ -7,7 +7,7 @@ tags: [beta, docs, recipes, lamp, php, database]
 
 # Change a LAMP stack after init
 
-`lando init --recipe lamp` writes Apache, PHP 8.4, MariaDB 11.4, Composer 2, and webroot `.`. Edit `.lando.yml` after that, then `lando rebuild`.
+`lando init --recipe lamp` writes Apache, PHP 8.4, MariaDB 11.4, Composer 2, and webroot `.`. Edit `.lando.yml` after that, then `lando start`.
 
 Init prompts for PHP 8.1 through 8.6, MariaDB or MySQL (with versions), Composer, and webroot. `--yes` keeps PHP 8.4, `mariadb:11.4`, Composer 2, and `.`.
 
@@ -31,7 +31,7 @@ The generated Landofile is an Apache-backed `appserver` on `php:8.4`, `framework
 
 ## Replace MariaDB with MySQL
 
-Swap `type: mariadb` for `type: mysql` and add the version you want. A rebuild does not migrate old data, so export first if you still need what's in there. See [Switch databases](../services/switching-databases.mdx).
+Swap `type: mariadb` for `type: mysql` and add the version you want. Starting does not migrate old data, so export first if you still need what's in there. See [Switch databases](../services/switching-databases.mdx).
 
 ```yaml
 services:
@@ -55,7 +55,7 @@ services:
 
 ## Replace MariaDB with PostgreSQL
 
-Swap `type: mariadb` for `type: postgres` and add the major you want. The default PHP image already has `pdo_pgsql`.
+Swap `type: mariadb` for `type: postgres` and add the major version you want. Export any data you need before changing engines; starting the new service does not migrate it. The default PHP image already has `pdo_pgsql`.
 
 ```yaml
 services:
@@ -111,7 +111,7 @@ services:
 
 ## Bind-mount PHP and database config
 
-There is no recipe shorthand for a custom `php.ini`. Compose `configs:` grants are realized as read-only binds. Bind-mount host files with `volumes:` remains a valid option.
+There is no recipe shorthand for a custom `php.ini`. Lando mounts Compose `configs:` grants read-only. You can also mount host files with `volumes:`, as shown below. Create the files in your app's `config/` directory before starting the app.
 
 ```yaml
 services:
@@ -172,4 +172,4 @@ tooling:
   </Scenario>
 </Guide>
 
-A running app still needs `lando rebuild` after these edits. The scenarios above stop at lint and inspect.
+A running app still needs `lando start` after these edits. The scenarios above stop at lint and inspect.

@@ -61,7 +61,9 @@ export const runAppBuildStep = Effect.fn("BuildOrchestrator.runAppBuildStep")(fu
   let exitCode = 0;
   const framers = { stdout: makeLineFramer(), stderr: makeLineFramer() };
   const containsSecretReferences = Object.values(input.plan.services).some((service) =>
-    Object.values(service.environment).some((value) => exactSecretReferenceId(value) !== undefined),
+    Object.values(service.environment).some(
+      (value) => typeof value !== "string" || exactSecretReferenceId(value) !== undefined,
+    ),
   );
   yield* Effect.scoped(
     Effect.gen(function* () {

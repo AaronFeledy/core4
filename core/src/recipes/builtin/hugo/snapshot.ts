@@ -6,7 +6,7 @@ import { HUGO_BUILD_ARTIFACT } from "./install.ts";
 import { HUGO_SCAFFOLD } from "./scaffold.ts";
 
 export const HUGO_RECIPE_VERSION = "0.1.0";
-export const HUGO_CONTENT_DIGEST = "sha256:6e7014a1d19659c1fa5931cae1a975fd92dab38c545f79b729b1658374574027";
+export const HUGO_CONTENT_DIGEST = "sha256:8558d452563ee84c5a4f55687f2e51a44f891a4178cc83d355fc92729e82d778";
 export const hugoProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-hugo",

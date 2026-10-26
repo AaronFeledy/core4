@@ -137,7 +137,9 @@ describe("nginx ServiceType", () => {
     const command = planCommandText(plan.command);
     expect(command).toContain("listen 8080;");
     expect(command).not.toContain("listen 80;");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 8080"]);
   });
 
@@ -197,7 +199,9 @@ describe("nginx ServiceType", () => {
     expect(String(plan.appMount?.target)).toBe("/app");
     expect(plan.appMount?.readOnly).toBe(false);
     expect(plan.mounts).toEqual([]);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
   });
@@ -206,7 +210,9 @@ describe("nginx ServiceType", () => {
     const plan = await composeNginxPlan({ type: "nginx" }, "proxy");
 
     expect(plan.primary).toBe(false);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "proxy" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "proxy", primary: true },
+    ]);
     expect(plan.environment).toMatchObject({
       LANDO_SERVICE_NAME: "proxy",
       LANDO_SERVICE_TYPE: "nginx",
@@ -281,10 +287,10 @@ describe("nginx PHP FPM app-feature wire", () => {
     setAppMount: () => undefined,
     addBuildStep: () => undefined,
     addStorage: () => undefined,
-    addEndpoint: () => undefined,
     addDependency: () => undefined,
     addHostAlias: () => undefined,
     setHealthcheck: () => undefined,
+    setReadiness: () => undefined,
     setCerts: () => undefined,
     setEntrypoint: () => undefined,
     setArtifact: () => undefined,

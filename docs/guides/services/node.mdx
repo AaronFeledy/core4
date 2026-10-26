@@ -10,7 +10,7 @@ tags: [beta, docs, node, service, runtime]
 Put `type: node` on the primary service to use the Node version your project
 already declares. Lando reads `.nvmrc` first, then checks `package.json`
 `engines.node` when it exists. Your repository is bind-mounted read-write at
-`/app` by default, which is also the working directory; set `appMount.target`
+`/app` by default, which is also the working directory; set `appMount: /site`
 to move both:
 
 ```yaml
@@ -21,7 +21,7 @@ services:
     primary: true
 ```
 
-Add a project constraint next to the Landofile:
+Save the configuration as `.lando.yml`, then create `.nvmrc` beside it with this version constraint:
 
 ```text
 22.11.0
@@ -98,7 +98,7 @@ The explicit-version example below keeps the version in the Landofile with
 ## Run the app
 
 The default Node keep-alive process holds the container open and exits cleanly on
-SIGTERM or SIGINT. Install dependencies and start your server via tooling:
+SIGTERM or SIGINT. Declare an `npm` tooling alias targeting `app` before using the commands below; the Node service does not add that alias automatically. See [Run TypeScript on a Node service](./node-typescript.mdx) for a complete tooling block. Then install dependencies and start your server:
 
 ```sh
 # Declare an npm tooling alias to install dependencies inside the service
@@ -125,7 +125,16 @@ services:
 
 An explicit `environment.PORT` still wins for the process environment. The endpoint continues to use `port:`, so keep those values aligned unless your command intentionally translates between them.
 
-Node has no default healthcheck, even with an authored `command:`. A command might be a server, an asset watcher, or a queue worker. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running.
+Node has no default healthcheck, even with an authored `command:`. A command might be a server, an asset watcher, or a queue worker. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running. A command string is enough, and the official `node` image ships `curl`:
+
+```yaml
+services:
+  app:
+    type: node
+    primary: true
+    command: ["node", "server.js"]
+    healthcheck: curl -fsS http://localhost:3000/
+```
 
 Lando stops a service with SIGTERM. A string `command:` runs under `sh -lc`, and that shell does not pass the signal on. Write the command as a list, such as `["node", "server.mjs"]`, and handle SIGTERM in your app so it stops before the runtime's timeout.
 
@@ -161,7 +170,7 @@ services:
 
 They install with `npm install -g` while the image is baked, so `gulp` is on `PATH` without an extra `lando npm install -g` every rebuild.
 
-Lando normalizes the map first: names and version specifiers are validated at plan time, and packages install in sorted order. Reordering the YAML does not rebuild the image; adding, removing, or re-pinning a package does, because the normalized list is part of the image build key.
+Lando normalizes the map first: names and version specifiers are validated at plan time, and packages install in sorted order. Reordering the YAML does not rebuild the image. Adding, removing, or re-pinning a package does, on the next `lando start`, because the normalized list is part of the image build key.
 
 Specifiers are ordinary npm spellings such as `1.22.4`, `^17.0.0`, `>=5 <6`, or a dist-tag like `latest`. Anything else fails at plan time, before any container work, naming the package that broke.
 
@@ -188,6 +197,8 @@ tooling `dir:`. See [Compile PHP theme assets with Node](./node-theme-assets.mdx
 
 ## Pin the service type
 
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
+
 Use an explicit type when the Landofile, rather than project files, should own
 the version. Lando supports `node:lts` and `node:22` as explicit types:
 
@@ -207,5 +218,10 @@ services:
 Custom `image:` values work with explicit Node types. Don't combine `image:`
 with bare `type: node`; inference must choose the image without a second source
 of truth.
+
+## Next
+
+- [Run a TanStack Start app on Postgres](./node-tanstack-start.mdx) for a full-stack React app with Drizzle and a server function
+- [Run Playwright end-to-end tests against your app](./node-playwright.mdx) for browser tests from an `e2e` service
 
 </Guide>

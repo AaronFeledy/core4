@@ -29,6 +29,9 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
     PlannerLayer.layer.pipe(Layer.provide(Layer.mergeAll(registry, infrastructure))),
     BunFileSystem.layer,
     Layer.succeed(RuntimeProviderRegistry, {
+      appliedPlansFor: () => Effect.succeed([]),
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       select: () => Effect.succeed(TestRuntimeProvider),
@@ -47,7 +50,7 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
     );
     const initial = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(layer)));
     if (!initial.materialized) throw new Error("Global app was not materialized");
-    expect(initial.landofile.services?.[mail]?.routes).toEqual([
+    expect(initial.landofile.document.services?.[mail]?.routes).toEqual([
       { hostname: "mailpit.{{ proxy.defaultDomain }}", endpoint: 8025 },
     ]);
     expect(initial.plan.routes.map((route) => route.hostname)).toEqual(["mailpit.lndo.site"]);
@@ -69,7 +72,8 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
 
     // Then: planning and publication use the new domain without regenerating global YAML.
     expect(changed.plan.routes.map((route) => route.hostname)).toEqual(["mailpit.custom.test"]);
-    expect(urls.get(mail)).toEqual(["https://mailpit.custom.test:38443"]);
+    expect(router.routesByApp.get(changed.plan.id)).toEqual(changed.plan.routes);
+    expect(urls).toBeUndefined();
   } finally {
     await rm(root, { recursive: true, force: true });
   }

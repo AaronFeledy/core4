@@ -10,7 +10,7 @@ export class PluginBuildMixedTreeError extends Schema.TaggedError<PluginBuildMix
   "PluginBuildMixedTreeError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     path: Schema.String,
   },
 ) {}

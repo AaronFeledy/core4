@@ -19,6 +19,10 @@ import type {
 } from "./step-runner-types.ts";
 
 interface StepExecutionDependencies {
+  readonly resolveSelector: (
+    node: Extract<ToolingStepNode, { readonly kind: "for" }>,
+    context: ExpressionContext,
+  ) => Effect.Effect<ToolingStepSelector, ToolingStepExpressionError>;
   readonly conditionAllows: (
     condition: ToolingStepLeaf["condition"],
     context: ExpressionContext,
@@ -136,7 +140,8 @@ export const runToolingStepProgramWith = <E, A>(
             ),
           );
         }
-        return selectorIterations(node.selector, nodeContext).pipe(
+        return dependencies.resolveSelector(node, nodeContext).pipe(
+          Effect.flatMap((selector) => selectorIterations(selector, nodeContext)),
           Effect.flatMap((iterations) =>
             Effect.forEach(
               iterations,

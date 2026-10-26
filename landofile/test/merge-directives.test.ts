@@ -31,7 +31,7 @@ test.each(["yaml", "ts"])(
           stateStore: makeTestLandofileStateStore(),
         }),
       );
-      expect(result.services?.[ServiceName.make("web")]).toEqual({
+      expect(result.document.services?.[ServiceName.make("web")]).toEqual({
         image: "nginx",
         environment: { KEEP: "yes" },
         routes: [{ hostname: "new.test" }],
@@ -71,7 +71,7 @@ test("nested include operations reach values inherited from a lower outer layer"
         stateStore: makeTestLandofileStateStore(),
       }),
     );
-    expect(result.services?.[ServiceName.make("web")]).toEqual({
+    expect(result.document.services?.[ServiceName.make("web")]).toEqual({
       environment: { INLINE: "winner" },
       routes: ["new.test"],
     });
@@ -89,7 +89,7 @@ test("standalone file loading consumes lowest-layer directives", async () => {
       'name: directives\nservices:\n  web:\n    environment: !override\n      OLD: !reset "{{ missing.value }}"\n      KEEP: yes\n',
     );
     const result = await Effect.runPromise(loadLandofileFile(file));
-    expect(result.services?.[ServiceName.make("web")]?.environment).toEqual({ KEEP: "yes" });
+    expect(result.document.services?.[ServiceName.make("web")]?.environment).toEqual({ KEEP: "yes" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -116,7 +116,7 @@ test.each(["includes", "toolingIncludes"])(
           stateStore: makeTestLandofileStateStore(),
         }),
       );
-      expect(Object.keys(result.tooling ?? {})).toEqual(["new:task"]);
+      expect(Object.keys(result.document.tooling ?? {})).toEqual(["new:task"]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -144,7 +144,9 @@ test.each(["!override\n  - source: ./tasks.yml\n    kind: tooling\n    namespace
           stateStore: makeTestLandofileStateStore(),
         }),
       );
-      expect(Object.keys(result.tooling ?? {})).toEqual(operation.startsWith("!reset") ? [] : ["new:task"]);
+      expect(Object.keys(result.document.tooling ?? {})).toEqual(
+        operation.startsWith("!reset") ? [] : ["new:task"],
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }

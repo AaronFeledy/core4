@@ -28,7 +28,7 @@ test("combined text and structured content respect the 8 MiB limit and publish f
   );
   expect(toolErrorObject(response)).toMatchObject({
     _tag: "McpTransportError",
-    message: "MCP tool result frame exceeded the 8 MiB JSON serialization limit.",
+    message: "MCP typed result exceeds the complete response byte budget.",
   });
   expect(events.filter((event) => event._tag === "pre-mcp-call")).toHaveLength(1);
   expect(events.filter((event) => event._tag === "post-mcp-call")).toEqual([

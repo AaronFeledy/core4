@@ -8,11 +8,13 @@ tags: [beta, docs, landofile, config, version-constraint]
 
 # Constrain the Lando version
 
-Set `lando:` at the top of `.lando.yml`:
+Set `lando:` at the top of `.lando.yml` to reject incompatible Lando binaries before the app starts. Choose a range your project supports; the following example requires Lando 4.1 or newer within major version 4, so it is not a suitable range for a project that must run on the current 4.0 development releases:
 
 ```yaml
 lando: ">=4.1 <5"
 ```
+
+From your app directory, run `lando doctor --app --format=json` to check the declared ranges against your installed version. If they do not match, follow the repair steps below rather than bypassing the check by default.
 
 The value supports the full npm-semver range grammar: comparators, unions
 (`||`), hyphen ranges, x-ranges, `^`, `~`, and exact versions. Prereleases
@@ -52,4 +54,3 @@ lando update
 
 Or relax or correct the `lando:` range after confirming the project
 intentionally supports the running version.
-

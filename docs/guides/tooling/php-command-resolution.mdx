@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, php, path]
 
 # Resolve PHP commands
 
-A tooling command's bare name resolves through the target service's container `PATH`. Lando does not prepend `vendor/bin`. Pin project-local binaries yourself:
+A tooling command’s bare name resolves through the target service’s container `PATH`. Lando does not prepend `vendor/bin`. In `.lando.yml`, give project-local binaries an explicit path, as this PHPUnit task does:
 
 ```yaml
 name: php-command-resolution-demo
@@ -23,6 +23,8 @@ tooling:
     service: appserver
     cmd: vendor/bin/phpunit
 ```
+
+The `phpunit` task requires your project’s Composer dependencies to have installed `vendor/bin/phpunit` inside the service. After editing the Landofile, run `lando app:cache:refresh` and `lando app:config:lint --format=json` from the app directory to check the task configuration.
 
 Composer is the one PHP tool preinstalled on `PATH`, at `/usr/local/bin/composer`. A bare `composer` always hits that binary. Drush, PHPUnit, PHP-CS-Fixer, and anything else under `vendor/bin` need an explicit path.
 
