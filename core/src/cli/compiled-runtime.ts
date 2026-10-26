@@ -189,7 +189,12 @@ export const runCompiledCommand = <A, E, R, RE>(
 
 export const runWithProcessAbortSignal = async (
   run: (signal: AbortSignal) => Promise<void>,
+  options: { readonly signal?: AbortSignal } = {},
 ): Promise<void> => {
+  if (options.signal !== undefined) {
+    if (!options.signal.aborted) await run(options.signal);
+    return;
+  }
   const controller = new AbortController();
   const handlers = defaultInterruptSignals().map((signal) => {
     const abort = () => controller.abort(signal);

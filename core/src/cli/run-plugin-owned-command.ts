@@ -35,6 +35,7 @@ export {
   renderPluginOwnedCommandHelp,
 } from "./plugin-owned-command-input";
 import type { MalformedCliFlagValueError, UnknownCliFlagError } from "./flag-value-validation";
+import { interruptOnAbort } from "./interrupt-on-abort";
 import { withRedactedRenderer } from "./redacted-renderer";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 
@@ -44,6 +45,7 @@ export const isPluginOwnedCommandId = (token: string): boolean => PLUGIN_OWNED_C
 
 export interface RunPluginOwnedCommandOptions {
   readonly io?: RendererIO;
+  readonly signal?: AbortSignal;
 }
 
 type PluginOwnedRuntime = Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
@@ -114,42 +116,45 @@ const runPluginOwnedCommand = (
   argv: ReadonlyArray<string>,
   options: RunPluginOwnedCommandOptions = {},
 ): Promise<void> =>
-  runWithProcessAbortSignal(async (signal) => {
-    const flagError = pluginOwnedCliFlagError(spec, argv);
-    if (flagError !== undefined) {
-      await renderPluginOwnedPreCommandFailure(flagError, options.io);
-      return;
-    }
-    const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
-    const completion = spec.completion;
-    let normalizedInput: import("@lando/sdk/plugins").ExecutableCommandInput;
-    const operation = validateEventCommandInput(spec, parsed).pipe(
-      Effect.flatMap((input) => {
-        normalizedInput = input;
-        return withRedactedRenderer(spec.run(input));
-      }),
-    );
-    await runCompiledCommand(operation, defaultPluginRuntime(spec.bootstrap), () => undefined, {
-      ...compiledPluginOptions(spec, options),
-      signal,
-      ...(completion === undefined
-        ? {}
-        : { completion: (value: unknown) => completion(value, normalizedInput) }),
-      renderEffect: (completed) =>
-        spec.render === undefined
-          ? Effect.void
-          : withRedactedRenderer(
-              spec.render({
-                input: normalizedInput,
-                result: completed.value,
-                stdout: "",
-                stderr: "",
-                exitCode: completed.exitCode,
-              }),
-              { redactionTokens: spec.redactionTokens?.(completed.value) ?? [] },
-            ),
-    });
-  });
+  runWithProcessAbortSignal(
+    async (signal) => {
+      const flagError = pluginOwnedCliFlagError(spec, argv);
+      if (flagError !== undefined) {
+        await renderPluginOwnedPreCommandFailure(flagError, options.io);
+        return;
+      }
+      const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
+      const completion = spec.completion;
+      let normalizedInput: import("@lando/sdk/plugins").ExecutableCommandInput;
+      const operation = validateEventCommandInput(spec, parsed).pipe(
+        Effect.flatMap((input) => {
+          normalizedInput = input;
+          return withRedactedRenderer(spec.run(input));
+        }),
+      );
+      await runCompiledCommand(operation, defaultPluginRuntime(spec.bootstrap), () => undefined, {
+        ...compiledPluginOptions(spec, options),
+        signal,
+        ...(completion === undefined
+          ? {}
+          : { completion: (value: unknown) => completion(value, normalizedInput) }),
+        renderEffect: (completed) =>
+          spec.render === undefined
+            ? Effect.void
+            : withRedactedRenderer(
+                spec.render({
+                  input: normalizedInput,
+                  result: completed.value,
+                  stdout: "",
+                  stderr: "",
+                  exitCode: completed.exitCode,
+                }),
+                { redactionTokens: spec.redactionTokens?.(completed.value) ?? [] },
+              ),
+      });
+    },
+    options.signal === undefined ? {} : { signal: options.signal },
+  );
 
 const resolvePluginOwnedFromGraph = Effect.fnUntraced(function* (commandId: string) {
   const graph = yield* PluginContributionGraph;
@@ -165,14 +170,21 @@ const resolvePluginOwnedFromGraph = Effect.fnUntraced(function* (commandId: stri
 const dispatchPluginOwnedCommand = async (
   commandId: string,
   argv: ReadonlyArray<string>,
+  signal?: AbortSignal,
 ): Promise<"dispatched" | "not-found"> => {
+  if (signal?.aborted) return "dispatched";
   const exit = await Effect.runPromiseExit(
-    Effect.scoped(resolvePluginOwnedFromGraph(commandId).pipe(Effect.provide(defaultPluginRuntime("app")))),
+    interruptOnAbort(
+      Effect.scoped(resolvePluginOwnedFromGraph(commandId).pipe(Effect.provide(defaultPluginRuntime("app")))),
+      signal,
+    ),
   );
   if (Exit.isFailure(exit)) {
+    if (signal?.aborted && Cause.hasInterruptsOnly(exit.cause)) return "dispatched";
     await renderPluginOwnedPreCommandFailure(Cause.squash(exit.cause));
     return "dispatched";
   }
+  if (signal?.aborted) return "dispatched";
   const spec = exit.value;
   if (spec === undefined) return "not-found";
   if (argv.includes("--help") || argv.includes("-h")) {
@@ -188,9 +200,13 @@ const dispatchPluginOwnedCommand = async (
     return "dispatched";
   }
   if (await emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
-  await runPluginOwnedCommand(spec, argv);
+  await runPluginOwnedCommand(spec, argv, signal === undefined ? {} : { signal });
   return "dispatched";
 };
 
-export const tryPluginOwnedCommand = async (token: string, argv: ReadonlyArray<string>): Promise<boolean> =>
-  isPluginOwnedCommandId(token) && (await dispatchPluginOwnedCommand(token, argv)) === "dispatched";
+export const tryPluginOwnedCommand = async (
+  token: string,
+  argv: ReadonlyArray<string>,
+  signal?: AbortSignal,
+): Promise<boolean> =>
+  isPluginOwnedCommandId(token) && (await dispatchPluginOwnedCommand(token, argv, signal)) === "dispatched";

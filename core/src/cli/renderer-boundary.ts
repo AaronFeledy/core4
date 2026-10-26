@@ -500,10 +500,22 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       }),
     );
     const commandOutcome = yield* Effect.exit(
-      withCommandEventService(executeWithEventConsumer).pipe(
-        Effect.provide(Layer.provide(commandLayer, Layer.succeed(Tracer.ParentSpan, initSpan)), {
-          local: true,
+      Effect.scoped(
+        Effect.gen(function* () {
+          const memoMap = yield* Layer.makeMemoMap;
+          const runtimeContext = yield* interruptOnAbort(
+            Layer.buildWithMemoMap(
+              Layer.provide(commandLayer, Layer.succeed(Tracer.ParentSpan, initSpan)),
+              memoMap,
+              yield* Effect.scope,
+            ),
+            options.signal,
+          );
+          return yield* withCommandEventService(executeWithEventConsumer).pipe(
+            Effect.provide(runtimeContext),
+          );
         }),
+      ).pipe(
         Effect.provideService(EventPublicationObserver, (event) =>
           envelopeFormat && isMessageWarnEvent(event)
             ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })

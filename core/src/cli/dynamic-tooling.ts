@@ -78,7 +78,11 @@ const prepareDynamicToolingInvocation = (name: string, argv: ReadonlyArray<strin
   resetActiveCommandInvocation(commandId, argv);
 };
 
-export const runDynamicTooling = async (argv: ReadonlyArray<string>): Promise<void> => {
+export const runDynamicTooling = async (
+  argv: ReadonlyArray<string>,
+  parentSignal?: AbortSignal,
+): Promise<void> => {
+  if (parentSignal?.aborted) return;
   const name = argv[0];
   if (name === undefined) throw new Error("Missing tooling command name");
   const taskArgv = argv.slice(1);
@@ -90,86 +94,93 @@ export const runDynamicTooling = async (argv: ReadonlyArray<string>): Promise<vo
     !isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json",
   );
   const interactive = hostIo.tty === true;
-  return runWithProcessAbortSignal((signal) =>
-    runCompiledCommand(
-      withKeyboardHandoff(
-        interactive,
-        runTooling({
-          name,
-          args: commandArgv,
-          ...hostIo,
+  return runWithProcessAbortSignal(
+    (signal) =>
+      runCompiledCommand(
+        withKeyboardHandoff(
+          interactive,
+          runTooling({
+            name,
+            args: commandArgv,
+            ...hostIo,
+            signal,
+          }),
+        ),
+        makeLandoRuntime(
+          cliRuntimeOptions({
+            bootstrap: "app",
+            plugins: { policy: "discovery" },
+          }),
+        ),
+        renderRunToolingResult,
+        {
+          ...dynamicToolingOptions,
           signal,
-        }),
+          ...dynamicToolingStreaming(),
+        },
       ),
-      makeLandoRuntime(
-        cliRuntimeOptions({
-          bootstrap: "app",
-          plugins: { policy: "discovery" },
-        }),
-      ),
-      renderRunToolingResult,
-      {
-        ...dynamicToolingOptions,
-        signal,
-        ...dynamicToolingStreaming(),
-      },
-    ),
+    parentSignal === undefined ? {} : { signal: parentSignal },
   ).finally(restore);
 };
 
 const runDynamicBunShellTooling = async (
   route: Extract<ToolingRoute, { readonly _tag: "bun-script" }>,
   argv: ReadonlyArray<string>,
+  parentSignal?: AbortSignal,
 ): Promise<void> => {
+  if (parentSignal?.aborted) return;
   const { name, appRoot, relativePath } = route;
   const commandArgv = argv[0] === "--" ? argv.slice(1) : argv;
   prepareDynamicToolingInvocation(name, commandArgv);
   if (await emitJsonListModeIfRequested(ToolingResultSchema)) return;
   const mode = toolingHostStdin(!isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json");
-  return runWithProcessAbortSignal((signal) => {
-    const effect = withKeyboardHandoff(
-      mode === "keyboard",
-      runBunShellTooling(
-        {
-          name,
-          args: commandArgv,
-          ...(mode === "none"
-            ? {}
-            : { hostIo: mode === "keyboard" ? ("terminal" as const) : ("stdin" as const) }),
-          signal,
-          relativePath: relativePath ?? `${name.split(":").join("/")}.bun.sh`,
-        },
-        appRoot,
-      ).pipe(
-        Effect.flatMap((result) =>
-          result === undefined
-            ? Effect.fail(
-                new ToolingCompileError({
-                  message: `Cached script-backed tooling command app:${escapeDiagnosticText(name)} is no longer available.`,
-                  tool: name,
-                  remediation: "Run `lando app:cache:refresh` and retry the command.",
-                }),
-              )
-            : Effect.succeed(result),
+  return runWithProcessAbortSignal(
+    (signal) => {
+      const effect = withKeyboardHandoff(
+        mode === "keyboard",
+        runBunShellTooling(
+          {
+            name,
+            args: commandArgv,
+            ...(mode === "none"
+              ? {}
+              : { hostIo: mode === "keyboard" ? ("terminal" as const) : ("stdin" as const) }),
+            signal,
+            relativePath: relativePath ?? `${name.split(":").join("/")}.bun.sh`,
+          },
+          appRoot,
+        ).pipe(
+          Effect.flatMap((result) =>
+            result === undefined
+              ? Effect.fail(
+                  new ToolingCompileError({
+                    message: `Cached script-backed tooling command app:${escapeDiagnosticText(name)} is no longer available.`,
+                    tool: name,
+                    remediation: "Run `lando app:cache:refresh` and retry the command.",
+                  }),
+                )
+              : Effect.succeed(result),
+          ),
         ),
-      ),
-    );
-    return runCompiledCommand(
-      effect,
-      makeLandoRuntime(
-        cliRuntimeOptions({
-          bootstrap: "minimal",
-          plugins: { policy: "discovery" },
-        }),
-      ),
-      renderRunToolingResult,
-      {
-        ...dynamicToolingOptions,
-        signal,
-        ...dynamicToolingStreaming(),
-      },
-    );
-  });
+      );
+      return runCompiledCommand(
+        effect,
+        makeLandoRuntime(
+          cliRuntimeOptions({
+            bootstrap: "minimal",
+            plugins: { policy: "discovery" },
+          }),
+        ),
+        renderRunToolingResult,
+        {
+          ...dynamicToolingOptions,
+          signal,
+          ...dynamicToolingStreaming(),
+        },
+      );
+    },
+    parentSignal === undefined ? {} : { signal: parentSignal },
+  );
 };
 
 const runDynamicToolingFailure = (
@@ -218,7 +229,9 @@ export const routeDynamicTooling = async (argv: ReadonlyArray<string>): Promise<
 export const routeResolvedTooling = async (
   route: ToolingRoute,
   argv: ReadonlyArray<string>,
+  signal?: AbortSignal,
 ): Promise<boolean> => {
+  if (signal?.aborted) return true;
   switch (route._tag) {
     case "not-tooling":
     case "built-in":
@@ -231,11 +244,11 @@ export const routeResolvedTooling = async (
     case "bun-script":
       // A tooling task renders its own streams and declares no opt-in format.
       if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;
-      await runDynamicBunShellTooling(route, argv);
+      await runDynamicBunShellTooling(route, argv, signal);
       return true;
     case "tooling":
       if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;
-      await runDynamicTooling([route.name, ...argv]);
+      await runDynamicTooling([route.name, ...argv], signal);
       return true;
     default:
       return assertNever(route);

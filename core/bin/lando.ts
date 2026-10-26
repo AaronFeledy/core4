@@ -129,7 +129,7 @@ const main = async (): Promise<void> => {
     await runWithProcessSignalReraise(async (state) => {
       const { runCli } = await import("@lando/core/cli");
       if (state.received() !== undefined) return;
-      await runCli({ argv, rootUrl: import.meta.url, discovery });
+      await runCli({ argv, rootUrl: import.meta.url, discovery, signal: state.signal });
     });
   } finally {
     clearInterval(keepAlive);

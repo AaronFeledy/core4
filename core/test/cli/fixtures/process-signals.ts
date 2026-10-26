@@ -1,4 +1,4 @@
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createBufferedRendererIO, createStdioRendererIO } from "@lando/renderer/io";
 import { withHostDumpCompression } from "@lando/sql/compression";
@@ -20,8 +20,29 @@ class CleanupError extends Schema.TaggedError<CleanupError>()("SignalCleanupErro
 
 const keepAlive = setInterval(() => undefined, 1000);
 try {
-  await runWithProcessSignalReraise(() =>
-    runWithProcessAbortSignal(async (signal) => {
+  await runWithProcessSignalReraise(async (state) => {
+    if (mode === "handoff") {
+      (process as NodeJS.EventEmitter).once("SIGINT", () => record("handoff-captured"));
+      const { runCli } = await import("../../../src/cli/index");
+      await runCli({
+        argv: ["version"],
+        rootUrl: import.meta.url,
+        signal: state.signal,
+        discovery: {
+          cwd: directory,
+          resolver: {
+            resolve: async (cwd) => {
+              record("dispatch-ready");
+              while (!existsSync(join(directory, "continue"))) await Bun.sleep(10);
+              return { kind: "stopped", cwd, directory, reason: "root" };
+            },
+          },
+        },
+      });
+      record("dispatch-settled");
+      return;
+    }
+    return runWithProcessAbortSignal(async (signal) => {
       signal.addEventListener("abort", () => record("abort", signal.reason), { once: true });
       const io = createBufferedRendererIO();
       const operation = Effect.scoped(
@@ -82,7 +103,29 @@ try {
         }),
       );
       const runtime = Layer.effectDiscard(
-        Effect.addFinalizer(() => Effect.sync(() => record("runtime-finalized"))),
+        Effect.gen(function* () {
+          yield* Effect.addFinalizer(() =>
+            Effect.gen(function* () {
+              if (mode.startsWith("boot")) {
+                record("runtime-finalizing");
+                yield* Effect.sleep(180);
+              }
+              record("runtime-finalized");
+              if (mode === "boot-cleanup-error") {
+                return yield* Effect.die(
+                  new CleanupError({
+                    message: "Bootstrap cleanup failed private-signal-token",
+                    remediation: "Inspect the owned fixture",
+                  }),
+                );
+              }
+            }),
+          );
+          if (mode.startsWith("boot")) {
+            record("boot-ready", { pid: process.pid });
+            return yield* Effect.never;
+          }
+        }),
       );
       await runWithRendererHandling(operation, {
         runtime,
@@ -98,8 +141,8 @@ try {
         formatError: (failure) => JSON.stringify(failure),
       });
       record("rendered", { stdout: io.stdout(), stderr: io.stderr() });
-    }),
-  );
+    });
+  });
 } finally {
   clearInterval(keepAlive);
 }
