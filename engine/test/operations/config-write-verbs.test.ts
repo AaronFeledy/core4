@@ -175,7 +175,11 @@ describe("config write verbs", () => {
   test("aborts immediately when the decoder Effect fails", async () => {
     // Given
     const { io, writes } = fixture();
-    const error = new ConfigError({ message: "Decoder read failed", path: file });
+    const error = new ConfigError({
+      message: "Decoder read failed",
+      path: file,
+      remediation: "Fix the fixture file so the decoder can read it.",
+    });
     let attempts = 0;
     // When
     const result = await Effect.runPromise(
@@ -268,7 +272,11 @@ describe("config write verbs", () => {
   test("set propagates afterDecode failures before writing", async () => {
     // Given
     const { io, writes, calls } = fixture();
-    const error = new ConfigError({ message: "Rejected by policy", path: file });
+    const error = new ConfigError({
+      message: "Rejected by policy",
+      path: file,
+      remediation: "Adjust the write policy fixture to allow this path.",
+    });
     // When
     const result = await Effect.runPromise(
       Effect.result(
@@ -295,7 +303,11 @@ describe("config write verbs", () => {
   test("set propagates read failures before mutation or decoding", async () => {
     // Given
     const { io, writes } = fixture();
-    const error = new ConfigError({ message: "Read failed", path: file });
+    const error = new ConfigError({
+      message: "Read failed",
+      path: file,
+      remediation: "Fix permissions on the fixture file path.",
+    });
     // When
     const result = await Effect.runPromise(
       Effect.result(

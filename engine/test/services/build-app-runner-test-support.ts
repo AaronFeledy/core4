@@ -66,7 +66,6 @@ export const planWith = (
     }),
   ),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

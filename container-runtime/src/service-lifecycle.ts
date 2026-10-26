@@ -12,9 +12,10 @@ import type {
   ServiceSelector,
 } from "@lando/sdk/services";
 
-import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
+import { removeRuntimeContainer } from "./container-removal.ts";
+import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, missingService } from "./engine-errors.ts";
-import { redactDetails, withApiReason } from "./redact.ts";
+import { redactDetails, redactorFor, withApiReason } from "./redact.ts";
 
 export type ServiceLifecycleAction = "start" | "stop" | "restart";
 
@@ -64,9 +65,9 @@ const lifecycleRequest = (
           message: withApiReason(
             `${input.failureAction} failed with HTTP ${response.status}.`,
             response,
-            ctx.redactor,
+            redactorFor(ctx),
           ),
-          details: redactDetails({ ...input.details, body: response.body }, ctx.redactor),
+          details: redactDetails({ ...input.details, body: response.body }, redactorFor(ctx)),
           remediation: ctx.remediation,
         }),
       );
@@ -112,6 +113,8 @@ export const postServiceLifecycle = (
           operation: action,
           service: target.service,
           message: `Service ${target.service} was not found.`,
+          remediation:
+            "Add the missing service to the Landofile or correct the service name, then re-run the command.",
         }),
       ),
     },
@@ -149,6 +152,8 @@ export const postExactServiceLifecycle = (
           operation: action,
           service: target.service,
           message: `The inspected runtime for ${target.service} was not found.`,
+          remediation:
+            "Add the missing service to the Landofile or correct the service name, then re-run the command.",
         }),
       ),
     },
@@ -190,12 +195,11 @@ export const removeObservedContainer = (
     );
   }
   const call = (
-    method: "POST" | "DELETE",
-    path: `/${string}`,
+    input: EngineHttpRequest,
     accepted: ReadonlyArray<number>,
     stage: string,
   ): Effect.Effect<boolean, ProviderError> =>
-    lifecycleRequest(request({ method, path }), options.ctx, {
+    lifecycleRequest(request(input), options.ctx, {
       operation,
       requestAction: `observed container ${stage}`,
       failureAction: `Observed container ${stage}`,
@@ -206,9 +210,11 @@ export const removeObservedContainer = (
 
   // A stop that 404s means the container is already gone, so there is nothing left to remove.
   const id = encodeURIComponent(containerId);
-  return call("POST", `/containers/${id}/stop`, [204, 304], "stop").pipe(
+  return call({ method: "POST", path: `/containers/${id}/stop` }, [204, 304], "stop").pipe(
     Effect.flatMap((present) =>
-      present ? call("DELETE", `/containers/${id}?force=true`, [200, 204], "remove") : Effect.succeed(false),
+      present
+        ? removeRuntimeContainer({ request }, containerId, { ...options.ctx, operation })
+        : Effect.succeed(false),
     ),
   );
 };

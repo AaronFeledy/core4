@@ -1,10 +1,11 @@
-import { JsonSchema, Schema } from "effect";
+import { JsonSchema, Result, Schema } from "effect";
 
 import { GlobalConfig } from "./config.ts";
 import { getEditorJsonSchema } from "./json-schema-editor.ts";
 import { LandofileAuthoringShape } from "./landofile-authoring.ts";
 import { PluginManifest } from "./plugin.ts";
 import { RecipeManifest } from "./recipe.ts";
+import { schemaIssueLeaves } from "./validation-issue.ts";
 
 // ====
 // Standard views of the canonical input contracts.
@@ -12,20 +13,39 @@ import { RecipeManifest } from "./recipe.ts";
 
 const options = { parseOptions: { onExcessProperty: "error", errors: "all" } } as const;
 
+const standardSchema = <S extends Schema.ConstraintDecoder<unknown, never>>(
+  schema: S,
+): ReturnType<typeof Schema.toStandardSchemaV1<S>> => {
+  const view = Schema.toStandardSchemaV1(schema, options);
+  const decode = Schema.decodeUnknownResult(schema);
+  return Object.assign(view, {
+    "~standard": {
+      ...view["~standard"],
+      validate: (input: unknown) =>
+        Result.match(decode(input, options.parseOptions), {
+          onSuccess: (value) => ({ value }),
+          onFailure: (error) => ({
+            issues: schemaIssueLeaves(error.issue, [], { input }).map(({ path, message }) => ({
+              path,
+              message,
+            })),
+          }),
+        }),
+    },
+  });
+};
+
 export const LandofileStandardSchema: ReturnType<
   typeof Schema.toStandardSchemaV1<typeof LandofileAuthoringShape>
-> = /* @__PURE__ */ Schema.toStandardSchemaV1(/* @__PURE__ */ LandofileAuthoringShape.annotate({}), options);
-export const GlobalConfigStandardSchema = /* @__PURE__ */ Schema.toStandardSchemaV1(
+> = /* @__PURE__ */ standardSchema(/* @__PURE__ */ LandofileAuthoringShape.annotate({}));
+export const GlobalConfigStandardSchema = /* @__PURE__ */ standardSchema(
   /* @__PURE__ */ GlobalConfig.annotate({}),
-  options,
 );
-export const PluginManifestStandardSchema = /* @__PURE__ */ Schema.toStandardSchemaV1(
+export const PluginManifestStandardSchema = /* @__PURE__ */ standardSchema(
   /* @__PURE__ */ PluginManifest.annotate({}),
-  options,
 );
-export const RecipeManifestStandardSchema = /* @__PURE__ */ Schema.toStandardSchemaV1(
+export const RecipeManifestStandardSchema = /* @__PURE__ */ standardSchema(
   /* @__PURE__ */ RecipeManifest.annotate({}),
-  options,
 );
 
 // JSON Schema conversion is deferred by Effect until input() or output() is called.

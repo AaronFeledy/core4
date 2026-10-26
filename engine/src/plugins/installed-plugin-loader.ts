@@ -27,7 +27,12 @@ const loadExternalPluginEntry = async (
   try {
     return (await import(pathToFileURL(entryPath).href)) as ExternalPluginModule;
   } catch (cause) {
-    throw pluginLoadError(String(manifest.name), `Failed to import plugin entry ${manifest.entry}`, cause);
+    throw pluginLoadError(
+      String(manifest.name),
+      `Failed to import plugin entry ${manifest.entry}`,
+      cause,
+      `Repair the ${String(manifest.entry)} entry for plugin ${String(manifest.name)}, or reinstall the plugin.`,
+    );
   }
 };
 
@@ -77,6 +82,7 @@ const normalizeExternalContributionModules = async (
         throw pluginManifestError(
           `${kind} module path escapes the plugin package root: ${modulePath}`,
           cause,
+          `Set the ${kind} module to a file inside the plugin package root.`,
         );
       }
       throw cause;
@@ -90,6 +96,7 @@ const normalizeExternalContributionModules = async (
         throw pluginManifestError(
           `Duplicate rendererPanels id "${panel.id}" in plugin ${String(manifest.name)}`,
           panel.id,
+          "Assign each rendererPanels contribution a unique id within the plugin.",
         );
       }
       seenIds.add(panel.id);
@@ -103,6 +110,7 @@ const normalizeExternalContributionModules = async (
         throw pluginManifestError(
           `Duplicate subscribers id "${subscriber.id}" in plugin ${String(manifest.name)}`,
           subscriber.id,
+          "Assign each subscriber a unique id within the plugin.",
         );
       }
       seenSubscriberIds.add(subscriber.id);
@@ -249,12 +257,20 @@ export const loadInstalledPluginManifest = async (packageRootInput: string): Pro
   try {
     parsed = JSON.parse(await readFile(packageJsonPath, "utf8"));
   } catch (cause) {
-    throw pluginManifestError(`Plugin package.json is invalid: ${packageJsonPath}`, cause);
+    throw pluginManifestError(
+      `Plugin package.json is invalid: ${packageJsonPath}`,
+      cause,
+      `Make ${packageJsonPath} readable and fix its JSON syntax.`,
+    );
   }
   const candidate = (parsed as { landoPlugin?: unknown }).landoPlugin ?? parsed;
   const decoded = Schema.decodeUnknownResult(PluginManifest)(candidate, { onExcessProperty: "error" });
   if (Result.isFailure(decoded)) {
-    throw pluginManifestError(`Plugin manifest validation failed: ${packageJsonPath}`, decoded.failure);
+    throw pluginManifestError(
+      `Plugin manifest validation failed: ${packageJsonPath}`,
+      decoded.failure,
+      `Correct the reported manifest fields in ${packageJsonPath}.`,
+    );
   }
   return normalizeExternalContributionModules(packageRoot, decoded.success);
 };

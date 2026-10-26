@@ -5,10 +5,21 @@ import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import type { EventWaitSpec, LandoEvent } from "@lando/sdk/services";
 
 export const eventError = (event: string, message: string, cause?: unknown): EventError =>
-  new EventError({ message, event, ...(cause === undefined ? {} : { cause }) });
+  new EventError({
+    message,
+    event,
+    ...(cause === undefined ? {} : { cause }),
+    remediation: "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+  });
 
 export const timeoutEventError = (event: string): EventError =>
-  new EventError({ message: `Timed out waiting for event: ${event}`, event, reason: "timeout" });
+  new EventError({
+    message: `Timed out waiting for event: ${event}`,
+    event,
+    reason: "timeout",
+    remediation:
+      "Increase the event wait timeout, or fix whatever should emit the expected event before timing out.",
+  });
 
 export const DeliverableEventSchema: Schema.Codec<LandoEvent | typeof LandoEventSchema.Encoded> =
   Schema.Union([Schema.toEncoded(LandoEventSchema), Schema.toType(LandoEventSchema)]);

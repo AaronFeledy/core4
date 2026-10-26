@@ -137,6 +137,7 @@ describe("provider matrix acceptance reporting", () => {
     expect(report.checks.map((check) => check.id)).toEqual([
       "managed-setup-readiness",
       "compose-knobs-transport",
+      "storage-lifecycle",
       "sdk-provider-contract",
       "lando-bring-up",
       "lando-bring-down",

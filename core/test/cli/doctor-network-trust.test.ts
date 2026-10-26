@@ -181,7 +181,11 @@ describe("network-trust doctor status", () => {
 
   test("lets ConfigService failures propagate", async () => {
     // Given
-    const failure = new ConfigError({ message: "config unavailable", path: "/config.yml" });
+    const failure = new ConfigError({
+      message: "config unavailable",
+      path: "/config.yml",
+      remediation: "Restore /config.yml for the doctor fixture.",
+    });
     const effect = networkTrustDoctorStatus(EMPTY_ENV).pipe(
       Effect.provide(Layer.effect(ConfigService, Effect.fail(failure))),
     );

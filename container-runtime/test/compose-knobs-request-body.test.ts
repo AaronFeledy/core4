@@ -18,7 +18,7 @@ import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
 import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const serviceName = ServiceName.make("web");
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-07-27T00:00:00Z"),
@@ -56,7 +56,6 @@ const planWithCompose = (
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     networking: { perAppBridge: { name: "compose-knob-request-network", driver: "bridge" } },
     stores: [],
     fileSync: [],

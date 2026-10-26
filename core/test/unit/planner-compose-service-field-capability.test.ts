@@ -44,37 +44,69 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("Compose service field capabilities", () => {
-  test("Given a provider omitting service-field capabilities, when networks is planned, then planning fails closed", async () => {
-    // Given
+  test("allows normalized networks without Compose service field support", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "network-field",
+      name: "allowed-network",
       runtime: 4,
+      networks: { frontend: {} },
       services: { web: { image: "node:lts", home: false, networks: ["frontend"] } },
     });
-
     await withTempCwd(async () => {
-      // When
-      const unsupported = {
+      const exit = await planExit(landofile, {
         ...TestRuntimeProvider.capabilities,
-        composeServiceFields: { supported: ["configs"] as const },
-        composeProjectFields: { supported: ["configs"] as const },
-      };
-      const exit = await planExit(landofile, unsupported);
-
-      // Then
-      const failure = expectFailure(exit);
-      expect(failure).toBeInstanceOf(CapabilityError);
-      expect(failure).toMatchObject({
-        _tag: "CapabilityError",
-        service: "web",
-        key: "networks",
-        feature: "compose service field networks",
-        capability: "composeSpec",
-        providerId: "lando",
+        composeServiceFields: { supported: [] },
       });
-      expect(failure instanceof CapabilityError ? (failure.remediation?.length ?? 0) : 0).toBeGreaterThan(0);
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit))
+        expect(exit.value.networking?.authoredNetworks?.[0]).toMatchObject({
+          key: "frontend",
+          external: false,
+        });
     });
   });
+  test.each([false, true])(
+    "Given a provider omitting authoredNetworks, when networks is planned (aliases=%s), then planning fails closed",
+    async (aliases) => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "network-field",
+        runtime: 4,
+        ...(aliases ? {} : { networks: { frontend: {} } }),
+        services: {
+          web: {
+            image: "node:lts",
+            home: false,
+            networks: aliases ? { default: { aliases: ["api"] } } : ["frontend"],
+          },
+        },
+      });
+
+      await withTempCwd(async () => {
+        // When
+        const { authoredNetworks: _authoredNetworks, ...capabilities } = TestRuntimeProvider.capabilities;
+        const unsupported = {
+          ...capabilities,
+          composeServiceFields: { supported: ["configs"] as const },
+          composeProjectFields: { supported: ["configs"] as const },
+        };
+        const exit = await planExit(landofile, unsupported);
+
+        // Then
+        const failure = expectFailure(exit);
+        expect(failure).toBeInstanceOf(CapabilityError);
+        expect(failure).toMatchObject({
+          _tag: "CapabilityError",
+          key: "networks",
+          feature: "authored networks",
+          capability: "authoredNetworks",
+          providerId: "lando",
+        });
+        expect(failure instanceof CapabilityError ? (failure.remediation?.length ?? 0) : 0).toBeGreaterThan(
+          0,
+        );
+      });
+    },
+  );
 
   test("Given labels and an undeclaring provider, when planning, then planning fails closed", async () => {
     // Given

@@ -110,7 +110,15 @@ test("Windows reveal spawn failure is a tagged opener error, not a transport fai
       revealHostPath("C:\\app\\evil.exe", false, { platform: "win32" }).pipe(
         Effect.provideService(ProcessRunner, {
           ...runner.service,
-          run: () => Effect.fail(new ProcessExecError({ message: "missing", cmd: "explorer.exe" })),
+          run: () =>
+            Effect.fail(
+              new ProcessExecError({
+                message: "missing",
+                cmd: "explorer.exe",
+                remediation:
+                  "Install `explorer.exe` on this host or fix its executable path, then re-run the command.",
+              }),
+            ),
         }),
       ),
     ),

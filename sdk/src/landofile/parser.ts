@@ -64,8 +64,25 @@ interface ParsedLine {
   readonly sourceLines: ReadonlyArray<string>;
 }
 
-const parseError = (filePath: string, message: string, line?: number, column?: number): LandofileParseError =>
-  new LandofileParseErrorClass({ message, filePath, line, column });
+const syntaxRemediation = (filePath: string, line?: number): string =>
+  line === undefined
+    ? `Correct the YAML syntax in ${filePath}.`
+    : `Correct the YAML syntax in ${filePath} at line ${line}.`;
+
+const parseError = (
+  filePath: string,
+  message: string,
+  line?: number,
+  column?: number,
+  remediation?: string,
+): LandofileParseError =>
+  new LandofileParseErrorClass({
+    message,
+    filePath,
+    line,
+    column,
+    remediation: remediation ?? syntaxRemediation(filePath, line),
+  });
 
 const DEFAULT_MAX_CONTENT_BYTES = 1024 * 1024;
 const DEFAULT_MAX_DEPTH = 64;
@@ -140,6 +157,9 @@ const assertContentSize = (content: string, filePath: string, maxContentBytes: n
     throw parseError(
       filePath,
       `Landofile exceeds the maximum input size: ${actualContentBytes} bytes > ${maxContentBytes} bytes`,
+      undefined,
+      undefined,
+      "Split the document or raise the configured maximum input size.",
     );
   }
 };
@@ -150,6 +170,8 @@ const assertDepth = (filePath: string, line: number, depth: number, maxDepth: nu
       filePath,
       `Landofile nesting depth exceeds the maximum depth of ${maxDepth} at line ${line}`,
       line,
+      undefined,
+      "Reduce block and flow nesting or raise the configured maximum depth.",
     );
   }
 };
@@ -856,6 +878,7 @@ export const parseLandofile = (options: ParseOptions): Effect.Effect<unknown, La
             filePath: options.file,
             line: undefined,
             column: undefined,
+            remediation: `Inspect ${options.file} and correct the Landofile so it parses as valid YAML.`,
             cause,
           }),
   });

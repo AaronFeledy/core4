@@ -253,6 +253,7 @@ describe("makeRuntimeBundleDownloader", () => {
         providerId: "lando",
         operation: "setup",
         message: "artifact downloader rejected the request",
+        remediation: "Install or start the `lando` provider and confirm it can perform `setup`.",
       });
       const { artifactDownload } = recordingArtifactDownload(bytes, { fail: expected });
 

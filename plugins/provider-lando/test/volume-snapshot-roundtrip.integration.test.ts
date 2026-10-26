@@ -121,7 +121,6 @@ const liveFixture = Effect.gen(function* () {
     provider: base.id,
     services: {},
     routes: [],
-    networks: [],
     stores: [{ name: store, scope: "app", kind: "data" }],
     fileSync: [],
     identity: { appRoot, ownerKey: appIdentityKey("owner", appRoot) },

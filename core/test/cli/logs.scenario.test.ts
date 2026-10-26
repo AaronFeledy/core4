@@ -113,7 +113,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -186,6 +185,7 @@ const makeLogsLayer = (
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -194,6 +194,7 @@ const makeLogsLayer = (
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,

@@ -22,17 +22,19 @@ export const decodedPendingSites = (
       const field = path.at(-1);
       if ((typeof input === "string" || Array.isArray(input)) && isPlainRecord(output)) {
         const key =
-          field === "appMount"
-            ? "target"
-            : field === "build"
-              ? "context"
-              : field === "healthcheck"
-                ? "command"
-                : typeof field === "number" && (path.at(-2) === "configs" || path.at(-2) === "secrets")
-                  ? "source"
-                  : typeof field === "number" && path.at(-2) === "dependsOn"
-                    ? "service"
-                    : undefined;
+          path.length === 2 && path[0] === "tooling" && Object.hasOwn(output, "cmd")
+            ? "cmd"
+            : field === "appMount"
+              ? "target"
+              : field === "build"
+                ? "context"
+                : field === "healthcheck"
+                  ? "command"
+                  : typeof field === "number" && (path.at(-2) === "configs" || path.at(-2) === "secrets")
+                    ? "source"
+                    : typeof field === "number" && path.at(-2) === "dependsOn"
+                      ? "service"
+                      : undefined;
         if (key !== undefined) {
           path.push(key);
           output = output[key];

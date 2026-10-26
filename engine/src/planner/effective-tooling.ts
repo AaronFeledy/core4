@@ -1,3 +1,6 @@
+import { join } from "node:path";
+import { LANDOFILE_NAME } from "@lando/landofile/discovery";
+import { getLandofileValueSource } from "@lando/landofile/validation";
 import { type AppPlan, type LandofileShape, ServiceName, ToolingTaskShape } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
@@ -21,6 +24,7 @@ const ToolingPlan = Schema.Struct({
   tasks: Schema.Record(Schema.String, ToolingTaskShape),
   internalNames: Schema.Array(Schema.String),
   connectionClients: Schema.optionalKey(Schema.Record(Schema.String, ServiceName)),
+  disabledSources: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 
 export const compareOrdinal = (left: string, right: string): number =>
@@ -49,12 +53,25 @@ export const toolingBeforeDefaults = (input: {
 export const compileEffectiveTooling = (input: {
   readonly landofile: Pick<LandofileShape, "tooling" | "toolingDefaults">;
   readonly services: ReadonlyArray<ToolingServiceContribution>;
-}): EffectiveTooling => {
-  return rememberInternalToolingTasks(
+}): EffectiveTooling =>
+  rememberInternalToolingTasks(
     sortedTooling(applyToolingDefaults(toolingBeforeDefaults(input), input.landofile.toolingDefaults) ?? {}),
     getInternalToolingTasks(input.landofile),
   );
-};
+
+/** Authored file that set `disabled` on each disabled task, for refusal remediation. */
+export const disabledToolingSources = (
+  landofile: Pick<LandofileShape, "tooling">,
+  tooling: EffectiveTooling,
+): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    Object.entries(tooling).flatMap(([name, task]) => {
+      const source = task.disabled
+        ? getLandofileValueSource(landofile, ["tooling", name, "disabled"])
+        : undefined;
+      return source === undefined ? [] : [[name, source.file]];
+    }),
+  );
 
 export const connectionClientOwners = (input: {
   readonly landofile: Pick<LandofileShape, "tooling">;
@@ -81,6 +98,7 @@ export const attachEffectiveTooling = <Plan extends AppPlan>(
   plan: Plan,
   tooling: EffectiveTooling,
   connectionClients: Readonly<Record<string, ServiceName>> = {},
+  disabledSources: Readonly<Record<string, string>> = {},
 ): Plan => {
   return {
     ...plan,
@@ -90,6 +108,7 @@ export const attachEffectiveTooling = <Plan extends AppPlan>(
         tasks: tooling,
         internalNames: [...getInternalToolingTasks(tooling)],
         connectionClients,
+        disabledSources,
       },
     },
   };
@@ -101,3 +120,13 @@ export const effectiveToolingForPlan = (plan: AppPlan): EffectiveTooling | undef
   const decoded = Schema.decodeUnknownSync(ToolingPlan)(value);
   return rememberInternalToolingTasks(decoded.tasks, decoded.internalNames);
 };
+
+export const disabledToolingSourceForPlan = (plan: AppPlan, name: string): string | undefined => {
+  const value = plan.extensions[TOOLING_PLAN_KEY];
+  return value === undefined
+    ? undefined
+    : Schema.decodeUnknownSync(ToolingPlan)(value).disabledSources?.[name];
+};
+
+export const toolingSourcePathForPlan = (plan: AppPlan, name: string): string =>
+  disabledToolingSourceForPlan(plan, name) ?? join(String(plan.root), LANDOFILE_NAME);

@@ -31,7 +31,7 @@ lando rake
 
 `web` starts with `DATABASE_URL` pointing at the `database` service and `REDIS_URL` pointing at `cache`. ActiveRecord reads `DATABASE_URL` on its own, so `lando rake db:create db:migrate` connects without a `database.yml` edit. The URL is built from the database service's resolved credentials and its planned port, with the user, password, and database name each percent-encoded, so it follows an authored `creds:` block or `port:` on `database`. A `creds.password` written as a `${secret:...}` reference resolves when `web` is created, never into the plan. `lando info` shows the user and database name and redacts the rest.
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For day-to-day tooling and DB/Redis hosts, see [Run the Rails recipe](/guides/recipes/rails-workflow/).
 

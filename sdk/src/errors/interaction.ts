@@ -8,7 +8,7 @@ import { Schema } from "effect";
 export const interactionRequiredFields = {
   message: Schema.String,
   promptName: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 } as const;
 
 export const promptValidationFields = {
@@ -16,7 +16,7 @@ export const promptValidationFields = {
   promptName: Schema.String,
   promptType: Schema.String,
   issue: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 } as const;
 
 export const choicesUnavailableFields = {
@@ -24,7 +24,7 @@ export const choicesUnavailableFields = {
   promptName: Schema.String,
   command: Schema.String,
   kind: Schema.Literals(["command-failed", "unparseable", "empty"]),
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   exitCode: Schema.optional(Schema.Number),
 } as const;
 
@@ -46,7 +46,7 @@ export class InteractionCancelledError extends Schema.TaggedError<InteractionCan
   {
     message: Schema.String,
     promptName: Schema.optional(Schema.String),
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -63,6 +63,6 @@ export class InteractionUnavailableError extends Schema.TaggedError<InteractionU
     message: Schema.String,
     serviceId: Schema.optional(Schema.String),
     capability: Schema.optional(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

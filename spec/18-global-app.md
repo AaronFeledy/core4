@@ -53,7 +53,7 @@ The root is created on demand. With no contributions, the generated layer names 
 
 #### 20.3.2 Discovery rules
 
-`<userDataRoot>/global/` MUST be excluded from cwd discovery and `cwd-app-map` (§7.1, §12.1). `app:*` commands resolve only user apps; `meta:global:*` resolves the global app explicitly through `GlobalAppService`. `apps:list` excludes it unless `--include-global` or `--all` is set. Global lifecycle payloads carry `AppRef { kind: "global", id: "global", root }`.
+`<userDataRoot>/global/` MUST be excluded from cwd discovery (§7.1). `app:*` commands resolve only user apps; `meta:global:*` resolves the global app explicitly through `GlobalAppService`. `apps:list` excludes it unless `--include-global` or `--all` is set. Global lifecycle payloads carry `AppRef { kind: "global", id: "global", root }`.
 
 ### 20.4 The `globalServices:` plugin contribution surface
 
@@ -156,7 +156,7 @@ The global app owns one route definition. `RouterService` does not expose a read
 | `meta:global:stop` | `global:stop` | `global` | Stop all running services or repeated `--service` selections. |
 | `meta:global:uninstall` | `global:uninstall` | `global` | Disable a plugin's contributions, regenerate, and stop affected services. |
 
-`meta:global:stop` with no selection is the §5.3.1 teardown. `--service`/`-s` is repeatable and stops and removes exactly the observed containers of the named services, with no dependency expansion. It MUST retain applied state, all volumes, the shared network, and unselected containers and their active routes. With no applied plan and no owned runtime resources it reports `unchanged`, even with selections. When an applied plan exists, unknown or empty service names MUST fail before any mutation. An otherwise valid selected orphan request (orphaned resources, no applied plan) fails closed with `AppResolveError` (§5.3.1). A retry reconciles the selected services' routes even when their containers were already removed, while `servicesStopped` lists only containers actually removed, so an `unchanged` container receipt MAY accompany route reconciliation. Later app starts MAY start a stopped global service again (§20.6.3).
+`meta:global:stop` with no selection is the §5.3.1 teardown. `--service`/`-s` is repeatable and stops and removes exactly the observed containers of the named services, with no dependency expansion. It MUST retain applied state, all named volumes, the shared network, and unselected containers and their active routes. With no applied plan and no owned runtime resources it reports `unchanged`, even with selections. When an applied plan exists, unknown or empty service names MUST fail before any mutation. An otherwise valid selected orphan request (orphaned resources, no applied plan) fails closed with `AppResolveError` (§5.3.1). A retry reconciles the selected services' routes even when their containers were already removed, while `servicesStopped` lists only containers actually removed, so an `unchanged` container receipt MAY accompany route reconciliation. Later app starts MAY start a stopped global service again (§20.6.3).
 
 `meta:global:start` and auto-start refuse an absent generated layer when no contribution can materialize it. Install and uninstall accept a plugin package name or contribution id; ambiguity is rejected. `meta:global:config` MUST reject generated-layer writes with `GlobalDistReadOnlyError`. `apps:poweroff` stops the global app by default; `--keep-global` leaves it running.
 
@@ -188,7 +188,7 @@ At `app` bootstrap, `globalServices.<name>.{type,primary,creds,hostnames,routes,
 
 Global-app resources carry the standard ownership labels plus a global-app marker so `apps:poweroff --keep-global` can exclude them.
 
-Ordinary global destroy MUST retain service- and app-scoped data (§5.3.1). Scratch apps retain their explicit lifetime and volume-removal policy (§21).
+Ordinary global destroy MUST retain service- and app-scoped data (§5.3.1); that guarantee covers named stores only, and a removed global container's anonymous volumes go with it (§6.5). Scratch apps retain their explicit lifetime and volume-removal policy (§21).
 
 ### 20.10 Proxy and CA realization through the global app
 

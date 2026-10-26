@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import ts from "typescript";
 
-import { ConfigError } from "@lando/sdk/errors";
+import { ConfigError, NoProviderInstalledError, SshAgentUnavailableError } from "@lando/sdk/errors";
 import * as sdkServices from "@lando/sdk/services";
 import type { LandofileServiceError } from "@lando/sdk/services";
 
@@ -133,6 +133,16 @@ describe("SDK public-surface snapshot", () => {
   });
   test("matches the structured global config error fields", () => {
     expect(Object.keys(ConfigError.fields).sort()).toEqual(publicSurface.configErrorFields);
+  });
+  test("matches the provider installation diagnostic fields", () => {
+    expect(Object.keys(NoProviderInstalledError.fields).sort()).toEqual(
+      publicSurface.noProviderInstalledErrorFields,
+    );
+  });
+  test("matches the SSH agent unavailability diagnostic fields", () => {
+    expect(Object.keys(SshAgentUnavailableError.fields).sort()).toEqual(
+      publicSurface.sshAgentUnavailableErrorFields,
+    );
   });
   test("matches every package export subpath", () => {
     expect(Object.keys(publicSurface.subpathExports).sort()).toEqual(Object.keys(sdkPackage.exports).sort());

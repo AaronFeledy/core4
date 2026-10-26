@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { access, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { access, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -75,6 +75,30 @@ const exists = async (path: string): Promise<boolean> =>
   );
 
 describe("per-app mutation lock", () => {
+  test("reclaims a dead holder without a wait event", async () => {
+    // Given a fresh app lock left by a dead command.
+    const isolated = await isolate();
+    const app = { id: "dead-holder", root: isolated.appRoot };
+    const path = lockPathFor(isolated.userDataRoot, app.id, await realpath(app.root));
+    await mkdir(join(isolated.userDataRoot, "operation-locks"), { recursive: true });
+    await writeFile(path, JSON.stringify({ pid: 99_999_999, token: "dead", createdAt: Date.now() }));
+    try {
+      // When the next mutation acquires that lock.
+      const result = await Effect.runPromise(
+        withAppMutationLock(app, Effect.succeed("entered")).pipe(Effect.provide(isolated.layer)),
+      );
+      // Then it proceeds without reporting live contention.
+      expect(result).toBe("entered");
+      expect(
+        isolated.events.filter(
+          (event) => event._tag === "message.warn" && event.body === APP_LOCK_WAIT_MESSAGE,
+        ),
+      ).toHaveLength(0);
+    } finally {
+      await rm(isolated.userDataRoot, { recursive: true, force: true });
+      await rm(isolated.appRoot, { recursive: true, force: true });
+    }
+  });
   test("reads LANDO_APP_LOCK_TIMEOUT_MS and rejects invalid values", () => {
     expect(resolveAppLockTimeoutMs({})).toBe(120_000);
     expect(resolveAppLockTimeoutMs({ [APP_LOCK_TIMEOUT_ENV]: "2500" })).toBe(2500);
@@ -360,10 +384,10 @@ describe("per-app mutation lock", () => {
         expect(result.failure.message).toBe(APP_LOCK_WAIT_MESSAGE);
       }
       expect(
-        isolated.events.some(
+        isolated.events.filter(
           (event) => event._tag === "message.warn" && event.body === APP_LOCK_WAIT_MESSAGE,
         ),
-      ).toBe(true);
+      ).toHaveLength(1);
       await Effect.runPromise(Deferred.succeed(release, undefined));
       await Effect.runPromise(Fiber.await(holder));
     } finally {

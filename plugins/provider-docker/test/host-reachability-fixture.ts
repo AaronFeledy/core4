@@ -25,7 +25,13 @@ const serviceType: ServiceType = {
     Effect.succeed({ base: "l337", normalizedConfig: input.service, features: [{ id: "probe.image" }] }),
 };
 const unsupported = (id: string) =>
-  Effect.fail(new PluginLoadError({ pluginName: id, message: `Unexpected plugin ${id}` }));
+  Effect.fail(
+    new PluginLoadError({
+      pluginName: id,
+      message: `Unexpected plugin ${id}`,
+      remediation: "Install or register the plugin, then retry.",
+    }),
+  );
 const registry = Layer.succeed(
   PluginRegistry,
   PluginRegistry.of({

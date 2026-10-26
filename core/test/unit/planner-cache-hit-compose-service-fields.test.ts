@@ -28,7 +28,7 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   return failure.value;
 };
 
-test("Given a cached plan with networks, when support is omitted, then the cache hit fails closed", async () => {
+test("Given a cached plan with profiles, when support is omitted, then the cache hit fails closed", async () => {
   // Given
   const appRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-compose-field-cache-app-")));
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-compose-field-cache-root-")));
@@ -75,7 +75,7 @@ test("Given a cached plan with networks, when support is omitted, then the cache
                 ...web,
                 extensions: {
                   ...web.extensions,
-                  compose: { networks: { frontend: {} } },
+                  compose: { profiles: ["dev"] },
                 },
               },
             },
@@ -85,7 +85,10 @@ test("Given a cached plan with networks, when support is omitted, then the cache
     }
 
     // When
-    const exit = await runPlan(TestRuntimeProvider.capabilities);
+    const exit = await runPlan({
+      ...TestRuntimeProvider.capabilities,
+      composeServiceFields: { supported: ["labels", "configs"] },
+    });
 
     // Then
     const failure = expectFailure(exit);
@@ -93,8 +96,8 @@ test("Given a cached plan with networks, when support is omitted, then the cache
     expect(failure).toMatchObject({
       _tag: "CapabilityError",
       service: "web",
-      key: "networks",
-      feature: "compose service field networks",
+      key: "profiles",
+      feature: "compose service field profiles",
       capability: "composeSpec",
       providerId: "lando",
     });

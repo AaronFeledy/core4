@@ -186,6 +186,7 @@ const unavailable = (providerId: string, operation: string) =>
     providerId,
     operation,
     message: `${providerId} evidence unavailable`,
+    remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 
 const planFor = (providerId: string): AppPlan => ({
@@ -197,7 +198,6 @@ const planFor = (providerId: string): AppPlan => ({
   provider: ProviderId.make(providerId),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

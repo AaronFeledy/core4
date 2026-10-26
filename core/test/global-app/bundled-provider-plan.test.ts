@@ -77,7 +77,6 @@ describe("bundled global services on bundled providers", () => {
       );
       expect([...planned].sort()).toEqual([...contributed].sort());
       expect(plan.networking?.perAppBridge).toBeNull();
-      expect(plan.networks).toEqual([]);
       expect(plan.networking?.sharedNetworkMembership?.name).toBe("lando_bridge_network");
       for (const name of planned) {
         expect(plan.networking?.sharedNetworkMembership?.aliases[ServiceName.make(name)]).toContain(

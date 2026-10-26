@@ -221,6 +221,8 @@ describe("provider-docker capabilities", () => {
                   providerId: "docker",
                   operation: "capabilities",
                   message: "injected failure",
+                  remediation:
+                    "Install or start the `docker` provider and confirm it can perform `capabilities`.",
                 }),
               ),
             },

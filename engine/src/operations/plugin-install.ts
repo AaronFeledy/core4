@@ -5,7 +5,11 @@ import { isDeepStrictEqual } from "node:util";
 import { Effect, Result, Schema } from "effect";
 
 import { NotImplementedError, PluginManifestError, causeMessage } from "@lando/sdk/errors";
-import { PluginManifest, type PluginManifest as PluginManifestShape } from "@lando/sdk/schema";
+import {
+  PluginManifest,
+  type PluginManifest as PluginManifestShape,
+  validationIssuesFromCause,
+} from "@lando/sdk/schema";
 import { PluginTrustStore } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "../cache/command-index-writer";
@@ -45,7 +49,8 @@ const decodePackageJson = (content: string, packageDir: string): PluginManifestS
   } catch (cause) {
     throw new PluginManifestError({
       message: `package.json in ${packageDir} is not valid JSON.`,
-      issues: [causeMessage(cause)],
+      issues: [{ path: [], message: causeMessage(cause) }],
+      remediation: `Fix the JSON syntax in ${join(packageDir, "package.json")} and retry.`,
     });
   }
   const candidate = (parsed as { landoPlugin?: unknown })?.landoPlugin ?? parsed;
@@ -56,7 +61,8 @@ const decodePackageJson = (content: string, packageDir: string): PluginManifestS
     throw new PluginManifestError({
       message: `Plugin manifest validation failed${name === undefined ? "" : ` for ${name}`}.`,
       ...(name === undefined ? {} : { pluginName: name }),
-      issues: [String(decoded.failure)],
+      issues: validationIssuesFromCause(decoded.failure),
+      remediation: `Correct the reported manifest fields in ${join(packageDir, "package.json")} and retry.`,
     });
   }
   return decoded.success;
@@ -70,7 +76,8 @@ const verifyContainment = async (manifest: PluginManifestShape, packageDir: stri
     throw new PluginManifestError({
       message: `Plugin ${manifest.name} declares an entry path that escapes its package directory.`,
       pluginName: manifest.name,
-      issues: [`entry ${entryRel} resolves outside ${packageDir}`],
+      issues: [{ path: [], message: `entry ${entryRel} resolves outside ${packageDir}` }],
+      remediation: "Set the manifest entry to a file inside the plugin package directory.",
     });
   }
   try {
@@ -81,7 +88,8 @@ const verifyContainment = async (manifest: PluginManifestShape, packageDir: stri
       throw new PluginManifestError({
         message: `Plugin ${manifest.name} entry resolves through symlink outside its package directory.`,
         pluginName: manifest.name,
-        issues: [`realpath of entry escapes ${realRoot}`],
+        issues: [{ path: [], message: `realpath of entry escapes ${realRoot}` }],
+        remediation: "Replace the entry symlink with a file inside the plugin package directory.",
       });
     }
   } catch (cause) {
@@ -163,7 +171,8 @@ export const finalizePluginInstall = Effect.fn("AppOperation.finalizePluginInsta
             throw new PluginManifestError({
               message: `Plugin ${options.entry.name} manifest changed during installation.`,
               pluginName: options.entry.name,
-              issues: ["The published manifest must match the validated manifest."],
+              issues: [{ path: [], message: "The published manifest must match the validated manifest." }],
+              remediation: "Inspect lifecycle scripts and retry with an unchanged manifest.",
             });
           }
         },

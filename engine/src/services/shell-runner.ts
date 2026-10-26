@@ -44,6 +44,7 @@ const shellError = (
     ...(output?.stdout === undefined ? {} : { stdout: output.stdout }),
     ...(output?.stderr === undefined ? {} : { stderr: output.stderr }),
     cause,
+    remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
   });
 
 const redactorForOptions = Effect.fnUntraced(function* (options: ShellCommandOptions | undefined) {
@@ -103,6 +104,7 @@ const redactShellError = Effect.fnUntraced(function* (
     ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
     ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
     cause: error.cause,
+    remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
   });
 });
 

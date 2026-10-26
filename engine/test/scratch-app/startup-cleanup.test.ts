@@ -149,6 +149,7 @@ test("scratch apply failure uses the same acquisition cleanup boundary", async (
             providerId: "lando",
             operation: "apply",
             message: "injected apply failure",
+            remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
           }),
         ),
     },

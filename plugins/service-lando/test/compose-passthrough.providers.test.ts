@@ -195,7 +195,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     ).toEqual([]);
     expect(worker?.environment.LANDO_HOST_IP).toBe("host.lando.internal");
 
-    expect(plan.networks).toEqual([{ name: "lando-composeapp", shared: false, driver: "bridge" }]);
+    expect(plan.networking?.perAppBridge).toEqual({ name: "lando-composeapp", driver: "bridge" });
   });
 
   test("appMount: false opts out — no appMount, no synthetic /app bind", async () => {
@@ -219,6 +219,6 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     expect(worker?.environment.LANDO_APP_ROOT).toBeUndefined();
     expect(worker?.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
 
-    expect(plan.networks).toEqual([{ name: "lando-composeapp", shared: false, driver: "bridge" }]);
+    expect(plan.networking?.perAppBridge).toEqual({ name: "lando-composeapp", driver: "bridge" });
   });
 });

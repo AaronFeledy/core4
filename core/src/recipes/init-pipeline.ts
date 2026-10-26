@@ -43,14 +43,14 @@ export class RecipeInitBlockedError extends Schema.TaggedError<RecipeInitBlocked
   {
     message: Schema.String,
     stage: Schema.Literals(["secret-prompts", "translate", "validate", "encode", "diagnostics"]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 export class RecipeInitCommitError extends Schema.TaggedError<RecipeInitCommitError>()(
   "RecipeInitCommitError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     phase: Schema.String,
     reason: Schema.String,
   },
@@ -59,7 +59,7 @@ export class RecipeInitPostInitError extends Schema.TaggedError<RecipeInitPostIn
   "RecipeInitPostInitError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     committedLandofile: Schema.String,
     committedAuxiliaryFiles: Schema.Array(Schema.String),
     failedAction: Schema.String,
@@ -163,7 +163,7 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
   }).pipe(Effect.mapError(() => blocked("translate")));
   const service = yield* Effect.serviceOption(RedactionService);
   if (Option.isSome(service)) yield* service.value.registerValues(raw);
-  const options = { redactionTokens: raw };
+  const options = { redactionTokens: raw, sourceEnv: { ...process.env } };
   const base = Option.isSome(service)
     ? yield* service.value.forProfile("secrets", options)
     : createStandaloneRedactor("secrets", options);

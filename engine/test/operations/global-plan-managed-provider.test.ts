@@ -96,7 +96,6 @@ describe("loadGlobalPlan host provider", () => {
                   valueModel: 1 as const,
                   services: {},
                   routes: [],
-                  networks: [],
                   stores: [],
                   fileSync: [],
                   metadata: {

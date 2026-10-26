@@ -40,6 +40,7 @@ const execError = (input: ProcessSpawnOptions, cause: unknown): ProcessExecError
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     ...(errno === undefined ? {} : { errno }),
     cause,
+    remediation: "Install the missing host executable or fix its path, then re-run the command.",
   });
 };
 
@@ -49,6 +50,10 @@ const timeoutError = (input: ProcessSpawnOptions, elapsedMs: number): ProcessTim
     cmd: input.cmd,
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     elapsedMs,
+    remediation:
+      input.timeoutMs === undefined
+        ? `Investigate why \`${input.cmd}\` did not finish within ${elapsedMs}ms, or pass a higher timeoutMs.`
+        : `Increase timeoutMs for \`${input.cmd}\` above ${input.timeoutMs}ms (timed out after ${elapsedMs}ms), or investigate why it did not finish.`,
   });
 
 const redactorForInput = Effect.fnUntraced(function* (input: ProcessSpawnOptions) {
@@ -98,6 +103,7 @@ const redactProcessError = Effect.fnUntraced(function* (
       cmd: redactor.redactString(error.cmd),
       ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
       elapsedMs: error.elapsedMs,
+      remediation: redactor.redactString(error.remediation),
     });
   }
   return new ProcessExecError({
@@ -106,6 +112,7 @@ const redactProcessError = Effect.fnUntraced(function* (
     ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
     ...(error.errno === undefined ? {} : { errno: error.errno }),
     cause: error.cause,
+    remediation: "Install the missing host executable or fix its path, then re-run the command.",
   });
 });
 

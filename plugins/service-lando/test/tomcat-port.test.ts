@@ -69,7 +69,6 @@ describe("Tomcat authored HTTP port", () => {
       provider: service.provider,
       services: { [service.name]: service },
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: service.metadata,
@@ -82,6 +81,7 @@ describe("Tomcat authored HTTP port", () => {
         {
           providerId: service.provider,
           api: { request: () => Effect.succeed({ status: 200, body: '{"Config":{"User":"root"}}' }) },
+          sourceEnv: {},
         },
       ),
     );

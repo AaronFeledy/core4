@@ -51,6 +51,12 @@ Remote git and npm includes are pinned in `.lando.lock.yml` by resolved
 revision and SHA-256 content hash; local includes are not locked. See
 [Pin a remote include](#pin-a-remote-include).
 
+A whole Compose file can be included too, with Compose's own top-level
+`include:` key rather than `includes:`. Its services become `type: compose`
+services of your app, and relative paths inside a local compose file resolve
+from that file's directory. See
+[Fold the stack into your app](../config/networks.mdx#fold-the-stack-into-your-app).
+
 <Guide>
   <Scenario id="local-include-merge" render>
     <Step name="scaffold">

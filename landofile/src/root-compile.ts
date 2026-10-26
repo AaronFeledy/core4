@@ -1,4 +1,3 @@
-import { LandofileFormConflictError, LandofileParseError } from "@lando/sdk/errors";
 import { LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { captureCompilationContext } from "./compilation.ts";
@@ -35,19 +34,7 @@ export const acquireLandofileRootLayers = Effect.fn("Landofile.acquireLayers")(f
 ) {
   yield* ensureConsistentRoot(appRoot, inputs);
   const runtime = yield* loadContext(appRoot, inputs?.templates.context?.env);
-  const layers = yield* Effect.tryPromise({
-    try: () => presentLandofileLayers(appRoot),
-    catch: (cause) =>
-      cause instanceof LandofileFormConflictError
-        ? cause
-        : new LandofileParseError({
-            message: "Failed to enumerate Landofile layers.",
-            filePath: appRoot,
-            line: undefined,
-            column: undefined,
-            cause,
-          }),
-  });
+  const layers = yield* presentLandofileLayers(appRoot);
   const results = yield* Effect.forEach(layers, (layer) =>
     prepareLandofileSource(layer.filePath, { ...runtime, layer: layer.layer }, inputs).pipe(
       Effect.result,

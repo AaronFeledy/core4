@@ -177,6 +177,8 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
               message: `Unable to select a provider for scratch app ${handle.id}.`,
               operation: "run",
               cause,
+              remediation:
+                "Run `lando doctor` and ensure a runtime provider is installed before `lando run`.",
             }),
         ),
       );
@@ -207,6 +209,8 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
               message: `Unable to run ${options.command.join(" ")} in scratch app ${handle.id}.`,
               operation: "run",
               cause,
+              remediation:
+                "Fix the command failure inside the scratch app, then rerun `lando run -- <command>`.",
             }),
         ),
       );

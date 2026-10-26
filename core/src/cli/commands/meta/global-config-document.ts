@@ -14,13 +14,25 @@ import { validationIssue } from "@lando/sdk/schema";
 export const readGlobalText = (filePath: string): Effect.Effect<string, ConfigError> =>
   Effect.tryPromise({
     try: async () => ((await Bun.file(filePath).exists()) ? Bun.file(filePath).text() : ""),
-    catch: (cause) => new ConfigError({ message: `Failed to read ${filePath}`, path: filePath, cause }),
+    catch: (cause) =>
+      new ConfigError({
+        message: `Failed to read ${filePath}`,
+        path: filePath,
+        cause,
+        remediation: `Fix permissions on ${filePath} or recreate it with \`lando config set\`.`,
+      }),
   });
 
 export const writeGlobalText = (filePath: string, content: string): Effect.Effect<void, ConfigError> =>
   Effect.tryPromise({
     try: () => writeFileAtomicViaRename(filePath, content),
-    catch: (cause) => new ConfigError({ message: `Failed to write ${filePath}`, path: filePath, cause }),
+    catch: (cause) =>
+      new ConfigError({
+        message: `Failed to write ${filePath}`,
+        path: filePath,
+        cause,
+        remediation: `Make ${filePath} writable, then retry the config write.`,
+      }),
   });
 
 export const parseGlobalTree = Effect.fnUntraced(function* (filePath: string, content: string) {

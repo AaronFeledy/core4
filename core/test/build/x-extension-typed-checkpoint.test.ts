@@ -10,6 +10,7 @@ import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/norma
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { typedBytes, typedCapture, typedCaptured } from "./x-extension-typed-checkpoint.ts";
@@ -19,7 +20,10 @@ const expected = evolveHistoricalEnvironment(
   evolveHistoricalEndpointMetadata(
     evolveHistoricalTimestamps(
       evolveHistoricalShorthand(
-        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+        evolveHistoricalNetworks(
+          normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+          "authoring",
+        ),
       ),
       "authoring",
     ),

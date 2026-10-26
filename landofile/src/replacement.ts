@@ -1,9 +1,5 @@
 import { join } from "node:path";
-import {
-  LandofileFormConflictError,
-  LandofileParseError,
-  LandofileWriteValidationError,
-} from "@lando/sdk/errors";
+import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { LandofileAuthoringFragmentNative, validationIssue } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { type PresentLandofileLayer, presentLandofileLayers } from "./layers.ts";
@@ -24,19 +20,7 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
   function* (replacement: LandofileReplacement, inputs: LandofileRuntimeInputs) {
     yield* ensureConsistentRoot(replacement.appRoot, inputs);
     const runtime = yield* loadContext(replacement.appRoot, inputs.templates.context?.env);
-    const layers = yield* Effect.tryPromise({
-      try: () => presentLandofileLayers(replacement.appRoot),
-      catch: (cause) =>
-        cause instanceof LandofileFormConflictError
-          ? cause
-          : new LandofileParseError({
-              message: "Failed to enumerate Landofile layers.",
-              filePath: replacement.appRoot,
-              line: undefined,
-              column: undefined,
-              cause,
-            }),
-    });
+    const layers = yield* presentLandofileLayers(replacement.appRoot);
     const target = layers.find((layer) => layer.filePath === replacement.targetFile);
     const ordered: readonly PresentLandofileLayer[] =
       target === undefined

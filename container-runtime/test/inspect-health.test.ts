@@ -23,6 +23,7 @@ import { inspect } from "../src/podman/inspect.ts";
 const ctx = {
   providerId: "podman",
   remediation: "Run `lando setup` and retry.",
+  env: {},
   get redactor() {
     return Effect.runSync(fixtureRedaction.forProfile("secrets"));
   },
@@ -77,7 +78,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -459,6 +459,8 @@ describe("waitForServiceHealth", () => {
             operation: "inspect",
             message: `failed to reach ${secretUrl}`,
             details: { url: secretUrl },
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `inspect`.",
           }),
         ),
     };

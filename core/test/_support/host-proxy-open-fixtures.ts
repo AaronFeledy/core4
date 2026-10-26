@@ -61,7 +61,6 @@ export const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan =
       ]),
     ),
     routes,
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

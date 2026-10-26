@@ -23,6 +23,7 @@ export const assertToolingFragment = (
         filePath,
         line: undefined,
         column: undefined,
+        remediation: `Rewrite the tooling include at ${filePath} as a YAML mapping with only tooling fragment keys.`,
       }),
     );
   }

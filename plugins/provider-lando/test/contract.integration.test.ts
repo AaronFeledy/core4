@@ -266,9 +266,9 @@ const makeFakeApi = () => {
           const wasRunning = running.delete(name);
           return { status: wasRunning ? 204 : 304, body: "" };
         }
-        if (request.path.endsWith("?force=true") && request.method === "DELETE") {
+        if (request.path.endsWith("?force=true&v=true") && request.method === "DELETE") {
           const name = decodeURIComponent(
-            request.path.slice("/containers/".length, -"?force=true".length),
+            request.path.slice("/containers/".length, -"?force=true&v=true".length),
           ).replace(/-id$/u, "");
           const existed = existing.delete(name);
           running.delete(name);
@@ -451,9 +451,9 @@ const makeFakeApiWithHooks = () => {
           running.delete(name);
           return { status: 204, body: "" };
         }
-        if (request.path.endsWith("?force=true") && request.method === "DELETE") {
+        if (request.path.endsWith("?force=true&v=true") && request.method === "DELETE") {
           const name = resolveContainerName(
-            decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length)),
+            decodeURIComponent(request.path.slice("/containers/".length, -"?force=true&v=true".length)),
           );
           const id = containerIds.get(name);
           const existed = existing.delete(name);
@@ -583,7 +583,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           return { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) };
         if (
           request.path.startsWith("/containers/") &&
-          request.path.endsWith("?force=true") &&
+          request.path.endsWith("?force=true&v=true") &&
           request.method === "DELETE"
         )
           return { status: 204, body: "" };

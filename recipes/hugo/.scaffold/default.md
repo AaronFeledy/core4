@@ -38,7 +38,7 @@ The starter archetype sets `draft = false`, so the post publishes right away. Se
 For the full day-to-day path, see [Run the Hugo recipe](/guides/recipes/hugo-workflow/).
 
 When you are finished, remove the app containers and networks. This keeps
-volumes unless you also pass `--volumes` or `--purge`:
+named volumes unless you also pass `--volumes` or `--purge`. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy):
 
 ```sh
 lando destroy -y
