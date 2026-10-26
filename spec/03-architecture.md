@@ -46,6 +46,8 @@ The `LandoCommandSpec` registry is canonical for command-to-level assignment (§
 
 Bootstrap levels are sequential. Independent IO-bound work within a level MUST run concurrently with Effect concurrency primitives; sequential work is a performance defect unless required by data dependency (§2.4). Tooling routing uses cached command indexes and `ToolingProgram`; provider initialization occurs only when a provider-backed step executes (§12.2, §12.5).
 
+The host-module table and registration (§7.1.1) MUST remain outside the cold import graph and pre-dispatch fast path; registration occurs only on first author-module evaluation.
+
 Execution sessions honor the requested runtime tier and caller context; host-only work MUST NOT implicitly construct app, scratch, or provider services (§22.2).
 
 ### 3.3 Source layout

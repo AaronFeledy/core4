@@ -20,6 +20,9 @@ jobs:
   dev-prerelease:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
+    concurrency:
+      group: dev-prerelease-${{ github.run_number }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -126,9 +129,34 @@ jobs:
         run: |
           set -euo pipefail
           go_notices=(dist/container-helper-go-*)
-          gh release delete "$RELEASE_TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$RELEASE_TAG" --draft --prerelease --target "${{ github.event.workflow_run.head_sha }}" --title "Lando v4 dev ${{ github.run_number }}" --notes "Unsigned six-target dev prerelease from successful ci run ${{ github.event.workflow_run.id }}."
-          trap 'gh release delete "$RELEASE_TAG" --yes 2>/dev/null || true' ERR
-          gh release upload "$RELEASE_TAG" dist/lando-darwin-arm64 dist/lando-darwin-x64 dist/lando-linux-arm64 dist/lando-linux-x64 dist/lando-windows-x64.exe dist/lando-windows-arm64.exe dist/SHA256SUMS dist/THIRD_PARTY_NOTICES.md plugins/service-lando/tomcat/LICENSE plugins/service-lando/tomcat/NOTICE "${go_notices[@]}"
-          gh release edit "$RELEASE_TAG" --draft=false
-          trap - ERR
+          existing_tags=$(gh api --paginate repos/{owner}/{repo}/releases --jq '.[].tag_name')
+          if grep -Fxq "$RELEASE_TAG" <<< "$existing_tags"; then
+            echo "Release $RELEASE_TAG already exists; inspect it before rerunning." >&2
+            exit 1
+          fi
+          release_id=$(gh api --method POST repos/{owner}/{repo}/releases -f tag_name="$RELEASE_TAG" -F draft=true -F prerelease=true -f target_commitish="${{ github.event.workflow_run.head_sha }}" -f name="Lando v4 dev ${{ github.run_number }}" -f body="Unsigned six-target dev prerelease from successful ci run ${{ github.event.workflow_run.id }}." --jq .id)
+          case "$release_id" in
+            ''|*[!0-9]*) echo "Release creation returned no usable ID; preserve any created draft for inspection." >&2; exit 1 ;;
+          esac
+          release_api="repos/{owner}/{repo}/releases/$release_id"
+          if gh release upload "$RELEASE_TAG" dist/lando-darwin-arm64 dist/lando-darwin-x64 dist/lando-linux-arm64 dist/lando-linux-x64 dist/lando-windows-x64.exe dist/lando-windows-arm64.exe dist/SHA256SUMS dist/THIRD_PARTY_NOTICES.md plugins/service-lando/tomcat/LICENSE plugins/service-lando/tomcat/NOTICE "${go_notices[@]}"; then
+            :
+          else
+            upload_status=$?
+            if draft=$(gh api "$release_api" --jq .draft) && [ "$draft" = true ]; then
+              if ! gh api --method DELETE "$release_api"; then
+                echo "Draft cleanup failed for release $release_id; inspect it before rerunning." >&2
+              fi
+            else
+              echo "Release $release_id is public or its state is unknown; preserving it." >&2
+            fi
+            exit "$upload_status"
+          fi
+          # No cleanup after publication starts: a failed response may follow a successful publish.
+          if gh api --method PATCH "$release_api" -F draft=false; then
+            :
+          else
+            publish_status=$?
+            echo "Publication outcome is uncertain for release $release_id; preserving it for inspection." >&2
+            exit "$publish_status"
+          fi

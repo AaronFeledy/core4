@@ -49,7 +49,7 @@ const publishLocally = async (script: string, root: string): Promise<void> => {
   await cp(resolve(repoRoot, tomcatPath), join(root, tomcatPath), { recursive: true });
   await runCommand(
     [
-      "bash",
+      process.env.LANDO_TEST_BASH ?? "bash",
       "-euc",
       `RELEASE_TAG=v4.0.0-dev.42
       gh() {
@@ -96,12 +96,12 @@ test("delivers complete Tomcat notices when the service plugin is packed for pub
   });
 });
 
-test.skipIf(process.platform === "win32")(
+test.skipIf(process.platform === "win32" && !process.env.LANDO_TEST_BASH)(
   "delivers complete Tomcat notices beside all binaries when the dev release is published",
   async () => {
     // Given: the CI binary artifacts and generated publication command.
     const workflow = renderReleaseWorkflow();
-    const publish = workflow.match(/^\s+(gh release upload .+)$/m)?.[1];
+    const publish = workflow.match(/^\s+if (gh release upload .+); then$/m)?.[1];
     if (publish === undefined) throw new Error("Missing dev publication upload command");
     await withFixture(async (root) => {
       await mkdir(join(root, "dist"));
@@ -135,7 +135,7 @@ test.skipIf(process.platform === "win32")(
   },
 );
 
-test.skipIf(process.platform === "win32")(
+test.skipIf(process.platform === "win32" && !process.env.LANDO_TEST_BASH)(
   "delivers complete Tomcat notices when the manual binary release is published",
   async () => {
     // Given: the manual release stage's binary manifest and companion artifacts.

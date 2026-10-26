@@ -17,6 +17,9 @@ export class SshAgentUnavailableError extends Schema.TaggedError<SshAgentUnavail
     reason: Schema.Literals([
       "host-agent-not-found",
       "socket-missing",
+      "socket-not-socket",
+      "socket-owner-mismatch",
+      "env-socket-dangling",
       "capability-missing",
       "sidecar-not-running",
       "bridge-failed",

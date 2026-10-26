@@ -16,13 +16,13 @@ import {
   LandofileTimeoutError,
   causeMessage,
 } from "@lando/sdk/errors";
+import { importAuthorModule, missingPackageRemediation } from "./author-modules.ts";
 
 export const DEFAULT_TS_TIMEOUT_MS = 5000;
 export const TS_TIMEOUT_ENV = "LANDO_LANDOFILE_TS_TIMEOUT_MS";
 
 const SANDBOX_REMEDIATION =
   "Remove the disallowed import or call. Programmatic Landofiles must not perform host shell-outs, remote module fetches, or filesystem access outside the app root.";
-const SANDBOX_PARSE_VIOLATION = "lando:parse-error";
 
 const TIMEOUT_REMEDIATION = `Reduce work in the Landofile or raise the timeout via the ${TS_TIMEOUT_ENV} environment variable.`;
 
@@ -128,18 +128,19 @@ export const sandboxScan = (
   filePath: string,
   appRoot: string,
   content: string,
-): Effect.Effect<void, LandofileSandboxError> =>
-  Effect.suspend(() => {
+): Effect.Effect<void, LandofileSandboxError | LandofileParseError> =>
+  Effect.suspend((): Effect.Effect<void, LandofileSandboxError | LandofileParseError> => {
     let imports: ReadonlyArray<ImportLike>;
     try {
       imports = scanImports(content);
     } catch (cause) {
       return Effect.fail(
-        new LandofileSandboxError({
+        new LandofileParseError({
           message: `Failed to parse programmatic Landofile at ${filePath}: ${causeMessage(cause)}`,
           filePath,
-          violation: SANDBOX_PARSE_VIOLATION,
-          remediation: SANDBOX_REMEDIATION,
+          line: undefined,
+          column: undefined,
+          remediation: `Fix the TypeScript syntax in ${filePath}, then retry.`,
           cause,
         }),
       );
@@ -165,9 +166,6 @@ export const sandboxScan = (
 
     return Effect.void;
   });
-
-export const isSandboxParseFailure = (cause: LandofileSandboxError): boolean =>
-  cause.violation === SANDBOX_PARSE_VIOLATION;
 
 export const resolveTimeoutMs = (): number => {
   const raw = process.env[TS_TIMEOUT_ENV];
@@ -243,7 +241,7 @@ const evaluateImport = Effect.fnUntraced(function* (filePath: string) {
   const importTime = yield* Clock.currentTimeMillis;
   return yield* Effect.tryPromise({
     try: async () => {
-      const module = await import(`${filePath}?t=${importTime}`);
+      const module = await importAuthorModule(`${filePath}?t=${importTime}`);
       return await unwrapDefault(filePath, module);
     },
     catch: (cause) =>
@@ -254,7 +252,9 @@ const evaluateImport = Effect.fnUntraced(function* (filePath: string) {
             filePath,
             line: undefined,
             column: undefined,
-            remediation: `Fix the TypeScript, imports, and default export in ${filePath} so the module evaluates successfully.`,
+            remediation:
+              missingPackageRemediation(causeMessage(cause)) ??
+              `Fix the TypeScript, imports, and default export in ${filePath} so the module evaluates successfully.`,
             cause,
           }),
   });
