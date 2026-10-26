@@ -21,8 +21,10 @@ import type {
   CertificatePlan,
   CommandSpec,
   DataStoreMountPlan,
+  DatabaseConnection,
   DependencyPlan,
   EndpointPlan,
+  EnvironmentValue,
   HealthcheckPlan,
   HostAliasPlan,
   MountPlan,
@@ -128,11 +130,12 @@ export interface ServiceFeatureContext {
   readonly host?: ServiceTypeHostFacts | undefined;
   /** The service type's normalized config for this service. */
   readonly normalizedConfig: ServiceConfig;
+  readonly connection?: DatabaseConnection | undefined;
   /** This feature's decoded config (from its `FeatureRef.config`, via `schema`). */
   readonly config: Readonly<Record<string, unknown>>;
 
   /** Add or overwrite an environment variable on the draft. */
-  addEnv(name: string, value: string): void;
+  addEnv(name: string, value: EnvironmentValue): void;
   /** Add a mount (without a realization decision). */
   addMount(mount: ServiceMountIntent): void;
   /** Set the app-source mount (without a realization decision). */
@@ -152,14 +155,14 @@ export interface ServiceFeatureContext {
    * no preparation.
    */
   addStorage(storage: DataStoreMountPlan, ownership?: DataStoreOwnershipIntent): void;
-  /** Add a service endpoint. */
-  addEndpoint(endpoint: EndpointPlan): void;
   /** Add a service dependency. */
   addDependency(dependency: DependencyPlan): void;
   /** Add a host alias. */
   addHostAlias(alias: HostAliasPlan): void;
   /** Set the service healthcheck. */
   setHealthcheck(healthcheck: HealthcheckPlan): void;
+  /** Set startup readiness independently from ongoing health. */
+  setReadiness(readiness: HealthcheckPlan): void;
   /** Set the service certificate plan. */
   setCerts(certs: CertificatePlan): void;
   /** Set the service entrypoint. */
@@ -186,5 +189,24 @@ export interface ServiceFeatureDefinition {
   readonly schema?: Schema.Codec<unknown>;
   readonly priority: number;
   readonly requires?: ReadonlyArray<keyof ProviderCapabilities>;
+  /** Declare listeners without applying features or acquiring runtime resources. */
+  readonly declareEndpoints?: (
+    ctx: ServiceEndpointContext,
+  ) => Effect.Effect<readonly EndpointPlan[], ServiceFeatureError>;
   readonly apply: (ctx: ServiceFeatureContext) => Effect.Effect<void, ServiceFeatureError>;
 }
+
+/** Immutable declaration facts, with the original decoded feature configuration. */
+export type ServiceEndpointContext = Pick<
+  ServiceFeatureContext,
+  | "serviceName"
+  | "serviceType"
+  | "base"
+  | "primary"
+  | "appName"
+  | "appRoot"
+  | "host"
+  | "normalizedConfig"
+  | "connection"
+  | "config"
+>;

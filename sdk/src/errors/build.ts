@@ -4,11 +4,14 @@ import { BuildPhase, BuildStep } from "../schema/build-plan.ts";
 import { AppRef } from "../schema/networking.ts";
 import { AbsolutePath } from "../schema/primitives.ts";
 
+const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
+
 export class BuildStepFailedError extends Schema.TaggedError<BuildStepFailedError>()("BuildStepFailedError", {
   step: BuildStep,
   exitCode: Schema.Number,
   transcriptPath: AbsolutePath,
   summary: Schema.String,
+  remediation: Remediation,
 }) {}
 
 export class BuildPhaseFailedError extends Schema.TaggedError<BuildPhaseFailedError>()(
@@ -17,5 +20,6 @@ export class BuildPhaseFailedError extends Schema.TaggedError<BuildPhaseFailedEr
     app: AppRef,
     phase: BuildPhase,
     failures: Schema.Array(BuildStepFailedError),
+    remediation: Remediation,
   },
 ) {}

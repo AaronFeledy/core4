@@ -16,15 +16,17 @@ lando plugin:add <tunnel-service-plugin>
 
 Or `lando setup --provider=<provider-with-tunnels>`. Without a plugin, `share`, `share:list`, and `share:stop` fail with `TunnelProviderUnavailableError`.
 
-`lando share` opens a public tunnel to the current app. Omit `--target` and Lando uses the first route from the app plan. On a TTY, text output also prints a QR for the public URL; JSON and pipes stay URL-only. Loopback URLs and hostnames under `lndo.site` or your configured `proxy.defaultDomain` stay URL-only too: a QR does not make a local address reachable from your phone.
+Before sharing, start the app and check `lando info` from its directory. Make sure the selected service is safe to expose publicly. `lando share` opens a public tunnel to the current app. Omit `--target` and Lando uses the first route from the app plan. On a TTY, text output also prints a QR for the public URL; JSON and pipes stay URL-only. Loopback URLs and hostnames under `lndo.site` or your configured `proxy.defaultDomain` stay URL-only too: a QR does not make a local address reachable from your phone.
 
 ```sh
 lando share
 ```
 
-Storybook is not the homepage. Point `--target` at it.
+To share something other than the first route, select it with `--target`.
 
 ## Point `--target` at a service port
+
+The following Landofile fragment names two Node services. It does not install or launch Storybook: configure your application to serve it on port 6006 in `storybook` before opening the tunnel.
 
 ```yaml
 name: share-target-demo

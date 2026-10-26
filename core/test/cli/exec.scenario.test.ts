@@ -6,7 +6,7 @@ import { ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   type LandofileShape,
   type ProviderCapabilities,
   ProviderId,
@@ -20,10 +20,12 @@ import {
   type RuntimeProviderShape,
 } from "@lando/core/services";
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_KEYS } from "@lando/engine/config/agent-env";
+import { validateToolInput } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { execSpec } from "../../src/cli/command-specs/app/exec";
+import { environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
@@ -87,17 +89,15 @@ const makeService = (
   extensions: {},
 });
 
-const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
+const makePlan = (services: ReadonlyArray<ServicePlan>): CurrentExecutableAppPlan => ({
+  valueModel: 1,
   id: AppId.make("scenario"),
   name: "scenario",
   slug: "scenario",
   root: AbsolutePath.make("/tmp/scenario"),
   provider: providerId,
-  services: Object.fromEntries(
-    services.map((service) => [String(service.name), service]),
-  ) as AppPlan["services"],
+  services: Object.fromEntries(services.map((service) => [String(service.name), service])),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -133,9 +133,25 @@ const makeProvider = (
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "buildArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "buildArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
+        }),
+      ),
     pullArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "pullArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "pullArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `pullArtifact`.",
+        }),
+      ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
@@ -144,6 +160,7 @@ const makeProvider = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: (target, spec) => {
       const record = {
         service: String(target.service),
@@ -194,9 +211,17 @@ const makeProvider = (
     runStream: () => Stream.empty,
     logs: () => Stream.empty,
     inspect: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "inspect",
+          message: "n/a",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `inspect`.",
+        }),
+      ),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
+    removeVolumeSnapshot: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
     locateVolume: () => Effect.die("not used"),
     listVolumes: () => Effect.succeed([]),
@@ -211,13 +236,20 @@ const makeProvider = (
 
 const makeLayer = (options: {
   readonly landofile: LandofileShape;
-  readonly plan: AppPlan;
+  readonly plan: CurrentExecutableAppPlan;
   readonly provider: RuntimeProviderShape;
+  readonly onDiscover?: () => void;
 }) =>
   Layer.mergeAll(
+    environmentResolverLayer(),
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed(options.landofile) }),
+      LandofileService.of({
+        discover: Effect.sync(() => {
+          options.onDiscover?.();
+          return literalLandofile(options.landofile, options.plan.root);
+        }),
+      }),
     ).pipe(Layer.provide(emptyConfigServiceLayer)),
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(options.plan) })).pipe(
       Layer.provide(emptyConfigServiceLayer),
@@ -225,6 +257,9 @@ const makeLayer = (options: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(options.provider),
@@ -234,6 +269,28 @@ const makeLayer = (options: {
   );
 
 describe("execApp — provider-exec scenarios (US-022)", () => {
+  test("executes the named MCP argument vector without shell reparsing", async () => {
+    // Given: a real command spec and a provider recording exact argument boundaries.
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "proof" }]);
+    const command = ["appserver", "--", "printf", "%s", "one argument", "--flag", ""];
+    const validated = validateToolInput(execSpec, { args: { command } });
+    // When: the canonical spec runs the decoded MCP input, without CLI argv.
+    const result = await Effect.runPromise(
+      execSpec
+        .run({
+          argv: [],
+          flags: validated.flags,
+          args: validated.args,
+          interaction: "non-interactive",
+        })
+        .pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
+    );
+    // Then: the service selector is peeled while every command argument remains intact.
+    expect(calls[0]?.command).toEqual(["printf", "%s", "one argument", "--flag", ""]);
+    expect(result.stdout).toBe("proof");
+  });
+
   test("returns verbatim exit code, stdout, and stderr from RuntimeProvider.exec", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 5, stdout: "ok-1\nok-2\n", stderr: "warn\n" }]);
@@ -600,16 +657,28 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     const failingRegistry = Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () =>
-          Effect.fail(new ProviderUnavailableError({ providerId, operation: "select", message: "boom" })),
+          Effect.fail(
+            new ProviderUnavailableError({
+              providerId,
+              operation: "select",
+              message: "boom",
+              remediation:
+                "Install or start the selected runtime provider and confirm it can perform `select`.",
+            }),
+          ),
       }),
     );
     const layer = Layer.mergeAll(
+      environmentResolverLayer(),
       Layer.succeed(
         LandofileService,
-        LandofileService.of({ discover: Effect.succeed({ name: "scenario" }) }),
+        LandofileService.of({ discover: Effect.succeed(literalLandofile({ name: "scenario" }, plan.root)) }),
       ).pipe(Layer.provide(emptyConfigServiceLayer)),
       Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })).pipe(
         Layer.provide(emptyConfigServiceLayer),
@@ -759,28 +828,45 @@ describe("execApp — host agent-context env forwarding", () => {
     expect(calls[0]?.env).toBeUndefined();
   });
 
-  test("resolved app targets re-read agentEnv instead of using a cached Landofile snapshot", async () => {
-    const plan = makePlan([makeService("appserver", true)]);
-    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+  test.each([false, true])(
+    "resolved app targets use captured policy enabled=%s without discovery",
+    async (enabled) => {
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+      let discoveries = 0;
 
-    await withHostEnv({ CLAUDECODE: "1", CI: "true", AGENT: undefined }, () =>
-      Effect.runPromise(
-        execApp(
-          { service: "appserver", command: ["env"] },
-          {
-            plan,
-            root: AbsolutePath.make(process.cwd()),
-            app: { kind: "user", id: plan.id, root: plan.root },
-            landofile: { name: "scenario" },
-          },
-        ).pipe(
-          Effect.provide(makeLayer({ landofile: { name: "scenario", agentEnv: false }, plan, provider })),
+      await withHostEnv({ CLAUDECODE: "1", CI: "true", AGENT: undefined }, () =>
+        Effect.runPromise(
+          execApp(
+            { service: "appserver", command: ["env"] },
+            {
+              plan,
+              root: AbsolutePath.make(process.cwd()),
+              app: { kind: "user", id: plan.id, root: plan.root },
+              landofile: literalLandofile(
+                { name: "scenario", ...(enabled ? {} : { agentEnv: false }) },
+                plan.root,
+              ),
+            },
+          ).pipe(
+            Effect.provide(
+              makeLayer({
+                landofile: { name: "scenario", agentEnv: !enabled },
+                plan,
+                provider,
+                onDiscover: () => {
+                  discoveries++;
+                },
+              }),
+            ),
+          ),
         ),
-      ),
-    );
+      );
 
-    expect(calls[0]?.env).toBeUndefined();
-  });
+      expect(calls[0]?.env).toEqual(enabled ? { CLAUDECODE: "1", CI: "true" } : undefined);
+      expect(discoveries).toBe(0);
+    },
+  );
 
   test("LANDO_AGENT_ENV=0 disables forwarding for a single invocation", async () => {
     const plan = makePlan([makeService("appserver", true)]);

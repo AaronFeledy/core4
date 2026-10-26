@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { SchemaIssue } from "effect";
 import { Result, Schema } from "effect";
 
@@ -59,7 +60,12 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
     () => undefined,
     (error: unknown) => {
       rejected = true;
-      const message = error instanceof Error ? error.message : String(error);
+      const message =
+        error instanceof ServiceTypeError
+          ? [error.message, ...(error.issues ?? []).map((issue) => issue.suggestion ?? "")].join(" ")
+          : error instanceof Error
+            ? error.message
+            : String(error);
       expect(message).toMatch(pattern);
     },
   );
@@ -88,7 +94,9 @@ describe("node:lts ServiceType", () => {
     expect(plan.appMount?.realization).toBe("passthrough");
     expect(plan.mounts).toEqual([]);
     expect(plan.command).toEqual(idleCommand);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.environment).toMatchObject({
       LANDO_APP_ROOT: "/app",
@@ -113,7 +121,15 @@ describe("node:lts ServiceType", () => {
     expect(plan.command).toBe("npm start");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([
-      { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3001 } },
+      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+      {
+        _tag: "published",
+        port: 3000,
+        protocol: "http",
+        name: "web",
+        primary: true,
+        publication: { hostPort: 3001 },
+      },
     ]);
   });
 
@@ -126,7 +142,9 @@ describe("node:lts ServiceType", () => {
     });
 
     // Then
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5173, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 5173, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.environment.PORT).toBe("5173");
     expect(plan.command).toEqual(["npm", "run", "dev"]);
     expect(plan.healthcheck).toBeUndefined();
@@ -207,7 +225,9 @@ describe("node:22 ServiceType", () => {
     expect(plan.appMount?.realization).toBe("passthrough");
     expect(plan.mounts).toEqual([]);
     expect(plan.command).toEqual(idleCommand);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.environment).toMatchObject({
       LANDO_APP_ROOT: "/app",
@@ -233,7 +253,15 @@ describe("node:22 ServiceType", () => {
     expect(plan.command).toBe("npm run dev");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([
-      { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3001 } },
+      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+      {
+        _tag: "published",
+        port: 3000,
+        protocol: "http",
+        name: "web",
+        primary: true,
+        publication: { hostPort: 3001 },
+      },
     ]);
   });
 

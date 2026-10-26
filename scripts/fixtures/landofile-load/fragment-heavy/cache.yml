@@ -1,0 +1,5 @@
+services:
+  cache:
+    type: redis:7
+    environment:
+      CACHE_MODE: development

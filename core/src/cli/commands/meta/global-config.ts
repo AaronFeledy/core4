@@ -16,8 +16,8 @@ import { renderConfigWriteResult } from "../config-write-render";
 import {
   compileGlobalConfigDocument,
   decodeGlobalConfigDocument,
+  parseGlobalTree,
   readGlobalText,
-  readGlobalTree,
   writeGlobalText,
 } from "./global-config-document";
 
@@ -105,9 +105,11 @@ export const globalConfigSet = Effect.fn("GlobalConfig.set")(function* (
     file: filePath,
     key,
     raw,
-    type: options.type ?? "string",
+    type: options.type,
     dryRun: options.dryRun === true,
-    readTree: readGlobalTree(filePath),
+    readText: readGlobalText(filePath),
+    parse: (text) => parseGlobalTree(filePath, text),
+    editCommand: "lando global:config edit",
     decode: decodeGlobalConfigDocument(filePath),
     writeText: writeGlobalText,
   });
@@ -133,7 +135,9 @@ export const globalConfigUnset = Effect.fn("GlobalConfig.unset")(function* (
     file: filePath,
     key,
     dryRun: options.dryRun === true,
-    readTree: readGlobalTree(filePath),
+    readText: readGlobalText(filePath),
+    parse: (text) => parseGlobalTree(filePath, text),
+    editCommand: "lando global:config edit",
     decode: decodeGlobalConfigDocument(filePath),
     writeText: writeGlobalText,
   });
@@ -192,6 +196,7 @@ export const renderGlobalConfigResult = (
     changed: result.changed,
     dryRun: result.dryRun,
     editSavedLabel: "global-app Landofile",
+    value: result.value,
   });
   if (writeResult !== undefined) return writeResult;
   const services = Object.keys(result.landofile?.services ?? {});
@@ -211,7 +216,7 @@ const globalConfigView = Effect.fnUntraced(function* (): Effect.fn.Return<
 > {
   const loaded = yield* readGlobalLandofile();
   const { paths } = loaded;
-  const landofile = loaded.materialized ? loaded.landofile : emptyGlobalLandofile;
+  const landofile = loaded.materialized ? loaded.landofile.document : emptyGlobalLandofile;
 
   return {
     app: landofile.name ?? "global",

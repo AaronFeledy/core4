@@ -176,7 +176,7 @@ function Verify-Checksum([string] $Sums, [string] $Binary, [string] $Artifact) {
 }
 
 $DefaultCosignTrustRoot = @'
-{"certificateIdentityRegexp":"^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$","certificateOidcIssuer":"https://token.actions.githubusercontent.com"}
+{"certificateIdentityRegexp":"^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$","certificateOidcIssuer":"https://token.actions.githubusercontent.com"}
 '@
 
 function Read-CosignTrustRoot {

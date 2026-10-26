@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import type { StartedService } from "@lando/sdk/schema";
+import { scopedConnectionText } from "../../src/cli/commands/connection-summary";
 import {
   INFO_STATUS_TONES,
   SCRATCH_STATUS_TONES,
   START_STATUS_TONES,
-  endpointText,
   joinServiceRows,
   lifecycleLine,
   serviceRowsText,
@@ -13,6 +14,7 @@ import {
   unchangedLine,
   volumesTrailer,
 } from "../../src/cli/commands/service-summary";
+import { connections } from "./connection-fixtures";
 
 describe("service summary", () => {
   test("renders empty lifecycle rows without a separator", () => {
@@ -25,14 +27,20 @@ describe("service summary", () => {
 
   test("renders lifecycle rows in supplied order", () => {
     // Given
-    const services = [
-      { name: "web", state: "running", endpoints: ["https://app.test"] },
-      { name: "db", state: "stopped", endpoints: [] },
+    const services: readonly StartedService[] = [
+      {
+        name: "web",
+        state: "running",
+        connections: [...connections(["https://app.test"]), ...connections(["http://web:3000"], "app")],
+      },
+      { name: "db", state: "stopped", connections: [] },
     ];
     // When
     const line = lifecycleLine("rebuilt", "app", serviceRowsText(services));
     // Then
-    expect(line).toBe("rebuilt: app - web (running) https://app.test; db (stopped) no endpoints");
+    expect(line).toBe(
+      "rebuilt: app - web (running) Host: https://app.test App Network: http://web:3000; db (stopped) no endpoints",
+    );
   });
 
   test("renders an empty teardown with no services", () => {
@@ -67,8 +75,8 @@ describe("service summary", () => {
   });
   test.each([
     ["running", "ok", "ok", "info"],
-    ["ready", "ok", "info", "info"],
-    ["healthy", "warn", "ok", "info"],
+    ["ready", "ok", "ok", "info"],
+    ["healthy", "ok", "ok", "info"],
     ["starting", "pending", "pending", "info"],
     ["stopped", "skipped", "skipped", "info"],
     ["unhealthy", "error", "error", "info"],
@@ -77,7 +85,7 @@ describe("service summary", () => {
     ["attached", "warn", "info", "ok"],
     ["detached", "warn", "info", "skipped"],
     ["orphan", "warn", "info", "error"],
-    ["unknown", "warn", "info", "info"],
+    ["unknown", "info", "info", "info"],
     ["constructor", "warn", "info", "info"],
   ] as const)("maps %s for each status domain", (status, start, info, scratch) => {
     // Given the domain-specific tables and their existing fallbacks.
@@ -93,22 +101,61 @@ describe("service summary", () => {
   });
 
   test.each([
-    [[], "no endpoints"],
+    [[], ""],
     [["tcp://db:3306"], "tcp://db:3306"],
     [["https://app.test", "http://app.test"], "https://app.test, http://app.test"],
   ] as const)("renders endpoints %j", (endpoints, expected) => {
-    const result = endpointText(endpoints);
+    const result = scopedConnectionText(connections(endpoints), "host");
     expect(result).toBe(expected);
   });
 
-  test("renders a service without endpoints", () => {
-    const result = serviceStateRow("db", "stopped", []);
+  test.each([
+    [[], ""],
+    [["tcp://db:3307"], "tcp://db:3307"],
+    [["http://web:3000", "tcp://web:9000"], "http://web:3000, tcp://web:9000"],
+  ] as const)("renders internal addresses %j with a placeholder when empty", (internal, expected) => {
+    const result = scopedConnectionText(connections(internal, "app"), "app");
+    expect(result).toBe(expected);
+  });
+
+  test("says no endpoints only when host and app-network addresses are both empty", () => {
+    const result = serviceStateRow({ name: "db", state: "stopped", connections: [] });
     expect(result).toBe("db (stopped) no endpoints");
   });
 
-  test("renders a service with ordered endpoints", () => {
-    const result = serviceStateRow("web", "running", ["https://app.test", "http://app.test"]);
-    expect(result).toBe("web (running) https://app.test, http://app.test");
+  test("renders a service with ordered host endpoints", () => {
+    const result = serviceStateRow({
+      name: "web",
+      state: "running",
+      connections: connections(["https://app.test", "http://app.test"]),
+    });
+    expect(result).toBe("web (running) Host: https://app.test, http://app.test");
+  });
+
+  test("renders an internal-only database as an app-network address, not no endpoints", () => {
+    // Given a database that listens only on the app network, on a moved port.
+    const result = serviceStateRow({
+      name: "db",
+      state: "ready",
+      connections: connections(["tcp://db:3307"], "app"),
+    });
+    // Then the row names the address other services can reach.
+    expect(result).toBe("db (ready) App Network: tcp://db:3307");
+    expect(result).not.toContain("no endpoints");
+  });
+
+  test("lists host URLs before app-network addresses when a service has both", () => {
+    const result = serviceStateRow({
+      name: "web",
+      state: "running",
+      connections: [
+        ...connections(["https://app.test", "http://localhost:3000"]),
+        ...connections(["http://web:3000", "tcp://web:9229"], "app"),
+      ],
+    });
+    expect(result).toBe(
+      "web (running) Host: https://app.test, http://localhost:3000 App Network: http://web:3000, tcp://web:9229",
+    );
   });
 
   test.each([

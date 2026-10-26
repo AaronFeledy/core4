@@ -24,6 +24,7 @@ import {
 import type { InstalledPluginRegistryEntry } from "@lando/engine/plugins/installed-registry";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeInteractionService } from "../../interaction/service";
+import { retainedRecipeSources } from "../../recipes/runtime-sources";
 import { type BunSelfSpawner, bunSelfInstall, defaultBunSelfSpawner } from "./bun-self-runner";
 import { resolvePluginsRoot } from "./plugin-roots";
 
@@ -310,7 +311,7 @@ const ensureTrust = async (
 };
 
 export const pluginAdd = Effect.fn("PluginAdd.add")(function* (
-  options: PluginAddOptions,
+  inputOptions: PluginAddOptions,
 ): Effect.fn.Return<
   PluginAddResult,
   | ConfigError
@@ -322,6 +323,12 @@ export const pluginAdd = Effect.fn("PluginAdd.add")(function* (
   | RecipeSourceError,
   ConfigService | PersistentPluginTrustStore | Scope.Scope
 > {
+  const sources = yield* retainedRecipeSources(inputOptions.registryUrl);
+  const options = {
+    ...inputOptions,
+    registryClient: inputOptions.registryClient ?? sources.npmRegistryClient,
+    fetcher: inputOptions.fetcher ?? sources.tarballRecipeFetcher,
+  };
   if (typeof options.spec !== "string" || options.spec.trim().length === 0) {
     return yield* Effect.fail(
       new NotImplementedError({
@@ -387,7 +394,9 @@ export const pluginAdd = Effect.fn("PluginAdd.add")(function* (
         ? cause
         : new PluginManifestError({
             message: `Failed to validate plugin manifest: ${String(cause)}`,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation:
+              "Check the plugin package.json and correct the reported manifest issues before adding it.",
           }),
   });
   if (
@@ -404,7 +413,8 @@ export const pluginAdd = Effect.fn("PluginAdd.add")(function* (
       new PluginManifestError({
         message: `Extracted plugin manifest for ${manifest.name}@${manifest.version} does not match advertised npm metadata.`,
         pluginName: manifest.name,
-        issues: ["name, version, and requires must match the registry packument"],
+        issues: [{ path: [], message: "name, version, and requires must match the registry packument" }],
+        remediation: "Publish a package whose name, version, and requires match its npm registry metadata.",
       }),
     );
   }

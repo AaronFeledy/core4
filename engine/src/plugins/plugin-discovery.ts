@@ -54,6 +54,7 @@ export const ensureScopedAppFeature = (
         new PluginLoadError({
           message: `App feature ${feature.id} declares neither activatedBy nor selectors; it must declare at least one.`,
           pluginName: "@lando/core",
+          remediation: `Declare activatedBy or selectors on app feature ${feature.id}.`,
         }),
       );
 
@@ -114,7 +115,12 @@ export const discoverInstalledPlugins = (
 ): Effect.Effect<ReadonlyArray<DiscoveredPlugin>> =>
   Effect.tryPromise({
     try: async () => readInstalledPluginRegistry(pluginsRoot),
-    catch: (cause) => pluginManifestError(`Failed to discover ${source} plugins from ${pluginsRoot}`, cause),
+    catch: (cause) =>
+      pluginManifestError(
+        `Failed to discover ${source} plugins from ${pluginsRoot}`,
+        cause,
+        `Check that the installed-plugin registry in ${pluginsRoot} is readable and valid JSON.`,
+      ),
   }).pipe(
     Effect.flatMap((registry) =>
       Effect.forEach(Object.values(registry), (entry) =>
@@ -126,6 +132,7 @@ export const discoverInstalledPlugins = (
               : pluginManifestError(
                   `Failed to discover ${source} plugin ${entry.name} from ${entry.path}`,
                   cause,
+                  `Check package.json in ${entry.path} and correct the reported plugin errors.`,
                 ),
         }).pipe(
           Effect.map((plugin) => [plugin] as ReadonlyArray<DiscoveredPlugin>),

@@ -1,5 +1,485 @@
 [
   {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "property-required",
+    "path": "$.error.remediation",
+    "justification": "Intentional pre-release P2b wire contract: every primary failure, including normalized defects and encode fallbacks, requires actionable remediation. No compatibility path ships before v4."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "property-required",
+    "path": "$.error.additionalErrors.items.remediation",
+    "justification": "Intentional pre-release P2b wire contract: additional failures require remediation exactly like primary failures, preserving their failure roles."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-keyword",
+    "path": "$.error.remediation.minLength",
+    "justification": "Reviewed P2b narrowing: empty primary failure remediation is invalid; every emitted diagnostic has a recovery or diagnostic/reporting action."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-keyword",
+    "path": "$.error.remediation.pattern",
+    "justification": "Reviewed P2b narrowing: whitespace-only primary failure remediation is invalid on the wire, matching the required SDK error contract."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-keyword",
+    "path": "$.error.additionalErrors.items.remediation.minLength",
+    "justification": "Reviewed P2b narrowing: empty additional failure remediation is invalid, matching primary errors."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-keyword",
+    "path": "$.error.additionalErrors.items.remediation.pattern",
+    "justification": "Reviewed P2b narrowing: whitespace-only additional failure remediation is invalid, matching primary errors."
+  },
+  {
+    "surface": "schema:ServicePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed pre-release credential publication: ServicePlan becomes a strict union of the existing connection-or-no-credentials shape and nonSqlCreds for Redis. Generated fragments preserve all 25 original properties and required fields in the first arm, and all 24 non-connection properties in the second; ServiceCreds is unchanged. Both arms additionally accept optional nonempty serviceTypeId, retaining declaration identity separately from normalized type. Optional Never anti-fields forbid competing credential sources. Historical records remain readable; generated clients refuse missing applied declaration identity instead of guessing. Typed environment/connection evolution is intentional; observation never resolves descriptors. Both arms now also add optional startup readiness alongside ongoing health, and command probes accept an optional declared listener target; these additions preserve previously accepted records without weakening credential exclusivity. Tests cover coexistence rejection, Redis planning, strict serialization, exact child-factory lookup, historical refusal, persistence, readiness selection, and target realization."
+  },
+  {
+    "surface": "schema:CurrentExecutableAppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.additionalProperties",
+    "justification": "Reviewed additive startup-probe contract: both ServicePlan union arms accept optional readiness, and HealthcheckPlan accepts an optional logical listener target. Existing required fields, credential exclusivity, value-model eligibility, and declaration identity remain unchanged. Untargeted probes and services without a separate readiness probe retain their accepted wire shapes; targeted defaults are validated before provider mutation. Focused tests cover strict serialization, both probe surfaces, declared topology, and authored overrides."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Pre-release service environments normalize mixed scalar and explicit binding values into one typed environment map."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Trusted compilation admits deferred descriptors alongside scalar environment authoring inputs; raw reserved tags still require rejection before decoding."
+  },
+  {
+    "surface": "schema:PreDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.evidence",
+    "justification": "Pre-release destroy events require the primary teardown evidence."
+  },
+  {
+    "surface": "schema:PostDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.evidence",
+    "justification": "Pre-release destroy events require the primary teardown evidence."
+  },
+  {
+    "surface": "schema:PostDestroyEvent",
+    "changeKind": "property-added",
+    "path": "$.outcome",
+    "justification": "Pre-release destroy completion reports the aggregate invocation outcome."
+  },
+  {
+    "surface": "schema:DatasetApplyResult",
+    "changeKind": "property-added",
+    "path": "$.snapshot.ownerKey",
+    "justification": "Pre-release snapshot handles now identify their owner catalog."
+  },
+  {
+    "surface": "schema:PrunePolicy",
+    "changeKind": "property-removed",
+    "path": "$.filter.sourceRoot",
+    "justification": "Pre-release snapshot selection uses ownerKey instead of sourceRoot."
+  },
+  {
+    "surface": "schema:SnapshotFilter",
+    "changeKind": "property-removed",
+    "path": "$.sourceRoot",
+    "justification": "Pre-release snapshot selection uses ownerKey instead of sourceRoot."
+  },
+  {
+    "surface": "schema:SnapshotHandle",
+    "changeKind": "property-added",
+    "path": "$.ownerKey",
+    "justification": "Pre-release snapshot handles now identify their owner catalog."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-removed",
+    "path": "$.metadata.ownerKey",
+    "justification": "Pre-release snapshot ownership moves to the required owner identity."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-removed",
+    "path": "$.metadata.repoGroupKey",
+    "justification": "Pre-release repository grouping moves to the snapshot owner identity."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-removed",
+    "path": "$.metadata.sourceRoot",
+    "justification": "Pre-release snapshot ownership moves to the required owner identity."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.owner",
+    "justification": "Pre-release snapshots require canonical ownership independently of SQL metadata."
+  },
+  {
+    "surface": "schema:SyncResult",
+    "changeKind": "property-added",
+    "path": "$.snapshots.items.ownerKey",
+    "justification": "Pre-release snapshot handles now identify their owner catalog."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "property-removed",
+    "path": "$.violations.items.scope",
+    "justification": "Pre-release lint output now emits one record per defect with a scopes array instead of separate records per scope. Findings merge only when every other field matches, preserving source attribution and distinct defects. No singular-scope compatibility path is retained."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.appConfig.violations.items.scope",
+    "justification": "Doctor embeds the shared pre-release lint result: one record per defect with ordered scopes replaces separate singular-scope records. Doctor text and JSON consume the same merged findings without collapsing distinct sources or messages."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "property-removed",
+    "path": "$.violations.items.scope",
+    "justification": "The pre-release lint contract replaces singular scope with scopes so a defect found in fragment and effective validation occupies one record. Identity includes every other field, retaining distinct physical sources and messages."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "property-removed",
+    "path": "$.scope",
+    "justification": "The pre-release finding contract intentionally replaces scope with ordered unique scopes. One record per defect removes duplicate machine findings while preserving every non-scope diagnostic field; no legacy alias is shipped."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.user.pattern",
+    "justification": "Service user identities now use ContainerUser at the authoring boundary, matching build-step validation. Valid uid, uid:gid, name, and name:group forms remain accepted; malformed identities are intentionally rejected before planning."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "property-added",
+    "path": "$.rule",
+    "justification": "Intentional E pre-release lint result evolution: every emitted finding now carries a stable machine rule identifier. Required output metadata replaces an unclassified finding contract; it does not narrow authored Landofile grammar or alter historical schema captures. Lint, CLI rendering, doctor, and schema encoding regressions cover all producers. This exact required-property addition is recorded for lead review, not treated as a generic additive output change."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "property-added",
+    "path": "$.severity",
+    "justification": "Intentional E pre-release lint result evolution: every emitted finding distinguishes error from warning, and valid means no error findings. Existing failures remain errors while healthcheck warnings retain valid=true. Required severity is a deliberate output-contract change covered by lint, rendering, doctor, and schema encoding regressions. This exact addition is recorded for lead review without changing the compatibility classifier or historical captures."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Intentional pre-release A2 output evolution, tracked in issue #1502: explicit raw/merged/resolved full views, per-layer raw projections, document projections, get, and actual write variants replace the permissive resolved-only object. Default full resolved retains strict LandofileShape and its existing encoding. New-source consumers must discriminate source/shape; this is not a generic additive output-union compatibility claim. Regression suites cover malformed-result rejection, selectors, CLI/MCP forwarding, and redaction. Lead review remains required."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1502 tracks intentional A2 pre-release output evolution. The shared app-config result schema now explicitly distinguishes full views, projections, get, set, unset, edit and validate. Edit emits only its exact filePath/changed/valid/dryRun variant; no permissive write fallback can accept a malformed resolved view. Existing edit output and byte-preserving publication are covered by write regressions. Lead review remains required."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1502 tracks intentional A2 pre-release output evolution. The shared result schema replaces a permissive resolved-only object with explicit source/view/projection/get/write variants. Set retains key/value/filePath/changed/dryRun and now requires its actual subcommand fields; source values are strict recursive JSON. Existing output and authored/effective write safety are regression tested. This is an explicit reviewed output evolution, not a generic additive-union waiver; lead review remains required."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1502 tracks intentional A2 pre-release output evolution. The shared result schema uses strict source/view/projection/get/write variants rather than a permissive object. Unset retains key/filePath/changed/dryRun, requires its actual fields, validates unchanged candidates, and creates no absent target for a no-op. Regression tests preserve those behaviors. This scoped output-contract change still requires lead review and does not relax the compatibility classifier."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Issue #1502 tracks intentional A2 pre-release output evolution. The shared app-config schema now discriminates explicit full views, projections, get, and actual writes; validate retains filePath/valid/issues and requires the validate subcommand. Full resolved results remain strict LandofileShape. Existing validate/global/meta regressions stay green. This scoped output union evolution is recorded for lead review, not classified as generically compatible."
+  },
+  {
+    "surface": "command:meta:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.config.proxy.defaultDomain.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:GlobalConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.proxy.defaultDomain.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:GlobalConfigView",
+    "changeKind": "unsupported-keyword",
+    "path": "$.proxy.defaultDomain.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:ProxyApplyResult",
+    "changeKind": "unsupported-keyword",
+    "path": "$.appliedRoutes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:ProxyApplyResult",
+    "changeKind": "unsupported-keyword",
+    "path": "$.appliedRoutes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:ProxyConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.defaultDomain.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:RoutePlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:RoutePlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-keyword",
+    "path": "$.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-keyword",
+    "path": "$.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.global.proxy.defaultDomain.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.hostname.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.routes.items.pathPrefix.pattern",
+    "justification": "Pre-ship narrowing: previously schema-accepted values outside the canonical hostname, domain, or path-prefix grammar are intentionally no longer supported."
+  },
+  {
     "surface": "schema:LandofileAuthoringShape",
     "changeKind": "unsupported-construct",
     "path": "$.agentEnv.anyOf",
@@ -441,7 +921,7 @@
     "surface": "schema:StreamFrame",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Only the terminal result member's embedded error envelope gains optional reason: string. Existing frames remain valid, all discriminators and required fields are unchanged, and absent or non-string source reasons remain omitted. The conservative union checker cannot classify this additive nested property. Only the terminal result envelope adds optional SQL confirmation service and steps; existing frame variants and fields remain valid. The terminal error object also additively admits remaining JSON-safe own tagged-error fields, excluding cause, stack, private redaction metadata, cyclic, over-depth, and non-JSON-safe values; existing typed fields and canonical redaction remain unchanged."
+    "justification": "The terminal result member admits optional reason, SQL confirmation service/steps, JSON-safe error fields, validation source provenance, and bounded redacted output: { chunks, truncated }. P2b intentionally requires nonblank remediation on primary and additional errors before v4 ships, matching standalone CommandResultEnvelope; defects normalize to LandoInternalError. Frame discriminators are unchanged. Causes, stacks, private redaction metadata, cyclic, over-depth, and non-JSON-safe fields remain excluded."
   },
   {
     "surface": "command:meta:doctor",
@@ -471,7 +951,7 @@
     "surface": "command:meta:config",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
-    "justification": "The meta:config output reference graph intentionally replaces GlobalConfig with GlobalConfigView and its selected public-setting definitions. This separates effective config output from configuration input; the additive GlobalConfigView export is documented in sdk/API_COMPATIBILITY.md."
+    "justification": "The meta:config output reference graph intentionally replaces GlobalConfig with GlobalConfigView and its selected public-setting definitions. This separates effective config output from configuration input; the GlobalConfigView export is recorded in the SDK public-surface snapshot."
   },
   {
     "surface": "schema:PreRestartEvent",
@@ -867,79 +1347,79 @@
     "surface": "command:app:config",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:app:config:edit",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:app:config:set",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:app:config:unset",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:app:config:validate",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:meta:global:config",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:meta:global:config:edit",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:meta:global:config:set",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:meta:global:config:unset",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:meta:global:config:validate",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "schema:IncludeEntry",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "schema:LandofileShape",
     "changeKind": "unsupported-construct",
     "path": "$.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "schema:TemplateRenderContext",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
-    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+    "justification": "Include entries add Compose and tooling forms and intentionally remove the unverified checksum field before release; remote integrity belongs to the lockfile."
   },
   {
     "surface": "command:app:config",
@@ -1615,15 +2095,21 @@
   },
   {
     "surface": "schema:LandoEvent",
+    "changeKind": "union-widened",
+    "path": "$.anyOf",
+    "justification": "Pre-release LandoEvent adds the pre/post-global-destroy and pre/post-scratch-destroy lifecycle events; existing members are unchanged."
+  },
+  {
+    "surface": "schema:LandoEvent",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Optional RoutePlan.backend.host is additive; LandoEvent anyOf members that embed RoutePlan still accept every previously accepted form."
+    "justification": "Pre-release LandoEvent members require destroy evidence/outcome and canonical RoutePlan hostname, domain, and path-prefix grammar."
   },
   {
     "surface": "schema:RendererPanelContext",
     "changeKind": "unsupported-construct",
     "path": "$.event.anyOf",
-    "justification": "Optional RoutePlan.backend.host is additive; RendererPanelContext event anyOf members that embed RoutePlan still accept every previously accepted form."
+    "justification": "Pre-release renderer event payloads require destroy evidence/outcome and canonical RoutePlan hostname, domain, and path-prefix grammar."
   },
   {
     "surface": "schema:GlobalConfig",
@@ -2824,5 +3310,1619 @@
     "changeKind": "enum-widened",
     "path": "$.outcome",
     "justification": "Task completion adds the neutral `info` outcome for reader-owned results such as an app answering post-start checks with an error. The field stays optional, `ok` and `warn` keep their meaning, and consumers that treat unknown outcomes as `ok` keep working; renderers that paint `warn` were updated in the same change."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "type-changed",
+    "path": "$.port",
+    "justification": "Pre-release narrowing of port to a TCP port number: integer ports 1-65535 remain accepted; zero, fractional, and out-of-range numbers are intentionally rejected."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.issues.items.source.anyOf",
+    "justification": "Reviewed Phase 1 global-config provenance extension: the existing Landofile source arm is unchanged, and optional issue sources additionally admit config-file/config-drop-in file paths, exact env variable names, host options, and defaults. LandofileLayer is not widened; all previously accepted issue sources remain valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-construct",
+    "path": "$.error.additionalErrors.items.issues.items.source.anyOf",
+    "justification": "Reviewed Phase 1 global-config provenance extension for additional errors: the existing Landofile source arm is unchanged, and optional issue sources additionally admit config-file/config-drop-in file paths, exact env variable names, host options, and defaults. LandofileLayer is not widened; all previously accepted issue sources remain valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-construct",
+    "path": "$.appConfig.violations.items.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.violations.items.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "unsupported-construct",
+    "path": "$.source.anyOf",
+    "justification": "Reviewed global-config provenance extension: lint violations reuse ValidationIssue.source, whose existing Landofile arm is unchanged; the union only adds config-file/config-drop-in, env, host, and default arms. Every previously valid violation source remains valid. The conservative checker cannot classify the struct-to-union extension."
+  },
+  {
+    "surface": "schema:NetworkingPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "NetworkingPlan.perAppBridge becomes nullable so a plan can state that it has no private bridge (the global app joins only the shared network). Every previously accepted bridge value remains accepted; null is newly accepted. Pre-ship contract change."
+  },
+  {
+    "surface": "schema:PostScratchDestroyEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Pre-release nested service plans replace the unshipped parallel secret map with typed environment descriptors and canonical connection facts; historical literal environments remain readable. The unchanged optional scratch teardown plan embeds ServicePlan values whose network endpoints gain optional primary:true and whose internal network endpoints gain optional opaque appProtocol. This reviewed nested endpoint change does not open the service map, alter teardown fields or invalidate older applied plans. The checker reports the containing additionalProperties schema rather than descending into its endpoint union."
+  },
+  {
+    "surface": "schema:PreScratchDestroyEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Pre-release nested service plans replace the unshipped parallel secret map with typed environment descriptors and canonical connection facts; historical literal environments remain readable. The unchanged optional scratch teardown plan embeds ServicePlan values whose network endpoints gain optional primary:true and whose internal network endpoints gain optional opaque appProtocol. This reviewed nested endpoint change does not open the service map, alter teardown fields or invalidate older applied plans. The checker reports the containing additionalProperties schema rather than descending into its endpoint union."
+  },
+  {
+    "surface": "schema:ServicePlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.environment.additionalProperties",
+    "justification": "Pre-release environment values now include explicit SecretRef and BoundText descriptors; literal strings remain literal data."
+  },
+  {
+    "surface": "schema:ServicePlan",
+    "changeKind": "property-removed",
+    "path": "$.environmentSecrets",
+    "justification": "Remove the unshipped parallel secret map; each environment entry now owns its complete literal or deferred value."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.password.anyOf",
+    "justification": "Database passwords now accept explicit deferred descriptors as well as literal strings before first release."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.rootPassword.anyOf",
+    "justification": "Administrative passwords use the same typed environment-value model as user passwords before first release."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.password.anyOf",
+    "justification": "Redis passwords use the common literal or deferred environment-value model before first release."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.password.anyOf",
+    "justification": "Password authoring boundaries accept typed compiled descriptors only after authored-site admission; raw reserved tags remain forbidden."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.rootPassword.anyOf",
+    "justification": "Administrative password authoring uses the common deferred descriptor model after trusted compilation admission."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.password.anyOf",
+    "justification": "Redis password authoring uses the common deferred descriptor model after trusted compilation admission."
+  },
+  {
+    "surface": "schema:ToolingDefaultsShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.env.anyOf",
+    "justification": "Tooling environments now normalize scalar inputs into the same typed environment map as service environments."
+  },
+  {
+    "surface": "schema:ToolingTaskShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.env.anyOf",
+    "justification": "Task environment values retain explicit deferred bindings until dispatch rather than eagerly becoming strings."
+  },
+  {
+    "surface": "schema:ToolingStepShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.env.anyOf",
+    "justification": "Step environment overrides replace complete typed values, sharing the service and task environment model."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.toolingDefaults.env.anyOf",
+    "justification": "Tooling defaults share typed literal or deferred environment values with services before first release."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.events.additionalProperties",
+    "justification": "Provider event command environments now use the shared typed environment-value model until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-destroy.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-init.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-rebuild.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-restart.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-start.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.post-stop.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-destroy.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-init.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-rebuild.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-restart.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-start.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.events.pre-stop.items.anyOf",
+    "justification": "Event command environment overrides now preserve typed deferred values until dispatch."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-destroy.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-init.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-restart.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-start.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-stop.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-destroy.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-init.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-restart.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-start.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-stop.items.anyOf",
+    "justification": "Reviewed pre-release config output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.events.additionalProperties",
+    "justification": "Reviewed pre-release arbitrary event-name output: step arrays retain their variants; only env gains descriptors/lists and scalar coercion. Strings remain literal. Consumers discriminate _tag; raw reserved tags require authored admission rejection. This does not remove event names or steps. Tests: environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.toolingDefaults.env.anyOf",
+    "justification": "Reviewed pre-release config defaults output: scalar maps remain accepted, numbers/booleans now normalize to strings, and descriptors/KEY=value lists are added. Literal strings retain meaning; consumers discriminate _tag. Raw reserved tags must be rejected before authored admission; null/bare entries and __proto__ fail runtime decode. Tests: environment-value, service-config-compose-spellings, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-destroy.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-init.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-restart.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-start.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-stop.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-destroy.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-init.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-restart.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-start.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-stop.items.anyOf",
+    "justification": "Reviewed pre-release edit output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.events.additionalProperties",
+    "justification": "Reviewed pre-release edit arbitrary event-name output: step arrays retain their variants; only env gains descriptors/lists and scalar coercion. Strings remain literal. Consumers discriminate _tag; raw reserved tags require authored admission rejection. This does not remove event names or steps. Tests: environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.toolingDefaults.env.anyOf",
+    "justification": "Reviewed pre-release edit defaults output: scalar maps remain accepted, numbers/booleans now normalize to strings, and descriptors/KEY=value lists are added. Literal strings retain meaning; consumers discriminate _tag. Raw reserved tags must be rejected before authored admission; null/bare entries and __proto__ fail runtime decode. Tests: environment-value, service-config-compose-spellings, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-destroy.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-init.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-restart.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-start.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-stop.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-destroy.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-init.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-restart.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-start.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-stop.items.anyOf",
+    "justification": "Reviewed pre-release set output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.events.additionalProperties",
+    "justification": "Reviewed pre-release set arbitrary event-name output: step arrays retain their variants; only env gains descriptors/lists and scalar coercion. Strings remain literal. Consumers discriminate _tag; raw reserved tags require authored admission rejection. This does not remove event names or steps. Tests: environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.toolingDefaults.env.anyOf",
+    "justification": "Reviewed pre-release set defaults output: scalar maps remain accepted, numbers/booleans now normalize to strings, and descriptors/KEY=value lists are added. Literal strings retain meaning; consumers discriminate _tag. Raw reserved tags must be rejected before authored admission; null/bare entries and __proto__ fail runtime decode. Tests: environment-value, service-config-compose-spellings, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-destroy.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-init.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-destroy.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-restart.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-start.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-stop.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-init.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-restart.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-start.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-stop.items.anyOf",
+    "justification": "Reviewed pre-release unset output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.events.additionalProperties",
+    "justification": "Reviewed pre-release unset arbitrary event-name output: step arrays retain their variants; only env gains descriptors/lists and scalar coercion. Strings remain literal. Consumers discriminate _tag; raw reserved tags require authored admission rejection. This does not remove event names or steps. Tests: environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.toolingDefaults.env.anyOf",
+    "justification": "Reviewed pre-release unset defaults output: scalar maps remain accepted, numbers/booleans now normalize to strings, and descriptors/KEY=value lists are added. Literal strings retain meaning; consumers discriminate _tag. Raw reserved tags must be rejected before authored admission; null/bare entries and __proto__ fail runtime decode. Tests: environment-value, service-config-compose-spellings, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-destroy.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-init.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-restart.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-start.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-stop.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-destroy.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-init.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-restart.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-start.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-stop.items.anyOf",
+    "justification": "Reviewed pre-release validate output: only event env changes to typed values and KEY=value lists; strings stay literal and numeric/boolean inputs stringify. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants are unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.events.additionalProperties",
+    "justification": "Reviewed pre-release validate arbitrary event-name output: step arrays retain their variants; only env gains descriptors/lists and scalar coercion. Strings remain literal. Consumers discriminate _tag; raw reserved tags require authored admission rejection. This does not remove event names or steps. Tests: environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.toolingDefaults.env.anyOf",
+    "justification": "Reviewed pre-release validate defaults output: scalar maps remain accepted, numbers/booleans now normalize to strings, and descriptors/KEY=value lists are added. Literal strings retain meaning; consumers discriminate _tag. Raw reserved tags must be rejected before authored admission; null/bare entries and __proto__ fail runtime decode. Tests: environment-value, service-config-compose-spellings, public-schema-contracts."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.events.additionalProperties",
+    "justification": "Reviewed pre-release plan output: EventStepPlan provenance/status/sourceIndex and step variants are unchanged; only env adds descriptors/lists with numeric/boolean coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Public events remain present, never waived away. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release dataset plan payload: event provenance/status/sourceIndex and variants are unchanged; only env adds descriptors/lists with scalar coercion and literal strings preserved. Consumers discriminate _tag; raw reserved tags require authored admission rejection. The embedded events property is retained. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release global rebuild event output: compiled-step provenance/status/sourceIndex and variants are unchanged; env alone gains descriptors/lists, scalar coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. No plan events are removed. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release global start event output: compiled-step provenance/status/sourceIndex and variants are unchanged; env alone gains descriptors/lists, scalar coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. No plan events are removed. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release restart completion output: compiled-step provenance/status/sourceIndex and variants are unchanged; env alone gains descriptors/lists, scalar coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. No plan events are removed. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PostScratchDestroyEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release scratch destroy completion payload: event provenance/status/sourceIndex and variants remain; only env gains descriptors/lists, scalar coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. This accepts no teardown outcome or event removal. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release start completion output: compiled-step provenance/status/sourceIndex and variants are unchanged; env alone gains descriptors/lists, scalar coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. No plan events are removed. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release global rebuild input event: compiled-step provenance/status/sourceIndex and variants are unchanged; env alone gains descriptors/lists, scalar coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. No plan events are removed. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release global start input event: compiled-step provenance/status/sourceIndex and variants are unchanged; env alone gains descriptors/lists, scalar coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. No plan events are removed. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release restart input event: compiled-step provenance/status/sourceIndex and variants are unchanged; env alone gains descriptors/lists, scalar coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. No plan events are removed. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PreScratchDestroyEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release scratch destroy input payload: event provenance/status/sourceIndex and variants remain; only env gains descriptors/lists, scalar coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. This accepts no teardown outcome or event removal. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release start input event: compiled-step provenance/status/sourceIndex and variants are unchanged; env alone gains descriptors/lists, scalar coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. No plan events are removed. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.events.additionalProperties",
+    "justification": "Reviewed pre-release tunnel request input: compiled-step provenance/status/sourceIndex and variants are unchanged; env alone gains descriptors/lists, scalar coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. No plan events are removed. Tests: app-plan, environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-destroy.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-init.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-restart.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-start.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.post-stop.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-destroy.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-init.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-rebuild.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-restart.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-start.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.events.pre-stop.items.anyOf",
+    "justification": "Reviewed pre-release template-context input/output evolution: only event env adds descriptors and KEY=value lists; scalar inputs stringify and literal strings retain meaning. Consumers discriminate _tag; raw reserved tags require rejection before authored admission. Other event variants remain unchanged. Tests: environment-value, event-step, app-plan, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.events.additionalProperties",
+    "justification": "Reviewed pre-release template-context dynamic events: step arrays retain all variants; only env gains descriptors/lists, numeric/boolean coercion and preserved literal strings. Consumers discriminate _tag; raw reserved tags require authored admission rejection. Event names and existing fields remain. Tests: environment-value, event-step, public-schema-contracts."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.toolingDefaults.env.anyOf",
+    "justification": "Reviewed pre-release template-context defaults input/output: scalar maps remain accepted, numbers/booleans now normalize to strings, and descriptors/KEY=value lists are added. Strings remain literal; consumers discriminate _tag. Raw reserved tags require authored admission rejection; null/bare entries and __proto__ fail runtime decode. Tests: environment-value, service-config-compose-spellings, public-schema-contracts."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "property-removed",
+    "path": "$.services.items.endpoints",
+    "justification": "Approved unreleased connection contract replaces endpoint URL lists with required scoped connections carrying listener identity, binding and observation state. No endpoints compatibility alias is retained."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.status",
+    "justification": "Approved unreleased shared ServiceState adds ready, completed, restarting and paused to the existing info status vocabulary so observed and supervised states are preserved."
+  },
+  {
+    "surface": "command:app:rebuild",
+    "changeKind": "property-removed",
+    "path": "$.servicesStarted.items.endpoints",
+    "justification": "Approved unreleased rebuild output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:app:rebuild",
+    "changeKind": "enum-changed",
+    "path": "$.servicesStarted.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:app:restart",
+    "changeKind": "property-removed",
+    "path": "$.servicesStarted.items.endpoints",
+    "justification": "Approved unreleased restart output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:app:restart",
+    "changeKind": "enum-changed",
+    "path": "$.servicesStarted.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:app:start",
+    "changeKind": "property-removed",
+    "path": "$.servicesStarted.items.endpoints",
+    "justification": "Approved unreleased start output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:app:start",
+    "changeKind": "enum-changed",
+    "path": "$.servicesStarted.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "property-removed",
+    "path": "$.services.items.endpoints",
+    "justification": "Approved unreleased global info replaces endpoint URL lists with required scoped connections carrying listener identity, binding and observation state, matching app info. No endpoints compatibility alias is retained."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.status",
+    "justification": "Approved unreleased shared ServiceState adds ready, completed, restarting and paused to the existing global info status vocabulary so observed and supervised states are preserved."
+  },
+  {
+    "surface": "command:meta:global:rebuild",
+    "changeKind": "property-removed",
+    "path": "$.servicesRebuilt.items.endpoints",
+    "justification": "Approved unreleased global rebuild output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:meta:global:rebuild",
+    "changeKind": "enum-changed",
+    "path": "$.servicesRebuilt.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:meta:global:restart",
+    "changeKind": "property-removed",
+    "path": "$.servicesStarted.items.endpoints",
+    "justification": "Approved unreleased global restart output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:meta:global:restart",
+    "changeKind": "enum-changed",
+    "path": "$.servicesStarted.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:meta:global:start",
+    "changeKind": "property-removed",
+    "path": "$.servicesStarted.items.endpoints",
+    "justification": "Approved unreleased global start output uses StartedService connections instead of endpoint URL lists, preserving app-listener, host-publication and route provenance with explicit binding and observation state. No endpoints alias is retained."
+  },
+  {
+    "surface": "command:meta:global:start",
+    "changeKind": "enum-changed",
+    "path": "$.servicesStarted.items.state",
+    "justification": "Approved unreleased StartedService replaces an unconstrained state string with ServiceState: unknown, stopped, starting, running, healthy, unhealthy, ready, completed, restarting, paused or error."
+  },
+  {
+    "surface": "command:meta:global:status",
+    "changeKind": "property-removed",
+    "path": "$.services.items.endpoints",
+    "justification": "Approved unreleased global status replaces endpoint URL lists with required scoped connections carrying listener identity, binding and observation state, matching app info. No endpoints compatibility alias is retained."
+  },
+  {
+    "surface": "command:meta:global:status",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.status",
+    "justification": "Approved unreleased shared ServiceState adds ready, completed, restarting and paused to the existing global status vocabulary so observed and supervised states are preserved."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release .NET service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:EndpointInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:EndpointPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration."
+  },
+  {
+    "surface": "schema:InternalEndpoint",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Approved internal network endpoint extension adds optional primary:true and opaque appProtocol. The Unix-socket variant is unchanged, neither field becomes required, and existing applied endpoints remain decodable."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release LocalStack service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release Mailhog service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release Mailpit service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release MinIO service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release MSSQL service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release MySQL service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release phpMyAdmin service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release PHP service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release RabbitMQ service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-removed",
+    "path": "$.endpoints",
+    "justification": "Approved unreleased ServiceInfo removes the optional endpoint-info array in favor of required scoped connections. Planned listener identity and observed host bindings are represented separately; no endpoints compatibility alias is retained."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-removed",
+    "path": "$.routes",
+    "justification": "Approved unreleased ServiceInfo removes the separate optional RoutePlan array. Host connections with source:route retain route path and protocol plus explicit binding and observation state in the common connections collection. No routes compatibility alias is retained."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "enum-widened",
+    "path": "$.status",
+    "justification": "Approved unreleased shared ServiceState adds ready, completed, restarting and paused to the existing ServiceInfo status vocabulary so observed and supervised states are preserved."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-added",
+    "path": "$.connections",
+    "justification": "Approved unreleased ServiceInfo requires scoped connections in place of optional endpoints and routes. Each connection preserves listener identity, provenance and activity; assigned connections carry addresses while pending connections cannot fabricate ports or URLs. Older provisional ServiceInfo payloads are intentionally not accepted."
+  },
+  {
+    "surface": "schema:ServicePlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release Tomcat service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.environment.anyOf",
+    "justification": "Reviewed pre-release Varnish service input: existing scalar map/list grammar and stringification remain; map values additionally admit compiled SecretRef/BoundText. Strings remain literal; consumers discriminate _tag. Raw reserved tags must be rejected at authored admission, not trusted merely because schema decoding succeeds. Tests: environment-value, service-config-compose-spellings, public-schema-contracts; bindings covers forged tags."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.password.anyOf",
+    "justification": "Reviewed pre-release MSSQL credential input: literal string passwords remain literal; SecretRef/BoundText are intentional compiled alternatives, not numeric/boolean credentials. Consumers discriminate _tag and resolve only at dispatch. Raw reserved tags require rejection before authored admission. Credential siblings/requiredness stay unchanged. Tests: environment-value, bindings, public-schema-contracts."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.rootPassword.anyOf",
+    "justification": "Reviewed pre-release MSSQL administrative credential input: optional rootPassword retains literal strings and adds compiled SecretRef/BoundText, never numeric/boolean credentials. Consumers discriminate _tag and resolve only at dispatch. Raw reserved tags require rejection before authored admission. Credential siblings/requiredness stay unchanged. Tests: environment-value, bindings, public-schema-contracts."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.password.anyOf",
+    "justification": "Reviewed pre-release MySQL credential input: literal string passwords remain literal; SecretRef/BoundText are intentional compiled alternatives, not numeric/boolean credentials. Consumers discriminate _tag and resolve only at dispatch. Raw reserved tags require rejection before authored admission. Credential siblings/requiredness stay unchanged. Tests: environment-value, bindings, public-schema-contracts."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.rootPassword.anyOf",
+    "justification": "Reviewed pre-release MySQL administrative credential input: optional rootPassword retains literal strings and adds compiled SecretRef/BoundText, never numeric/boolean credentials. Consumers discriminate _tag and resolve only at dispatch. Raw reserved tags require rejection before authored admission. Credential siblings/requiredness stay unchanged. Tests: environment-value, bindings, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.password.anyOf",
+    "justification": "Reviewed pre-release phpMyAdmin credential input: literal string passwords remain literal; SecretRef/BoundText are intentional compiled alternatives, not numeric/boolean credentials. Consumers discriminate _tag and resolve only at dispatch. Raw reserved tags require rejection before authored admission. Credential siblings/requiredness stay unchanged. Tests: environment-value, bindings, public-schema-contracts."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.rootPassword.anyOf",
+    "justification": "Reviewed pre-release phpMyAdmin administrative credential input: optional rootPassword retains literal strings and adds compiled SecretRef/BoundText, never numeric/boolean credentials. Consumers discriminate _tag and resolve only at dispatch. Raw reserved tags require rejection before authored admission. Credential siblings/requiredness stay unchanged. Tests: environment-value, bindings, public-schema-contracts."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.endpoints.items.anyOf",
+    "justification": "Approved endpoint metadata extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Existing endpoint declarations remain valid; changed union members require explicit review."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-keyword",
+    "path": "$.globalConfig.error.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: every error remediation is a required nonblank recovery action, checked on decode and encode."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "unsupported-keyword",
+    "path": "$.globalConfig.error.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: whitespace-only recovery instructions are rejected on decode and encode."
+  },
+  {
+    "surface": "command:meta:update",
+    "changeKind": "unsupported-keyword",
+    "path": "$.coreFailure.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: update failures carry a nonblank recovery action."
+  },
+  {
+    "surface": "command:meta:update",
+    "changeKind": "unsupported-keyword",
+    "path": "$.coreFailure.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: update recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:AppPlacementError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: placement failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:AppPlacementError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: placement recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:EnvironmentValueResolutionError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: environment resolution failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:EnvironmentValueResolutionError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: environment resolution recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:KeymapConflictError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: keymap conflicts require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:KeymapConflictError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: keymap recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileExpressionEvalError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: expression evaluation failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileExpressionEvalError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: expression evaluation recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileExpressionForbiddenError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: forbidden expressions require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileExpressionForbiddenError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: forbidden-expression recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileExpressionParseError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: expression parse failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileExpressionParseError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: expression parse recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileImportRefMisuseError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: import placement failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileImportRefMisuseError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: import placement recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileLoadLimitError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: load-limit failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileLoadLimitError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: load-limit recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:LandofileLoadOutsideRootError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: outside-root loads require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:LandofileLoadOutsideRootError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: outside-root recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:PlanReplanRequiredError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: replan failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:PlanReplanRequiredError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: replan recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:RouteInputError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: route input failures require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:RouteInputError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: route input recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:RouteProviderMismatchError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: provider mismatches require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:RouteProviderMismatchError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: provider-mismatch recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:SubscriberLevelMismatchError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.minLength",
+    "justification": "Intentional pre-release diagnostic contract: subscriber-level mismatches require a nonblank recovery action."
+  },
+  {
+    "surface": "schema:SubscriberLevelMismatchError",
+    "changeKind": "unsupported-keyword",
+    "path": "$.remediation.pattern",
+    "justification": "Intentional pre-release diagnostic contract: subscriber-level recovery instructions cannot be whitespace-only."
+  },
+  {
+    "surface": "schema:NetworkPlan",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release E6 removes the duplicate NetworkPlan schema. AppPlan.networking is the sole network model; persisted plans tolerate the historical excess networks field."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "property-removed",
+    "path": "$.networks",
+    "justification": "Pre-release E6 removes the duplicate networks array in favor of AppPlan.networking. Persisted plans decode historical excess properties without requiring a migration."
+  },
+  {
+    "surface": "schema:CurrentExecutableAppPlan",
+    "changeKind": "property-removed",
+    "path": "$.networks",
+    "justification": "Pre-release E6 removes the inherited duplicate networks array in favor of AppPlan.networking. Desired-plan caches tolerate the historical excess property."
+  },
+  {
+    "surface": "schema:ProviderCapabilities",
+    "changeKind": "enum-narrowed",
+    "path": "$.composeServiceFields.supported.items",
+    "justification": "Pre-release E1 normalizes networks into AppPlan.networking and gates realization with authoredNetworks instead of the preserved Compose service-field family. Provider declarations must remove networks from composeServiceFields."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Pre-release E1 intentionally narrows network attachments to aliases and inert x-* metadata. ipv4_address, ipv6_address, link_local_ips, mac_address, driver_opts, priority, gw_priority and interface_name now fail validation with field-specific remediation instead of surviving as unrealized Compose data."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Pre-release E1 intentionally narrows authored network attachments to aliases and inert x-* metadata, rejecting address and interface settings with field-specific remediation; short and long network membership forms remain supported."
+  },
+  {
+    "surface": "schema:CompiledLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release E1 propagates the intentional ServiceConfig network attachment narrowing through compiled Landofile stages. Only aliases and inert x-* attachment metadata are supported; address and interface settings are rejected before planning."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.services.additionalProperties",
+    "justification": "Pre-release E1 propagates the intentional ServiceConfig attachment narrowing into identity-scoped documents. Addresses and interface settings are rejected; aliases and inert x-* metadata remain supported."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.services.additionalProperties",
+    "justification": "Pre-release E1 propagates the intentional ServiceConfig attachment narrowing into load-scoped documents. Addresses and interface settings are rejected; aliases and inert x-* metadata remain supported."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.services.additionalProperties",
+    "justification": "Pre-release E1 propagates the intentional ServiceConfig attachment narrowing into service-scoped documents. Addresses and interface settings are rejected; aliases and inert x-* metadata remain supported."
+  },
+  {
+    "surface": "schema:CurrentExecutableAppPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.networking.perAppBridge.anyOf",
+    "justification": "The existing pre-release network model permits a null perAppBridge for global plans. This mirrors the accepted NetworkingPlan/AppPlan exception on the executable-plan wrapper; persisted bridge objects remain accepted."
+  },
+  {
+    "surface": "schema:PostScratchDestroyEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "The existing pre-release network model permits a null perAppBridge. This mirrors the accepted NetworkingPlan/AppPlan exception in the scratch lifecycle event's embedded plan; previous bridge objects remain accepted."
+  },
+  {
+    "surface": "schema:PreScratchDestroyEvent",
+    "changeKind": "unsupported-construct",
+    "path": "$.plan.networking.perAppBridge.anyOf",
+    "justification": "The existing pre-release network model permits a null perAppBridge. This mirrors the accepted NetworkingPlan/AppPlan exception in the scratch lifecycle event's embedded plan; previous bridge objects remain accepted."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PostScratchDestroyEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PreScratchDestroyEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "property-removed",
+    "path": "$.plan.networks",
+    "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
   }
 ]

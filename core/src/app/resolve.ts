@@ -1,11 +1,11 @@
 import { dirname, join } from "node:path";
 
-import { Effect, Scope } from "effect";
+import { Effect, Schema, Scope } from "effect";
 
 import type { App, AppSelector } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
-import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
+import { type AppPlan, LandofileShape, type LoadScopedLandofile } from "@lando/sdk/schema";
+import { AppPlanner, LandofileService, RuntimeProviderRegistry, type StateStore } from "@lando/sdk/services";
 
 import { type AppHandleRuntimeServices, makeAppHandle } from "@lando/engine/app/handle";
 import { makeAppLifecycle } from "@lando/engine/app/lifecycle";
@@ -22,14 +22,16 @@ import {
 import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { runtimeServiceContext } from "@lando/engine/runtime/observability";
-import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
+import { scopedLandofileRuntimeInputs } from "@lando/engine/services/landofile-live";
+import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
+import { withAppDiscovery } from "@lando/landofile/operation-discovery";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
 
 interface ResolvedLandofilePlan {
   readonly plan: AppPlan;
-  readonly landofile: LandofileShape;
+  readonly landofile: LoadScopedLandofile;
 }
 
 const toAppResolveError = (cause: unknown): AppResolveError => {
@@ -41,17 +43,20 @@ const toAppResolveError = (cause: unknown): AppResolveError => {
       reason: "not-found",
       detail: "reserved-id",
       cause,
+      remediation: "Change the Landofile name: to a value other than global.",
     });
   }
   return new AppResolveError({
     message: tag ? `Failed to resolve app (${tag}).` : "Failed to resolve app.",
     reason: "not-found",
     cause,
+    remediation:
+      "Run the command from an app directory with a Landofile, or pass an explicit root to the app.",
   });
 };
 
 const planResolvedLandofile = Effect.fnUntraced(function* (
-  landofile: LandofileShape,
+  landofile: LoadScopedLandofile,
   root: string,
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const registry = yield* RuntimeProviderRegistry;
@@ -79,17 +84,14 @@ const planFromShape = Effect.fnUntraced(function* (
   appRoot: string,
 ): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
   const sourcePath = join(appRoot, ".lando.yml");
-  const stateStore = yield* StateStore;
-  const loadScope = yield* buildLandofileLoadScope([{ file: sourcePath, value: shape }]);
-  const landofile = yield* resolveLandofileIncludes({
-    landofile: shape,
-    appRoot,
-    sourcePath,
-    stateStore,
-    loadScope,
-  });
-  yield* assertUserAppIdNotReserved(landofile);
-  yield* assertLandoVersionConstraint(landofile, { sourcePath });
+  const authored = yield* Schema.encodeEffect(LandofileShape)(shape, { onExcessProperty: "error" });
+  const landofile = yield* loadAuthoredDocuments(
+    [{ file: sourcePath, value: copyLandofileProvenance(shape, authored) }],
+    { appRoot, file: sourcePath },
+    yield* scopedLandofileRuntimeInputs,
+  );
+  yield* assertUserAppIdNotReserved(landofile.document);
+  yield* assertLandoVersionConstraint(landofile.document, { sourcePath });
   return yield* planResolvedLandofile(landofile, appRoot);
 }, Effect.mapError(toAppResolveError));
 
@@ -105,6 +107,7 @@ const selectorMismatch = (detail: string): AppResolveError =>
     message: "App selector fields do not resolve to the same app.",
     reason: "mismatch",
     detail,
+    remediation: "Use selector fields that resolve to the same app (matching id and root).",
   });
 
 const sameResolvedApp = (left: AppPlan, right: AppPlan): boolean =>
@@ -171,6 +174,7 @@ const resolvePlan = (
               message: `Cannot resolve app by id \`${selector.id}\` without a known root at this bootstrap level.`,
               reason: "unknown-id",
               detail: selector.id,
+              remediation: `Pass root or cwd with id \`${selector.id}\`, or run from that app directory.`,
             }),
           )
         : validateLowerSelectors(
@@ -187,6 +191,7 @@ const resolvePlan = (
                       message: `App id \`${selector.id}\` does not match the app \`${resolved.plan.id}\` at the selected root.`,
                       reason: "mismatch",
                       detail: "id+root",
+                      remediation: `Use app id \`${resolved.plan.id}\` or open the app root that owns \`${selector.id}\`.`,
                     }),
                   ),
             ),
@@ -258,11 +263,17 @@ export const buildAppHandle = Effect.fnUntraced(function* (
  * Landofile are captured once; handle methods reuse them instead of
  * re-discovering from the host's working directory. Selector precedence is
  * `id > landofile > root > cwd`.
+ * File edits, including app agentEnv:false, require re-resolution with the
+ * original selector (and an updated shape for object selectors). Exec, deep
+ * info, and tooling reuse the captured object even when agentEnv is omitted.
+ * Global ConfigService policy and the process emergency veto remain live at
+ * invocation time under their existing semantics; provider status stays live.
  */
 export const resolveApp = Effect.fn("LandoRuntime.resolveApp")(function* (
   selector?: AppSelector,
 ): Effect.fn.Return<App, AppResolveError, AppHandleRuntimeServices | RuntimeCwd | Scope.Scope> {
   const normalized = yield* Effect.fromResult(normalizeAppSelector(selector));
-  const target = yield* resolveTarget(normalized);
+  const cwd = yield* RuntimeCwd;
+  const target = yield* withAppDiscovery(cwd, resolveTarget(normalized));
   return yield* buildAppHandle(target);
 });

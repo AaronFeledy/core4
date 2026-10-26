@@ -1,17 +1,18 @@
-import { DateTime, Option, Stream } from "effect";
+import { DateTime, type Effect, Option, type Scope, Stream } from "effect";
 import { serviceContainerName } from "../plan.ts";
 
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import type { LogChunk, LogOptions, LogTarget, ProviderError } from "@lando/sdk/services";
 
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "../engine-api.ts";
 import { missingApi, missingService } from "../engine-errors.ts";
-import { makeLogDecoder as makeRuntimeLogDecoder } from "../streams.ts";
+import { decodeLogStream } from "../streams.ts";
 
 export interface LogsOptions {
   readonly api?: EngineHttpApi;
-  readonly logFileAccess?: LogFileAccess;
+  /** Shared access, or a scoped acquisition run once per followed source. */
+  readonly logFileAccess?: LogFileAccess | Effect.Effect<LogFileAccess, ProviderError, Scope.Scope>;
   readonly ctx: ProviderErrorContext;
 }
 
@@ -23,27 +24,31 @@ const stream = (
 ): Stream.Stream<Uint8Array, ProviderError> =>
   deps.api.stream === undefined ? Stream.fail(missingApi(deps.ctx, "logs")) : deps.api.stream(input);
 
-const parseLine = (service: ServicePlan, streamName: "stdout" | "stderr", line: string): LogChunk => {
-  const match = /^(\d{4}-\d{2}-\d{2}T\S+)\s+(.*)$/u.exec(line);
-  if (match === null) {
-    return { service: service.name, stream: streamName, line };
-  }
-
-  const parsed = DateTime.make(match[1] ?? "");
-  if (Option.isNone(parsed)) {
-    return { service: service.name, stream: streamName, line };
-  }
-
-  return {
-    service: service.name,
-    stream: streamName,
-    line: match[2] ?? "",
-    timestamp: DateTime.toDate(parsed.value),
-  };
+export const containerConsoleLogs = (
+  api: EngineHttpApi,
+  ctx: ProviderErrorContext,
+  container: string,
+  service: ServiceName,
+  options: Partial<LogOptions>,
+): Stream.Stream<LogChunk, ProviderError> => {
+  const query = new URLSearchParams({
+    stdout: "true",
+    stderr: "true",
+    follow: String(options.follow ?? true),
+    timestamps: "true",
+  });
+  if (options.tail !== undefined) query.set("tail", String(options.tail));
+  if (options.since !== undefined) query.set("since", options.since);
+  return decodeLogStream(
+    stream(
+      { api, ctx },
+      {
+        method: "GET",
+        path: `/containers/${encodeURIComponent(container)}/logs?${query}`,
+      },
+    ),
+  ).pipe(Stream.map((line) => ({ service, ...line })));
 };
-
-const makeLogsDecoder = (service: ServicePlan) =>
-  makeRuntimeLogDecoder({ parseLine: (streamName, line) => parseLine(service, streamName, line) });
 
 const fileSourceSince = (value: string | undefined): number | undefined => {
   if (value === undefined) return undefined;
@@ -69,20 +74,7 @@ export const logs = (
       return Stream.fail(missingApi(ctx, "logs"));
     }
 
-    const query = new URLSearchParams({
-      stdout: "true",
-      stderr: "true",
-      follow: String(options.follow ?? true),
-      timestamps: "true",
-    });
-    if (options.tail !== undefined) {
-      query.set("tail", String(options.tail));
-    }
-    if (options.since !== undefined) {
-      query.set("since", options.since);
-    }
-
-    const deps = { api: runtime.api, ctx };
+    const api = runtime.api;
     const logFileAccess = runtime.logFileAccess;
     const logSources = options.sources ?? service.logSources ?? [];
     const since = fileSourceSince(options.since);
@@ -107,11 +99,13 @@ export const logs = (
         return fileStream;
       }
 
-      const decodeChunk = makeLogsDecoder(service);
-      const consoleStream = stream(deps, {
-        method: "GET",
-        path: `/containers/${encodeURIComponent(containerName(plan, service))}/logs?${query}`,
-      }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
+      const consoleStream = containerConsoleLogs(
+        api,
+        ctx,
+        containerName(plan, service),
+        service.name,
+        options,
+      );
 
       return Stream.merge(consoleStream, fileStream);
     });

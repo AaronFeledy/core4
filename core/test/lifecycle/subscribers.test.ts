@@ -12,7 +12,8 @@ import {
 import { MessageInfoEvent } from "@lando/sdk/events";
 import { AbsolutePath, GlobalConfig, PluginManifest } from "@lando/sdk/schema";
 
-import { resolveNotifyConfig } from "@lando/engine/lifecycle/subscriber-config";
+import { decodeGlobalConfigFile } from "@lando/engine/config/global-config";
+import { resolveNotifyConfig as projectNotifyConfig } from "@lando/engine/lifecycle/subscriber-config";
 import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
 import { makeCachedSubscriberHandler } from "@lando/engine/lifecycle/subscriber-loader";
 import { makeLandoPluginContext } from "@lando/engine/plugins/context";
@@ -21,6 +22,11 @@ import { canonicalSubscriberCommandIds } from "../../src/lifecycle/index.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
+
+const resolveNotifyConfig = (config: GlobalConfig, commandIds: ReadonlySet<string>) =>
+  Effect.fromResult(decodeGlobalConfigFile(config, "/config.yml", { commandIds })).pipe(
+    Effect.flatMap(projectNotifyConfig),
+  );
 
 const stubHttpClient = (): HttpClient.HttpClient =>
   HttpClient.make((request) =>
@@ -372,10 +378,9 @@ describe("subscriber runtime", () => {
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
-        expect(failure.value.path).toBe("notify.commands[1]");
-        expect(failure.value.message).toContain("bad:id");
+        expect(failure.value.issues?.[0]?.path).toEqual(["notify", "commands", 1]);
         expect(failure.value.message).toContain("Unknown canonical command id");
-        expect(failure.value.message).toContain("registered command");
+        expect(failure.value.remediation).toContain("registered command");
       }
     }
   });
@@ -398,9 +403,8 @@ describe("subscriber runtime", () => {
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
         if (failure.value instanceof ConfigError) {
-          expect(failure.value.path).toBe("notify.commands[2]");
-          expect(failure.value.message).toContain("app:myscript");
-          expect(failure.value.message).toContain("install and enable the plugin");
+          expect(failure.value.issues?.[0]?.path).toEqual(["notify", "commands", 2]);
+          expect(failure.value.remediation).toContain("registered command");
         }
       }
     }
@@ -462,7 +466,14 @@ describe("subscriber runtime", () => {
           calls += 1;
         });
     }).pipe(
-      Effect.mapError(() => new PluginLoadError({ pluginName: "@example/subscriber", message: "load" })),
+      Effect.mapError(
+        () =>
+          new PluginLoadError({
+            pluginName: "@example/subscriber",
+            message: "load",
+            remediation: "Install or register the plugin, then retry.",
+          }),
+      ),
     );
 
     // When: the cached handler is requested and invoked twice.

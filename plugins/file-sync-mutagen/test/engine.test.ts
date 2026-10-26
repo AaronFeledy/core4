@@ -187,6 +187,8 @@ describe("@lando/file-sync-mutagen engine create / pause / resume / terminate", 
                   engineId: ENGINE_ID,
                   sessionRef: name,
                   message: `Could not terminate ${name}`,
+                  remediation:
+                    "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
                 }),
               ),
             ),

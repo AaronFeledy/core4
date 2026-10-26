@@ -42,6 +42,48 @@ const captureImagePullProgress = (events: ImagePullProgressEvent[], event: Publi
 };
 
 describe("provider pullArtifact", () => {
+  test.each(["always", "missing", "never"] as const)(
+    "reports the observed pinned digest for %s",
+    async (policy) => {
+      // Given
+      const ref = `team/helper@sha256:${"a".repeat(64)}`;
+      const requests: EngineHttpRequest[] = [];
+      const provider = await Effect.runPromise(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              platform: "linux",
+              podmanApi: {
+                info: Effect.succeed({ host: { arch: "x64" } }),
+                ping: Effect.void,
+                request: (request) => {
+                  requests.push(request);
+                  return Effect.succeed({
+                    status: 200,
+                    body: JSON.stringify({ RepoDigests: ["team/helper@sha256:other", ref] }),
+                  });
+                },
+                stream: (request) => {
+                  requests.push(request);
+                  return Stream.empty;
+                },
+              },
+            }),
+          ),
+        ),
+      );
+      // When
+      const artifact = await Effect.runPromise(provider.pullArtifact({ ref, policy }));
+      // Then
+      expect(artifact).toEqual({ providerId: applyProviderId, ref, digest: `sha256:${"a".repeat(64)}` });
+      expect(requests).toEqual([
+        ...(policy === "always" ? [libpodPullDialect.request(ref)] : []),
+        { method: "GET", path: `/libpod/images/${encodeURIComponent(ref)}/json` },
+      ]);
+    },
+  );
+
   test("reuses a present local image when policy is missing without a registry pull", async () => {
     // Given
     const fake = makeApplyApi(200);
@@ -61,7 +103,7 @@ describe("provider pullArtifact", () => {
     const result = await Effect.runPromise(provider.pullArtifact({ ref: applyRef, policy: "missing" }));
 
     // Then
-    expect(result).toEqual({ providerId: applyProviderId, ref: applyRef });
+    expect(result).toEqual({ providerId: applyProviderId, ref: applyRef, digest: "sha256:test" });
     expect(fake.requests).toEqual([`GET /libpod/images/${encodeURIComponent(applyRef)}/json`]);
   });
 
@@ -76,6 +118,11 @@ describe("provider pullArtifact", () => {
             podmanApi: {
               info: Effect.succeed({ host: { arch: "x64" } }),
               ping: Effect.succeed(undefined),
+              request: () =>
+                Effect.succeed({
+                  status: 200,
+                  body: JSON.stringify({ RepoDigests: ["docker.io/library/alpine@sha256:test"] }),
+                }),
               stream: () =>
                 Stream.fromIterable([
                   bytes('{"stream":"Trying to pull docker.io/library/alpine:3.20.3..."}\n'),
@@ -99,6 +146,7 @@ describe("provider pullArtifact", () => {
 
     expect(String(artifact.providerId)).toBe("lando");
     expect(artifact.ref).toBe("docker.io/library/alpine:3.20.3");
+    expect(artifact.digest).toBe("sha256:test");
     expect(events).toHaveLength(2);
     expect(events[1]?.current).toBe(100);
     expect(events[1]?.total).toBe(200);
@@ -117,6 +165,7 @@ describe("provider pullArtifact", () => {
               info: Effect.succeed({ host: { arch: "x64" } }),
               ping: Effect.succeed(undefined),
               stream: () => Stream.fromIterable([bytes(`{"stream":"Trying to pull ${reference}..."}\n`)]),
+              request: () => Effect.succeed({ status: 200, body: "{}" }),
             },
             eventService: {
               publish: (event) =>
@@ -200,6 +249,7 @@ const makeApplyService = (compose?: Record<string, unknown>): ServicePlan => ({
 });
 
 const makeApplyPlan = (service: ServicePlan): AppPlan => ({
+  valueModel: 1,
   id: applyAppId,
   name: "Mailpit App",
   slug: "mailpit-app",
@@ -207,7 +257,6 @@ const makeApplyPlan = (service: ServicePlan): AppPlan => ({
   provider: applyProviderId,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "lando-mailpit-app", driver: "bridge" } },
   stores: [],
   fileSync: [],
@@ -217,6 +266,7 @@ const makeApplyPlan = (service: ServicePlan): AppPlan => ({
 
 const makeApplyApi = (inspectStatus = 404) => {
   const requests: string[] = [];
+  const pulledImages = new Set<string>();
   const existing = new Set<string>();
   const api = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
@@ -226,11 +276,17 @@ const makeApplyApi = (inspectStatus = 404) => {
       const response = ((): EngineHttpResponse => {
         if (request.method === "GET" && request.path.startsWith("/networks/"))
           return { status: 404, body: "" };
-        if (request.path === "/networks/create") return { status: 201, body: "" };
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create")
+          return { status: 201, body: "" };
         if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
-          return { status: inspectStatus, body: "{}" };
+          const ref = decodeURIComponent(request.path.slice("/libpod/images/".length, -"/json".length));
+          return {
+            status: pulledImages.has(ref) ? 200 : inspectStatus,
+            body: JSON.stringify({ RepoDigests: [`${ref}@sha256:test`] }),
+          };
         }
         if (request.method === "POST" && request.path.startsWith("/libpod/images/pull")) {
+          pulledImages.add(new URL(`http://localhost${request.path}`).searchParams.get("reference") ?? "");
           return { status: 200, body: '{"status":"Pull complete"}\n' };
         }
         if (
@@ -273,13 +329,13 @@ const applyPlan = async (plan: AppPlan, api: PodmanApiClient) => {
 };
 
 describe("provider-lando apply image pull", () => {
-  test("apply forwards secret-only overrides without dropping planned environment", async () => {
+  test("apply forwards the complete resolved environment callback", async () => {
     // Given
     const service = {
       ...makeApplyService(),
       environment: {
         PLAIN: "visible",
-        TOKEN: "${secret:API_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "API_TOKEN" } as const,
         SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
       },
     };
@@ -307,7 +363,8 @@ describe("provider-lando apply image pull", () => {
       Effect.scoped(
         provider.apply(makeApplyPlan(service), {
           reconcile: false,
-          serviceEnvironment: { [service.name]: { TOKEN: "resolved-canary" } },
+          resolveServiceEnvironment: () =>
+            Effect.succeed({ ...service.environment, TOKEN: "resolved-canary" }),
         }),
       ),
     );

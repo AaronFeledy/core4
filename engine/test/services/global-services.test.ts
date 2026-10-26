@@ -191,6 +191,7 @@ describe("global service materialization", () => {
             new GlobalAppError({
               message: "loader failed",
               operation: "regenerateDist",
+              remediation: "Run `lando doctor`, fix the reported issue, then retry the global operation.",
             }),
           ),
       }),

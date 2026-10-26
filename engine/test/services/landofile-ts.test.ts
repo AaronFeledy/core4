@@ -57,6 +57,7 @@ const withEnv = async <T>(
 const discover = () =>
   Effect.runPromise(
     Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
@@ -64,6 +65,7 @@ const discover = () =>
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );

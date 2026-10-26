@@ -8,7 +8,17 @@ tags: [beta, docs, subsystems, ssh, host-agent, 1password, yubikey]
 
 # Use your host SSH agent inside services
 
-Put this in your Landofile and restart the app:
+Forward a running host SSH agent when services need to request signatures from
+its keys or hardware token. First run `ssh-add -l` on the host and confirm that
+the agent lists the keys you intend to use.
+
+While forwarding is enabled, every `type: lando` service in the app can ask the
+host agent to sign. On Windows, the bridge into the Podman machine uses an
+unauthenticated loopback broker that another local account could reach. On a
+shared Windows host, consider keeping the default sidecar mode instead.
+
+Add this top-level `sshAgent` setting to your Landofile, then run the commands
+from the app directory:
 
 ```yaml
 name: myapp
@@ -26,8 +36,6 @@ lando ssh -- ssh-add -l
 ```
 
 `ssh-add -l` inside the service now lists the keys your host agent holds. Private keys and hardware tokens never leave the host: the container asks, your agent signs. That is how 1Password's SSH agent, gpg-agent, yubikey-agent, and FIDO2 `sk` keys work with Lando. Touch and biometric prompts still happen on the host.
-
-Prereq: an agent already running on the host. If `ssh-add -l` on the host shows nothing, fix that first.
 
 ## Pick the agent
 
@@ -55,7 +63,7 @@ An explicit `socket` has to be a real socket. A missing path, a symlink, a regul
 `sshAgent` also lives in global config, so a team Landofile can stay on the sidecar default while your machine forwards its agent. Each field resolves Landofile, then global config, then default.
 
 ```sh
-lando config set sshAgent.sidecar false --type=boolean
+lando config set sshAgent.sidecar false
 lando config set sshAgent.socket /home/me/.1password/agent.sock
 lando config get sshAgent --format=json
 ```
@@ -85,7 +93,7 @@ The socket is not your host socket. A per-app relay owns an app-scoped directory
 
 Providers only advertise the `agentSocket` capability when their delivery works on the current host. In host mode an unsupported combination fails at planning time with `CapabilityError`, not at apply time. Docker Desktop's built-in `/run/host-services/ssh-auth.sock` is not used; it only reaches Desktop's own agent.
 
-The relay is torn down on `lando stop` and `lando destroy`. Restart and rebuild pick it up again.
+The relay is torn down on `lando stop` and `lando destroy`, not when `lando start` fails. A failed start leaves an acquired relay in place. Forwarding stays enabled until you stop or destroy the app, or a later start replaces the relay. Another `lando start` or `lando rebuild -s <service>` on a running app reuses the relay that is already up when nothing about it changed and Lando can see its socket. When the agent socket it relays or the delivery changed, the relay stopped answering, or Lando was upgraded, it starts a new relay instead. On Linux the new socket appears in the same directory, so running services pick it up without a restart. On macOS and Windows with the managed provider the relay's socket lives inside the Lando machine where Lando cannot check it, so each start replaces the relay.
 
 ## When it fails
 

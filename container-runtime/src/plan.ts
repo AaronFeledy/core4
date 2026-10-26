@@ -6,14 +6,17 @@ import {
   fileSyncVolumeName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
+import { ContainerPlanError } from "./container-plan-error.ts";
 import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
+import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
+import { literalServiceEnvironment, requireCurrentCreationPlan } from "./environment-values.ts";
 import {
-  ContainerPlanError,
-  containerHealthcheck,
-  normalizeCommand,
-  normalizeEntrypoint,
-} from "./create-values.ts";
-import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL, scratchLabelsForPlan } from "./labels.ts";
+  APP_LABEL,
+  APP_ROOT_LABEL,
+  SERVICE_LABEL,
+  containerIntegrationLabels,
+  scratchLabelsForPlan,
+} from "./labels.ts";
 
 import {
   bindSourceForComposeConfig,
@@ -21,6 +24,7 @@ import {
   composeConfigMounts,
 } from "./compose-configs.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
+import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 
 export { composeConfigBindStrings };
 export { ContainerPlanError, normalizeCommand, normalizeEntrypoint };
@@ -30,10 +34,18 @@ export const mergeAppliedPlan = (
   previous: AppPlan | undefined,
   incoming: AppPlan,
   reconcile: boolean,
-): AppPlan =>
-  previous === undefined || reconcile || previous.id !== incoming.id
-    ? incoming
-    : { ...incoming, services: { ...previous.services, ...incoming.services } };
+): AppPlan => {
+  if (previous === undefined || reconcile || previous.id !== incoming.id) return incoming;
+  const merged = { ...incoming, services: { ...previous.services, ...incoming.services } };
+  if (
+    previous.valueModel !== 1 &&
+    Object.keys(previous.services).some((name) => !(name in incoming.services))
+  ) {
+    const { valueModel: _valueModel, ...observed } = merged;
+    return observed;
+  }
+  return merged;
+};
 
 /** Container name shared by every provider. `-` is in the allowed class, so sanitizing the joined name matches sanitizing slug and service separately. */
 export const serviceContainerName = (plan: Pick<AppPlan, "slug">, service: string): string =>
@@ -43,7 +55,7 @@ export const envArrayFromRecord = (environment: Readonly<Record<string, string>>
   Object.entries(environment).map(([key, value]) => `${key}=${value}`);
 
 export const serviceEnv = (service: ServicePlan): ReadonlyArray<string> =>
-  envArrayFromRecord(service.environment);
+  envArrayFromRecord(literalServiceEnvironment(service));
 
 export const mountSuffix = (readOnly: boolean): string => (readOnly ? ":ro" : "");
 
@@ -63,14 +75,14 @@ export const commonContainerLabels = (
           Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
         )
       : {};
-  const baseLabels = {
+  const baseLabels = containerIntegrationLabels(service.environment, {
     ...userLabels,
     [APP_LABEL]: plan.id,
     [APP_ROOT_LABEL]: plan.root,
     [SERVICE_LABEL]: service.name,
     ...scratchLabelsForPlan(plan),
     ...extra,
-  };
+  });
   return { ...baseLabels, [CREATE_CONFIG_LABEL]: createConfigFingerprint(plan, service, baseLabels) };
 };
 
@@ -218,11 +230,11 @@ export const containerPortBindings = (
   endpoints: ReadonlyArray<PublishedEndpoint>,
 ): Record<string, ReadonlyArray<Record<string, string>>> => {
   const grouped = new Map<string, Array<Record<string, string>>>();
-  for (const endpoint of endpoints) {
-    const key = `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`;
+  for (const endpoint of physicalPublications(endpoints)) {
+    const key = `${endpoint.port}/${endpoint.transport}`;
     const binding = {
-      HostIp: endpoint.publication.bindAddress ?? "127.0.0.1",
-      HostPort: endpoint.publication.hostPort === undefined ? "" : String(endpoint.publication.hostPort),
+      HostIp: endpoint.bindAddress,
+      HostPort: endpoint.hostPort === undefined ? "" : String(endpoint.hostPort),
     };
     const existing = grouped.get(key);
     if (existing === undefined) grouped.set(key, [binding]);
@@ -240,7 +252,7 @@ export const fingerprintPortBindings = (
       parts.push(`${key}@${item.HostIp ?? ""}:${item.HostPort ?? ""}`);
     }
   }
-  return parts.sort().join("|");
+  return [...new Set(parts)].sort().join("|");
 };
 
 export const fingerprintPlannedPublishPorts = (endpoints: ReadonlyArray<PublishedEndpoint>): string => {
@@ -270,13 +282,7 @@ export const fingerprintInspectPublishPorts = (inspect: unknown): string => {
 export const containerExposedPorts = (
   endpoints: ReadonlyArray<PublishedEndpoint | InternalEndpoint>,
 ): Record<string, Record<string, never>> => {
-  const ports: Record<string, Record<string, never>> = {};
-  for (const endpoint of endpoints) {
-    if (endpoint.protocol === "unix") continue;
-    const key = `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`;
-    ports[key] = {};
-  }
-  return ports;
+  return Object.fromEntries(physicalListenerPorts(endpoints).map((key) => [key, {}]));
 };
 
 export const containerHostConfigFragment = (
@@ -318,17 +324,18 @@ export const containerCreateBodyFragment = (
   service: ServicePlan,
   options: ContainerCreateBodyOptions = {},
 ): Record<string, unknown> => {
+  requireCurrentCreationPlan(plan);
   const artifact = service.artifact;
   if (artifact?.kind !== "ref") {
     return (options.onMissingArtifact ?? missingArtifact)(artifact);
   }
-  const healthcheck = containerHealthcheck(service.healthcheck);
+  const healthcheck = containerHealthcheck(service.healthcheck, plan, service);
   const exposedPorts = containerExposedPorts(service.endpoints);
 
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
     Image: artifact.ref,
-    Env: envArrayFromRecord(options.environment ?? service.environment),
+    Env: envArrayFromRecord(options.environment ?? literalServiceEnvironment(service)),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,

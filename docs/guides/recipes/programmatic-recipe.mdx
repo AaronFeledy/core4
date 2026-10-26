@@ -8,7 +8,7 @@ tags: [beta, docs, recipes, typescript, programmatic]
 
 # Write a programmatic recipe
 
-Ship `recipe.ts` instead of `recipe.yml`. Default-export a `Recipe` object or a factory. Lando loads it through flatten/`loadRecipeTs` at init and extends. `lando meta recipes validate` and `lando meta recipes describe` are YAML-only. They resolve `recipe.yml` and never evaluate `recipe.ts`.
+Ship `recipe.ts` instead of `recipe.yml`. Default-export a `Recipe` object or a factory. Lando loads it during initialization and when another recipe extends it. `lando meta recipes validate` and `lando meta recipes describe` are YAML-only. They resolve `recipe.yml` and never evaluate `recipe.ts`.
 
 A directory ships one or the other, never both. The directory basename must match `id`.
 
@@ -53,7 +53,7 @@ export default defineRecipe(async () => ({
 
 Bun loads the TypeScript. There is no compile step at recipe-load time. Top-level imports are sandbox-scanned: no host shell-outs, no remote module fetches, no filesystem access outside the recipe directory.
 
-TypeScript that writes the recipe is still just a manifest. Fancy imports will not save a bad `id`.
+A TypeScript recipe must satisfy the same manifest requirements as a YAML recipe, including a valid `id` that matches its directory.
 
 ## Next
 

@@ -39,13 +39,14 @@ import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
 import { readScratchLandofile } from "@lando/engine/scratch-app/service";
 import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
 import * as LandoConfigService from "@lando/engine/services/config";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
@@ -65,7 +66,6 @@ import {
   scratchRun,
   scratchRunHasCommandTail,
   scratchRunOptionsFromInput,
-  scratchRunSuccessExitCode,
 } from "../../src/cli/commands/scratch-run.ts";
 import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
@@ -152,6 +152,8 @@ interface Recorded {
 }
 
 interface HarnessOptions {
+  readonly creationEnvironments?: Readonly<Record<string, string>>[];
+  readonly stopCalls?: DestroyCall[];
   readonly applyOptions?: ApplyOptions[];
   readonly buildCalls?: string[];
   readonly artifactBuild?: boolean;
@@ -199,10 +201,16 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       }),
     removeArtifact: () => Effect.void,
     apply: (plan, applyOptions) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         recorded.appliedPlans.push(plan);
         options.onApply?.();
         options.applyOptions?.push(applyOptions);
+        if (applyOptions.resolveServiceEnvironment !== undefined) {
+          for (const service of Object.values(plan.services)) {
+            const environment = yield* applyOptions.resolveServiceEnvironment(service);
+            options.creationEnvironments?.push(environment);
+          }
+        }
         return { changed: true };
       }),
     start: () => die("start"),
@@ -211,10 +219,13 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: (target, destroyOptions) =>
       Effect.sync(() => {
-        recorded.destroyCalls.push({ app: String(target.app), volumes: destroyOptions.volumes });
+        const call = { app: String(target.app), volumes: destroyOptions.volumes };
+        if (destroyOptions.removeState === false) options.stopCalls?.push(call);
+        else recorded.destroyCalls.push(call);
         return { kind: "destroyed" as const };
       }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: () => die("exec"),
     execStream: (target, spec) => {
       const record = Effect.sync(() => {
@@ -251,9 +262,11 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
         providerId,
         status: "running",
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => die("snapshotVolume"),
+    removeVolumeSnapshot: () => die("removeVolumeSnapshot"),
     restoreVolume: () => die("restoreVolume"),
     locateVolume: () => die("locateVolume"),
     listVolumes: () => Effect.succeed([]),
@@ -273,6 +286,9 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -287,10 +303,14 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     eventLive,
     pathsLive,
     redactionLive,
+    EnvironmentValueResolverLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(EnvSecretStore.layer, redactionLive)),
+    ),
     ScratchRegistryLayer.ScratchRegistry.layer,
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     ScratchInitAppPortLayer.layer,
     BunDataMover.layer.pipe(
+      Layer.provide(registryLive),
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,
@@ -517,6 +537,7 @@ describe("scratchRun", () => {
         );
         const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
         const applyOptions: ApplyOptions[] = [];
+        const creationEnvironments: Readonly<Record<string, string>>[] = [];
 
         await Effect.runPromise(
           Effect.scoped(
@@ -524,17 +545,17 @@ describe("scratchRun", () => {
               scratch.acquire({ source: { kind: "fork" }, detached: false, isolate: "cwd" }),
             ),
           ).pipe(
-            Effect.provide(makeHarnessLayer(recorded, { applyOptions })),
+            Effect.provide(makeHarnessLayer(recorded, { applyOptions, creationEnvironments })),
             Effect.provide(testSupportLayer()),
           ),
         );
 
-        expect(applyOptions[0]?.serviceEnvironment?.[ServiceName.make("web")]).toEqual({
+        expect(creationEnvironments[0]).toMatchObject({
           TOKEN: "resolved-scratch-token",
         });
         expect(recorded.appliedPlans[0]?.services[ServiceName.make("web")]?.environment).toEqual({
           LANDO_HOST_IP: "host.lando.internal",
-          TOKEN: "${secret:SCRATCH_TOKEN}",
+          TOKEN: { _tag: "SecretRef", reference: "SCRATCH_TOKEN" },
         });
       } finally {
         if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_SECRET_SCRATCH_TOKEN");
@@ -546,6 +567,7 @@ describe("scratchRun", () => {
   test("runs the command in the toolbox scratch and destroys it on scope close", async () => {
     await withTempProject(async (dir) => {
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const stopCalls: DestroyCall[] = [];
       const result = await Effect.runPromise(
         scratchRun({
           command: ["echo", "ok"],
@@ -554,7 +576,7 @@ describe("scratchRun", () => {
           answers: {},
           issues: [],
         }).pipe(
-          Effect.provide(makeHarnessLayer(recorded, { execStdout: "ok\n" })),
+          Effect.provide(makeHarnessLayer(recorded, { execStdout: "ok\n", stopCalls })),
           Effect.provide(testSupportLayer()),
         ),
       );
@@ -576,6 +598,7 @@ describe("scratchRun", () => {
 
       expect(recorded.destroyCalls).toHaveLength(1);
       expect(recorded.destroyCalls[0]?.app).toBe(String(plan.id));
+      expect(stopCalls).toEqual([{ app: String(plan.id), volumes: false }]);
 
       const toolboxService = plan.services[Object.keys(plan.services)[0] as keyof typeof plan.services];
       const mountsCwd =
@@ -668,7 +691,7 @@ describe("scratchRun", () => {
       );
       expect(result.exitCode).toBe(7);
       expect(recorded.destroyCalls).toHaveLength(1);
-      expect(scratchRunSuccessExitCode(result)).toBe(7);
+      expect(appsScratchRunSpec.completion?.(result, {})).toEqual({ ok: false, exitCode: 7 });
     });
   });
 
@@ -1126,8 +1149,11 @@ describe("scratch run rendering", () => {
   });
 
   test("success exit code passes through only non-zero tool exits", () => {
-    expect(scratchRunSuccessExitCode(baseResult)).toBeUndefined();
-    expect(scratchRunSuccessExitCode({ ...baseResult, exitCode: 3 })).toBe(3);
+    expect(appsScratchRunSpec.completion?.(baseResult, {})).toEqual({ ok: true, exitCode: 0 });
+    expect(appsScratchRunSpec.completion?.({ ...baseResult, exitCode: 3 }, {})).toEqual({
+      ok: false,
+      exitCode: 3,
+    });
   });
 
   test("human streaming sends tool stderr to the stderr sink", async () => {
@@ -1150,7 +1176,7 @@ describe("scratch run rendering", () => {
           }),
         ),
       );
-      expect(frames).toEqual([{ _tag: "stderr", chunk: "warn\n", raw: true }]);
+      expect(frames).toEqual([{ _tag: "stderr", chunk: "warn\n", kind: "bytes" }]);
     });
   });
 
@@ -1273,20 +1299,16 @@ describe("scratch run agent env forwarding", () => {
       const secret = "opencode-forwarded-secret";
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
       const io = createBufferedRendererIO();
-      try {
-        await withHostEnv({ OPENCODE: secret }, () =>
-          Effect.runPromise(
-            scratchRun(baseOptions).pipe(
-              Effect.provide(makeHarnessLayer(recorded, { execStdout: `OPENCODE=${secret}\n` })),
-              Effect.provide(RendererOutput.layerStreamFrameSink("text")),
-              Effect.provide(testSupportLayer()),
-              Effect.provide(RendererRuntime.layerPlainService(io)),
-            ),
+      await withHostEnv({ OPENCODE: secret }, () =>
+        Effect.runPromise(
+          scratchRun(baseOptions).pipe(
+            Effect.provide(makeHarnessLayer(recorded, { execStdout: `OPENCODE=${secret}\n` })),
+            Effect.provide(RendererOutput.layerStreamFrameSink("text")),
+            Effect.provide(testSupportLayer()),
+            Effect.provide(RendererRuntime.layerPlainService(io)),
           ),
-        );
-      } finally {
-        resetRegisteredRedactionValuesForTesting();
-      }
+        ),
+      );
       expect(recorded.execCalls[0]?.env).toEqual({ OPENCODE: secret });
       expect(io.stdout()).not.toContain(secret);
       expect(io.stdout()).toContain("OPENCODE=[redacted]");
@@ -1553,6 +1575,8 @@ describe("scratch run streaming spec", () => {
                 operation: "exec",
                 service: "toolbox",
                 message: "exec failed",
+                remediation:
+                  "Confirm service `toolbox` is running and the exec command is valid inside that container, then retry.",
               }),
             ),
         });

@@ -7,7 +7,15 @@ tags: [recipe, django, python]
 
 # Start a Django project
 
-`lando init --recipe django` scaffolds Django on Python with PostgreSQL, Redis, and an optional Celery worker.
+Create a Django development stack with Python, PostgreSQL, Redis, and an
+optional Celery worker. The recipe writes `.lando.yml`, not a Django project.
+Starting the stack keeps the web container available for setup; it does not
+start the Django server.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe django --name=my-django --yes
@@ -17,6 +25,9 @@ lando info
 ```
 
 The named init creates `my-django/`. Change into it before app commands. `--yes` skips the Celery worker. Pass `--answer` to add it.
+
+To choose a different stack, use this initialization command instead of the
+default one above. Run it from the parent directory, not inside the app:
 
 ```sh
 lando init --recipe django --name=my-django --yes \
@@ -50,7 +61,7 @@ The generated Landofile writes `DJANGO_SETTINGS_MODULE: config.settings` into `e
 
 `lando start` keeps the web container running for project setup; it does not start Django's server. The route from `lando info` reaches your app only while the server is running.
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For the day-to-day path (`django-admin`, `DATABASE_URL` in settings, `runserver` bind), see [Run the Django recipe](/guides/recipes/django-workflow/).
 

@@ -1,0 +1,21 @@
+---
+id: yaml-fence-bare-service
+provider: test
+diataxis: tutorial
+---
+
+Bare service body (no top-level Landofile keys).
+
+```yaml
+type: lando
+image: nginx:1.25
+working_dir: /app
+```
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="run">
+      <Run command="version" />
+    </Step>
+  </Scenario>
+</Guide>

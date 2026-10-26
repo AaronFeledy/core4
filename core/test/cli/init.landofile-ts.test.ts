@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import { type LandofileShape, ServiceName } from "@lando/core/schema";
+import { ServiceName } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
 import { InitTargetExistsError } from "@lando/sdk/errors";
+import type { LoadScopedLandofile } from "@lando/sdk/schema";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -110,7 +111,7 @@ const withEnv = async <T>(
   }
 };
 
-const planLandofile = (landofile: LandofileShape) =>
+const planLandofile = (landofile: LoadScopedLandofile) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLayer.layer),
@@ -217,8 +218,8 @@ describe("lando init — canonical Landofile (node-ts)", () => {
 
       await withEnv({ LANDO_NODE_VERSION: undefined, NODE_ENV: undefined }, async () => {
         const landofile = await discoverFrom(result.directory);
-        expect(landofile.name).toBe("discovered-ts-app");
-        const web = landofile.services?.[ServiceName.make("web")];
+        expect(landofile.document.name).toBe("discovered-ts-app");
+        const web = landofile.document.services?.[ServiceName.make("web")];
         expect(web).toBeDefined();
         expect(web?.image).toBe("node:24");
         expect(web?.environment).toEqual({ NODE_ENV: "development" });
@@ -239,7 +240,7 @@ describe("lando init — canonical Landofile (node-ts)", () => {
 
       await withEnv({ LANDO_NODE_VERSION: "22", NODE_ENV: "production" }, async () => {
         const landofile = await discoverFrom(result.directory);
-        const web = landofile.services?.[ServiceName.make("web")];
+        const web = landofile.document.services?.[ServiceName.make("web")];
         expect(web?.image).toBe("node:22");
         expect(web?.environment).toEqual({ NODE_ENV: "production" });
       });
@@ -276,7 +277,7 @@ describe("lando init — canonical Landofile (node-ts)", () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), text, "utf8");
       const landofile = await discoverFrom(dir);
-      expect(landofile.name).toBe(trickyName);
+      expect(landofile.document.name).toBe(trickyName);
     });
   });
 

@@ -21,6 +21,7 @@ import { parseRecipeYaml } from "./parser";
 export const MAX_RECIPE_EXTENDS_DEPTH = 3;
 
 export interface FlattenRecipeContext {
+  readonly onWarn?: (message: string) => void | Promise<void>;
   readonly hops: number;
   readonly chain: ReadonlyArray<string>;
   readonly userDataRoot?: string;
@@ -326,6 +327,7 @@ export const flattenRecipe = (
     chain: ctx?.chain ?? [identityOf(source)],
     ...(ctx?.userDataRoot === undefined ? {} : { userDataRoot: ctx.userDataRoot }),
     ...(ctx?.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: ctx.gitRecipeCloner }),
+    ...(ctx?.onWarn === undefined ? {} : { onWarn: ctx.onWarn }),
     ...(ctx?.allowRecipeTs === undefined ? {} : { allowRecipeTs: ctx.allowRecipeTs }),
     ...(ctx?.jailRoot === undefined ? {} : { jailRoot: ctx.jailRoot }),
   });

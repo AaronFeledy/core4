@@ -13,17 +13,23 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
-import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  loopbackTcpHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 import {
   type AuthoredHostsWire,
   type PmaCreds,
   authoredPmaCreds,
-  credentialsFor,
   resolveAuthoredHosts,
 } from "./_phpmyadmin-hosts.ts";
+import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
+const PHPMYADMIN_LISTENER = { port: DEFAULT_PORT, variable: "APACHE_PORT", daemon: "phpMyAdmin" } as const;
 const DB_TYPES = ["mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7", "mariadb"] as const;
 const VERSIONS = ["5", "latest"] as const;
 const ARTIFACTS = {
@@ -36,15 +42,11 @@ export const PHPMYADMIN_WIRE_FEATURE_ID = "service-lando.phpmyadmin.wire";
 
 const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = service.port ?? DEFAULT_PORT;
+  assertListenerConfig(service, PHPMYADMIN_LISTENER);
+  const port = plannedPort(service, PHPMYADMIN_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS.latest });
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(port),
-    protocol: "http",
-    name: ctx.serviceName,
-  });
+  ctx.addEnv("APACHE_PORT", String(port));
   ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
 
   applyAuthoredProcessFields(ctx);
@@ -54,6 +56,13 @@ export const phpmyadminServiceFeature: ServiceFeatureDefinition = {
   id: PHPMYADMIN_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, PHPMYADMIN_LISTENER),
+        protocol: "http",
+      }),
+    ),
   apply: serviceFeatureApply(
     PHPMYADMIN_FEATURE_ID,
     "phpmyadmin service feature failed to apply",
@@ -70,15 +79,18 @@ const makePhpMyAdminServiceType = (id: string, image: string): ServiceType => ({
   identity: rootIdentity(),
   schema: PhpMyAdminServiceConfig,
   resolve: (input) => {
-    return Effect.succeed({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: "phpmyadmin",
-        image: input.service.image ?? image,
-        certs: input.service.certs ?? true,
-      },
-      features: [{ id: PHPMYADMIN_FEATURE_ID }],
+    return serviceTypeResolve(id, "phpmyadmin service type failed to resolve", () => {
+      assertListenerConfig(input.service, PHPMYADMIN_LISTENER);
+      return {
+        base: "lando",
+        normalizedConfig: {
+          ...input.service,
+          type: "phpmyadmin",
+          image: input.service.image ?? image,
+          certs: input.service.certs ?? true,
+        },
+        features: [{ id: PHPMYADMIN_FEATURE_ID }],
+      };
     });
   },
 });
@@ -104,7 +116,7 @@ const discoveredSiblings = (
 
 const siblingHasHealthProbe = (sibling: AppFeatureServiceView): boolean => {
   const healthcheck = sibling.normalizedConfig.healthcheck;
-  return healthcheck !== undefined && healthcheck.kind !== "none";
+  return healthcheck !== undefined && healthcheck !== false;
 };
 
 const addSiblingDependencies = (
@@ -122,10 +134,11 @@ const addSiblingDependencies = (
 
 const applyPmaEnv = (
   mutator: AppFeatureServiceMutators,
-  hosts: ReadonlyArray<string>,
+  target: { readonly hosts: ReadonlyArray<string>; readonly ports: readonly number[] },
   creds: PmaCreds,
 ): void => {
-  mutator.addEnv("PMA_HOSTS", hosts.join(","));
+  mutator.addEnv("PMA_HOSTS", target.hosts.join(","));
+  mutator.addEnv("PMA_PORTS", target.ports.join(","));
   mutator.addEnv("PMA_USER", creds.user);
   mutator.addEnv("PMA_PASSWORD", creds.password);
 };
@@ -137,8 +150,7 @@ const applyPhpMyAdminWire = (ctx: AppFeatureContext): Effect.Effect<void, PhpMyA
   const authored = new Map<string, AuthoredHostsOk>();
   for (const view of ctx.selected) {
     if (view.serviceType !== "phpmyadmin") continue;
-    const hosts = authoredHosts(view.normalizedConfig);
-    if (hosts === undefined) continue;
+    const hosts = authoredHosts(view.normalizedConfig) ?? siblings.map((sibling) => sibling.serviceName);
     const resolved = resolveAuthoredHosts({
       hosts,
       siblings,
@@ -160,16 +172,10 @@ const applyPhpMyAdminWire = (ctx: AppFeatureContext): Effect.Effect<void, PhpMyA
     if (mutator.service.serviceType !== "phpmyadmin") return;
     const override = authored.get(mutator.service.serviceName);
     if (override !== undefined) {
-      applyPmaEnv(mutator, override.hosts, override.creds);
+      applyPmaEnv(mutator, override, override.creds);
       addSiblingDependencies(mutator, override.matched);
       return;
     }
-    applyPmaEnv(
-      mutator,
-      siblings.map((sibling) => sibling.serviceName),
-      credentialsFor(siblings),
-    );
-    addSiblingDependencies(mutator, siblings);
   });
   return Effect.void;
 };

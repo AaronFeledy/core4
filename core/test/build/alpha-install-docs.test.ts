@@ -37,7 +37,10 @@ describe("alpha install and bug report docs", () => {
     expect(docs).not.toContain("Windows and macOS binaries are deferred");
     expect(docs).not.toContain("dev-prerelease");
     expect(docs).not.toContain("build-linux-x64");
-    expect(docs).toMatch(/Intel Mac[\s\S]{0,1200}--provider=docker/);
+    expect(docs).toContain(
+      "On Intel Macs (`darwin-x64`), the managed runtime is not supported: install and start Docker Desktop before setup, then choose Docker when setup asks.",
+    );
+    expect(docs).toContain("```bash\nlando setup --provider=docker\n```");
   });
 
   test("links alpha install docs from README", async () => {

@@ -7,12 +7,17 @@ import { Cause, DateTime, Effect, Option } from "effect";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
 import { startDetachedHostProxyWorker as startDetachedHostProxyWorkerWithPrivateFileAccess } from "@lando/engine/subsystems/host-proxy/detached-worker";
-import { defaultSpawnWorker } from "@lando/engine/subsystems/host-proxy/worker-process";
+import { defaultSpawnWorker as spawnWithPrivateFileAccess } from "@lando/engine/subsystems/host-proxy/worker-process";
 import { workerStatePath } from "@lando/engine/subsystems/host-proxy/worker-state";
 import "../../../src/runtime/engine-composition.ts";
 import { ownerOnlyFileAccess } from "../../_support/private-file-access.ts";
+import { closedInputWorker } from "./closed-input-worker.ts";
 
 const MEBIBYTE = 1024 * 1024;
+const defaultSpawnWorker = (
+  spec: Parameters<typeof spawnWithPrivateFileAccess>[0],
+  options?: Parameters<typeof spawnWithPrivateFileAccess>[1],
+) => spawnWithPrivateFileAccess({ ...spec, privateFileAccess: ownerOnlyFileAccess }, options);
 const startDetachedHostProxyWorker = (
   options: Omit<Parameters<typeof startDetachedHostProxyWorkerWithPrivateFileAccess>[0], "privateFileAccess">,
 ) =>
@@ -26,7 +31,6 @@ const plan: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -76,7 +80,7 @@ console.log(JSON.stringify({
 describe("detached host-proxy worker payload delivery", () => {
   test("delivers the complete payload before closing worker stdin", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-input-"));
-    const worker = defaultSpawnWorker({ argv: [process.execPath, await makeInputWorker(root), "0"] });
+    const worker = await defaultSpawnWorker({ argv: [process.execPath, await makeInputWorker(root), "0"] });
     try {
       const payload = "complete payload\n";
 
@@ -92,7 +96,7 @@ describe("detached host-proxy worker payload delivery", () => {
 
   test("waits for a slow worker to drain pipe backpressure", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-input-"));
-    const worker = defaultSpawnWorker({ argv: [process.execPath, await makeInputWorker(root), "250"] });
+    const worker = await defaultSpawnWorker({ argv: [process.execPath, await makeInputWorker(root), "250"] });
     try {
       const payload = "x".repeat(2 * MEBIBYTE);
       let delivered = false;
@@ -114,7 +118,9 @@ describe("detached host-proxy worker payload delivery", () => {
 
   test("rejects a payload larger than the bounded startup frame", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-input-"));
-    const worker = defaultSpawnWorker({ argv: [process.execPath, await makeInputWorker(root), "5000"] });
+    const worker = await defaultSpawnWorker({
+      argv: [process.execPath, await makeInputWorker(root), "5000"],
+    });
     try {
       const oversized = "x".repeat(16 * MEBIBYTE + 1);
       let failure: Error | undefined;
@@ -127,7 +133,8 @@ describe("detached host-proxy worker payload delivery", () => {
       }
 
       if (failure === undefined) throw new Error("Expected oversized worker payload to fail.");
-      expect(failure.message).toBe("Host-proxy worker startup payload exceeds the 16 MiB limit.");
+      expect(failure.message).toContain("Host-proxy worker startup payload exceeds the 16 MiB limit.");
+      expect(failure.message).toContain(worker.logPath);
     } finally {
       await worker.terminate();
       await rm(root, { recursive: true, force: true });
@@ -144,8 +151,11 @@ describe("detached host-proxy worker payload delivery", () => {
         plan: { ...plan, name: "x".repeat(16 * MEBIBYTE + 1) },
         paths: { userDataRoot: root },
         shimArtifactPath: join(root, "lando"),
-        spawnWorker: () => {
-          const worker = defaultSpawnWorker({ argv: [process.execPath, scriptPath, "500"] });
+        spawnWorker: async () => {
+          const worker = await defaultSpawnWorker({
+            argv: [process.execPath, scriptPath, "500"],
+            logsDir: root,
+          });
           spawnedPid = worker.pid;
           return worker;
         },
@@ -157,8 +167,8 @@ describe("detached host-proxy worker payload delivery", () => {
       const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toMatchObject({
         _tag: "HostProxyTransportUnavailableError",
-        message: "Host-proxy worker startup payload exceeds the 16 MiB limit.",
-        remediation: "Inspect the detached host-proxy worker startup failure.",
+        message: expect.stringContaining("Host-proxy worker startup payload exceeds the 16 MiB limit."),
+        remediation: expect.stringContaining(root),
       });
       expect(await Bun.file(workerStatePath(app, { userDataRoot: root })).exists()).toBe(false);
       expect(spawnedPid).toBeNumber();
@@ -179,9 +189,9 @@ describe("detached host-proxy worker payload delivery", () => {
         plan: { ...plan, name: "x".repeat(2 * MEBIBYTE) },
         paths: { userDataRoot: root },
         shimArtifactPath: join(root, "lando"),
-        spawnWorker: () => {
-          const worker = defaultSpawnWorker(
-            { argv: [process.execPath, scriptPath, "300"] },
+        spawnWorker: async () => {
+          const worker = await defaultSpawnWorker(
+            { argv: [process.execPath, scriptPath, "300"], logsDir: root },
             { payloadTimeoutMs: 25 },
           );
           spawnedPid = worker.pid;
@@ -195,8 +205,8 @@ describe("detached host-proxy worker payload delivery", () => {
       const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toMatchObject({
         _tag: "HostProxyTransportUnavailableError",
-        message: "Host-proxy worker startup payload delivery timed out after 15 seconds.",
-        remediation: "Inspect the detached host-proxy worker startup failure.",
+        message: expect.stringContaining("Unable to deliver detached worker startup payload."),
+        remediation: expect.stringContaining(root),
       });
       expect(await Bun.file(workerStatePath(app, { userDataRoot: root })).exists()).toBe(false);
       expect(spawnedPid).toBeNumber();
@@ -208,68 +218,17 @@ describe("detached host-proxy worker payload delivery", () => {
   });
 });
 
-const makeCrashWorker = async (root: string): Promise<string> => {
-  const path = join(root, "crash-worker.ts");
-  await writeFile(
-    path,
-    `console.error("worker boom: missing compiled entry");
-process.exit(7);
-`,
-  );
-  return path;
-};
-
 describe("detached host-proxy worker readiness diagnostics", () => {
-  test("does not ignore worker stderr for the worker lifetime", async () => {
-    const source = await Bun.file(
-      new URL("../../../../engine/src/subsystems/detached-worker/process.ts", import.meta.url),
-    ).text();
-    expect(source).not.toContain('stderr: "ignore"');
-  });
-
-  test("captures stderr, creates logsDir, and reports exitCode on early exit", async () => {
-    const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-crash-"));
-    const logsDir = join(root, "logs");
-    const worker = defaultSpawnWorker({
-      argv: [process.execPath, await makeCrashWorker(root), "--app-id", "demo"],
-      logsDir,
-    });
-    try {
-      let failure: Error | undefined;
-      try {
-        await worker.readReady();
-      } catch (cause) {
-        if (cause instanceof Error) failure = cause;
-        else throw cause;
-      }
-      if (failure === undefined) throw new Error("Expected worker readiness to fail.");
-      expect(failure.name).toBe("HostProxyWorkerExitedBeforeReadyError");
-      expect(failure.message).toContain("exitCode=7");
-      expect(failure.message).toContain("worker boom: missing compiled entry");
-      const logPath = join(logsDir, "host-proxy-worker-demo.log");
-      expect(await Bun.file(logPath).exists()).toBe(true);
-      expect(await Bun.file(logPath).text()).toContain("worker boom: missing compiled entry");
-    } finally {
-      await worker.terminate();
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  test("maps an early worker exit onto a tagged error that names the log file", async () => {
+  test("maps a worker crash before reading stdin onto a tagged error that names the log file", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-crash-map-"));
     const logsDir = join(root, "logs");
-    const scriptPath = await makeCrashWorker(root);
     const exit = await Effect.runPromiseExit(
       startDetachedHostProxyWorker({
         app,
-        plan,
+        plan: { ...plan, name: "x".repeat(2 * MEBIBYTE) },
         paths: { userCacheRoot: root, userDataRoot: root },
         shimArtifactPath: join(root, "lando"),
-        spawnWorker: () =>
-          defaultSpawnWorker({
-            argv: [process.execPath, scriptPath, "--app-id", "demo"],
-            logsDir,
-          }),
+        spawnWorker: () => closedInputWorker(logsDir, true),
       }),
     );
     try {
@@ -281,7 +240,7 @@ describe("detached host-proxy worker readiness diagnostics", () => {
         remediation: `Inspect ${join(logsDir, "host-proxy-worker-demo.log")} for the worker crash.`,
       });
       expect(String(failure.message)).toContain("exitCode=7");
-      expect(String(failure.message)).toContain("worker boom: missing compiled entry");
+      expect(String(failure.message)).toContain("controlled worker crash");
     } finally {
       if (exit._tag === "Success") await exit.value.close();
       await rm(root, { recursive: true, force: true });

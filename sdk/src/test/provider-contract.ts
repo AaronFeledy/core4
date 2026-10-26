@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Duration, Effect, Result, Schema, Stream } from "effect";
+import { Duration, Effect, Redacted, Result, Schema, Stream } from "effect";
 
 import {
   AbsolutePath,
@@ -14,8 +14,10 @@ import {
   ProviderCapabilities,
   ProviderId,
 } from "../schema/index.ts";
-import type { RuntimeProviderShape } from "../services/index.ts";
+import type { LogChunk, RuntimeProviderShape } from "../services/index.ts";
 import {
+  CONTRACT_LONG_LINE,
+  CONTRACT_SPLIT_LINE,
   type ContractFailure,
   REQUIRED_CAPABILITY_KEYS,
   TEST_APP_ID,
@@ -41,12 +43,22 @@ export const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin",
  * lifecycle method types, fixture apply/inspect/destroy round-trips, provider
  * identity, status, version fields, capability completeness, ApplyResult
  * shape, re-apply idempotency, list shape, and volume-preserving destroy.
+ * Supply a digest-qualified fixture reference to also verify artifact pull integrity.
  */
 export const runProviderContract = Effect.fnUntraced(function* (
   provider: RuntimeProviderShape,
+  digestQualifiedRef?: string,
 ): Effect.fn.Return<void, ContractFailure> {
   const providerId = ProviderId.make(provider.id);
-  const testAppPlan = makeTestAppPlan(providerId);
+  const testAppPlan = {
+    ...makeTestAppPlan(providerId),
+    services: {
+      [TEST_SERVICE_NAME]: {
+        ...makeTestServicePlan(providerId),
+        environment: { REQUESTED: "contract=requested", UNREQUESTED: "contract-unrequested" },
+      },
+    },
+  };
   const capabilities = Schema.decodeUnknownResult(ProviderCapabilities)(provider.capabilities);
 
   yield* requireContract(isNonEmptyString(provider.id), "provider exposes a non-empty id", provider.id);
@@ -117,6 +129,10 @@ export const runProviderContract = Effect.fnUntraced(function* (
   yield* requireContract(Effect.isEffect(provider.isAvailable), "isAvailable is Effect-typed");
   yield* requireContract(Effect.isEffect(provider.getStatus), "getStatus is Effect-typed");
   yield* requireContract(Effect.isEffect(provider.getVersions), "getVersions is Effect-typed");
+  const beforeApply = yield* provider
+    .readAppEnvironment({ app: TEST_APP_ID }, { [TEST_SERVICE_NAME]: ["REQUESTED"] })
+    .pipe(Effect.mapError(mapProviderFailure("readAppEnvironment resolves without creating resources")));
+  yield* requireContract(beforeApply.length === 0, "readAppEnvironment returns no values before apply");
   yield* requireContract(
     Effect.isEffect(provider.apply(testAppPlan, { reconcile: true })),
     "apply is Effect-typed",
@@ -295,6 +311,18 @@ export const runProviderContract = Effect.fnUntraced(function* (
     versions,
   );
 
+  if (provider.capabilities.artifactPull && digestQualifiedRef !== undefined) {
+    const digest = /^[^@\s]+@([a-zA-Z][a-zA-Z0-9_+.-]*:[a-zA-Z0-9=_-]+)$/.exec(digestQualifiedRef)?.[1];
+    yield* requireContract(digest !== undefined, "pull fixture is digest-qualified", digestQualifiedRef);
+    const artifact = yield* provider
+      .pullArtifact({ ref: digestQualifiedRef })
+      .pipe(Effect.mapError(mapProviderFailure("pullArtifact succeeds for the digest-qualified fixture")));
+    yield* requireContract(artifact.digest === digest, "pullArtifact reports the requested digest", {
+      reference: digestQualifiedRef,
+      artifact,
+    });
+  }
+
   const applyResult = yield* Effect.scoped(provider.apply(testAppPlan, { reconcile: true })).pipe(
     Effect.mapError(mapProviderFailure("apply succeeds for the contract fixture")),
   );
@@ -302,6 +330,25 @@ export const runProviderContract = Effect.fnUntraced(function* (
     typeof applyResult.changed === "boolean",
     "apply returns ApplyResult with a boolean changed field",
     applyResult,
+  );
+
+  const environment = yield* provider
+    .readAppEnvironment({ app: TEST_APP_ID }, { [TEST_SERVICE_NAME]: ["REQUESTED"] })
+    .pipe(Effect.mapError(mapProviderFailure("readAppEnvironment resolves after apply")));
+  yield* requireContract(
+    environment.length === 1 && environment.every(Redacted.isRedacted),
+    "readAppEnvironment returns exactly one Redacted requested value after apply",
+  );
+  yield* requireContract(
+    environment.map(Redacted.value).join() === "contract=requested",
+    "readAppEnvironment returns the applied value without unrequested values",
+  );
+  const missingEnvironment = yield* provider
+    .readAppEnvironment({ app: TEST_APP_ID }, { [TEST_SERVICE_NAME]: ["MISSING"] })
+    .pipe(Effect.mapError(mapProviderFailure("readAppEnvironment resolves for missing names")));
+  yield* requireContract(
+    missingEnvironment.length === 0,
+    "readAppEnvironment excludes unrequested applied names",
   );
 
   yield* Effect.scoped(provider.apply(testAppPlan, { reconcile: true })).pipe(
@@ -336,19 +383,37 @@ export const runProviderContract = Effect.fnUntraced(function* (
   yield* requireContract(typeof execResult.stdout === "string", "exec result includes stdout", execResult);
   yield* requireContract(typeof execResult.stderr === "string", "exec result includes stderr", execResult);
 
-  const logChunks = yield* Effect.timeoutOrElse(
-    provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: true, tail: 20 }).pipe(
-      Stream.take(1),
-      Stream.runCollect,
-      Effect.map((chunks) => Array.from(chunks)),
+  const logChunks: LogChunk[] = [];
+  let sawSplitLine = false;
+  let sawLongLine = false;
+  const logDetails = () =>
+    logChunks.map((chunk) => ({ ...chunk, line: chunk.line.slice(0, 120), length: chunk.line.length }));
+  yield* Effect.timeoutOrElse(
+    provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME, plan: testAppPlan }, { follow: true }).pipe(
+      Stream.takeUntil((chunk) => {
+        logChunks.push(chunk);
+        sawSplitLine ||= chunk.line === CONTRACT_SPLIT_LINE;
+        sawLongLine ||= chunk.line === CONTRACT_LONG_LINE;
+        return sawSplitLine && sawLongLine;
+      }),
+      Stream.runDrain,
       Effect.mapError(mapProviderFailure("logs emits structured chunks")),
     ),
     {
-      duration: Duration.seconds(15),
-      orElse: () => Effect.fail((() => contractFailure("logs emits at least one chunk", []))()),
+      duration: Duration.seconds(30),
+      orElse: () => Effect.fail(contractFailure("logs emits both complete console lines", logDetails())),
     },
   );
-  yield* requireContract(logChunks.length > 0, "logs emits at least one chunk", logChunks);
+  yield* requireContract(
+    logChunks.filter((chunk) => chunk.line === CONTRACT_SPLIT_LINE).length === 1,
+    "logs reassemble a line written in pieces",
+    logDetails(),
+  );
+  yield* requireContract(
+    logChunks.filter((chunk) => chunk.line === CONTRACT_LONG_LINE).length === 1,
+    "logs reassemble a line longer than the engine split size",
+    logDetails(),
+  );
   for (const chunk of logChunks) {
     yield* requireContract(chunk.service === TEST_SERVICE_NAME, "log chunk includes service name", chunk);
     yield* requireContract(

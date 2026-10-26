@@ -6,6 +6,7 @@ import {
   RecipeManifest,
   getEditorJsonSchema,
   getJsonSchema,
+  validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 import { LandofileStandardSchema, RecipeManifestStandardSchema } from "@lando/sdk/schema/standard";
 import {
@@ -14,7 +15,7 @@ import {
   JsonSchema,
   Result,
   Schema,
-  SchemaIssue,
+  type SchemaIssue,
   SchemaParser,
   SchemaRepresentation,
 } from "effect";
@@ -31,6 +32,17 @@ const root = new URL("../../../", import.meta.url);
 const parseOptions = { onExcessProperty: "error", errors: "all" } as const;
 
 const curated = [
+  { id: "empty-healthcheck-command", input: { name: "demo", services: { web: { healthcheck: "" } } } },
+  { id: "empty-healthcheck-argv", input: { name: "demo", services: { web: { healthcheck: [] } } } },
+  { id: "true-healthcheck", input: { name: "demo", services: { web: { healthcheck: true } } } },
+  {
+    id: "generic-app-mount-type",
+    input: { name: "demo", services: { web: { appMount: { target: "/x", type: "bind" } } } },
+  },
+  {
+    id: "generic-app-mount-source",
+    input: { name: "demo", services: { web: { appMount: { target: "/x", source: "/host" } } } },
+  },
   { id: "unknown-top-level", input: { name: "demo", typo: true } },
   { id: "unknown-service-key", input: { name: "demo", services: { web: { imgae: "nginx" } } } },
   { id: "wrong-name-type", input: { name: 5 } },
@@ -53,6 +65,15 @@ const curated = [
 ] as const;
 
 const curatedValid = [
+  { id: "false-healthcheck", input: { name: "demo", services: { web: { healthcheck: false } } } },
+  { id: "string-healthcheck", input: { name: "demo", services: { web: { healthcheck: "pg_isready" } } } },
+  { id: "argv-healthcheck", input: { name: "demo", services: { web: { healthcheck: ["pg_isready"] } } } },
+  { id: "string-app-mount", input: { name: "demo", services: { web: { appMount: "/site" } } } },
+  { id: "false-app-mount", input: { name: "demo", services: { web: { appMount: false } } } },
+  {
+    id: "unvalidated-app-mount-destination",
+    input: { name: "demo", services: { web: { appMount: "disabled" } } },
+  },
   {
     id: "extension-values",
     input: { name: "demo", "x-meta": { arbitrary: [null, 3] }, services: { web: { "x-meta": true } } },
@@ -83,7 +104,9 @@ const INEXPRESSIBLE = [
 ] as const;
 
 const SKIPPED = [
+  { suffix: ".lando.stop", reason: "Discovery stop marker, not a Landofile document." },
   { suffix: ".lando.ts", reason: "TypeScript program, not a YAML Landofile document." },
+  { suffix: ".lando.base.yml", reason: "Partial base layer, not a canonical Landofile document." },
   { suffix: ".lando.local.yml", reason: "Partial overlay layer, not a canonical Landofile document." },
   { suffix: ".lando.recipe.yml", reason: "Recipe overlay layer, not a canonical Landofile document." },
   { suffix: ".lando.tasks.yml", reason: "Tooling include fragment, not a canonical Landofile document." },
@@ -98,7 +121,7 @@ function issueDetails(issues: readonly StandardSchemaV1.Issue[]) {
 
 function decoderIssues(decoded: Result.Result<unknown, Schema.SchemaError>) {
   return Result.isFailure(decoded)
-    ? issueDetails(SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues)
+    ? issueDetails(validationIssuesFromSchemaIssue(decoded.failure.issue))
     : [];
 }
 
@@ -172,6 +195,7 @@ const INVALID_INPUT_FIXTURES = new Map([
   ],
   ["expressions/fixtures/expressions-plan-time-typed-field", "Planner scopes cannot supply typed values."],
   ["scripting-with-json/fixtures/unknown-service-key", "Deliberate misspelled service property."],
+  ["networks/fixtures/networks-pinned-address", "Deliberately pins a network address Lando rejects."],
   ["config-translate/fixtures/lando3-compose-arguments", "Legacy Lando 3 source, not v4 input."],
   ["build-steps/fixtures/build-steps-invalid-user", "Deliberately malformed build user."],
   [
@@ -182,6 +206,16 @@ const INVALID_INPUT_FIXTURES = new Map([
   ["convert-from-lando-3/fixtures/lando3-blocked", "Legacy source deliberately blocked by translation."],
   ["convert-from-lando-3/fixtures/lando3-layers", "Legacy layered source requires translation."],
   ["config-lint/fixtures/config-lint-invalid", "Deliberate unknown keys and invalid ports."],
+  ["config-lint/fixtures/wrong-type", "Deliberate wrong boolean type for fragment and effective parity."],
+  [
+    "config-lint/fixtures/wrong-filter-prefix",
+    "Deliberate wrong prefix type on a selected route-filter member.",
+  ],
+  ["config-views/fixtures/invalid", "Deliberate invalid runtime for raw and merged inspection."],
+  [
+    "your-landofile/fixtures/flow-mapping-rejected",
+    "Deliberate populated flow mapping as an environment value.",
+  ],
 ]);
 
 const inputValid = [
@@ -205,6 +239,8 @@ const inputValid = [
   },
 ] as const;
 const inputInvalid = [
+  { id: "disabled-tooling-string", input: { tooling: { retired: "disabled" } } },
+  { id: "empty-tooling-string", input: { tooling: { retired: "" } } },
   { id: "plain-boolean", input: { name: "demo", services: { web: { primary: "maybe" } } } },
   { id: "plain-number", input: { name: "demo", router: { httpPort: "abc" } } },
   { id: "surrounding-spaces", input: { name: "demo", router: { httpPort: "  {{ number(env.PORT) }}  " } } },

@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { CI_PLATFORMS } from "../../../scripts/ci-platforms.ts";
+
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const appLifecycleGuidePath = resolve(repoRoot, "docs/guides/tutorial/app-lifecycle.mdx");
 const workflowsDir = resolve(repoRoot, ".github/workflows");
@@ -65,15 +67,19 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(24);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(26);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
     const bundledCodegen = findIndentedBlock(findIndentedBlock(workflow, "jobs"), "bundled-codegen", 2);
     const catalog = bundledCodegen.indexOf("run: bun run codegen:tomcat-catalog");
+    const providerImages = bundledCodegen.indexOf("run: bun run codegen:provider-images");
     const plugins = bundledCodegen.indexOf("run: bun run codegen:bundled-plugins");
     expect(catalog).toBeGreaterThanOrEqual(0);
     expect(plugins).toBeGreaterThan(catalog);
+    // Bundled plugins import container-runtime, which imports the gitignored provider-images output.
+    expect(providerImages).toBeGreaterThanOrEqual(0);
+    expect(plugins).toBeGreaterThan(providerImages);
   });
 
   test("keeps generated workflows as the only active workflows", async () => {
@@ -86,7 +92,9 @@ describe("ci workflow", () => {
     expect(activeWorkflowFiles).toEqual([
       "ci.yml",
       "compose-vendor-bump.yml",
+      "dependency-audit.yml",
       "drupal-journey.yml",
+      "install-lifecycle.yml",
       "nightly.yml",
       "php-base-images.yml",
       "platform-readiness.yml",
@@ -128,10 +136,9 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain("        run: bun install --frozen-lockfile");
     expect(providerContracts).toContain("      - name: Build Linux x64 binary for managed Lando provider");
     expect(providerContracts).toContain("          bun run --filter='@lando/core' build:manifest");
-    expect(providerContracts).toContain("          bun run --filter='@lando/core' build:log-file-helper");
-    expect(providerContracts).toContain(
-      "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });\"",
-    );
+    expect(providerContracts).not.toContain("build:log-file-helper");
+    expect(providerContracts).not.toContain("dist/log-file-access");
+    expect(providerContracts).not.toContain("build:host-proxy-shim");
     expect(providerContracts).toContain(
       '          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external',
     );
@@ -141,18 +148,22 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
     expect(providerContracts).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_URL:-}"');
     expect(providerContracts).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_SHA256:-}"');
-    expect(providerContracts).toContain('          export LANDO_USER_CONF_ROOT="$RUNNER_TEMP/lando-conf"');
-    expect(providerContracts).toContain('          export LANDO_USER_DATA_ROOT="$RUNNER_TEMP/lando-data"');
-    expect(providerContracts).toContain('          export LANDO_USER_CACHE_ROOT="$RUNNER_TEMP/lando-cache"');
+    expect(providerContracts).toContain(
+      'echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"',
+    );
+    expect(providerContracts).toContain(
+      'echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"',
+    );
+    expect(providerContracts).toContain(
+      'echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"',
+    );
     expect(providerContracts).toContain(
       "          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync",
     );
     expect(providerContracts).toContain("      - name: Verify managed Lando socket");
+    expect(providerContracts).toContain('          test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"');
     expect(providerContracts).toContain(
-      '          test -S "$RUNNER_TEMP/lando-data/runtime/run/podman.sock"',
-    );
-    expect(providerContracts).toContain(
-      '          echo "LANDO_TEST_PODMAN_SOCKET=$RUNNER_TEMP/lando-data/runtime/run/podman.sock" >> "$GITHUB_ENV"',
+      '          echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"',
     );
     expect(providerContracts).toContain("      - name: Install Podman 6 toolchain");
     expect(providerContracts).toContain("        if: ${{ matrix.cell == 'podman-podman6-linux' }}");
@@ -162,7 +173,7 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain("      - name: Configure Docker socket");
     expect(providerContracts).toContain("      - name: Pull live acceptance fixture images");
     expect(providerContracts).toContain(
-      '                CONTAINERS_REGISTRIES_CONF="$RUNNER_TEMP/lando-data/runtime/config/registries.conf" "$RUNNER_TEMP/lando-data/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"',
+      '                CONTAINERS_REGISTRIES_CONF="$LANDO_USER_DATA_ROOT/runtime/config/registries.conf" "$LANDO_USER_DATA_ROOT/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"',
     );
     expect(providerContracts).toContain(
       '              podman --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"',
@@ -243,7 +254,7 @@ describe("ci workflow", () => {
       '<Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>',
     );
     expect(workflow).toContain("name: nightly");
-    expect(providerLandoE2e).toContain("    runs-on: ubuntu-24.04");
+    expect(providerLandoE2e).toContain("    runs-on: ubuntu-26.04");
     expect(providerLandoE2e).toContain("    timeout-minutes: 60");
     expect(providerLandoE2e).toContain("      - name: Install Podman 6 toolchain");
     expect(providerLandoE2e).toContain("      - name: Assert Podman 6 host contract");
@@ -258,7 +269,7 @@ describe("ci workflow", () => {
     );
     expect(providerLandoE2e).toContain('          LANDO_GUIDE_E2E: "1"');
     expect(providerLandoE2e).toContain('          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"');
-    expect(providerLandoE2e).toContain("          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock");
+    expect(providerLandoE2e).toContain('echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"');
     expect(providerLandoE2e).toContain("          LANDO_CONFIG__default_provider_id: lando");
     expect(providerLandoE2e).toContain("      - name: Run live integration suites");
     expect(providerLandoE2e).toContain("          bun test core/test/live");
@@ -285,7 +296,7 @@ describe("ci workflow", () => {
     const jobs = findIndentedBlock(workflow, "jobs");
     const published = findIndentedBlock(jobs, "published-manifest-setup-linux-x64", 2);
 
-    expect(published).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(published).toContain("        runs-on: [ubuntu-26.04]");
     expect(published).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(published).toContain(
       "      - name: Prepare provider via lando setup against the published manifest",
@@ -359,7 +370,7 @@ describe("ci workflow", () => {
     const jobs = findIndentedBlock(workflow, "jobs");
     const refresh = findIndentedBlock(jobs, "refresh-test-timings-linux-x64", 2);
 
-    expect(refresh).toContain("    runs-on: ubuntu-24.04");
+    expect(refresh).toContain("    runs-on: ubuntu-26.04");
     expect(refresh).toContain("    timeout-minutes: 60");
     expect(refresh).toContain("      - name: Regenerate derived sources");
     expect(refresh).toContain("        run: bun run codegen");
@@ -448,10 +459,8 @@ describe("ci workflow", () => {
     expect(triggers).toContain("  push:");
     expect(triggers).toContain("  workflow_dispatch:");
     expect(staticChecksPlatform).toContain("        include:");
-    expect(staticChecksPlatform).toContain(`          - platform: linux-x64
-            runs-on: ubuntu-24.04`);
-    expect(staticChecksPlatform).toContain(`          - platform: linux-x64
-            runs-on: ubuntu-26.04`);
+    expect(staticChecksPlatform).toContain('"platform":"linux-x64","runs-on":"ubuntu-26.04"');
+    expect(staticChecksPlatform).toContain("fromJSON(needs.selection.outputs.broad");
     expect(staticChecksPlatform).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(staticChecksPlatform).toContain("    timeout-minutes: 35");
     expect(staticChecksPlatform).toContain("        uses: oven-sh/setup-bun@v2");
@@ -463,16 +472,19 @@ describe("ci workflow", () => {
       "        run: bun test state-store/test/state-store/private-file-access.test.ts",
     );
     expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
-    expect(staticChecksPlatform).not.toContain("        run: bun run typecheck");
+    expect(staticChecksPlatform).toContain("        run: bun run typecheck");
+    expect(staticChecksPlatform).toContain("        if: matrix.platform == 'linux-x64'");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
     expect(staticChecksPlatform.match(/^ {6}- name: Boundary gates$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform.match(/^ {8}run: bun run check:boundaries$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform).toContain("        run: bun run check:telemetry-inventory");
     expect(staticChecksPlatform).toContain("        run: bun run check:compose-coverage");
     expect(staticChecksPlatform).toContain("        run: bun run check:runtime-bundle-manifest");
+    expect(staticChecksPlatform).toContain("          bun run check:compiled-binary-notices");
+    expect(staticChecksPlatform).toContain("          bun install --frozen-lockfile --os='*' --cpu='*'");
     expect(staticChecksPlatform).toContain("      - name: Static scope notice for portable static matrix");
     expect(staticChecksPlatform).toContain(
-      "runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ubuntu-24.04, ubuntu-26.04",
+      "runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ubuntu-26.04",
     );
     expect(staticChecksPlatform).not.toContain("bun run test:unit");
     expect(staticChecksPlatform).not.toContain(
@@ -485,30 +497,30 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain(
       "::notice title=ci-timing::static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}",
     );
-    expect(staticChecks).toContain("    needs: [static-checks-platform]");
-    expect(staticChecks).toContain("    if: always()");
-    expect(staticChecks).toContain(
-      '          if [[ "${{ needs.static-checks-platform.result }}" != "success" ]]; then',
-    );
-    expect(staticChecks).toContain(
-      '            echo "static-checks platform matrix result: ${{ needs.static-checks-platform.result }}"',
-    );
-    expect(staticChecks).toContain("            exit 1");
-    expect(staticChecks).toContain('          echo "static-checks platform matrix passed"');
+    expect(staticChecks).toContain("    needs: [selection, static-checks-platform, container-helper-arm64]");
+    expect(staticChecks).toContain("always() && !cancelled()");
+    expect(staticChecks).toContain("run: bun run scripts/validate-ci.ts");
+    expect(staticChecks).toContain("CI_NEEDS: ${{ toJSON(needs) }}");
 
     const unitTestShards = findIndentedBlock(jobs, "unit-tests-linux-x64-shard", 2);
-    expect(unitTestShards).not.toContain("    needs:");
+    // Unit tests that compile `lando` or run the real helper need the built container helper.
+    expect(unitTestShards).toContain("    needs: [selection, container-helper]");
+    expect(unitTestShards).toContain("          path: core/container-helper/dist");
+    expect(unitTestShards).toContain(
+      "        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper",
+    );
+    expect(unitTestShards.indexOf("Download container helper")).toBeLessThan(
+      unitTestShards.indexOf("Unit test shard"),
+    );
     expect(unitTestShards).toContain("        shard: [1, 2, 3]");
-    expect(unitTestShards).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(unitTestShards).toContain("        runs-on: [ubuntu-26.04]");
     expect(unitTestShards).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(unitTestShards).toContain("    timeout-minutes: 25");
     expect(unitTestShards).toContain("      - name: Unit test shard");
     expect(unitTestShards).toContain("        run: bun run test:unit:shard ${{ matrix.shard }}/3");
-    expect(unitTests).toContain("    needs: [unit-tests-linux-x64-shard]");
-    expect(unitTests).toContain("    if: always()");
-    expect(unitTests).toContain(
-      '          if [[ "${{ needs.unit-tests-linux-x64-shard.result }}" != "success" ]]; then',
-    );
+    expect(unitTests).toContain("    needs: [selection, unit-tests-linux-x64-shard]");
+    expect(unitTests).toContain("always() && !cancelled()");
+    expect(unitTests).toContain("run: bun run scripts/validate-ci.ts");
   });
 
   test("builds docs on a single Linux x64 job outside the static-check matrix", async () => {
@@ -520,7 +532,7 @@ describe("ci workflow", () => {
 
     // Then
     expect(jobs).toContain("  docs-build:");
-    expect(docsBuild).toContain("    runs-on: ubuntu-24.04");
+    expect(docsBuild).toContain("    runs-on: ubuntu-26.04");
     expect(docsBuild).toContain("      - uses: actions/checkout@v5");
     expect(docsBuild).toContain("        uses: oven-sh/setup-bun@v2");
     expect(docsBuild).toContain("          bun-version-file: .bun-version");
@@ -607,7 +619,13 @@ describe("ci workflow", () => {
         with:
           fetch-depth: 0`);
     expect(schemaSnapshot).toContain("      - name: Check schema compatibility");
-    expect(schemaSnapshot).toContain("          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main");
+    expect(schemaSnapshot).toContain(
+      "          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}",
+    );
+    expect(findIndentedBlock(findIndentedBlock(workflow, "on"), "pull_request", 2)).not.toContain(
+      "branches:",
+    );
+    expect(findIndentedBlock(findIndentedBlock(workflow, "on"), "push", 2)).toContain("branches: [main]");
     expect(schemaSnapshot).toContain("        run: bun run check:schema-compatibility");
     expect(schemaSnapshot.indexOf("Verify committed schema fixture is current")).toBeLessThan(
       schemaSnapshot.indexOf("Check schema compatibility"),
@@ -632,21 +650,65 @@ describe("ci workflow", () => {
     }
   });
 
+  test("builds the container helper once with Lando and hands it to every binary build", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const helper = findIndentedBlock(jobs, "container-helper", 2);
+
+    expect(helper).toContain(
+      "        run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync",
+    );
+    expect(helper).toContain("          bun run scripts/build-container-helper.ts --test");
+    expect(helper).toContain("          bun test core/test/container-helper/helper.integration.test.ts");
+    expect(helper).toContain("          path: core/container-helper/dist/");
+    expect(helper).not.toContain("setup-go");
+    for (const platform of CI_PLATFORMS) {
+      const build = findIndentedBlock(jobs, `build-${platform.id}`, 2);
+      expect(build).toContain("      - name: Download container helper");
+      expect(build).toContain("          path: core/container-helper/dist");
+      expect(build.indexOf("Download container helper")).toBeLessThan(
+        build.indexOf(`Build ${platform.id} binary`),
+      );
+    }
+  });
+
+  test("executes the downloaded helper natively on arm64 without a provider", async () => {
+    // Given / When
+    const jobs = findIndentedBlock(await readWorkflow(), "jobs");
+    const helper = findIndentedBlock(jobs, "container-helper-arm64", 2);
+
+    // Then
+    expect(helper).toContain("    needs: [selection, container-helper]");
+    expect(helper).toContain("    runs-on: ubuntu-24.04-arm");
+    expect(helper).toContain("        run: bun install --frozen-lockfile");
+    expect(helper).toContain("        uses: actions/download-artifact@v7");
+    expect(helper).toContain("          name: container-helper");
+    expect(helper).toContain("          path: core/container-helper/dist");
+    expect(helper).toContain(
+      "        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper",
+    );
+    expect(helper).toContain("        run: bun test core/test/container-helper/helper.integration.test.ts");
+    expect(helper.indexOf("Download container helper")).toBeLessThan(helper.indexOf("bun test "));
+    expect(helper).not.toContain("setup-go");
+    expect(helper).not.toContain("lando.ts setup");
+    expect(helper).not.toContain("build-container-helper.ts");
+  });
+
   test("builds and uploads the Linux x64 binary after static and codegen checks", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
     const buildLinux = findIndentedBlock(jobs, "build-linux-x64", 2);
 
     expect(buildLinux).toContain(
-      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+      "    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
     );
     expect(buildLinux).toContain("    runs-on: ubuntu-24.04");
     expect(buildLinux).toContain("        run: bun run --filter='@lando/core' build:manifest");
-    expect(buildLinux).toContain("          bun run --filter='@lando/core' build:host-proxy-shim");
-    expect(buildLinux).toContain("          bun run --filter='@lando/core' build:log-file-helper");
-    expect(buildLinux).toContain(
-      "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });\"",
-    );
+    expect(buildLinux).not.toContain("build:host-proxy-shim");
+    expect(buildLinux).not.toContain("build:log-file-helper");
+    expect(buildLinux).not.toContain("dist/host-proxy");
+    expect(buildLinux).not.toContain("dist/log-file-access");
+    expect(buildLinux).not.toContain("linux-sidecars");
     expect(buildLinux).toContain(
       '          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external',
     );
@@ -656,12 +718,13 @@ describe("ci workflow", () => {
     expect(buildLinux).toContain("          ./dist/lando --help");
     expect(buildLinux).toContain("          ./dist/lando shellenv");
     expect(buildLinux).toContain("        uses: actions/upload-artifact@v6");
+    expect(buildLinux).toContain("            dist/THIRD_PARTY_NOTICES.md");
+    expect(buildLinux).toContain("          bun run check:compiled-binary-notices");
     expect(buildLinux).toContain("        if: always()");
     expect(buildLinux).toContain("          name: lando-linux-x64");
-    expect(buildLinux).toContain("          path: |");
-    expect(buildLinux).toContain("            dist/lando");
-    expect(buildLinux).toContain("            dist/host-proxy/**");
-    expect(buildLinux).toContain("            dist/log-file-access/**");
+    expect(buildLinux).toContain(
+      "          path: |\n            dist/lando\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
     expect(buildLinux).toContain("          if-no-files-found: ignore");
     expect(buildLinux).toContain("          retention-days: 14");
 
@@ -679,7 +742,7 @@ describe("ci workflow", () => {
     const buildDarwin = findIndentedBlock(jobs, "build-darwin-arm64", 2);
 
     expect(buildDarwin).toContain(
-      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+      "    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
     );
     expect(buildDarwin).toContain("    runs-on: macos-15");
     expect(buildDarwin).toContain("        run: bun run --filter='@lando/core' build:manifest");
@@ -694,10 +757,11 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("        uses: actions/upload-artifact@v6");
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-arm64");
-    expect(buildDarwin).toContain("          path: |");
-    expect(buildDarwin).toContain("            dist/lando");
-    expect(buildDarwin).toContain("            dist/host-proxy/**");
-    expect(buildDarwin).toContain("            dist/log-file-access/**");
+    expect(buildDarwin).toContain(
+      "          path: |\n            dist/lando\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
+    expect(buildDarwin).not.toContain("dist/host-proxy");
+    expect(buildDarwin).not.toContain("dist/log-file-access");
     expect(buildDarwin).toContain("          if-no-files-found: ignore");
     expect(buildDarwin).toContain("          retention-days: 14");
 
@@ -715,17 +779,16 @@ describe("ci workflow", () => {
     const buildWindows = findIndentedBlock(jobs, "build-windows-x64", 2);
 
     expect(buildWindows).toContain(
-      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]",
+      "    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
     );
     expect(buildWindows).toContain("    runs-on: windows-2022");
-    expect(buildWindows).toContain("      - name: Download Linux sidecars from Linux artifact");
-    expect(buildWindows).toContain("          name: lando-linux-x64");
-    expect(buildWindows).toContain("          path: linux-sidecars");
+    expect(buildWindows).not.toContain("Download Linux sidecars");
+    expect(buildWindows).not.toContain("linux-sidecars");
+    expect(buildWindows).not.toContain("build:host-proxy-shim");
+    expect(buildWindows).not.toContain("build:log-file-helper");
+    expect(buildWindows).not.toContain("dist/host-proxy");
+    expect(buildWindows).not.toContain("dist/log-file-access");
     expect(buildWindows).toContain("        run: bun run --filter='@lando/core' build:manifest");
-    expect(buildWindows).not.toContain("          bun run --filter='@lando/core' build:host-proxy-shim");
-    expect(buildWindows).toContain(
-      "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });\"",
-    );
     expect(buildWindows).toContain(
       '          bun run scripts/build-compiled-binary.ts --target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --version "$VERSION" --minify --sourcemap=external',
     );
@@ -743,16 +806,12 @@ describe("ci workflow", () => {
     expect(buildWindows).toContain("        uses: actions/upload-artifact@v6");
     expect(buildWindows).toContain("        if: always()");
     expect(buildWindows).toContain("          name: lando-windows-x64");
-    expect(buildWindows).toContain("          path: |");
-    expect(buildWindows).toContain("            dist/lando-windows-x64.exe");
-    expect(buildWindows).toContain("            dist/host-proxy/**");
-    expect(buildWindows).toContain("            dist/log-file-access/**");
+    expect(buildWindows).toContain(
+      "          path: |\n            dist/lando-windows-x64.exe\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
     expect(buildWindows).toContain("          if-no-files-found: ignore");
     expect(buildWindows).toContain("          retention-days: 14");
 
-    expect(buildWindows.indexOf("path: linux-sidecars")).toBeLessThan(
-      buildWindows.indexOf("run: bun run --filter='@lando/core' build:manifest"),
-    );
     expect(buildWindows.indexOf("--outfile ./dist/lando-windows-x64.exe")).toBeLessThan(
       buildWindows.indexOf("bun run scripts/smoke-windows-binary.ts"),
     );
@@ -767,7 +826,7 @@ describe("ci workflow", () => {
     const buildDarwin = findIndentedBlock(jobs, "build-darwin-x64", 2);
 
     expect(buildDarwin).toContain(
-      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+      "    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
     );
     expect(buildDarwin).toContain("    runs-on: macos-15-intel");
     expect(buildDarwin).toContain("        run: bun run --filter='@lando/core' build:manifest");
@@ -782,10 +841,11 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("        uses: actions/upload-artifact@v6");
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-x64");
-    expect(buildDarwin).toContain("          path: |");
-    expect(buildDarwin).toContain("            dist/lando");
-    expect(buildDarwin).toContain("            dist/host-proxy/**");
-    expect(buildDarwin).toContain("            dist/log-file-access/**");
+    expect(buildDarwin).toContain(
+      "          path: |\n            dist/lando\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
+    expect(buildDarwin).not.toContain("dist/host-proxy");
+    expect(buildDarwin).not.toContain("dist/log-file-access");
     expect(buildDarwin).toContain("          if-no-files-found: ignore");
     expect(buildDarwin).toContain("          retention-days: 14");
 
@@ -803,7 +863,7 @@ describe("ci workflow", () => {
     const buildLinuxArm = findIndentedBlock(jobs, "build-linux-arm64", 2);
 
     expect(buildLinuxArm).toContain(
-      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+      "    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
     );
     expect(buildLinuxArm).toContain("    runs-on: ubuntu-24.04-arm");
     expect(buildLinuxArm).toContain("        run: bun run --filter='@lando/core' build:manifest");
@@ -818,10 +878,11 @@ describe("ci workflow", () => {
     expect(buildLinuxArm).toContain("        uses: actions/upload-artifact@v6");
     expect(buildLinuxArm).toContain("        if: always()");
     expect(buildLinuxArm).toContain("          name: lando-linux-arm64");
-    expect(buildLinuxArm).toContain("          path: |");
-    expect(buildLinuxArm).toContain("            dist/lando");
-    expect(buildLinuxArm).toContain("            dist/host-proxy/**");
-    expect(buildLinuxArm).toContain("            dist/log-file-access/**");
+    expect(buildLinuxArm).toContain(
+      "          path: |\n            dist/lando\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
+    expect(buildLinuxArm).not.toContain("dist/host-proxy");
+    expect(buildLinuxArm).not.toContain("dist/log-file-access");
     expect(buildLinuxArm).toContain("          if-no-files-found: ignore");
     expect(buildLinuxArm).toContain("          retention-days: 14");
 
@@ -841,21 +902,21 @@ describe("ci workflow", () => {
     const recipeTestsRunner = findIndentedBlock(jobs, "recipe-tests-runner", 2);
     const recipeTests = findIndentedBlock(jobs, "recipe-tests", 2);
 
-    expect(libraryApiTestsRunner).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(libraryApiTestsRunner).toContain("        runs-on: [ubuntu-26.04]");
     expect(libraryApiTestsRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(libraryApiTestsRunner).toContain("      - name: Run library API tests");
     expect(libraryApiTestsRunner).toContain("        run: bun test core/test/library sdk/test/library");
-    expect(libraryApiTests).toContain("    needs: [library-api-tests-runner]");
-    expect(libraryApiTests).toContain("    if: always()");
+    expect(libraryApiTests).toContain("    needs: [selection, library-api-tests-runner]");
+    expect(libraryApiTests).toContain("always() && !cancelled()");
 
-    expect(recipeTestsRunner).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(recipeTestsRunner).toContain("        runs-on: [ubuntu-26.04]");
     expect(recipeTestsRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(recipeTestsRunner).toContain("      - name: Run recipe test layer");
     expect(recipeTestsRunner).toContain(
       "        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
     );
-    expect(recipeTests).toContain("    needs: [recipe-tests-runner]");
-    expect(recipeTests).toContain("    if: always()");
+    expect(recipeTests).toContain("    needs: [selection, recipe-tests-runner]");
+    expect(recipeTests).toContain("always() && !cancelled()");
   });
 
   test("runs generated guide scenarios as a branch-protectable Linux x64 gate", async () => {
@@ -865,17 +926,17 @@ describe("ci workflow", () => {
     const guideScenarios = findIndentedBlock(jobs, "guide-scenarios-linux-x64", 2);
 
     expect(guideScenariosRunner).toContain(
-      "    needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]",
+      "    needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
     );
-    expect(guideScenariosRunner).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(guideScenariosRunner).toContain("        runs-on: [ubuntu-26.04]");
     expect(guideScenariosRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
-    expect(guideScenarios).toContain("    needs: [guide-scenarios-linux-x64-runner]");
-    expect(guideScenarios).toContain("    if: always()");
+    expect(guideScenarios).toContain("    needs: [selection, guide-scenarios-linux-x64-runner]");
+    expect(guideScenarios).toContain("always() && !cancelled()");
     expect(guideScenariosRunner).toContain("        uses: oven-sh/setup-bun@v2");
     expect(guideScenariosRunner).toContain("          bun-version-file: .bun-version");
     expect(guideScenariosRunner).toContain("        run: bun install --frozen-lockfile");
     expect(guideScenariosRunner).toContain("        run: bun run codegen");
-    expect(guideScenariosRunner).toContain("        run: bun run typecheck");
+    expect(guideScenariosRunner).not.toContain("        run: bun run typecheck");
     expect(guideScenariosRunner).toContain("        run: bun run lint:guides");
     expect(guideScenariosRunner).toContain("        run: bun run check:guide-coverage");
     expect(guideScenariosRunner).toContain("          fetch-depth: 0");
@@ -906,7 +967,7 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner).not.toContain("      - name: Assert Podman 6 host contract");
     expect(guideScenariosRunner).toContain("      - name: Download current-commit Linux x64 runtime bundle");
     expect(guideScenariosRunner).toContain(
-      "    needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]",
+      "    needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
     );
     expect(guideScenariosRunner).not.toContain("podman system service");
     expect(guideScenariosRunner).toContain("      - name: Run e2e smoke guide scenarios");
@@ -927,7 +988,7 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner).toContain("      - name: Teardown guide e2e provider");
     expect(guideScenariosRunner).toContain("          dist/lando poweroff || true");
     expect(guideScenariosRunner).toContain(
-      '          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"',
+      '          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"',
     );
     expect(guideScenariosRunner).toContain("      - name: Upload guide e2e provider diagnostics");
     expect(guideScenariosRunner).toContain("        if: failure()");
@@ -943,9 +1004,6 @@ describe("ci workflow", () => {
       guideScenariosRunner.indexOf("bun run codegen"),
     );
     expect(guideScenariosRunner.indexOf("bun run codegen")).toBeLessThan(
-      guideScenariosRunner.indexOf("bun run typecheck"),
-    );
-    expect(guideScenariosRunner.indexOf("bun run typecheck")).toBeLessThan(
       guideScenariosRunner.indexOf("bun run lint:guides"),
     );
     expect(guideScenariosRunner.indexOf("bun run lint:guides")).toBeLessThan(
@@ -982,11 +1040,11 @@ describe("ci workflow", () => {
     for (const [jobId, runsOn] of guideScenarioJobs) {
       const guideScenarios = findIndentedBlock(jobs, jobId, 2);
 
-      expect(guideScenarios).toContain("    needs: [static-checks]");
+      expect(guideScenarios).toContain("    needs: [selection, static-checks]");
       expect(guideScenarios).toContain(`    runs-on: ${runsOn}`);
       expect(guideScenarios).toContain("          fetch-depth: 0");
       expect(guideScenarios).toContain("        run: bun run codegen");
-      expect(guideScenarios).toContain("        run: bun run typecheck");
+      expect(guideScenarios).not.toContain("        run: bun run typecheck");
       expect(guideScenarios).toContain("        run: bun run lint:guides");
       expect(guideScenarios).toContain("        run: bun run check:guide-coverage");
       expect(guideScenarios).toContain("        run: bun run check:public-transcripts");
@@ -1005,8 +1063,8 @@ describe("ci workflow", () => {
     const jobs = findIndentedBlock(workflow, "jobs");
     const perfBudget = findIndentedBlock(jobs, "perf-budget-linux-x64", 2);
 
-    expect(perfBudget).toContain("    needs: [build-linux-x64]");
-    expect(perfBudget).toContain("    runs-on: ubuntu-24.04");
+    expect(perfBudget).toContain("    needs: [selection, build-linux-x64]");
+    expect(perfBudget).toContain("    runs-on: ubuntu-26.04");
     expect(perfBudget).toContain("      - name: Download Linux x64 binary artifact");
     expect(perfBudget).toContain("          name: lando-linux-x64");
     expect(perfBudget).toContain("          path: dist");
@@ -1034,12 +1092,16 @@ describe("ci workflow", () => {
     const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
     const providerIntegrationGate = findIndentedBlock(jobs, "provider-integration-linux-x64", 2);
 
-    expect(providerIntegration).toContain("    needs: [build-linux-x64, runtime-bundle-linux-x64]");
-    expect(providerIntegration).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(providerIntegration).toContain(
+      "    needs: [selection, build-linux-x64, runtime-bundle-linux-x64, container-helper]",
+    );
+    expect(providerIntegration).toContain("        runs-on: [ubuntu-26.04]");
     expect(providerIntegration).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(providerIntegration).toContain("    timeout-minutes: 35");
-    expect(providerIntegrationGate).toContain("    needs: [provider-integration-linux-x64-runner]");
-    expect(providerIntegrationGate).toContain("    if: always()");
+    expect(providerIntegrationGate).toContain(
+      "    needs: [selection, provider-integration-linux-x64-runner]",
+    );
+    expect(providerIntegrationGate).toContain("always() && !cancelled()");
     expect(providerIntegration).toContain("      - name: Regenerate derived sources");
     expect(providerIntegration.indexOf("Regenerate derived sources")).toBeLessThan(
       providerIntegration.indexOf("Run provider contract tests"),
@@ -1094,7 +1156,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("      - name: Configure rootless overlay storage");
     expect(providerIntegration).toContain("          cat > dist/cache/runtime-bundle/storage.conf <<EOF");
     expect(providerIntegration).toContain(
-      '          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"',
+      '          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"',
     );
     expect(providerIntegration).toContain(
       '          echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"',
@@ -1107,18 +1169,18 @@ describe("ci workflow", () => {
 
     expect(providerIntegration).toContain("      - name: Verify managed runtime socket");
     expect(providerIntegration).toContain(
-      '          test -S "$HOME/.local/share/lando/runtime/run/podman.sock"',
+      '          test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"',
     );
     expect(providerIntegration).toContain(
-      '          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"',
+      '          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"',
     );
     expect(providerIntegration).toContain(
-      '          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")',
+      '          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")',
     );
     expect(providerIntegration).toContain("          pull_image docker.io/library/node:22-alpine");
     expect(providerIntegration).not.toContain("podman system service");
     expect(providerIntegration).toContain(
-      '          echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"',
+      '          echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"',
     );
     expect(providerIntegration).not.toContain("/tmp/podman.sock");
     expect(providerIntegration).not.toContain("/tmp/podman-service.pid");
@@ -1126,7 +1188,9 @@ describe("ci workflow", () => {
     expect(providerIntegration).not.toContain("      - name: Assert Podman 6 host contract");
     expect(providerIntegration).not.toContain("      - name: Start Podman socket");
     expect(providerIntegration).not.toContain("      - name: Teardown Podman");
-    expect(providerIntegration).toContain("    needs: [build-linux-x64, runtime-bundle-linux-x64]");
+    expect(providerIntegration).toContain(
+      "    needs: [selection, build-linux-x64, runtime-bundle-linux-x64, container-helper]",
+    );
     expect(providerIntegration).toContain("          name: runtime-bundle-linux-x64-current");
 
     expect(providerIntegration).toContain("      - name: Configure Docker socket");
@@ -1225,7 +1289,7 @@ describe("ci workflow", () => {
     const jobs = findIndentedBlock(workflow, "jobs");
     const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-arm64", 2);
 
-    expect(providerIntegration).toContain("    needs: [build-linux-arm64]");
+    expect(providerIntegration).toContain("    needs: [selection, build-linux-arm64, container-helper]");
     expect(providerIntegration).toContain("    runs-on: ubuntu-24.04-arm");
     expect(providerIntegration).toContain("    timeout-minutes: 25");
     expect(providerIntegration).toContain("      - name: Run provider contract tests");
@@ -1277,9 +1341,13 @@ describe("ci workflow", () => {
     expect(runtimeBundle).toContain("          name: runtime-bundle-linux-x64-current");
     expect(runtimeBundle).toContain("      - name: Setup Go for Linux Podman source build");
     expect(runtimeBundle).toContain("      - name: Setup Rust for Linux helper source builds");
-    expect(providerIntegration).toContain("    needs: [build-linux-x64, runtime-bundle-linux-x64]");
+    expect(providerIntegration).toContain(
+      "    needs: [selection, build-linux-x64, runtime-bundle-linux-x64, container-helper]",
+    );
     expect(providerIntegration).toContain("      - name: Download current-commit Linux x64 runtime bundle");
-    expect(guideScenarios).toContain("    needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]");
+    expect(guideScenarios).toContain(
+      "    needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
+    );
     expect(guideScenarios).toContain("      - name: Download current-commit Linux x64 runtime bundle");
   });
 
@@ -1289,13 +1357,15 @@ describe("ci workflow", () => {
     const runtimeBundle = findIndentedBlock(jobs, "runtime-bundle-win32-x64", 2);
     const providerIntegration = findIndentedBlock(jobs, "provider-integration-windows-x64", 2);
 
-    expect(runtimeBundle).toContain("    runs-on: ubuntu-24.04");
+    expect(runtimeBundle).toContain("    runs-on: ubuntu-26.04");
     expect(runtimeBundle).toContain("      - name: Assemble current-commit Windows runtime bundle");
     expect(runtimeBundle).toContain(
       "        run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64",
     );
     expect(runtimeBundle).toContain("          name: runtime-bundle-win32-x64-current");
-    expect(providerIntegration).toContain("    needs: [build-windows-x64, runtime-bundle-win32-x64]");
+    expect(providerIntegration).toContain(
+      "    needs: [selection, build-windows-x64, runtime-bundle-win32-x64, container-helper]",
+    );
     expect(providerIntegration).toContain("      - name: Download current-commit Windows runtime bundle");
     expect(providerIntegration).toContain("      - name: Build local Windows runtime manifest");
     expect(providerIntegration).toContain(
@@ -1346,7 +1416,7 @@ describe("ci workflow", () => {
     expect(workflow).toContain("runs-on: ubuntu-24.04-arm");
     expect(workflow).toContain("runs-on: ubuntu-24.04");
     expect(workflow).toContain("runs-on: ubuntu-26.04");
-    expect(workflow).toContain("runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(workflow).toContain("runs-on: [ubuntu-26.04]");
     expect(workflow).toContain("runs-on: windows-2022");
     expect(workflow).toContain("runs-on: windows-11-arm");
     expect(workflow).toContain(
@@ -1369,9 +1439,10 @@ describe("ci workflow", () => {
     expect(buildWindows).toContain("    runs-on: windows-11-arm");
     expect(buildWindows).toContain("    timeout-minutes: 35");
     expect(buildWindows).toContain(
-      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]",
+      "    needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
     );
-    expect(buildWindows).toContain("      - name: Download Linux sidecars from Linux artifact");
+    expect(buildWindows).not.toContain("Download Linux sidecars");
+    expect(buildWindows).not.toContain("linux-sidecars");
     expect(buildWindows).toContain(
       '          bun run scripts/build-compiled-binary.ts --target bun-windows-arm64 --outfile ./dist/lando-windows-arm64.exe --version "$VERSION" --minify --sourcemap=external',
     );
@@ -1379,10 +1450,12 @@ describe("ci workflow", () => {
       "          bun run scripts/smoke-windows-binary.ts ./dist/lando-windows-arm64.exe",
     );
     expect(buildWindows).toContain("          name: lando-windows-arm64");
-    expect(buildWindows).toContain("            dist/lando-windows-arm64.exe");
+    expect(buildWindows).toContain(
+      "          path: |\n            dist/lando-windows-arm64.exe\n            dist/THIRD_PARTY_NOTICES.md\n",
+    );
     expect(buildWindows).toContain("          retention-days: 14");
 
-    expect(providerIntegration).toContain("    needs: [build-windows-arm64]");
+    expect(providerIntegration).toContain("    needs: [selection, build-windows-arm64, container-helper]");
     expect(providerIntegration).toContain("    runs-on: windows-11-arm");
     expect(providerIntegration).toContain("    timeout-minutes: 20");
     expect(providerIntegration).toContain(

@@ -8,26 +8,35 @@ tags: [beta, docs, providers, setup, selection]
 
 # Pick a container provider
 
-Run `lando setup`, then `lando doctor`. The default provider is `lando` (Lando-managed Podman). It does not need system Docker or Podman.
+Run `lando setup` in your terminal and follow the prompts. On first interactive setup, choose the recommended Lando-managed runtime (`lando`) on supported hosts. It uses managed Podman and does not require Docker or a system Podman installation.
 
-On Intel Macs (`darwin-x64`), managed `lando` fail-closes. Run setup with Docker Desktop. That is the live path on that host, not a Linux-only fallback.
+On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks. The managed `lando` provider is not supported on that host; setup does not choose Docker automatically or install it for you.
 
-On Linux, if default setup fails, switch to system Docker. That is the supported fallback, not an advanced preference.
+```sh
+lando setup
+lando doctor
+```
 
-## Run setup with Docker
+Doctor should name the provider you selected and report its health. Setup saves your interactive choice for later commands.
 
-You need working Docker Desktop on Intel Mac, or working system Docker on Linux.
+If a saved provider or environment override already selects a runtime, setup keeps it instead of showing the provider menu. See [Switch providers](#switch-providers) to change an existing setup. On Linux, working system Docker is the supported fallback if managed setup fails.
 
-1. Run setup with Docker:
+## Run setup with Docker or Podman
+
+For first interactive setup, choose the runtime in the menu above. Docker and system Podman need an existing, working installation; setup does not install them for you.
+
+For a scripted run or a deliberate override, `--provider` selects the runtime explicitly. If you already have apps on another provider, follow [Switch providers](#switch-providers) before using these commands.
+
+1. Run setup with the runtime you need:
 
 ```sh
 lando setup --provider=docker
 ```
 
-Or set the provider for this shell:
+or:
 
 ```sh
-LANDO_PROVIDER=docker lando setup
+lando setup --provider=podman
 ```
 
 2. Verify:
@@ -36,39 +45,122 @@ LANDO_PROVIDER=docker lando setup
 lando doctor
 ```
 
-After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` use that last-used provider. You do not need to repeat the flag.
+Doctor should name the provider you selected. Setup fails with remediation if that system runtime is missing. It does not install Docker or Podman for you. To return to the default, run `lando setup --provider=lando`.
 
-`LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
+## How setup chooses a provider
 
-`lando setup` and `lando setup --yes` with no `--provider` still ignore leftover `defaultProviderId` in user config, so a leftover Docker value does not pick Docker on setup. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
-
-System `podman` is also opt-in with `--provider=podman`. It needs an existing Podman install. Setup fails with remediation if that runtime is missing. It does not install Docker or Podman for you.
-
-## Override the provider
-
-Setup (`lando setup`, including `--yes`) uses:
+`lando setup` (including `--yes`) picks the first of:
 
 ```
---provider > LANDO_PROVIDER > capability default (lando)
+--provider > LANDO_PROVIDER > user-config defaultProviderId > interactive prompt > capability default (lando)
 ```
 
-App commands (`lando start`, `lando doctor`) use:
+Setup prompts for a provider only when nothing else chose one. `--yes` consents to confirmation and privileged host changes. It does not switch providers, and it skips the prompt. `--no-interactive` and `--skip-provider` skip the prompt too.
 
-```
---provider > Landofile provider: > LANDO_PROVIDER > user-config defaultProviderId > capability default (lando)
-```
+## What persists
 
-Force Docker for one command:
+After successful setup, Lando saves a provider selected in the interactive menu or with `--provider` as `defaultProviderId` in your config when the value changes. Later `lando doctor`, `lando start`, and bare `lando setup` use that saved choice unless another override takes precedence. You do not need to repeat the selection. A failed config write fails setup.
 
-```sh
-lando start --provider=docker
-```
+`lando setup` and `lando setup --yes` with no `--provider` keep the `defaultProviderId` already in your config. Setup never changes it on its own.
 
-Or for one shell:
+`LANDO_PROVIDER` never persists. See the next section.
+
+Read or edit the value directly with `lando config get defaultProviderId`, `lando config set defaultProviderId <id>`, and `lando config unset defaultProviderId`. Setting it by hand does not move the global app; use [Switch providers](#switch-providers) for that.
+
+## Override the provider for one command
+
+`LANDO_PROVIDER` selects a provider for that command or shell only:
 
 ```sh
 LANDO_PROVIDER=docker lando start
 ```
+
+```sh
+export LANDO_PROVIDER=docker
+lando start
+```
+
+`LANDO_PROVIDER=docker lando setup` does not persist. If the global app already lives on another provider, setup refuses with `AppPlacementError` before changing anything. Run `lando setup --provider=docker` to switch persistently, or unset `LANDO_PROVIDER` to keep the existing provider. If you only set the env, keep it set for later commands, or they fall back to your config.
+
+On `lando setup` and `lando doctor`, `--provider` wins over `LANDO_PROVIDER` for that command.
+
+## How an app chooses its provider
+
+`lando start` creates an app on the first of:
+
+```
+Landofile provider: > LANDO_PROVIDER > user-config defaultProviderId > capability default (lando)
+```
+
+A Landofile `provider:` pins that app's desired provider, ahead of the environment and host default. It never moves an existing app. If another provider already holds the app's applied plan, start, rebuild, and restart fail with `AppPlacementError` before changing resources. Stop, destroy, info, and logs follow the existing realization even after the default changes. See [Recover an app left on another provider](#recover-an-app-left-on-another-provider).
+
+Placement failures report `code: AppPlacementError` at the top level for start, setup, and global lifecycle commands. Machine output keeps the app identity, both provider ids, and the recovery commands in the same failure rather than hiding them inside a proxy or global-service cause.
+
+## Where the global app runs
+
+The router, ssh-agent sidecar, Mailpit, and other global services run on the host provider: `LANDO_PROVIDER`, else `defaultProviderId`, else `lando`. Setup places them on the provider it selected, and every later command keeps them there. A Landofile `provider:` selects only that app's provider; it never moves the global app.
+
+Only setup moves the global app. Start, restart, rebuild, and doctor never relocate it. `lando global:stop`, `global:destroy`, `global:status`, `global:info`, and `global:logs` always act on the provider where the global app actually runs, so they keep working while a mismatch exists.
+
+Cross-provider apps cannot reach same-runtime features such as Mailpit SMTP over `mailpit.global.internal` or the ssh-agent runtime volume. SSH forwarding still uses its host relay across providers.
+
+## Routing needs one provider
+
+Routes require the app and the router to use the same provider. If they differ and the router is enabled with nonempty routes (including generated defaults), planning fails with `RouteProviderMismatchError` before resources change. Lando never publishes host ports to bridge providers.
+
+Pick one:
+
+- Run `lando setup --provider=<app provider>` so the global app and router move there. See [Switch providers](#switch-providers).
+- Remove `provider:` from the Landofile so the app follows the host provider.
+- Keep the app where it is: set `router.enabled: false` and connect through explicitly published host ports. Setting each service's `routes: []` also suppresses its routes.
+
+## Switch providers
+
+Use setup for a deliberate switch. Nothing else moves global services. Export any data you need on the new provider before switching: setup does not copy data volumes, and they remain on the old provider. The poweroff command below also removes scratch apps and their disposable data unless you pass `--keep-scratch`.
+
+1. Stop apps before switching:
+
+```sh
+lando poweroff --yes
+```
+
+2. Run setup on the new provider:
+
+```sh
+lando setup --provider=docker --yes --no-interactive
+```
+
+Setup refuses with `AppPlacementError` and lists running apps, including scratch apps, that use routes or require global services on the old provider. Stop those apps (a scratch app with `lando scratch:destroy <id> --keep-volumes --yes`) and retry. Once none are running, setup retires the old global containers and applied state, keeps its named volumes and router dynamic configuration, and starts global services on the selected provider.
+
+3. Read setup's list of user apps still applied on the old provider. From each app directory, retire the old realization and start on the new provider:
+
+```sh
+lando destroy --provider=lando --yes
+lando start
+lando info --format=json
+```
+
+Plain `lando start` uses the new persisted provider unless the Landofile has a `provider:` pin. Update or remove that pin to move the app. Data volumes stay on the old provider. Setup does not copy their contents. Export data before switching if the new realization needs it.
+
+To switch back instead, unset `LANDO_PROVIDER` first if it picked the new provider, or every later command picks it again:
+
+```sh
+unset LANDO_PROVIDER
+lando setup --provider=lando
+```
+
+## Recover an app left on another provider
+
+Changing the default never moves an applied app or copies its data. Export any data you need before retiring the old copy. When `lando start` fails with `AppPlacementError`, run the following from the app directory, replacing `lando` in `--provider=lando` with the old provider named by the error:
+
+```sh
+lando destroy --provider=lando --yes
+lando start
+```
+
+Data volumes stay on the old provider; they are not copied.
+
+If older starts left copies on two providers, retire the unwanted copy with `lando destroy --provider=<id> --yes`. Without that explicit selection, ambiguous cleanup fails closed. The global app has the same escape hatch: `lando global:destroy --provider=<id> --yes`.
 
 ## Resolve a provider conflict
 

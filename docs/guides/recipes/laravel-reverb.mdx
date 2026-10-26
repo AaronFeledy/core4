@@ -21,14 +21,14 @@ cd reverb-demo
 `--answer=worker=true` adds a queue `worker` service and shares `vendor/` between `appserver` and `worker`, so both boot against the same Composer install. Before the first start, open `.lando.yml` and change the `command` and `dependsOn` of `worker`:
 
 ```yaml
-  worker:
-    command: php artisan queue:listen
-    dependsOn:
-      database:
-        condition: service_healthy
+worker:
+  command: php artisan queue:listen
+  dependsOn:
+    database:
+      condition: service_healthy
 ```
 
-Start the app and install Laravel:
+From the app directory on your host, start the app and install Laravel. The `chmod` command below makes cache and log directories writable for local development only; do not use it as a production permissions policy:
 
 ```sh
 lando start
@@ -38,7 +38,7 @@ lando composer install --no-interaction
 chmod -R a+rwX storage bootstrap/cache
 ```
 
-`create-project` needs an empty directory, hence `tmp-app`. Apache runs as `www-data`; the permission change lets it write Laravel's cache and logs. Use these writable permissions only for local development.
+`create-project` needs an empty directory, hence `tmp-app`. Apache runs as `www-data`; the permission change lets it write Laravel's cache and logs.
 
 ## Point Laravel at MariaDB
 
@@ -67,7 +67,7 @@ lando artisan migrate --no-interaction
 lando artisan install:broadcasting --reverb --without-node --no-interaction
 ```
 
-That requires `laravel/reverb`, sets `BROADCAST_CONNECTION=reverb`, writes `REVERB_APP_ID`, `REVERB_APP_KEY`, and `REVERB_APP_SECRET` into `.env`, and adds `resources/js/echo.js`. `--without-node` skips the npm step. `appserver` has no Node, so Node gets its own service below.
+That requires `laravel/reverb`, sets `BROADCAST_CONNECTION=reverb`, writes `REVERB_APP_ID`, `REVERB_APP_KEY`, and `REVERB_APP_SECRET` into `.env`, and adds `resources/js/echo.js`. `--without-node` skips the npm step. `appserver` has no Node; the recipe already provides a separate `node` service for npm. Keep that service when adding Reverb below.
 
 Now set the hosts. Reverb has two audiences, and they reach it by different names:
 
@@ -91,9 +91,10 @@ VITE_REVERB_SCHEME=https
 
 ## Add Reverb and Node
 
-Add two services under `services:` in `.lando.yml`:
+Add `reverb` under `services:` in `.lando.yml` and merge the shown settings into the existing `node` service. Do not add a second `node` key:
 
 ```yaml
+services:
   reverb:
     type: "php:{{ recipe.php }}"
     port: 8080

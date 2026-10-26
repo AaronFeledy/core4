@@ -1,44 +1,47 @@
-import { dirname } from "node:path";
-import { mergeLandofiles } from "@lando/sdk/landofile";
-import type { LandofileShape } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
-import { type LandofileLoadScope, buildLandofileLoadScope } from "./compile.ts";
-import { legacyLoadFailure } from "./legacy-load-failure.ts";
+import { LANDOFILE_LAYER_POSITIONS, type PresentLandofileLayer } from "./layers.ts";
 import type { LandofileLoadContext } from "./load-context.ts";
-import {
-  getLandofileReferencedFiles,
-  rememberLandofileReferencedFiles,
-} from "./load-expression-provenance.ts";
+import { composePreparedLayers } from "./pipeline/compose.ts";
+import { finalizeLandofile } from "./pipeline/finalize.ts";
+import { classifyLoadFailure } from "./pipeline/legacy.ts";
+import { type LandofileLoadScope, buildLandofileLoadScope } from "./pipeline/materialize.ts";
+import { getSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
-import { type LandofileCompileError, compilePreparedLayer } from "./root-compile.ts";
-import { prepareLandofileLayer } from "./source.ts";
-import { validateLandofile } from "./validation.ts";
+import { prepareLandofileSource, prepareLandofileValue } from "./source.ts";
 
-export const compileLandofileFile = Effect.fn("Landofile.compileFile")(function* (
-  filePath: string,
+export const compileLandofileFile = Effect.fn("Landofile.loadPreparedFile")(function* (
+  file: string,
   context?: LandofileLoadContext,
   inputs?: LandofileRuntimeInputs,
   scope?: LandofileLoadScope,
-): Effect.fn.Return<
-  { readonly landofile: LandofileShape; readonly scope: LandofileLoadScope },
-  LandofileCompileError
-> {
-  const prepared = yield* prepareLandofileLayer(filePath, context, inputs);
+) {
+  const source = yield* prepareLandofileSource(file, context, inputs);
+  const prepared = yield* prepareLandofileValue(source);
+  const appRoot = source.context.appRoot;
+  const layer: PresentLandofileLayer = {
+    filePath: file,
+    basename: ".lando",
+    layer: source.context.layer,
+    order: LANDOFILE_LAYER_POSITIONS.find((position) => position.layer === source.context.layer)?.order ?? 3,
+  };
+  const merged = yield* composePreparedLayers([{ layer, landofile: prepared.value }], source.context, inputs);
   const loadScope =
     scope ??
-    (yield* buildLandofileLoadScope([prepared], inputs?.templates.context?.env).pipe(
-      Effect.catch((error) =>
-        prepared.content === undefined
-          ? Effect.fail(error)
-          : legacyLoadFailure(error, prepared.content, { ...prepared.context, sourceFile: filePath }),
-      ),
+    (yield* buildLandofileLoadScope(
+      [{ file, value: merged }],
+      source.context.compilationContext?.env,
+      source.context.pendingSites,
     ));
-  const overlay = yield* compilePreparedLayer(prepared, loadScope);
-  const decoded = yield* validateLandofile(filePath, mergeLandofiles([overlay]));
-  const landofile = rememberLandofileAppRoot(
-    rememberLandofileReferencedFiles(decoded, getLandofileReferencedFiles(overlay)),
-    context?.appRoot ?? dirname(filePath),
+  const landofile = yield* finalizeLandofile(file, merged, {
+    appRoot,
+    scope: loadScope,
+    loadPolicy: source.context.policy,
+    logger: source.context.logger,
+  }).pipe(
+    Effect.catchTag(["LandofileParseError", "LandofileValidationError"], (error) =>
+      classifyLoadFailure(error, appRoot, getSourceDocuments(merged)),
+    ),
   );
-  return { landofile, scope: loadScope };
+  return { landofile: rememberLandofileAppRoot(landofile, appRoot), scope: loadScope };
 });

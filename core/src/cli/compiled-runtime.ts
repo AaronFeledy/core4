@@ -1,3 +1,5 @@
+import type { CompletedCommandResult } from "@lando/sdk/command-result";
+import type { CommandCompletion } from "@lando/sdk/schema";
 import type { Effect, Layer, Schema, Tracer } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
@@ -92,7 +94,8 @@ export const runCompiledCommand = <A, E, R, RE>(
   options: {
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
-    readonly successExitCode?: (value: A) => number | undefined;
+    readonly completion?: (value: A) => CommandCompletion;
+    readonly renderEffect?: (completed: CompletedCommandResult<A>) => Effect.Effect<void, unknown, R>;
     readonly failureExitCode?: (error: unknown) => number | undefined;
     readonly resultSchema?: Schema.Codec<unknown, unknown>;
     readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
@@ -105,15 +108,19 @@ export const runCompiledCommand = <A, E, R, RE>(
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
   const effectiveRuntime =
-    spec?.bootstrap === undefined
+    spec?.bootstrap === undefined ||
+    activeCommandId === "meta:config" ||
+    activeCommandId === "meta:doctor" ||
+    activeCommandId === "meta:uninstall"
       ? runtime
       : resolveCompiledCommandRuntime(activeCommandId, spec.bootstrap, runtime, options.runtimeForBootstrap);
   const redactionTokens = options.redactionTokens ?? spec?.redactionTokens;
-  const successExitCode =
-    options.successExitCode ??
-    (spec?.successExitCode === undefined
+  const specCompletion = spec?.completion;
+  const completion =
+    options.completion ??
+    (specCompletion === undefined
       ? undefined
-      : (value: A) => spec.successExitCode?.(value, getActiveCommandInvocation()));
+      : (value: A) => specCompletion(value, getActiveCommandInvocation()));
   const invocation = getActiveCommandInvocation();
   const projectResultKeys = activeProjectResultKeys();
   const jqExpression = activeJq;
@@ -147,12 +154,15 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(documentOutput ? { documentOutput: true } : {}),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
-    ...(successExitCode === undefined ? {} : { successExitCode }),
+    ...(completion === undefined ? {} : { completion }),
+    ...(options.renderEffect === undefined ? {} : { renderEffect: options.renderEffect }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     ...(options.io === undefined ? {} : { io: options.io }),
     render,
-    formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) =>
-      commandErrorMessage(failure, activeCommandId),
+    formatError: (
+      failure: import("@lando/sdk/command-result").ProjectedFailure,
+      redactor: import("@lando/sdk/secrets").Redactor,
+    ) => commandErrorMessage(failure, activeCommandId, redactor),
     ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
   const selection = activeTrace();
@@ -178,13 +188,14 @@ export const runWithProcessAbortSignal = async (
   run: (signal: AbortSignal) => Promise<void>,
 ): Promise<void> => {
   const controller = new AbortController();
-  const abort = () => controller.abort();
-  (process as NodeJS.EventEmitter).once("SIGINT", abort);
-  (process as NodeJS.EventEmitter).once("SIGTERM", abort);
+  const interrupt = () => controller.abort("SIGINT");
+  const terminate = () => controller.abort("SIGTERM");
+  (process as NodeJS.EventEmitter).once("SIGINT", interrupt);
+  (process as NodeJS.EventEmitter).once("SIGTERM", terminate);
   try {
     await run(controller.signal);
   } finally {
-    (process as NodeJS.EventEmitter).off("SIGINT", abort);
-    (process as NodeJS.EventEmitter).off("SIGTERM", abort);
+    (process as NodeJS.EventEmitter).off("SIGINT", interrupt);
+    (process as NodeJS.EventEmitter).off("SIGTERM", terminate);
   }
 };

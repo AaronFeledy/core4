@@ -19,7 +19,7 @@ import type { LogChunk } from "@lando/sdk/services";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { logs } from "../src/podman/logs.ts";
 
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("logfollowapp");
 const appRoot = AbsolutePath.make("/tmp/lando-log-follow-app");
@@ -84,7 +84,6 @@ const makePlan = (logSources?: ReadonlyArray<LogSourceType>): AppPlan => {
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -209,7 +208,7 @@ describe("podman log followers", () => {
 
     // Then
     expect(error).toBeInstanceOf(ProviderUnavailableError);
-    expect(error.providerId).toBe("podman");
+    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
     expect(error.message).toContain("provider-podman");
     expect(error.remediation).toBe(ctx.remediation);
   });

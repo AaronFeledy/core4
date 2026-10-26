@@ -28,7 +28,7 @@ A URL that misses every glob throws `RecipeFetchNotAllowedError` before the plat
 
 `ctx.fetch` still runs. Lando warns once per URL that you have not declared the hosts the recipe contacts. Add the list when you want that warning gone, or when you want anything else to fail closed.
 
-If a redirect walks off your list, that is still a deny. The allowlist is not a suggestion.
+When an allowlist is present, redirects must match it too. Omitting the list permits requests with warnings; declaring it rejects requests outside the list.
 
 ## Check the manifest
 

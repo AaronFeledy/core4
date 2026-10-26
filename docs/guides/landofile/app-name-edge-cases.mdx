@@ -7,7 +7,7 @@ tags: [beta, docs, landofile, naming]
 
 # Name an app
 
-`lando init` accepts lowercase kebab-case names. Spaces and uppercase letters fail validation.
+Choose a lowercase kebab-case name such as `my-app` when running `lando init`. Spaces and uppercase letters fail validation. For a hand-authored app, set `name:` in `.lando.yml`, then run `lando app:config --format=json` from that directory to read the name back.
 
 A hand-authored Landofile can still use a display name that `init` would reject. Lando keeps that display name and derives a safe runtime slug for networks, hostnames, aliases, caches, and provider labels.
 
@@ -46,5 +46,7 @@ The planner keeps the Landofile `name` as the user-facing display name. It deriv
 Runtime slugs are capped at 57 characters. The `lando-` prefix consumes six characters, so a per-app network name stays within the DNS limit of 63 characters. For example, `c,o,m,m,a` becomes `c-o-m-m-a`, `bad name!` becomes `bad-name`, and `UPPER` becomes `upper`.
 
 Default routes use `<service>.<slug>.<domain>`, where `<domain>` is `proxy.defaultDomain` from global config (`lndo.site` unless you change it). Shared-network aliases use `<service>.<slug>.internal`. The original display name never reaches those DNS surfaces.
+
+Set `proxy.defaultDomain` to a plain DNS domain like `lndo.test`, without a scheme, port, path, or wildcard. `lando config set` rejects other values with an issue naming `proxy.defaultDomain`. See [Change the default domain](../subsystems/proxy-traefik.mdx#change-the-default-domain).
 
 A 100-character lowercase name is preserved in `lando app:config`, but its runtime slug is the first 57 characters. The network and route stay valid instead of producing an overlong label.

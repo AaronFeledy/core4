@@ -1,18 +1,42 @@
 import { describe, expect, test } from "bun:test";
-import { ServiceStartError } from "@lando/sdk/errors";
-import { type AppPlan, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { GlobalAppError, ServiceStartError } from "@lando/sdk/errors";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import type { ApplyOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, DateTime, Effect, Exit } from "effect";
 import {
-  applyGlobalServiceGroups,
+  applyGlobalServiceGroups as applyGlobalServiceGroupsEffect,
   globalServiceGroupError,
 } from "../../src/operations/global-service-groups.ts";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../../src/providers/managed.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";
+
+const applyGlobalServiceGroups = <E, R>(...args: Parameters<typeof applyGlobalServiceGroupsEffect<E, R>>) =>
+  applyGlobalServiceGroupsEffect(...args).pipe(Effect.provide(testEnvironmentResolverLayer));
+
+const globalPlan: AppPlan = {
+  id: AppId.make("global"),
+  name: "global",
+  slug: "global",
+  root: AbsolutePath.make("/"),
+  provider: ProviderId.make("lando"),
+  services: {},
+  routes: [],
+  stores: [],
+  fileSync: [],
+  metadata: { resolvedAt: DateTime.makeUnsafe("1970-01-01T00:00:00Z"), source: "test", runtime: 4 },
+  extensions: {},
+};
 
 const service = (name: string, dependencies: ReadonlyArray<string> = []): ServicePlan => ({
   type: "test",
-  provider: MANAGED_PROVIDER_SELECT_PLAN.provider,
+  provider: globalPlan.provider,
   primary: true,
   environment: {},
   mounts: [],
@@ -20,7 +44,7 @@ const service = (name: string, dependencies: ReadonlyArray<string> = []): Servic
   endpoints: [],
   routes: [],
   hostAliases: [],
-  metadata: MANAGED_PROVIDER_SELECT_PLAN.metadata,
+  metadata: globalPlan.metadata,
   extensions: {},
   name: ServiceName.make(name),
   artifact: { kind: "ref", ref: `unbuilt:${name}` },
@@ -31,7 +55,7 @@ const service = (name: string, dependencies: ReadonlyArray<string> = []): Servic
   })),
 });
 const planWith = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
-  ...MANAGED_PROVIDER_SELECT_PLAN,
+  ...globalPlan,
   services: Object.fromEntries(services.map((service) => [service.name, service])),
 });
 const build = (plan: AppPlan) =>
@@ -50,11 +74,49 @@ const failure = (name: string, remediation?: string) =>
     providerId: "lando",
     operation: "apply",
     message: `Cannot start ${name}`,
-    ...(remediation === undefined ? {} : { remediation }),
+    remediation:
+      remediation ??
+      `Inspect \`lando logs -s ${name}\`, fix the service configuration or image, and start the app again.`,
   });
 const refs = (plan: AppPlan) => Object.values(plan.services).map((service) => service.artifact);
 
 describe("global service groups", () => {
+  test("a failed group retains its created containers and leaves successful groups running", async () => {
+    const plan = planWith([service("working"), service("broken"), service("later")]);
+    const created = new Set<string>();
+    const cleanup: string[] = [];
+    const error = failure("broken", "Repair the dependency and retry.");
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      apply: (group) =>
+        Effect.gen(function* () {
+          for (const name of Object.keys(group.services)) created.add(name);
+          if (group.services[ServiceName.make("broken")] !== undefined) return yield* Effect.fail(error);
+          return { changed: true };
+        }),
+      destroy: (target) =>
+        Effect.sync(() => {
+          cleanup.push(String(target.app));
+          created.clear();
+          return { kind: "destroyed" as const };
+        }),
+      stop: (target) =>
+        Effect.sync(() => {
+          cleanup.push(String(target.service));
+        }),
+    };
+    const outcome = await Effect.runPromise(
+      applyGlobalServiceGroups(
+        plan,
+        { provider, services: Object.values(plan.services), options: { reconcile: false } },
+        build,
+      ),
+    );
+    expect([...created]).toEqual(["working", "broken", "later"]);
+    expect(cleanup).toEqual([]);
+    expect(outcome.services.map((service) => String(service.name))).toEqual(["working", "later"]);
+    expect(outcome.failures).toEqual([{ names: [ServiceName.make("broken")], error }]);
+  });
   test("an empty selection leaves the plan unchanged without building or applying", async () => {
     // Given a plan with no selected services and callbacks that must not run.
     const plan = planWith([service("unselected")]);
@@ -322,18 +384,19 @@ describe("global service groups", () => {
       "Fix the error above, then run `lando global:rebuild`. Run `lando doctor` if the failure persists.",
     ],
   ] as const)("partial %s errors use operation-specific fallback remediation", (operation, remediation) => {
-    // Given multiple failed services without tagged remediation and one running service.
-    const cause = failure("broken");
+    // Given multiple failed services whose cause has no tagged remediation, and one running service.
+    const cause = new Error("broken without tagged remediation");
     // When the aggregate is constructed for the selected operation.
     const error = globalServiceGroupError(operation, {
       services: [service("working")],
       failures: [{ names: ["broken", "dependent"], error: cause }],
     });
     // Then fallback instructions match the operation and grammar matches the service counts.
-    expect(error?.remediation).toBe(remediation);
-    expect(error?.message).toBe(
+    if (error === undefined || !(error instanceof GlobalAppError)) throw new Error("expected GlobalAppError");
+    expect(error.remediation).toBe(remediation);
+    expect(error.message).toBe(
       `Global services broken, dependent failed to ${operation}; working is running.`,
     );
-    expect(error?.cause).toBe(cause);
+    expect(error.cause).toBe(cause);
   });
 });

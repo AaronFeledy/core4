@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { sha256Hex } from "@lando/sdk/digest";
 import { DateTime } from "effect";
 
 import {
@@ -9,6 +10,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  landoNetworkingPlan,
 } from "@lando/sdk/schema";
 
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
@@ -56,12 +58,76 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
   extensions: {},
 };
+
+describe("host-proxy session reconciliation", () => {
+  const key = "dev.lando.host-proxy-session";
+  const overlay = { ...service, environment: { LANDO_HOST_PROXY_SESSION: "current-session" } };
+  test("emits only a digest of the session and excludes it from create-config", () => {
+    // Given two sessions of the same service configuration.
+    const previous = { ...overlay, environment: { LANDO_HOST_PROXY_SESSION: "previous-session" } };
+    // When labels are projected.
+    const labels = commonContainerLabels(plan, overlay);
+    // Then credentials do not become labels or config drift.
+    expect(labels[key]).toBe(sha256Hex("current-session").slice(0, 16));
+    expect(labels[CREATE_CONFIG_LABEL]).toBe(commonContainerLabels(plan, previous)[CREATE_CONFIG_LABEL]);
+    expect(commonContainerLabels(plan, service)[key]).toBeUndefined();
+  });
+  test.each(["previous-session", undefined])("recreates when inspected session is %s", (session) => {
+    // Given known labels with a stale or absent session marker.
+    const labels = {
+      ...commonContainerLabels(plan, overlay),
+      [key]: session === undefined ? "" : sha256Hex(session).slice(0, 16),
+    };
+    // When bring-up checks the current overlay.
+    const reasons = bringUpRecreateReasons(plan, overlay, { labels }, { skipAbsentFields: true });
+    // Then the socket's backing session requires recreation, not config drift.
+    expect(reasons).toEqual(["bind-source"]);
+  });
+  test("keeps matching sessions and skips absent inspect labels", () => {
+    expect(
+      bringUpRecreateReasons(
+        plan,
+        overlay,
+        { labels: commonContainerLabels(plan, overlay) },
+        { skipAbsentFields: true },
+      ),
+    ).toEqual([]);
+    expect(bringUpRecreateReasons(plan, overlay, {}, { skipAbsentFields: true })).toEqual([]);
+  });
+  test("does not impose a session check without a host-proxy overlay", () => {
+    expect(
+      bringUpRecreateReasons(
+        plan,
+        service,
+        { labels: commonContainerLabels(plan, service) },
+        { skipAbsentFields: true },
+      ),
+    ).toEqual([]);
+  });
+  test("preserves the session marker through physical-to-logical fingerprint presentation", () => {
+    const physical = {
+      ...plan,
+      services: { [overlay.name]: overlay },
+      networking: { perAppBridge: { name: "physical", driver: "bridge" } },
+    };
+    const logical = { ...plan, services: { [overlay.name]: overlay } };
+    const previous = { ...overlay, environment: { LANDO_HOST_PROXY_SESSION: "previous-session" } };
+    const presented = presentLogicalCreateConfig(commonContainerLabels(physical, previous), {
+      physical,
+      logical,
+      service: overlay.name,
+    });
+    expect(presented[CREATE_CONFIG_LABEL]).toBe(commonContainerLabels(logical, overlay)[CREATE_CONFIG_LABEL]);
+    expect(
+      bringUpRecreateReasons(logical, overlay, { labels: presented }, { skipAbsentFields: true }),
+    ).toEqual(["bind-source"]);
+  });
+});
 
 describe("presentLogicalCreateConfig", () => {
   const physical: AppPlan = {
@@ -121,6 +187,23 @@ describe("presentLogicalCreateConfig", () => {
 });
 
 describe("bringUpRecreateReasons", () => {
+  test("reports a missing authored network only for its member", () => {
+    // Given a member and a non-member both connected to their default networks.
+    const worker = { ...service, name: ServiceName.make("worker") };
+    const app = {
+      ...plan,
+      networking: landoNetworkingPlan({
+        slug: plan.slug,
+        serviceNames: [service.name, worker.name],
+        sharedCrossAppNetwork: true,
+        authoredNetworks: [{ key: "extra", external: false, members: { web: [] } }],
+      }),
+    };
+    const snapshot = { networkNames: ["lando-recreate-reasons", "lando_bridge_network"] };
+    // When / Then only the service joining the missing network must recreate.
+    expect(bringUpRecreateReasons(app, service, snapshot, { skipAbsentFields: true })).toEqual(["network"]);
+    expect(bringUpRecreateReasons(app, worker, snapshot, { skipAbsentFields: true })).toEqual([]);
+  });
   test("reports known missing config labels even when absent custom metadata is skipped", () => {
     // Given known-empty labels from a real container inspect.
     const snapshot = { labels: {} };

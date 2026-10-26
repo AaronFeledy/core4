@@ -1,6 +1,12 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
-import { AbsolutePath, type LogSource, LogSourceId, PortNumber } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type LogSource,
+  LogSourceId,
+  PortNumber,
+  type ValidationIssuePath,
+} from "@lando/sdk/schema";
 import type {
   ServiceBuildStepIntent,
   ServiceFeatureContext,
@@ -8,13 +14,15 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import {
+  ServiceConfigIssue,
   commandHealthcheck,
+  literalEnvironmentValue,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
@@ -88,9 +96,13 @@ export const apacheListenBuildStep = (configPath: string): ServiceBuildStepInten
   ],
 });
 
-export const apacheDirectivePath = (webroot: string): string => {
+export const apacheDirectivePath = (webroot: string, path: ValidationIssuePath = ["webroot"]): string => {
   if (/\r|\n/u.test(webroot)) {
-    throw new Error("Apache webroot must not contain line breaks.");
+    throw new ServiceConfigIssue(
+      path,
+      "Apache webroot must not contain line breaks.",
+      "Use a single-line container path.",
+    );
   }
   return webroot.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 };
@@ -118,8 +130,12 @@ const PID_FILE = "/tmp/lando-httpd.pid";
  * An authored `port:` becomes a `Listen` directive in that same stream, paired
  * with the build step that retires the image's own listener.
  */
-const apacheStartCommand = (webroot: string, listenPort: number | undefined): ReadonlyArray<string> => {
-  const path = apacheDirectivePath(webroot);
+const apacheStartCommand = (
+  webroot: string,
+  listenPort: number | undefined,
+  issuePath: ValidationIssuePath,
+): ReadonlyArray<string> => {
+  const path = apacheDirectivePath(webroot, issuePath);
   return [
     "httpd-foreground",
     "-c",
@@ -152,13 +168,20 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
   applyAuthoredProcessFields(ctx, ["user"]);
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
 
   if (service.command === undefined && service.entrypoint === undefined) {
     const ownedListen =
       service.image === undefined || service.image === DEFAULT_IMAGE ? listenPort : undefined;
-    ctx.setCommand(apacheStartCommand(documentRoot, ownedListen));
+    ctx.setCommand(
+      apacheStartCommand(
+        literalEnvironmentValue(documentRoot, ["environment", "APACHE_DOCUMENT_ROOT"]),
+        ownedListen,
+        service.environment?.APACHE_DOCUMENT_ROOT === undefined
+          ? ["webroot"]
+          : ["environment", "APACHE_DOCUMENT_ROOT"],
+      ),
+    );
     if (ownedListen !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
   }
   applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);
@@ -168,6 +191,13 @@ export const apacheServiceFeature: ServiceFeatureDefinition = {
   id: APACHE_FEATURE_ID,
   schema: Schema.Unknown,
   priority: APACHE_FEATURE_PRIORITY,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, {
+        port: authoredListenPort(ctx.normalizedConfig.port) ?? DEFAULT_PORT,
+        protocol: "http",
+      }),
+    ),
   apply: serviceFeatureApply(APACHE_FEATURE_ID, "service-lando.apache failed to apply", applyApacheFeature),
 };
 

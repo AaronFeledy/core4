@@ -31,6 +31,8 @@ const setupError = (cause: unknown): SshError =>
     message: `SSH agent sidecar could not start: ${deepestCauseMessage(cause)}`,
     sshId: SSH_SIDECAR_ID,
     cause,
+    remediation:
+      "Install or repair the SSH service plugin and confirm the agent socket is available, then re-run.",
   });
 
 /** `<userDataRoot>/ssh` is private. A looser existing directory is tightened; a tighter one is left alone. */

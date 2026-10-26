@@ -52,7 +52,11 @@ describe("Lando3UnsupportedRecipeError", () => {
     const cause = new Lando3UnsupportedRecipeError(payload);
 
     // When
-    const error = new ConfigTranslateError({ message: "Translation failed.", cause });
+    const error = new ConfigTranslateError({
+      message: "Translation failed.",
+      cause,
+      remediation: "Use a supported Lando 3 recipe or lower the recipe manually.",
+    });
 
     // Then
     expect(error.cause).toBe(cause);

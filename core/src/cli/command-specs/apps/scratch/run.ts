@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Flags } from "../../../spec/metadata";
 
 import { StreamFrame } from "@lando/sdk/schema";
@@ -9,7 +10,6 @@ import {
   scratchRun,
   scratchRunOptionsFromInput,
   scratchRunRedactionTokens,
-  scratchRunSuccessExitCode,
 } from "../../../commands/scratch-run";
 import { attachExecHostIo, toolingHostStdin } from "../../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../../format-flags";
@@ -69,5 +69,5 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult, ScratchRunEr
     return scratchRun({ ...options, ...hostIo, hostIo: "cli", envelopeFormat });
   },
   redactionTokens: (value) => scratchRunRedactionTokens(value as ScratchRunResult),
-  successExitCode: (result) => scratchRunSuccessExitCode(result),
+  completion: (result) => commandCompletionFromExitCode(result.exitCode),
 };

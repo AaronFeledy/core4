@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Result, Schema, Stream } from "effect";
+import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -8,7 +9,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { type LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   LandofileShape,
   type ProviderCapabilities,
   ProviderId,
@@ -84,9 +85,25 @@ const makeProvider = (
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "buildArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "buildArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
+        }),
+      ),
     pullArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "pullArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "pullArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `pullArtifact`.",
+        }),
+      ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
@@ -112,15 +129,22 @@ const makeProvider = (
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.empty,
     inspect: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "inspect",
+          message: "n/a",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `inspect`.",
+        }),
+      ),
     list: () => Effect.succeed([]),
   };
   return { provider, calls };
 };
 
-const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
+const planLandofile = (landofile: LandofileShape): Promise<CurrentExecutableAppPlan> =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(compileTestLandofile(landofile), capabilities)).pipe(
       Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
       Effect.provide(PluginRegistryLayer.layer),
     ),
@@ -128,13 +152,13 @@ const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
 
 const makeToolingLayer = (options: {
   readonly landofile: LandofileShape;
-  readonly plan: AppPlan;
+  readonly plan: CurrentExecutableAppPlan;
   readonly provider: RuntimeProviderShape;
 }) => {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: Effect.sync(() => compileTestLandofile(options.landofile)),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -146,6 +170,9 @@ const makeToolingLayer = (options: {
   const registryLayer = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(options.provider),
@@ -153,11 +180,12 @@ const makeToolingLayer = (options: {
   );
   return Layer.mergeAll(
     PrivateFileAccessService.layer,
+    toolingValueResolverLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
     LandoEventService.layer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provide(toolingValueResolverLayer)),
     emptyConfigServiceLayer,
   );
 };
@@ -175,7 +203,9 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
 
     expect(search.type).toBe("solr");
     expect(search.artifact).toEqual({ kind: "ref", ref: "solr:9" });
-    expect(search.endpoints).toEqual([{ _tag: "internal", port: 8983, protocol: "http", name: "search" }]);
+    expect(search.endpoints).toEqual([
+      { _tag: "internal", port: 8983, protocol: "http", name: "search", primary: true },
+    ]);
     expect(search.storage).toHaveLength(1);
     expect(search.storage[0]?.store).toBe("myapp-solr-data");
     expect(search.healthcheck?.kind).toBe("command");
@@ -216,7 +246,9 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
 
       const outcome = await Effect.runPromise(
         Effect.result(
-          Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+          Effect.flatMap(AppPlanner, (planner) =>
+            planner.plan(compileTestLandofile(landofile), capabilities),
+          ).pipe(
             Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
             Effect.provide(PluginRegistryLayer.layer),
           ),
@@ -229,10 +261,15 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
         const failure = outcome.failure as LandofileValidationError;
         expect(failure.file.endsWith("/.lando.yml")).toBe(true);
         expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-          "services.search",
+          "services.search.cores[0]",
         ]);
-        expect(failure.message).toContain(`services.search.cores[0] ${JSON.stringify(core)}`);
-        expect(failure.message).toContain("Rename the core to a plain directory name.");
+        expect(failure.issues).toEqual([
+          expect.objectContaining({
+            path: ["services", "search", "cores", 0],
+            message: `${JSON.stringify(core)} is not a usable Solr core directory name.`,
+            suggestion: expect.stringContaining("Rename the core to a plain directory name."),
+          }),
+        ]);
       }
     },
   );

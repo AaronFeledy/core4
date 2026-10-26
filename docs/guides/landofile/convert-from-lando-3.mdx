@@ -8,14 +8,33 @@ tags: [beta, docs, landofile, lando3, translate]
 
 # Convert a Lando 3 app to Lando 4
 
+Use the Lando 4 executable from the app directory to preview the conversion first. The first command below prints proposed Landofile layers and diagnostics without writing. Review them before running the second command: `--write` replaces those files and can remove obsolete layers, with backups for rollback.
+
+Until you write, your saved Lando 3 executable can still use the original files. After writing, restore the backups before running that app with Lando 3 again. Conversion does not adopt Lando 3 containers or volumes.
+
 ```sh
 lando app:config:translate --from lando3
 lando app:config:translate --from lando3 --write
 ```
 
-Run the first command from the app directory. It prints the Lando 4 Landofile layers your Lando 3 files would become, plus a diagnostic for every key it generated, rewrote, dropped, or could not carry. Nothing is written. Run the second when you like what you see. Until you write the conversion, your saved Lando 3 executable can keep using the original files. After `--write`, restore the backups before running the app with Lando 3 again.
-
 Lando 4 never translates a Lando 3 file on the fly. Every `lando` app command loads v4 only, so conversion is a step you take once, on purpose, and can undo.
+
+## Write with backups
+
+```sh
+lando app:config:translate --from lando3 --write
+lando app:config:lint
+```
+
+`--write` commits every layer through one managed-file transaction. Before any byte moves, each file it will replace or remove gets an immutable backup beside it named `<file>.bak.<sha256>`, where the digest is the SHA-256 of the original bytes. The write summary lists `written`, `backups`, and `removed`.
+
+Three guarantees come with that transaction:
+
+- Interrupted mid-write? The next `lando` app command in that directory recovers the transaction or refuses to load until it is resolved. It never loads a half-converted app.
+- Edited a file between preview and `--write`? The write fails and the originals stay untouched. Run the preview again.
+- Want Lando 3 back? Copy each `.bak.<sha256>` file over its original name and delete `.lando.dist.yml` if the conversion created it. Lando 4 does not adopt Lando 3 containers or volumes, so the Lando 3 app is exactly where you left it.
+
+After the write, `lando app:config:lint` reports the result valid, and `lando start` runs it as an ordinary Lando 4 app. Review every `needs-review` diagnostic before that first start.
 
 ## Detect or say so
 
@@ -68,7 +87,7 @@ A Lando 3 `recipe:` with its `config:` map becomes the matching bundled Lando 4 
 
 `config` keys the Lando 4 recipe has no option for are reported as `dropped`, once each, with a remediation telling you where to set the value by hand. Values the option does not accept, such as a PHP version the recipe no longer ships or a `webroot` with spaces, stop the conversion with a `ConfigTranslateError` that names the accepted shape.
 
-Relative Lando 3 webroots carry over unchanged: `webroot: web` stays `web`. Lando 4 resolves that path against the service's app mount, `/app` unless `appMount.target` moves it, when planning the service. Omit `webroot` or use `.` for the app root. Absolute container paths remain available for a specific layout; relative paths that escape the app mount are rejected during planning.
+Relative Lando 3 webroots carry over unchanged: `webroot: web` stays `web`. Lando 4 resolves that path against the service's app mount, `/app` unless an authored `appMount` path such as `appMount: /site` moves it, when planning the service. Omit `webroot` or use `.` for the app root. Absolute container paths remain available for a specific layout; relative paths that escape the app mount are rejected during planning.
 
 For Tomcat, conversion sets Lando 4 `webroot` to `<webroot>/webapps/ROOT` (`webapps/ROOT` when Lando 3 used the default), matching the path Lando 3 served at `/`. It reports that other webapps or WAR files under `webapps/` are not deployed.
 
@@ -104,6 +123,8 @@ See [Replace or remove a value with `!override` and `!reset`](./your-landofile.m
 
 Each diagnostic carries `sourceId`, `keyPath`, `message`, and `remediation`. Preview and `--write` emit the same list, so what you reviewed is what lands.
 
+Lando 3 removed tooling tasks whose values weren't mappings. The converter keeps `false` unchanged, without a diagnostic. Every other non-mapping task value, including `disabled`, becomes `false` with a `rewritten` note. That includes a command-looking string: conversion keeps the task disabled rather than turning it into a runnable Lando 4 string task.
+
 Two families of `needs-review` come from your commands rather than your keys. Any string that mentions `LANDO_INFO`, `LANDO_MOUNT`, `settings.lando.php`, or `wp-config` gets a review note: Lando 4 sets typed `LANDO_DB_*` and `LANDO_SERVICE_*` variables and never adds a `LANDO_INFO` alias, so a settings file that parses it needs your eyes. Any string that calls `lando <verb>` gets a reminder to verify that `lando --version` reports Lando 4 before running it; conversion does not change your PATH.
 
 `lando pull`, `lando push`, and `lando share` are `unsupported`. Lando 4 does not emulate hoster sync. Remove the command, move the workflow to `lando remote:add` and dataset `pull`/`push`, or keep that app on Lando 3.
@@ -125,23 +146,6 @@ Nothing falls through silently. When a key has both a supported form and a rejec
 | Hosting-platform recipes, `drupal7` through `drupal9`, and unbundled recipes | Rejected with `ConfigTranslateError` | Yes |
 
 The versions that convert are exactly the ones listed in [Service type versions](../../reference/service-types.mdx). Lando 4 never builds an image for a version it doesn't ship. Bump the version in your Lando 3 file first, check the app still works on Lando 3, then convert.
-
-## Write with backups
-
-```sh
-lando app:config:translate --from lando3 --write
-lando app:config:lint
-```
-
-`--write` commits every layer through one managed-file transaction. Before any byte moves, each file it will replace or remove gets an immutable backup beside it named `<file>.bak.<sha256>`, where the digest is the SHA-256 of the original bytes. The write summary lists `written`, `backups`, and `removed`.
-
-Three guarantees come with that transaction:
-
-- Interrupted mid-write? The next `lando` app command in that directory recovers the transaction or refuses to load until it is resolved. It never loads a half-converted app.
-- Edited a file between preview and `--write`? The write fails and the originals stay untouched. Run the preview again.
-- Want Lando 3 back? Copy each `.bak.<sha256>` file over its original name and delete `.lando.dist.yml` if the conversion created it. Lando 4 does not adopt Lando 3 containers or volumes, so the Lando 3 app is exactly where you left it.
-
-After the write, `lando app:config:lint` reports the result valid, and `lando start` runs it as an ordinary Lando 4 app. Review every `needs-review` diagnostic before that first start.
 
 ## Convert one layer
 
@@ -210,9 +214,12 @@ Every `lando` app command (`info`, `start`, `exec`, `app:config:lint`) fails the
       <Verify file="lando3-layers/.lando.yml" expect={{ not: { regex: "portforward" } }} />
       <Verify file="lando3-layers/.lando.yml" expect={{ regex: "type: redis:7" }} />
       <Verify file="lando3-layers/.lando.local.yml" expect={{ regex: "ports: !reset" }} />
-      <Verify file="lando3-layers/.lando.yml.bak.d4d3d1bebb0dcaf589d5f595b353daa45884ff215e5372321679e86a23fd6512" expect={{ regex: "portforward: true" }} />
-      <Verify file="lando3-layers/.lando.local.yml.bak.760c9d5ec10cf91bca3567255f32bf8faf962df7d9e87cfe1b9c1a9d244cc51c" expect={{ regex: "portforward: false" }} />
-      <Verify file="lando3-layers/.lando.recipe.yml.bak.da5afa1c80f6a288cbad8d399912dc786b235f57b18a4e6ddc6e49da739ebc91" expect={{ regex: "recipe: lamp" }} />
+      <Verify file="lando3-layers/.lando.yml.bak.53f4442f07ff02c9ea484af140472d8a9f6fc68603365e243b3417868609ff6e" expect={{ regex: "portforward: true" }} />
+      <Verify file="lando3-layers/.lando.yml.bak.53f4442f07ff02c9ea484af140472d8a9f6fc68603365e243b3417868609ff6e" expect={{ anyOf: ["# lando-lint: expect-invalid lando3 primary translation layer\nname: convert-demo\nservices:\n  cache:\n    type: redis:7\n    portforward: true\ntooling:\n  drush:\n    service: appserver\n    cmd: drush\n  settings:\n    service: appserver\n    cmd: cat /app/web/sites/default/settings.lando.php\n"] }} />
+      <Verify file="lando3-layers/.lando.local.yml.bak.36194d8d446513faaa3c70cbf2955610123b0b816c421e8a1eb4a811def58d20" expect={{ regex: "portforward: false" }} />
+      <Verify file="lando3-layers/.lando.local.yml.bak.36194d8d446513faaa3c70cbf2955610123b0b816c421e8a1eb4a811def58d20" expect={{ anyOf: ["# lando-lint: expect-invalid lando3 local translation layer\nconfig:\n  php: \"8.3\"\nservices:\n  cache:\n    portforward: false\n"] }} />
+      <Verify file="lando3-layers/.lando.recipe.yml.bak.6de6c3c981e57fa496ba303469b4d752744993cada519a9ebb992341da2457f3" expect={{ regex: "recipe: lamp" }} />
+      <Verify file="lando3-layers/.lando.recipe.yml.bak.6de6c3c981e57fa496ba303469b4d752744993cada519a9ebb992341da2457f3" expect={{ anyOf: ["# lando-lint: expect-invalid lando3 recipe translation layer\nrecipe: lamp\nconfig:\n  php: \"8.2\"\n  webroot: web\n"] }} />
     </Step>
     <Step name="lint-converted-app">
       <Run command="lando app:config:lint --format=json" />
@@ -296,7 +303,8 @@ Every `lando` app command (`info`, `start`, `exec`, `app:config:lint`) fails the
       <Run command="lando app:config:translate --from lando3 --file .lando.local.yml --write --format=json" />
       <Verify file="v4-with-lando3-local/.lando.local.yml" expect={{ regex: "type: mariadb:11\\.4" }} />
       <Verify file="v4-with-lando3-local/.lando.local.yml" expect={{ not: { regex: "portforward" } }} />
-      <Verify file="v4-with-lando3-local/.lando.local.yml.bak.bc2dca1f2d30f8401b264e035249049142fccf7ea749e0c3ae0a571a6cae1c81" expect={{ regex: "portforward: true" }} />
+      <Verify file="v4-with-lando3-local/.lando.local.yml.bak.1a45ff829d4370be0cc870fdb86028233936b9e8f4f613e6fc01517bb102b397" expect={{ regex: "portforward: true" }} />
+      <Verify file="v4-with-lando3-local/.lando.local.yml.bak.1a45ff829d4370be0cc870fdb86028233936b9e8f4f613e6fc01517bb102b397" expect={{ anyOf: ["# lando-lint: expect-invalid lando3 local overlay in a v4 app\nservices:\n  db:\n    type: mariadb:11.4\n    portforward: true\n"] }} />
       <Verify file="v4-with-lando3-local/.lando.yml" expect={{ regex: "name: mixed-demo" }} />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
     </Step>

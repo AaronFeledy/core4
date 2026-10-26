@@ -16,7 +16,7 @@ import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("recreate-ports");
 const serviceName = ServiceName.make("web");
 const metadata = {
@@ -52,6 +52,7 @@ const planWithHostPort = (hostPort: number): AppPlan => {
     extensions: {},
   };
   return {
+    valueModel: 1,
     id: appId,
     name: "Recreate Ports",
     slug: "recreate-ports",
@@ -59,7 +60,6 @@ const planWithHostPort = (hostPort: number): AppPlan => {
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     networking: { perAppBridge: { name: "recreate-ports-network", driver: "bridge" } },
     stores: [],
     fileSync: [],
@@ -151,7 +151,10 @@ const makeFakeApi = (input: {
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: input.networkExists === true ? 200 : 404, body: "{}" };
         }
-        if (request.method === "POST" && request.path === "/networks/create") {
+        if (
+          request.method === "POST" &&
+          ["/networks/create", "/libpod/networks/create"].includes(request.path)
+        ) {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && action === "json") {
@@ -214,6 +217,64 @@ const makeFakeApi = (input: {
 const createCalls = (calls: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<EngineHttpRequest> =>
   calls.filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
+test.each([false, true])(
+  "host-proxy session rotation cleans anonymous volumes and preserves named mounts (changed=%s)",
+  async (changed) => {
+    const base = planWithHostPort(18080);
+    const original = base.services[serviceName];
+    if (original === undefined) throw new Error("Missing service");
+    const previous = {
+      ...original,
+      storage: [{ store: "retained-data", target: PortablePath.make("/data"), readOnly: false }],
+      environment: {
+        LANDO_HOST_PROXY_SESSION: "previous-session",
+        LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+      },
+      mounts: [
+        {
+          type: "bind" as const,
+          source: "/home/user/session/host-proxy.sock",
+          target: PortablePath.make("/run/lando/host-proxy.sock"),
+          readOnly: true,
+          realization: "passthrough" as const,
+        },
+      ],
+    };
+    const desired = {
+      ...previous,
+      environment: {
+        ...previous.environment,
+        LANDO_HOST_PROXY_SESSION: changed ? "next-session" : "previous-session",
+      },
+    };
+    const planned = { ...base, services: { [serviceName]: desired } };
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      existingPlan: { ...base, services: { [serviceName]: previous } },
+      existingBindSource: "/home/user/session/host-proxy.sock",
+      existingNetworks: ["recreate-ports-network"],
+      networkExists: true,
+    });
+    const result = await Effect.runPromise(bringUp(planned, { api: fake.api, ctx, reconcile: false }));
+    expect(result.changed).toBe(changed);
+    expect(createCalls(fake.calls)).toHaveLength(changed ? 1 : 0);
+    const deletes = fake.calls.filter((call) => call.method === "DELETE");
+    expect(deletes).toHaveLength(changed ? 1 : 0);
+    for (const call of deletes) {
+      expect(call.path).toStartWith("/containers/");
+      expect(call.path).toBe(`/containers/${containerName}?force=true&v=true`);
+    }
+    expect(fake.calls.filter((call) => call.method === "DELETE" && call.path.startsWith("/volumes"))).toEqual(
+      [],
+    );
+    if (changed) {
+      expect(createCalls(fake.calls)[0]?.body).toMatchObject({
+        HostConfig: { Binds: expect.arrayContaining(["retained-data:/data"]) },
+      });
+    }
+  },
+);
+
 describe("Podman publish-port recreate", () => {
   test("recreate stops and deletes the observed owned native ID", async () => {
     // Given
@@ -225,9 +286,9 @@ describe("Podman publish-port recreate", () => {
       fake.calls
         .filter((call) => call.path.endsWith("/stop") || call.method === "DELETE")
         .map((call) => call.path),
-    ).toEqual(["/containers/observed-owned-id/stop", "/containers/observed-owned-id?force=true"]);
+    ).toEqual(["/containers/observed-owned-id/stop", "/containers/observed-owned-id?force=true&v=true"]);
   });
-  test("migrates a missing create-config label once without deleting volumes", async () => {
+  test("migrates a missing create-config label once without deleting named volumes", async () => {
     // Given an existing container from before create-config labels.
     const plan = planWithHostPort(38080);
     const fake = makeFakeApi({
@@ -245,7 +306,7 @@ describe("Podman publish-port recreate", () => {
     expect(result.changed).toBe(false);
     expect(createCalls(fake.calls)).toHaveLength(1);
     expect(fake.calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
-      `/containers/${containerName}?force=true`,
+      `/containers/${containerName}?force=true&v=true`,
     ]);
   });
 
@@ -256,14 +317,19 @@ describe("Podman publish-port recreate", () => {
     if (service === undefined) throw new Error("Test service is missing.");
     const plan: AppPlan = {
       ...base,
-      services: { [serviceName]: { ...service, environment: { PASSWORD: "${secret:db/password}" } } },
+      services: {
+        [serviceName]: {
+          ...service,
+          environment: { PASSWORD: { _tag: "SecretRef", reference: "PASSWORD" } },
+        },
+      },
     };
     const fake = makeFakeApi({ deleteStatus: 204, containerExists: false });
     await Effect.runPromise(
       bringUp(plan, {
         api: fake.api,
         ctx,
-        serviceEnvironment: { [serviceName]: { PASSWORD: "resolved-before" } },
+        resolveServiceEnvironment: () => Effect.succeed({ PASSWORD: "resolved-before" }),
       }),
     );
     // When the resolved bytes change without a desired reference change.
@@ -271,7 +337,7 @@ describe("Podman publish-port recreate", () => {
       bringUp(plan, {
         api: fake.api,
         ctx,
-        serviceEnvironment: { [serviceName]: { PASSWORD: "resolved-after" } },
+        resolveServiceEnvironment: () => Effect.succeed({ PASSWORD: "resolved-after" }),
       }),
     );
     // Then actual create received the secret, but its label contains only the desired opaque digest.
@@ -279,7 +345,9 @@ describe("Podman publish-port recreate", () => {
     expect(createCalls(fake.calls)).toHaveLength(1);
     expect(createCalls(fake.calls)[0]?.body).toMatchObject({
       Env: ["PASSWORD=resolved-before"],
-      Labels: { [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v1:[a-f0-9]{64}$/u) },
+      Labels: {
+        [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
+      },
     });
     expect(createCalls(fake.calls)[0]?.body).toHaveProperty(
       ["Labels", CREATE_CONFIG_LABEL],
@@ -768,7 +836,7 @@ describe("Podman publish-port recreate", () => {
       name: "Global",
       slug: "global",
       networking: {
-        perAppBridge: { name: "lando-global", driver: "bridge" },
+        perAppBridge: null,
         sharedNetworkMembership: {
           name: "lando_bridge_network",
           aliases: { [ServiceName.make("web")]: ["web.global.internal"] },

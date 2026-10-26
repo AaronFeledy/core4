@@ -69,14 +69,15 @@ const runtimeFor = (
   status: "running",
   state: "running",
   containerId: `cid-${String(service)}`,
-  endpoints: (plannedApp.services[service]?.endpoints ?? []).map((endpoint) =>
-    endpoint._tag === "published" && endpoint.publication.hostPort === undefined
-      ? {
-          ...endpoint,
-          materialization: { bindAddress: "127.0.0.1", hostPort: 34567 },
-        }
-      : endpoint,
-  ),
+  publications: {
+    status: "present",
+    bindings:
+      service === redis.name
+        ? [{ port: 6379, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 34567 }]
+        : service === web.name
+          ? [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }]
+          : [],
+  },
   ...extras,
 });
 
@@ -201,7 +202,7 @@ describe("selected service restart", () => {
           service: target.service,
           providerId: plan.provider,
           status: "stopped",
-          endpoints: [],
+          publications: { status: "missing" },
         }),
     });
     // When a selected restart runs.
@@ -277,12 +278,8 @@ describe("selected service restart", () => {
     ]);
     expect(selected.runtimes.get("web")?.containerId).toBe("cid-web");
     expect(selected.runtimes.get("redis")?.containerId).toBe("cid-redis");
-    const redisHttp = selected.runtimes
-      .get("redis")
-      ?.endpoints?.find((endpoint) => endpoint._tag === "published");
-    expect(
-      redisHttp && "materialization" in redisHttp ? redisHttp.materialization?.hostPort : undefined,
-    ).toBe(34567);
+    const redisHttp = selected.runtimes.get("redis")?.publications;
+    expect(redisHttp?.status === "present" ? redisHttp.bindings[0]?.hostPort : undefined).toBe(34567);
     expect(result.servicesStarted.map((service) => service.name)).toEqual(["redis"]);
   });
 

@@ -5,8 +5,34 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { finalizePluginInstall } from "../../src/operations/plugin-install.ts";
+import { finalizePluginInstall, validatePluginManifest } from "../../src/operations/plugin-install.ts";
 import { recordInstalledPlugin } from "../../src/plugins/installed-registry.ts";
+
+test("reports the offending key path when a plugin manifest contains an excess key", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-plugin-manifest-"));
+  try {
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({
+        name: "@acme/lando-plugin-broken",
+        version: "1.0.0",
+        landoPlugin: { name: "@acme/lando-plugin-broken", version: "1.0.0", unsupported: true },
+      }),
+    );
+
+    // When / Then
+    await expect(validatePluginManifest(root)).rejects.toMatchObject({
+      _tag: "PluginManifestError",
+      issues: expect.arrayContaining([
+        expect.objectContaining({ path: ["unsupported"], message: expect.any(String) }),
+      ]),
+      remediation: expect.any(String),
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("restores previous registry bytes when install recording publishes then rejects", async () => {
   // Given an existing version, registry bytes, and a staged replacement

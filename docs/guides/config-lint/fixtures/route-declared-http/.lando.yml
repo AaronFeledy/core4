@@ -1,0 +1,12 @@
+name: route-declared-http
+services:
+  web:
+    type: compose
+    image: nginx:alpine
+    home: false
+    endpoints:
+      - _tag: internal
+        protocol: http
+        port: 80
+    routes:
+      - web.lndo.site

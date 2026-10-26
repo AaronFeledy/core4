@@ -73,7 +73,9 @@ describe("elasticsearch ServiceType", () => {
       expect(plan.storage[0]?.store).toBe("myapp-elasticsearch-data");
       expect(String(plan.storage[0]?.target)).toBe("/usr/share/elasticsearch/data");
       expect(plan.storage[0]?.readOnly).toBe(false);
-      expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9200, protocol: "tcp", name: "search" }]);
+      expect(plan.endpoints).toEqual([
+        { _tag: "internal", port: 9200, protocol: "tcp", name: "search", primary: true },
+      ]);
     });
 
     test(`${label} includes single-node and security-disabled env defaults for local dev`, async () => {
@@ -160,13 +162,17 @@ describe("elasticsearch ServiceType", () => {
     });
   }
 
-  test("elasticsearch:8 and elasticsearch alias resolve to the same canonical service plan", async () => {
+  test("elasticsearch aliases preserve declaration identity with otherwise identical canonical plans", async () => {
     const primary = await planElasticsearchService(elasticsearch8ServiceType, { type: "elasticsearch:8" });
     const alias = await planElasticsearchService(elasticsearchServiceType, { type: "elasticsearch" });
 
     expect(primary.type).toBe("elasticsearch");
     expect(alias.type).toBe("elasticsearch");
-    expect(alias).toEqual(primary);
+    const { serviceTypeId: primaryId, ...primaryFacts } = primary;
+    const { serviceTypeId: aliasId, ...aliasFacts } = alias;
+    expect(primaryId).toBe("elasticsearch:8");
+    expect(aliasId).toBe("elasticsearch");
+    expect(aliasFacts).toEqual(primaryFacts);
   });
 
   test("uses the authored service name for the endpoint and LANDO context", async () => {
@@ -176,7 +182,9 @@ describe("elasticsearch ServiceType", () => {
       "indexer",
     );
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9200, protocol: "tcp", name: "indexer" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 9200, protocol: "tcp", name: "indexer", primary: true },
+    ]);
     expect(plan.environment).toMatchObject({
       LANDO_SERVICE_NAME: "indexer",
       LANDO_SERVICE_TYPE: "elasticsearch",

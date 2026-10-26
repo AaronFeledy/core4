@@ -1,6 +1,6 @@
 # Lando v4: Pluggability Catalog
 
-> **Part 4 of 19** · [Index](./README.md)
+> **Part 4 of 20** · [Index](./README.md)
 > **Read next:** [05 Runtime Providers](./05-runtime-providers.md)
 
 This part is the master contract index for replaceable abstractions, selection, registration, and conformance.
@@ -21,7 +21,7 @@ This part is the master contract index for replaceable abstractions, selection, 
 
 | Abstraction | Service tag | Default | Swap mechanism |
 |---|---|---|---|
-| Containerization | `RuntimeProvider` | `@lando/provider-lando` | `providers:`; select by app `provider:` or global `defaultProvider`. One provider is selected per app. |
+| Containerization | `RuntimeProvider` | `@lando/provider-lando` | `providers:`; select by app `provider:` or global `defaultProviderId`. One provider is selected per app. |
 | File sync | `FileSyncEngine` | Eager `passthrough`; bundled `@lando/file-sync-mutagen` for slow mounts | `fileSyncEngines:`; provider `bindMountPerformance` → `defaultFor` → `defaultFileSyncEngine` → sole implementation. Landofiles MUST NOT require an engine id; `accelerate: false` and `passthrough` are expert escape hatches. Engines MUST NOT call runtimes directly and must preserve lifecycle/scope semantics (§3.5, §5.4). |
 | Tooling execution | `ToolingEngine` | Core `providerExec` and `host` | `toolingEngines:`; per-step/task/default/Landofile/global selection (§8.6). Core ids MUST NOT be replaced; implementations MUST pass the tooling-engine contract suite (§13.1). |
 | Template rendering | `TemplateEngine` | Core `lando`; bundled `handlebars` and `mustache` whole-file engines | `templateEngines:`; explicit `engine`, extension, Landofile `defaultTemplateEngine`, then global config (§7.3.2). Only `lando` interpolates Landofile string values. |
@@ -62,6 +62,8 @@ This part is the master contract index for replaceable abstractions, selection, 
 `EmbeddedAssetService`, `StateStore`, `PathsService`, `RedactionService`, the `@lando/sdk/probe` primitive, `DataMover`, `CodeSync`, and `ManagedFileService` are intentionally absent. Tests and embedding hosts may override services where documented, but plugins cannot replace these architecture, state-integrity, path, redaction, retry, data-movement, or working-tree-integrity invariants. No `stateStores:`, `redactors:`, `probes:`, `dataMovers:`, or `managedFiles:` contribution surfaces exist. Plugins receive namespaced `StateBucket` and managed-file access through `LandoPluginContext` (§9.8). Replaceable emitters and provider data planes MUST compose the canonical invariants and MUST NOT weaken them.
 
 Core owns generic pull/push/switch orchestration and `CodeSync`; installed source and Dataset plugins supply the data plane, including the bundled `dotenv` plugin (§10.12). Neither `CodeSync` nor the scope-local `lando-session` secret store is a plugin replacement surface. This catalog specifies the design; release sequencing remains in `ROADMAP.md`.
+
+`ExecutionSessionService` is core-owned and non-replaceable. Consumers use its SDK contract through existing command/tooling contributions; no new manifest family is introduced (§22).
 
 ### 4.3 Selection precedence
 

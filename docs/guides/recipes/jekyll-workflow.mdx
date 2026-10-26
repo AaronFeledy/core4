@@ -7,12 +7,72 @@ tags: [beta, docs, recipes, jekyll, static, ruby]
 
 # Run the Jekyll recipe
 
+Create a Jekyll environment, install the site and its gems, then start the development server. Run these commands from your host terminal.
+
 ```sh
 lando init --recipe jekyll --name=jekyll-demo --yes
 cd jekyll-demo
 ```
 
-`--yes` skips prompts. Before the first start, park `builder` on `sleep infinity`: its default Jekyll server command exits until you install a Gemfile and gems. The recipe's artifact build installs the compiler and headers; `lando bundle` and `lando jekyll` then use the running builder.
+`--yes` skips prompts. Before the first start, keep `builder` running with `sleep infinity`: its default Jekyll server command exits until you install a Gemfile and gems. The recipe's artifact build installs the compiler and headers; `lando bundle` and `lando jekyll` then use the running builder.
+
+## Park builder
+
+After init, temporarily replace the `builder` command with `sleep infinity` so you can install Jekyll inside the running service. Change only the command; leave the generated `build.artifact` step alone.
+
+```sh
+lando app:config:set services.builder.command 'sleep infinity'
+lando start
+```
+
+The first start runs that build step to prepare the `builder` image.
+
+## Install Jekyll into the app
+
+Write a minimal Gemfile, then install with Bundler:
+
+```sh
+printf '%s\n' 'source "https://rubygems.org"' 'gem "jekyll", "~> 4.4.1"' > Gemfile
+lando bundle install
+lando jekyll --version
+```
+
+`lando jekyll --version` prints the installed Jekyll version.
+
+## Scaffold the site
+
+`.lando.yml` already lives in the app root, so tell Jekyll to write into this directory while `builder` is still parked:
+
+```sh
+lando jekyll new . --force --skip-bundle
+lando bundle install
+```
+
+`jekyll new` rewrites the Gemfile (Minima theme, `jekyll-feed`, and friends). `--skip-bundle` stops it from running Bundler on its own, so `lando bundle install` is what lands those gems before you build or serve.
+
+Bundler installs gems into `vendor/bundle/` in your app (the service sets `BUNDLE_PATH`). Keep it out of git; the `.gitignore` that `jekyll new` writes already lists `vendor`. `lando destroy` leaves `vendor/bundle/` in place.
+
+Confirm a one-off build:
+
+```sh
+lando jekyll build
+```
+
+That writes `_site/`.
+
+## Restore the server command
+
+Restore the recipe server command after the gems and site are in place:
+
+```sh
+lando app:config:set services.builder.command 'bundle exec jekyll serve --host 0.0.0.0 --port 4000'
+lando restart
+lando info
+```
+
+Day to day, leave the recipe command on `bundle exec jekyll serve --host 0.0.0.0 --port 4000` and open the **builder** URL `lando info` prints (for example `https://builder.jekyll-demo.lndo.site` or the same host with a fallback port such as `:8443`). The server rebuilds on save. Refresh the browser to see changes.
+
+Need a one-off rebuild while the development server keeps running? Use `lando jekyll build`.
 
 ## See what the recipe writes
 
@@ -88,64 +148,6 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
     </Step>
   </Scenario>
 </Guide>
-
-## Park builder
-
-Right after init, swap the `builder` command for `sleep infinity`. Change only the command; leave the generated `build.artifact` step alone.
-
-```sh
-lando app:config:set services.builder.command 'sleep infinity'
-lando start
-```
-
-The first start runs that build step to prepare the `builder` image.
-
-## Install Jekyll into the app
-
-Write a minimal Gemfile, then install with Bundler:
-
-```sh
-printf '%s\n' 'source "https://rubygems.org"' 'gem "jekyll", "~> 4.4.1"' > Gemfile
-lando bundle install
-lando jekyll --version
-```
-
-`lando jekyll --version` prints the installed Jekyll version.
-
-## Scaffold the site
-
-`.lando.yml` already lives in the app root, so tell Jekyll to write into this directory while `builder` is still parked:
-
-```sh
-lando jekyll new . --force --skip-bundle
-lando bundle install
-```
-
-`jekyll new` rewrites the Gemfile (Minima theme, `jekyll-feed`, and friends). `--skip-bundle` stops it from running Bundler on its own, so `lando bundle install` is what lands those gems before you build or serve.
-
-Bundler installs gems into `vendor/bundle/` in your app (the service sets `BUNDLE_PATH`). Keep it out of git; the `.gitignore` that `jekyll new` writes already lists `vendor`. `lando destroy` leaves `vendor/bundle/` in place.
-
-Confirm a one-off build:
-
-```sh
-lando jekyll build
-```
-
-That writes `_site/`.
-
-## Restore the server command
-
-Restore the recipe server command after the gems and site are in place:
-
-```sh
-lando app:config:set services.builder.command 'bundle exec jekyll serve --host 0.0.0.0 --port 4000'
-lando restart
-lando info
-```
-
-Day to day, leave the recipe command on `bundle exec jekyll serve --host 0.0.0.0 --port 4000` and open the **builder** URL `lando info` prints (for example `https://builder.jekyll-demo.lndo.site` or the same host with a fallback port such as `:8443`). The server rebuilds on save. Refresh the browser to see changes.
-
-Need a one-off rebuild while the development server keeps running? Use `lando jekyll build`.
 
 ## Serve the built site on the app hostname
 

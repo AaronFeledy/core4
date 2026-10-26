@@ -8,7 +8,7 @@ tags: [beta, docs, cli, tracing, otlp]
 
 # Export traces to your collector
 
-Point Lando at an OTLP/HTTP endpoint and every command ships its spans there.
+Point Lando at an OTLP/HTTP collector to export command traces. Start your collector first; the example below assumes it accepts OTLP/HTTP JSON at `http://localhost:4318`. Run the commands on your host, with `lando start` in your app directory.
 
 ```sh
 lando config set tracing.otlp.endpoint http://localhost:4318
@@ -17,11 +17,13 @@ lando start
 
 Lando posts OTLP JSON to `<endpoint>/v1/traces`. Give it the base URL, not the `/v1/traces` path. Any collector that speaks OTLP/HTTP JSON works: the OpenTelemetry Collector, Jaeger, Tempo, Honeycomb, and the rest.
 
+Check your collector for traces with `service.name` set to `lando`. A successful Lando command does not confirm delivery: export failures do not change the command exit status.
+
 Nothing is sent until you set an endpoint. There is no default collector and no phone-home.
 
 ## Configure the exporter
 
-Two global config keys:
+Set these keys in your global configuration, replacing the example endpoint and token with your collector’s values:
 
 ```yaml
 tracing:
@@ -36,10 +38,10 @@ tracing:
 | `tracing.otlp.endpoint` | OTLP/HTTP base URL. Lando appends `/v1/traces`. |
 | `tracing.otlp.headers` | Extra request headers, for auth tokens and tenant ids. |
 
-Set headers with `--type=json`:
+Set headers as a JSON map:
 
 ```sh
-lando config set tracing.otlp.headers '{"Authorization":"Bearer abc123"}' --type=json
+lando config set tracing.otlp.headers '{"Authorization":"Bearer abc123"}'
 ```
 
 Header values are secrets. `lando config` prints them redacted, and so does `--format=json`.

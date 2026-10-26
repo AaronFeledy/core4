@@ -20,7 +20,7 @@ import {
 
 const providerId = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"),
   source: "container-runtime/bring-up-nft.test.ts",
@@ -45,6 +45,7 @@ const service: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("start-remediation"),
   name: "Start Remediation",
   slug: "start-remediation",
@@ -52,7 +53,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "start-remediation-network", driver: "bridge" } },
   stores: [],
   fileSync: [],
@@ -115,7 +115,8 @@ describe("bringUp start-failure remediation hook", () => {
     // Then
     expect(error._tag).toBe("ServiceStartError");
     expect(error.remediation).toBe(APPLY_REMEDIATION);
-    expect(APPLY_REMEDIATION).toContain("lando destroy");
+    expect(APPLY_REMEDIATION).not.toContain("lando destroy");
+    expect(APPLY_REMEDIATION).toContain("lando start");
     expect(APPLY_REMEDIATION).toContain("lando doctor");
   });
 
@@ -188,7 +189,7 @@ describe("bringUp network-create remediation hook", () => {
   const networkCreateFailingApi: EngineHttpApi = {
     request: (request) =>
       Effect.succeed(
-        request.method === "GET" && request.path.startsWith("/networks/")
+        request.method === "GET" && (request.path.startsWith("/networks/") || request.path.endsWith("/json"))
           ? { status: 404, body: "{}" }
           : { status: 500, body: '{"message":"unable to execute \'nft\': netavark"}' },
       ),
@@ -236,7 +237,7 @@ describe("bringUp provider identity", () => {
 
     // Then
     expect(error._tag).toBe("ProviderUnavailableError");
-    expect(error.providerId).toBe("podman");
+    expect(error).toMatchObject({ providerId: "podman" });
     expect(error.message).toContain("provider-podman");
     expect(error.remediation).toBe(ctx.remediation);
   });
@@ -246,7 +247,8 @@ describe("bringUp provider identity", () => {
     const api: EngineHttpApi = {
       request: (request) =>
         Effect.succeed(
-          request.method === "GET" && request.path.startsWith("/networks/")
+          request.method === "GET" &&
+            (request.path.startsWith("/networks/") || request.path.endsWith("/json"))
             ? { status: 404, body: "{}" }
             : { status: 500, body: '{"message":"network create refused"}' },
         ),
@@ -256,8 +258,11 @@ describe("bringUp provider identity", () => {
     const error = await Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
 
     // Then
-    expect(error.providerId).toBe("podman");
-    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", operation: "bringUp.network" });
+    expect(error).toMatchObject({
+      _tag: "ProviderUnavailableError",
+      providerId: "podman",
+      operation: "bringUp.network",
+    });
     expect(error.message).toContain("network create refused");
   });
 });

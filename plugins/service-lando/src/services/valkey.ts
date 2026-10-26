@@ -5,7 +5,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "valkey/valkey:8";
@@ -25,7 +25,6 @@ const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
@@ -35,6 +34,10 @@ export const valkeyServiceFeature: ServiceFeatureDefinition = {
   id: VALKEY_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "tcp" }),
+    ),
   apply: serviceFeatureApply(VALKEY_FEATURE_ID, "valkey service feature failed to apply", applyValkeyFeature),
 };
 

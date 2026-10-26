@@ -9,10 +9,25 @@ import { AppId, ServiceName } from "@lando/sdk/schema";
 import { type CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 import { makeTestCertificateAuthority, runRouterServiceContractSuite } from "@lando/sdk/test";
 import * as BunFileSystem from "../../../src/services/file-system.ts";
+import { makeTraefikApiFixture } from "./traefik-api-fixture.ts";
 
 test("bundled Traefik satisfies the RouterService contract suite", async () => {
   const files = new Map<string, string>();
+  const runtime = makeTraefikApiFixture(
+    {
+      readDir: (path) =>
+        Effect.sync(() =>
+          [...files.keys()]
+            .filter((file) => file.startsWith(`${path}/`))
+            .map((file) => file.slice(path.length + 1)),
+        ),
+      readText: (path) => Effect.sync(() => files.get(path) ?? ""),
+    },
+    "/lando/global/proxy-traefik/dynamic",
+  );
   const service = makeTraefikRouterService({
+    httpClient: runtime.httpClient,
+    probeBind: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
       mkdir: () => Effect.void,
@@ -32,6 +47,7 @@ test("bundled Traefik satisfies the RouterService contract suite", async () => {
     paths: { platform: "linux", globalAppRoot: "/lando/global" },
     probeForward: () => Effect.succeed({ kind: "success" }),
     globalApp: {
+      ownedPublishPorts: runtime.ownedPublishPorts,
       ensureRunning: () =>
         Effect.succeed([
           {
@@ -51,6 +67,8 @@ test("bundled Traefik satisfies the RouterService contract suite", async () => {
   );
 
   expect(files.size).toBe(0);
+  expect(runtime.snapshots.some(({ routers }) => routers.length === 3)).toBe(true);
+  expect(runtime.snapshots.at(-1)?.routers).toHaveLength(1);
 });
 
 test("real filesystem status sees configured routing and stop removes route and certificate artifacts", async () => {
@@ -76,12 +94,16 @@ test("real filesystem status sees configured routing and stop removes route and 
       writeSecretAtomic: fileSystem.writeAtomic,
       remove: fileSystem.remove,
     };
+    const runtime = makeTraefikApiFixture(proxyFileSystem, join(root, "proxy-traefik", "dynamic"));
     const service = makeTraefikRouterService({
+      httpClient: runtime.httpClient,
+      probeBind: () => Effect.succeed({ kind: "success" }),
       certificateAuthority,
       fileSystem: proxyFileSystem,
       paths: { platform: "linux", globalAppRoot: root },
       probeForward: () => Effect.succeed({ kind: "success" }),
       globalApp: {
+        ownedPublishPorts: runtime.ownedPublishPorts,
         ensureRunning: () =>
           Effect.succeed([
             {

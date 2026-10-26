@@ -20,7 +20,6 @@ import * as SshServiceLayer from "@lando/engine/subsystems/ssh/api";
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import {
-  DefaultSubsystemDoctorLayer,
   type SubsystemDoctorResult,
   classifySubsystemFailure,
   renderSubsystemDoctorResult,
@@ -28,11 +27,12 @@ import {
   subsystemDoctor,
   subsystemFailureDiagnostic,
 } from "../../src/cli/commands/doctor-subsystems.ts";
+import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const AUTOMATIC_SUBSYSTEMS = ["router", "ssh"] as const;
-const MANUAL_SUBSYSTEMS = ["certs", "healthcheck", "scanner", "host-proxy"] as const;
+const MANUAL_SUBSYSTEMS = ["certs", "host-proxy"] as const;
 const DEGRADED_MANUAL_SUBSYSTEMS = ["certs", "host-proxy"] as const;
-const READY_MANUAL_SUBSYSTEMS = ["healthcheck", "scanner"] as const;
+const UNINSPECTED_SUBSYSTEMS = ["healthcheck", "scanner"] as const;
 
 const runDefault = (fix: boolean): Promise<SubsystemDoctorResult> =>
   Effect.runPromise(
@@ -57,7 +57,7 @@ const expectTaggedDiagnosticForFailure = (
 };
 
 describe("subsystem failure-recovery classification", () => {
-  test("classifies proxy/ssh as automatic and certs/host-proxy/healthcheck/scanner as manual", async () => {
+  test("classifies inspected proxy/ssh as automatic and certs/host-proxy as manual", async () => {
     const result = await runDefault(false);
     const byName = new Map(result.checks.map((check) => [check.name, check] as const));
 
@@ -91,13 +91,12 @@ describe("subsystem failure-recovery classification", () => {
     }
   });
 
-  test("healthcheck and scanner report ready via their real runProbe-backed runners", async () => {
+  test("healthcheck and scanner remain skipped without executed probes", async () => {
     const result = await runDefault(false);
-    for (const name of READY_MANUAL_SUBSYSTEMS) {
+    for (const name of UNINSPECTED_SUBSYSTEMS) {
       const check = result.checks.find((c) => c.name === name);
-      expect(check?.status).toBe("pass");
-      expect(check?.context.ready).toBe("true");
-      expect(check?.solutions).toEqual([]);
+      expect(check).toBeUndefined();
+      expect(result.skipped).toContainEqual({ section: name, status: "skipped", reason: expect.any(String) });
     }
   });
 
@@ -195,12 +194,12 @@ describe("doctor --fix recovery", () => {
     }
   });
 
-  test("--fix leaves ready manual subsystems untouched", async () => {
+  test("--fix cannot turn uninspected subsystems into passes", async () => {
     const result = await runDefault(true);
-    for (const name of READY_MANUAL_SUBSYSTEMS) {
+    for (const name of UNINSPECTED_SUBSYSTEMS) {
       const check = result.checks.find((c) => c.name === name);
-      expect(check?.status).toBe("pass");
-      expect(check?.context.fixOutcome).toBeUndefined();
+      expect(check).toBeUndefined();
+      expect(result.skipped).toContainEqual({ section: name, status: "skipped", reason: expect.any(String) });
     }
   });
 

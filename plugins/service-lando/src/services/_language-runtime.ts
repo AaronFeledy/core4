@@ -1,9 +1,15 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
-import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import {
+  ServiceConfigIssue,
+  addEnvRecord,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
@@ -35,7 +41,10 @@ interface LanguageRuntimeSpec<V extends string, F extends string> {
   readonly featureId: string;
   readonly priority: number;
   readonly featureSchema: Schema.Codec<unknown>;
-  readonly configFor: (ctx: ServiceFeatureContext) => LanguageFeatureConfig<V, F>;
+  readonly configFor: (ctx: { readonly config: Readonly<Record<string, unknown>> }) => LanguageFeatureConfig<
+    V,
+    F
+  >;
   readonly applyFallback: string;
   readonly resolveFallback: (version: V) => string;
 }
@@ -46,8 +55,10 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
   const validateFramework = (raw: string | undefined): F => {
     const framework = spec.frameworks.find((candidate) => candidate === (raw ?? "none"));
     if (framework !== undefined) return framework;
-    throw new Error(
-      `Unsupported ${spec.displayName} framework "${raw}". Set framework to one of: ${spec.frameworks.join(", ")} (got ${raw}).`,
+    throw new ServiceConfigIssue(
+      ["framework"],
+      `Unsupported ${spec.displayName} framework "${raw}".`,
+      `Set framework to one of: ${spec.frameworks.join(", ")} (got ${raw}).`,
     );
   };
 
@@ -57,8 +68,10 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     const requested = declaredType.slice(prefix.length);
     const version = spec.versions.find((candidate) => candidate === requested);
     if (version !== undefined) return version;
-    throw new Error(
-      `Unsupported ${spec.displayName} version "${requested}". Set type to one of: ${spec.versions.map((v) => `${prefix}${v}`).join(", ")} (got ${prefix}${requested}).`,
+    throw new ServiceConfigIssue(
+      ["type"],
+      `Unsupported ${spec.displayName} version "${requested}".`,
+      `Set type to one of: ${spec.versions.map((v) => `${prefix}${v}`).join(", ")} (got ${prefix}${requested}).`,
     );
   };
 
@@ -71,7 +84,6 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     addEnvRecord(ctx, env);
     ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
     applyAuthoredProcessFields(ctx, ["user"]);
-    addServicePortEndpoints(ctx, { port, protocol: "http" });
     applyAuthoredProcessFields(ctx, ["entrypoint"]);
     ctx.addExtension(spec.extensionKey, {
       framework,
@@ -85,6 +97,11 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     id: spec.featureId,
     schema: spec.featureSchema,
     priority: spec.priority,
+    declareEndpoints: (ctx) =>
+      Effect.sync(() => {
+        const { port } = spec.configFor(ctx);
+        return servicePortEndpoints(ctx, { port, protocol: "http" });
+      }),
     apply: serviceFeatureApply(spec.featureId, spec.applyFallback, applyFeature),
   };
 

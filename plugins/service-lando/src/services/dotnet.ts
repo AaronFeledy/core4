@@ -5,7 +5,7 @@ import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_PORT = 5000;
@@ -35,7 +35,6 @@ const applyDotnetFeature = (ctx: ServiceFeatureContext): void => {
     target: NUGET_CACHE.target,
     readOnly: NUGET_CACHE.readOnly,
   });
-  addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "http" });
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "user"]);
 };
@@ -44,6 +43,10 @@ export const dotnetServiceFeature: ServiceFeatureDefinition = {
   id: DOTNET_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+    ),
   apply: serviceFeatureApply(DOTNET_FEATURE_ID, "dotnet service feature failed to apply", applyDotnetFeature),
 };
 

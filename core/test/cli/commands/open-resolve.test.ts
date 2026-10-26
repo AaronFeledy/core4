@@ -1,292 +1,279 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime } from "effect";
-
 import {
   type AppPlan,
   type EndpointPlan,
   ProviderId,
-  type RoutePlan,
+  type ServiceConnection,
   ServiceName,
-  type ServicePlan,
+  type StartedService,
 } from "@lando/sdk/schema";
+import { DateTime } from "effect";
+import { isOpenableScheme, resolveOpenTargets } from "../../../src/cli/commands/open.ts";
 
-import { buildOpenTarget, isOpenableScheme, resolveOpenTargets } from "../../../src/cli/commands/open.ts";
-
-const route = (
-  over: Partial<Omit<RoutePlan, "service">> &
-    Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string },
-): RoutePlan => ({
-  ...over,
-  priority: over.priority ?? 2,
-  service: ServiceName.make(over.service),
-  backend: over.backend ?? {
-    service: ServiceName.make(over.service),
-    protocol: "http",
-    port: 80,
-  },
-});
-
-const endpoint = (over: EndpointPlan): EndpointPlan => over;
-
-const svc = (name: string, endpoints: ReadonlyArray<EndpointPlan> = []): ServicePlan => ({
-  name: ServiceName.make(name),
-  type: "generic",
-  provider: ProviderId.make("test"),
-  primary: false,
-  environment: {},
-  mounts: [],
-  storage: [],
-  endpoints: [...endpoints],
-  routes: [],
-  dependsOn: [],
-  hostAliases: [],
-  metadata: {
-    resolvedAt: DateTime.makeUnsafe("2026-07-06T00:00:00Z"),
-    source: "open-resolve.test",
-    runtime: 4,
-  },
-  extensions: {},
-});
-
-const plan = (
-  routes: RoutePlan[],
-  serviceNames: ReadonlyArray<string | ServicePlan>,
-): Pick<AppPlan, "services" | "routes"> => {
-  const services: Record<string, ServicePlan> = {};
-  for (const service of serviceNames) {
-    const resolved = typeof service === "string" ? svc(service) : service;
-    services[resolved.name] = resolved;
-  }
-  return { services, routes } as Pick<AppPlan, "services" | "routes">;
+const plan: Pick<AppPlan, "services"> = {
+  services: Object.fromEntries(
+    ["api", "web"].map((name) => [
+      name,
+      {
+        name: ServiceName.make(name),
+        type: "generic",
+        provider: ProviderId.make("test"),
+        primary: false,
+        environment: {},
+        mounts: [],
+        storage: [],
+        endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
+        routes: [],
+        dependsOn: [],
+        hostAliases: [],
+        metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
+        extensions: {},
+      },
+    ]),
+  ),
 };
-
-describe("buildOpenTarget", () => {
-  describe("listen-port fallback", () => {
-    const ports = { http: 8080, https: 8443 };
-    const selected = route({ hostname: "web.myapp.lndo.site", scheme: "both", service: "web" });
-    const httpAuthority = { hostname: selected.hostname, scheme: "http" as const, port: 8888 };
-    const otherHostAuthority = { hostname: "other.lndo.site", scheme: "https" as const, port: 4443 };
-
-    test("uses the https listen port when no authority matches the route", () => {
-      const target = buildOpenTarget(selected, [httpAuthority, otherHostAuthority], ports);
-      expect(target.url).toBe("https://web.myapp.lndo.site:8443");
-    });
-
-    test("uses the http listen port for an http route", () => {
-      const target = buildOpenTarget({ ...selected, scheme: "http" }, [], ports);
-      expect(target.url).toBe("http://web.myapp.lndo.site:8080");
-    });
-
-    test("prefers an exact hostname and scheme authority over the listen port", () => {
-      const httpsAuthority = { hostname: selected.hostname, scheme: "https" as const, port: 4433 };
-      const target = buildOpenTarget(selected, [httpAuthority, otherHostAuthority, httpsAuthority], ports);
-      expect(target.url).toBe("https://web.myapp.lndo.site:4433");
-    });
-
-    test("omits the port when the matching authority uses the scheme default", () => {
-      const defaultAuthority = { hostname: selected.hostname, scheme: "https" as const, port: 443 };
-      expect(buildOpenTarget(selected, [defaultAuthority], ports).url).toBe("https://web.myapp.lndo.site");
-    });
-
-    test("omits the port without listen ports or a matching authority", () => {
-      expect(buildOpenTarget(selected, [httpAuthority, otherHostAuthority]).url).toBe(
-        "https://web.myapp.lndo.site",
-      );
-    });
-
-    test.each(["http", "https"] as const)("omits default listen ports for %s routes", (scheme) => {
-      const target = buildOpenTarget({ ...selected, scheme }, [], { http: 80, https: 443 });
-      expect(target.url).toBe(`${scheme}://web.myapp.lndo.site`);
-    });
-  });
-
-  test("collapses scheme both to https and builds the url", () => {
-    const target = buildOpenTarget(
-      route({ hostname: "web.myapp.lndo.site", scheme: "both", service: "web" }),
-    );
-    expect(target).toEqual({
-      service: "web",
-      hostname: "web.myapp.lndo.site",
-      scheme: "https",
-      url: "https://web.myapp.lndo.site",
-    });
-  });
-
-  test("uses acquired proxy ports for route URLs", () => {
-    const selected = route({ hostname: "web.myapp.lndo.site", scheme: "both", service: "web" });
-    const authorities = [
-      { hostname: "web.myapp.lndo.site", scheme: "http" as const, port: 8888 },
-      { hostname: "web.myapp.lndo.site", scheme: "https" as const, port: 4433 },
-    ];
-    expect(buildOpenTarget(selected, authorities).url).toBe("https://web.myapp.lndo.site:4433");
-    expect(
-      resolveOpenTargets(plan([selected], ["web"]), {}, authorities).map((target) => target.url),
-    ).toEqual(["https://web.myapp.lndo.site:4433"]);
-  });
-
-  test("preserves http scheme and appends pathPrefix", () => {
-    const target = buildOpenTarget(
-      route({ hostname: "api.myapp.lndo.site", scheme: "http", service: "api", pathPrefix: "/v1" }),
-    );
-    expect(target.scheme).toBe("http");
-    expect(target.url).toBe("http://api.myapp.lndo.site/v1");
-  });
+const connection = (host: string, protocol: "http" | "https" = "https") =>
+  ({
+    scope: "host",
+    source: "route",
+    binding: "assigned",
+    state: "active",
+    host,
+    protocol,
+    port: protocol === "http" ? 8080 : 8443,
+    url: `${protocol}://${host}:${protocol === "http" ? 8080 : 8443}/v1`,
+    pathPrefix: "/v1",
+    alternateUrls: [],
+    endpoint: { port: 80, transport: "tcp", names: [], primary: false },
+  }) satisfies ServiceConnection;
+const rows: readonly StartedService[] = [
+  { name: "api", state: "running", connections: [connection("api.test", "http")] },
+  {
+    name: "web",
+    state: "running",
+    connections: [connection("web.test"), connection("web-alt.test", "http")],
+  },
+];
+const withWebEndpoints = (endpoints: readonly EndpointPlan[]): Pick<AppPlan, "services"> => ({
+  services: Object.fromEntries(
+    Object.values(plan.services).map((service) => [
+      service.name,
+      service.name === "web" ? { ...service, endpoints } : service,
+    ]),
+  ),
 });
 
 describe("resolveOpenTargets", () => {
-  const routes = [
-    route({ hostname: "api.myapp.lndo.site", scheme: "http", service: "api" }),
-    route({ hostname: "web.myapp.lndo.site", scheme: "https", service: "web" }),
-    route({ hostname: "web-alt.myapp.lndo.site", scheme: "http", service: "web" }),
-  ];
-  const p = plan(routes, ["api", "web"]);
+  test.each([{}, { service: "web" }])(
+    "selects a marked primary listener when secondary observations arrive first: %j",
+    (selection) => {
+      const declared = withWebEndpoints([
+        { _tag: "internal", protocol: "https", port: 8080 },
+        { _tag: "internal", protocol: "http", port: 80, primary: true },
+      ]);
+      const observed: readonly StartedService[] = [
+        {
+          name: "web",
+          state: "running",
+          connections: [
+            {
+              ...connection("secondary.test"),
+              endpoint: { port: 8080, transport: "tcp", names: [], primary: false },
+            },
+            connection("primary.test", "http"),
+          ],
+        },
+      ];
+      expect(resolveOpenTargets(declared, selection, observed).map((target) => target.url)).toEqual([
+        "http://primary.test:8080/v1",
+      ]);
+    },
+  );
 
+  test.each([{}, { service: "web" }])("leaves two unmarked HTTP listeners unresolved: %j", (selection) => {
+    const declared = withWebEndpoints([
+      { _tag: "internal", protocol: "http", port: 80 },
+      { _tag: "internal", protocol: "https", port: 8080 },
+    ]);
+    const observed: readonly StartedService[] = [
+      {
+        name: "web",
+        state: "running",
+        connections: [
+          connection("first.test", "http"),
+          {
+            ...connection("second.test"),
+            endpoint: { port: 8080, transport: "tcp", names: [], primary: false },
+          },
+        ],
+      },
+    ];
+    expect(resolveOpenTargets(declared, selection, observed)).toEqual([]);
+    expect(resolveOpenTargets(declared, { all: true }, observed)).toHaveLength(2);
+    expect(
+      resolveOpenTargets(declared, { route: "second.test" }, observed).map((target) => target.hostname),
+    ).toEqual(["second.test"]);
+  });
   test.each([
-    {},
-    { service: "web" },
-    { route: "web-alt.myapp.lndo.site" },
-    { all: true },
-    { all: true, service: "web" },
-  ])("threads fallback ports through selection %j", (selection) => {
-    const ports = { http: 8080, https: 8443 };
-    const targets = resolveOpenTargets(p, selection, [], ports);
-    expect(targets.length).toBeGreaterThan(0);
-    for (const target of targets) {
-      expect(target.url).toBe(`${target.scheme}://${target.hostname}:${ports[target.scheme]}`);
-    }
+    [{}, ["api.test"]],
+    [{ service: "web" }, ["web.test"]],
+    [{ route: "web-alt.test", service: "api" }, ["web-alt.test"]],
+    [{ all: true }, ["api.test", "web.test", "web-alt.test"]],
+    [{ all: true, service: "web" }, ["web.test", "web-alt.test"]],
+    [{ service: "missing" }, []],
+    [{ route: "missing.test" }, []],
+  ] as const)("preserves selection %j", (selection, hosts) => {
+    const result = resolveOpenTargets(plan, selection, rows);
+    expect(result.map((target) => target.hostname)).toEqual([...hosts]);
   });
 
-  test("S1 default resolves first route of first declaring service", () => {
-    const result = resolveOpenTargets(p, {});
-    expect(result.map((r) => r.hostname)).toEqual(["api.myapp.lndo.site"]);
+  test("preserves observed ports and route prefixes without guessing", () => {
+    const result = resolveOpenTargets(plan, { service: "web" }, rows);
+    expect(result.map((target) => target.url)).toEqual(["https://web.test:8443/v1"]);
   });
 
-  test("S1 default prefers https within the chosen service", () => {
-    const httpsFirst = plan(
-      [
-        route({ hostname: "web-http.lndo.site", scheme: "http", service: "web" }),
-        route({ hostname: "web-https.lndo.site", scheme: "https", service: "web" }),
-      ],
-      ["web"],
-    );
-    expect(resolveOpenTargets(httpsFirst, {}).map((r) => r.hostname)).toEqual(["web-https.lndo.site"]);
+  test("prefers https within the first service", () => {
+    const observed = [
+      {
+        name: "api",
+        state: "running" as const,
+        connections: [connection("plain.test", "http"), connection("secure.test")],
+      },
+    ];
+    expect(resolveOpenTargets(plan, {}, observed).map((target) => target.hostname)).toEqual(["secure.test"]);
   });
 
-  test("S2 --service scopes to that service (prefer https)", () => {
-    expect(resolveOpenTargets(p, { service: "web" }).map((r) => r.hostname)).toEqual(["web.myapp.lndo.site"]);
+  test.each(["inactive", "unknown"] as const)("excludes %s assigned connections", (state) => {
+    const observed = [
+      { name: "web", state: "running" as const, connections: [{ ...connection("web.test"), state }] },
+    ];
+    expect(resolveOpenTargets(plan, { all: true }, observed)).toEqual([]);
   });
 
-  test("S3 --route selects an exact hostname", () => {
-    expect(resolveOpenTargets(p, { route: "web-alt.myapp.lndo.site" }).map((r) => r.hostname)).toEqual([
-      "web-alt.myapp.lndo.site",
-    ]);
-  });
-
-  test("S4 --all resolves every route in plan order", () => {
-    expect(resolveOpenTargets(p, { all: true }).map((r) => r.hostname)).toEqual([
-      "api.myapp.lndo.site",
-      "web.myapp.lndo.site",
-      "web-alt.myapp.lndo.site",
-    ]);
-  });
-
-  test("S4 --all with --service resolves every route for the selected service", () => {
-    expect(resolveOpenTargets(p, { all: true, service: "web" }).map((r) => r.hostname)).toEqual([
-      "web.myapp.lndo.site",
-      "web-alt.myapp.lndo.site",
-    ]);
-  });
-
-  test("S5 no routes resolves to an empty list", () => {
-    expect(resolveOpenTargets(plan([], ["web"]), {})).toEqual([]);
-    expect(resolveOpenTargets(p, { service: "missing" })).toEqual([]);
-    expect(resolveOpenTargets(p, { route: "nope.lndo.site" })).toEqual([]);
-  });
-
-  test("S5 falls back to http endpoints when no matching route exists", () => {
-    const p = plan(
-      [],
-      [
-        svc("web", [
-          endpoint({ _tag: "internal", protocol: "tcp", port: 3306 }),
-          endpoint({ _tag: "published", protocol: "http", port: 8080, publication: { hostPort: 8080 } }),
-          endpoint({
-            _tag: "published",
+  test("excludes pending, wildcard, app-network and non-http connections", () => {
+    const endpoint = { port: 80, transport: "tcp" as const, names: [], primary: false };
+    const observed: readonly StartedService[] = [
+      {
+        name: "web",
+        state: "running",
+        connections: [
+          {
+            scope: "host",
+            source: "route",
+            binding: "pending",
+            state: "unknown",
+            host: "pending.test",
             protocol: "https",
-            port: 8443,
-            publication: { hostPort: 8443 },
-          }),
-        ]),
-      ],
-    );
-    expect(resolveOpenTargets(p, {}).map((r) => r.url)).toEqual(["https://localhost:8443"]);
-    expect(resolveOpenTargets(p, { service: "web" }).map((r) => r.url)).toEqual(["https://localhost:8443"]);
-    expect(resolveOpenTargets(p, { all: true, service: "web" }).map((r) => r.url)).toEqual([
-      "http://localhost:8080",
-      "https://localhost:8443",
-    ]);
-    expect(resolveOpenTargets(p, { all: true }).map((r) => r.url)).toEqual([
-      "http://localhost:8080",
-      "https://localhost:8443",
-    ]);
-  });
-
-  test("a disabled router hands out published endpoints instead of route hostnames", () => {
-    // Given: routes exist but nothing publishes them.
-    const disabled = {
-      ...plan(routes, [
-        svc("api", [
-          endpoint({ _tag: "published", protocol: "http", port: 8080, publication: { hostPort: 8080 } }),
-        ]),
-        "web",
-      ]),
-      router: { enabled: false },
-    };
-
-    // When / Then: every selection form skips the unserved hostnames.
-    expect(resolveOpenTargets(disabled, {}).map((target) => target.url)).toEqual(["http://localhost:8080"]);
-    expect(resolveOpenTargets(disabled, { service: "api" }).map((target) => target.url)).toEqual([
-      "http://localhost:8080",
-    ]);
-    expect(resolveOpenTargets(disabled, { all: true }).map((target) => target.url)).toEqual([
-      "http://localhost:8080",
-    ]);
-    expect(resolveOpenTargets(disabled, { route: "web.myapp.lndo.site" })).toEqual([]);
-    expect(resolveOpenTargets(disabled, { service: "web" })).toEqual([]);
-  });
-
-  test("an enabled router keeps preferring route hostnames", () => {
-    // Given
-    const enabled = { ...p, router: { enabled: true } };
-    // When / Then
-    expect(resolveOpenTargets(enabled, {}).map((target) => target.hostname)).toEqual(["api.myapp.lndo.site"]);
-  });
-
-  test("S5 default prefers any proxy route before endpoint fallbacks", () => {
-    const p = plan(
-      [route({ hostname: "app.myapp.lndo.site", scheme: "https", service: "app" })],
-      [
-        svc("db", [
-          endpoint({
-            _tag: "published",
+            pathPrefix: "/v1",
+            endpoint,
+          },
+          connection("*.wild.test"),
+          {
+            scope: "app",
+            source: "listener",
+            binding: "assigned",
+            state: "active",
+            host: "web",
             protocol: "http",
-            port: 8888,
-            publication: { hostPort: 8888 },
-          }),
-        ]),
-        "app",
-      ],
-    );
+            port: 80,
+            url: "http://web",
+            alternateUrls: [],
+            endpoint,
+          },
+          {
+            scope: "host",
+            source: "publication",
+            binding: "assigned",
+            state: "active",
+            host: "localhost",
+            protocol: "tcp",
+            port: 8080,
+            url: "tcp://localhost:8080",
+            alternateUrls: [],
+            endpoint,
+          },
+        ],
+      },
+    ];
+    expect(resolveOpenTargets(plan, { all: true }, observed)).toEqual([]);
+  });
 
-    expect(resolveOpenTargets(p, {}).map((r) => r.url)).toEqual(["https://app.myapp.lndo.site"]);
+  test("uses active direct publications when routes are not active", () => {
+    const observed: readonly StartedService[] = [
+      {
+        name: "web",
+        state: "running",
+        connections: [
+          { ...connection("web.test"), state: "unknown" },
+          {
+            scope: "host",
+            source: "publication",
+            binding: "assigned",
+            state: "active",
+            host: "localhost",
+            protocol: "http",
+            port: 49152,
+            url: "http://localhost:49152",
+            alternateUrls: [],
+            endpoint: { port: 80, transport: "tcp", names: [], primary: false },
+          },
+        ],
+      },
+    ];
+    expect(resolveOpenTargets(plan, {}, observed).map((target) => target.url)).toEqual([
+      "http://localhost:49152",
+    ]);
+    expect(resolveOpenTargets(plan, { route: "web.test" }, observed)).toEqual([]);
+  });
+
+  test("prefers observed routes before publications on earlier services", () => {
+    const observed: readonly StartedService[] = [
+      {
+        name: "api",
+        state: "running",
+        connections: [
+          {
+            scope: "host",
+            source: "publication",
+            binding: "assigned",
+            state: "active",
+            host: "localhost",
+            protocol: "http",
+            port: 8000,
+            url: "http://localhost:8000",
+            alternateUrls: [],
+            endpoint: { port: 80, transport: "tcp", names: [], primary: false },
+          },
+        ],
+      },
+      rows[1] ?? { name: "web", state: "running", connections: [] },
+    ];
+    expect(resolveOpenTargets(plan, {}, observed).map((target) => target.hostname)).toEqual(["web.test"]);
+  });
+
+  test("collapses dual-scheme route observations without losing distinct prefixes", () => {
+    const observed: readonly StartedService[] = [
+      {
+        name: "web",
+        state: "running",
+        connections: [
+          connection("web.test", "http"),
+          connection("web.test"),
+          { ...connection("web.test"), pathPrefix: "/v2", url: "https://web.test:8443/v2" },
+        ],
+      },
+    ];
+    expect(resolveOpenTargets(plan, { all: true }, observed).map((target) => target.url)).toEqual([
+      "https://web.test:8443/v1",
+      "https://web.test:8443/v2",
+    ]);
   });
 });
 
-describe("isOpenableScheme", () => {
-  test("S6 only http and https are openable", () => {
-    expect(isOpenableScheme("https://a.lndo.site")).toBe(true);
-    expect(isOpenableScheme("http://a.lndo.site")).toBe(true);
-    expect(isOpenableScheme("ftp://a.lndo.site")).toBe(false);
-    expect(isOpenableScheme("file:///etc/passwd")).toBe(false);
-  });
+test("only http and https schemes are openable", () => {
+  expect(isOpenableScheme("https://a.test")).toBe(true);
+  expect(isOpenableScheme("http://a.test")).toBe(true);
+  expect(isOpenableScheme("ftp://a.test")).toBe(false);
+  expect(isOpenableScheme("file:///etc/passwd")).toBe(false);
+  expect(isOpenableScheme("invalid")).toBe(false);
 });

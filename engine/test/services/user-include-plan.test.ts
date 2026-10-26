@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer } from "effect";
 
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -64,7 +64,10 @@ test("plans user profile build context and env_file from the consuming app root"
     const web = plan.services[ServiceName.make("web")];
     expect(plan.root).toBe(AbsolutePath.make(appRoot));
     expect(web?.artifact).toMatchObject({ kind: "build", context: join(appRoot, "docker") });
-    expect(web?.environment).toMatchObject({ ORIGIN: "app", VALUE: "${secret:OPAQUE}" });
+    expect(web?.environment).toMatchObject({
+      ORIGIN: "app",
+      VALUE: { _tag: "SecretRef", reference: "OPAQUE" },
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

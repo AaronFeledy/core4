@@ -4,6 +4,7 @@ import { Effect, Result } from "effect";
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 
 import {
+  ServiceConfigIssue,
   addEnvRecord,
   commandHealthcheck,
   loopbackTcpHealthcheck,
@@ -12,6 +13,48 @@ import {
   serviceTypeResolve,
 } from "../src/services/_feature-helpers.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
+
+test.each([undefined, "Set port: 5433 instead."])(
+  "config issues retain paths across resolve and apply with suggestion %p",
+  (suggestion) => {
+    // Given
+    const cause = new ServiceConfigIssue(
+      ["environment", "PGPORT"],
+      "PGPORT disagrees with port.",
+      suggestion,
+    );
+    const { ctx } = recordFeatureContext({ serviceType: "postgres", normalizedConfig: {}, config: {} });
+    const fail = () => {
+      throw cause;
+    };
+    // When
+    const resolved = Effect.runSync(Effect.result(serviceTypeResolve("postgres", "fallback", fail)));
+    const applied = Effect.runSync(
+      Effect.result(serviceFeatureApply("postgres.feature", "fallback", fail)(ctx)),
+    );
+    // Then
+    expect(resolved._tag).toBe("Failure");
+    if (Result.isFailure(resolved)) {
+      expect(resolved.failure).toBeInstanceOf(ServiceTypeError);
+      expect(resolved.failure.cause).toBe(cause);
+      expect(resolved.failure.issues).toEqual([
+        {
+          path: ["environment", "PGPORT"],
+          message: "PGPORT disagrees with port.",
+          ...(suggestion ? { suggestion } : {}),
+        },
+      ]);
+    }
+    expect(applied._tag).toBe("Failure");
+    if (Result.isFailure(applied)) {
+      expect(applied.failure).toBeInstanceOf(ServiceFeatureError);
+      expect(applied.failure.cause).toBe(cause);
+      expect(applied.failure.message).toBe(
+        `services.${ctx.serviceName}.environment.PGPORT: PGPORT disagrees with port.${suggestion ? ` ${suggestion}` : ""}`,
+      );
+    }
+  },
+);
 
 test("environment records preserve insertion order and later overwrites when applied successively", () => {
   // Given
@@ -105,6 +148,7 @@ test.each([new Error("original message"), "non-error", undefined])(
         message: cause instanceof Error ? cause.message : "resolve fallback",
         cause,
       });
+      expect(result.failure.issues).toBeUndefined();
       expect(result.failure.cause).toBe(cause);
     }
   },

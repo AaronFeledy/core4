@@ -1,6 +1,5 @@
 import { type Context, Effect, Layer, Option } from "effect";
 
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import {
   AppPlanner,
   CacheService,
@@ -19,10 +18,7 @@ import {
   applyAuthoredHealthcheck,
   validateAuthoredAppMount,
 } from "../planner/authored.ts";
-import { attachEffectiveEvents, compiledEventsForPlan } from "../planner/effective-events.ts";
-import { attachEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { DEFAULT_APP_MOUNT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
-import { attachServiceCredsScope, serviceCredsScopeForPlan } from "../planner/landofile-scopes.ts";
 import { adoptMysqlVolume } from "../planner/mysql-volume.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
@@ -51,7 +47,7 @@ export const layer = Layer.effect(
     return AppPlanner.of({
       plan: Effect.fn("AppPlanner.plan")(function* (landofile, providerCapabilities) {
         const identity = yield* resolveAppIdentity(
-          getLandofileAppRoot(landofile) ?? process.cwd(),
+          landofile.context.appRoot,
           Option.getOrUndefined(processRunner),
         );
         const plan = yield* planApp(
@@ -66,14 +62,7 @@ export const layer = Layer.effect(
           identity.appRoot,
         );
         const identified = { ...plan, root: identity.appRoot, identity };
-        const tooling = effectiveToolingForPlan(plan);
-        const events = compiledEventsForPlan(plan);
-        const credsScope = serviceCredsScopeForPlan(plan);
-        const adopted = yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
-        if (tooling !== undefined) attachEffectiveTooling(adopted, tooling);
-        if (events !== undefined) attachEffectiveEvents(adopted, events);
-        if (credsScope !== undefined) attachServiceCredsScope(adopted, credsScope);
-        return adopted;
+        return yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
       }),
     } satisfies Context.Service.Shape<typeof AppPlanner>);
   }),

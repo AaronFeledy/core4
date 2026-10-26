@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   LandofileShape,
@@ -13,6 +12,7 @@ import { Cause, Effect, Exit, Option, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { composeExtendedServiceType } from "../../src/services/extends.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 const APP_ROOT = process.cwd();
 const plan = (service: typeof ServiceConfig.Encoded) => {
@@ -22,7 +22,7 @@ const plan = (service: typeof ServiceConfig.Encoded) => {
     services: { web: { home: false, certs: false, ...service } },
   });
   return Effect.flatMap(AppPlanner, (planner) =>
-    planner.plan(rememberLandofileAppRoot(landofile, APP_ROOT), TestRuntimeProvider.capabilities),
+    planner.plan(literalTestLandofile(landofile, APP_ROOT), TestRuntimeProvider.capabilities),
   ).pipe(Effect.provide(AppPlannerLayer.layer));
 };
 

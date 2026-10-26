@@ -1,6 +1,13 @@
 # Start a Node app with environment expressions
 
-`lando init --recipe node-ts` scaffolds a canonical `.lando.yml` with one Node service. The Landofile adapts to your environment when the app loads. There are no options beyond the app name.
+Create a `.lando.yml` with one Node service whose image and `NODE_ENV` are
+resolved from your environment when Lando loads the app. The recipe has no
+options beyond the app name.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe node-ts --name=my-node-ts --yes
@@ -16,16 +23,7 @@ The generated Landofile reads two environment variables at load time:
 | `LANDO_NODE_VERSION` | the Node image tag for the `web` service | `24` |
 | `NODE_ENV` | `NODE_ENV` inside the `web` service | `development` |
 
-The default image is `node:24`, so changes to the upstream `node:lts` tag do
-not move this app to another major version. `LANDO_NODE_VERSION` selects an
-image tag directly; this recipe does not use Lando's Node service type.
-
-If you choose a Node 26 image, it will not include Yarn or Corepack. To use
-Node-service features such as `globals` package installation, replace the
-`web` service's `image:` field with an explicit type such as `type: node:26`.
-That type selects the version directly instead of reading `LANDO_NODE_VERSION`.
-
-Set either environment variable in your host shell before `lando start`. The Landofile reads it on the next load; you do not need a second config file.
+Set either one in your shell before `lando start` and the app picks it up on the next load. You do not need to regenerate the Landofile or add another config file.
 
 ```sh
 LANDO_NODE_VERSION=22 lando start
@@ -33,7 +31,7 @@ LANDO_NODE_VERSION=22 lando start
 
 The `web` service also carries the primary route, so `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it.
 
-Open the generated Landofile once the scaffold lands. It is short on purpose: one service, one route, two environment lookups. Copy the pattern when your own app needs config that changes per machine or per CI job.
+Open the generated Landofile once the scaffold lands. It is short on purpose: one service, one route, two environment lookups. Copy the pattern when your own app needs config that changes between machines.
 
 To see what Lando resolved from it without starting anything, print the loaded config:
 
@@ -41,7 +39,7 @@ To see what Lando resolved from it without starting anything, print the loaded c
 lando app:config --format=json
 ```
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 ## 1. scaffold
 

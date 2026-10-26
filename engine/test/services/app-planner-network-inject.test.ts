@@ -11,10 +11,10 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -53,7 +53,7 @@ const planEffect = (input: {
   );
   const planner = AppPlannerLayer.layer.pipe(Layer.provide(dependencies));
   return Effect.flatMap(AppPlanner, (service) =>
-    service.plan(rememberLandofileAppRoot(input.landofile, input.appRoot), TestRuntimeProvider.capabilities),
+    service.plan(literalTestLandofile(input.landofile, input.appRoot), TestRuntimeProvider.capabilities),
   ).pipe(Effect.provide(planner));
 };
 

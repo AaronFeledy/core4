@@ -80,6 +80,7 @@ for (const requested of ["mail", "unknown"]) {
               providerId: ProviderId.make("lando"),
               service: ServiceName.make("mail"),
               status: "running",
+              publications: { status: "unknown" },
               containerId: "orphan",
             },
           ],

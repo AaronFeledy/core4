@@ -8,19 +8,20 @@ tags: [beta, docs, authoring, transcripts]
 
 # Public transcripts
 
-Scenario generation writes one public transcript per rendered scenario and
-variant, at `dist/transcripts/public/guides/<guideId>/<scenarioId>[.<variant>].json`.
-The contents are locked by the generator and schema tests rather than a
-provider-backed run.
+Public transcripts contain the reader-visible parts of a rendered scenario,
+without hidden setup or internal execution details. Scenario generation writes
+one per scenario and variant at
+`dist/transcripts/public/guides/<guideId>/<scenarioId>[.<variant>].json`.
+The generator and schema tests check these artifacts; their presence alone does
+not prove that a scenario has run against a real provider.
 
 ## What a public transcript excludes
 
 Hidden setup never appears in public frames: `<Hidden>` blocks and hidden
 steps are excluded, as are `render={false}` scenarios, which produce no
-public transcript at all. Fixture wiring and copied paths — `<UseFixture>`
-and fixture-copy paths — stay out of public output, and so do raw scenario
-temp directories and internal event traces.
+public transcript at all. Fixture wiring (`<UseFixture>` and fixture-copy paths)
+stays out of public output, along with raw scenario temporary directories and
+internal event traces.
 
 The internal transcript, at `dist/transcripts/guides/<guideId>/<scenarioId>.json`,
 keeps full execution data for tests and is separate from the public artifact.
-

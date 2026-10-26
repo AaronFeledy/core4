@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { loadLandofileLayers } from "@lando/landofile/service";
 import { makeLandoPaths } from "@lando/paths";
-import { LandofileUnknownEventError, PluginLoadError } from "@lando/sdk/errors";
+import { LandofileValidationError, PluginLoadError } from "@lando/sdk/errors";
 import { PluginManifest, PluginName, type ProviderCapabilities } from "@lando/sdk/schema";
 import { AppPlanner, PathsService, PluginRegistry, type ServiceType, StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
@@ -63,14 +63,18 @@ const LIFECYCLE_EVENTS = [
   "post-rebuild",
   "pre-destroy",
   "post-destroy",
+  "post-pull",
+  "post-push",
+  "post-switch",
+  "post-code-sync",
 ];
 
 /**
- * The one set every surface must report: the twelve lifecycle names plus both
- * brackets for each invocable task. `inspect` is contributed by the service
- * type, `docs:generate` by a public tooling include, `authored` by the
- * Landofile itself. `ops:migrate` comes from an `internal: true` include and
- * is therefore absent from both of its brackets.
+ * The one set every surface must report: the twelve lifecycle names, the four
+ * remote sync hooks, and both brackets for each invocable task. `inspect` is
+ * contributed by the service type, `docs:generate` by a public tooling include,
+ * `authored` by the Landofile itself. `ops:migrate` comes from an
+ * `internal: true` include and is therefore absent from both of its brackets.
  */
 const EXPECTED_EVENTS = [
   ...LIFECYCLE_EVENTS,
@@ -112,7 +116,13 @@ const registryLayer = Layer.effect(
       loadServiceType: (id: string) =>
         id === serviceType.id
           ? Effect.succeed(serviceType)
-          : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
+          : Effect.fail(
+              new PluginLoadError({
+                message: `Unknown service type ${id}.`,
+                pluginName: id,
+                remediation: "Install or register the plugin, then retry.",
+              }),
+            ),
     }),
   ),
 ).pipe(Layer.provide(PluginRegistryLayer.layer));
@@ -139,14 +149,14 @@ events:
       service: ":host"
 `;
 
-const unknownEventFrom = (exit: Exit.Exit<unknown, unknown>): LandofileUnknownEventError => {
+const validationErrorFrom = (exit: Exit.Exit<unknown, unknown>): LandofileValidationError => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected a failure");
   const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected a typed failure");
-  expect(failure.value).toBeInstanceOf(LandofileUnknownEventError);
-  if (!(failure.value instanceof LandofileUnknownEventError)) throw new Error("expected unknown event");
+  expect(failure.value).toBeInstanceOf(LandofileValidationError);
+  if (!(failure.value instanceof LandofileValidationError)) throw new Error("expected validation failure");
   return failure.value;
 };
 
@@ -213,7 +223,7 @@ test("lint and the planner report one identical known event set for the same app
     );
 
     // When
-    const lintExit = await Effect.runPromiseExit(
+    const lintResult = await Effect.runPromise(
       appConfigLint({ cwd: appRoot }).pipe(Effect.provide(testServices(appRoot))),
     );
     const landofile = await Effect.runPromise(loadLayered(appRoot));
@@ -224,12 +234,47 @@ test("lint and the planner report one identical known event set for the same app
     );
 
     // Then
-    const lintError = unknownEventFrom(lintExit);
-    const planError = unknownEventFrom(planExit);
-    expect(lintError.event).toBe("pre-typo");
-    expect(planError.event).toBe("pre-typo");
-    expect([...planError.validEvents]).toEqual(EXPECTED_EVENTS);
-    expect([...lintError.validEvents]).toEqual(EXPECTED_EVENTS);
+    const planError = validationErrorFrom(planExit);
+    expect(lintResult.valid).toBe(false);
+    expect(lintResult.violations).toEqual([
+      expect.objectContaining({
+        rule: "landofile.event",
+        path: ["events", "pre-typo"],
+        suggestion: `Use one of: ${EXPECTED_EVENTS.join(", ")}.`,
+      }),
+    ]);
+    expect(planError.issues).toEqual(
+      lintResult.violations.map(
+        ({ scopes: _scopes, line: _line, column: _column, severity: _severity, ...issue }) => issue,
+      ),
+    );
+  });
+});
+
+test("planning aggregates two unknown events and a hostname issue in one error", async () => {
+  await withApp(async (appRoot) => {
+    // Given
+    const yaml = landofileYaml
+      .replace("    home: false", '    routes:\n      - hostname: "bad:8080"')
+      .replace("  pre-typo:", "  pre-buidl:\n    - echo typo\n  post-nope:");
+    await writeFile(join(appRoot, ".lando.yml"), yaml);
+    const plannerLayer = AppPlannerLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),
+    );
+    const landofile = await Effect.runPromise(loadLayered(appRoot));
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+        Effect.provide(plannerLayer),
+      ),
+    );
+    // Then
+    const error = validationErrorFrom(exit);
+    expect(error.issues.map(({ rule, path }) => ({ rule, path }))).toEqual([
+      { rule: "landofile.route", path: ["services", "web", "routes", 0, "hostname"] },
+      { rule: "landofile.event", path: ["events", "pre-buidl"] },
+      { rule: "landofile.event", path: ["events", "post-nope"] },
+    ]);
   });
 });
 
@@ -250,13 +295,16 @@ test("lint accepts a service-contributed task bracket and rejects an internal in
       join(appRoot, ".lando.yml"),
       events('events:\n  pre-ops:migrate:\n    - cmd: echo no\n      service: ":host"\n'),
     );
-    const rejectedExit = await Effect.runPromiseExit(
+    const rejected = await Effect.runPromise(
       appConfigLint({ cwd: appRoot }).pipe(Effect.provide(testServices(appRoot))),
     );
 
     // Then
     expect(accepted.valid).toBe(true);
     expect(accepted.violations).toEqual([]);
-    expect(unknownEventFrom(rejectedExit).event).toBe("pre-ops:migrate");
+    expect(rejected.valid).toBe(false);
+    expect(rejected.violations).toEqual([
+      expect.objectContaining({ rule: "landofile.event", path: ["events", "pre-ops:migrate"] }),
+    ]);
   });
 });

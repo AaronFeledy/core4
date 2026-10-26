@@ -43,6 +43,9 @@ const globalAppLayer = Layer.mergeAll(
   Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make(provider.id)]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -143,7 +146,6 @@ describe("GlobalAppService Landofile materialization", () => {
       expect(parsed).toEqual({
         name: "global",
         runtime: 4,
-        provider: ProviderId.make("lando"),
         services: {},
       });
     });
@@ -163,7 +165,6 @@ describe("GlobalAppService Landofile materialization", () => {
       expect(parsed).toEqual({
         name: "global",
         runtime: 4,
-        provider: ProviderId.make("lando"),
         services: {
           [ServiceName.make("web")]: { type: "node", image: "node:lts", primary: true },
         },
@@ -507,9 +508,7 @@ describe("globalInstall command operation", () => {
         },
         userLandofileCreated: true,
       });
-      expect(await readFile(result.dist.path, "utf8")).toContain(
-        "name: global\nruntime: 4\nprovider: lando\nservices:\n",
-      );
+      expect(await readFile(result.dist.path, "utf8")).toContain("name: global\nruntime: 4\nservices:\n");
       expect(await readFile(result.paths.userLandofile, "utf8")).toBe(overlayContent);
     });
   });

@@ -78,6 +78,7 @@ const database = servicePlan("database");
 const node = servicePlan("node");
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Inspect App",
   slug: "inspectapp",
@@ -85,7 +86,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database, [node.name]: node },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -116,7 +116,7 @@ const makeFakeApi = () => {
             }),
           };
         }
-        if (request.path === "/networks/create") {
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && action === "json") {
@@ -182,7 +182,7 @@ describe("provider-lando inspect", () => {
       expect(snapshot.state).toBe("running");
       expect(snapshot.status).toBe("running");
       expect(snapshot.containerId).toBe(`lando-inspectapp-${snapshot.service}-id`);
-      expect(snapshot.endpoints).toEqual(plan.services[snapshot.service]?.endpoints);
+      expect(snapshot.publications).toEqual({ status: "unknown" });
     }
     const callsBeforeInspect = fake.calls.length;
     await Effect.runPromise(provider.inspect({ app: appId, service: node.name }));
@@ -206,7 +206,7 @@ describe("provider-lando inspect", () => {
       state: "stopped",
       status: "stopped",
       containerId: "lando-inspectapp-node-id",
-      endpoints: node.endpoints,
+      publications: { status: "unknown" },
     });
     expect(fake.calls).toEqual([{ method: "GET", path: "/containers/lando-inspectapp-node/json" }]);
   });
@@ -223,16 +223,17 @@ describe("provider-lando inspect", () => {
         const snapshot = await Effect.runPromise(inspect(plan, { app: appId, service: node.name }, { api }));
 
         expect(snapshot.state).toBe("running");
-        expect(snapshot.endpoints).toEqual([
-          {
-            _tag: "published",
-            port: 31082,
-            protocol: "http",
-            name: "http",
-            publication: { bindAddress: "127.0.0.1", hostPort: 31082 },
-            materialization: { bindAddress: "127.0.0.1", hostPort: 31082 },
-          },
-        ]);
+        expect(snapshot.publications).toEqual({
+          status: "present",
+          bindings: [
+            {
+              port: 31082,
+              transport: "tcp",
+              bindAddress: "127.0.0.1",
+              hostPort: 31082,
+            },
+          ],
+        });
       } finally {
         await Effect.runPromise(bringDown(plan, { api }));
       }

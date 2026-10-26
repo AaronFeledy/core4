@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect, Layer, Result, Schema } from "effect";
 
-import { RouteInputError } from "@lando/sdk/errors";
+import { LandofileValidationError, RouteInputError } from "@lando/sdk/errors";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -11,7 +11,11 @@ import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const plan = (input: unknown) =>
   Effect.flatMap(AppPlanner, (planner) =>
-    planner.plan(Schema.decodeUnknownSync(LandofileShape)(input), TestRuntimeProvider.capabilities),
+    planTestLandofile(
+      planner,
+      Schema.decodeUnknownSync(LandofileShape)(input),
+      TestRuntimeProvider.capabilities,
+    ),
   ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))));
 
 for (const fixture of [
@@ -122,7 +126,7 @@ test("rejects conflicting proxy and service declarations with authored source ke
   expect(result.failure).toBeInstanceOf(RouteInputError);
   expect(result.failure).toMatchObject({ key: "proxy.web[0]" });
   expect(result.failure.message).toContain("services.web.routes[0]");
-  expect(result.failure).not.toHaveProperty("file");
+  expect(result.failure).toHaveProperty("file");
 });
 
 test("dedupes equivalent proxy and service declarations without duplicate service refs", async () => {
@@ -164,7 +168,7 @@ test("carries filters onto RoutePlan unchanged and omits the key when empty", as
   expect(result.routes[1]).not.toHaveProperty("filters");
 });
 
-test("rejects invalid route shorthand with RouteInputError before any provider action", async () => {
+test("rejects invalid route shorthand with field issues before any provider action", async () => {
   // Given: only capabilities are supplied; no provider action service exists in the planner layer.
   const input = {
     name: "routes-app",
@@ -175,8 +179,8 @@ test("rejects invalid route shorthand with RouteInputError before any provider a
   // Then
   expect(Result.isFailure(result)).toBe(true);
   if (Result.isSuccess(result)) throw new Error("expected route rejection");
-  expect(result.failure).toBeInstanceOf(RouteInputError);
-  expect(result.failure).toMatchObject({ key: "services.web.routes[0]" });
+  expect(result.failure).toBeInstanceOf(LandofileValidationError);
+  expect(result.failure).toMatchObject({ issues: [{ path: ["services", "web", "routes", 0] }] });
 });
 
 test("keys top-level proxy routes as proxy.<svc>[i]", async () => {
@@ -191,6 +195,56 @@ test("keys top-level proxy routes as proxy.<svc>[i]", async () => {
   // Then
   expect(Result.isFailure(result)).toBe(true);
   if (Result.isSuccess(result)) throw new Error("expected route rejection");
-  expect(result.failure).toBeInstanceOf(RouteInputError);
-  expect(result.failure).toMatchObject({ key: "proxy.web[1]" });
+  expect(result.failure).toBeInstanceOf(LandofileValidationError);
+  expect(result.failure).toMatchObject({ issues: [{ path: ["proxy", "web", 1] }] });
 });
+
+test.each([
+  "{{ app.name }}.{{ proxy.defaultDomain }}",
+  { hostname: "{{ app.name }}.{{ proxy.defaultDomain }}" },
+])("plans slug-based hostname expressions once: %j", async (route) => {
+  // Given
+  const input = { name: "Routes Demo", services: { web: { type: "nginx", routes: [route] } } };
+  // When
+  const result = await Effect.runPromise(plan(input));
+  // Then
+  expect(result.routes.map(({ hostname }) => hostname)).toEqual(["routes-demo.lndo.site"]);
+});
+
+test("rejects a combined object hostname before provider action", async () => {
+  // Given
+  const input = {
+    name: "routes-app",
+    services: { web: { type: "nginx", routes: [{ hostname: "myapp.lndo.site:8080/api" }] } },
+  };
+  // When
+  const result = await Effect.runPromise(Effect.result(plan(input)));
+  // Then
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure).toBeInstanceOf(LandofileValidationError);
+    expect(result.failure).toMatchObject({
+      issues: [{ path: ["services", "web", "routes", 0, "hostname"] }],
+    });
+  }
+});
+
+test("rejects expression-produced template text instead of evaluating it again", async () => {
+  // Given
+  const input = {
+    name: "Routes Demo",
+    services: { web: { type: "nginx", routes: [{ hostname: "{{ join(['{{', ' app.name }}'], '') }}" }] } },
+  };
+  // When
+  const result = await Effect.runPromise(Effect.result(plan(input)));
+  // Then
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure).toBeInstanceOf(LandofileValidationError);
+    expect(result.failure).toMatchObject({
+      issues: [{ path: ["services", "web", "routes", 0, "hostname"] }],
+    });
+    expect(result.failure.message).toContain("{{ app.name }}");
+  }
+});
+import { planTestLandofile } from "../compiled-landofile.ts";

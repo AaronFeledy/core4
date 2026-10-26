@@ -1,16 +1,23 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import { DateTime, Effect, Result } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { commonContainerLabels } from "../src/plan.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { privateNetworkLabels } from "../src/resource-cleanup.ts";
-import { planVolumeOwnership } from "../src/volume-ownership.ts";
 
 const metadata = { source: "ownership-test", runtime: 4 as const, resolvedAt: DateTime.makeUnsafe(0) };
 const web = ServiceName.make("web");
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("owned"),
   name: "owned",
   slug: "owned",
@@ -38,7 +45,6 @@ const plan: AppPlan = {
     perAppBridge: { name: "private", driver: "bridge" },
     sharedNetworkMembership: { name: "shared", aliases: {} },
   },
-  networks: [],
   stores: [],
   routes: [],
   fileSync: [],
@@ -49,11 +55,11 @@ const service = plan.services[web];
 if (service === undefined) throw new TypeError("Missing fixture service");
 const ownedLabels = commonContainerLabels(plan, service);
 const networkLabels = privateNetworkLabels({
-  ...planVolumeOwnership(plan),
+  ...planAppIdentity(plan),
   appId: plan.id,
   providerId: plan.provider,
 });
-const ctx = { providerId: "docker", remediation: "retry" };
+const ctx = { providerId: "docker", remediation: "retry", env: {} };
 
 const fakeApi = (observations: ReadonlyMap<string, object>) => {
   const calls: EngineHttpRequest[] = [];
@@ -150,8 +156,8 @@ for (const legacy of [{ Labels: {} }, { Labels: null }, {}]) {
   });
 }
 
-test("bring-up rollback removes a legacy unlabeled private network and never the shared one", async () => {
-  // Given
+test("bring-up failure retains a legacy unlabeled private network and never mutates the shared one", async () => {
+  // Given: foreign container blocks create; legacy private network was observed.
   const fake = fakeApi(
     new Map([
       ["/networks/private", { Id: "legacy-network", Name: "private", Labels: {} }],
@@ -161,16 +167,14 @@ test("bring-up rollback removes a legacy unlabeled private network and never the
   );
   // When
   const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }).pipe(Effect.result));
-  // Then
+  // Then: no compensation teardown — retention leaves networks untouched for inventory cleanup.
   expect(Result.isFailure(result)).toBe(true);
-  expect(fake.calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
-    "/networks/legacy-network",
-  ]);
+  expect(fake.calls.filter((call) => call.method === "DELETE")).toEqual([]);
 });
 
-for (const rollback of [false, true]) {
+for (const path of ["bring-up", "bring-down"] as const) {
   test.each(["lando_bridge_network", undefined])(
-    `refuses unlabeled network aliases (rollback=${rollback}): %s`,
+    `refuses unlabeled network aliases (${path}): %s`,
     async (name) => {
       // Given a private name resolved as another network's ID prefix or without name evidence.
       const aliased = {
@@ -184,9 +188,9 @@ for (const rollback of [false, true]) {
           ["/containers/lando-owned-web/json", { Id: "foreign", Config: { Labels: {} } }],
         ]),
       );
-      // When teardown or failed bring-up attempts private-network cleanup.
+      // When bring-up fails closed or bring-down validates ownership.
       const result = await Effect.runPromise(
-        (rollback
+        (path === "bring-up"
           ? bringUp(aliased, { api: fake.api, ctx })
           : bringDown({ ...aliased, services: {} }, { api: fake.api, ctx })
         ).pipe(Effect.result),
@@ -213,7 +217,7 @@ test("bring-down mutates verified native IDs rather than reusable names", async 
     fake.calls.filter((call) => call.method !== "GET").map((call) => `${call.method} ${call.path}`),
   ).toEqual([
     "POST /containers/observed-container/stop",
-    "DELETE /containers/observed-container?force=true",
+    "DELETE /containers/observed-container?force=true&v=true",
     "DELETE /networks/observed-network",
   ]);
 });
@@ -247,7 +251,7 @@ for (const name of ["shared", "lando_bridge_network"]) {
     expect(fake.calls.filter((call) => call.method === "DELETE")).toEqual([]);
   });
 
-  test(`bring-up never labels or rolls back shared network ${name} disguised as private`, async () => {
+  test(`bring-up never labels or deletes shared network ${name} disguised as private`, async () => {
     // Given
     const calls: EngineHttpRequest[] = [];
     const disguised: AppPlan = {

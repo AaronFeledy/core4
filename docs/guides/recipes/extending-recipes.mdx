@@ -10,11 +10,11 @@ tags: [beta, docs, recipes]
 
 Put `extends: lamp` in a child `recipe.yml`, then inspect the flattened result with `lando meta recipes describe ./`.
 
-You ship the deltas. Lando walks the parent chain, merges prompts, files, and `postInit`, and hands every later command a single recipe. Pass `./` or `recipe.yml`. A bare `.` is not a local recipe path.
+Define only what differs from the parent. Lando follows the parent chain and merges prompts, files, and `postInit` into one recipe for later commands. Pass `./` or `recipe.yml`. A bare `.` is not a local recipe path.
 
 ## Write the child recipe.yml
 
-The directory basename must match `id`. This child sits on bundled `lamp`, drops the app-name prompt, overrides PHP, and adds one extra file:
+The directory basename must match `id`. This child extends the bundled `lamp` recipe, removes the app-name prompt, overrides PHP, and adds one file:
 
 ```yaml
 id: lamp-child
@@ -48,7 +48,7 @@ Merge is name-keyed, not "last array wins":
 - `postInit` is parent actions, then child actions.
 - Scalar fields (`title`, `description`, `version`, and the rest) come from the child when set.
 
-A missing parent or a cycle fails with `RecipeExtendsError` before validate can say the file is fine.
+A missing parent or an inheritance cycle produces `RecipeExtendsError`; validation cannot succeed until you fix the parent chain.
 
 These commands read `recipe.yml`. There is no `recipe.ts` describe or validate path.
 

@@ -66,6 +66,8 @@ const mapBuildCacheError = (providerId: string, cause: unknown) =>
     operation: "buildResults",
     message: "Unable to access the scratch build-results cache.",
     cause,
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
 const transcriptPathFor = (userDataRoot: string, plan: AppPlan, step: ArtifactBuildStep) =>

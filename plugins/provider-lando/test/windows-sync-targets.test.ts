@@ -61,7 +61,6 @@ const plan = (): AppPlan => {
     provider,
     services: { [web.name]: web, [worker.name]: worker },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [web, worker].map((entry) => ({
       engineId: "mutagen",

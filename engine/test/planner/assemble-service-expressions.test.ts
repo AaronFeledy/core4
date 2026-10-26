@@ -3,8 +3,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { ConfigExpressionError } from "@lando/sdk/errors";
-import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { type LandofileShape, PortNumber, ServiceName } from "@lando/sdk/schema";
 import { FileSystem, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
@@ -14,6 +15,7 @@ import { serviceCredsScopeForPlan } from "../../src/planner/landofile-scopes.ts"
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { collectAppPlanRedactionTokens } from "../../src/services/app-plan-redaction.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
+import { compileTestLandofile } from "../compiled-landofile.ts";
 
 /** Publishes creds the way the catalog database types do: defaults, authored `creds:` wins. */
 const databaseType: ServiceType = {
@@ -36,6 +38,7 @@ const databaseType: ServiceType = {
         environment: { ...input.service.environment, DB_PASSWORD: creds.password },
       },
       features: [],
+      connection: { family: "postgres", port: PortNumber.make(5432), creds },
     });
   },
 };
@@ -51,17 +54,21 @@ const appType: ServiceType = {
   base: "l337",
   schema: Schema.Unknown,
   resolve: (input) =>
-    Effect.succeed({
-      base: "l337" as const,
-      normalizedConfig: { ...input.service },
-      features: [],
-      tooling: {
-        dburl: {
-          description: "Print the database URL the type saw while resolving.",
-          service: input.name,
-          cmd: ["echo", input.service.environment?.DATABASE_URL ?? "<none>"],
+    Effect.sync(() => {
+      const url = input.service.environment?.DATABASE_URL ?? "<none>";
+      if (typeof url !== "string") throw new TypeError("This fixture expects a literal URL");
+      return {
+        base: "l337" as const,
+        normalizedConfig: { ...input.service },
+        features: [],
+        tooling: {
+          dburl: {
+            description: "Print the database URL the type saw while resolving.",
+            service: input.name,
+            cmd: ["echo", url],
+          },
         },
-      },
+      };
     }),
 };
 
@@ -84,7 +91,7 @@ const plan = Effect.fnUntraced(
       fileSystem,
       undefined,
       undefined,
-      landofile,
+      yield* compileTestLandofile(landofile, getLandofileAppRoot(landofile) ?? process.cwd()),
       TestRuntimeProvider.capabilities,
     );
   },
@@ -109,7 +116,8 @@ const failure = async (landofile: LandofileShape): Promise<ConfigExpressionError
   const result = await Effect.runPromise(plan(landofile).pipe(Effect.result));
   if (!Result.isFailure(result)) throw new Error("Expected a ConfigExpressionError");
   expect(result.failure).toBeInstanceOf(ConfigExpressionError);
-  return result.failure as ConfigExpressionError;
+  if (!(result.failure instanceof ConfigExpressionError)) throw result.failure;
+  return result.failure;
 };
 
 test("rejects non-string results in the deferred service-credential pass", () =>
@@ -132,7 +140,7 @@ test("rejects non-string results in the deferred service-credential pass", () =>
     const error = await failure(landofile);
     // Then
     expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: "services.web.database" });
-    expect(error.message).toContain("takes text");
+    expect(error.message).toContain("Expected string");
   }));
 
 test("resolves services.<name>.creds.* before the reading service's type runs, whatever the declaration order", () =>
@@ -176,8 +184,10 @@ test("resolves services.<name>.creds.* before the reading service's type runs, w
     // The interpolated password stays redactable through the plan's secret-shaped env values.
     expect(collectAppPlanRedactionTokens(app)).toContain("s3cret-pw");
     expect(serviceCredsScopeForPlan(app)).toEqual({
-      web: {},
-      database: { creds: { user: "lando", password: "s3cret-pw", database: "appdb" } },
+      database: {
+        port: PortNumber.make(5432),
+        creds: { user: "lando", password: "s3cret-pw", database: "appdb" },
+      },
     });
   }));
 
@@ -243,7 +253,7 @@ test("fails at the value path when the referenced service does not exist", () =>
       path: "services.web.environment.DATABASE_URL",
       filePath: `${root}/.lando.yml`,
     });
-    expect(error.remediation).toContain("services.<name>.creds.user");
+    expect(error.remediation).toContain("context values");
   }));
 
 test("fails when the referenced service publishes no credentials", () =>
@@ -287,8 +297,8 @@ test("rejects a service that reads its own credentials and a pair that read each
         root,
       ),
     );
-    expect(self).toMatchObject({ path: "services.database", expression: "services.database.creds" });
-    expect(self.message).toContain("reads its own credentials");
+    expect(self).toMatchObject({ path: "services.database", expression: "services" });
+    expect(self.message).toContain("Service connection reference cycle involving database");
 
     const mutual = await failure(
       rememberLandofileAppRoot(
@@ -311,7 +321,7 @@ test("rejects a service that reads its own credentials and a pair that read each
       ),
     );
     expect(mutual).toMatchObject({ path: "services.a" });
-    expect(mutual.message).toContain("reference each other's credentials");
+    expect(mutual.message).toContain("Service connection reference cycle involving a");
   }));
 
 test("requires a literal service name in a services reference", () =>
@@ -344,7 +354,7 @@ test("keeps a literal credential that happens to contain an expression opener", 
           [ServiceName.make("database")]: {
             type: databaseType.id,
             home: false as const,
-            creds: { user: "lando", password: "pw{{literal", database: "appdb" },
+            creds: { user: "lando", password: "pw{{{{literal", database: "appdb" },
           },
           [ServiceName.make("web")]: {
             type: appType.id,

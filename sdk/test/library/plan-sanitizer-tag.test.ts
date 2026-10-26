@@ -3,8 +3,8 @@ import { Effect, Schema } from "effect";
 import { describe, expect, test } from "bun:test";
 
 import { PluginDescriptorMismatchError } from "@lando/sdk/errors";
-import type { AppPlan } from "@lando/sdk/schema";
-import { AppPlanSanitizer, LogFileHelperAssets } from "@lando/sdk/services";
+import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
+import { AppPlanSanitizer, ContainerHelperAssets } from "@lando/sdk/services";
 
 describe("AppPlanSanitizer tag", () => {
   test("resolves via Effect.provideService roundtrip", async () => {
@@ -29,25 +29,23 @@ describe("AppPlanSanitizer tag", () => {
   });
 });
 
-describe("LogFileHelperAssets tag", () => {
+describe("ContainerHelperAssets tag", () => {
   test("resolves via Effect.provideService roundtrip", async () => {
-    const payloads: Readonly<Record<string, Uint8Array>> = {
-      "linux-x64": new Uint8Array([1, 2, 3]),
-    };
+    const target = { os: "linux", arch: "x64" } as const;
+    const helper = { target, digest: "1".repeat(64), path: AbsolutePath.make("/tmp/lando-container-helper") };
 
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const assets = yield* LogFileHelperAssets;
-        return yield* assets.payloads;
+        const assets = yield* ContainerHelperAssets;
+        return yield* assets.resolve(target);
       }).pipe(
-        Effect.provideService(LogFileHelperAssets, {
-          payloads: Effect.succeed(payloads),
+        Effect.provideService(ContainerHelperAssets, {
+          resolve: () => Effect.succeed(helper),
         }),
       ),
     );
 
-    expect(result).toBe(payloads);
-    expect(result["linux-x64"]).toEqual(new Uint8Array([1, 2, 3]));
+    expect(result).toBe(helper);
   });
 });
 
@@ -57,7 +55,7 @@ describe("PluginDescriptorMismatchError", () => {
       pluginName: "@lando/provider-lando",
       kind: "requires",
       declared: ["AppPlanSanitizer"],
-      provided: ["LogFileHelperAssets"],
+      provided: ["ContainerHelperAssets"],
       message: "Plugin descriptor requires do not match provided capabilities.",
       remediation: "Align the plugin descriptor requires with the capabilities core provides.",
     });
@@ -66,19 +64,19 @@ describe("PluginDescriptorMismatchError", () => {
     expect(error.pluginName).toBe("@lando/provider-lando");
     expect(error.kind).toBe("requires");
     expect(error.declared).toEqual(["AppPlanSanitizer"]);
-    expect(error.provided).toEqual(["LogFileHelperAssets"]);
+    expect(error.provided).toEqual(["ContainerHelperAssets"]);
 
     const encoded = Schema.encodeSync(PluginDescriptorMismatchError)(error);
     expect(encoded._tag).toBe("PluginDescriptorMismatchError");
     expect(encoded.pluginName).toBe("@lando/provider-lando");
     expect(encoded.declared).toEqual(["AppPlanSanitizer"]);
-    expect(encoded.provided).toEqual(["LogFileHelperAssets"]);
+    expect(encoded.provided).toEqual(["ContainerHelperAssets"]);
 
     const decoded = Schema.decodeUnknownSync(PluginDescriptorMismatchError)(encoded);
     expect(decoded._tag).toBe("PluginDescriptorMismatchError");
     expect(decoded.message).toBe(error.message);
     expect(decoded.remediation).toBe(error.remediation);
     expect(decoded.declared).toEqual(["AppPlanSanitizer"]);
-    expect(decoded.provided).toEqual(["LogFileHelperAssets"]);
+    expect(decoded.provided).toEqual(["ContainerHelperAssets"]);
   });
 });

@@ -21,6 +21,7 @@ const validationError = (
 ): LandofileValidationError =>
   new LandofileValidationError({
     message,
+    remediation: "Use valid log sources with unique ids and absolute in-container paths.",
     file: `${input.appRoot}/.lando.yml`,
     issues: [validationIssue(issue, message)],
   });

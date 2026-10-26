@@ -20,6 +20,7 @@ describe("@lando/sdk package exports", () => {
       message: "Ambiguous snapshot",
       snapshotId: "baseline",
       matchCount: 2,
+      remediation: "List snapshots in this scope and retry with an unambiguous id.",
     };
     expect(decode(original).candidateIds).toBeUndefined();
     const candidates = { ...original, candidateIds: ["newer", "older"] };
@@ -35,12 +36,13 @@ describe("@lando/sdk package exports", () => {
   test("yaml entry point exports the shared scalar policy and document emitter", async () => {
     // Given / When: a consumer imports the public YAML entry point.
     const yaml = await import("@lando/sdk/yaml");
-    // Then: all six runtime exports are available through that subpath.
+    // Then: the shared lexer remains available alongside the emitter.
     expect(Object.keys(yaml).sort()).toEqual([
       "YamlEmitError",
       "emitYamlDocument",
       "isYamlPlainSafe",
       "quoteYamlScalar",
+      "stripYamlLineComment",
       "yamlMappingKeyText",
       "yamlScalarText",
     ]);
@@ -55,6 +57,8 @@ describe("@lando/sdk package exports", () => {
     expect(typeof landofile.resolveLayerMergeRule).toBe("function");
     expect(typeof landofile.routeMatchKey).toBe("function");
     expect(typeof landofile.parseRouteShorthand).toBe("function");
+    expect(typeof landofile.parseRouteHostname).toBe("function");
+    expect(typeof landofile.parseRoutePathPrefix).toBe("function");
     expect(typeof landofile.landofileLayerRank).toBe("function");
     expect(landofile.composeServiceDispositions).toBeDefined();
     expect(typeof landofile.compareKeyPaths).toBe("function");
@@ -289,6 +293,7 @@ describe("@lando/sdk package exports", () => {
       "ServiceConfig",
       "RouteInput",
       "HealthcheckInput",
+      "AppMountInput",
       "ToolingTaskShape",
       "ExpressionTemplate",
       "ExpressionNode",
@@ -437,6 +442,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.AppLockTimeoutError).toBeDefined();
     expect(errors.AppResolveError).toBeDefined();
     expect(errors.GlobalAppError).toBeDefined();
+    expect(errors.AppPlacementError).toBeDefined();
     expect(errors.GlobalDestroyConfirmationError).toBeDefined();
     expect(errors.GlobalServiceCollisionError).toBeDefined();
     expect(errors.GlobalServiceMissingError).toBeDefined();
@@ -638,12 +644,12 @@ describe("@lando/sdk package exports", () => {
     expect(probe.ProbeTimeoutError).toBeDefined();
   });
 
-  test("database-creds entry point exports the pure family env helpers", async () => {
+  test("database-creds entry point exports service-type native aliases and defaults", async () => {
     const databaseCreds = await import("@lando/sdk/database-creds");
 
-    expect(databaseCreds.databaseEnvCreds).toBeDefined();
-    expect(databaseCreds.firstEnv).toBeDefined();
     expect(databaseCreds.DATABASE_FAMILY_ENV_KEYS).toBeDefined();
+    expect(databaseCreds.DATABASE_PORT_ENV_KEY).toBe("LANDO_DB_PORT");
+    expect(databaseCreds.DATABASE_FAMILY_DEFAULT_PORTS).toBeDefined();
   });
 
   test("digest entry point exports the hashing and canonical JSON helpers", async () => {
@@ -679,6 +685,8 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.runProviderContract).toBeDefined();
     expect(sdkTest.runProviderContractMatrix).toBeDefined();
     expect(sdkTest.runProviderDataPlaneContract).toBeDefined();
+    expect(sdkTest.runProviderVolumeCreationContract).toBeDefined();
+    expect(sdkTest.runProviderStartRetentionContract).toBeDefined();
     expect(sdkTest.TestRuntimeProvider).toBeDefined();
   });
 

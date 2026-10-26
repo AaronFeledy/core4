@@ -5,12 +5,12 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
 import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
@@ -42,7 +42,7 @@ const planEffect = (appRoot: string, landofile: LandofileShape, providerCapabili
     ),
   );
   return Effect.flatMap(AppPlanner, (service) =>
-    service.plan(rememberLandofileAppRoot(landofile, appRoot), providerCapabilities),
+    service.plan(literalTestLandofile(landofile, appRoot), providerCapabilities),
   ).pipe(Effect.provide(planner));
 };
 

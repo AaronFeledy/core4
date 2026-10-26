@@ -4,9 +4,11 @@ import { dirname } from "node:path";
 
 import { Effect } from "effect";
 
-import { redactDetails } from "@lando/container-runtime/redact";
+import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PodmanServiceSpec } from "./podman-service-args.ts";
+
+const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
 export { buildPodmanServiceArgs, type PodmanServiceSpec } from "./podman-service-args.ts";
 
@@ -57,7 +59,7 @@ export class RuntimeLaunchError extends ProviderUnavailableError {
       message,
       remediation: launchRemediation,
       cause,
-      details: redactDetails({ stderr: stderr ?? stderrFromCause(cause) }),
+      details: redactDetails({ stderr: stderr ?? stderrFromCause(cause) }, hostSecretsRedactor()),
     });
   }
 

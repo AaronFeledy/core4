@@ -5,13 +5,17 @@ import {
   HostProxyAuthenticationError,
   HostProxyBackpressureError,
   HostProxyCommandNotAllowedError,
+  HostProxyOpenUrlSchemeError,
   HostProxyRecursionError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
 } from "@lando/sdk/errors";
-import { HostProxyRunLandoRequest } from "@lando/sdk/schema";
+import { HostProxyRequest } from "@lando/sdk/schema";
 
-import { type DispatchRunLandoDeps, dispatchRunLando } from "./dispatch.ts";
+import { HostProxyOpenerError } from "../../services/host-opener.ts";
+import * as BunProcessRunner from "../../services/process-runner.ts";
+import { type DispatchRunLandoDeps, dispatchHostOpen, dispatchRunLando } from "./dispatch.ts";
+import { HostProxyOpenPathError, openHostProxyTarget } from "./open-target.ts";
 import { makeHostProxyCallId, publishRejected } from "./transport-events.ts";
 import type { HandlerOptions, HostProxyInFlightRequest } from "./transport-handler-options.ts";
 import {
@@ -25,6 +29,7 @@ import {
   handleControlPlane,
   invalidRequestResponse,
   rejectRoute,
+  requestPathname,
   statusFor,
   writeTransportResponse,
 } from "./transport-response.ts";
@@ -42,6 +47,7 @@ const rejectInvalidAuthenticatedRequest = (
       callerService: headers.callerService,
       depth: headers.depth,
       failureDetail: "HostProxyTransportUnavailableError",
+      kind: requestPathname(response.req).slice(1),
     }).pipe(Effect.provide(options.runtimeContext)),
   );
 };
@@ -83,6 +89,7 @@ const rejectSaturatedRequest = (
       callerService: headers.callerService,
       depth: headers.depth,
       failureDetail: "HostProxyBackpressureError",
+      kind: requestPathname(response.req).slice(1),
     }).pipe(Effect.provide(options.runtimeContext)),
   );
 };
@@ -103,8 +110,13 @@ const dispatchProgram = Effect.fn("HostProxyService.dispatchProgram")(function* 
   } catch {
     return { _tag: "invalid" as const };
   }
-  const decodedRequest = Schema.decodeUnknownResult(HostProxyRunLandoRequest)(parsed);
+  const decodedRequest = Schema.decodeUnknownResult(HostProxyRequest)(parsed);
   if (decodedRequest._tag === "Failure") return { _tag: "invalid" as const };
+  if (
+    decodedRequest.success._tag === "runBun" ||
+    requestPathname(request) !== `/${decodedRequest.success._tag}`
+  )
+    return { _tag: "invalid" as const };
   const wire = { ...headers, request: decodedRequest.success };
   yield* validateWireRequest(wire, options.session, options.maxDepth, 0, options.concurrency);
   const deps: DispatchRunLandoDeps = {
@@ -115,9 +127,24 @@ const dispatchProgram = Effect.fn("HostProxyService.dispatchProgram")(function* 
     depth: wire.depth,
     app: options.app,
   };
-  return yield* dispatchRunLando(wire.request, deps).pipe(
-    Effect.map((result): WireOk => ({ _tag: "ok", envelope: result.envelope, exitCode: result.exitCode })),
-  );
+  switch (wire.request._tag) {
+    case "runLando":
+      return yield* dispatchRunLando(wire.request, deps).pipe(
+        Effect.map(
+          (result): WireOk => ({ _tag: "ok", envelope: result.envelope, exitCode: result.exitCode }),
+        ),
+      );
+    case "openUrl":
+    case "openPath":
+      yield* dispatchHostOpen(wire.request, {
+        ...deps,
+        executor:
+          options.openExecutor ??
+          ((target, mount) =>
+            openHostProxyTarget(target, mount).pipe(Effect.provide(BunProcessRunner.layer))),
+      });
+      return { _tag: "ok" as const };
+  }
 });
 
 const isKnownFailure = (failure: unknown): failure is HostProxyTransportError =>
@@ -126,7 +153,10 @@ const isKnownFailure = (failure: unknown): failure is HostProxyTransportError =>
   failure instanceof HostProxyCommandNotAllowedError ||
   failure instanceof HostProxyRecursionError ||
   failure instanceof HostProxySocketStaleError ||
-  failure instanceof HostProxyTransportUnavailableError;
+  failure instanceof HostProxyTransportUnavailableError ||
+  failure instanceof HostProxyOpenUrlSchemeError ||
+  failure instanceof HostProxyOpenPathError ||
+  failure instanceof HostProxyOpenerError;
 
 type RejectedFailure = HostProxyAuthenticationError | HostProxyBackpressureError | HostProxyRecursionError;
 
@@ -172,6 +202,7 @@ const respondToRunLando = Effect.fn("HostProxyService.respondToRunLando")(functi
         callerService: headers.callerService,
         depth: headers.depth,
         failureDetail: failure._tag,
+        kind: requestPathname(request).slice(1),
       }).pipe(Effect.provide(options.runtimeContext)),
     );
   }
@@ -193,6 +224,7 @@ export const makeHostProxyRunLandoHandler =
           callerService: "unauthenticated",
           depth: headers.depth,
           failureDetail: "HostProxyAuthenticationError",
+          kind: requestPathname(request).slice(1),
         }).pipe(Effect.provide(options.runtimeContext)),
       );
       return;

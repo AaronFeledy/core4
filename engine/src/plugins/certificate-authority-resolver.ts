@@ -138,6 +138,7 @@ const loadContributionLayer = (
         message: `Failed to import certificate authority ${candidate.id} from ${acquisition.module}.`,
         pluginName: candidate.pluginName,
         cause,
+        remediation: `Repair plugin ${candidate.pluginName} so certificate authority ${candidate.id} loads from ${acquisition.module}.`,
       }),
   }).pipe(
     Effect.flatMap((loaded) => {
@@ -150,6 +151,7 @@ const loadContributionLayer = (
             new PluginLoadError({
               message: `Certificate authority module ${acquisition.module} does not export a ca Layer.`,
               pluginName: candidate.pluginName,
+              remediation: `Export a ca Layer from ${acquisition.module} in plugin ${candidate.pluginName}.`,
             }),
           );
     }),

@@ -65,7 +65,12 @@ const makeComposeTranslator = ({
         Effect.gen(function* () {
           const document = documents[0];
           if (!document)
-            return yield* Effect.fail(new ConfigTranslateError({ message: "Missing Compose snapshot." }));
+            return yield* Effect.fail(
+              new ConfigTranslateError({
+                message: "Missing Compose snapshot.",
+                remediation: "Provide a Compose snapshot document for the contract harness.",
+              }),
+            );
           const decoded = yield* decoder(document.bytes);
           return {
             ...expectedResult,
@@ -87,7 +92,12 @@ const makeComposeTranslator = ({
       return { text: yield* Effect.fromResult(emitLandofileYamlEither(record)), diagnostics: [] };
     },
     Effect.mapError(
-      (cause) => new ConfigTranslateError({ message: "Cannot encode authoring sample.", cause }),
+      (cause) =>
+        new ConfigTranslateError({
+          message: "Cannot encode authoring sample.",
+          cause,
+          remediation: "Provide a complete authoring sample for the contract encoder.",
+        }),
     ),
   ),
 });

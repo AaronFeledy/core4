@@ -8,7 +8,7 @@ tags: [beta, docs, tooling, renderer, task-tree]
 
 # Stream tooling output
 
-Run a tooling command from the app root:
+From the app root, run a tooling task whose target service is already running. This example assumes a PHP app with a [Composer task](./composer-php.mdx):
 
 ```sh
 lando composer install
@@ -26,7 +26,7 @@ Redirected input still reaches the command as plain bytes, with no terminal in b
 
 The tree has a parent task for the command and one child for the run, then a complete or fail close with the exit code. Command output does not ride that tree as per-line `task.detail` events. Host and container tools share one sink: bytes print as they arrive, value-only redacted and byte-exact, including a last line with no trailing newline.
 
-Redirect stdout and the file or pipe gets the command's output and nothing else. The task tree, warnings, and other Lando messages go to stderr, so a dump task writes a clean dump. Redirecting stdout also drops the PTY, whatever stdin is:
+Redirect stdout and the file or pipe gets the command's output and nothing else. The examples below use an app-defined task named `gen`; replace it with your own task. The task tree, warnings, and other Lando messages go to stderr, so a dump task writes a clean dump. Redirecting stdout also drops the PTY, whatever stdin is:
 
 ```sh
 lando gen > out.txt
@@ -35,7 +35,7 @@ lando gen | wc -l
 
 The same split applies to `:host` tasks, `.bun.sh` scripts, `lando exec`, and `lando run`. Every other command follows it too: `lando start > start.log` keeps the ready summary and leaves the progress on your terminal.
 
-A non-zero exit follows the same shape. Stderr still streams. The failing child closes with the exit code, and the parent records the failure in its counts.
+A non-zero exit follows the same shape. Stderr still streams. The failing child closes with the exit code, and the parent records the failure in its counts. JSON and YAML results set `ok: false` while retaining the command's typed result and tagged failure; choosing a machine format does not turn a failed child into success.
 
 ## Secrets on the wire
 
@@ -52,7 +52,11 @@ Live JSON commands such as `lando exec --format=json` first mask registered valu
 | `plain` | One line per event on stderr, no tree, no spinners. | stdout |
 | `json` | Structured events and messages on stderr. | stdout; the result format selects raw payload or machine output |
 
-Tooling `--format=json` and `--format=yaml` collect stdout and stderr into one result envelope instead of printing the payload separately. Library, MCP, and event invocations also return collected output. Collection uses memory proportional to the output; human live output does not keep a second copy. Progress and messages stay on stderr under the `json` renderer; live JSON commands put events in stream frames instead.
+Tooling `--format=json` and `--format=yaml` collect stdout and stderr into one result envelope instead of printing the payload separately. Library and event invocations also collect output unless the host supplies a live sink. Collection uses memory proportional to the output; human live delivery does not keep a second copy.
+
+[MCP calls](../agent-native/mcp.mdx#read-streamed-command-output) retain a bounded, redacted tail in the final envelope's `output` field. A progress token also enables live notifications; it is not required to receive final output. `output.truncated` tells you whether any captured output was dropped. MCP text output follows the same UTF-8 and redaction rules as live JSON output, not the byte-exact human stream.
+
+Progress and messages stay on stderr under the `json` renderer; live JSON commands put events in stream frames instead.
 
 When both streams reach your terminal, Lando erases the live tree, writes each output chunk to its own stdout or stderr channel, then repaints the tree on stderr. A partial output line waits for its newline before the tree repaints. Redirect stdout to a file and the live tree stays on your terminal. Pipe stdout into another command and Lando prints one progress line per event instead, since that command writes to the same terminal and a repaint would wipe its output. Redirect stderr and you get only the command's stdout on your terminal. Interactive prompts also draw on stderr, so redirecting stdout does not disable them.
 
