@@ -205,6 +205,8 @@ test("reports a failed inspection as its tag and message without a stack trace",
             providerId: "docker",
             operation: "inspectResourceNames",
             message: "Docker API request failed.",
+            remediation:
+              "Install or start the `docker` provider and confirm it can perform `inspectResourceNames`.",
           }),
         ),
     }),

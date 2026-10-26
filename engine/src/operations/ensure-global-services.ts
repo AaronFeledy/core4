@@ -70,6 +70,7 @@ export type EnsureGlobalServicesError =
   | ToolingExecError;
 
 export type EnsureGlobalServicesServices =
+  | import("@lando/sdk/services").StateStore
   | EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator

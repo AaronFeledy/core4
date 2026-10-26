@@ -74,7 +74,7 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>, signal?: AbortSign
       flags: input.flags,
       cwd: process.cwd(),
     },
-    formatError: (failure) => commandErrorMessage(failure, "meta:mcp"),
+    formatError: (failure, redactor) => commandErrorMessage(failure, "meta:mcp", redactor),
   });
 };
 

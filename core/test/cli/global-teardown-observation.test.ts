@@ -81,6 +81,7 @@ const unavailable = new ProviderUnavailableError({
   providerId: "lando",
   operation: "inspect",
   message: "runtime observation unavailable",
+  remediation: "Install or start the `lando` provider and confirm it can perform `inspect`.",
 });
 for (const probe of ["availability", "status"] as const) {
   test(`global teardown treats ${probe} failure as unobserved runtime`, async () => {

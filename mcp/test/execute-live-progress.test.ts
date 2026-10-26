@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { makeNestedExecute } from "@lando/mcp/execute";
-import { resolveCommandCompletion } from "@lando/sdk/command-result";
+import { normalizeDefect, resolveCommandCompletion } from "@lando/sdk/command-result";
 import { Cause, Context, Effect, Exit, Schema } from "effect";
 import type { McpCommandExecutorShape } from "../src/port";
 
@@ -57,7 +57,7 @@ describe("nested MCP stream drain lifecycle", () => {
     // Then drain defects share the command Exit rather than escaping transport dispatch.
     expect(order).toEqual(["producer", "flush"]);
     expect(captured !== undefined && Exit.isFailure(captured) && Cause.hasDies(captured.cause)).toBe(true);
-    expect(outcome).toEqual({ _tag: "failure", error: defect, additionalErrors: [] });
+    expect(outcome).toEqual({ _tag: "failure", error: normalizeDefect(defect), additionalErrors: [] });
   });
 
   test("keeps producer typed failures primary when draining also defects", async () => {
@@ -96,7 +96,7 @@ describe("nested MCP stream drain lifecycle", () => {
     expect(outcome).toEqual({
       _tag: "failure",
       error: primary,
-      additionalErrors: [{ role: "peer", error: secondary }],
+      additionalErrors: [{ role: "peer", error: normalizeDefect(secondary) }],
     });
   });
 });

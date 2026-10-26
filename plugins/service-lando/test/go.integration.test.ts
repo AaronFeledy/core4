@@ -162,7 +162,6 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           provider: providerId,
           services: { [web.name]: web },
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata,

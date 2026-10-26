@@ -86,6 +86,8 @@ export const mailpitServiceType: ServiceType = {
             ],
             message:
               "Mailpit service names must start with a letter, digit, or underscore and contain only letters, digits, underscores, dots, or hyphens.",
+            remediation:
+              "Rename the mailpit service so it starts with a letter, digit, or underscore and uses only letters, digits, underscores, dots, or hyphens.",
           }),
       ),
     ),

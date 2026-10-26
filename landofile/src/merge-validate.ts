@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
+import type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { classifyLoadFailure } from "./pipeline/legacy.ts";
 import { getSourceDocuments } from "./pipeline/source-table.ts";
@@ -9,11 +10,12 @@ import { composeLandofileRootLayers } from "./root-compile.ts";
 export const mergeLandofileRootLayers = Effect.fnUntraced(function* (
   appRoot: string,
   canonicalPath: string,
-  inputs?: LandofileRuntimeInputs,
+  inputs?: LandofileRuntimeInputs & { readonly overrides?: LandofileFinalizeOverrides | undefined },
 ) {
   const { merged, runtime } = yield* composeLandofileRootLayers(appRoot, inputs);
   const landofile = yield* finalizeLandofile(canonicalPath, merged, {
     appRoot,
+    overrides: inputs?.overrides,
     pendingSites: runtime.pendingSites,
     env: runtime.compilationContext?.env,
     loadPolicy: runtime.policy,

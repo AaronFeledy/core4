@@ -15,6 +15,18 @@ const write = async (root: string, path: string, content: string): Promise<void>
 const wrapperMatch = "Named wrapper only returns Effect.gen; use Effect.fn or Effect.fnUntraced";
 const importMatch = "Import @effect/platform; use effect subpaths";
 const failingFixtures = [
+  ...[
+    "promise.catch(() => null)",
+    "promise?.catch(() => (null))",
+    "promise.catch(() => { return null; })",
+  ].map(
+    (code) =>
+      [
+        `null-swallow-${code.length}`,
+        `const promise = Promise.resolve();\n${code};`,
+        "Zero-argument .catch returns null; narrow expected failures and propagate the rest",
+      ] as const,
+  ),
   [
     "data-tagged",
     'import { Data } from "effect";\nclass Bad extends Data.TaggedError("Bad") {}',
@@ -226,6 +238,7 @@ describe("effect idioms boundary lint gate", () => {
         'import { isObject } from "effect/Predicate"; isObject({}); const x = { isObject: true };',
         "export default class FooLive {}",
         'import("effect"); const now = Date.now();',
+        'promise.catch((cause) => { if (cause.code === "ENOENT") return null; throw cause; }); promise.catch(() => undefined); promise.catch(() => []);',
       ];
       for (const [index, content] of fixtures.entries()) {
         await write(root, `core/src/x/pass-${index}.ts`, content);

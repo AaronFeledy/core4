@@ -42,7 +42,6 @@ export const setupProviderPlan = (provider: ProviderId): AppPlan => ({
   provider,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

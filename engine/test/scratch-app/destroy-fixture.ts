@@ -65,7 +65,6 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     provider: ProviderId.make("lando"),
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: {
@@ -119,6 +118,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
                   providerId: "lando",
                   operation: "destroy",
                   message: "injected",
+                  remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
                 }),
               )
             : Effect.succeed(outcome),
@@ -172,7 +172,11 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
             Effect.andThen(() =>
               options.registryFail
                 ? Effect.fail(
-                    new ScratchAppError({ operation: "registry.write", message: "injected write failure" }),
+                    new ScratchAppError({
+                      operation: "registry.write",
+                      message: "injected write failure",
+                      remediation: "Injected registry write failure for destroy fixture.",
+                    }),
                   )
                 : Effect.sync(() => {
                     entries.set(value.id, value);
@@ -196,7 +200,14 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
           }).pipe(
             Effect.andThen(
               options.routeFail
-                ? Effect.fail(new ProxyError({ proxyId: "test", message: "route failure" }))
+                ? Effect.fail(
+                    new ProxyError({
+                      proxyId: "test",
+                      message: "route failure",
+                      remediation:
+                        "Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
+                    }),
+                  )
                 : Effect.void,
             ),
           ),
@@ -230,7 +241,13 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       DataMover.of({
         transfer: () =>
           options.copyFail
-            ? Effect.fail(new DataTransferError({ operation: "copy", message: "injected copy failure" }))
+            ? Effect.fail(
+                new DataTransferError({
+                  operation: "copy",
+                  message: "injected copy failure",
+                  remediation: "Injected copy failure for destroy fixture.",
+                }),
+              )
             : Effect.die("unused transfer"),
         transferStream: () => Stream.empty,
         snapshot: () => Effect.die("unused snapshot"),

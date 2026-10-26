@@ -142,6 +142,9 @@ describe("build-guide-scenarios MDX walker", () => {
     } catch (error) {
       expect(error instanceof GuideFrontmatterValidationError ? error.field : "").toBe("id");
       expect(error instanceof GuideFrontmatterValidationError ? error.rejectedValue : undefined).toBe("Bad");
+      expect(error instanceof GuideFrontmatterValidationError ? error.issues : []).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path: ["id"], message: expect.any(String) })]),
+      );
     }
   });
 

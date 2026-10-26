@@ -20,7 +20,7 @@ The generated Landofile reads two environment variables at load time:
 
 | Variable | Used for | Fallback |
 | --- | --- | --- |
-| `LANDO_NODE_VERSION` | the Node image tag for the `web` service | `lts` |
+| `LANDO_NODE_VERSION` | the Node image tag for the `web` service | `24` |
 | `NODE_ENV` | `NODE_ENV` inside the `web` service | `development` |
 
 Set either one in your shell before `lando start` and the app picks it up on the next load. You do not need to regenerate the Landofile or add another config file.
@@ -39,7 +39,7 @@ To see what Lando resolved from it without starting anything, print the loaded c
 lando app:config --format=json
 ```
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 ## 1. scaffold
 

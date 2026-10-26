@@ -501,6 +501,8 @@ describe("BunDataMover.layer", () => {
                     providerId: "test",
                     operation: "listVolumes",
                     message: "volume listing unavailable",
+                    remediation:
+                      "Install or start the `test` provider and confirm it can perform `listVolumes`.",
                   }),
                 ),
             }),
@@ -1362,6 +1364,8 @@ describe("BunDataMover.layer", () => {
                   providerId: "test",
                   operation: "snapshotVolume",
                   message: "snapshot failed",
+                  remediation:
+                    "Install or start the `test` provider and confirm it can perform `snapshotVolume`.",
                 }),
               );
             },
@@ -2430,6 +2434,8 @@ describe("BunDataMover.layer", () => {
                             providerId: "test",
                             operation: "removeVolumeSnapshot",
                             message: "provider offline",
+                            remediation:
+                              "Install or start the `test` provider and confirm it can perform `removeVolumeSnapshot`.",
                           }),
                         );
                     }),
@@ -2953,6 +2959,7 @@ describe("DataMover helpers", () => {
         new ArchiveFormatError({
           message: "Archive fixture failed.",
           format: "tar",
+          remediation: "Recreate fixture.tar as a valid tar archive.",
           cause,
         }),
     );
@@ -3316,7 +3323,7 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
                 pullArtifact: (spec) => {
                   pulls.push(spec);
                   return pullImage(api, spec.ref, {
-                    ctx: { providerId: "test", remediation: "Check the test engine." },
+                    ctx: { providerId: "test", remediation: "Check the test engine.", env: {} },
                     dialect: libpodPullDialect,
                     ...spec,
                   }).pipe(Effect.map((image) => ({ ...image, providerId: ProviderId.make("test") })));
@@ -3366,6 +3373,8 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
                     providerId: "test",
                     operation: "pullArtifact",
                     message: "pullArtifact is unavailable",
+                    remediation:
+                      "Install or start the `test` provider and confirm it can perform `pullArtifact`.",
                   });
                 }).pipe(Effect.flatMap((error) => Effect.fail(error))),
               run: (spec) => {

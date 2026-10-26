@@ -9,7 +9,8 @@
  */
 
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
 import { resolveLandoRoots } from "@lando/paths";
 
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
@@ -40,29 +41,6 @@ const writeLine = async (destination: "stdout" | "stderr", text: string): Promis
   const { writeStdioLine } = await import("@lando/renderer/native-stdio");
   writeStdioLine(destination, text);
 };
-const LANDOFILE_BASENAMES = [
-  ".lando.base",
-  ".lando.dist",
-  ".lando.upstream",
-  ".lando",
-  ".lando.local",
-  ".lando.user",
-] as const;
-
-const hasAppContext = async (cwd: string): Promise<boolean> => {
-  let current = cwd;
-  for (;;) {
-    const candidates = LANDOFILE_BASENAMES.flatMap((basename) => [
-      join(current, `${basename}.yml`),
-      join(current, `${basename}.ts`),
-    ]);
-    if ((await Promise.all(candidates.map((path) => Bun.file(path).exists()))).some(Boolean)) return true;
-    const parent = dirname(current);
-    if (parent === current) return false;
-    current = parent;
-  }
-};
-
 const main = async (): Promise<void> => {
   const { installBrokenPipeExitPolicy } = await import("@lando/renderer/native-stdio");
   installBrokenPipeExitPolicy();
@@ -85,7 +63,10 @@ const main = async (): Promise<void> => {
   // registered paths such as `recipes list` stay on the cold path in-app.
   const appSensitiveAlias =
     argv.length === 1 && ["version", "shellenv", "recipes", "--help", "-h"].includes(argv[0] ?? "");
-  const appAliasContext = appSensitiveAlias && (await hasAppContext(process.cwd()));
+  const discovery = { cwd: process.cwd(), resolver: makeAppDiscoveryResolver() };
+  const hasAppContext = async (): Promise<boolean> =>
+    (await discovery.resolver.resolve(discovery.cwd)).kind === "found";
+  const appAliasContext = appSensitiveAlias && (await hasAppContext());
   const coldPathAllowed = !hasDiagnosticOverride(argv, process.env);
 
   // Every text form of the version command prints the bare embedded version.
@@ -157,6 +138,7 @@ const main = async (): Promise<void> => {
     await runCli({
       argv,
       rootUrl: import.meta.url,
+      discovery,
     });
   } finally {
     clearInterval(keepAlive);

@@ -16,7 +16,7 @@ export class PluginUnlinkNotLinkedError extends Schema.TaggedError<PluginUnlinkN
     message: Schema.String,
     commandId: Schema.Literal("meta:plugin:unlink"),
     pluginName: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 

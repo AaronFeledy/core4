@@ -55,7 +55,11 @@ import { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { routerEnabled } from "../config/router-config.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
-import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
+import {
+  loadUserLandofile,
+  loadUserLandofileFile,
+  makeEngineUserAppResolution,
+} from "../landofile/app-resolution.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { makeScratchReaper } from "./destroy.ts";
@@ -106,13 +110,43 @@ export const SCRATCH_DIR = "scratch";
 
 const retainedScratchIds = new Set<string>();
 
+const scratchRemediationFor = (operation: string): string => {
+  switch (operation) {
+    case "plan":
+    case "planCache":
+      return "Correct the scratch source Landofile, then retry `lando apps:scratch:start`.";
+    case "materialize":
+      return "Fix recipe answers and the source Landofile, then retry scratch acquisition.";
+    case "start":
+    case "acquire":
+      return "Run `lando doctor`, fix the reported provider or plan failure, then retry scratch start.";
+    case "ensureRoot":
+    case "paths":
+      return "Fix permissions on the Lando scratch directory under the user cache root, then retry.";
+    case "gc":
+      return "Fix permissions under the scratch cache directory, then retry `lando apps:scratch:gc`.";
+    case "run":
+      return "Pass a valid scratch id and tool command after `--`, e.g. `lando run -- composer install`.";
+    case "destroy":
+    case "cleanup":
+      return "Repair the failed provider or filesystem operation, then retry scratch destroy.";
+    default:
+      return `Resolve the scratch "${operation}" failure, then retry the scratch command.`;
+  }
+};
+
 const scratchAppError = (
   operation: string,
   message: string,
   cause: unknown,
   remediation?: string,
 ): ScratchAppError =>
-  new ScratchAppError({ message, operation, cause, ...(remediation === undefined ? {} : { remediation }) });
+  new ScratchAppError({
+    message,
+    operation,
+    cause,
+    remediation: remediation ?? scratchRemediationFor(operation),
+  });
 
 const scratchSourceLabel = (input: ScratchAcquireInput): string => {
   if (input.source === undefined) return "unresolved";
@@ -299,6 +333,7 @@ const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
   });
   const sharedNetworkMembership = plan.networking?.sharedNetworkMembership ?? built.sharedNetworkMembership;
   const networking: NetworkingPlan = {
+    ...plan.networking,
     perAppBridge: plan.networking?.perAppBridge ?? built.perAppBridge,
     ...(sharedNetworkMembership === undefined ? {} : { sharedNetworkMembership }),
   };
@@ -481,7 +516,7 @@ const scratchPlanDetail = (
       };
 
 const makeScratchAppService = Effect.fnUntraced(function* (
-  loadCurrentLandofile: UserAppResolution["loadUserLandofile"],
+  resolution: Pick<UserAppResolution, "loadUserLandofile" | "loadUserLandofileFile">,
 ) {
   const fileSystem = yield* FileSystem;
   const landofileService = yield* LandofileService;
@@ -728,11 +763,13 @@ const makeScratchAppService = Effect.fnUntraced(function* (
 
   const acquireFork = Effect.fn("ScratchAppService.acquireFork")(function* (input: ScratchAcquireInput) {
     const hostCwd = yield* Effect.sync(() => process.cwd());
-    const landofile = yield* loadCurrentLandofile(landofileService).pipe(
-      Effect.mapError((cause) =>
-        cause instanceof LandofileVersionConstraintError ? cause : scratchForkUnresolvedError(),
-      ),
-    );
+    const landofile = yield* resolution
+      .loadUserLandofile(landofileService)
+      .pipe(
+        Effect.mapError((cause) =>
+          cause instanceof LandofileVersionConstraintError ? cause : scratchForkUnresolvedError(),
+        ),
+      );
     const capabilities = yield* providerRegistry.capabilities.pipe(
       Effect.mapError((cause) =>
         scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
@@ -890,9 +927,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     );
 
     const landofilePath = join(scratchPaths.root, ".lando.yml");
-    const landofile = yield* withProcessCwd(scratchPaths.root, () =>
-      loadCurrentLandofile(landofileService),
-    ).pipe(
+    const landofile = yield* resolution.loadUserLandofileFile(landofilePath).pipe(
       Effect.mapError((cause) =>
         scratchAppError(
           "materialize",
@@ -1098,13 +1133,14 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   });
 });
 
-const makeScratchAppServiceLayer = (loadCurrentLandofile: UserAppResolution["loadUserLandofile"]) =>
-  Layer.effect(ScratchAppService, makeScratchAppService(loadCurrentLandofile));
+const makeScratchAppServiceLayer = (
+  resolution: Pick<UserAppResolution, "loadUserLandofile" | "loadUserLandofileFile">,
+) => Layer.effect(ScratchAppService, makeScratchAppService(resolution));
 
 export const layerWith = (inputs: LandofileRuntimeInputs) =>
-  makeScratchAppServiceLayer(makeEngineUserAppResolution(inputs).loadUserLandofile);
+  makeScratchAppServiceLayer(makeEngineUserAppResolution(inputs));
 
-export const layer = makeScratchAppServiceLayer(loadUserLandofile);
+export const layer = makeScratchAppServiceLayer({ loadUserLandofile, loadUserLandofileFile });
 
 /**
  * Converts a live foreground scratch app to a detached one

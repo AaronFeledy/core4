@@ -189,6 +189,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
             },
           ],
           serviceType: id,
+          remediation: "Remove image or use unversioned type: mysql for an unverified custom image.",
         }),
       );
     }

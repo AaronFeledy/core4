@@ -40,6 +40,7 @@ const unavailableVolumes: RuntimeProviderShape["listVolumes"] = () =>
       message: "Provider remains unavailable.",
       providerId: "lando",
       operation: "listVolumes",
+      remediation: "Install or start the `lando` provider and confirm it can perform `listVolumes`.",
     }),
   );
 

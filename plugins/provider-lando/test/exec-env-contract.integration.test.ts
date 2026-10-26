@@ -63,7 +63,6 @@ const buildPlan = (servicePlan: ServicePlan): AppPlan => ({
   provider: ProviderId.make("lando"),
   services: { [servicePlan.name]: servicePlan },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -89,8 +88,11 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
-        if (request.path === "/networks/create") {
-          networks.add((request.body as { Name?: string }).Name ?? "");
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Union([Schema.Struct({ Name: Schema.String }), Schema.Struct({ name: Schema.String })]),
+          )(request.body);
+          networks.add("name" in body ? body.name : body.Name);
           return { status: 201, body: "{}" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {

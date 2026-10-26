@@ -69,14 +69,6 @@ describe("ServiceConfig generated JSON Schema extension records", () => {
       // Given / When
       const attachment = findObjectWithProperties(schemaProperty(serviceSchemaRoot(name), "networks"), [
         "aliases",
-        "interface_name",
-        "ipv4_address",
-        "ipv6_address",
-        "link_local_ips",
-        "mac_address",
-        "driver_opts",
-        "priority",
-        "gw_priority",
       ]);
 
       // Then

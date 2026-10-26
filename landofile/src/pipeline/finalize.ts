@@ -16,6 +16,7 @@ import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "../load-expression-provenance.ts";
+import { applyToolingIncludeDefaults } from "../tooling-include-defaults.ts";
 import {
   getInternalToolingTasks,
   rememberInternalToolingTasks,
@@ -30,6 +31,7 @@ import {
   isValidSemverRange,
   rememberVersionConstraintEntries,
 } from "../version-constraint.ts";
+import { type LandofileFinalizeOverrides, applyFinalizeOverrides } from "./finalize-overrides.ts";
 import {
   type LandofileLoadScope,
   buildLandofileLoadScope,
@@ -41,9 +43,10 @@ import { getSourceDocuments, rememberSourceDocuments } from "./source-table.ts";
 
 export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   file: string,
-  document: Record<string, unknown>,
+  authoredDocument: Record<string, unknown>,
   context: {
     readonly appRoot: string;
+    readonly overrides?: LandofileFinalizeOverrides | undefined;
     readonly pendingSites?: ParsedPendingSite[] | undefined;
     readonly env?: Readonly<Record<string, string>> | undefined;
     readonly scope?: LandofileLoadScope;
@@ -52,6 +55,9 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     readonly logger?: Context.Service.Shape<typeof Logger> | undefined;
   },
 ) {
+  // Replacement origins on overridden keys make every origin-filtered site consumer drop the
+  // displaced expressions; shadowed `lando:` sites stay in scope for constraint accumulation.
+  const document = applyFinalizeOverrides(authoredDocument, context.overrides);
   const scope =
     context.scope ??
     (yield* buildLandofileLoadScope([{ file, value: document }], context.env, context.pendingSites));
@@ -189,22 +195,29 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
           filePath: entry.source,
           line: undefined,
           column: undefined,
+          remediation: `Edit the lando: field in ${entry.source} to a valid npm semver range such as ">=4.1 <5", "^4", or "4.x".`,
         }),
       );
     constraints.push({ ...entry, range });
   }
   rememberVersionConstraintEntries(assembled, constraints);
-  const decoded = yield* validateLandofile(file, assembled);
+  const validated = yield* validateLandofile(file, assembled);
+  const defaults = applyToolingIncludeDefaults(validated, tooling.defaults, {
+    included: tooling.tooling,
+    authored: ownOrigins,
+    effective: effectiveOrigins,
+  });
+  const decoded = defaults.document;
   const compiled = LoadScopedLandofile.make({
     stage: "load-scoped",
     document: decoded,
-    pendingSites: decodedPendingSites(
-      assembled,
-      decoded,
-      survivingSites(effectiveOrigins, scope.pendingSites ?? []),
-    ),
+    pendingSites: [
+      ...decodedPendingSites(assembled, decoded, survivingSites(effectiveOrigins, scope.pendingSites ?? [])),
+      ...survivingSites(defaults.addedOrigins, scope.pendingSites ?? []),
+    ],
     context: { appRoot: AbsolutePath.make(context.appRoot), env: scope.env },
   });
+  rememberOrigins(assembled, defaults.origins);
   copyLandofileProvenance(assembled, compiled.document);
   return copyLandofileProvenance(assembled, compiled);
 });

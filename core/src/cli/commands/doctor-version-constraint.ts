@@ -112,12 +112,7 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
   const cwd = process.cwd();
   const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
   const redact = redactor.redactString;
-  const discovery = yield* Effect.result(
-    Effect.tryPromise({
-      try: () => findDiscoveredLandofilePath(cwd),
-      catch: (cause) => cause,
-    }),
-  );
+  const discovery = yield* Effect.result(findDiscoveredLandofilePath(cwd));
   if (Result.isFailure(discovery)) {
     if (Schema.is(LandofileNotFoundError)(discovery.failure)) return undefined;
     if (Schema.is(LandofileFormConflictError)(discovery.failure)) {

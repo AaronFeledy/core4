@@ -1,10 +1,9 @@
 import { dirname } from "node:path";
 
-import { LandofileFormConflictError } from "@lando/sdk/errors";
 import { type ExpressionNode, type ExpressionTemplate, parseExpressionEither } from "@lando/sdk/expressions";
 import { isBareRecipeReference, validateLandofileRecipeProvenance } from "@lando/sdk/recipes";
 import type { LandofileRecipeProvenance } from "@lando/sdk/schema";
-import { Result } from "effect";
+import { Effect, Result } from "effect";
 
 import { findDiscoveredLandofilePath } from "@lando/engine/services/landofile-live";
 
@@ -138,16 +137,10 @@ export const provenanceWithoutServiceMap = (raw: unknown): LandofileRecipeProven
   return retried.success;
 };
 
-export const discoverRecipeAnalysisRoot = async (
-  cwd: string,
-): Promise<{ readonly appRoot: string; readonly dualForm: boolean }> => {
-  try {
-    const found = await findDiscoveredLandofilePath(cwd);
-    return { appRoot: found.appRoot, dualForm: false };
-  } catch (cause) {
-    if (cause instanceof LandofileFormConflictError) {
-      return { appRoot: dirname(cause.yamlPath), dualForm: true };
-    }
-    throw cause;
-  }
-};
+export const discoverRecipeAnalysisRoot = (cwd: string) =>
+  findDiscoveredLandofilePath(cwd).pipe(
+    Effect.map((found) => ({ appRoot: found.appRoot, dualForm: false })),
+    Effect.catchTag("LandofileFormConflictError", (error) =>
+      Effect.succeed({ appRoot: dirname(error.yamlPath), dualForm: true }),
+    ),
+  );

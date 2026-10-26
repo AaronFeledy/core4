@@ -78,7 +78,7 @@ lando init --recipe drupal-cms --name=my-drupal-cms-app --yes --answer=php=8.5 -
 
 Run that optional command from the parent directory, then `cd my-drupal-cms-app` before `lando start`.
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For day-to-day tooling and database hosts, see [Run the Drupal CMS recipe](/guides/recipes/drupal-cms-workflow/).
 

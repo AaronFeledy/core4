@@ -33,7 +33,7 @@ Use an existing `requirements.txt`, or install FastAPI and uvicorn with `lando p
 
 `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it. The URL answers only once your app is serving.
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For day-to-day tooling, Postgres/Redis hosts, and serving on every start, see [Run the FastAPI recipe](/guides/recipes/fastapi-workflow/).
 

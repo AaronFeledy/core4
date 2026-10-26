@@ -100,7 +100,6 @@ describe("makeHealthcheckRunner", () => {
       slug: "probe",
       root: "/tmp/probe",
       provider: "test",
-      networks: [],
       routes: [],
       stores: [],
       fileSync: [],

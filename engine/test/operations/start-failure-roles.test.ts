@@ -26,7 +26,12 @@ test("a failed user start preserves the primary tag without rollback-role errors
       destroyed++;
     },
     destroyEffect: Effect.fail(
-      new ProviderUnavailableError({ providerId: "lando", operation: "destroy", message: "must not run" }),
+      new ProviderUnavailableError({
+        providerId: "lando",
+        operation: "destroy",
+        message: "must not run",
+        remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
+      }),
     ),
   });
   const exit = await Effect.runPromiseExit(
@@ -117,6 +122,8 @@ test("a pending resume preparation failure records the mutated-case notice", asy
                     providerId: "lando",
                     operation: "prepareFileSyncTargets",
                     message: "second target preparation failed",
+                    remediation:
+                      "Install or start the `lando` provider and confirm it can perform `prepareFileSyncTargets`.",
                   }),
                 ),
               ),
@@ -144,7 +151,14 @@ test("a provider apply failure records the left-in-place inventory notice", asyn
   const warnings = makeCommandWarnings(false);
   const harness = makeHarness({
     apply: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId: "lando", operation: "apply", message: "down" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "apply",
+          message: "down",
+          remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
+        }),
+      ),
     inspect: (target) =>
       Effect.succeed({
         app: plan.id,

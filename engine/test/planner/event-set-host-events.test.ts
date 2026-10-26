@@ -12,7 +12,11 @@ import { planApp } from "../../src/planner/assemble.ts";
 import * as ConfigLayer from "../../src/services/config.ts";
 
 const missingPlugin = (id: string) =>
-  new PluginLoadError({ message: `Plugin ${id} is not registered.`, pluginName: id });
+  new PluginLoadError({
+    message: `Plugin ${id} is not registered.`,
+    pluginName: id,
+    remediation: "Install or register the plugin, then retry.",
+  });
 
 const pluginRegistry = PluginRegistry.of({
   list: Effect.succeed([]),

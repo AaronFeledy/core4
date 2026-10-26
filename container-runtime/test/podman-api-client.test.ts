@@ -13,6 +13,7 @@ import { LIBPOD_API_PREFIX, isNamedPipeEndpoint, makePodmanApiClient } from "../
 const ctx = {
   providerId: "custom-podman",
   remediation: "Start the custom Podman machine.",
+  env: {},
   get redactor() {
     return Effect.runSync(fixtureRedaction.forProfile("secrets"));
   },

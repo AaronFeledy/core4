@@ -117,7 +117,6 @@ describe("memcached service type — live integration: text protocol set/get", (
           provider: providerId,
           services: { [cache.name]: cache },
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata: cache.metadata,

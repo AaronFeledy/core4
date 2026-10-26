@@ -1,12 +1,15 @@
-import { join } from "node:path";
 import { EnvironmentValueResolver } from "@lando/sdk/services";
 
-import { LANDOFILE_NAME } from "@lando/landofile/discovery";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
 import { Clock, type Context, Effect, Option } from "effect";
 
-import { LandofileEventStepFailedError, ToolingCompileError, causeMessage } from "@lando/sdk/errors";
+import {
+  LandofileEventStepFailedError,
+  ToolingCompileError,
+  ToolingDisabledError,
+  causeMessage,
+} from "@lando/sdk/errors";
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/schema";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
@@ -22,7 +25,7 @@ import { eventStepLabel } from "./event-step-identity.ts";
 
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
-import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
+import { effectiveToolingForPlan, toolingSourcePathForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import type { ToolingStepLeaf } from "../tooling/step-program.ts";
@@ -115,7 +118,10 @@ const stepFailure = (
     ...(leaf.kind === "cmd" && leaf.service !== undefined ? { service: leaf.service } : {}),
     exitCode: failureExitCode(error),
     outputTail: options.redactor.redactString(causeMessage(error)),
-    remediation: `Fix ${label}, then rerun the lifecycle command.`,
+    remediation:
+      error instanceof ToolingDisabledError
+        ? options.redactor.redactString(error.remediation)
+        : `Fix ${label}, then rerun the lifecycle command.`,
   });
 };
 
@@ -184,7 +190,10 @@ const runInvocation = Effect.fnUntraced(function* (
     name: tool,
     lookupKey: tool,
     task,
-    source: { path: join(String(options.plan.root), LANDOFILE_NAME), task: tool },
+    source: {
+      path: toolingSourcePathForPlan(options.plan, tool),
+      task: tool,
+    },
     ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
     ...(invocationOptions.env === undefined ? {} : { env: invocationOptions.env }),
   });

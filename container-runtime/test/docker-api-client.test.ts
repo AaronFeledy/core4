@@ -19,6 +19,7 @@ import {
 const ctx = {
   providerId: "custom-docker",
   remediation: "Start the custom engine.",
+  env: {},
   get redactor() {
     return Effect.runSync(fixtureRedaction.forProfile("secrets"));
   },
@@ -186,28 +187,30 @@ describe("Docker API client", () => {
     );
     // Then
     expect(response).toEqual({ status: 201, body: '{"ok":true}' });
-    expect(calls).toEqual([
-      [
-        [
-          "curl",
-          "--silent",
-          "--show-error",
-          "--include",
-          "--unix-socket",
-          "/var/run/docker.sock",
-          "--request",
-          "POST",
-          "--write-out",
-          "\n%{http_code}",
-          "--header",
-          "Content-Type: application/json",
-          "--data",
-          '{"Image":"test"}',
-          `http://localhost${DOCKER_API_PREFIX}/containers/create`,
-        ],
-        { stderr: "pipe", stdin: "ignore", stdout: "pipe" },
-      ],
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toEqual([
+      "curl",
+      "--silent",
+      "--show-error",
+      "--include",
+      "--unix-socket",
+      "/var/run/docker.sock",
+      "--request",
+      "POST",
+      "--write-out",
+      "\n%{http_code}",
+      "--header",
+      "Content-Type: application/json",
+      "--data",
+      '{"Image":"test"}',
+      `http://localhost${DOCKER_API_PREFIX}/containers/create`,
     ]);
+    const spawnOptions = calls[0]?.[1];
+    expect(spawnOptions).toMatchObject({ stderr: "pipe", stdin: "ignore", stdout: "pipe" });
+    if (typeof spawnOptions !== "object" || spawnOptions === null || !("signal" in spawnOptions)) {
+      throw new TypeError("Expected curl spawn options");
+    }
+    expect(spawnOptions.signal).toBeInstanceOf(AbortSignal);
   });
 
   test.each(["parse", "connect", "write", "read", "http"] as const)(

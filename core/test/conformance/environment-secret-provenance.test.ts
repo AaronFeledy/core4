@@ -128,7 +128,7 @@ test.each([
     await Effect.runPromise(
       bringUp(app, {
         api,
-        ctx: { providerId: "lando", remediation: "Repair test engine." },
+        ctx: { providerId: "lando", remediation: "Repair test engine.", env: {} },
         resolveServiceEnvironment: (service) => Effect.succeed(overrides[service.name] ?? {}),
       }),
     );

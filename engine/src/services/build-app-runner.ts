@@ -30,6 +30,8 @@ const cacheError = (providerId: string, cause: unknown) =>
     operation: "buildResults",
     message: "Unable to access the build-results cache.",
     cause,
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
 const planError = (input: AppBuildInput, edges: ReadonlyArray<string>) =>
@@ -125,7 +127,16 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         }),
       );
       settledIds.add(step.id);
-      failures.set(step.id, new BuildStepFailedError({ step, exitCode: 1, transcriptPath, summary }));
+      failures.set(
+        step.id,
+        new BuildStepFailedError({
+          step,
+          exitCode: 1,
+          transcriptPath,
+          summary,
+          remediation: `Resolve the blocking failures (${blockedBy.join(", ")}), then rebuild step ${step.id}. Inspect the transcript at ${transcriptPath} if needed.`,
+        }),
+      );
       return "blocked" as const;
     }
     if (!options.force && findCompleteBuildResult(cached, step) !== undefined) {
@@ -182,6 +193,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         exitCode: result.exitCode,
         transcriptPath,
         summary: `${step.id} failed`,
+        remediation: `Inspect the build transcript at ${transcriptPath}, fix step ${step.id}, and rebuild.`,
       }),
     );
     return "failed" as const;
@@ -229,6 +241,10 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         },
         phase: "app",
         failures: ordered,
+        remediation:
+          ordered[0] === undefined
+            ? "Inspect the reported app-phase build step failures, fix them, and rebuild."
+            : ordered[0].remediation,
       });
     }
   });

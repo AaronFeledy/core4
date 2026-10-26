@@ -92,7 +92,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [{ name: "applied_state_db", scope: "app", kind: "data" }],
   fileSync: [],
   metadata,
@@ -278,6 +277,7 @@ describe("provider-lando applied state persistence", () => {
               providerId: "lando",
               operation: "listVolumes",
               message: "offline",
+              remediation: "Install or start the `lando` provider and confirm it can perform `listVolumes`.",
             }),
           ),
       };

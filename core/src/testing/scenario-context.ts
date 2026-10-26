@@ -27,6 +27,7 @@ import { FileSystem, type FileSystemError, type LandoEvent } from "@lando/sdk/se
 
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { CORE_VERSION } from "@lando/engine/version";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import { redactDetails } from "../cli/redact";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
 import { withRuntimeProviderRegistryOverride } from "../runtime/layer";
@@ -267,7 +268,12 @@ const fixtureNotFoundError = (name: string, candidates: ReadonlyArray<string>): 
     candidates: [...candidates],
   });
 
-const fixtureIoError = (path: string, message: string): FileIoError => new FileIoError({ message, path });
+const fixtureIoError = (path: string, message: string): FileIoError =>
+  new FileIoError({
+    message,
+    path,
+    remediation: `Ensure \`${path}\` exists and is readable/writable by this user, then re-run the command.`,
+  });
 
 const TIMESTAMP_PATTERN = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z\b|\b\d{10,13}\b/g;
 
@@ -282,7 +288,7 @@ const stable = (value: unknown): unknown => {
 };
 
 const sanitizeTranscriptValue = (value: unknown, testDir: string): unknown => {
-  const redacted = redactDetails(value);
+  const redacted = redactDetails(value, createStandaloneRedactor("secrets", { sourceEnv: {} }));
   const sanitize = (input: unknown, key?: string): unknown => {
     if (typeof input === "string") {
       const withPath = input.split(testDir).join("<testDir>");

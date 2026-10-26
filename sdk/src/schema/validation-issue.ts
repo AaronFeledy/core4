@@ -1,5 +1,19 @@
 import { Schema, type SchemaAST, SchemaIssue } from "effect";
+import { isPlainRecord } from "../landofile/record.ts";
+import {
+  PLAIN_TEXT_SLOT_REJECTION,
+  authoringExpectation,
+  authoringSource,
+  directiveValue,
+  isExpressionSlot,
+} from "./authoring-issue-metadata.ts";
+import { isMergeDirectiveMemberAst } from "./landofile-directive.ts";
 import { LandofileLayer } from "./landofile-reference.ts";
+import { validationExpectation } from "./validation-expectation.ts";
+import { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
+import { diagnosticUnionCandidates, selectByKeyPresence, unionValueMessage } from "./validation-union.ts";
+
+export { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
 
 /**
  * Location of a validation issue inside an authored document: object keys
@@ -59,27 +73,6 @@ export type ValidationIssue = typeof ValidationIssue.Type;
 
 const PATH_TEXT = /^(?:[A-Za-z_][A-Za-z0-9_-]*)(?:\.(?:[A-Za-z_][A-Za-z0-9_-]*)|\[\d+\])*$/;
 
-/** Closest allowed key within Damerau-Levenshtein distance 2, or undefined. */
-export const suggestionForUnknownKey = (
-  unknownKey: string,
-  allowedKeys: readonly string[],
-): string | undefined => {
-  let best: { readonly key: string; readonly distance: number } | undefined;
-  for (const key of allowedKeys) {
-    if (key === unknownKey) continue;
-    const distance = damerauLevenshtein(unknownKey, key);
-    if (distance > 2) continue;
-    if (
-      best === undefined ||
-      distance < best.distance ||
-      (distance === best.distance && key.localeCompare(best.key) < 0)
-    ) {
-      best = { key, distance };
-    }
-  }
-  return best === undefined ? undefined : `Did you mean "${best.key}"?`;
-};
-
 export const validationIssue = (
   path: ValidationIssuePath,
   message: string,
@@ -124,19 +117,169 @@ export const formatValidationIssueLine = (issue: ValidationIssue): string => {
 export interface SchemaValidationIssueOptions {
   readonly fallback?: string;
   readonly extraAllowedKeys?: (path: ValidationIssuePath) => readonly string[];
+  /** The decoded input, used only to tell which union member an authored object meant. */
+  readonly input?: unknown;
 }
+
+const valueAt = (root: unknown, path: ReadonlyArray<PropertyKey>): unknown => {
+  let current = root;
+  for (const key of path) {
+    if (Array.isArray(current) && typeof key === "number") current = current[key];
+    else if (isPlainRecord(current) && typeof key === "string") current = current[key];
+    else return undefined;
+  }
+  return current;
+};
+
+/** Diagnostic leaf retaining the issue category and Standard Schema property-key path. */
+export const SchemaIssueLeaf = Schema.Struct({
+  _tag: Schema.Literals(["Unexpected", "Missing", "Type"]),
+  path: Schema.Array(Schema.PropertyKey),
+  message: Schema.String,
+  suggestion: Schema.optionalKey(Schema.String),
+});
+export type SchemaIssueLeaf = typeof SchemaIssueLeaf.Type;
+
+const expectationIssue = (ast: SchemaAST.AST, issue: SchemaIssue.Issue): SchemaIssue.Issue => {
+  const source = authoringExpectation(ast);
+  const options = { reportInput: SchemaIssue.hasInput(issue) };
+  return source._tag === "Union"
+    ? new SchemaIssue.AnyOf(source, [], issue.input, options)
+    : new SchemaIssue.InvalidType(source, issue.input, options);
+};
+
+const directiveIssue = (issue: SchemaIssue.Issue): boolean =>
+  (issue._tag === "Composite" || issue._tag === "Encoding") && isMergeDirectiveMemberAst(issue.ast);
+
+const authoringNonCandidate = (issue: SchemaIssue.Issue): boolean => {
+  switch (issue._tag) {
+    case "InvalidValue":
+      return issue.annotations?.[PLAIN_TEXT_SLOT_REJECTION] === true;
+    case "InvalidType":
+      return isExpressionSlot(issue.ast);
+    case "Encoding":
+      return (
+        (isExpressionSlot(issue.ast) && issue.issue._tag === "InvalidType") ||
+        authoringNonCandidate(issue.issue)
+      );
+    case "AnyOf": {
+      const source = authoringSource(issue.ast);
+      return (
+        !(source?._tag === "Union" && source.types.every((member) => member._tag === "Literal")) &&
+        (issue.issues.length > 0 || source !== undefined) &&
+        issue.issues.every(authoringNonCandidate)
+      );
+    }
+    default:
+      return false;
+  }
+};
+
+const directivePayloadIssues = (issue: SchemaIssue.Issue): readonly SchemaIssue.Issue[] => {
+  if (issue._tag === "Encoding") return directivePayloadIssues(issue.issue);
+  if (issue._tag !== "Composite" || !isMergeDirectiveMemberAst(issue.ast)) return [issue];
+  return issue.issues.map((child) => {
+    if (child._tag !== "Pointer" || child.path[0] !== "value" || child.issue._tag === "MissingKey") {
+      return child;
+    }
+    return child.path.length === 1 ? child.issue : new SchemaIssue.Pointer(child.path.slice(1), child.issue);
+  });
+};
+
+// Competing union members, or a property plus a matching pattern key, that report
+// the same issue at the same path describe one defect.
+const distinctLeaves = (leaves: ReadonlyArray<SchemaIssueLeaf>): ReadonlyArray<SchemaIssueLeaf> => {
+  const seen = new Set<string>();
+  return leaves.filter((leaf) => {
+    const key = JSON.stringify([leaf._tag, leaf.path.map(String), leaf.message, leaf.suggestion]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+/** Flatten diagnostics, hiding authoring-only alternatives and synthetic directive payload paths. */
+export const schemaIssueLeaves = (
+  issue: SchemaIssue.Issue,
+  path: ReadonlyArray<PropertyKey> = [],
+  options?: SchemaValidationIssueOptions,
+): ReadonlyArray<SchemaIssueLeaf> => {
+  const walk = (child: SchemaIssue.Issue) => schemaIssueLeaves(child, path, options);
+  switch (issue._tag) {
+    case "Pointer":
+      return schemaIssueLeaves(issue.issue, [...path, ...issue.path], options);
+    case "Encoding":
+      return walk(issue.issue);
+    case "Composite":
+      return distinctLeaves(issue.issues.flatMap(walk));
+    case "AnyOf": {
+      const value = directiveValue(issue.ast);
+      if (value !== undefined) {
+        const directives = issue.issues.filter(directiveIssue);
+        if (directives.length > 0) return directives.flatMap(directivePayloadIssues).flatMap(walk);
+        const children = issue.issues.filter((child) => !authoringNonCandidate(child));
+        return children.length === 0 ? walk(expectationIssue(value, issue)) : children.flatMap(walk);
+      }
+      if (authoringSource(issue.ast) !== undefined) {
+        const children = issue.issues.filter((child) => !authoringNonCandidate(child));
+        const candidates = diagnosticUnionCandidates(issue.ast, children);
+        const message = unionValueMessage(issue.ast, candidates);
+        if (message !== undefined) return [{ _tag: "Type", path, message }];
+        return candidates.length === 0
+          ? walk(expectationIssue(issue.ast, issue))
+          : distinctLeaves(selectByKeyPresence(candidates, valueAt(options?.input, path)).flatMap(walk));
+      }
+      const message = unionValueMessage(issue.ast, issue.issues);
+      if (message !== undefined) return [{ _tag: "Type", path, message }];
+      if (issue.issues.length > 0)
+        return distinctLeaves(selectByKeyPresence(issue.issues, valueAt(options?.input, path)).flatMap(walk));
+      break;
+    }
+    case "InvalidType":
+      if (authoringSource(issue.ast) !== undefined) return walk(expectationIssue(issue.ast, issue));
+      break;
+    case "Filter":
+      if (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue") {
+        return walk(issue.issue);
+      }
+      break;
+    case "UnexpectedKey":
+    case "MissingKey":
+    case "InvalidValue":
+    case "Forbidden":
+    case "OneOf":
+      break;
+    default:
+      return issue satisfies never;
+  }
+  const normalizedPath = propertyKeyPath(path);
+  if (issue._tag === "InvalidType" || issue._tag === "AnyOf") {
+    return [{ _tag: "Type", path, message: validationExpectation(issue.ast) }];
+  }
+  const unknownKey = normalizedPath.at(-1);
+  const suggestion =
+    issue._tag === "UnexpectedKey" && typeof unknownKey === "string"
+      ? suggestionForUnknownKey(unknownKey, [
+          ...propertyNames(issue.ast),
+          ...(options?.extraAllowedKeys?.(normalizedPath) ?? []),
+        ])
+      : undefined;
+  return SchemaIssue.makeFormatterStandardSchemaV1()(issue).issues.map((formatted) => ({
+    _tag: issue._tag === "UnexpectedKey" ? "Unexpected" : issue._tag === "MissingKey" ? "Missing" : "Type",
+    path,
+    message: formatted.message,
+    ...(suggestion === undefined ? {} : { suggestion }),
+  }));
+};
 
 /** Standard Schema V1 path and message, plus a closest-key suggestion for unexpected keys. */
 export const validationIssuesFromSchemaIssue = (
   issue: SchemaIssue.Issue,
   options?: SchemaValidationIssueOptions,
 ): readonly ValidationIssue[] => {
-  const suggestions = unexpectedKeySuggestions(issue, [], options?.extraAllowedKeys);
-  return SchemaIssue.makeFormatterStandardSchemaV1()(issue).issues.map((formatted) => {
-    const path = propertyKeyPath(formatted.path ?? []);
-    const suggestion = suggestions.get(pathKey(path));
-    return validationIssue(path, formatted.message, suggestion);
-  });
+  return schemaIssueLeaves(issue, [], options).map((leaf) =>
+    validationIssue(propertyKeyPath(leaf.path), leaf.message, leaf.suggestion),
+  );
 };
 
 export const validationIssuesFromCause = (
@@ -150,44 +293,6 @@ export const validationIssuesFromCause = (
 
 const propertyKeyPath = (path: ReadonlyArray<unknown>): ValidationIssuePath =>
   path.map((segment) => (typeof segment === "number" ? segment : String(segment)));
-
-const pathKey = (path: ValidationIssuePath): string => JSON.stringify(path);
-
-const unexpectedKeySuggestions = (
-  issue: SchemaIssue.Issue,
-  path: readonly PropertyKey[],
-  extraAllowedKeys: SchemaValidationIssueOptions["extraAllowedKeys"],
-  suggestions: Map<string, string> = new Map(),
-): Map<string, string> => {
-  switch (issue._tag) {
-    case "Pointer":
-      return unexpectedKeySuggestions(issue.issue, [...path, ...issue.path], extraAllowedKeys, suggestions);
-    case "Encoding":
-      return unexpectedKeySuggestions(issue.issue, path, extraAllowedKeys, suggestions);
-    case "Composite":
-      for (const child of issue.issues) unexpectedKeySuggestions(child, path, extraAllowedKeys, suggestions);
-      return suggestions;
-    case "AnyOf":
-      for (const child of issue.issues) unexpectedKeySuggestions(child, path, extraAllowedKeys, suggestions);
-      return suggestions;
-    case "Filter":
-      if (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue") {
-        return unexpectedKeySuggestions(issue.issue, path, extraAllowedKeys, suggestions);
-      }
-      return suggestions;
-    case "UnexpectedKey": {
-      const issuePath = propertyKeyPath(path);
-      const unknownKey = issuePath.at(-1);
-      if (typeof unknownKey !== "string") return suggestions;
-      const allowed = [...propertyNames(issue.ast), ...(extraAllowedKeys?.(issuePath) ?? [])];
-      const suggestion = suggestionForUnknownKey(unknownKey, allowed);
-      if (suggestion !== undefined) suggestions.set(pathKey(issuePath), suggestion);
-      return suggestions;
-    }
-    default:
-      return suggestions;
-  }
-};
 
 const propertyNames = (ast: SchemaAST.AST, seen: Set<SchemaAST.AST> = new Set()): readonly string[] => {
   if (seen.has(ast)) return [];
@@ -204,41 +309,4 @@ const propertyNames = (ast: SchemaAST.AST, seen: Set<SchemaAST.AST> = new Set())
     default:
       return [];
   }
-};
-
-const damerauLevenshtein = (left: string, right: string): number => {
-  const height = left.length + 1;
-  const width = right.length + 1;
-  const matrix = Array.from({ length: height }, () => Array.from({ length: width }, () => 0));
-  for (let row = 0; row < height; row += 1) {
-    const line = matrix[row];
-    if (line !== undefined) line[0] = row;
-  }
-  const header = matrix[0];
-  if (header !== undefined) {
-    for (let column = 0; column < width; column += 1) header[column] = column;
-  }
-  for (let row = 1; row < height; row += 1) {
-    for (let column = 1; column < width; column += 1) {
-      const current = matrix[row];
-      const previous = matrix[row - 1];
-      if (current === undefined || previous === undefined) continue;
-      const cost = left[row - 1] === right[column - 1] ? 0 : 1;
-      const deletion = (previous[column] ?? column) + 1;
-      const insertion = (current[column - 1] ?? row) + 1;
-      const substitution = (previous[column - 1] ?? 0) + cost;
-      let best = Math.min(deletion, insertion, substitution);
-      if (
-        row > 1 &&
-        column > 1 &&
-        left[row - 1] === right[column - 2] &&
-        left[row - 2] === right[column - 1]
-      ) {
-        const transposed = matrix[row - 2]?.[column - 2];
-        if (transposed !== undefined) best = Math.min(best, transposed + 1);
-      }
-      current[column] = best;
-    }
-  }
-  return matrix[left.length]?.[right.length] ?? Math.max(left.length, right.length);
 };

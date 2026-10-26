@@ -13,8 +13,10 @@ import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-ext
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
+import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
+import { evolveHistoricalToolingShorthand } from "./x-extension-tooling-shorthand-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import {
   WIRE_TARGETS,
@@ -72,16 +74,22 @@ const evolvedTypedCache = new Map<
 const evolvedTyped = (source: keyof typeof typedCaptured) => {
   const cached = evolvedTypedCache.get(source);
   if (cached !== undefined) return cached;
-  const evolved = evolveHistoricalEnvironment(
-    evolveHistoricalEndpointMetadata(
-      evolveHistoricalIncludeChecksum(
-        evolveHistoricalTimestamps(
-          evolveHistoricalShorthand(
-            normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+  const evolved = evolveHistoricalToolingShorthand(
+    evolveHistoricalEnvironment(
+      evolveHistoricalEndpointMetadata(
+        evolveHistoricalIncludeChecksum(
+          evolveHistoricalTimestamps(
+            evolveHistoricalShorthand(
+              evolveHistoricalNetworks(
+                normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+                "authoring",
+              ),
+            ),
+            "authoring",
           ),
-          "authoring",
         ),
       ),
+      "authoring",
     ),
     "authoring",
   );
@@ -130,7 +138,10 @@ describe("embedded wire closed x-* artifact repair", () => {
       evolveHistoricalEndpointMetadata(
         evolveHistoricalTimestamps(
           evolveHistoricalShorthand(
-            normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+            evolveHistoricalNetworks(
+              normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+              "authoring",
+            ),
           ),
           "authoring",
         ),

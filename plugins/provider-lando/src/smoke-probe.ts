@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { Effect, type Scope } from "effect";
 
-import { redactDetails } from "@lando/container-runtime/redact";
+import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { type ProbeResult, runProbe } from "@lando/sdk/probe";
 import {
   DEFAULT_BASE_IMAGE,
@@ -21,6 +21,8 @@ import {
   smokeRemediation,
   startSmokeContainer,
 } from "./smoke-probe-support.ts";
+
+const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
 const failureFromResult = (
   operation: "run" | "build" | "health",
@@ -43,7 +45,9 @@ const failureFromResult = (
       attempts: result.attempts,
       elapsedMs: result.elapsedMs,
       outcome: result.outcome,
-      ...(result.lastError === undefined ? {} : { lastError: redactDetails(result.lastError) }),
+      ...(result.lastError === undefined
+        ? {}
+        : { lastError: redactDetails(result.lastError, hostSecretsRedactor()) }),
     },
     ...(result.lastError === undefined ? {} : { cause: result.lastError }),
   });
