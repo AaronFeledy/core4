@@ -355,7 +355,7 @@ export const podmanCapabilitiesForPlatform = (
     rootless: true,
     composeSpec: "native",
     composeKnobs: { supported: composeKnobsForDialect("libpod") },
-    composeServiceFields: { supported: ["labels", "configs"] },
+    composeServiceFields: { supported: ["labels", "configs", "networks"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.containers.internal"),

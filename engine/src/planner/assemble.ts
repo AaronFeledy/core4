@@ -78,6 +78,7 @@ import { resolveKnownEventSet } from "./event-set.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
 import { appNetworkName } from "./naming.ts";
+import { normalizeNetworks } from "./networks.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { plannerSeededFeatureIds } from "./seed-validation.ts";
@@ -426,6 +427,16 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const serviceNames = Object.keys(finalized.services);
   const hasServices = serviceNames.length > 0;
   const perAppBridge = appId !== "global";
+  const authoredNetworking = yield* normalizeNetworks({
+    landofile,
+    services: Object.fromEntries(
+      resolvedServices
+        .filter(({ name }) => serviceNames.includes(name))
+        .map(({ name, service }) => [name, service]),
+    ),
+    appRoot,
+    perAppBridge,
+  });
   const networks: ReadonlyArray<NetworkPlan> =
     hasServices && perAppBridge ? [{ name: appNetworkName(appSlug), shared: false, driver: "bridge" }] : [];
   const networking: NetworkingPlan | undefined = hasServices
@@ -435,6 +446,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         serviceNames,
         sharedCrossAppNetwork: providerCapabilities.sharedCrossAppNetwork,
         serviceHostnames: finalized.serviceHostnames,
+        ...authoredNetworking,
       })
     : undefined;
   const hostProxyExtension = hostProxyExtensionForCapabilities(providerCapabilities);

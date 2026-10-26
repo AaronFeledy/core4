@@ -109,13 +109,13 @@ Exact teardown queries every installed contribution's root inventory before any 
 
 Inventories are teardown evidence only. Non-teardown resolution (selected restart, applied-state resolution) serves a matching applied plan without reading any provider's inventory; it consults inventories only when no applied plan matches, and a nonempty hint then produces the existing orphan refusal (`AppResolveError`). Only teardown probes the availability and cleanup capability of inventory providers. The internal whole-app stop that restart and rebuild run does not perform ownership cleanup.
 
-Whole-app `stop` and `destroy` combine verified cleanup outcomes. A network-only removal is not `unchanged`. An all-absent result stays `unchanged`. Verified absent or removed containers and private networks are retired from the inventory. Named volumes remain until the existing volume flags select them; a removed container's anonymous volumes go with it. Verification uses ownership labels, not trusted names, with one legacy exception for networks.
+Whole-app `stop` and `destroy` combine verified cleanup outcomes. A network-only removal is not `unchanged`. An all-absent result stays `unchanged`. Verified absent or removed containers and private networks are retired from the inventory. Named volumes remain until the existing volume flags select them; a removed container's anonymous volumes go with it. Verification uses ownership labels, not trusted names, with one legacy exception for per-app bridges.
 
 | Observed resource | Teardown action |
 |---|---|
 | Container with its app, root, and service ownership labels and an observed native id | Remove by observed native id. |
 | Container missing any of those labels or an observed native id | Refuse. No legacy exception. |
-| Network at the exact planned private network name with no labels at all | Legacy (created by an earlier build). Remove by observed native id during planful bring-down and ownership-inventory cleanup; a failed bring-up retains it like every other network. |
+| Per-app bridge at the exact planned private network name with no labels at all | Legacy (created by an earlier build). Remove by observed native id during planful bring-down and ownership-inventory cleanup; a failed bring-up retains it like every other network. |
 | Network with the expected ownership label set | Remove by observed native id. |
 | Network with any nonempty label set that is not the expected ownership set (partial, another app, root, owner, or provider) | MUST refuse. |
 | Shared network | Never removed. |
@@ -185,7 +185,7 @@ The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, 
 
 Missing required capabilities fail before provider action with `CapabilityError` naming the provider, feature, service when applicable, and remediation. Published endpoints require `hostPortPublish`; internal endpoints do not. Providers report assigned host ports only as `PublicationObservation` bindings from real inspection and MUST NOT mutate desired publication state or substitute plan values for observed ones.
 
-`composeSpec: native` is necessary but not sufficient for preserved Compose semantics. `composeKnobs`, `composeServiceFields`, `composeProjectFields`, and `composePreservedPaths` are fail-closed exact declarations; omission means no support, non-empty declarations below `native` are invalid, and support MUST NOT be inferred from a parent field or tier. Declaring a field claims complete realization of its accepted forms. Service and project `x-*` fields remain inert preserved metadata unless a specific namespace later gains an explicit capability or provider extension.
+`composeSpec: native` is necessary but not sufficient for preserved Compose semantics. `composeKnobs`, `composeServiceFields`, `composeProjectFields`, and `composePreservedPaths` are fail-closed exact declarations; omission means no support, non-empty declarations below `native` are invalid, and support MUST NOT be inferred from a parent field or tier. Declaring a field claims complete realization of its accepted forms. For the `networks` service field family, complete realization means the additive membership model of §10.1 (listed networks are joined in addition to the app and shared networks, never instead of them) with attachment `aliases`; every other non-`x-*` attachment field is its own exact `composePreservedPaths` entry (`networks.*.<field>`). Service and project `x-*` fields remain inert preserved metadata unless a specific namespace later gains an explicit capability or provider extension.
 
 Bundled container providers MUST derive `composeKnobs.supported` from the shared realization table. Each realization declares the engine dialects for which its request fields implement the accepted forms with identical semantics. Docker uses the verified Docker Engine mappings; Lando-managed and system Podman use the libpod dialect's compatible create API. Independent request fixtures MUST cover every declared knob for each dialect, including query parameters and the Config versus HostConfig boundary. Docker's supported API range MUST preserve these mappings, including the container-create `platform` query parameter introduced in API 1.41.
 
@@ -231,7 +231,7 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `services` | Planned services keyed by service name. |
 | `routes` | Planner-resolved routes with explicit backend service, protocol, and port. |
 | `networks`, `stores` | Provider-neutral network and storage intent. |
-| `networking` | Explicit per-app bridge (or `null`) and optional shared-network membership with service aliases. |
+| `networking` | Explicit per-app bridge (or `null`), optional shared-network membership with service aliases, and the authored networks services join (§10.1). |
 | `events` | Compiled Landofile `events:` and `hostEvents` steps with provenance and plan-time status (§8.5.7). Omitted from provider applied-state records. |
 | `metadata` | App planning metadata. |
 | `extensions` | Namespaced preserved provider intent. |

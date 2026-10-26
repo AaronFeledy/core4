@@ -195,6 +195,8 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   NetworkPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PerAppBridgePlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   SharedNetworkMembershipPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  AuthoredNetworkPlan: "sdk/test/schema/networking-plan.test.ts",
+  ServiceNetworkAttachment: "sdk/test/schema/networking-plan.test.ts",
   NetworkingPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   IsolateMode: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ProviderCapabilities: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

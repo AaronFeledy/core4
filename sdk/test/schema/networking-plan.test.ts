@@ -6,14 +6,93 @@ import {
   LANDO_SHARED_CROSS_APP_NETWORK,
   NetworkingPlan,
   ServiceName,
+  ServiceNetworkAttachment,
   landoAppNetworkName,
+  landoExternalNetworkNames,
   landoNetworkNames,
   landoNetworkingPlan,
+  landoOwnedNetworkNames,
   landoServiceNetworkAliases,
+  landoServiceNetworkAttachments,
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
 
 describe("NetworkingPlan schema", () => {
+  test("decodes and round-trips a public service attachment", () => {
+    const input = { name: "peer", aliases: ["api", "web.shop.internal"] };
+    const attachment = Schema.decodeUnknownSync(ServiceNetworkAttachment)(input);
+    expect(Schema.encodeSync(ServiceNetworkAttachment)(attachment)).toEqual(input);
+  });
+  test("rejects a non-string attachment alias", () => {
+    const result = Schema.decodeUnknownResult(ServiceNetworkAttachment)({ name: "peer", aliases: [42] });
+    expect(Result.isFailure(result)).toBe(true);
+  });
+  const authoredPlan = () => ({
+    slug: "shop",
+    networking: landoNetworkingPlan({
+      slug: "shop",
+      serviceNames: ["web", "db"],
+      sharedCrossAppNetwork: true,
+      bridgeAliases: { web: ["www", "web"], db: [] },
+      authoredNetworks: [
+        { key: "peer", external: true, name: "sibling_net", members: { web: ["api", "api"] } },
+        { key: "extra", external: false, driver: "custom", members: { web: [] } },
+        { key: "unnamed", external: true, members: { web: [] } },
+      ],
+    }),
+  });
+  test("derives authored names, drivers, aliases and bridge aliases", () => {
+    const plan = Schema.decodeUnknownSync(NetworkingPlan)(authoredPlan().networking);
+    expect(plan.perAppBridge?.aliases).toEqual({ [ServiceName.make("web")]: ["www", "web"] });
+    expect(plan.authoredNetworks).toEqual([
+      {
+        key: "peer",
+        name: "sibling_net",
+        external: true,
+        members: { [ServiceName.make("web")]: { aliases: ["web.shop.internal", "api"] } },
+      },
+      {
+        key: "extra",
+        name: "lando-shop_extra",
+        external: false,
+        driver: "custom",
+        members: { [ServiceName.make("web")]: { aliases: ["web.shop.internal"] } },
+      },
+      {
+        key: "unnamed",
+        name: "unnamed",
+        external: true,
+        members: { [ServiceName.make("web")]: { aliases: ["web.shop.internal"] } },
+      },
+    ]);
+  });
+  test("attaches members in bridge, shared, authored order and deduplicates aliases", () => {
+    expect(landoServiceNetworkAttachments(authoredPlan(), { name: ServiceName.make("web") })).toEqual([
+      { name: "lando-shop", aliases: ["web", "www"] },
+      { name: "lando_bridge_network", aliases: ["web.shop.internal"] },
+      { name: "sibling_net", aliases: ["web.shop.internal", "api"] },
+      { name: "lando-shop_extra", aliases: ["web.shop.internal"] },
+      { name: "unnamed", aliases: ["web.shop.internal"] },
+    ]);
+  });
+  test("keeps nonmembers on the app and shared networks only", () => {
+    expect(landoServiceNetworkAttachments(authoredPlan(), { name: ServiceName.make("db") })).toEqual([
+      { name: "lando-shop", aliases: ["db"] },
+      { name: "lando_bridge_network", aliases: ["db.shop.internal"] },
+    ]);
+  });
+  test("inventories owned, external and all network names separately", () => {
+    const plan = authoredPlan();
+    expect(landoOwnedNetworkNames(plan)).toEqual(["lando-shop", "lando-shop_extra"]);
+    expect(landoExternalNetworkNames(plan)).toEqual(["sibling_net", "unnamed"]);
+    expect(landoNetworkNames(plan)).toEqual([
+      "lando-shop",
+      "lando_bridge_network",
+      "sibling_net",
+      "lando-shop_extra",
+      "unnamed",
+    ]);
+  });
   test("decodes a plan with per-app bridge and shared cross-app membership", () => {
     const decoded = Schema.decodeUnknownSync(NetworkingPlan)({
       perAppBridge: { name: "lando-shop", driver: "bridge" },

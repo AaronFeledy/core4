@@ -40,11 +40,23 @@ const PRESERVED_EXACT_PATH_ENTRY = {
 const preservedExactPaths: ReadonlySet<string> = new Set(ComposePreservedPathKey.literals);
 
 const preservedEntry = (path: string): ComposeDispositionEntry =>
-  path === "x-*"
+  path === "x-*" || path === "networks.*.x-*"
     ? PRESERVED_INERT_EXTENSION_ENTRY
     : preservedExactPaths.has(path)
       ? PRESERVED_EXACT_PATH_ENTRY
-      : PRESERVED_ENTRY;
+      : path === "networks.*.driver_opts.*"
+        ? {
+            disposition: "preserved",
+            rationale:
+              "Preserved losslessly in ServicePlan.extensions.compose; covered by the networks.*.driver_opts exact-path capability in composePreservedPaths, not a separate capability.",
+          }
+        : path === "networks" || path === "networks.*.aliases"
+          ? {
+              disposition: "preserved",
+              rationale:
+                "Preserved losslessly in ServicePlan.extensions.compose and realized additively through AppPlan.networking; services retain app and shared network membership.",
+            }
+          : PRESERVED_ENTRY;
 
 const rejectedEntry = (path: string): ComposeDispositionEntry => {
   if (path === "extends" || path.startsWith("extends.")) {
@@ -510,7 +522,7 @@ export const composeTopLevelDispositions: Readonly<Record<string, ComposeDisposi
   },
   networks: {
     disposition: "normalized",
-    rationale: "Normalizes into AppPlan.networks.",
+    rationale: "Normalizes into AppPlan.networking when a service joins the declared network.",
   },
   configs: {
     disposition: "preserved",

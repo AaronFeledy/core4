@@ -50,7 +50,18 @@ const OPTIONAL_FIELDS = [
   "hostProxy",
 ] as const;
 
-const COMPOSE_PRESERVED_PATH_KEYS = ["depends_on.*.restart", "healthcheck.start_interval"] as const;
+const COMPOSE_PRESERVED_PATH_KEYS = [
+  "depends_on.*.restart",
+  "healthcheck.start_interval",
+  "networks.*.ipv4_address",
+  "networks.*.ipv6_address",
+  "networks.*.link_local_ips",
+  "networks.*.mac_address",
+  "networks.*.driver_opts",
+  "networks.*.priority",
+  "networks.*.gw_priority",
+  "networks.*.interface_name",
+] as const;
 
 const COMPOSE_PROJECT_FIELD_KEYS = ["configs", "secrets"] as const;
 

@@ -116,7 +116,7 @@ export const testCapabilities: ProviderCapabilities = {
   architectureEmulation: true,
   composeSpec: "native",
   composeKnobs: { supported: ["restart", "cap_add", "shm_size", "extra_hosts"] },
-  composeServiceFields: { supported: ["labels", "configs"] },
+  composeServiceFields: { supported: ["labels", "configs", "networks"] },
   composeProjectFields: { supported: ["configs"] },
   providerExtensions: [],
 };

@@ -341,7 +341,7 @@ const ComposeNetworkAttachment = Schema.StructWithRest(
 const ComposeNetworkAttachmentRecord = Schema.Record(Schema.String, ComposeNetworkAttachment);
 
 const COMPOSE_NETWORKS_DESCRIPTION =
-  "Service network attachments as a name list or long mapping; canonicalized to a long mapping and carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
+  "Extra networks this service joins, as a name list or long mapping keyed by a top-level networks: entry or default (the app network). Membership is additive: the service always stays on its app network. aliases add DNS names on that network; other attachment fields are exact-path capabilities that no bundled provider realizes. Canonicalized to a long mapping, preserved in ServicePlan.extensions.compose, and realized from AppPlan.networking.";
 
 const ComposeNetworksInput = Schema.Union([
   Schema.Array(Schema.String),

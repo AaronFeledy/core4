@@ -17,9 +17,10 @@ import {
   type HostPlatform,
   ProviderId,
   ServiceName,
+  type ServiceNetworkAttachment,
   type ServicePlan,
-  landoServiceNetworkAliases,
-  landoSharedNetworkName,
+  landoExternalNetworkNames,
+  landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
 import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@lando/sdk/services";
 
@@ -64,6 +65,7 @@ import { runServiceStartSchedule } from "../service-start-schedule.ts";
 import { isServiceRestartExpected } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
+import { ensureAuthoredNetwork, preflightExternalNetwork } from "./bring-up-networks.ts";
 import {
   bringUpRecreateReasons,
   inspectBindSources,
@@ -74,11 +76,6 @@ import {
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
 import { logs } from "./logs.ts";
-import { podmanNetworkNames } from "./networks.ts";
-
-const networkNames = podmanNetworkNames;
-const serviceNetworkAliases = landoServiceNetworkAliases;
-const sharedNetworkName = landoSharedNetworkName;
 
 export { scratchLabelsForPlan } from "../labels.ts";
 
@@ -371,12 +368,7 @@ const createContainerRequest = (
       },
       networkingConfig: {
         EndpointsConfig: Object.fromEntries(
-          createBodyNetworkNames(deps, plan).map((name) => [
-            name,
-            name === sharedNetworkName(plan)
-              ? { Aliases: serviceNetworkAliases(plan, service) }
-              : { Aliases: [service.name] },
-          ]),
+          createBodyAttachments(deps, plan, service).map(({ name, aliases }) => [name, { Aliases: aliases }]),
         ),
       },
       onMissingArtifact: (artifact) => {
@@ -414,7 +406,10 @@ const ensureNetwork = (
               path: "/networks/create",
               body: {
                 Name: name,
-                Driver: "bridge",
+                Driver:
+                  plan.networking?.perAppBridge?.name === name
+                    ? plan.networking.perAppBridge.driver
+                    : "bridge",
                 ...(isSharedNetwork(plan, name)
                   ? {}
                   : {
@@ -618,35 +613,31 @@ const isAlreadyConnectedResponse = (response: EngineHttpResponse): boolean =>
   response.status === 403 && /already\s+(exists|connected)|endpoint.*exists|same name/iu.test(response.body);
 
 /** Docker accepts one network in the create body; the rest are connected after create. */
-const createBodyNetworkNames = (deps: BringUpDeps, plan: AppPlan): ReadonlyArray<string> =>
+const createBodyAttachments = (deps: BringUpDeps, plan: AppPlan, service: ServicePlan) =>
   (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
-    ? networkNames(plan).slice(0, 1)
-    : networkNames(plan);
+    ? landoServiceNetworkAttachments(plan, service).slice(0, 1)
+    : landoServiceNetworkAttachments(plan, service);
 
 /** Existing Docker containers need an idempotent connect even when create would attach the shared network. */
-const sharedNetworkAfterCreate = (deps: BringUpDeps, plan: AppPlan, created: boolean): string | undefined => {
-  const shared = sharedNetworkName(plan);
-  if (
-    !created &&
-    (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
-  )
-    return shared;
-  return shared === undefined || createBodyNetworkNames(deps, plan).includes(shared) ? undefined : shared;
-};
+const attachmentsAfterCreate = (deps: BringUpDeps, plan: AppPlan, service: ServicePlan, created: boolean) =>
+  (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
+    ? landoServiceNetworkAttachments(plan, service).slice(
+        created || plan.networking?.perAppBridge !== null ? 1 : 0,
+      )
+    : [];
 
-const connectSharedNetwork = (
+const connectNetwork = (
   deps: BringUpDeps,
-  plan: AppPlan,
   service: ServicePlan,
   name: string,
-  sharedNetwork: string,
+  attachment: ServiceNetworkAttachment,
 ): Effect.Effect<void, BringUpError> =>
   request(deps, {
     method: "POST",
-    path: `/networks/${encodeURIComponent(sharedNetwork)}/connect`,
+    path: `/networks/${encodeURIComponent(attachment.name)}/connect`,
     body: {
       Container: name,
-      EndpointConfig: { Aliases: serviceNetworkAliases(plan, service) },
+      EndpointConfig: { Aliases: attachment.aliases },
     },
   }).pipe(
     Effect.flatMap((response) =>
@@ -816,9 +807,8 @@ const startService = Effect.fnUntraced(function* (
     createEndpoints = yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
     changed = true;
   }
-  const sharedNetwork = sharedNetworkAfterCreate(deps, plan, !before.exists);
-  if (sharedNetwork !== undefined) {
-    yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
+  for (const attachment of attachmentsAfterCreate(deps, plan, service, !before.exists)) {
+    yield* connectNetwork(deps, service, name, attachment);
   }
   if (!before.running) {
     const response = yield* startContainer(deps, name);
@@ -853,9 +843,8 @@ const startService = Effect.fnUntraced(function* (
         }
         createEndpoints = yield* prepareEndpoints(assigned);
         yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
-        const retrySharedNetwork = sharedNetworkAfterCreate(deps, plan, true);
-        if (retrySharedNetwork !== undefined) {
-          yield* connectSharedNetwork(deps, plan, service, name, retrySharedNetwork);
+        for (const attachment of attachmentsAfterCreate(deps, plan, service, true)) {
+          yield* connectNetwork(deps, service, name, attachment);
         }
         retry = yield* startContainer(deps, name);
       }
@@ -1053,6 +1042,17 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     redactor: redactorFor(options.ctx),
   };
 
+  const networkNames = new Set(
+    Object.values(plan.services).flatMap((service) =>
+      landoServiceNetworkAttachments(plan, service).map(({ name }) => name),
+    ),
+  );
+  const externalNames = new Set(landoExternalNetworkNames(plan));
+  for (const name of networkNames) {
+    if (!externalNames.has(name)) continue;
+    yield* preflightExternalNetwork(api, name, options.ctx);
+  }
+
   for (const service of Object.values(plan.services)) {
     const inspected = yield* inspectContainer(deps, containerName(plan, service));
     const replacing =
@@ -1063,8 +1063,15 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     }
   }
 
-  for (const name of networkNames(plan)) {
-    yield* ensureNetwork(deps, name, plan);
+  for (const name of networkNames) {
+    const authored = plan.networking?.authoredNetworks?.find((network) => network.name === name);
+    if (authored?.external === true) continue;
+    if (authored !== undefined) {
+      yield* creationEligibility(plan);
+      yield* ensureAuthoredNetwork(api, { plan, network: authored }, options.ctx);
+    } else {
+      yield* ensureNetwork(deps, name, plan);
+    }
   }
   const createdVolumes: VolumeCreationFact[] = [];
   for (const store of plan.stores) {

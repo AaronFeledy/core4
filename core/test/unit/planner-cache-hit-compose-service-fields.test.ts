@@ -85,7 +85,10 @@ test("Given a cached plan with networks, when support is omitted, then the cache
     }
 
     // When
-    const exit = await runPlan(TestRuntimeProvider.capabilities);
+    const exit = await runPlan({
+      ...TestRuntimeProvider.capabilities,
+      composeServiceFields: { supported: ["labels", "configs"] },
+    });
 
     // Then
     const failure = expectFailure(exit);

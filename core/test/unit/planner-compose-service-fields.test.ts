@@ -61,6 +61,7 @@ describe("Compose service field preservation", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "compose-fields",
       runtime: 4,
+      networks: { frontend: {} },
       configs: {
         "app-config": { file: "./app.conf" },
         "site-config": { file: "./site.conf" },

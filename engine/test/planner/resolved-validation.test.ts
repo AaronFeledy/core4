@@ -100,6 +100,58 @@ const compareIssues = async (root: string, paths: readonly (readonly (string | n
   return { lint };
 };
 
+for (const [yaml, path, count] of [
+  ["services: {web: {type: validation, networks: [ghost]}}", ["services", "web", "networks", "ghost"], 1],
+  ["networks: {default: {}}", ["networks", "default"], 1],
+  ["networks: {peer: {external: true, driver: bridge}}", ["networks", "peer", "driver"], 1],
+  ["networks: {peer: {name: chosen}}", ["networks", "peer", "name"], 1],
+  ["networks: {'bad/key': {}}", ["networks", "bad/key"], 1],
+  ["networks: {peer: {external: true, name: lando_bridge_network}}", ["networks", "peer"], 1],
+  ["networks: {peer: {external: true, name: lando-validation}}", ["networks", "peer"], 1],
+  ["networks: {peer: {external: true, name: lando-validation_former-owned}}", ["networks", "peer"], 1],
+  [
+    "networks: {lando-validation_former-owned: {external: true}}",
+    ["networks", "lando-validation_former-owned"],
+    1,
+  ],
+  [
+    "networks: {first: {external: true, name: sibling_net}, second: {external: true, name: sibling_net}}\nservices: {web: {type: validation, networks: [first, second]}}",
+    ["networks", "second"],
+    1,
+  ],
+  [
+    "networks: {extra: {}, peer: {external: true, name: lando-validation_extra}}\nservices: {web: {type: validation, networks: [extra, peer]}}",
+    ["networks", "peer"],
+    2,
+  ],
+] as const)
+  test(`lint and planning reject invalid network at ${path.join(".")} (${yaml})`, async () => {
+    await withApp(yaml, async (root) => {
+      const { lint } = await compareIssues(
+        root,
+        Array.from({ length: count }, () => path),
+      );
+      expect(lint.violations[0]).toMatchObject({
+        rule: "landofile.network",
+        path,
+        message: expect.any(String),
+        suggestion: expect.any(String),
+      });
+    });
+  });
+
+test("lint permits service default membership and declared external networks", async () => {
+  await withApp(
+    "networks: {peer: {external: true}}\nservices: {web: {type: validation, networks: [default, peer]}}",
+    async (root) => {
+      const lint = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer), Effect.provide(BunFileSystem.layer)),
+      );
+      expect(lint.valid).toBe(true);
+    },
+  );
+});
+
 test("top-level env file failures aggregate with independent service and route issues", async () => {
   await withApp(
     "env_file: [missing.env]\nservices:\n  db:\n    type: validation\n    environment: {FAIL: yes}\n  web:\n    type: validation\n    routes: [bad_host!]\n",

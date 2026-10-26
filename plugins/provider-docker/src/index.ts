@@ -266,7 +266,7 @@ export const dockerCapabilitiesForHost = (
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
     composeKnobs: { supported: composeKnobsForDialect("docker") },
-    composeServiceFields: { supported: ["labels", "configs"] },
+    composeServiceFields: { supported: ["labels", "configs", "networks"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.docker.internal"),

@@ -19,6 +19,41 @@ import { yamlRoundTripRecord } from "@lando/sdk/test";
 
 import { commonContainerLabels } from "../src/plan.ts";
 import { composePath, emitCompose, renderCompose } from "../src/podman/compose.ts";
+import { networkPlan } from "./authored-network-fixture.ts";
+
+test("emits member-only authored networks, bridge aliases, external names and owned drivers", () => {
+  // Given / When
+  const document: unknown = Bun.YAML.parse(
+    renderCompose(networkPlan, { providerId: "docker", remediation: "Retry." }),
+  );
+  // Then
+  expect(document).toMatchObject({
+    services: {
+      web: {
+        networks: {
+          "lando-networks": { aliases: ["web", "frontend"] },
+          lando_bridge_network: { aliases: ["web.networks.internal"] },
+          "lando-networks_private": { aliases: ["web.networks.internal", "private-web"] },
+          "sibling net": { aliases: ["web.networks.internal", "public-web"] },
+        },
+      },
+      worker: {
+        networks: {
+          "lando-networks": { aliases: ["worker"] },
+          lando_bridge_network: { aliases: ["worker.networks.internal"] },
+        },
+      },
+    },
+    networks: {
+      "lando-networks_private": { driver: "macvlan" },
+      "sibling net": { external: true, name: "sibling net" },
+    },
+  });
+  expect(document).toHaveProperty("services.worker.networks", {
+    "lando-networks": { aliases: ["worker"] },
+    lando_bridge_network: { aliases: ["worker.networks.internal"] },
+  });
+});
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;

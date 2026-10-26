@@ -10,6 +10,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  landoNetworkingPlan,
 } from "@lando/sdk/schema";
 
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
@@ -187,6 +188,23 @@ describe("presentLogicalCreateConfig", () => {
 });
 
 describe("bringUpRecreateReasons", () => {
+  test("reports a missing authored network only for its member", () => {
+    // Given a member and a non-member both connected to their default networks.
+    const worker = { ...service, name: ServiceName.make("worker") };
+    const app = {
+      ...plan,
+      networking: landoNetworkingPlan({
+        slug: plan.slug,
+        serviceNames: [service.name, worker.name],
+        sharedCrossAppNetwork: true,
+        authoredNetworks: [{ key: "extra", external: false, members: { web: [] } }],
+      }),
+    };
+    const snapshot = { networkNames: ["lando-recreate-reasons", "lando_bridge_network"] };
+    // When / Then only the service joining the missing network must recreate.
+    expect(bringUpRecreateReasons(app, service, snapshot, { skipAbsentFields: true })).toEqual(["network"]);
+    expect(bringUpRecreateReasons(app, worker, snapshot, { skipAbsentFields: true })).toEqual([]);
+  });
   test("reports known missing config labels even when absent custom metadata is skipped", () => {
     // Given known-empty labels from a real container inspect.
     const snapshot = { labels: {} };

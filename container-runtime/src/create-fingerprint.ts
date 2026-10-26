@@ -6,8 +6,7 @@ import {
   SSH_AGENT_SOCKET_NAME,
   type ServicePlan,
   isCoreServiceEnvKey,
-  landoServiceNetworkAliases,
-  landoSharedNetworkName,
+  landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
 import { composeConfigMounts } from "./compose-configs.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
@@ -21,7 +20,6 @@ import {
 } from "./labels.ts";
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 import { realizePodmanComposeKnobs } from "./podman/compose-knobs.ts";
-import { podmanNetworkNames } from "./podman/networks.ts";
 import { compileServiceProbe } from "./service-probe.ts";
 
 export const CREATE_CONFIG_LABEL = "dev.lando.create-config";
@@ -163,10 +161,7 @@ export const createConfigFingerprint = (
     ),
     hostAliases: service.hostAliases,
     networks: Object.fromEntries(
-      podmanNetworkNames(plan).map((name) => [
-        name,
-        name === landoSharedNetworkName(plan) ? landoServiceNetworkAliases(plan, service) : [service.name],
-      ]),
+      landoServiceNetworkAttachments(plan, service).map(({ name, aliases }) => [name, aliases]),
     ),
     knobs,
   };

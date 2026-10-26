@@ -3,6 +3,14 @@ import { Schema } from "effect";
 export const ComposePreservedPathKey = Schema.Literals([
   "depends_on.*.restart",
   "healthcheck.start_interval",
+  "networks.*.ipv4_address",
+  "networks.*.ipv6_address",
+  "networks.*.link_local_ips",
+  "networks.*.mac_address",
+  "networks.*.driver_opts",
+  "networks.*.priority",
+  "networks.*.gw_priority",
+  "networks.*.interface_name",
 ]).annotate({
   identifier: "ComposePreservedPathKey",
   title: "Compose Preserved Path Key",

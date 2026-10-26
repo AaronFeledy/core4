@@ -44,11 +44,32 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("Compose service field capabilities", () => {
+  test("allows declared networks when the provider supports the family", async () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "allowed-network",
+      runtime: 4,
+      networks: { frontend: {} },
+      services: { web: { image: "node:lts", home: false, networks: ["frontend"] } },
+    });
+    await withTempCwd(async () => {
+      const exit = await planExit(landofile, {
+        ...TestRuntimeProvider.capabilities,
+        composeServiceFields: { supported: ["networks"] },
+      });
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit))
+        expect(exit.value.networking?.authoredNetworks?.[0]).toMatchObject({
+          key: "frontend",
+          external: false,
+        });
+    });
+  });
   test("Given a provider omitting service-field capabilities, when networks is planned, then planning fails closed", async () => {
     // Given
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "network-field",
       runtime: 4,
+      networks: { frontend: {} },
       services: { web: { image: "node:lts", home: false, networks: ["frontend"] } },
     });
 

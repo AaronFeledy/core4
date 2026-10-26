@@ -212,6 +212,13 @@ export const PerAppBridgePlan = Schema.Struct({
   name: Schema.String,
   /** Driver (provider-specific; defaults to a bridge driver). */
   driver: Schema.optionalKey(Schema.String),
+  /**
+   * Extra per-service DNS aliases on this network, from a service's
+   * `networks.default.aliases`. Every service also keeps its service name.
+   */
+  aliases: Schema.optionalKey(Schema.Record(ServiceName, Schema.Array(Schema.String))).annotate({
+    description: "Extra per-service DNS aliases on the per-app bridge from networks.default.aliases.",
+  }),
 });
 export type PerAppBridgePlan = typeof PerAppBridgePlan.Type;
 
@@ -236,6 +243,35 @@ export const SharedNetworkMembershipPlan = Schema.Struct({
 export type SharedNetworkMembershipPlan = typeof SharedNetworkMembershipPlan.Type;
 
 /**
+ * A top-level Landofile network that at least one service joins, in addition
+ * to the per-app bridge and shared network every service keeps.
+ *
+ * An external network already exists outside Lando: Lando joins it but never
+ * creates, labels, or removes it. Any other authored network is private to the
+ * app: Lando creates it with app ownership labels under a Lando-generated name
+ * and removes it with the app.
+ */
+export const AuthoredNetworkPlan = Schema.Struct({
+  key: Schema.String.annotate({ description: "Key under the Landofile's top-level networks: mapping." }),
+  name: Schema.String.annotate({ description: "Provider-visible network name." }),
+  external: Schema.Boolean.annotate({
+    description: "Whether the network exists outside Lando; Lando joins it but never creates or removes it.",
+  }),
+  driver: Schema.optionalKey(Schema.String).annotate({
+    description: "Driver for a network Lando creates; absent for external networks.",
+  }),
+  members: Schema.Record(
+    ServiceName,
+    Schema.Struct({
+      aliases: Schema.Array(Schema.String).annotate({
+        description: "DNS aliases: <service>.<slug>.internal, then authored aliases.",
+      }),
+    }),
+  ).annotate({ description: "Services that join this network, keyed by service name." }),
+});
+export type AuthoredNetworkPlan = typeof AuthoredNetworkPlan.Type;
+
+/**
  * Networking plan — the per-app networking *intent*. Core defines the intent;
  * the `RuntimeProvider` realizes it: a nullable per-app bridge network plus
  * optional membership in the provider-owned shared cross-app network.
@@ -249,6 +285,10 @@ export const NetworkingPlan = Schema.Struct({
   perAppBridge: Schema.NullOr(PerAppBridgePlan),
   /** Shared cross-app network membership, present when the app joins it. */
   sharedNetworkMembership: Schema.optionalKey(SharedNetworkMembershipPlan),
+  authoredNetworks: Schema.optionalKey(Schema.Array(AuthoredNetworkPlan)).annotate({
+    description:
+      "Top-level Landofile networks that services join in addition to the app and shared networks.",
+  }),
 });
 export type NetworkingPlan = typeof NetworkingPlan.Type;
 

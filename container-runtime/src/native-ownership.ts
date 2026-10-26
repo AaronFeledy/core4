@@ -136,8 +136,13 @@ export const verifiedNativeId = Effect.fnUntraced(function* (
 
 export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(function* (
   api: EngineHttpApi,
-  target: {
-    readonly kind: "container" | "network";
+  target: (
+    | { readonly kind: "container" }
+    | {
+        readonly kind: "network";
+        readonly legacy: "accept" | "reject";
+      }
+  ) & {
     readonly name: string;
     readonly labels: Readonly<Record<string, string>>;
   },
@@ -153,7 +158,7 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
       path = `/networks/${encodeURIComponent(target.name)}`;
       break;
     default: {
-      const unreachable: never = target.kind;
+      const unreachable: never = target;
       return unreachable;
     }
   }
@@ -178,13 +183,14 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
       if (
         !id ||
         decision === "foreign" ||
-        (decision === "legacy" && (observed?.Name ?? observed?.name) !== target.name)
+        (decision === "legacy" &&
+          (target.legacy === "reject" || (observed?.Name ?? observed?.name) !== target.name))
       )
         return yield* Effect.fail(refused(ctx));
       return id;
     }
     default: {
-      const unreachable: never = target.kind;
+      const unreachable: never = target;
       return unreachable;
     }
   }

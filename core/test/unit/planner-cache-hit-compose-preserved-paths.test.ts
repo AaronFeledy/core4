@@ -1,19 +1,23 @@
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deserialize } from "node:v8";
 
 import { expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import { CapabilityError } from "@lando/core/errors";
-import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
+import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "@lando/engine/cache/app-plan";
+import { appPlanCachePath } from "@lando/engine/cache/paths";
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 import { literalLandofile } from "../_support/value-contracts.ts";
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
@@ -24,6 +28,87 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   if (!Option.isSome(failure)) throw new Error("Expected a typed planning failure");
   return failure.value;
 };
+
+test("cache hits reject each unsupported network attachment exact path", async () => {
+  const appRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-network-path-cache-app-")));
+  const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-network-path-cache-root-")));
+  try {
+    await withCwd(
+      appRoot,
+      () =>
+        withEnvVar("LANDO_USER_CACHE_ROOT", cacheRoot, async () => {
+          const landofile = Schema.decodeUnknownSync(LandofileShape)({
+            name: "network-cache",
+            runtime: 4,
+            services: { web: { image: "node:lts", home: false } },
+          });
+          const capabilities: ProviderCapabilities = {
+            ...TestRuntimeProvider.capabilities,
+            composeServiceFields: { supported: ["networks"] },
+          };
+          const plannerLayer = AppPlannerLayer.layer.pipe(
+            Layer.provide(
+              Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer),
+            ),
+          );
+          const runPlan = () =>
+            Effect.runPromiseExit(
+              Effect.flatMap(AppPlanner, (planner) =>
+                planner.plan(literalLandofile(landofile, appRoot), capabilities),
+              ).pipe(Effect.provide(plannerLayer)),
+            );
+          const seeded = await runPlan();
+          if (Exit.isFailure(seeded)) throw new Error("Expected successful cache seed");
+          const web = seeded.value.services[ServiceName.make("web")];
+          if (web === undefined) throw new Error("Expected web service");
+          const bytes = await readFile(appPlanCachePath(cacheRoot, "network-cache", appRoot));
+          const { key } = Schema.decodeUnknownSync(Schema.Struct({ key: Schema.String }))(
+            deserialize(bytes.subarray(APP_PLAN_CACHE_HEADER_BYTES)),
+          );
+          for (const [field, value] of Object.entries({
+            ipv4_address: "172.20.0.10",
+            ipv6_address: "fd00::10",
+            link_local_ips: ["169.254.1.1"],
+            mac_address: "02:42:ac:14:00:0a",
+            driver_opts: { mtu: "1400" },
+            priority: 1,
+            gw_priority: 0,
+            interface_name: "eth1",
+          })) {
+            await Effect.runPromise(
+              writeCachedAppPlan({
+                cacheRoot,
+                appRoot,
+                appName: "network-cache",
+                key,
+                plan: {
+                  ...seeded.value,
+                  services: {
+                    ...seeded.value.services,
+                    [web.name]: {
+                      ...web,
+                      extensions: { ...web.extensions, compose: { networks: { peer: { [field]: value } } } },
+                    },
+                  },
+                },
+              }).pipe(Effect.provide(AppCacheService.layer)),
+            );
+            const exit = await runPlan();
+            expect(expectFailure(exit)).toMatchObject({
+              _tag: "CapabilityError",
+              service: "web",
+              key: `networks.*.${field}`,
+              feature: `compose preserved path networks.*.${field}`,
+            });
+          }
+        }),
+      [appRoot, cacheRoot],
+    );
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+    await rm(cacheRoot, { recursive: true, force: true });
+  }
+});
 
 test("fails closed when a cached preserved path is unsupported by the current provider", async () => {
   const appRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-compose-path-cache-app-")));

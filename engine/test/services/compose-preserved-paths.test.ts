@@ -43,6 +43,50 @@ const capabilities = (
   composePreservedPaths === undefined ? { composeSpec } : { composeSpec, composePreservedPaths };
 
 describe("Compose preserved paths", () => {
+  test("collects each network descendant once across multiple attachments", () => {
+    const uses = collectComposePreservedPaths({
+      web: servicePlan("web", {
+        networks: {
+          first: {
+            ipv4_address: "172.20.0.10",
+            ipv6_address: "fd00::10",
+            link_local_ips: ["169.254.1.1"],
+            mac_address: "02:42:ac:14:00:0a",
+            driver_opts: { mtu: "1400" },
+            priority: 1,
+            gw_priority: 0,
+            interface_name: "eth1",
+          },
+          second: { driver_opts: {}, priority: 2 },
+        },
+      }),
+    });
+    expect(uses).toEqual(
+      (
+        [
+          "ipv4_address",
+          "ipv6_address",
+          "link_local_ips",
+          "mac_address",
+          "driver_opts",
+          "priority",
+          "gw_priority",
+          "interface_name",
+        ] as const
+      ).map((field) => ({ service: "web", key: `networks.*.${field}` as const })),
+    );
+  });
+  test("does not gate network aliases or inert extensions as exact paths", () => {
+    const uses = collectComposePreservedPaths({
+      web: servicePlan("web", {
+        networks: {
+          peer: { aliases: ["api"], "x-note": { inert: true } },
+          default: {},
+        },
+      }),
+    });
+    expect(uses).toEqual([]);
+  });
   test("collects each used exact path once per service", () => {
     const uses = collectComposePreservedPaths({
       web: servicePlan("web", {

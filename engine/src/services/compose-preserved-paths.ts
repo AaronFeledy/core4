@@ -40,6 +40,17 @@ export const collectComposePreservedPaths = (
     if (Predicate.isObject(healthcheck) && healthcheck.start_interval !== undefined) {
       uses.push({ service: servicePlan.name, key: "healthcheck.start_interval" });
     }
+    if (Predicate.isObject(compose.networks)) {
+      const attachments = Object.values(compose.networks);
+      for (const key of ComposePreservedPathKey.literals) {
+        if (!key.startsWith("networks.*.")) continue;
+        const field = key.slice("networks.*.".length);
+        if (
+          attachments.some((attachment) => Predicate.isObject(attachment) && attachment[field] !== undefined)
+        )
+          uses.push({ service: servicePlan.name, key });
+      }
+    }
   }
 
   return uses.sort(compareUses);

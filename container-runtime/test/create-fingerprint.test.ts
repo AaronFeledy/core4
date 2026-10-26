@@ -8,6 +8,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  landoNetworkingPlan,
 } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
@@ -57,6 +58,36 @@ const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
 const fixtureRedaction = makeRedactionService();
 
 describe("desired immutable create config", () => {
+  test("preserves the pre-authored-network default fingerprint bytes", () => {
+    // Given the original default plan without authored networks or bridge aliases.
+    // When / Then its immutable fingerprint remains the pre-change value.
+    expect(fingerprint(service)).toBe("v3:1fd6becca5308766a8d075bd92dc3ec46cea1f595ebd473eb0303c1e13706f7b");
+  });
+
+  test.each(["membership", "bridge aliases", "authored aliases"])("fingerprints %s changes", (change) => {
+    // Given one member service and an authored network.
+    const networking = (changed: boolean) =>
+      landoNetworkingPlan({
+        slug: plan.slug,
+        serviceNames: [service.name],
+        sharedCrossAppNetwork: true,
+        bridgeAliases: changed && change === "bridge aliases" ? { web: ["frontend"] } : {},
+        authoredNetworks:
+          changed && change === "membership"
+            ? []
+            : [
+                {
+                  key: "extra",
+                  external: false,
+                  members: { web: changed && change === "authored aliases" ? ["alias"] : [] },
+                },
+              ],
+      });
+    // When / Then attachment changes alter the immutable create identity.
+    expect(fingerprint(service, { ...plan, networking: networking(true) })).not.toBe(
+      fingerprint(service, { ...plan, networking: networking(false) }),
+    );
+  });
   test("distinguishes literal, reference, raw composite, and encoded composite identities", () => {
     // Given
     const values = [

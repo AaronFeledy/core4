@@ -333,6 +333,7 @@ const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
   });
   const sharedNetworkMembership = plan.networking?.sharedNetworkMembership ?? built.sharedNetworkMembership;
   const networking: NetworkingPlan = {
+    ...plan.networking,
     perAppBridge: plan.networking?.perAppBridge ?? built.perAppBridge,
     ...(sharedNetworkMembership === undefined ? {} : { sharedNetworkMembership }),
   };
