@@ -1,7 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
+import { GuideId } from "@lando/sdk/docs/components";
+import { Schema } from "effect";
 import type { Code, Html, InlineCode, Nodes, Paragraph, Parents, Root, RootContent, Strong } from "mdast";
 import type {
   MdxJsxAttribute,
@@ -65,6 +67,15 @@ const propsOf = (node: JsxElement, file: string): Map<string, PropValue> => {
       throw new LlmsSerializeError(`Unsupported spread props on <${node.name}> in ${file}`);
     }
     const { value } = attribute;
+    if (typeof value === "object" && value !== null) {
+      try {
+        staticValue(expressionOf(value.data?.estree));
+      } catch {
+        throw new LlmsSerializeError(
+          `Unsupported static prop ${attribute.name} on <${node.name}> in ${at(node, file)}`,
+        );
+      }
+    }
     props.set(
       attribute.name,
       value === null || value === undefined
@@ -77,17 +88,56 @@ const propsOf = (node: JsxElement, file: string): Map<string, PropValue> => {
   return props;
 };
 
+const expressionOf = (estree: unknown): EsNode | undefined => {
+  const body = (estree as { body?: EsNode[] } | undefined)?.body;
+  return body?.length === 1 && body[0]?.type === "ExpressionStatement"
+    ? (body[0].expression as EsNode)
+    : undefined;
+};
+
+type StaticValue = string | number | boolean | null | StaticValue[] | { [key: string]: StaticValue };
+
+const staticValue = (node: EsNode | undefined): StaticValue => {
+  const literal = literalOf(node);
+  if (literal !== undefined) return literal;
+  if (node?.type === "Literal" && node.value === null) return null;
+  if (
+    node?.type === "UnaryExpression" &&
+    node.operator === "-" &&
+    typeof literalOf(node.argument as EsNode) === "number"
+  )
+    return -Number(literalOf(node.argument as EsNode));
+  if (node?.type === "ArrayExpression") return (node.elements as EsNode[]).map(staticValue);
+  if (node?.type === "ObjectExpression") {
+    const pairs = (node.properties as EsNode[]).map((property) => {
+      const key = keyOf(property);
+      if (
+        key === undefined ||
+        property.kind !== "init" ||
+        property.method === true ||
+        property.shorthand === true
+      )
+        throw new LlmsSerializeError("Unsupported static object property");
+      return [key, staticValue(property.value as EsNode)] as const;
+    });
+    if (new Set(pairs.map(([key]) => key)).size !== pairs.length)
+      throw new LlmsSerializeError("Duplicate static object property");
+    return Object.fromEntries(pairs);
+  }
+  throw new LlmsSerializeError("Unsupported static expression");
+};
+
 const text = (value: PropValue | undefined): string | undefined => {
   if (value === undefined || value === true || value === false) return undefined;
   if (typeof value === "string") return value;
-  const trimmed = value.expression.trim();
-  const literal = /^(["'`])([\s\S]*)\1$/.exec(trimmed);
-  if (literal !== null) return literal[2];
-  return trimmed;
+  const decoded = staticValue(expressionOf(value.estree));
+  if (typeof decoded !== "string" && typeof decoded !== "number")
+    throw new LlmsSerializeError("Expected a static string or number");
+  return String(decoded);
 };
 
 const isFalse = (value: PropValue | undefined): boolean =>
-  value === false || (typeof value === "object" && value.expression.trim() === "false");
+  value === false || (typeof value === "object" && staticValue(expressionOf(value.estree)) === false);
 
 const at = (node: Nodes, file: string): string =>
   node.position === undefined ? file : `${file}:${node.position.start.line}`;
@@ -100,14 +150,35 @@ const fence = (lang: string, value: string): Code => ({
 const paragraph = (...children: Paragraph["children"]): Paragraph => ({ type: "paragraph", children });
 const code = (value: string): InlineCode => ({ type: "inlineCode", value });
 
+const within = (root: string, candidate: string): boolean => {
+  const path = relative(root, candidate);
+  return path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
+};
+
+const containedPath = (root: string, candidate: string): string => {
+  if (!within(root, candidate)) throw new LlmsSerializeError("Path escapes allowed root");
+  // Check the nearest existing ancestor too: an absent file may sit beneath a symlink.
+  let ancestor = candidate;
+  while (!existsSync(ancestor) && dirname(ancestor) !== ancestor) ancestor = dirname(ancestor);
+  let rootAncestor = root;
+  while (!existsSync(rootAncestor) && dirname(rootAncestor) !== rootAncestor)
+    rootAncestor = dirname(rootAncestor);
+  if (!within(realpathSync(rootAncestor), realpathSync(ancestor)))
+    throw new LlmsSerializeError("Path escapes allowed root through a symlink");
+  return candidate;
+};
+
 const fixtureNodes = (name: string, options: SerializeOptions, node: Nodes): RootContent[] => {
+  if (!Schema.is(GuideId)(name))
+    throw new LlmsSerializeError(`Invalid fixture name in ${at(node, options.file)}`);
   for (const root of options.fixtureRoots ?? []) {
-    const directory = resolve(root, name);
+    const directory = containedPath(root, resolve(root, name));
     if (!existsSync(directory)) continue;
-    for (const candidate of [".lando.yml", "recipe.yml"]) {
-      const path = resolve(directory, candidate);
+    const nodes: RootContent[] = [];
+    for (const candidate of [".lando.yml", "recipe.yml", ".lando.ts", ".lando.stop", "package.json"]) {
+      const path = containedPath(root, resolve(directory, candidate));
       if (!existsSync(path)) continue;
-      return [
+      nodes.push(
         paragraph(
           { type: "text", value: "Fixture " },
           code(name),
@@ -118,11 +189,21 @@ const fixtureNodes = (name: string, options: SerializeOptions, node: Nodes): Roo
             value: ":",
           },
         ),
-        fence("yaml", readFileSync(path, "utf8")),
-      ];
+        fence(
+          candidate.endsWith(".ts")
+            ? "ts"
+            : candidate.endsWith(".stop")
+              ? "text"
+              : candidate.endsWith(".json")
+                ? "json"
+                : "yaml",
+          readFileSync(path, "utf8"),
+        ),
+      );
     }
+    if (nodes.length > 0) return nodes;
     throw new LlmsSerializeError(
-      `Fixture "${name}" has no .lando.yml or recipe.yml (${relative(process.cwd(), directory)}) in ${at(node, options.file)}`,
+      `Fixture "${name}" has no static Landofile, stop marker, or package manifest (${relative(process.cwd(), directory)}) in ${at(node, options.file)}`,
     );
   }
   throw new LlmsSerializeError(`Fixture "${name}" not found for <UseFixture> in ${at(node, options.file)}`);
@@ -130,17 +211,12 @@ const fixtureNodes = (name: string, options: SerializeOptions, node: Nodes): Roo
 
 type EsNode = { readonly type: string; readonly [key: string]: unknown };
 
-const MATCHERS: Readonly<Record<string, string>> = {
-  regex: "matches",
-  contains: "contains",
-  equals: "equals",
-};
-const display = (value: string): string => value.replace(/\n/g, "\\n");
-
 const literalOf = (node: EsNode | undefined): string | number | boolean | undefined => {
   if (node?.type === "Literal") {
     const value = node.value;
-    return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+    return typeof value === "string" ||
+      (typeof value === "number" && Number.isFinite(value)) ||
+      typeof value === "boolean"
       ? value
       : undefined;
   }
@@ -157,109 +233,101 @@ const keyOf = (property: EsNode): string | undefined => {
   return key.type === "Identifier" ? String(key.name) : typeof key.value === "string" ? key.value : undefined;
 };
 
-// Describe one matcher value, such as "x", { regex: "x" }, { not: ... } or { anyOf: [...] }.
-const describeMatcher = (node: EsNode | undefined): string[] | undefined => {
-  const literal = literalOf(node);
-  if (literal !== undefined) return [typeof literal === "string" ? "equals" : "is", display(String(literal))];
-  if (node?.type !== "ObjectExpression") return undefined;
-  const properties = node.properties as EsNode[];
-  if (properties.length !== 1) return undefined;
-  const [property] = properties;
-  const key = property === undefined ? undefined : keyOf(property);
-  const value = property?.value as EsNode | undefined;
-  if (key === undefined) return undefined;
-  const verb = MATCHERS[key];
-  if (verb !== undefined) {
-    const pattern = literalOf(value);
-    return typeof pattern === "string" ? [verb, display(pattern)] : undefined;
-  }
-  if (key === "not") {
-    const inner = describeMatcher(value);
-    return inner === undefined ? undefined : [`not ${inner[0]}`, ...inner.slice(1)];
-  }
-  if (key === "anyOf" && value?.type === "ArrayExpression") {
-    const options = (value.elements as EsNode[]).map(literalOf);
-    if (options.some((option) => typeof option !== "string")) return undefined;
-    return ["is one of", ...options.map((option) => display(String(option)))];
-  }
-  return undefined;
+type Variables = ReadonlyMap<string, string>;
+
+const interpolate = (value: string, variables: Variables, file: string): string =>
+  value.replace(/\{\{\s*([A-Za-z_$][\w$-]*)\s*\}\}/g, (_match, name: string) => {
+    const replacement = variables.get(name);
+    if (replacement === undefined)
+      throw new LlmsSerializeError(`Unresolved public variable ${name} in ${file}`);
+    return replacement;
+  });
+
+const exitNodes = (props: Map<string, PropValue>): Paragraph[] => {
+  const exit = text(props.get("expectExit"));
+  if (exit === undefined) return [];
+  if (!/^-?\d+$/.test(exit)) throw new LlmsSerializeError("Expected a static integer expectExit");
+  return [paragraph(code(`expectExit=${exit}`))];
 };
 
-type Clause = { readonly subject: string; readonly verb: string; readonly values: readonly string[] };
-
-/** Parse a Verify `expect` object into readable clauses, or undefined for shapes we do not know. */
-export const describeExpectation = (estree: unknown): Clause[] | undefined => {
-  const statement = (estree as { body?: EsNode[] } | undefined)?.body?.[0];
-  const expression = statement?.type === "ExpressionStatement" ? (statement.expression as EsNode) : undefined;
-  const top = describeMatcher(expression);
-  if (top !== undefined) return [{ subject: "output", verb: top[0] ?? "", values: top.slice(1) }];
-  if (expression?.type !== "ObjectExpression") return undefined;
-  const clauses: Clause[] = [];
-  for (const property of expression.properties as EsNode[]) {
-    const key = keyOf(property);
-    if (key === undefined) return undefined;
-    const value = property.value as EsNode;
-    const described =
-      key in MATCHERS || key === "not" || key === "anyOf" ? undefined : describeMatcher(value);
-    if (described === undefined) {
-      const whole = describeMatcher({ type: "ObjectExpression", properties: [property] });
-      if (whole === undefined) return undefined;
-      clauses.push({ subject: "output", verb: whole[0] ?? "", values: whole.slice(1) });
-    } else clauses.push({ subject: key, verb: described[0] ?? "", values: described.slice(1) });
-  }
-  return clauses.length === 0 ? undefined : clauses;
-};
-
-const verifyNodes = (props: Map<string, PropValue>): RootContent[] => {
+const verifyNodes = (props: Map<string, PropValue>, variables: Variables, file: string): RootContent[] => {
   const target = ["command", "event", "file", "errorTag"]
     .map((key) => [key === "errorTag" ? "error" : key, text(props.get(key))] as const)
     .find((entry) => entry[1] !== undefined);
   const expect = props.get("expect");
-  const expectation = text(expect);
-  if (target === undefined && expectation === undefined) return [];
+  if (target === undefined && expect === undefined) return exitNodes(props);
   const children: Paragraph["children"] = [{ type: "text", value: "expect: " }];
-  if (target !== undefined) children.push({ type: "text", value: `${target[0]} ` }, code(target[1] ?? ""));
-  if (expectation === undefined) return [paragraph(...children)];
-  const clauses =
-    typeof expect === "object"
-      ? describeExpectation(expect.estree)
-      : [{ subject: "output", verb: "equals", values: [display(expectation)] }];
-  if (clauses === undefined) {
-    if (target !== undefined) children.push({ type: "text", value: " matches " });
-    children.push(code(expectation.replace(/\s+/g, " ")));
-    return [paragraph(...children)];
-  }
-  clauses.forEach((clause, index) => {
-    children.push({
-      type: "text",
-      value: `${index === 0 ? (target === undefined ? "" : " ") : ", "}${clause.subject} ${clause.verb} `,
-    });
-    clause.values.forEach((value, at) => {
-      if (at > 0) children.push({ type: "text", value: " or " });
-      children.push(code(value));
-    });
-  });
-  return [paragraph(...children)];
+  if (target !== undefined)
+    children.push(
+      { type: "text", value: `${target[0]} ` },
+      code(interpolate(target[1] ?? "", variables, file)),
+    );
+  if (expect === undefined) return [paragraph(...children), ...exitNodes(props)];
+  const expectation = typeof expect === "object" ? staticValue(expressionOf(expect.estree)) : expect;
+  const substitute = (value: StaticValue): StaticValue => {
+    if (typeof value === "string") return interpolate(value, variables, file);
+    if (Array.isArray(value)) return value.map(substitute);
+    if (typeof value === "object" && value !== null)
+      return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, substitute(child)]));
+    return value;
+  };
+  children.push(
+    { type: "text", value: target === undefined ? "" : " " },
+    code(`expect=${JSON.stringify(substitute(expectation))}`),
+  );
+  return [paragraph(...children), ...exitNodes(props)];
+};
+
+const visibleVariables = (parent: Parents, inherited: Variables, file: string): Variables => {
+  const variables = new Map(inherited);
+  const declared = new Map<string, string>();
+  const collect = (node: Nodes): void => {
+    if (node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") {
+      if (node.name !== null && (DROPPED.has(node.name) || ["Scenario", "Tab", "Tabs"].includes(node.name)))
+        return;
+      const props = propsOf(node, file);
+      if (isFalse(props.get("render"))) return;
+      if (node.name === "Variable") {
+        const name = text(props.get("name"));
+        const value = text(props.get("display")) ?? text(props.get("value"));
+        if (name === undefined || value === undefined)
+          throw new LlmsSerializeError(`Incomplete Variable in ${at(node, file)}`);
+        if (declared.has(name) && declared.get(name) !== value)
+          throw new LlmsSerializeError(`Conflicting public variable ${name} in ${at(node, file)}`);
+        declared.set(name, value);
+        variables.set(name, value);
+      }
+    }
+    if ("children" in node) for (const child of node.children) collect(child as Nodes);
+  };
+  for (const child of parent.children) collect(child as Nodes);
+  return variables;
 };
 
 /** Replace one guide component with plain markdown nodes. */
-const replaceComponent = (node: JsxElement, options: SerializeOptions, source: string): RootContent[] => {
+const replaceComponent = (
+  node: JsxElement,
+  options: SerializeOptions,
+  source: string,
+  variables: Variables,
+): RootContent[] => {
   const name = node.name;
   if (name === null || name === undefined)
-    return transformChildren(node, options, source).children as RootContent[];
-  // Lowercase names are plain HTML written as JSX, such as <br />. Keep their source.
-  if (/^[a-z]/.test(name)) {
-    const start = node.position?.start.offset;
-    const end = node.position?.end.offset;
-    const raw = start === undefined || end === undefined ? "" : source.slice(start, end);
-    return [{ type: "html", value: raw } satisfies Html];
-  }
-  if (!KNOWN_COMPONENTS.has(name)) {
+    return transformChildren(node, options, source, variables).children as RootContent[];
+  if (!KNOWN_COMPONENTS.has(name) && !/^[a-z]/.test(name)) {
     throw new LlmsSerializeError(`Unknown MDX component <${name}> in ${at(node, options.file)}`);
   }
   const props = propsOf(node, options.file);
   if (isFalse(props.get("render")) || DROPPED.has(name)) return [];
-  if (UNWRAPPED.has(name)) return transformChildren(node, options, source).children as RootContent[];
+  if (/^[a-z]/.test(name)) {
+    if (["br", "hr"].includes(name)) return [{ type: "html", value: `<${name}>` } satisfies Html];
+    if (!["div", "span", "section", "article", "details", "summary", "p", "kbd", "sup", "sub"].includes(name))
+      throw new LlmsSerializeError(`Unsupported HTML element <${name}> in ${at(node, options.file)}`);
+    return transformChildren(node, options, source, variables).children as RootContent[];
+  }
+  const scoped =
+    name === "Scenario" || name === "Tab" ? visibleVariables(node, variables, options.file) : variables;
+  if (UNWRAPPED.has(name)) return transformChildren(node, options, source, scoped).children as RootContent[];
   switch (name) {
     case "Run": {
       const command =
@@ -269,14 +337,22 @@ const replaceComponent = (node: JsxElement, options: SerializeOptions, source: s
         text(props.get("code"));
       if (command === undefined || command.trim() === "")
         throw new LlmsSerializeError(`<Run> without a command in ${at(node, options.file)}`);
-      return [fence(text(props.get("runtime")) === "library" ? "ts" : "sh", command)];
+      return [
+        fence(
+          text(props.get("runtime")) === "library" ? "ts" : "sh",
+          interpolate(command, variables, at(node, options.file)),
+        ),
+        ...exitNodes(props),
+      ];
     }
     case "Verify":
-      return verifyNodes(props);
+      return verifyNodes(props, variables, at(node, options.file));
     case "Inline":
       return [fence(text(props.get("lang")) ?? "ts", text(props.get("code")) ?? "")];
-    case "Variable":
-      return [code(text(props.get("display")) ?? text(props.get("value")) ?? "") as RootContent];
+    case "Variable": {
+      const value = code(text(props.get("display")) ?? text(props.get("value")) ?? "");
+      return [node.type === "mdxJsxFlowElement" ? paragraph(value) : (value as RootContent)];
+    }
     case "UseFixture": {
       const fixture = text(props.get("name"));
       if (fixture === undefined)
@@ -288,7 +364,10 @@ const replaceComponent = (node: JsxElement, options: SerializeOptions, source: s
         type: "strong",
         children: [{ type: "text", value: text(props.get("name")) ?? "" }],
       };
-      return [paragraph(label), ...(transformChildren(node, options, source).children as RootContent[])];
+      return [
+        paragraph(label),
+        ...(transformChildren(node, options, source, scoped).children as RootContent[]),
+      ];
     }
     default:
       throw new LlmsSerializeError(`No llms serialization for <${name}> in ${at(node, options.file)}`);
@@ -297,7 +376,12 @@ const replaceComponent = (node: JsxElement, options: SerializeOptions, source: s
 
 const isComment = (value: string): boolean => /^\s*\/\*[\s\S]*\*\/\s*$/.test(value);
 
-function transformChildren<T extends Parents>(parent: T, options: SerializeOptions, source: string): T {
+function transformChildren<T extends Parents>(
+  parent: T,
+  options: SerializeOptions,
+  source: string,
+  variables: Variables,
+): T {
   const next: Nodes[] = [];
   for (const child of parent.children as Nodes[]) {
     switch (child.type) {
@@ -314,10 +398,24 @@ function transformChildren<T extends Parents>(parent: T, options: SerializeOptio
         break;
       case "mdxJsxFlowElement":
       case "mdxJsxTextElement":
-        next.push(...replaceComponent(child, options, source));
+        next.push(...replaceComponent(child, options, source, variables));
         break;
       default:
-        next.push("children" in child ? transformChildren(child, options, source) : child);
+        if (child.type === "paragraph") {
+          const transformed = transformChildren(child, options, source, variables);
+          let inline: Paragraph["children"] = [];
+          const flush = (): void => {
+            if (inline.length > 0) next.push(paragraph(...inline));
+            inline = [];
+          };
+          for (const node of transformed.children as Nodes[]) {
+            if (["code", "paragraph"].includes(node.type)) {
+              flush();
+              next.push(node);
+            } else inline.push(node as Paragraph["children"][number]);
+          }
+          flush();
+        } else next.push("children" in child ? transformChildren(child, options, source, variables) : child);
     }
   }
   return { ...parent, children: next } as T;
@@ -355,22 +453,25 @@ const stringify = (tree: Root): string =>
  */
 export const serializeDocsPage = (source: string, options: SerializeOptions): string => {
   const isMdx = options.file.endsWith(".mdx");
-  const input = /\/docs\/reference\/.*\.mdx$/.test(options.file)
+  const input = /\/docs\/reference\/.*\.mdx$/.test(options.file.replaceAll("\\", "/"))
     ? escapeReferenceMdxPlaceholders(source)
     : source;
   const processor = unified().use(remarkParse).use(remarkFrontmatter).use(remarkGfm);
   if (isMdx) processor.use(remarkMdx);
   const tree = processor.parse(input) as Root;
-  const out = dropLeadingHeading(transformChildren(tree, options, input));
+  const out = dropLeadingHeading(
+    transformChildren(tree, options, input, visibleVariables(tree, new Map(), options.file)),
+  );
   if (options.links !== undefined) absolutizeLinks(out, options.file, options.links);
   return stringify(out);
 };
 
 export const fixtureRootsFor = (docsRoot: string, frontmatter: Record<string, unknown>): string[] => {
   const id = typeof frontmatter.id === "string" ? frontmatter.id : undefined;
+  if (id !== undefined && !Schema.is(GuideId)(id)) throw new LlmsSerializeError("Invalid guide fixture id");
   return [
-    ...(id === undefined ? [] : [resolve(docsRoot, "guides", id, "fixtures")]),
-    resolve(docsRoot, "guides", "fixtures"),
+    ...(id === undefined ? [] : [containedPath(docsRoot, resolve(docsRoot, "guides", id, "fixtures"))]),
+    containedPath(docsRoot, resolve(docsRoot, "guides", "fixtures")),
   ];
 };
 
@@ -431,7 +532,7 @@ export const renderLlmsIndex = (
     "",
     "## Machine-readable references",
     "",
-    `- [Full documentation as plain Markdown](${url("llms-full.txt")}): every page below in one file.`,
+    `- [Full documentation as plain Markdown](${url("llms-full.txt")}): the documentation in one file, excluding generated schema reference pages.`,
     `- [CLI command reference](${url("reference/commands/")}): every lando command, its flags, and output.`,
     `- [Landofile JSON schema](${url("schemas/landofile.schema.json")}): validates .lando.yml files.`,
     `- [Global config JSON schema](${url("schemas/global-config.schema.json")}): validates the global Lando config.`,
@@ -467,8 +568,18 @@ export const builtFileFor = (url: string, base: string, site: string, outDir: st
   if (parsed.origin !== new URL(site).origin || !parsed.pathname.startsWith(base)) {
     throw new LlmsSerializeError(`llms.txt URL is outside ${base}: ${url}`);
   }
-  const path = decodeURIComponent(parsed.pathname.slice(base.length));
-  return resolve(outDir, path === "" || path.endsWith("/") ? `${path}index.html` : path);
+  let path: string;
+  try {
+    path = decodeURIComponent(parsed.pathname.slice(base.length));
+  } catch {
+    throw new LlmsSerializeError("Invalid encoded llms.txt URL path");
+  }
+  if (path.includes("\\") || path.includes("\0") || isAbsolute(path) || path.split("/").includes(".."))
+    throw new LlmsSerializeError("llms.txt URL escapes output directory");
+  return containedPath(
+    outDir,
+    resolve(outDir, path === "" || path.endsWith("/") ? `${path}index.html` : path),
+  );
 };
 
 export const writeLlmsFiles = async (
@@ -479,9 +590,9 @@ export const writeLlmsFiles = async (
   const pages = await collectLlmsPages(inventory, site);
   const index = renderLlmsIndex(pages, inventory, site);
   await mkdir(outDir, { recursive: true });
-  await writeFile(resolve(outDir, "llms.txt"), index);
+  await writeFile(containedPath(outDir, resolve(outDir, "llms.txt")), index);
   const full = renderLlmsFull(pages);
-  await writeFile(resolve(outDir, "llms-full.txt"), full);
+  await writeFile(containedPath(outDir, resolve(outDir, "llms-full.txt")), full);
   const own = new URL(inventory.base, site).href;
   const fullUrls = [...full.matchAll(/\]\(([^)\s]+)\)/g)].map((match) =>
     (match[1] ?? "").replace(/#.*$/, ""),
