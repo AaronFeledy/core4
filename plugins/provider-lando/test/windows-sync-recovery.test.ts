@@ -52,7 +52,6 @@ const plan = (): AppPlan => ({
   provider: ProviderId.make("lando"),
   services: { [ServiceName.make("web")]: service("web") },
   routes: [],
-  networks: [],
   stores: [],
   metadata,
   extensions: {},

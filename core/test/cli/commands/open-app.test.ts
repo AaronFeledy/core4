@@ -183,7 +183,6 @@ describe("openForPlan", () => {
             extensions: {},
           },
         },
-        networks: [],
         stores: [],
         fileSync: [],
         metadata,

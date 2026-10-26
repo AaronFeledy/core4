@@ -26,7 +26,6 @@ test("preserves stdout and exit zero when the attach socket resets in the respon
     provider,
     metadata,
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     extensions: {},

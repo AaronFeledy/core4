@@ -150,8 +150,7 @@ describe("sharedCrossAppNetwork capability and provider-side wiring", () => {
     if (web === undefined) throw new Error("web service missing from plan");
 
     expect(plan.routes.some((route) => route.hostname === "web.shop.lndo.site")).toBe(true);
-    expect(plan.networks.length).toBeGreaterThan(0);
-    expect(plan.networks[0]?.name).toBe("lando-shop");
+    expect(plan.networking?.perAppBridge?.name).toBe("lando-shop");
 
     const validation = validateGlobalServiceContributions({
       manifests: [traefikGlobalManifest],

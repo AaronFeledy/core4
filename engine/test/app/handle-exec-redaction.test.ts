@@ -15,7 +15,6 @@ const plan: AppPlan = {
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },

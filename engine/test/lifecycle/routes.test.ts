@@ -29,7 +29,6 @@ const cachedPlan: AppPlan = {
       backend: { service, protocol: "http", port: 8080 },
     },
   ],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

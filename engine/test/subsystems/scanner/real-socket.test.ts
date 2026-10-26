@@ -61,7 +61,6 @@ const planWith = (scanner: ScanPlan): AppPlan => ({
   root: AbsolutePath.make("/tmp/real-scan"),
   provider: ProviderId.make(TestRuntimeProvider.id),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "real-socket.test", runtime: 4 },

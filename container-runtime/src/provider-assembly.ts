@@ -10,6 +10,7 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
+import { removeOrphanedNetworks } from "./orphaned-networks.ts";
 import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { makeResourceOwnershipStore } from "./resource-ownership.ts";
 export { makeResourceOwnershipStore } from "./resource-ownership.ts";
@@ -44,6 +45,12 @@ type ProviderPlanStateOptions = AppliedPlanCacheOptions &
   };
 
 export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
+  removeOrphanedNetworks: (plan: AppPlan, previous: AppPlan | undefined) =>
+    removeOrphanedNetworks(plan, previous, {
+      ctx: options.ctx,
+      ...(options.api === undefined ? {} : { api: options.api }),
+      store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
+    }),
   ownership: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
   cleanupOwnedResources: makeOwnedResourcesCleanup({
     store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),

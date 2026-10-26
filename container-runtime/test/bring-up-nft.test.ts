@@ -53,7 +53,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "start-remediation-network", driver: "bridge" } },
   stores: [],
   fileSync: [],

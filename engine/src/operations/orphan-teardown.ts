@@ -58,7 +58,6 @@ const selectionPlan = (group: AppliedOrphanGroup, root: AbsolutePath): AppPlan =
   provider: group.providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: now(), source: "orphan-teardown", runtime: 4 },

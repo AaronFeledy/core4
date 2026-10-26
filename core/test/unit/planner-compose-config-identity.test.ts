@@ -19,7 +19,7 @@ const configCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
   composeProjectFields: { supported: ["configs"] },
   composeServiceFields: {
-    supported: ["networks", "configs", "secrets", "profiles", "labels"],
+    supported: ["configs", "secrets", "profiles", "labels"],
   },
 };
 

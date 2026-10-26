@@ -49,7 +49,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: service.metadata,
@@ -70,7 +69,10 @@ const makeBringUpApi = (
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: 404, body: "{}" };
         }
-        if (request.method === "POST" && request.path === "/networks/create") {
+        if (
+          request.method === "POST" &&
+          ["/networks/create", "/libpod/networks/create"].includes(request.path)
+        ) {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && request.path.endsWith("/json")) {
@@ -192,7 +194,7 @@ describe("lifecycle dialect", () => {
     const createBody = fake.requests[createIndex]?.body;
     expect(createBody).toMatchObject({
       NetworkingConfig: {
-        EndpointsConfig: { "lando-lifecycle-dialect-app": { Aliases: ["web"] } },
+        EndpointsConfig: { "lando-lifecycle-dialect-app": { Aliases: ["web"], GwPriority: 1 } },
       },
     });
   });
@@ -222,7 +224,12 @@ describe("lifecycle dialect", () => {
         fake.requests.find((request) => request.path.startsWith("/containers/create?"))?.body,
       ).toMatchObject({
         NetworkingConfig: {
-          EndpointsConfig: { lando_bridge_network: { Aliases: ["web.global.internal"] } },
+          EndpointsConfig: {
+            lando_bridge_network: {
+              Aliases: ["web.global.internal"],
+              ...(dialect.engine === "docker" ? { GwPriority: 1 } : {}),
+            },
+          },
         },
       });
       expect(fake.requests.filter((request) => request.path.endsWith("/connect"))).toEqual([]);
@@ -246,10 +253,10 @@ describe("lifecycle dialect", () => {
       });
       expect(
         fake.requests
-          .filter((request) => request.path === "/networks/create")
+          .filter((request) => ["/networks/create", "/libpod/networks/create"].includes(request.path))
           .map((request) =>
             typeof request.body === "object" && request.body !== null
-              ? Reflect.get(request.body, "Name")
+              ? (Reflect.get(request.body, "Name") ?? Reflect.get(request.body, "name"))
               : undefined,
           ),
       ).toEqual(["lando-shop", "lando_bridge_network"]);

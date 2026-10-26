@@ -32,6 +32,18 @@ const lint = () =>
   );
 
 describe("retained lint snapshot", () => {
+  test("reports a rejected Compose key once, at its field", async () => {
+    await write(
+      ".lando.yml",
+      "name: snapshot\nservices:\n  web:\n    type: compose\n    image: alpine:3.20\n    container_name: fixed\n",
+    );
+    const snapshot = await lint();
+    expect(snapshot.result.valid).toBe(false);
+    expect(snapshot.result.violations.map((violation) => [violation.rule, violation.path])).toEqual([
+      ["landofile.compose-rejection", ["services", "web", "container_name"]],
+    ]);
+  });
+
   test("retains a successful resolved object alongside masked fragment findings from includes", async () => {
     await write(
       ".lando.yml",

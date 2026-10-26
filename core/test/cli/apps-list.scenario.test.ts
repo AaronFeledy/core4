@@ -41,7 +41,6 @@ const makeAppliedPlanEnvelope = (id: string, name: string, root: string, service
       services.map((s) => [s, { name: s, type: "lando.app", primary: false, env: {} }]),
     ),
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: { source: "apps-list.scenario.test", runtime: 4 },

@@ -45,7 +45,6 @@ const plan: AppPlan = {
     perAppBridge: { name: "private", driver: "bridge" },
     sharedNetworkMembership: { name: "shared", aliases: {} },
   },
-  networks: [],
   stores: [],
   routes: [],
   fileSync: [],

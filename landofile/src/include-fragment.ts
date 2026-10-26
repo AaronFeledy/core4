@@ -5,6 +5,7 @@ import { LandofileShape } from "@lando/sdk/schema";
 import { Effect, Predicate } from "effect";
 import { rejectComposeKeys } from "./compose/rejections.ts";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
+import { composeIncludeDefaults } from "./include-compose-defaults.ts";
 import type { FragmentResult, ResolveContext, ResolveIncludesError } from "./include-context.ts";
 import { includeError } from "./include-guard.ts";
 import { rememberLandofileReferencedFiles } from "./load-expression-provenance.ts";
@@ -20,7 +21,7 @@ import {
 } from "./version-constraint.ts";
 
 export const parseFragment = (
-  fragment: FragmentResult,
+  fragment: FragmentResult & { readonly kind: "landofile" | "compose" | "tooling" },
   ctx: ResolveContext,
   layer: VersionConstraintEntry["layer"],
 ): Effect.Effect<Record<string, unknown>, ResolveIncludesError> =>
@@ -102,7 +103,15 @@ export const parseFragment = (
             }),
           );
         return prepareOverlay(
-          parsed,
+          fragment.kind === "compose"
+            ? composeIncludeDefaults(
+                parsed,
+                // Remote snapshots live in a shared cache, not the app's bindable source tree.
+                fragment.remoteOrigin === undefined && !fragment.userOwned
+                  ? { appRoot: ctx.appRoot, sourceRoot: fragment.root }
+                  : undefined,
+              )
+            : parsed,
           { file: fragment.filePath, layer },
           getSourceDocuments(parsed)[0]?.document ?? parsed,
         ).pipe(

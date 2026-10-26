@@ -32,7 +32,6 @@ test("publishes paired stop events for each service when containers are already 
     root: AbsolutePath.make("/absent"),
     provider,
     services: Object.fromEntries(services.map((service) => [service.name, service])),
-    networks: [],
     stores: [],
     routes: [],
     fileSync: [],

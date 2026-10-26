@@ -39,7 +39,6 @@ export const plan: AppPlan = {
   root: AbsolutePath.make("/tmp/lando-values"),
   provider: service.provider,
   services: { [service.name]: service },
-  networks: [],
   routes: [],
   stores: [],
   fileSync: [],

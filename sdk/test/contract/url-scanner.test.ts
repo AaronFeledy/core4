@@ -17,7 +17,6 @@ describe("UrlScanner contract", () => {
       provider: "docker",
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       extensions: {},

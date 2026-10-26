@@ -82,7 +82,11 @@ else the image needs with `environment:` or `env_file:`.
 
 Lando still bind-mounts the app source at `/app`, or at `appMount.target`
 when you set one, and joins the service to the per-app network `lando-<slug>`
-so it can reach the rest of the app by service name.
+so it can reach the rest of the app by service name. To put it on more
+networks as well, declare them under top-level `networks:` and list them on
+the service; see [Reach another project's services](../config/networks.mdx).
+To bring a whole compose file in as services of your app, use top-level
+`include:`; the same guide covers it.
 
 ## Skip the app mount
 

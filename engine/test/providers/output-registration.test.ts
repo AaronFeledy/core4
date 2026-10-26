@@ -42,7 +42,6 @@ const plan = Schema.decodeUnknownSync(AppPlan)({
   provider: "test",
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},
