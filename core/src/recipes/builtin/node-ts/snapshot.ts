@@ -4,7 +4,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const NODE_TS_RECIPE_VERSION = "0.1.0";
 export const NODE_TS_CONTENT_DIGEST =
-  "sha256:538a62f8272df47d0d25ea1ffabcb8234ba3ff96bde7e7aa9beb85bad9c67c12";
+  "sha256:23b25b9ec8ffcf2d63430b8c0f8232bcac5beb2a02ac03c9fccd88113cf649d1";
 export const nodeTsProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-node-ts",
@@ -26,7 +26,7 @@ export const nodeTsSnapshot: RecipeSnapshot = {
           [
             "web",
             obj([
-              ["image", lit("node:{{ default(env.LANDO_NODE_VERSION, 'lts') }}")],
+              ["image", lit("node:{{ default(env.LANDO_NODE_VERSION, '24') }}")],
               ["environment", obj([["NODE_ENV", lit("{{ default(env.NODE_ENV, 'development') }}")]])],
               ["routes", arr(defaultRoute())],
             ]),

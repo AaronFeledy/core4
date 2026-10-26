@@ -29,7 +29,13 @@ import {
   mysqlServiceType,
 } from "./services/mysql.ts";
 import { nginxServiceType } from "./services/nginx.ts";
-import { node22ServiceType, nodeLtsServiceType, nodeServiceType } from "./services/node.ts";
+import {
+  node22ServiceType,
+  node24ServiceType,
+  node26ServiceType,
+  nodeLtsServiceType,
+  nodeServiceType,
+} from "./services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "./services/opensearch.ts";
 import {
   php81ServiceType,
@@ -95,6 +101,8 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["node", nodeServiceType],
   ["node:lts", nodeLtsServiceType],
   ["node:22", node22ServiceType],
+  ["node:24", node24ServiceType],
+  ["node:26", node26ServiceType],
   ["opensearch", opensearchServiceType],
   ["opensearch:2", opensearch2ServiceType],
   ["php:8.1", php81ServiceType],

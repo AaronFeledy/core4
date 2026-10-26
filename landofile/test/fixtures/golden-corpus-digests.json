@@ -381,6 +381,10 @@
       "digest": "2fcfc6c5a00ae68feaaae6aea33fc3e6b0cf8770f8f5d54869a8e78530846aaf"
     },
     {
+      "fixture": "docs/guides/host-services/fixtures/host-reach-demo",
+      "digest": "bb717d18eb01d22992330342a66440aee195a7c6616a6af971dc4856cf2fc236"
+    },
+    {
       "fixture": "docs/guides/import-a-database/fixtures/import-a-database-demo",
       "digest": "f05651b95f9836b21facfac69fc82f9940798b6021dce4bd1dd817fe91ac86a9"
     },
@@ -1045,6 +1049,10 @@
     {
       "fixture": "docs/guides/your-landofile/fixtures/schema-merge-rules",
       "digest": "4c084b4b9d168141c77cf669e80c2ee93bf0990725783b5d481bf6c12adfc937"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/typescript-local-layer",
+      "digest": "51d6daed4c54038988d6f35c326d769d1e8c1ba1e8389f548ac163abcb5be4bc"
     },
     {
       "fixture": "docs/guides/your-landofile/fixtures/your-landofile-demo",

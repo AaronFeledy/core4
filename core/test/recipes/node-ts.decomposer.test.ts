@@ -61,7 +61,7 @@ describe("node-ts decomposition", () => {
       recipe: provenance,
       services: {
         web: {
-          image: "node:{{ default(env.LANDO_NODE_VERSION, 'lts') }}",
+          image: "node:{{ default(env.LANDO_NODE_VERSION, '24') }}",
           environment: { NODE_ENV: "{{ default(env.NODE_ENV, 'development') }}" },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
@@ -126,7 +126,7 @@ describe("node-ts decomposition", () => {
     expect(nodeTsSnapshot.identity.contentDigest).toBe(NODE_TS_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
     expect(NODE_TS_CONTENT_DIGEST).toBe(
-      "sha256:538a62f8272df47d0d25ea1ffabcb8234ba3ff96bde7e7aa9beb85bad9c67c12",
+      "sha256:23b25b9ec8ffcf2d63430b8c0f8232bcac5beb2a02ac03c9fccd88113cf649d1",
     );
   });
 

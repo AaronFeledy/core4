@@ -150,6 +150,8 @@ lando ssh -s app -c 'echo $LANDO_HOST_IP'
 
 Both exist only when your provider says it can reach the host. A provider that cannot is not an error: you simply get neither the alias nor the variable, so check for `LANDO_HOST_IP` rather than assuming it.
 
+If the request is refused, see [Reach host services and sibling stacks](../subsystems/host-services.mdx) for the bind address and `extra_hosts` names.
+
 <Guide>
   <Scenario id="home-defaults" render>
     <Step name="scaffold">
