@@ -260,6 +260,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
   ): Effect.fn.Return<RestartAppResult, RestartAppError, RestartAppServices> {
     if (options.signal?.aborted === true) return yield* Effect.interrupt;
     const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
+    const placement = yield* ensureAppPlacementState(resolvedTarget.app, resolvedTarget.plan.provider);
     const registry = yield* RuntimeProviderRegistry;
     const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
     const plan = mysqlResolvedTarget.plan;
@@ -275,7 +276,6 @@ export const restartApp = Effect.fn("AppOperation.restart")(
         provider,
         stateStore,
         body: Effect.fnUntraced(function* () {
-          const placement = yield* ensureAppPlacementState(mysqlResolvedTarget.app, plan.provider);
           const pending = yield* readPendingAcceleratedStart(mysqlResolvedTarget.app, plan);
           if (pending !== null)
             yield* startApp(

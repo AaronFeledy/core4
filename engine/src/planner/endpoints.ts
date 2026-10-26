@@ -165,8 +165,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     if (
       home?.state === "persisted" &&
       home.user !== undefined &&
-      home.user !== "root" &&
-      home.user !== "0" &&
       !homeIntent.customImage &&
       homeIntent.identity?.preparedHomes?.includes(home.user)
     ) {

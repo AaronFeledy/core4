@@ -174,6 +174,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
     managed?: StartManagedScope,
   ): Effect.fn.Return<RebuildAppResult, RebuildAppError, RebuildAppServices> {
     const plannedTarget = target ?? (yield* resolveDesiredAppTarget);
+    const placement = yield* ensureAppPlacementState(plannedTarget.app, plannedTarget.plan.provider);
     const registry = yield* RuntimeProviderRegistry;
     const resolvedTarget = yield* resolveMysqlVolumeTarget(plannedTarget, registry);
     const plan = resolvedTarget.plan;
@@ -189,7 +190,6 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
         provider,
         stateStore,
         body: Effect.fnUntraced(function* () {
-          const placement = yield* ensureAppPlacementState(resolvedTarget.app, plan.provider);
           const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
           if (pending !== null)
             yield* startApp(
