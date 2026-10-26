@@ -6,6 +6,7 @@ import {
   type VolumeMountPlan,
   fileSyncVolumeName,
 } from "@lando/sdk/schema";
+import { duplicateServiceMountTarget } from "../container-mounts.ts";
 
 import { requiresLongMountSyntax } from "../mount-syntax.ts";
 import { mountSuffix } from "../plan.ts";
@@ -169,19 +170,13 @@ export const serviceComposeMounts = (
   service: ServicePlan,
   fail: ComposeMountFail,
 ): ServiceComposeMounts => {
+  const duplicate = duplicateServiceMountTarget(plan, service);
+  if (duplicate !== undefined)
+    return fail("Compose mount targets must be unique.", { service: service.name, target: duplicate });
   const volumes: ComposeVolumeEntry[] = [];
   const tmpfs: string[] = [];
-  const seenTargets = new Set<string>();
 
   for (const mount of service.mounts) {
-    if (seenTargets.has(mount.target)) {
-      return fail("Compose mount targets must be unique.", {
-        service: service.name,
-        target: mount.target,
-      });
-    }
-    seenTargets.add(mount.target);
-
     switch (mount.type) {
       case "tmpfs":
         if (requiresLongMountSyntax(mount.target)) {

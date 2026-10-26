@@ -436,6 +436,20 @@ describe("container plan helpers", () => {
     expect(() => containerHostConfigFragment(plan, mounted)).toThrow(ContainerPlanError);
   });
 
+  test("rejects a Compose config grant at a planned mount target", () => {
+    const mounted: ServicePlan = {
+      ...service,
+      mounts: [{ type: "tmpfs", target: PortablePath.make("/etc/app.ini"), readOnly: false }],
+      extensions: { compose: { configs: [{ source: "appini", target: "/etc/app.ini" }] } },
+    };
+    const withConfig = {
+      ...plan,
+      root: AbsolutePath.make("/srv/app"),
+      extensions: { compose: { configs: { appini: { file: "app.ini" } } } },
+    };
+    expect(() => containerHostConfigFragment(withConfig, mounted)).toThrow(ContainerPlanError);
+  });
+
   test("rejects acceleration without a planner mount identity", () => {
     const mounted: ServicePlan = {
       ...service,

@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/schema";
 import { Schema, SchemaIssue } from "effect";
 import { kebab } from "./naming.ts";
-import { plannedContainerDestination } from "./storage.ts";
+import { cacheStoreName, plannedContainerDestination } from "./storage.ts";
 
 export interface MountAuthoringContext {
   readonly appRoot: string;
@@ -51,6 +51,26 @@ export const literalIncludeError = (
         "Use a relative path without .., absolute paths, ! prefixes, or glob characters; exact includes cancel excludes and nested includes reopen a shadowed directory.",
       )
     : undefined;
+
+/** An exclude names a path strictly beneath its bind; anything else would shadow outside the mount. */
+export const excludeDestination = (
+  context: MountAuthoringContext,
+  bindTarget: string,
+  exclude: string,
+  path: ValidationIssuePath,
+): MountPlan["target"] | LandofileValidationError => {
+  const prefix = `${bindTarget.replace(/\/+$/u, "")}/`;
+  const target = plannedContainerDestination(posix.join(prefix, exclude), context.appRoot, path);
+  if (target instanceof LandofileValidationError) return target;
+  return target.startsWith(prefix)
+    ? target
+    : mountInputError(
+        context,
+        [path],
+        `Mount exclude ${exclude} resolves outside ${bindTarget}.`,
+        "Use a relative path beneath the mount, without .. segments that leave it.",
+      );
+};
 
 const bindSource = (source: string, appRoot: string): string => {
   const expanded =
@@ -195,9 +215,9 @@ export const compileAuthoredMounts = (
     if (target instanceof LandofileValidationError) return target;
     const store =
       typeof entry === "string"
-        ? kebab(entry)
+        ? kebab(target)
         : entry.kind === "cache"
-          ? `lando-cache-${entry.key ?? kebab(target)}`
+          ? cacheStoreName(target, entry.key)
           : entry.store;
     const error = add(
       {
@@ -259,17 +279,36 @@ export const validateAuthoredMounts = (
 ): LandofileValidationError | undefined => {
   const compiled = compileAuthoredMounts(context, normalized, storage);
   if (compiled instanceof LandofileValidationError) return compiled;
-  const includes: Array<readonly [string, ValidationIssuePath]> = [];
+  const binds: Array<{
+    readonly target: string;
+    readonly excludes: readonly string[];
+    readonly includes: readonly string[];
+    readonly path: ValidationIssuePath;
+  }> = [];
   if (typeof appMount === "object")
-    for (const include of appMount.includes ?? [])
-      includes.push([include, ["services", context.serviceName, "appMount", "includes"]]);
+    binds.push({
+      target: appMount.target,
+      excludes: appMount.excludes ?? [],
+      includes: appMount.includes ?? [],
+      path: ["services", context.serviceName, "appMount"],
+    });
   for (const [index, entry] of (normalized.mounts ?? []).entries())
     if (typeof entry === "object")
-      for (const include of entry.includes ?? [])
-        includes.push([include, ["services", context.serviceName, "mounts", index, "includes"]]);
-  for (const [include, path] of includes) {
-    const error = literalIncludeError(context, include, path);
-    if (error !== undefined) return error;
+      binds.push({
+        target: entry.target,
+        excludes: entry.excludes ?? [],
+        includes: entry.includes ?? [],
+        path: ["services", context.serviceName, "mounts", index],
+      });
+  for (const bind of binds) {
+    for (const exclude of bind.excludes) {
+      const target = excludeDestination(context, bind.target, exclude, [...bind.path, "excludes"]);
+      if (target instanceof LandofileValidationError) return target;
+    }
+    for (const include of bind.includes) {
+      const error = literalIncludeError(context, include, [...bind.path, "includes"]);
+      if (error !== undefined) return error;
+    }
   }
   return undefined;
 };

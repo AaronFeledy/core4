@@ -1,10 +1,4 @@
-import {
-  type AppPlan,
-  type BindMountPlan,
-  type ServicePlan,
-  duplicateMountTarget,
-  fileSyncVolumeName,
-} from "@lando/sdk/schema";
+import { type AppPlan, type BindMountPlan, type ServicePlan, fileSyncVolumeName } from "@lando/sdk/schema";
 import {
   bindSourceForComposeConfig,
   composeConfigBindStrings,
@@ -26,6 +20,23 @@ export const acceleratedMountVolume = (plan: AppPlan, service: ServicePlan, moun
   return fileSyncVolumeName(plan.name, service.name, mount.mountKey);
 };
 
+/**
+ * The first container target claimed twice by a planned mount or a Compose
+ * `configs:` grant. Grants are rendered outside the planned list, so the
+ * provider boundary checks both together instead of letting the runtime fail.
+ */
+export const duplicateServiceMountTarget = (plan: AppPlan, service: ServicePlan): string | undefined => {
+  const seen = new Set<string>();
+  for (const target of [
+    ...service.mounts.map((mount) => String(mount.target)),
+    ...composeConfigMounts(plan, service).map((mount) => mount.target),
+  ]) {
+    if (seen.has(target)) return target;
+    seen.add(target);
+  }
+  return undefined;
+};
+
 type ContainerMountObject = {
   readonly Type: "bind" | "volume";
   readonly Source: string;
@@ -37,7 +48,7 @@ type ContainerMountObject = {
 
 /** One traversal preserves the planner's shallow-to-deep order within each API field. */
 export const containerMountIntent = (plan: AppPlan, service: ServicePlan) => {
-  const duplicate = duplicateMountTarget(service.mounts);
+  const duplicate = duplicateServiceMountTarget(plan, service);
   if (duplicate !== undefined) {
     throw new ContainerPlanError("Container mounts repeat a target.", {
       service: service.name,

@@ -261,3 +261,19 @@ test("mount order and identity keys do not depend on authored order", async () =
     excludes: expected?.excludes,
   });
 });
+
+test("a cache declared through a noncanonical path stays a global cache store", async () => {
+  const app = await plan({ storage: [{ store: "ignored", target: "/app/cache/../deps", kind: "cache" }] });
+  expect(wireMounts(app)).toContainEqual({
+    type: "volume",
+    store: "lando-cache-app-deps",
+    target: "/app/deps",
+    readOnly: false,
+  });
+  expect(app.stores).toContainEqual({
+    name: "lando-cache-app-deps",
+    scope: "global",
+    kind: "cache",
+    key: "app-deps",
+  });
+});

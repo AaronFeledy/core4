@@ -15,7 +15,8 @@ const GLOBAL_SCOPE_REMEDIATION =
 
 const cacheStorageKey = (target: string, key: string | undefined): string => key ?? kebab(target);
 
-const cacheStoreName = (target: string, key: string | undefined): string =>
+/** Cache stores are named from the canonical destination so every reader derives one name. */
+export const cacheStoreName = (target: string, key: string | undefined): string =>
   `lando-cache-${cacheStorageKey(target, key)}`;
 
 export const plannedContainerDestination = (
@@ -65,8 +66,10 @@ export const authoredStorageScopes = (
       };
     }
     const kind = entry.kind ?? "data";
-    const key = kind === "cache" ? cacheStorageKey(entry.target, entry.key) : entry.key;
-    const storeName = kind === "cache" ? cacheStoreName(entry.target, entry.key) : entry.store;
+    const destination = parseContainerDestination(entry.target);
+    const target = destination.ok ? destination.value : entry.target;
+    const key = kind === "cache" ? cacheStorageKey(target, entry.key) : entry.key;
+    const storeName = kind === "cache" ? cacheStoreName(target, entry.key) : entry.store;
     const scope = entry.scope ?? "service";
     if (scope === "global" && kind !== "cache") {
       return { byStore, globalEntry: { index, store: entry.store } };

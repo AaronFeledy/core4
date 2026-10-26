@@ -24,6 +24,44 @@ const optionalBoolean = (value: unknown): boolean | undefined | null => {
   return typeof value === "boolean" ? value : null;
 };
 
+/** v1 kept service `tmpfs:` as a Compose runtime knob: strings `target[:options]` or long objects. */
+const legacyComposeTmpfs = (entry: unknown): MountPlan | null => {
+  let target: unknown;
+  let tokens: string[];
+  if (typeof entry === "string") {
+    const separator = entry.indexOf(":");
+    target = separator === -1 ? entry : entry.slice(0, separator);
+    tokens =
+      separator === -1
+        ? []
+        : entry
+            .slice(separator + 1)
+            .split(",")
+            .filter((token) => token.length > 0);
+  } else if (Predicate.isObject(entry)) {
+    const { size, mode, read_only: readOnly } = entry;
+    if (size !== undefined && typeof size !== "string" && typeof size !== "number") return null;
+    if (mode !== undefined && (typeof mode !== "number" || !Number.isSafeInteger(mode))) return null;
+    if (readOnly !== undefined && typeof readOnly !== "boolean") return null;
+    target = entry.target;
+    tokens = [
+      ...(readOnly === true ? ["ro"] : []),
+      ...(size === undefined ? [] : [`size=${size}`]),
+      ...(mode === undefined ? [] : [`mode=${mode.toString(8)}`]),
+    ];
+  } else {
+    return null;
+  }
+  if (typeof target !== "string" || (tokens.includes("ro") && tokens.includes("rw"))) return null;
+  const options = tokens.filter((token) => token !== "ro" && token !== "rw").join(",");
+  return {
+    type: "tmpfs",
+    target: PortablePath.make(target),
+    readOnly: tokens.includes("ro"),
+    ...(options.length === 0 ? {} : { options }),
+  };
+};
+
 /**
  * Convert one v1 service (`appMount` + `mounts` + `storage`) into the v2 one-list
  * shape. Returns null when any entry cannot be represented without guessing.
@@ -130,8 +168,24 @@ const migrateV1Service = (service: unknown): Record<string, unknown> | null => {
     }
   }
 
+  let extensions = rest.extensions;
+  if (
+    Predicate.isObject(extensions) &&
+    Predicate.isObject(extensions.compose) &&
+    "tmpfs" in extensions.compose
+  ) {
+    const { tmpfs, ...compose } = extensions.compose;
+    if (!Array.isArray(tmpfs)) return null;
+    for (const entry of tmpfs) {
+      const mount = legacyComposeTmpfs(entry);
+      if (mount === null) return null;
+      converted.push(mount);
+    }
+    extensions = { ...extensions, compose };
+  }
+
   if (duplicateMountTarget(converted) !== undefined) return null;
-  return { ...rest, mounts: orderMounts(converted) };
+  return { ...rest, ...(extensions === undefined ? {} : { extensions }), mounts: orderMounts(converted) };
 };
 
 const migrateV1PlanRaw = (raw: unknown): unknown | null => {
@@ -160,7 +214,8 @@ export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanSh
 };
 
 /**
- * Record-layout migrator: every entry must convert or the whole collection is null.
+ * Record-layout migrator: each app converts on its own, so one unconvertible
+ * plan leaves the others readable instead of discarding every app's state.
  */
 export const migrateAppliedPlansRecord = (
   raw: unknown,
@@ -171,8 +226,7 @@ export const migrateAppliedPlansRecord = (
   const next: Record<string, AppPlanShape> = {};
   for (const [id, plan] of Object.entries(raw)) {
     const migrated = migrateAppliedPlan(plan, 1);
-    if (migrated === null) return null;
-    next[id] = migrated;
+    if (migrated !== null) next[id] = migrated;
   }
   return next;
 };

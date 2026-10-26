@@ -11,7 +11,7 @@ import {
 } from "@lando/container-runtime/applied-state";
 import type { StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan, MountPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 import { legacyPlan, service } from "./fixtures/environment-values.ts";
@@ -366,37 +366,53 @@ describe("applied plan v1 -> v2 mount migration", () => {
     ).toBeNull();
   });
 
-  test("record migration converts every plan or fails closed", () => {
-    const ok = migrateAppliedPlansRecord({ values: v1PlanBase }, 1);
-    expect(ok).not.toBeNull();
-    expect(ok?.values?.id).toBe(AppId.make("values"));
+  test("record migration keeps convertible plans when one plan cannot convert", () => {
+    const migrated = migrateAppliedPlansRecord(
+      {
+        values: v1PlanBase,
+        bad: {
+          ...v1PlanBase,
+          id: "bad",
+          services: {
+            web: {
+              ...v1ServiceBase,
+              mounts: [
+                { type: "bind", source: "/x", target: "/x", readOnly: false, realization: "accelerated" },
+              ],
+            },
+          },
+        },
+      },
+      1,
+    );
+    expect(Object.keys(migrated ?? {})).toEqual(["values"]);
+    expect(migrated?.values?.id).toBe(AppId.make("values"));
+  });
 
-    expect(
-      migrateAppliedPlansRecord(
-        {
-          values: v1PlanBase,
-          bad: {
-            ...v1PlanBase,
-            id: "bad",
-            services: {
-              web: {
-                ...v1ServiceBase,
-                mounts: [
-                  {
-                    type: "bind",
-                    source: "/x",
-                    target: "/x",
-                    readOnly: false,
-                    realization: "accelerated",
-                  },
-                ],
+  test("moves legacy Compose tmpfs knobs into tmpfs mounts", () => {
+    const migrated = migrateAppliedPlan(
+      {
+        ...v1PlanBase,
+        services: {
+          web: {
+            ...v1ServiceBase,
+            extensions: {
+              compose: {
+                restart: "always",
+                tmpfs: ["/run:size=64m,ro", { target: "/cache", size: 1024, mode: 1023 }],
               },
             },
           },
         },
-        1,
-      ),
-    ).toBeNull();
+      },
+      1,
+    );
+    const web = migrated?.services[ServiceName.make("web")];
+    expect(web?.extensions).toEqual({ compose: { restart: "always" } });
+    expect(Schema.encodeSync(Schema.Array(MountPlan))(web?.mounts ?? [])).toEqual([
+      { type: "tmpfs", target: "/cache", readOnly: false, options: "size=1024,mode=1777" },
+      { type: "tmpfs", target: "/run", readOnly: true, options: "size=64m" },
+    ]);
   });
 });
 

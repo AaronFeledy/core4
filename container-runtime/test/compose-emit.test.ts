@@ -517,6 +517,24 @@ describe("Podman Compose emission", () => {
     );
   });
 
+  test("a Compose config grant at a planned mount target fails at the provider boundary", () => {
+    const granted: ServicePlan = {
+      ...web,
+      mounts: [{ type: "tmpfs", target: PortablePath.make("/etc/app.ini"), readOnly: false }],
+      extensions: { compose: { configs: [{ source: "appini", target: "/etc/app.ini" }] } },
+    };
+    expect(() =>
+      renderCompose(
+        {
+          ...plan,
+          services: { [granted.name]: granted },
+          extensions: { compose: { configs: { appini: { file: "app.ini" } } } },
+        },
+        ctx,
+      ),
+    ).toThrowError(expect.objectContaining({ providerId: "podman", operation: "emitCompose" }));
+  });
+
   test("nested bind under volume and keyed acceleration preserve plan order", () => {
     const nested: ServicePlan = {
       ...web,

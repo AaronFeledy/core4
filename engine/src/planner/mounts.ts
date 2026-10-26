@@ -12,7 +12,12 @@ import {
 } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
-import { type MountAuthoringContext, compileAuthoredMounts, literalIncludeError } from "./authored-mounts.ts";
+import {
+  type MountAuthoringContext,
+  compileAuthoredMounts,
+  excludeDestination,
+  literalIncludeError,
+} from "./authored-mounts.ts";
 import { bindRealization } from "./compose-capabilities.ts";
 import { SERVICE_FEATURES_EXTENSION_KEY, serviceFeatureExtension } from "./extensions.ts";
 import { mergeDefaultExcludes } from "./file-sync.ts";
@@ -81,10 +86,10 @@ export const deriveMountOverlays = Effect.fn("AppPlanner.deriveMountOverlays")(f
     const owned = new Set<MountPlan>();
     shadows.set(bind, owned);
     for (const { exclude, ...check } of yield* checkShadowHosts(bind, input.fileSystem)) {
-      const target = plannedContainerDestination(`${bind.target}/${exclude}`, input.context.appRoot, [
+      const target = excludeDestination(input.context, bind.target, exclude, [
         "services",
         input.context.serviceName,
-        "mounts",
+        bind.role === "app" ? "appMount" : "mounts",
         "excludes",
       ]);
       if (target instanceof LandofileValidationError) return yield* Effect.fail(target);

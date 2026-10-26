@@ -100,3 +100,38 @@ test("mount cwd fails when moving the app bind collides with a planned target", 
   expect(result._tag).toBe("Failure");
   if (result._tag === "Failure") expect(result.failure._tag).toBe("ScratchAppError");
 });
+
+test("mount cwd moves binds that mirror the app source and keeps unrelated binds", async () => {
+  // Given a nested include bind under the app source and an unrelated host bind.
+  const nested: BindMountPlan = {
+    type: "bind",
+    source: "/old/vendor/acme/sdk",
+    target: PortablePath.make("/app/vendor/acme/sdk"),
+    readOnly: false,
+    realization: "passthrough",
+  };
+  const unrelated: BindMountPlan = {
+    type: "bind",
+    source: "/srv/shared",
+    target: PortablePath.make("/app/shared"),
+    readOnly: true,
+    realization: "passthrough",
+  };
+  const { mountKey: _key, ...passthroughApp } = { ...appBind, realization: "passthrough" as const };
+  const input: AppPlan = {
+    ...plan,
+    services: { [web.name]: { ...web, mounts: [passthroughApp, unrelated, nested] } },
+    fileSync: [],
+  };
+  // When the cwd replaces the app source at the same target.
+  const result = await Effect.runPromise(applyMountCwd(input, undefined, "/cwd"));
+  // Then the mirrored bind follows the cwd and the unrelated bind is untouched.
+  const binds = result?.services[web.name]?.mounts.flatMap((mount) =>
+    mount.type === "bind" ? [{ source: mount.source, target: mount.target }] : [],
+  );
+  expect(binds).toEqual([
+    { source: "/cwd", target: PortablePath.make("/app") },
+    { source: "/srv/shared", target: PortablePath.make("/app/shared") },
+    { source: "/cwd/vendor/acme/sdk", target: PortablePath.make("/app/vendor/acme/sdk") },
+  ]);
+});

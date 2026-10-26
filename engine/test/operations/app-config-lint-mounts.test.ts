@@ -41,6 +41,16 @@ test.each([
     paths: [["services", "web", "appMount", "includes"]],
   },
   {
+    name: "an exclude that leaves its mount",
+    service: "    appMount:\n      target: /app\n      excludes: ['../outside']\n",
+    paths: [["services", "web", "appMount", "excludes"]],
+  },
+  {
+    name: "an exclude that names the mount itself",
+    service: "    mounts:\n      - source: ./tools\n        target: /tools\n        excludes: ['..']\n",
+    paths: [["services", "web", "mounts", 0, "excludes"]],
+  },
+  {
     name: "conflicting tmpfs access modes",
     service: "    tmpfs: ['/run/x:ro,rw']\n",
     paths: [["services", "web", "tmpfs", 0]],
