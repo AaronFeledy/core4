@@ -52,6 +52,13 @@ const INCLUDE_GLOBS: ReadonlyArray<string> = [
 
 const INTEGRATION_SUFFIX = ".integration.test.ts";
 
+// These suites use fake clients and need PR coverage without a live provider.
+export const FAKE_CLIENT_PROVIDER_TESTS: ReadonlyArray<string> = [
+  "plugins/provider-lando/test/contract.integration.test.ts",
+  "plugins/provider-docker/test/contract.integration.test.ts",
+  "plugins/provider-podman/test/contract.integration.test.ts",
+];
+
 const COVERED_BY_DEDICATED_CI_JOBS: ReadonlyArray<string> = [
   "core/test/library/",
   "sdk/test/library/",
@@ -78,7 +85,7 @@ export const NIGHTLY_TIER_TESTS: ReadonlyArray<string> = [
 const SHARD_RUNTIME_FLAGS: ReadonlyArray<string> = ["--timeout=20000"];
 
 export const isShardedUnitTest = (path: string): boolean =>
-  !path.endsWith(INTEGRATION_SUFFIX) &&
+  (!path.endsWith(INTEGRATION_SUFFIX) || FAKE_CLIENT_PROVIDER_TESTS.includes(path)) &&
   !NIGHTLY_TIER_TESTS.includes(path) &&
   !COVERED_BY_DEDICATED_CI_JOBS.some((prefix) =>
     prefix.endsWith("/") ? path.startsWith(prefix) : path === prefix,

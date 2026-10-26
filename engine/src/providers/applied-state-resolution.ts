@@ -5,7 +5,7 @@ import { Effect } from "effect";
 
 import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
-  type AbsolutePath,
+  AbsolutePath,
   type AppPlan,
   type AppRef,
   ProviderId,
@@ -163,7 +163,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
       }),
     );
   }
-  const lookupRoot = yield* canonicalPath(root);
+  const lookupRoot = AbsolutePath.make(yield* canonicalPath(root));
   const plans = (yield* Effect.forEach(providers, gatherAppliedPlans)).flat();
   const belongsToApp = (providerId: string, appId: string) => {
     const plan = plans.find(
@@ -179,7 +179,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
   const readOwnership = Effect.gen(function* () {
     const rawInventories = yield* Effect.forEach(
       providers,
-      (provider) => provider.resourceOwnership?.(root) ?? Effect.succeed(undefined),
+      (provider) => provider.resourceOwnership?.(lookupRoot) ?? Effect.succeed(undefined),
     );
     for (const [index, hints] of rawInventories.entries()) {
       if (hints === undefined) continue;
@@ -219,17 +219,12 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     return ownershipHints;
   });
   const teardownOwnership = ownership === "exact" ? yield* readOwnership : [];
-  const matches = (yield* Effect.forEach(plans, (plan) =>
-    Effect.gen(function* () {
-      if (!matchesAppPlanIdentity(plan, app)) return undefined;
+  const matches = plans
+    .filter((plan) => {
       const appRoot = plan.identity?.appRoot;
-      if (appRoot === undefined) return undefined;
-      const canonicalAppRoot = yield* canonicalPath(appRoot);
-      if (ownership === "exact") return canonicalAppRoot === lookupRoot ? plan : undefined;
-      return isSameOrDescendantPath(canonicalAppRoot, lookupRoot) ? plan : undefined;
-    }),
-  ))
-    .filter((plan): plan is AppPlan => plan !== undefined)
+      if (appRoot === undefined || !matchesAppPlanIdentity(plan, app)) return false;
+      return ownership === "exact" ? appRoot === lookupRoot : isSameOrDescendantPath(appRoot, lookupRoot);
+    })
     .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
   const selected = matches[0];
   const selectedRoot = selected?.identity?.appRoot;
@@ -253,7 +248,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     const evidence = yield* Effect.forEach(providers, (provider) =>
       runtimeEvidence(provider, ownership === "exact" ? { includeUnplanned: true } : {}),
     );
-    const groups = groupOrphans(root, providers, evidence).filter((group) =>
+    const groups = groupOrphans(lookupRoot, providers, evidence).filter((group) =>
       belongsToApp(group.providerId, group.appId),
     );
     return groups.length > 0

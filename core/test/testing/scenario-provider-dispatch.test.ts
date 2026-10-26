@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { symlink } from "node:fs/promises";
+import { mkdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { DateTime, Effect } from "effect";
 
@@ -120,6 +120,7 @@ test("forgets the applied plan when destroy uses a symlink to its root", async (
         yield* Effect.tryPromise(() => symlink(root, alias, "dir"));
         const provider = makeScenarioProvider();
         yield* Effect.tryPromise(() => provider.remember(root));
+        yield* Effect.tryPromise(() => provider.remember(alias));
 
         // When: destroy removes applied state through the alias.
         yield* Effect.tryPromise(() => provider.forget(alias));
@@ -131,6 +132,51 @@ test("forgets the applied plan when destroy uses a symlink to its root", async (
             applied: registry.resolveAppliedPlan(AbsolutePath.make(root)),
             teardown: registry.resolveTeardownEvidence(AbsolutePath.make(root)),
             placement: registry.appliedPlansFor(AbsolutePath.make(root)),
+          });
+        }).pipe(Effect.provide(provider.layer));
+        expect(evidence).toEqual({ applied: undefined, teardown: { kind: "absent" }, placement: [] });
+      }),
+    ),
+  );
+});
+
+test("keeps teardown, placement, and forget exact when observation finds an ancestor", async () => {
+  const provider = makeScenarioProvider();
+  const parent = planAt("parent-app", AbsolutePath.make("/tmp/scenario-exact"));
+  const nested = AbsolutePath.make("/tmp/scenario-exact/nested");
+  await Effect.runPromise(Effect.scoped(provider.provider.apply(parent, { reconcile: false })));
+  const evidence = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      return yield* Effect.all({
+        applied: registry.resolveAppliedPlan(nested),
+        teardown: registry.resolveTeardownEvidence(nested),
+        placement: registry.appliedPlansFor(nested),
+      });
+    }).pipe(Effect.provide(provider.layer)),
+  );
+  expect(evidence).toEqual({ applied: parent, teardown: { kind: "absent" }, placement: [] });
+  expect(await provider.forget(nested)).toBe(false);
+  expect(await Effect.runPromise(provider.provider.appliedPlans ?? Effect.succeed([]))).toEqual([parent]);
+});
+
+test("does not inherit a lexical ancestor when a symlink leads outside its app", async () => {
+  await Effect.runPromise(
+    withScenarioContext({ guideId: "exec", scenarioId: "redirected-symlink" }, (context) =>
+      Effect.gen(function* () {
+        const root = yield* context.fixtures.use("exec-demo");
+        const outside = join(context.testDir, "outside");
+        const alias = join(root, "linked-outside");
+        yield* Effect.tryPromise(() => mkdir(outside));
+        yield* Effect.tryPromise(() => symlink(outside, alias, "dir"));
+        const provider = makeScenarioProvider();
+        yield* Effect.tryPromise(() => provider.remember(root));
+        const evidence = yield* Effect.gen(function* () {
+          const registry = yield* RuntimeProviderRegistry;
+          return yield* Effect.all({
+            applied: registry.resolveAppliedPlan(AbsolutePath.make(alias)),
+            teardown: registry.resolveTeardownEvidence(AbsolutePath.make(alias)),
+            placement: registry.appliedPlansFor(AbsolutePath.make(alias)),
           });
         }).pipe(Effect.provide(provider.layer));
         expect(evidence).toEqual({ applied: undefined, teardown: { kind: "absent" }, placement: [] });

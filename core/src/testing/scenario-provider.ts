@@ -19,9 +19,7 @@ const canonicalPath = (path: string): Effect.Effect<string> =>
 
 const planAppRoot = (plan: AppPlan): string => plan.identity?.appRoot ?? plan.root;
 
-const planMatchesRoot = (plan: AppPlan, root: string): boolean => {
-  const appRoot = planAppRoot(plan);
-  if (appRoot === root || plan.root === root) return true;
+const planMatchesRoot = (appRoot: string, root: string): boolean => {
   const child = relative(appRoot, root);
   return child === "" || (!child.startsWith("..") && !isAbsolute(child));
 };
@@ -29,28 +27,22 @@ const planMatchesRoot = (plan: AppPlan, root: string): boolean => {
 /** Each scenario owns its applied plans, independently of later Landofile edits. */
 export const makeScenarioProvider = () => {
   const plans = new Map<AbsolutePath, AppPlan>();
-  const uniquePlans = () => [...new Set(plans.values())];
-  const matchingPlans = (root: string): AppPlan[] =>
-    uniquePlans()
-      .filter((plan) => planMatchesRoot(plan, root))
-      .sort((left, right) => planAppRoot(right).length - planAppRoot(left).length);
-  const lookupPlan = (root: string): AppPlan | undefined => matchingPlans(root)[0];
-  const lookupPlans = (root: string): AppPlan[] => matchingPlans(root);
+  const exactPlan = (root: string) => plans.get(AbsolutePath.make(root));
   const resolvePlan = (root: string) =>
-    canonicalPath(root).pipe(Effect.map((canonical) => lookupPlan(canonical) ?? lookupPlan(root)));
-  const indexPlan = (plan: AppPlan, ...aliases: string[]) => {
-    for (const key of [plan.root, plan.identity?.appRoot, ...aliases]) {
-      if (key !== undefined && key.length > 0) plans.set(AbsolutePath.make(key), plan);
-    }
-  };
-  const unindexPlan = (plan: AppPlan) => {
-    for (const [key, stored] of plans) {
-      if (stored === plan) plans.delete(key);
-    }
-  };
+    canonicalPath(root).pipe(
+      Effect.map(
+        (canonical) =>
+          [...plans.entries()]
+            .filter(([appRoot]) => planMatchesRoot(appRoot, canonical))
+            .sort(([left], [right]) => right.length - left.length)[0]?.[1],
+      ),
+    );
+  const resolveExactPlan = (root: string) => canonicalPath(root).pipe(Effect.map(exactPlan));
+  const indexPlan = (plan: AppPlan) => plans.set(AbsolutePath.make(planAppRoot(plan)), plan);
+  const unindexPlan = (plan: AppPlan) => plans.delete(AbsolutePath.make(planAppRoot(plan)));
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
-    appliedPlans: Effect.sync(() => uniquePlans()),
+    appliedPlans: Effect.sync(() => [...plans.values()]),
     apply: (plan, options) =>
       TestRuntimeProvider.apply(plan, options).pipe(Effect.tap(() => Effect.sync(() => indexPlan(plan)))),
     destroy: (target, options) =>
@@ -64,15 +56,10 @@ export const makeScenarioProvider = () => {
   };
   const registry = RuntimeProviderRegistry.of({
     appliedPlansFor: (root) =>
-      canonicalPath(root).pipe(
-        Effect.map((canonical) => {
-          const matched = lookupPlans(canonical);
-          return matched.length > 0 ? matched : lookupPlans(root);
-        }),
-      ),
+      resolveExactPlan(root).pipe(Effect.map((plan) => (plan === undefined ? [] : [plan]))),
     resolveAppliedPlan: resolvePlan,
     resolveTeardownEvidence: (root) =>
-      resolvePlan(root).pipe(
+      resolveExactPlan(root).pipe(
         Effect.map((plan) =>
           plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
         ),
@@ -90,7 +77,7 @@ export const makeScenarioProvider = () => {
     layer,
     provider,
     forget: async (root: string) => {
-      const plan = await Effect.runPromise(resolvePlan(root));
+      const plan = await Effect.runPromise(resolveExactPlan(root));
       if (plan === undefined) return false;
       unindexPlan(plan);
       return true;
@@ -109,8 +96,7 @@ export const makeScenarioProvider = () => {
             ),
           ),
         );
-        const cwdReal = await Effect.runPromise(canonicalPath(cwd));
-        indexPlan(target.plan, cwd, cwdReal);
+        indexPlan(target.plan);
       } finally {
         process.chdir(previousCwd);
       }

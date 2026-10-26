@@ -17,7 +17,10 @@ describe("CI selection", () => {
     ["docs/guides/start/fixtures/input.json", "guides"],
     ["recipes/drupal/README.mdx", "runtime"],
     ["docs/astro.config.ts", "runtime"],
-    ["scripts/build-ci-workflow.ts", "runtime"],
+    ["scripts/build-ci-workflow.ts", "providers"],
+    ["plugins/service-lando/src/php-baseline.ts", "providers"],
+    ["plugins/service-lando/test/php-baseline.integration.test.ts", "providers"],
+    ["plugins/provider-lando/src/provider.ts", "providers"],
     ["bun.lock", "runtime"],
     ["core/test/foo.test.ts", "runtime"],
     ["unknown", "runtime"],
@@ -64,6 +67,20 @@ describe("CI selection", () => {
     expect(resultFailures(selection, { surprise: { result: "success" } })).toHaveLength(1);
   });
 
+  test("requires affected Linux provider jobs and Windows runtime scenarios to execute", () => {
+    const providerSelection = selectPaths(["plugins/service-lando/test/php-baseline.integration.test.ts"]);
+    for (const id of ["provider-integration-linux-x64-runner", "provider-integration-linux-x64"]) {
+      const tier = CI_JOB_TIERS[id];
+      expect(tier && jobSelected(tier, providerSelection)).toBe(true);
+      expect(resultFailures(providerSelection, { [id]: { result: "skipped" } })).toEqual([`${id}: skipped`]);
+    }
+    const runtimeSelection = selectPaths(["landofile/src/include-fragment.ts"]);
+    expect(
+      resultFailures(runtimeSelection, { "guide-scenarios-windows-x64": { result: "skipped" } }),
+    ).toEqual(["guide-scenarios-windows-x64: skipped"]);
+    expect(jobSelected("broad", providerSelection)).toBe(false);
+  });
+
   test("forces all jobs on push and dispatch even without history", () => {
     for (const event of ["push", "workflow_dispatch"]) {
       const selection = selectCi({ event, base: "", head: "", cwd: "/unusable" });
@@ -74,7 +91,7 @@ describe("CI selection", () => {
 
   test("falls back for unusable SHAs without executing a diff", () => {
     expect(selectCi({ event: "pull_request", base: "--bad", head: "", cwd: "/unusable" })).toMatchObject({
-      profile: "runtime",
+      profile: "providers",
       broad: false,
     });
   });
@@ -113,7 +130,8 @@ describe("CI selection", () => {
       git("commit", "-m", "base advances");
       const base = git("rev-parse", "HEAD");
       git("checkout", "-b", "head", ancestor);
-      await writeFile(join(cwd, "docs/new\npage.md"), "docs");
+      const filename = process.platform === "win32" ? "new page.md" : "new\npage.md";
+      await writeFile(join(cwd, "docs", filename), "docs");
       git("add", ".");
       git("commit", "-m", "docs");
       expect(selectCi({ event: "pull_request", base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe(
@@ -157,7 +175,7 @@ describe("CI selection", () => {
     expect(workflow.jobs["build-linux-x64"]?.if).toContain("!failure()");
   });
 
-  test.each(["docs", "guides", "runtime", "broad"] as const)(
+  test.each(["docs", "guides", "runtime", "providers", "broad"] as const)(
     "executes the %s graph without cascading policy-intended skips",
     (profile) => {
       const jobs = Schema.decodeUnknownSync(
@@ -186,8 +204,14 @@ describe("CI selection", () => {
         "unit-tests-linux-x64",
         "test-isolation-linux-x64",
         "perf-budget-linux-x64",
+        "guide-scenarios-windows-x64",
       ];
-      const expected = { docs, guides, runtime, broad: Object.keys(CI_JOB_TIERS) }[profile];
+      const providers = [
+        ...runtime,
+        "provider-integration-linux-x64-runner",
+        "provider-integration-linux-x64",
+      ];
+      const expected = { docs, guides, runtime, providers, broad: Object.keys(CI_JOB_TIERS) }[profile];
       const needs = {
         ...Object.fromEntries(
           Object.keys(CI_JOB_TIERS).map((id) => [
