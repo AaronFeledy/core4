@@ -13,7 +13,7 @@ import {
   providerLandoCapabilitiesForPlatform,
 } from "@lando/provider-lando";
 import { CapabilityError } from "@lando/sdk/errors";
-import type { AppPlan } from "@lando/sdk/schema";
+import { type AppPlan, landoAppNetworkName, landoAuthoredNetworkName } from "@lando/sdk/schema";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -43,7 +43,8 @@ interface FixtureCase {
   readonly file: string;
   readonly service: string;
   readonly seedFiles?: Readonly<Record<string, string>>;
-  readonly assertInspect: (inspect: unknown, appRoot: string) => void;
+  readonly authoredNetworks?: Readonly<Record<string, readonly string[]>>;
+  readonly assertInspect?: (inspect: unknown, appRoot: string) => void;
 }
 
 const fixtures = [
@@ -86,7 +87,9 @@ const fixtures = [
     assertInspect: (inspect: unknown) => {
       const healthcheck = field(field(inspect, "Config"), "Healthcheck");
       expect(field(healthcheck, "Test")).toEqual([
-        "CMD-SHELL",
+        "CMD",
+        "sh",
+        "-c",
         "curl --fail http://localhost:8080/health || exit 1",
       ]);
       expect(field(healthcheck, "Interval")).toBe(30_000_000_000);
@@ -130,28 +133,28 @@ const fixtures = [
       expect(field(bind, "RW")).toBe(false);
     },
   },
+  {
+    id: "different-networks",
+    file: "upstream/different_networks.compose.yaml",
+    service: "entry",
+    authoredNetworks: { entry: ["entrynetwork"], target: ["targetnetwork"] },
+  },
+  {
+    id: "simple-network",
+    file: "upstream/simple_network.compose.yaml",
+    service: "entry",
+    authoredNetworks: { entry: ["mynetwork"], target: ["mynetwork"] },
+  },
 ] satisfies readonly FixtureCase[];
 
 interface RejectedFixtureCase {
   readonly id: string;
   readonly file: string;
   readonly service: string;
-  readonly key: "networks" | "secrets" | "profiles";
+  readonly key: "secrets" | "profiles";
 }
 
 const rejectedFixtures = [
-  {
-    id: "different-networks",
-    file: "upstream/different_networks.compose.yaml",
-    service: "entry",
-    key: "networks",
-  },
-  {
-    id: "simple-network",
-    file: "upstream/simple_network.compose.yaml",
-    service: "entry",
-    key: "networks",
-  },
   {
     id: "simple-secretfile",
     file: "upstream/simple_secretfile.compose.yaml",
@@ -285,7 +288,33 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     expect(field(home, "Type")).toBe("volume");
     expect(field(home, "Name")).toBe(`lando-${plan.slug}-${fixture.service}-home`);
     expect(field(home, "RW")).toBe(true);
-    fixture.assertInspect(inspect, appRoot);
+    fixture.assertInspect?.(inspect, appRoot);
+    for (const [service, keys] of Object.entries(fixture.authoredNetworks ?? {})) {
+      const response = await Effect.runPromise(
+        liveRequest({ method: "GET", path: `/containers/lando-${plan.slug}-${service}/json` }),
+      );
+      expect(response.status).toBe(200);
+      const serviceInspect: unknown = JSON.parse(response.body);
+      assertServiceContainerRunning(serviceInspect, `lando-${plan.slug}-${service}`);
+      const networks = field(field(serviceInspect, "NetworkSettings"), "Networks");
+      const names = typeof networks === "object" && networks !== null ? Object.keys(networks) : [];
+      const appNetwork = landoAppNetworkName(plan);
+      const sharedNetwork = plan.networking?.sharedNetworkMembership?.name;
+      if (appNetwork === undefined || sharedNetwork === undefined) {
+        throw new Error("Expected app and shared networks in the planned fixture.");
+      }
+      expect(names).toContain(appNetwork);
+      expect(names).toContain(sharedNetwork);
+      const slug = plan.slug;
+      expect(names.filter((name) => name.startsWith(`lando-${slug}_`)).sort()).toEqual(
+        keys.map((key) => landoAuthoredNetworkName(slug, key)).sort(),
+      );
+      for (const key of keys) {
+        const network = field(networks, landoAuthoredNetworkName(plan.slug, key));
+        expect(arrayField(network, "Aliases")).toContain(`${service}.${plan.slug}.internal`);
+        expect(field(network, "IPAddress")).toMatch(/\S+/);
+      }
+    }
   } finally {
     try {
       for (const initializerName of initializerContainers) {
