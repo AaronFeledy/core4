@@ -36,7 +36,7 @@ services:
       MINK_DRIVER_ARGS_WEBDRIVER: '["chrome", {"browserName":"chrome","goog:chromeOptions":{"w3c":true,"args":["--headless=new","--disable-gpu","--no-sandbox"]}}, "http://chrome:4444"]'
   chrome:
     type: compose
-    image: selenium/standalone-chromium:latest
+    image: selenium/standalone-chromium:155.0-20261010
     appMount: false
     home: false
     shm_size: 2gb
@@ -59,7 +59,7 @@ tooling:
 - `SIMPLETEST_DB` is where Kernel and Functional tests install their throwaway sites, each under its own table prefix. `lando`/`lando` and a database named after the app are the MariaDB defaults; replace `drupal-demo` with your app name. `lando info` shows the credentials.
 - `BROWSERTEST_OUTPUT_DIRECTORY` is where Functional tests save an HTML snapshot of each page they load.
 - `MINK_DRIVER_ARGS_WEBDRIVER` names the browser, its options, and the Selenium URL. Keep `"w3c":true`. Drupal sets `w3c` to `false` when you leave it out, and the Chromium image refuses that session.
-- `chrome` runs Selenium's [standalone Chromium image](https://github.com/SeleniumHQ/docker-selenium), which serves WebDriver on port `4444`. `appMount: false` keeps your code out of it, `home: false` skips Lando's managed home for this third-party image, and `shm_size: 2gb` gives Chromium the shared memory Selenium recommends.
+- `chrome` runs Selenium's [standalone Chromium image](https://github.com/SeleniumHQ/docker-selenium), pinned to a dated tag so a new Chromium release doesn't change your test browser without notice. It serves WebDriver on port `4444`. `appMount: false` keeps your code out of it, `home: false` skips Lando's managed home for this third-party image, and `shm_size: 2gb` gives Chromium the shared memory Selenium recommends.
 - The healthcheck polls Selenium's `/status` endpoint. `lando start` and `lando restart` wait for it to pass, so tests don't connect before Selenium answers.
 - `phpunit` runs as `www-data`, the user Apache runs as, so the test runner and the site it serves can write the same files. It points PHPUnit at core's `web/core/phpunit.xml.dist` and appends your arguments.
 
@@ -82,6 +82,8 @@ Functional tests build each throwaway site under `web/sites/simpletest`. Create 
 lando exec appserver -- mkdir -p web/sites/simpletest/browser_output
 lando exec appserver -- chown -R www-data:www-data web/sites/simpletest
 ```
+
+On native Linux, the bind mount passes ownership straight through, so `web/sites/simpletest` stays owned by uid 33 on your host. To remove it, run `lando exec appserver -- rm -rf web/sites/simpletest`.
 
 ## Run a Unit and a Kernel test
 
@@ -173,7 +175,7 @@ Run both tests:
 lando phpunit web/modules/custom/hello
 ```
 
-Check that the run reports `OK (2 tests, 5 assertions)`. The Functional test proves `SIMPLETEST_BASE_URL` reaches Apache and that `www-data` can write the test site. The FunctionalJavascript test proves PHPUnit opened a WebDriver session in `chrome`: the page rendered and JavaScript ran inside Chromium.
+Check that the run ends with `OK (2 tests`. The Functional test proves `SIMPLETEST_BASE_URL` reaches Apache and that `www-data` can write the test site. The FunctionalJavascript test proves PHPUnit opened a WebDriver session in `chrome`: the page rendered and JavaScript ran inside Chromium.
 
 PHPUnit prints snapshot links under `http://appserver/`, which only resolve on the app network. Open the same files from `web/sites/simpletest/browser_output` in your project instead.
 
@@ -206,7 +208,7 @@ The fixture below mirrors the Landofile above with the recipe's services spelled
     </Step>
     <Step name="inspect-chrome">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "selenium/standalone-chromium:latest" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "selenium/standalone-chromium:155.0-20261010" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"shm_size\":\\s*2147483648" } }} />
     </Step>
     <Step name="inspect-test-settings">

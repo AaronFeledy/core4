@@ -17,7 +17,7 @@ services:
     type: mariadb:11.4
   chrome:
     type: compose
-    image: selenium/standalone-chromium:latest
+    image: selenium/standalone-chromium:155.0-20261010
     appMount: false
     home: false
     shm_size: 2gb
