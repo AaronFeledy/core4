@@ -49,3 +49,46 @@ test("hides integration mounts without labels and preserves provenance at reserv
     { target: "/data", provenance: "service", origin: "planned" },
   ]);
 });
+
+test("matches a file-mode bind to the private copy the container binds", async () => {
+  // Given a config grant planned as a file-mode bind and observed through its private copy.
+  const mounts = [
+    {
+      type: "bind" as const,
+      source: "/srv/app/config/php.ini",
+      target: PortablePath.make("/etc/app.ini"),
+      readOnly: true,
+      createHostPath: false,
+      realization: "passthrough" as const,
+      fileMode: 0o440,
+      origin: "authored" as const,
+    },
+  ];
+  const { row } = await runInfo(
+    { ...service, mounts },
+    {
+      status: "present",
+      mounts: [
+        {
+          type: "bind",
+          target: "/etc/app.ini",
+          source: "/home/user/.local/share/lando/file-mode-mounts/abc-440/abc-440",
+          readOnly: true,
+        },
+      ],
+    },
+  );
+  // Then the one planned mount is present and no runtime duplicate appears.
+  expect(row?.mounts).toEqual([
+    {
+      type: "bind",
+      target: "/etc/app.ini",
+      source: "/srv/app/config/php.ini",
+      readOnly: true,
+      origin: "planned",
+      observation: "present",
+      lifetime: "retained",
+      provenance: "authored",
+    },
+  ]);
+});

@@ -108,7 +108,10 @@ export const projectServiceMounts = (
               type: "volume",
               source: fileSyncVolumeName(plan.name, String(service.name), mount.mountKey),
             }
-          : fact,
+          : mount.type === "bind" && mount.fileMode !== undefined
+            ? // The container binds a private content-addressed copy, so the logical source never matches.
+              { type: "bind", target: mount.target, readOnly: mount.readOnly }
+            : fact,
     });
   }
   const observed = observation?.status === "present" ? observation.mounts : [];
