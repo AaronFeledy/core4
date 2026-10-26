@@ -2,7 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 import { chown, lstat, mkdir, mkdtemp, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { Effect } from "effect";
 
 const alive = () => Effect.succeed({ identities: 0 });
@@ -180,7 +180,7 @@ test("stale SSH_AUTH_SOCK falls through to a live 1Password agent", async () => 
   // Given a regular file at SSH_AUTH_SOCK and a live agent at the 1Password socket.
   const root = await mkdtemp(join(tmpdir(), "ssh-agent-fallthrough-"));
   const stale = join(root, "stale.sock");
-  const password = join(root, ".1password", "agent.sock");
+  const password = posix.join(root, ".1password", "agent.sock");
   await mkdir(join(root, ".1password"));
   await writeFile(stale, "not-a-socket");
   const agent = await listen(password);
@@ -202,33 +202,38 @@ test("stale SSH_AUTH_SOCK falls through to a live 1Password agent", async () => 
   }
 });
 
-test("explicit live symlink is accepted and relayed by authored path", async () => {
-  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
-  // Given an explicit symlink to a live agent and another live SSH_AUTH_SOCK.
-  const root = await mkdtemp(join(tmpdir(), "ssh-agent-symlink-"));
-  const live = join(root, "live.sock");
-  const link = join(root, "link.sock");
-  const agent = await listen(live);
-  await symlink(live, link);
-  try {
-    // When the explicit socket is that symlink.
-    const result = await Effect.runPromise(
-      discoverHostSshAgent({
-        platform: "linux",
-        home: root,
-        env: { SSH_AUTH_SOCK: live },
-        explicitSocket: link,
-      }),
+test.skipIf(process.platform === "win32")(
+  "explicit live symlink is accepted and relayed by authored path",
+  async () => {
+    const { discoverHostSshAgent } = await import(
+      "../../../src/subsystems/ssh-agent/host-agent-discovery.ts"
     );
-    // Then the authored symlink path is selected, not the resolved socket.
-    expect(result.upstream).toEqual({ _tag: "unix", path: link, source: "explicit" });
-    expect(link).not.toBe(live);
-    expect(result.identities).toBe(0);
-  } finally {
-    await agent.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
+    // Given an explicit symlink to a live agent and another live SSH_AUTH_SOCK.
+    const root = await mkdtemp(join(tmpdir(), "ssh-agent-symlink-"));
+    const live = join(root, "live.sock");
+    const link = join(root, "link.sock");
+    const agent = await listen(live);
+    await symlink(live, link);
+    try {
+      // When the explicit socket is that symlink.
+      const result = await Effect.runPromise(
+        discoverHostSshAgent({
+          platform: "linux",
+          home: root,
+          env: { SSH_AUTH_SOCK: live },
+          explicitSocket: link,
+        }),
+      );
+      // Then the authored symlink path is selected, not the resolved socket.
+      expect(result.upstream).toEqual({ _tag: "unix", path: link, source: "explicit" });
+      expect(link).not.toBe(live);
+      expect(result.identities).toBe(0);
+    } finally {
+      await agent.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test.skipIf(process.platform === "win32")(
   "explicit socket owned by another user is socket-owner-mismatch",
@@ -660,7 +665,7 @@ test("dangling SSH_AUTH_SOCK is remembered when a live 1Password agent is select
   // Given a dangling env socket and a live 1Password agent.
   const root = await mkdtemp(join(tmpdir(), "ssh-agent-dangling-fallback-"));
   const dangling = join(root, "gone.sock");
-  const password = join(root, ".1password", "agent.sock");
+  const password = posix.join(root, ".1password", "agent.sock");
   await mkdir(join(root, ".1password"));
   await symlink(join(root, "absent"), dangling);
   const agent = await listen(password);
@@ -682,7 +687,7 @@ test("dangling SSH_AUTH_SOCK is remembered when a live 1Password agent is select
   }
 });
 
-test("explicit socket probe failure does not fall through", async () => {
+test.skipIf(process.platform === "win32")("explicit socket probe failure does not fall through", async () => {
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
   // Given an explicit socket that accepts a connection but never answers, plus a live 1Password agent.
   const root = await mkdtemp(join(tmpdir(), "ssh-agent-explicit-dead-"));
