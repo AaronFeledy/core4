@@ -22,7 +22,7 @@ import {
   mergeLintFindings,
 } from "@lando/landofile/lint";
 import { lintLandofileSnapshot } from "../services/landofile-live.ts";
-import { lintEnvFiles } from "./config-lint-env-files.ts";
+import { lintEnvFiles, snapshotLintFileSystem } from "./config-lint-env-files.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
 
@@ -48,15 +48,15 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   const landofile = snapshot.resolved;
   const pluginRegistry = yield* PluginRegistry;
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
-  const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
+  const fileSystem = yield* snapshotLintFileSystem(
+    Option.getOrUndefined(yield* Effect.serviceOption(FileSystem)),
+  );
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
-  const envFiles = yield* lintEnvFiles(landofile.document, snapshot.landofilePath, fileSystem);
-  const envFindings = envFiles.findings;
   const resolved = yield* resolveLandofileForPlanning({
     landofile,
     pluginRegistry,
     configService,
-    fileSystem: envFiles.fileSystem,
+    fileSystem,
     pathsService,
     ...(pluginRegistry.declaredProviderCapabilities === undefined
       ? {}
@@ -70,6 +70,12 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     file: snapshot.landofilePath,
     appRoot: dirname(snapshot.landofilePath),
   }).pipe(Effect.result);
+  const envFindings = yield* lintEnvFiles(
+    Result.isSuccess(resolved) ? resolved.success.resolution.compiled : landofile,
+    snapshot.landofilePath,
+    fileSystem,
+    landofile.document,
+  );
   if (Result.isFailure(resolved)) {
     if (resolved.failure._tag === "ConfigExpressionError") {
       const path = configExpressionIssuePath(resolved.failure);

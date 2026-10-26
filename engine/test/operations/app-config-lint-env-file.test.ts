@@ -16,6 +16,29 @@ const lintApp = (cwd: string) =>
     appConfigLint({ cwd }).pipe(Effect.provide(Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer))),
   );
 
+test.each([
+  { scope: "app.name", value: "demo", owner: "app" },
+  { scope: "proxy.defaultDomain", value: "lndo.site", owner: "app" },
+  { scope: "app.name", value: "demo", owner: "service" },
+  { scope: "proxy.defaultDomain", value: "lndo.site", owner: "service" },
+])("resolves $owner env-file paths from $scope before linting", async ({ scope, value, owner }) => {
+  const root = await mkdtemp(join(tmpdir(), "lando-env-lint-deferred-"));
+  try {
+    const path = `{{ ${scope} }}.env`;
+    await writeFile(
+      join(root, ".lando.yml"),
+      owner === "app"
+        ? `name: demo\nenv_file: '${path}'\n`
+        : `name: demo\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    envFile: '${path}'\n`,
+    );
+    await writeFile(join(root, `${value}.env`), "KEY=value\n");
+    const result = await lintApp(root);
+    expect(result).toMatchObject({ valid: true, violations: [] });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("warns when a double-quoted env value decodes differently from its raw text", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-env-lint-escape-"));
   try {
@@ -35,6 +58,74 @@ test("warns when a double-quoted env value decodes differently from its raw text
       }),
     ]);
     expect(result.violations[0]?.message).toContain("PATH");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("attributes deferred-path warnings to the declaring configuration entry", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-env-lint-deferred-warning-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      "name: demo\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    env_file: '{{ app.name }}.env'\n",
+    );
+    await writeFile(join(root, "demo.env"), 'PATH="C:\\new"\n');
+    const result = await lintApp(root);
+    expect(result.valid).toBe(true);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0]?.message).not.toContain("{{");
+    expect(result.violations).toMatchObject([
+      {
+        rule: "env-file.literal",
+        severity: "warning",
+        path: ["services", "web", "envFile", 0],
+        source: { file: join(root, ".lando.yml"), path: ["services", "web", "env_file"] },
+        message: expect.stringContaining(`${join(root, "demo.env")}:1:`),
+      },
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps escaped literal env-file paths literal after resolution", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-env-lint-literal-path-"));
+  try {
+    await writeFile(join(root, ".lando.yml"), "name: demo\nenv_file: '{{{{ app.name }}.env'\n");
+    await writeFile(join(root, "{{ app.name }}.env"), "KEY=value\n");
+    const result = await lintApp(root);
+    expect(result).toMatchObject({ valid: true, violations: [] });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("does not read env-file sites held behind an unavailable service credential scope", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-env-lint-blocked-path-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      "name: demo\nservices:\n  db:\n    type: missing-type\n  web:\n    type: compose\n    image: alpine\n    home: false\n    envFile: '{{ services.db.creds.password }}.env'\n",
+    );
+    const envReads: string[] = [];
+    const result = await Effect.runPromise(
+      Effect.flatMap(FileSystem, (fs) =>
+        appConfigLint({ cwd: root }).pipe(
+          Effect.provideService(FileSystem, {
+            ...fs,
+            readText: (path) =>
+              Effect.sync(() => {
+                if (path.endsWith(".env")) envReads.push(path);
+              }).pipe(Effect.andThen(fs.readText(path))),
+          }),
+        ),
+      ).pipe(Effect.provide(Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer))),
+    );
+    expect(result.valid).toBe(false);
+    expect(envReads).toEqual([]);
+    expect(result.violations.some((issue) => issue.rule === "landofile.service")).toBe(true);
+    expect(result.violations.some((issue) => issue.rule === "env-file.read")).toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

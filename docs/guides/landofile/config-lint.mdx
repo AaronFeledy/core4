@@ -42,10 +42,15 @@ After expression materialization succeeds, lint collects independent findings fr
 | `landofile.event` | Each key under `events:` is a lifecycle event or the `pre-`/`post-` bracket of a tooling task | `events.pre-buidl` |
 | `landofile.tooling` | No tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-`/`post-` events are reserved, such as `start` or `pull` | `tooling.run` |
 | `landofile.load` | An include or tooling include that cannot be read, fetched, or that cycles | `includes[1]`, `toolingIncludes.docs` |
+| `env-file.read` | A declared env file is missing or cannot be read | `env_file[0]`, `services.web.envFile[0]` |
+| `env-file.syntax` | Invalid env-file entries, including a bare name without `=` or unmatched quotes | `env_file[0]`, `services.web.envFile[0]` |
+| `env-file.literal` | A warning when double-quoted escapes change a value, or an unquoted or double-quoted value contains `${` | `env_file[0]`, `services.web.envFile[0]` |
 
 A service-type finding is reported at the field that is wrong, with the remediation in `suggestion`. A postgres service with `environment.PGPORT: "5433"` gets `PGPORT is 5433, but the service listens on 5432.` at `["services", "db", "environment", "PGPORT"]` and the suggestion `Set port: 5433 instead; Lando sets PGPORT from port:.` When a service's type fails to resolve, lint still reports every other service. Services that read its `creds.*` are skipped until you fix it, so you don't get a cascade of follow-on errors.
 
 An include failure points at the entry that declared it: `path` is `["includes", <index>]` and `source.file` is the file holding that list, so a fragment that fails inside a nested include names the fragment and the layer that pulled it in, not your root Landofile. Tooling includes work the same way. A `kind: tooling` entry reports `["includes", <index>]`, and a `toolingIncludes:` entry reports `["toolingIncludes", <namespace>]`, with the file and layer that declared it.
+
+Env-file findings point to the configuration entry that declared the file. Their messages name the resolved env-file path and, for syntax and literal warnings, its line number. Warnings stay in `violations` with `severity: "warning"`; they leave `valid` true when no errors exist. Env-file values are never interpolated. See [Quote env file values](./env-overrides.mdx#quote-env-file-values) for quoting rules and fixes.
 
 ## What only planning catches
 
