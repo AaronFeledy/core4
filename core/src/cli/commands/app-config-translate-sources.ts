@@ -121,6 +121,7 @@ export const discoverSourceFiles = (
       new ConfigTranslateError({
         message: `Could not discover config translator source files: ${causeMessage(cause)}`,
         cause,
+        remediation: "Fix permissions under the app root so Lando can list configuration documents.",
       }),
   });
 

@@ -57,6 +57,7 @@ const withEnv = async <T>(
 const discover = () =>
   Effect.runPromise(
     Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
@@ -64,6 +65,7 @@ const discover = () =>
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
@@ -366,7 +368,7 @@ describe("LandofileService layer — TS form schema validation", () => {
     });
   });
 
-  test("returned value with unsupported MVP keys surfaces LandofileValidationError", async () => {
+  test("returned value with unknown keys surfaces LandofileValidationError", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.ts"),

@@ -98,8 +98,9 @@ describe("ConfigTranslator contract — bundled lando3", () => {
     });
     const loader = injected.configTranslators?.get(lando3.LANDO3_TRANSLATOR_ID);
     expect(loader).toBeDefined();
-    const translator = await loader?.();
-    expect(translator?.id).toBe("lando3");
+    if (loader === undefined) throw new Error("Missing bundled Lando 3 translator loader");
+    const translator = await loader();
+    expect(translator.id).toBe("lando3");
 
     const broken = Schema.decodeUnknownSync(ConfigTranslateInput)({
       _tag: "landofile-document-set",
@@ -109,7 +110,7 @@ describe("ConfigTranslator contract — bundled lando3", () => {
       currentLowerV4Fragments: [],
       writableLayerIds: ["canonical"],
     });
-    const exit = await Effect.runPromiseExit(translator?.translate(broken) ?? Effect.void);
+    const exit = await Effect.runPromiseExit(translator.translate(broken));
     expect(exit._tag).toBe("Failure");
     expect(redacted).toBeGreaterThan(0);
   });

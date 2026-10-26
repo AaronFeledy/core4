@@ -67,7 +67,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -77,13 +76,40 @@ const plan: AppPlan = {
 const target = { app: appId, service: serviceName, plan };
 const missingPlanTarget = { app: appId, service: serviceName };
 
-const makeFakeApi = (response: EngineHttpResponse) => {
+const makeFakeApi = (response: EngineHttpResponse, inspectedPlan: AppPlan = plan) => {
   const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.void,
     request: (input) => {
       calls.push(input);
+      if (input.method === "GET" && input.path.startsWith("/containers/")) {
+        const reference = decodeURIComponent(input.path.slice("/containers/".length).split("/")[0] ?? "");
+        const service = Object.values(inspectedPlan.services).find((service) => {
+          const name = `lando-${inspectedPlan.slug}-${service.name}`;
+          return reference === name || reference === `${name}-id`;
+        });
+        return Effect.succeed(
+          service === undefined
+            ? { status: 404, body: "{}" }
+            : {
+                status: 200,
+                body: JSON.stringify({
+                  Id: `lando-${inspectedPlan.slug}-${service.name}-id`,
+                  Config: {
+                    Labels: {
+                      "dev.lando.app": inspectedPlan.id,
+                      "dev.lando.app-root": inspectedPlan.root,
+                      "dev.lando.service": service.name,
+                    },
+                  },
+                }),
+              },
+        );
+      }
+      if (input.method === "GET" && input.path.startsWith("/networks/")) {
+        return Effect.succeed({ status: 404, body: "{}" });
+      }
       return Effect.succeed(response);
     },
   };
@@ -217,7 +243,7 @@ describe("provider-lando service lifecycle", () => {
         services: { ...plan.services, [oldServiceName]: oldService },
       };
       await Effect.runPromise(persistAppliedPlan(store, plan));
-      const fake = makeFakeApi({ status: 204, body: "" });
+      const fake = makeFakeApi({ status: 204, body: "" }, appliedPlan);
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           podmanApi: fake.api,
@@ -233,8 +259,10 @@ describe("provider-lando service lifecycle", () => {
       await Effect.runPromise(persistAppliedPlan(store, appliedPlan));
       await Effect.runPromise(quiesce({ app: plan.id, plan }));
       const stopped = fake.calls.filter((call) => call.method === "POST" && call.path.endsWith("/stop"));
-      expect(stopped.map((call) => call.path)).toContain("/containers/lando-lifecycle-app-old-worker/stop");
-      expect(stopped.map((call) => call.path)).toContain("/containers/lando-lifecycle-app-web/stop");
+      expect(stopped.map((call) => call.path)).toContain(
+        "/containers/lando-lifecycle-app-old-worker-id/stop",
+      );
+      expect(stopped.map((call) => call.path)).toContain("/containers/lando-lifecycle-app-web-id/stop");
       expect(fake.calls.some((call) => call.path.startsWith("/volumes/"))).toBe(false);
     } finally {
       await rm(directory, { recursive: true, force: true });

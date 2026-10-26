@@ -2,12 +2,7 @@ import { existsSync } from "node:fs";
 
 import { Effect, Schema } from "effect";
 
-import {
-  type ConfigError,
-  type LandoCommandError,
-  NotImplementedError,
-  PluginManifestError,
-} from "@lando/sdk/errors";
+import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
@@ -21,7 +16,7 @@ export class PluginUnlinkNotLinkedError extends Schema.TaggedError<PluginUnlinkN
     message: Schema.String,
     commandId: Schema.Literal("meta:plugin:unlink"),
     pluginName: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -53,7 +48,7 @@ export const pluginUnlink = Effect.fn("PluginUnlink.unlink")(function* (
   options: PluginUnlinkOptions,
 ): Effect.fn.Return<
   PluginUnlinkResult,
-  ConfigError | LandoCommandError | NotImplementedError | PluginManifestError | PluginUnlinkNotLinkedError,
+  LandoCommandError | NotImplementedError | PluginManifestError | PluginUnlinkNotLinkedError,
   ConfigService
 > {
   const pluginsRoot = yield* resolvePluginsRoot(options, "meta:plugin:unlink");

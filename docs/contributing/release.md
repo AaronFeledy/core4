@@ -5,13 +5,15 @@ description: Run and verify the manual signed release pipeline.
 
 # Release runbook
 
-Beta posture: the full signed release is run **manually**, not from CI, until RC. See the "Release-automation posture" entry in `decisions.md` for the decision and rationale. The generated `release` workflow (`.github/workflows/release.yml`) publishes unsigned `v4.0.0-dev.N` GitHub prerelease assets for all six platforms (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`). It does not publish npm, sign, notarize, or cut a stable release. Manual `scripts/release.ts` remains the 13-stage signed Beta pipeline.
+Use this runbook to build, publish, and verify a signed `4.0.0-beta.N` release from the repository root. The full signed release runs **manually**, not from CI, until RC. See the [release-automation decision](./decisions.md#release-automation-posture-decision) for the rationale.
 
-Use this runbook to drive the 13-stage orchestrator (`scripts/release.ts`) by hand when cutting `4.0.0-beta.N`.
+The generated `release` workflow (`.github/workflows/release.yml`) publishes unsigned `v4.0.0-dev.N` GitHub prerelease assets for all six platforms (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, `windows-arm64`). It does not publish npm, sign, notarize, or cut a stable release. Manual `scripts/release.ts` remains the 14-stage signed Beta pipeline.
+
+Before a full release, prepare the [required credentials](#required-credentials) and a working Lando provider for the container-helper build. The full invocation reaches `14-publish`, which publishes packages and creates a GitHub release. To test stage ordering without signing credentials, use [local rehearsal](#rehearsal-without-credentials) instead.
 
 ## Invocation
 
-The orchestrator is `bun run release` (`scripts/release.ts`). Pass the artifact target and, optionally, a stage prefix.
+From the repository root, run `bun run release` (`scripts/release.ts`) with an artifact target. Add `--through-stage` if you want to stop before later stages. Choose one invocation below; they are alternatives, not a sequence.
 
 ```bash
 # Full release, all artifact families (binary + library), every stage in order.
@@ -24,12 +26,16 @@ bun run release -- --binary
 bun run release -- --library
 
 # Stop after a named stage (ordered prerequisites still run; prefixes only, no --from-stage).
-bun run release -- --binary --through-stage=7-compile
+bun run release -- --binary --through-stage=8-compile
 ```
 
-Stages run in order and are numbered `1-codegen`, `2-typecheck`, `3-lint-format`, `4-test-gates`, `5-schema-artifacts`, `6-library-bundle`, `7-compile`, `8-strip`, `9-sign`, `10-notarize`, `11-manifest`, `12-provenance-sbom`, `13-publish`. `--through-stage` accepts a stage id or its leading number.
+Stages run in order and are numbered `1-codegen`, `2-container-helper`, `3-typecheck`, `4-lint-format`, `5-test-gates`, `6-schema-artifacts`, `7-library-bundle`, `8-compile`, `9-strip`, `10-sign`, `11-notarize`, `12-manifest`, `13-provenance-sbom`, `14-publish`. `--through-stage` accepts a stage id or its leading number.
 
-Stage `5-schema-artifacts` regenerates schema artifacts (`bun run codegen:schema-snapshot`) immediately before package/compile stages (`6-library-bundle`, `7-compile`).
+Stage `2-container-helper` runs `bun run scripts/build-container-helper.ts --test` for both binary and library releases before typecheck, tests, bundling, or compilation. The release host needs a working Lando provider: Go vet, tests, and the static `linux-x64` and `linux-arm64` builds run inside a Lando builder container, not on the host. To skip the build, set `LANDO_CONTAINER_HELPER_DIR` to the downloaded CI `container-helper` artifact from the same commit. Linux integration tests and package/compile stages then use those exact helpers.
+
+Keep `licenses/go/` with the helper binaries: binary releases attach the toolchain notices, and `@lando/core` packages include them under `container-helper/dist/licenses/go/`. Compilation and release reject incomplete notices.
+
+Stage `6-schema-artifacts` regenerates schema artifacts (`bun run codegen:schema-snapshot`) immediately before package/compile stages (`7-library-bundle`, `8-compile`).
 
 ### Platform scope
 
@@ -39,7 +45,7 @@ By default the orchestrator targets every CI platform (`darwin-arm64`, `darwin-x
 LANDO_RELEASE_PLATFORM=windows-x64 bun run release -- --binary
 ```
 
-Run Windows targets (`windows-x64` or `windows-arm64`) on Windows: `7-compile` refuses them on other hosts before installing dependencies or compiling. Bun embeds the Lando icon and Windows version info only when compiling on Windows. `LOCAL_REHEARSAL=1` does not bypass the host requirement.
+Run Windows targets (`windows-x64` or `windows-arm64`) on Windows: `8-compile` refuses them on other hosts before installing dependencies or compiling. Bun embeds the Lando icon and Windows version info only when compiling on Windows. `LOCAL_REHEARSAL=1` does not bypass the host requirement.
 
 `windows-x64` is the CI/release artifact vocabulary. The `win32-x64` runtime host key is a separate domain (runtime bundle and mutagen host keys) and must not be used here.
 
@@ -49,7 +55,7 @@ Run Windows targets (`windows-x64` or `windows-arm64`) on Windows: `7-compile` r
 
 ```bash
 LOCAL_REHEARSAL=1 bun run release -- --all
-LOCAL_REHEARSAL=1 bun run release -- --library --through-stage=11-manifest
+LOCAL_REHEARSAL=1 bun run release -- --library --through-stage=12-manifest
 ```
 
 See `docs/guides/release/local-rehearsal.mdx` for the rehearsal contract and `docs/guides/release/linux-acceptance-rehearsal.mdx` for the Linux acceptance walkthrough.
@@ -60,13 +66,13 @@ Outside `LOCAL_REHEARSAL`, the signing and publishing stages require the environ
 
 | Stage | Purpose | Environment |
 | --- | --- | --- |
-| `9-sign` (macOS) | Developer ID codesign | `LANDO_RELEASE_SIGNING_IDENTITY` |
-| `9-sign` (Windows) | Authenticode + keyless cosign | `LANDO_RELEASE_WINDOWS_CERTIFICATE`, `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, `ACTIONS_ID_TOKEN_REQUEST_URL` |
-| `10-notarize` (macOS) | notarytool submit + stapler | `LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE` |
-| `11-manifest` | Checksum manifest signing | `LANDO_RELEASE_GPG_KEY` or `GPG_PRIVATE_KEY`; keyless manifest signing reuses `ACTIONS_ID_TOKEN_REQUEST_TOKEN` + `ACTIONS_ID_TOKEN_REQUEST_URL` |
-| `12-provenance-sbom` | SBOM + SLSA provenance + keyless signatures | `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, `ACTIONS_ID_TOKEN_REQUEST_URL` |
-| `13-publish` (npm) | Publish workspace packages | `LANDO_RELEASE_NPM_TOKEN` or `NPM_TOKEN` |
-| `13-publish` (GitHub) | Create the GitHub release | `GH_TOKEN` or `GITHUB_TOKEN` |
+| `10-sign` (macOS) | Developer ID codesign | `LANDO_RELEASE_SIGNING_IDENTITY` |
+| `10-sign` (Windows) | Authenticode + keyless cosign | `LANDO_RELEASE_WINDOWS_CERTIFICATE`, `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, `ACTIONS_ID_TOKEN_REQUEST_URL` |
+| `11-notarize` (macOS) | notarytool submit + stapler | `LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE` |
+| `12-manifest` | Checksum manifest signing | `LANDO_RELEASE_GPG_KEY` or `GPG_PRIVATE_KEY`; keyless manifest signing reuses `ACTIONS_ID_TOKEN_REQUEST_TOKEN` + `ACTIONS_ID_TOKEN_REQUEST_URL` |
+| `13-provenance-sbom` | SBOM + SLSA provenance + keyless signatures | `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, `ACTIONS_ID_TOKEN_REQUEST_URL` |
+| `14-publish` (npm) | Publish workspace packages | `LANDO_RELEASE_NPM_TOKEN` or `NPM_TOKEN` |
+| `14-publish` (GitHub) | Create the GitHub release | `GH_TOKEN` or `GITHUB_TOKEN` |
 
 Keyless signing (`ACTIONS_ID_TOKEN_REQUEST_*`) is an OIDC identity issued to a GitHub Actions job. Running signed manifest/provenance stages fully outside Actions requires an equivalent keyless identity; use `LOCAL_REHEARSAL=1` to rehearse those stages locally.
 
@@ -74,7 +80,7 @@ Credential ownership (Apple notarization, Windows certificate, cosign/OIDC ident
 
 ## Verification
 
-A release is only complete when its artifacts verify. Confirm, per stage output and on disk:
+A successful orchestrator exit is not enough: verify the published artifacts as well. In the checks below, replace `<platform>` with the CI/release platform id, such as `linux-x64`, and use a host that can run that binary. Confirm, per stage output and on disk:
 
 1. Checksums: `dist/SHA256SUMS` and `dist/SHA512SUMS` exist and match the built binaries (`sha256sum -c dist/SHA256SUMS`).
 2. Binary smoke: each compiled binary runs and reports the expected version (`./dist/lando-<platform> --version`).
@@ -85,8 +91,8 @@ A release is only complete when its artifacts verify. Confirm, per stage output 
 
 ## Related guides
 
-- `docs/guides/release/local-rehearsal.mdx` — stage-prefix and credential-gating rehearsal contract.
-- `docs/guides/release/signing-artifacts.mdx` — per-platform signing responsibilities and commands.
-- `docs/guides/release/verify-supply-chain-artifacts.mdx` — SBOM and provenance verification.
-- `docs/guides/release/linux-acceptance-rehearsal.mdx` — Linux acceptance rehearsal.
-- `docs/guides/release/compiled-bytecode-budget.mdx` — compile-stage bytecode budget.
+- `docs/guides/release/local-rehearsal.mdx`: stage-prefix and credential-gating rehearsal contract.
+- `docs/guides/release/signing-artifacts.mdx`: per-platform signing responsibilities and commands.
+- `docs/guides/release/verify-supply-chain-artifacts.mdx`: SBOM and provenance verification.
+- `docs/guides/release/linux-acceptance-rehearsal.mdx`: Linux acceptance rehearsal.
+- `docs/guides/release/compiled-bytecode-budget.mdx`: compile-stage bytecode budget.

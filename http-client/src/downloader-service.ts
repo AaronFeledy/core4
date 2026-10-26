@@ -146,6 +146,8 @@ export const makeDownloaderService = (
         new DownloadOfflineError({
           message: "Offline mode is enabled and the artifact is not present in the verified cache.",
           urlOrigin: origin,
+          remediation:
+            "Disable offline mode or seed the verified cache for this origin, then retry; connecting alone leaves offline mode enabled.",
         }),
       );
 

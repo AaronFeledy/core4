@@ -13,7 +13,7 @@ import type {
 } from "@lando/sdk/errors";
 import { GlobalServiceMissingError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, StartedService } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -25,11 +25,13 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
+import type { EnvironmentValueResolutionError, PlanReplanRequiredError } from "@lando/sdk/errors";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
+import { completeStartup } from "../lifecycle/startup-completion.ts";
+import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
+import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
-import { waitForServiceReadiness } from "./service-readiness.ts";
+import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 
 import { withOrdinaryMounts } from "./file-sync-plan.ts";
 import { globalInstall } from "./global-install.ts";
@@ -44,11 +46,7 @@ export interface EnsureGlobalServicesOptions {
   readonly signal?: AbortSignal;
 }
 
-export interface EnsureGlobalStartedService {
-  readonly name: string;
-  readonly state: string;
-  readonly endpoints: ReadonlyArray<string>;
-}
+export type EnsureGlobalStartedService = StartedService;
 
 export interface EnsureGlobalServicesResult {
   readonly app: string;
@@ -56,6 +54,8 @@ export interface EnsureGlobalServicesResult {
 }
 
 export type EnsureGlobalServicesError =
+  | EnvironmentValueResolutionError
+  | PlanReplanRequiredError
   | ServiceNotReadyError
   | LoadGlobalPlanError
   | BuildError
@@ -70,6 +70,7 @@ export type EnsureGlobalServicesError =
   | ToolingExecError;
 
 export type EnsureGlobalServicesServices =
+  | EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -158,30 +159,30 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(function* (
         };
 
   const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const provider = yield* registry.select(plan.provider);
   const builds = yield* BuildOrchestrator;
   // Managed global service configuration is generated locally and has no sync session lifecycle.
   const realizedPlan = withOrdinaryMounts(planToApply);
   const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
-  const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
 
   yield* Effect.scoped(
-    provider
-      .apply(builtPlan, {
-        reconcile: false,
-        recordedPlan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-        serviceEnvironment,
-      })
-      .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
+    applyWithResolvedEnvironment(provider, builtPlan, {
+      reconcile: false,
+      recordedPlan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
+    }),
   );
 
-  const servicesStarted = yield* waitForServiceReadiness({
+  const finalPlan = { ...plan, services: { ...plan.services, ...builtPlan.services } };
+  const ready = yield* completeStartup({
+    policy: "ensure-global",
     provider,
-    plan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
+    plan: finalPlan,
     services: selected.map((service) => service.name),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
+  const servicesStarted = startedServices(yield* collectPlanConnections(finalPlan, ready));
 
   yield* events.publish(
     PostGlobalStartEvent.make({

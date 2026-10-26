@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option } from "effect";
 
-import { loadLandofileLayers } from "../src/service.ts";
+import { ServiceName } from "@lando/sdk/schema";
+import { loadLandofileFile, loadLandofileLayers } from "../src/service.ts";
 
 const withApp = async <A>(files: Readonly<Record<string, string>>, run: (appRoot: string) => Promise<A>) => {
   const appRoot = await mkdtemp(join(tmpdir(), "lando-recipe-expression-"));
@@ -17,13 +18,19 @@ const withApp = async <A>(files: Readonly<Record<string, string>>, run: (appRoot
   }
 };
 
-const failureMessage = (exit: Exit.Exit<unknown, unknown>): string => {
-  if (!Exit.isFailure(exit)) return "";
+const failureValue = (exit: Exit.Exit<unknown, unknown>): unknown => {
+  if (!Exit.isFailure(exit)) throw new TypeError("Expected failure");
   const failure = Cause.findErrorOption(exit.cause);
-  return Option.isSome(failure) ? String((failure.value as { message?: unknown }).message ?? "") : "";
+  return Option.getOrThrow(failure);
+};
+const failureMessage = (exit: Exit.Exit<unknown, unknown>): string => {
+  const failure = failureValue(exit);
+  if (!(failure instanceof Error)) throw new TypeError("Expected error");
+  return failure.message;
 };
 
-const load = (appRoot: string) => loadLandofileLayers(appRoot, join(appRoot, ".lando.yml"));
+const load = (appRoot: string) =>
+  loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")).pipe(Effect.map((compiled) => compiled.document));
 
 const withEnv = async <A>(entries: Readonly<Record<string, string | undefined>>, run: () => Promise<A>) => {
   const previous = Object.fromEntries(Object.keys(entries).map((key) => [key, process.env[key]]));
@@ -57,6 +64,194 @@ const provenance = (options: string) =>
   ].join("\n");
 
 describe("recipe option expressions in a loaded Landofile", () => {
+  test.each([
+    'environment:\n      FOO: "{{ env.LANDO_QA_LITERAL }}"',
+    'environment: "{{ { FOO: env.LANDO_QA_LITERAL } }}"',
+  ])("preserves load-produced literal text when decoding %s", async (field) => {
+    // Given
+    await withEnv({ LANDO_QA_LITERAL: " {{ app.name }} ${VALUE}" }, () =>
+      withApp(
+        {
+          ".lando.yml": `name: literal\nservices:\n  web:\n    type: node:22\n    ${field}\n`,
+        },
+        async (root) => {
+          // When
+          const loaded = await Effect.runPromise(load(root));
+          // Then
+          expect(loaded.services?.[ServiceName.make("web")]?.environment?.FOO).toBe(
+            " {{ app.name }} ${VALUE}",
+          );
+        },
+      ),
+    );
+  });
+
+  test("preserves literal strings inside load-produced objects and arrays", async () => {
+    // Given
+    await withEnv({ LANDO_QA_LITERAL: "{{ app.name }}", LANDO_QA_SHELL: "${VALUE}" }, () =>
+      withApp(
+        {
+          ".lando.yml":
+            'name: literal\nx-produced: "{{ { nested: { values: [env.LANDO_QA_LITERAL, env.LANDO_QA_SHELL] } } }}"\n',
+        },
+        async (root) => {
+          // When
+          const loaded = await Effect.runPromise(load(root));
+          // Then
+          expect(loaded["x-produced"]).toEqual({ nested: { values: ["{{ app.name }}", "${VALUE}"] } });
+        },
+      ),
+    );
+  });
+
+  test.each([".lando.yml", ".lando.local.yml"])(
+    "reports a preparation failure in %s before compiling dependent lower layers",
+    async (brokenFile) => {
+      // Given
+      await withApp(
+        {
+          ".lando.yml": "name: typed\n",
+          ".lando.base.yml": 'services:\n  web:\n    primary: "{{ recipe.flag }}"\n',
+          [brokenFile]: "mounts:\n  - {a: 1}\n",
+        },
+        async (root) => {
+          // When
+          const error = await Effect.runPromise(load(root).pipe(Effect.flip));
+          // Then
+          expect(error).toMatchObject({
+            _tag: "LandofileParseError",
+            filePath: join(root, brokenFile),
+          });
+        },
+      );
+    },
+  );
+
+  test.each([
+    { options: "    flag: false", field: 'primary: "{{ recipe.flag }}"', expected: { primary: false } },
+    {
+      options: "    args:\n      - node\n      - server.js",
+      field: 'entrypoint: "{{ recipe.args }}"',
+      expected: { entrypoint: ["node", "server.js"] },
+    },
+    {
+      options: "    mode: development",
+      field: 'environment: "{{ { NODE_ENV: recipe.mode } }}"',
+      expected: { environment: { NODE_ENV: "development" } },
+    },
+    {
+      options: "    retries: 4",
+      field: 'healthcheck:\n      retries: "{{ recipe.retries }}"',
+      expected: { healthcheck: { retries: 4 } },
+    },
+    {
+      options: "    flag: false",
+      field: 'database: "flag={{ recipe.flag }}"',
+      expected: { database: "flag=false" },
+    },
+  ])("preserves the concrete result before decoding $field", async ({ options, field, expected }) => {
+    // Given
+    await withApp(
+      {
+        ".lando.yml": `name: typed\n${provenance(options)}\nservices:\n  web:\n    type: node:22\n    ${field}\n`,
+      },
+      async (root) => {
+        // When
+        const result = await Effect.runPromise(load(root));
+        // Then
+        expect(result.services?.[ServiceName.make("web")]).toMatchObject(expected);
+      },
+    );
+  });
+
+  test("materializes a numeric router field in a single explicit file", async () => {
+    // Given
+    await withApp(
+      {
+        ".lando.yml": `name: typed\n${provenance("    port: 8088")}\nrouter:\n  httpPort: "{{ recipe.port }}"\n`,
+      },
+      async (root) => {
+        // When
+        const result = await Effect.runPromise(loadLandofileFile(join(root, ".lando.yml")));
+        // Then
+        expect(result.document.router?.httpPort).toBe(8088);
+      },
+    );
+  });
+
+  test.each(["!override false", "!reset"])(
+    "reads higher-layer recipe option %s with merge semantics",
+    async (directive) => {
+      // Given
+      await withApp(
+        {
+          ".lando.yml": `name: typed\n${provenance("    flag: true")}\nservices:\n  web:\n    primary: "{{ default(recipe.flag, false) }}"\n`,
+          ".lando.local.yml": provenance(`    flag: ${directive}`),
+        },
+        async (root) => {
+          // When
+          const result = await Effect.runPromise(load(root));
+          // Then
+          expect(result.services?.[ServiceName.make("web")]?.primary).toBe(false);
+        },
+      );
+    },
+  );
+
+  test("materializes an override payload at the authored path", async () => {
+    // Given
+    await withApp(
+      {
+        ".lando.yml": `name: typed\n${provenance("    flag: false")}\nservices:\n  web:\n    primary: !override "{{ recipe.flag }}"\n`,
+      },
+      async (root) => {
+        // When
+        const result = await Effect.runPromise(load(root));
+        // Then
+        expect(result.services?.[ServiceName.make("web")]?.primary).toBe(false);
+      },
+    );
+  });
+
+  test.each([
+    ['primary: "{{ recipe.value }}"', "    value: wrong", undefined],
+    ['primary: "{{ app.name }}"', "    value: false", "plan-time scopes"],
+    ['primary: !override "{{ env.LANDO_TYPED_MISSING }}"', "    value: false", undefined],
+  ])("attributes invalid or unresolved %s to the authoring layer", async (field, options, suggestion) => {
+    // Given
+    await withApp(
+      {
+        ".lando.yml": `name: typed\n${provenance(options)}\n`,
+        ".lando.base.yml": `services:\n  web:\n    ${field}\n`,
+      },
+      async (root) => {
+        // When
+        const result = await Effect.runPromise(load(root).pipe(Effect.result));
+        // Then
+        expect(result._tag).toBe("Failure");
+        if (field.includes("LANDO_TYPED_MISSING")) {
+          expect(result).toMatchObject({
+            _tag: "Failure",
+            failure: {
+              _tag: "ConfigExpressionError",
+              filePath: join(root, ".lando.base.yml"),
+              path: "services.web.primary",
+              expression: "{{ env.LANDO_TYPED_MISSING }}",
+            },
+          });
+          return;
+        }
+        if (result._tag !== "Failure" || result.failure._tag !== "LandofileValidationError")
+          throw new Error("Expected validation failure");
+        expect(result.failure.file).toBe(join(root, ".lando.base.yml"));
+        expect(result.failure.issues).toContainEqual(
+          expect.objectContaining({ path: ["services", "web", "primary"] }),
+        );
+        if (suggestion !== undefined) expect(result.failure.issues[0]?.suggestion).toContain(suggestion);
+      },
+    );
+  });
+
   test("materializes a whole recipe option reference from merged provenance", async () => {
     await withApp(
       {
@@ -156,8 +351,12 @@ describe("recipe option expressions in a loaded Landofile", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("services.appserver.type");
-        expect(failureMessage(exit)).toContain("recipe option the Landofile does not set");
+        expect(failureValue(exit)).toMatchObject({
+          _tag: "ConfigExpressionError",
+          path: "services.appserver.type",
+          filePath: join(appRoot, ".lando.yml"),
+          expression: "php:{{ recipe.missing }}",
+        });
       },
     );
   });
@@ -181,7 +380,11 @@ describe("recipe option expressions in a loaded Landofile", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("services.appserver.type");
+        expect(failureValue(exit)).toMatchObject({
+          _tag: "ConfigExpressionError",
+          path: "services.appserver.type",
+          filePath: join(appRoot, ".lando.yml"),
+        });
         expect(failureMessage(exit)).toContain("records no recipe options");
       },
     );
@@ -290,7 +493,12 @@ describe("env expressions in a loaded Landofile", () => {
 
           // Then
           expect(Exit.isFailure(exit)).toBe(true);
-          expect(failureMessage(exit)).toContain("services.web.image");
+          expect(failureValue(exit)).toMatchObject({
+            _tag: "ConfigExpressionError",
+            path: "services.web.image",
+            filePath: join(appRoot, ".lando.yml"),
+            expression: "node:{{ env.LANDO_MISSING_FIXTURE }}",
+          });
         },
       );
     });
@@ -314,8 +522,13 @@ describe("env expressions in a loaded Landofile", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("services.web.image");
-        expect(failureMessage(exit)).toContain("load-time expression budget");
+        expect(failureValue(exit)).toMatchObject({
+          _tag: "ConfigExpressionError",
+          path: "services.web.image",
+          filePath: join(appRoot, ".lando.yml"),
+          expression: "{{ range(0, 50000) }}",
+        });
+        expect(failureMessage(exit)).toContain("maxCollectionSize");
       },
     );
   });
@@ -459,8 +672,11 @@ describe("shell parameter text alongside deferred-scope expressions", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("tooling.scaffold.cmd");
-        expect(failureMessage(exit)).toContain("recipe option the Landofile does not set");
+        expect(failureValue(exit)).toMatchObject({
+          _tag: "ConfigExpressionError",
+          path: "tooling.scaffold.cmd",
+          filePath: join(appRoot, ".lando.yml"),
+        });
       },
     );
   });

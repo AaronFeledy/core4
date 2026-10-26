@@ -44,7 +44,6 @@ const plan: AppPlan = {
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -209,7 +208,7 @@ test("sidecar mode uses SshService.getAgentSocket as upstream", async () => {
 });
 
 for (const failure of [false, true]) {
-  test(`use ${failure ? "failure closes" : "success retains"} the session`, async () => {
+  test(`use ${failure ? "failure" : "success"} retains the detached session`, async () => {
     // Given
     let closed = 0;
     const session: AgentRelaySession = {
@@ -239,7 +238,7 @@ for (const failure of [false, true]) {
       ),
     );
     // Then
-    expect(closed).toBe(failure ? 1 : 0);
+    expect(closed).toBe(0);
   });
 }
 

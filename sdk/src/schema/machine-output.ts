@@ -10,6 +10,41 @@ import { ValidationIssue } from "./validation-issue.ts";
 export const CommandResultFormat = Schema.Literals(["text", "json", "table", "yaml", "ndjson"]);
 export type CommandResultFormat = typeof CommandResultFormat.Type;
 
+/** A completed command's semantic verdict, independent of its process status. */
+export const CommandCompletion = Schema.Union([
+  Schema.Struct({
+    ok: Schema.Literal(true).annotate({ description: "The command completed its intended operation." }),
+    exitCode: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)).annotate({
+      description: "Nonnegative shell status, including nonzero findings statuses.",
+    }),
+  }),
+  Schema.Struct({
+    ok: Schema.Literal(false).annotate({
+      description: "The command did not complete its intended operation.",
+    }),
+    exitCode: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)).annotate({
+      description: "Positive shell status for an unsuccessful completion.",
+    }),
+  }),
+]).annotate({ description: "Canonical semantic completion and shell status for a command." });
+export type CommandCompletion = typeof CommandCompletion.Type;
+
+export const CommandOutputChunk = Schema.Struct({
+  _tag: Schema.Literals(["stdout", "stderr"]).annotate({ description: "Output channel." }),
+  chunk: Schema.String.annotate({ description: "Safely decoded and redacted output text." }),
+  service: Schema.optionalKey(Schema.String).annotate({ description: "Originating service, when known." }),
+  source: Schema.optionalKey(Schema.String).annotate({ description: "Originating source, when known." }),
+}).annotate({ description: "One safe command output chunk with optional provenance." });
+export type CommandOutputChunk = typeof CommandOutputChunk.Type;
+
+export const CommandOutput = Schema.Struct({
+  chunks: Schema.Array(CommandOutputChunk).annotate({ description: "Ordered retained output tail." }),
+  truncated: Schema.Boolean.annotate({
+    description: "Whether any output was discarded to respect the budget.",
+  }),
+}).annotate({ description: "Bounded final command output, independent of progress notifications." });
+export type CommandOutput = typeof CommandOutput.Type;
+
 export const CommandWarning = Schema.Struct({
   code: Schema.String,
   message: Schema.String,
@@ -23,7 +58,7 @@ export type CommandWarning = typeof CommandWarning.Type;
 const taggedErrorFields = {
   _tag: Schema.String,
   message: Schema.String,
-  remediation: Schema.optionalKey(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   service: Schema.optionalKey(Schema.String),
   steps: Schema.optionalKey(
     Schema.Array(
@@ -56,7 +91,7 @@ const AdditionalErrorJson = Schema.StructWithRest(
   [Schema.Record(Schema.String, Schema.Unknown)],
 );
 
-const TaggedErrorJson = Schema.StructWithRest(
+export const TaggedErrorJson = Schema.StructWithRest(
   Schema.Struct({
     ...taggedErrorFields,
     additionalErrors: Schema.optionalKey(Schema.NonEmptyArray(AdditionalErrorJson)).annotate({
@@ -75,6 +110,9 @@ export const CommandResultEnvelope = Schema.Struct({
   command: Schema.String,
   ok: Schema.Boolean,
   result: Schema.optionalKey(Schema.Unknown),
+  output: Schema.optionalKey(CommandOutput).annotate({
+    description: "Bounded redacted command output tail.",
+  }),
   error: Schema.optionalKey(TaggedErrorJson),
   warnings: Schema.Array(CommandWarning),
   deprecations: Schema.Array(DeprecationUse),

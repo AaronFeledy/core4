@@ -2,6 +2,11 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
+import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
+import { makeLandoPaths } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
+import { CurrentExecutableAppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import {
   Cause,
   Clock,
@@ -16,6 +21,7 @@ import {
   Schema,
   Stream,
 } from "effect";
+import * as ContainerHelperAssetsLayer from "../container-helper/assets.ts";
 
 import {
   CacheError,
@@ -27,7 +33,7 @@ import {
 import {
   AbsolutePath,
   AppId,
-  AppPlan,
+  type AppPlan,
   type FileSyncSessionInfo,
   FileSyncSessionRef,
   GlobalConfig,
@@ -45,6 +51,7 @@ import {
   CommandRegistry,
   ConfigService,
   DeprecationService,
+  type EnvironmentValueResolver,
   type EventFor,
   EventService,
   type EventWaitSpec,
@@ -54,6 +61,7 @@ import {
   type LandoEvent,
   LandofileService,
   Logger,
+  PathsService,
   PluginRegistry,
   type PluginTrustState,
   PluginTrustStore,
@@ -166,9 +174,11 @@ type MinimalTestRuntimeServices =
   | FileSystem
   | PrivilegeService
   | SecretStore
+  | EnvironmentValueResolver
   | ProcessRunner
   | PrivateFileAccessService;
 type ProviderTestRuntimeServices =
+  | import("@lando/sdk/services").ContainerHelperAssets
   | MinimalTestRuntimeServices
   | PluginRegistry
   | RuntimeProviderRegistry
@@ -259,7 +269,11 @@ const recordLoggerCall = (
 };
 
 const serviceNotRegistered = (id: string): PluginLoadError =>
-  new PluginLoadError({ message: `Plugin service ${id} is not registered in TestRuntime.`, pluginName: id });
+  new PluginLoadError({
+    message: `Plugin service ${id} is not registered in TestRuntime.`,
+    pluginName: id,
+    remediation: `Register service ${id} in the TestRuntime plugin registry before loading it.`,
+  });
 
 const scratchNotFound = (id: string): ScratchAppNotFoundError =>
   new ScratchAppNotFoundError({
@@ -290,9 +304,10 @@ const makeAppPlan = (input: {
   readonly name: string;
   readonly root: string;
   readonly providerId: ProviderId;
-}): AppPlan => {
+}): CurrentExecutableAppPlan => {
   const service = makeServicePlan(input.providerId);
-  return Schema.decodeUnknownSync(AppPlan)({
+  return Schema.decodeUnknownSync(CurrentExecutableAppPlan)({
+    valueModel: 1,
     id: AppId.make(slugFromName(input.name)),
     name: input.name,
     slug: slugFromName(input.name),
@@ -300,7 +315,6 @@ const makeAppPlan = (input: {
     provider: input.providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: fixedMetadata,
@@ -359,7 +373,14 @@ const isExpiredCacheEntry = (entry: TestCacheEntry, nowMs: number): boolean =>
   entry.expiresAtMs !== undefined && entry.expiresAtMs <= nowMs;
 
 const eventError = (event: string, message: string, cause?: unknown): EventError =>
-  new EventError({ message, event, ...(cause === undefined ? {} : { cause }) });
+  new EventError({
+    message,
+    event,
+    ...(cause === undefined ? {} : { cause }),
+    remediation: event
+      ? `Fix the handler or emitter for event \`${event}\`, then re-run the operation that publishes it.`
+      : "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+  });
 
 const decodeCacheValue = <A, I>(key: string, value: unknown, schema?: Schema.Codec<A, I>) => {
   if (schema === undefined) {
@@ -373,6 +394,7 @@ const decodeCacheValue = <A, I>(key: string, value: unknown, schema?: Schema.Cod
           message: `Cached value for ${key} failed schema decode.`,
           key,
           decodeError,
+          remediation: `Delete the Lando cache entry \`${key}\` and re-run the command.`,
         }),
     ),
   );
@@ -486,6 +508,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
                     message: `Timed out waiting for event: ${label}`,
                     event: label,
                     reason: "timeout",
+                    remediation: `Increase the wait for event \`${label}\`, or fix whatever should emit that event before timing out.`,
                   }))(),
               ),
           }),
@@ -772,10 +795,15 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   });
 
   const runtimeProviderRegistryService = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(runtimeProvider.capabilities),
-    select: () => Effect.succeed(runtimeProvider),
+    select: (target) =>
+      Effect.succeed(
+        outputRegisteredTestProvider(runtimeProvider, typeof target === "object" ? target : undefined),
+      ),
     resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   });
 
   const globalPaths = {
@@ -785,6 +813,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   };
   const globalAppService = GlobalAppService.of({
     id: "global",
+    providerId: Effect.succeed(providerId),
     root: Effect.succeed(globalPaths.root),
     ensureRoot: Effect.void,
     paths: Effect.succeed(globalPaths),
@@ -802,15 +831,22 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     plan: (landofile) =>
       Effect.succeed(
         makeAppPlan({
-          name: landofile.name ?? "test-runtime-app",
+          name: landofile.document.name ?? "test-runtime-app",
           root: "/test-runtime/app",
-          providerId: landofile.provider ?? providerId,
+          providerId: landofile.document.provider ?? providerId,
         }),
       ),
   });
 
   const landofileService = LandofileService.of({
-    discover: Effect.succeed(makeLandofile(providerId)),
+    discover: Effect.succeed(
+      LoadScopedLandofile.make({
+        stage: "load-scoped",
+        document: makeLandofile(providerId),
+        pendingSites: [],
+        context: { appRoot: AbsolutePath.make("/test-runtime/app"), env: {} },
+      }),
+    ),
   });
 
   const scratchPaths = (id: string) => {
@@ -916,6 +952,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const scratchResourceScannerService = ScratchResourceScanner.of({
     listScratchIds: Effect.succeed([]),
     pruneScratch: () => Effect.void,
+    prepareScratch: () => Effect.succeed({ stop: Effect.succeed(false), destroy: Effect.succeed(false) }),
   });
 
   const toolingEngineService = ToolingEngine.of({
@@ -989,6 +1026,8 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     streamEvents: () => Stream.empty,
   });
 
+  const secretStoreLayer = Layer.succeed(SecretStore, secretStoreService);
+  const redactionLayer = RedactionService.layer;
   const minimalLayer: Layer.Layer<MinimalTestRuntimeServices> = Layer.mergeAll(
     Layer.succeed(Logger, loggerService),
     Layer.succeed(Renderer, rendererService),
@@ -1001,11 +1040,14 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     Layer.succeed(FileSystem, fileSystemService),
     Layer.succeed(PrivilegeService, privilegeService),
     Layer.succeed(SecretStore, secretStoreService),
+    redactionLayer,
+    EnvironmentValueResolverLayer.layer.pipe(Layer.provide(Layer.mergeAll(secretStoreLayer, redactionLayer))),
     Layer.succeed(ProcessRunner, processRunnerService),
     PrivateFileAccessService.layer,
   );
 
   const providerLayer: Layer.Layer<ProviderTestRuntimeServices> = Layer.mergeAll(
+    ContainerHelperAssetsLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
     minimalLayer,
     Layer.succeed(PluginRegistry, pluginRegistryService),
     Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistryService),

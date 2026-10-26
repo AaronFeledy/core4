@@ -8,12 +8,7 @@ import {
   appIncludesVerify,
   renderIncludesVerifyResult,
 } from "../../../commands/app-includes-verify";
-import { isEnvelopeResultFormat } from "../../../format-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { specFlagsOf, stringFlag } from "../../../spec/input-coercion";
-
-const usesEnvelopeFormat = (input: unknown): boolean =>
-  isEnvelopeResultFormat(stringFlag(specFlagsOf(input), "format") ?? "");
 
 export const appIncludesVerifySpec: LandoCommandSpec<
   IncludeVerifyReport,
@@ -22,7 +17,8 @@ export const appIncludesVerifySpec: LandoCommandSpec<
 > = {
   resultSchema: AppIncludesVerifyResultSchema,
   id: "app:includes:verify",
-  summary: "Verify the includes lockfile matches the resolved tree without updating it.",
+  summary:
+    "Verify the includes lockfile pins every remote include and the pinned content matches, without updating it.",
   namespace: "app",
   bootstrap: "minimal",
   flags: {
@@ -32,6 +28,6 @@ export const appIncludesVerifySpec: LandoCommandSpec<
     }),
   },
   run: () => appIncludesVerify(),
-  successExitCode: (result, input) => (result.ok || usesEnvelopeFormat(input) ? undefined : 1),
+  completion: (result) => ({ ok: true, exitCode: result.ok ? 0 : 1 }),
   render: (result) => renderIncludesVerifyResult(result as IncludeVerifyReport, "text"),
 };

@@ -7,6 +7,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  PortNumber,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -19,6 +20,7 @@ import type { InfoAppResult } from "@lando/sdk/app";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
+import { connections } from "./connection-fixtures";
 
 /**
  * Regression guard: secret values MUST NOT appear in `lando info`
@@ -79,8 +81,8 @@ const postgres: ServicePlan = {
   artifact: { kind: "ref", ref: "postgres:16-alpine" },
   command: ["postgres"],
   // The service carries a secret-shaped value in its environment; info must
-  // never serialize this. LANDO_DB_* is the published creds surface and must
-  // emit redacted password fields only.
+  // never serialize this. The connection is the published creds surface and
+  // must emit redacted password fields only.
   environment: {
     POSTGRES_USER: "lando",
     POSTGRES_DB: "appdb",
@@ -88,6 +90,11 @@ const postgres: ServicePlan = {
     LANDO_DB_USER: "lando",
     LANDO_DB_PASSWORD: SECRET_VALUE,
     LANDO_DB_NAME: "appdb",
+  },
+  connection: {
+    family: "postgres",
+    port: PortNumber.make(5432),
+    creds: { user: "lando", database: "appdb", password: { _tag: "SecretRef", reference: "DB_PASSWORD" } },
   },
   mounts: [],
   storage: [],
@@ -107,7 +114,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [postgres.name]: postgres },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -129,11 +135,21 @@ const makeInfoLayer = () => {
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "buildArtifact",
+          message: "x",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+        }),
       ),
     pullArtifact: () =>
       Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "pullArtifact",
+          message: "x",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+        }),
       ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
@@ -152,7 +168,7 @@ const makeInfoLayer = () => {
         providerId,
         status: "running",
         state: "running",
-        endpoints: plan.services[target.service]?.endpoints ?? [],
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
   };
@@ -161,15 +177,18 @@ const makeInfoLayer = () => {
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({ name: "test-info-secret", services: {} }),
+        discover: Effect.succeed(literalLandofile({ name: "test-info-secret", services: {} }, plan.root)),
       }),
     ).pipe(Layer.provide(emptyConfigServiceLayer)),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })).pipe(
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })).pipe(
       Layer.provide(emptyConfigServiceLayer),
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
@@ -222,7 +241,7 @@ describe("lando info text does not double-wrap the redaction sentinel", () => {
         provider: "lando",
         primary: true,
         status: "running",
-        endpoints: [],
+        connections: connections(["tcp://mysql:3306"], "app"),
         creds: {
           user: "appuser",
           password: REDACTED,
@@ -261,3 +280,4 @@ describe("lando info text does not double-wrap the redaction sentinel", () => {
     expect(json).not.toContain(SECRET_VALUE);
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

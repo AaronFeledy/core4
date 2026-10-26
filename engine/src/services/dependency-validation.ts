@@ -3,10 +3,12 @@ import { Effect, Graph, Option, Schema } from "effect";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { type AppPlan, DependencyPlan, HealthcheckPlan } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
+import { effectiveReadiness } from "@lando/sdk/schema";
 
 const DependencyServicePlan = Schema.Struct({
   dependsOn: Schema.Array(DependencyPlan),
   healthcheck: Schema.optionalKey(HealthcheckPlan),
+  readiness: Schema.optionalKey(HealthcheckPlan),
 });
 
 const DependencyServicePlans = Schema.Record(Schema.String, DependencyServicePlan);
@@ -29,6 +31,7 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
           return yield* Effect.fail(
             new LandofileValidationError({
               message: `Service ${dependentName} depends on missing service ${targetName} with condition ${dependency.condition}. Add service ${targetName} to services or set required: false on this dependency.`,
+              remediation: `Add service ${targetName} to services or set required: false on this dependency.`,
               file: `${appRoot}/.lando.yml`,
               issues: [
                 validationIssue(
@@ -44,11 +47,12 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
 
       if (
         dependency.condition === "service_healthy" &&
-        (target.healthcheck === undefined || target.healthcheck.kind === "none")
+        (effectiveReadiness(target) === undefined || effectiveReadiness(target)?.kind === "none")
       ) {
         return yield* Effect.fail(
           new LandofileValidationError({
             message: `Service ${dependentName} depends on service ${targetName} with condition service_healthy, but service ${targetName} has no enabled healthcheck. Add a healthcheck with kind: command to service ${targetName}, or relax the dependency condition to service_started. Setting required: false only allows the dependency to be missing or fail; it does not make an unsatisfiable condition valid.`,
+            remediation: `Add a command healthcheck to service ${targetName}, or relax the dependency condition to service_started.`,
             file: `${appRoot}/.lando.yml`,
             issues: [
               validationIssue(
@@ -90,6 +94,8 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
     return yield* Effect.fail(
       new LandofileValidationError({
         message: `Dependency cycle detected: ${description}. Remove or redirect one dependency edge; required: false does not break a dependency cycle.`,
+        remediation:
+          "Remove or redirect one dependency edge; required: false does not break a dependency cycle.",
         file: `${appRoot}/.lando.yml`,
         issues: [
           validationIssue(

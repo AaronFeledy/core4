@@ -7,7 +7,7 @@ tags: [beta, docs, ruby, service, runtime]
 
 # Add Ruby
 
-Put `type: ruby:3.3` on the primary service. Ruby has no bare `type: ruby` alias, so pin a version.
+Add `type: ruby:3.3` to your primary service in `.lando.yml` at the root of your Ruby project. Ruby has no bare `type: ruby` alias, so pin a version.
 Lando currently supports `ruby:3.3`, and the default image is
 `ruby:3.3-slim`. Your repository is bind-mounted read-write at `/app` by
 default, which is also the working directory:
@@ -38,7 +38,7 @@ services:
 ## Run the app
 
 The default keep-alive command holds the container open so you can install
-gems and run your app via tooling:
+gems and run your app. The commands below assume an existing Rails project and a `bundle` tooling alias targeting `app`; the Ruby service alone does not declare that alias:
 
 ```sh
 # Declare a bundle tooling alias to install gems inside the service
@@ -52,7 +52,7 @@ Ruby publishes its port endpoint but has no default healthcheck, even with an au
 
 ## Set the Ruby webroot context
 
-Run `lando rebuild` after adding `framework: rails` and your `webroot:` to the service:
+Run `lando start` after adding `framework: rails` and your `webroot:` to the service:
 
 ```yaml
 services:
@@ -66,14 +66,14 @@ services:
 Rails defaults to `webroot: public`; without a framework, Ruby defaults to `.`.
 Your `webroot:` wins in either case. Relative paths resolve against
 `appMount.target` (default `/app`), so this sets `LANDO_WEBROOT` to
-`/app/frontend/public`. Set `appMount.target: /site` to get
+`/app/frontend/public`. Set `appMount: /site` to get
 `/site/frontend/public`, or use an absolute container path such as `/srv/www`.
 Relative paths can't escape the app mount with `..`.
 
 Verify the value inside the running service:
 
 ```sh
-lando rebuild
+lando start
 lando exec app -- printenv LANDO_WEBROOT
 ```
 
@@ -101,6 +101,8 @@ lando app:cache:refresh --format=json
   </Scenario>
 
 ## Pin a version
+
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Set `image:` to use the full (non-slim) or an alternate Ruby base image when
 `ruby:3.3-slim` isn't what you want. Slim lacks build tools that some gems need:

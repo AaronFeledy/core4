@@ -88,7 +88,6 @@ describe("meilisearch service type — live integration: index create + document
           provider: providerId,
           services: { [search.name]: search },
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata: search.metadata,

@@ -50,6 +50,8 @@ The worker can't run yet: Laravel and Horizon aren't installed, so its process e
 
 ## Install Laravel, Horizon, and Predis
 
+From the app directory on your host, scaffold Laravel and install the queue packages. The permission change below makes cache and log directories writable for local development; do not use it as a production permissions policy.
+
 ```sh
 lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
 lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
@@ -58,7 +60,7 @@ lando composer require laravel/horizon predis/predis --no-interaction
 lando artisan horizon:install
 ```
 
-`horizon:install` writes `config/horizon.php` and registers its service provider. Stock PHP includes Horizon's required `pcntl` and `posix` extensions, but not `phpredis`; use the Composer-installed Predis client. The writable cache/log permissions above are for local development only.
+`horizon:install` writes `config/horizon.php` and registers its service provider. Stock PHP includes Horizon's required `pcntl` and `posix` extensions, but not `phpredis`; use the Composer-installed Predis client.
 
 ## Point Laravel at MariaDB and Redis
 
@@ -186,8 +188,8 @@ lando artisan horizon:forget JOB_UUID
 
 | You see | Fix |
 | --- | --- |
-| `/horizon` and every route but `/` return 404 | `mod_rewrite` is off. Add the `a2enmod rewrite` build step and run `lando rebuild -y`. |
-| `worker` stays `stopped` after `horizon:terminate` | The service has no `restart: unless-stopped`. Add it and run `lando rebuild -y`. |
+| `/horizon` and every route but `/` return 404 | `mod_rewrite` is off. Add the `a2enmod rewrite` build step and run `lando start`. |
+| `worker` stays `stopped` after `horizon:terminate` | The service has no `restart: unless-stopped`. Add it and run `lando start`. |
 | `No processes to terminate.` | You ran it on `appserver`. Use `lando exec worker -- php artisan horizon:terminate`. |
 | `horizon:status` says `Horizon is inactive.` | Check `lando logs -s worker`. A worker started before `artisan` existed retries automatically; finish installation and configuration, then check status again. |
 

@@ -8,7 +8,16 @@ tags: [beta, docs, subsystems, networking, ports, lan]
 
 # Reach an app from another device
 
-Bind a published port to `0.0.0.0` when you want LAN or external reachability. By default, host-exposed ports bind to `127.0.0.1` and stay on this machine.
+Bind a published port to `0.0.0.0` when you intend other devices to reach it.
+By default, host-exposed ports bind to `127.0.0.1` and stay on this machine.
+A wide bind exposes the service to other devices wherever the host firewall
+allows access. Do not use it for services with real credentials or unreviewed
+development tools; prefer a specific interface IP when possible.
+
+Save this example as `.lando.yml` in an app directory, then run `lando start`
+there. From a second device, open `http://<host-lan-ip>:8080`, replacing
+`<host-lan-ip>` with the app host's LAN address. The response confirms direct
+port access; it does not test proxy hostname resolution.
 
 ```yaml
 name: external-access-demo
@@ -16,6 +25,7 @@ services:
   web:
     type: compose
     image: traefik/whoami:v1.10
+    home: false
     primary: true
     ports:
       - 0.0.0.0:8080:80
@@ -34,6 +44,11 @@ services:
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "0\\.0\\.0\\.0" } }} />
     </Step>
+    <Step name="inspect-connections">
+      <Run command="lando app:info --format=json" />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"url\":\\s*\"tcp://localhost:8080\"" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"url\":\\s*\"tcp://web:80\"" } }} />
+    </Step>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
@@ -45,7 +60,7 @@ services:
 
 Binding a service to `0.0.0.0` exposes it to every device on your LAN. On a shared or untrusted network, that includes anyone else on that network. Only bind wide when you intend LAN or external reachability. Never do it for services holding real credentials or unreviewed dev tooling. Prefer a named interface IP over `0.0.0.0` when you can.
 
-Reverting a wide bind needs a rebuild, not just a restart. Remove `host_ip` or set it back to `127.0.0.1`, then run `lando rebuild`.
+Reverting a wide bind is a create-config change. Remove `host_ip` or set it back to `127.0.0.1`, then run `lando start`. Bare `lando restart` also stop/starts and applies it. Selected `lando restart -s` refuses bind drift and tells you to run `lando rebuild -s <name>`.
 
 ## Compose ports short-syntax reference
 
@@ -72,6 +87,10 @@ ports:
 The proxy answers a hostname like `web.external-access-demo.lndo.site`. Public DNS resolves `*.lndo.site` to `127.0.0.1`, and Lando does not write host DNS rules. On another device, that address points at the device itself, not your app host.
 
 Proxy routing and published ports are independent. Reaching a proxied hostname from the host does not need a `ports:` entry. `ports:` only controls direct host-port publication.
+
+On a typed service such as `node` or `mysql`, `ports:` adds host publications without removing the type's own listener. The service keeps its primary port whether `ports:` is absent or an empty list, and a published entry that targets that same port publishes that listener on the host; it keeps the listener's protocol and primary marking. A published port the type doesn't know is reported as plain `tcp` or `udp`, because a Compose port mapping describes transport, not application protocol. A Compose `app_protocol` value is kept as a hint and doesn't change that. `expose:` adds an App Network `tcp` listener for any port the service doesn't already declare. To remove a service's listeners from the plan, set `endpoints: []`; an explicit `endpoints:` list is authoritative and `ports:` cannot stand in for it.
+
+`lando info` shows the result as connections grouped by scope. The `0.0.0.0:8080:80` publication above is the Host connection `tcp://localhost:8080`; Lando shows a wildcard bind as `localhost`, the address you use from this machine. `web` also keeps its App Network address, `tcp://web:80`, for other services in the app. `web` is a raw Compose service, so Lando knows that port only as TCP and does not hyperlink or scan it. Declare `protocol: http` in an explicit `endpoints:` entry when you want HTTP treatment.
 
 Another device can reach an explicitly bound `IP:port`. To use a proxy hostname there, point it at the app host's LAN IP with your own DNS or hosts entry and ensure the proxy listener and firewall allow LAN access.
 

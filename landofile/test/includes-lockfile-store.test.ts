@@ -10,7 +10,11 @@ import type { StateStoreShape } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 
 import type { GitIncludeCloner } from "../src/includes.ts";
-import { updateLandofileIncludes, verifyLandofileIncludes } from "../src/includes.ts";
+import {
+  resolveAuthoredIncludes,
+  updateAuthoredIncludes as updateLandofileIncludes,
+  verifyAuthoredIncludes as verifyLandofileIncludes,
+} from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const sha256 = (content: string): string => new Bun.CryptoHasher("sha256").update(content).digest("hex");
@@ -96,14 +100,14 @@ describe("store-backed include lockfile", () => {
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
         stateStore,
-        deps: { gitCloner: clonerReturning("abc123") },
+        deps: { gitCloner: clonerReturning("a".repeat(40)) },
       }),
     );
     expect(report.wrote).toBe(true);
-    expect(opens).toBe(2);
+    expect(opens).toBe(3);
     const written = await readFile(lockPath, "utf8");
     const expected = renderExpectedLockfile([
-      { source: "github:acme/fragments/postgres.yml", resolved: "abc123", checksum: sha256(FRAGMENT) },
+      { source: "github:acme/fragments/postgres.yml", resolved: "a".repeat(40), checksum: sha256(FRAGMENT) },
     ]);
     expect(written).toBe(expected);
   });
@@ -117,7 +121,7 @@ describe("store-backed include lockfile", () => {
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
         stateStore,
-        deps: { gitCloner: clonerReturning("abc123") },
+        deps: { gitCloner: clonerReturning("a".repeat(40)) },
       }),
     );
     const onDisk = await readFile(lockPath, "utf8");
@@ -128,7 +132,7 @@ describe("store-backed include lockfile", () => {
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
         stateStore,
-        deps: { gitCloner: clonerReturning("abc123") },
+        deps: { gitCloner: clonerReturning("a".repeat(40)) },
       }),
     );
     expect(report.ok).toBe(true);
@@ -136,10 +140,10 @@ describe("store-backed include lockfile", () => {
     expect(await readFile(lockPath, "utf8")).toBe(onDisk);
   });
 
-  test("verify reads a pre-migration block-style lockfile fixture without rewriting it", async () => {
+  test("verify reads a block-style lockfile fixture without rewriting it", async () => {
     const lockPath = join(appRoot, ".lando.lock.yml");
     const fixture = renderExpectedLockfile([
-      { source: "github:acme/fragments/postgres.yml", resolved: "abc123", checksum: sha256(FRAGMENT) },
+      { source: "github:acme/fragments/postgres.yml", resolved: "a".repeat(40), checksum: sha256(FRAGMENT) },
     ]);
     await writeFile(lockPath, fixture, "utf8");
     const report = await Effect.runPromise(
@@ -149,32 +153,72 @@ describe("store-backed include lockfile", () => {
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
         stateStore,
-        deps: { gitCloner: clonerReturning("abc123") },
+        deps: { gitCloner: clonerReturning("a".repeat(40)) },
       }),
     );
     expect(report.ok).toBe(true);
     expect(await readFile(lockPath, "utf8")).toBe(fixture);
   });
 
-  test("a corrupt lockfile is discarded (no throw, no quarantine) and re-resolves clean", async () => {
+  test("a corrupt lockfile fails closed without rewriting or quarantine", async () => {
     const lockPath = join(appRoot, ".lando.lock.yml");
     const corrupt = "::: not valid lockfile yaml :::\n";
     await writeFile(lockPath, corrupt, "utf8");
-    const report = await Effect.runPromise(
-      verifyLandofileIncludes({
-        landofile: landofile(),
-        appRoot,
-        cacheRoot,
-        ports: makeTestLandofilePorts(cacheRoot),
-        stateStore,
-        deps: { gitCloner: clonerReturning("abc123") },
-      }),
+    const error = await Effect.runPromise(
+      Effect.flip(
+        verifyLandofileIncludes({
+          landofile: landofile(),
+          appRoot,
+          cacheRoot,
+          ports: makeTestLandofilePorts(cacheRoot),
+          stateStore,
+          deps: { gitCloner: clonerReturning("abc123") },
+        }),
+      ),
     );
-    // Corrupt prior lock discarded -> the resolved fragment shows as missing-from-lock.
-    expect(report.ok).toBe(false);
-    expect(report.entries[0]?.status).toBe("missing");
-    // onCorrupt: "discard" must NOT leave a quarantine sibling.
+    expect(error).toMatchObject({
+      _tag: "LandofileParseError",
+      filePath: lockPath,
+      remediation:
+        "Restore .lando.lock.yml from version control or remove it, then run lando app:includes:update.",
+    });
     expect((await readdir(appRoot)).some((name) => name.startsWith(".lando.lock.yml.corrupt-"))).toBe(false);
     expect(await readFile(lockPath, "utf8")).toBe(corrupt);
+  });
+
+  test("load preserves a parse error when the lockfile becomes corrupt before the locked write", async () => {
+    // Given
+    const lockPath = join(appRoot, ".lando.lock.yml");
+    await writeFile(lockPath, "includes:\n", "utf8");
+    const corruptingStore: StateStoreShape = {
+      ...stateStore,
+      withLock: (key, body) =>
+        stateStore.withLock(
+          key,
+          Effect.promise(() => writeFile(lockPath, "::: corrupt lock :::\n", "utf8")).pipe(
+            Effect.andThen(body),
+          ),
+        ),
+    };
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(
+        resolveAuthoredIncludes({
+          landofile: landofile(),
+          appRoot,
+          cacheRoot,
+          ports: makeTestLandofilePorts(cacheRoot),
+          stateStore: corruptingStore,
+          deps: { gitCloner: clonerReturning("a".repeat(40)) },
+        }),
+      ),
+    );
+    // Then
+    expect(error).toMatchObject({
+      _tag: "LandofileParseError",
+      filePath: lockPath,
+      remediation:
+        "Restore .lando.lock.yml from version control or remove it, then run lando app:includes:update.",
+    });
   });
 });

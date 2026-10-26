@@ -10,9 +10,9 @@ import type { AppPlan } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import {
-  type LoadGlobalPlanError,
   type LoadGlobalPlanServices,
-  loadGlobalPlan,
+  type LoadObservedGlobalPlanError,
+  loadObservedGlobalPlan,
 } from "@lando/engine/operations/global-plan";
 import { AppInfoResultSchema, infoForPlan } from "@lando/engine/operations/info";
 import type { RenderContext } from "../../renderer-boundary";
@@ -29,7 +29,7 @@ export const GlobalInfoResultSchema = AppInfoResultSchema;
 export type GlobalInfoError =
   | ComposeKeyRejectedError
   | InfoAppError
-  | LoadGlobalPlanError
+  | LoadObservedGlobalPlanError
   | ToolingExecError
   | LandofileLoadExpressionError;
 export type GlobalInfoServices = LoadGlobalPlanServices | RuntimeProviderRegistry;
@@ -60,7 +60,7 @@ const selectPlanForServices = (
 export const globalInfo = Effect.fn("GlobalInfo.info")(function* (
   options: GlobalInfoOptions = {},
 ): Effect.fn.Return<GlobalInfoResult, GlobalInfoError, GlobalInfoServices> {
-  const loaded = yield* loadGlobalPlan();
+  const loaded = yield* loadObservedGlobalPlan();
   if (!loaded.materialized) return { app: "global", services: [] };
   const plan = yield* selectPlanForServices(loaded.plan, options.services);
   return yield* infoForPlan(plan);

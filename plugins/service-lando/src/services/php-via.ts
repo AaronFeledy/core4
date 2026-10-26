@@ -2,6 +2,7 @@ import type { LogSource, ServiceConfig } from "@lando/sdk/schema";
 import { AbsolutePath, LogSourceId } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
+import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import { apacheDirectivePath } from "./apache.ts";
 import { apacheErrorPageDirectives } from "./http-errors.ts";
 
@@ -74,7 +75,11 @@ const isPhpVia = (value: string): value is PhpVia => (PHP_VIA_MODES as ReadonlyA
 export const resolvePhpVia = (value: unknown): PhpVia => {
   if (value === undefined) return "apache";
   if (typeof value === "string" && isPhpVia(value)) return value;
-  throw new Error(`Unsupported PHP serving mode ${JSON.stringify(value)}. ${VIA_REMEDIATION}`);
+  throw new ServiceConfigIssue(
+    ["via"],
+    `Unsupported PHP serving mode ${JSON.stringify(value)}.`,
+    VIA_REMEDIATION,
+  );
 };
 
 // Official Hub publishes PHP 8.6 as RC bookworm tags until GA. Other minors use the GA tag.
@@ -89,15 +94,13 @@ export const hasCustomPhpImage = (service: ServiceConfig): boolean => {
   return version === undefined || service.image !== phpImageFor(version, "apache");
 };
 
-export const phpListenPort = (via: PhpVia, authoredPort: number | undefined): number => {
+export const phpListenPort = (via: Exclude<PhpVia, "cli">, authoredPort: number | undefined): number => {
   if (authoredPort !== undefined) return authoredPort;
   switch (via) {
     case "apache":
       return PHP_APACHE_PORT;
     case "fpm":
       return PHP_FPM_PORT;
-    case "cli":
-      return PHP_APACHE_PORT;
     default: {
       const exhaustive: never = via;
       return exhaustive;
@@ -105,17 +108,39 @@ export const phpListenPort = (via: PhpVia, authoredPort: number | undefined): nu
   }
 };
 
-export const phpEndpointProtocol = (via: PhpVia): "http" | "tcp" => (via === "fpm" ? "tcp" : "http");
+/** CLI has no listener. Apache must retain whether its port was explicitly authored. */
+export const phpServingMode = (via: PhpVia, authoredPort: number | undefined) => {
+  switch (via) {
+    case "apache":
+      return {
+        via,
+        listener: { port: phpListenPort(via, authoredPort), protocol: "http" },
+        authoredApachePort: authoredPort,
+      } as const;
+    case "fpm":
+      return { via, listener: { port: phpListenPort(via, authoredPort), protocol: "tcp" } } as const;
+    case "cli":
+      return { via, listener: undefined } as const;
+    default: {
+      const exhaustive: never = via;
+      return exhaustive;
+    }
+  }
+};
 
 export const assertPhpViaKeys = (via: PhpVia, service: ServiceConfig): void => {
   if ((via === "fpm" || via === "cli") && service.allowOverride !== undefined) {
-    throw new Error(
-      `allowOverride: is Apache-only. Remove allowOverride: from this ${via} service. ${VIA_REMEDIATION}`,
+    throw new ServiceConfigIssue(
+      ["allowOverride"],
+      "allowOverride: is Apache-only.",
+      `Remove allowOverride: from this ${via} service. ${VIA_REMEDIATION}`,
     );
   }
   if (via === "cli" && service.routes !== undefined) {
-    throw new Error(
-      `HTTP routes: are not valid for via: cli. Remove routes: or use via: apache / via: fpm. ${VIA_REMEDIATION}`,
+    throw new ServiceConfigIssue(
+      ["routes"],
+      "HTTP routes: are not valid for via: cli.",
+      `Remove routes: or use via: apache / via: fpm. ${VIA_REMEDIATION}`,
     );
   }
 };

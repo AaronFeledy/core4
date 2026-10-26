@@ -1,15 +1,11 @@
 import { DateTime, Effect, Schema } from "effect";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
+import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
+import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
-import { publishGlobalRoutes } from "@lando/engine/operations/global-routes";
 
-import {
-  applyGlobalServiceGroups,
-  globalServiceGroupError,
-  waitForGlobalServiceGroups,
-} from "@lando/engine/operations/global-service-groups";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
+import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import type {
   GlobalAppError,
@@ -27,7 +23,7 @@ import type {
 } from "@lando/sdk/errors";
 import type { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
-import { ServiceName } from "@lando/sdk/schema";
+import { StartedService } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -58,27 +54,11 @@ export interface GlobalStartOptions {
   readonly signal?: AbortSignal;
 }
 
-export interface GlobalStartedService {
-  readonly name: string;
-  readonly state: string;
-  readonly endpoints: ReadonlyArray<string>;
-}
-
-export interface GlobalStartResult {
-  readonly app: string;
-  readonly servicesStarted: ReadonlyArray<GlobalStartedService>;
-}
-
-export const GlobalStartedServiceSchema = Schema.Struct({
-  name: Schema.String,
-  state: Schema.String,
-  endpoints: Schema.Array(Schema.String),
-});
-
 export const GlobalStartResultSchema = Schema.Struct({
   app: Schema.String,
-  servicesStarted: Schema.Array(GlobalStartedServiceSchema),
+  servicesStarted: Schema.Array(StartedService),
 });
+export type GlobalStartResult = typeof GlobalStartResultSchema.Type;
 
 export type GlobalStartError =
   | ServiceNotReadyError
@@ -99,6 +79,7 @@ export type GlobalStartError =
   | ToolingExecError;
 
 export type GlobalStartServices =
+  | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -142,7 +123,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
   }
   const events = yield* EventService;
   const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const provider = yield* registry.select(loaded.plan.provider);
 
   return yield* withGlobalLifecycleEvents(
     {
@@ -183,23 +164,17 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
         },
         (plan) => withBuildProvider(builds.build(plan), provider),
       );
-      const outcome = yield* waitForGlobalServiceGroups(provider, applied, options.signal);
-      const partialError = globalServiceGroupError("start", outcome);
-      const selectedNames = new Set(outcome.services.map((service) => service.name));
-      const failedNames = new Set(outcome.failures.flatMap((failure) => failure.names));
-      const applyRoutes = publishGlobalRoutes(router, provider, loaded.plan, {
-        started: selectedNames,
-        failed: failedNames,
+      const outcome = yield* completeStartup({
+        policy: "global-groups",
+        operation: "start",
+        provider,
+        router,
+        outcome: applied,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
       });
-      if (partialError !== undefined) {
-        yield* Effect.result(applyRoutes);
-        return yield* Effect.fail(partialError);
-      }
-      const routeUrls = yield* applyRoutes;
-      const servicesStarted = outcome.ready.map((row) => ({
-        ...row,
-        endpoints: [...row.endpoints, ...(routeUrls.get(ServiceName.make(row.name)) ?? [])],
-      }));
+      const servicesStarted = startedServices(
+        yield* collectObservedConnections(outcome.builtPlan, outcome.ready),
+      );
       return { app: loaded.plan.name, servicesStarted };
     }),
   );

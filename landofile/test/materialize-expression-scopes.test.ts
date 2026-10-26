@@ -1,134 +1,183 @@
 import { expect, test } from "bun:test";
+import { Effect, Result } from "effect";
+import { consumeSites } from "../src/compiled-sites.ts";
+import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
+import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
 import {
-  LOAD_DEFERRED_EXPRESSION_SCOPES,
   PLAN_IDENTITY_EXPRESSION_SCOPES,
   PLAN_SERVICE_EXPRESSION_SCOPES,
-  materializeExpressionScopes,
-  materializeLoadScopeExpressions,
-} from "@lando/landofile/recipe-expressions";
+} from "../src/recipe-expressions.ts";
 
-const input = {
-  scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
-  context: {
-    app: { name: "dcms-demo", slug: "dcms-demo" },
-    proxy: { defaultDomain: "example.test" },
-    recipe: { flavor: "cms" },
-    env: { FLAVOR: "host" },
-  },
+const context = {
+  app: { name: "dcms-demo", slug: "dcms-demo" },
+  proxy: { defaultDomain: "example.test" },
+  recipe: { flavor: "cms" },
+  env: { FLAVOR: "host" },
+};
+const compile = (value: unknown) =>
+  Effect.runPromise(
+    resolveLandofileLoadExpressions({
+      value,
+      source: { appRoot: "/app", sourceRoot: "/app", sourcePath: "/app/.lando.yml", layer: "canonical" },
+      policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+    }),
+  );
+const success = <A, E>(result: Result.Result<A, E>): A => {
+  if (Result.isFailure(result)) throw result.failure;
+  return result.success;
 };
 
-test("materializes app, proxy, recipe, and env throughout nested values", () => {
-  const source = {
+test("materializes app, proxy, recipe, and env throughout nested values", async () => {
+  const compiled = await compile({
     services: { database: { database: "{{ app.name }}" } },
     tooling: { install: { cmd: 'echo "$PWD" {{ app.slug }}.{{ proxy.defaultDomain }}' } },
     configs: [{ content: "{{ app.name }}-{{ recipe.flavor }}-{{ env.FLAVOR }}" }],
-  };
-  const result = materializeExpressionScopes(source, "/app/.lando.yml", input);
-  expect(result.unresolved).toEqual([]);
-  expect(result.value).toEqual({
+  });
+  const result = success(
+    consumeSites({
+      document: compiled.value,
+      pendingSites: compiled.pendingSites,
+      context,
+      scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
+    }),
+  );
+  expect(result.document).toEqual({
     services: { database: { database: "dcms-demo" } },
     tooling: { install: { cmd: 'echo "$PWD" dcms-demo.example.test' } },
     configs: [{ content: "dcms-demo-cms-host" }],
   });
-  expect(source.services.database.database).toBe("{{ app.name }}");
+  expect(result.pendingSites).toEqual([]);
 });
 
-test.each(["${VAR}", "${secret:token}"])("leaves unescaped %s sites untouched", (shell) => {
-  const source = { cmd: `echo {{ app.name }} ${shell}` };
-  const result = materializeExpressionScopes(source, "/app/.lando.yml", input);
-  expect(result.value).toBe(source);
-  expect(result.unresolved).toEqual([]);
+test.each(["${VAR}", "${secret:token}"])("rejects unescaped %s outside binding sites", async (shell) => {
+  const result = await compile({ cmd: `echo {{ app.name }} ${shell}` }).then(
+    () => false,
+    () => true,
+  );
+  expect(result).toBe(true);
 });
 
-test("materializes beside an escaped braced form", () => {
-  const result = materializeExpressionScopes({ cmd: "{{ app.name }} $${VAR}" }, "/app/.lando.yml", input);
-  expect(result.value.cmd).toBe("dcms-demo ${VAR}");
+test("materializes beside an escaped braced form once", async () => {
+  const compiled = await compile({ cmd: "{{ app.name }} $${VAR}" });
+  const result = success(
+    consumeSites({
+      document: compiled.value,
+      pendingSites: compiled.pendingSites,
+      context,
+      scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
+    }),
+  );
+  expect(result.document).toEqual({ cmd: "dcms-demo ${VAR}" });
 });
 
-test("preserves recipe provenance even when other sites change", () => {
-  const recipe = { options: { name: "{{ app.name }}" } };
-  const source = { recipe, cmd: "{{ app.name }}" };
-  const result = materializeExpressionScopes(source, "/app/.lando.yml", input);
-  expect(result.value.cmd).toBe("dcms-demo");
-  expect(result.value.recipe).toBe(recipe);
-  expect(result.value.recipe.options.name).toBe("{{ app.name }}");
+test("preserves recipe provenance even when other sites change", async () => {
+  const compiled = await compile({ recipe: { options: { name: "{{ app.name }}" } }, cmd: "{{ app.name }}" });
+  const result = success(
+    consumeSites({
+      document: compiled.value,
+      pendingSites: compiled.pendingSites,
+      context,
+      scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
+    }),
+  );
+  expect(result.document).toEqual({ recipe: { options: { name: "{{ app.name }}" } }, cmd: "dcms-demo" });
 });
 
-test("preserves identity when no eligible sites change", () => {
-  const source = { plain: "text", nested: ["{{ service.name }}", "{{ app."] };
-  const result = materializeExpressionScopes(source, "/app/.lando.yml", input);
-  expect(result.value).toBe(source);
-  expect(result.unresolved).toEqual([]);
+test("preserves identity when no recorded sites change", () => {
+  const document = { plain: "text", nested: ["{{ service.name }}", "{{ app."] };
+  const result = success(
+    consumeSites({ document, pendingSites: [], context, scopes: PLAN_IDENTITY_EXPRESSION_SCOPES }),
+  );
+  expect(result.document).toBe(document);
 });
 
-test("defers services.* at load, reports the deferred sites, and resolves them with the service scopes", () => {
-  expect(LOAD_DEFERRED_EXPRESSION_SCOPES).toContain("services");
-  expect(PLAN_IDENTITY_EXPRESSION_SCOPES).not.toContain("services");
-  const source = {
+test("defers services.* and consumes its original AST after identity scopes", async () => {
+  const compiled = await compile({
     env: { URL: "db://{{ services.database.creds.user }}@{{ app.name }}", HOST: "{{ app.name }}" },
     cmds: ["{{ services.database.creds.database }}"],
-  };
-  const identity = materializeExpressionScopes(source, "/app/.lando.yml", input);
-  expect(identity.value).toEqual({ ...source, env: { ...source.env, HOST: "dcms-demo" } });
-  expect(identity.unresolved).toEqual([]);
-  expect(identity.deferred).toEqual([
-    { path: ["env", "URL"], expression: source.env.URL },
-    { path: ["cmds", 0], expression: "{{ services.database.creds.database }}" },
-  ]);
-  const resolved = materializeExpressionScopes(identity.value, "/app/.lando.yml", {
-    scopes: PLAN_SERVICE_EXPRESSION_SCOPES,
-    context: { ...input.context, services: { database: { creds: { user: "lando", database: "db" } } } },
   });
-  expect(resolved.value).toEqual({ env: { URL: "db://lando@dcms-demo", HOST: "dcms-demo" }, cmds: ["db"] });
-  expect(resolved.deferred).toEqual([]);
-});
-
-test("evaluates only the sites the eligible predicate accepts, by value and path", () => {
-  // Given
-  const source = { authored: "{{ app.name }}", fromFile: "{{ app.name }}", nested: ["{{ app.slug }}"] };
-  const sites: Array<{ value: string; path: ReadonlyArray<string | number> }> = [];
-
-  // When
-  const result = materializeExpressionScopes(source, "/app/.lando.yml", {
-    ...input,
-    eligible: (value, path) => {
-      sites.push({ value, path });
-      return path.join(".") === "authored" || path.join(".") === "nested.0";
-    },
+  const identity = success(
+    consumeSites({
+      document: compiled.value,
+      pendingSites: compiled.pendingSites,
+      context,
+      scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
+    }),
+  );
+  expect(identity.pendingSites).toHaveLength(2);
+  const resolved = success(
+    consumeSites({
+      ...identity,
+      context: { ...context, services: { database: { creds: { user: "lando", database: "db" } } } },
+      scopes: PLAN_SERVICE_EXPRESSION_SCOPES,
+    }),
+  );
+  expect(resolved.document).toEqual({
+    env: { URL: "db://lando@dcms-demo", HOST: "dcms-demo" },
+    cmds: ["db"],
   });
-
-  // Then
-  expect(result.value).toEqual({ authored: "dcms-demo", fromFile: "{{ app.name }}", nested: ["dcms-demo"] });
-  expect(result.unresolved).toEqual([]);
-  expect(result.deferred).toEqual([]);
-  expect(sites).toEqual([
-    { value: "{{ app.name }}", path: ["authored"] },
-    { value: "{{ app.name }}", path: ["fromFile"] },
-    { value: "{{ app.slug }}", path: ["nested", 0] },
-  ]);
+  expect(resolved.pendingSites).toEqual([]);
 });
 
-test("reports evaluation failures with their exact value path", () => {
-  const source = { services: { database: { database: "{{ app.nope }}" } } };
-  const result = materializeExpressionScopes(source, "/app/.lando.yml", input);
-  expect(result.value).toBe(source);
-  expect(result.unresolved).toMatchObject([
-    { path: ["services", "database", "database"], expression: "{{ app.nope }}" },
-  ]);
+test("evaluates only explicitly recorded sites with equal-looking literal data", async () => {
+  const compiled = await compile({ authored: "{{ app.name }}", nested: ["{{ app.slug }}"] });
+  const document = { authored: "{{ app.name }}", fromFile: "{{ app.name }}", nested: ["{{ app.slug }}"] };
+  const result = success(
+    consumeSites({
+      document,
+      pendingSites: compiled.pendingSites,
+      context,
+      scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
+    }),
+  );
+  expect(result.document).toEqual({
+    authored: "dcms-demo",
+    fromFile: "{{ app.name }}",
+    nested: ["dcms-demo"],
+  });
 });
 
-test("enforces the supplied evaluation budget", () => {
-  const result = materializeExpressionScopes({ cmd: "{{ app.name }}" }, "/app/.lando.yml", {
-    ...input,
+test("reports evaluation failures with their exact value path", async () => {
+  const compiled = await compile({ services: { database: { database: "{{ app.nope }}" } } });
+  const result = consumeSites({
+    document: compiled.value,
+    pendingSites: compiled.pendingSites,
+    context,
+    scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
+  });
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result))
+    expect(result.failure).toMatchObject({
+      _tag: "ConfigExpressionError",
+      path: "services.database.database",
+      filePath: "/app/.lando.yml",
+    });
+});
+
+test("enforces the supplied evaluation budget", async () => {
+  const compiled = await compile({ cmd: "{{ app.name }}" });
+  const result = consumeSites({
+    document: compiled.value,
+    pendingSites: compiled.pendingSites,
+    context,
+    scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
     budget: { maxSteps: 0, maxDepth: 32, maxOutputBytes: 65536, maxCollectionSize: 256 },
   });
-  expect(result.unresolved).toMatchObject([{ path: ["cmd"], expression: "{{ app.name }}" }]);
-  expect(result.unresolved[0]?.reason).toContain("Expression budget exceeded");
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) expect(result.failure.message).toContain("budget");
 });
 
-test("keeps loader rejection of recipe defaults without recorded options", () => {
-  const source = { cmd: '{{ default(recipe.flavor, "cms") }}' };
-  const result = materializeLoadScopeExpressions(source, "/app/.lando.yml", {});
-  expect(result.value).toBe(source);
-  expect(result.unresolved).toEqual([{ path: ["cmd"], reason: "the Landofile records no recipe options" }]);
+test("keeps loader rejection of recipe defaults without recorded options", async () => {
+  const { loadAuthoredDocuments } = await import("../src/root-compile.ts");
+  const result = await Effect.runPromise(
+    Effect.result(
+      loadAuthoredDocuments(
+        [{ file: "/app/.lando.yml", value: { "x-value": '{{ default(recipe.flavor, "cms") }}' } }],
+        { appRoot: "/app", file: "/app/.lando.yml" },
+      ),
+    ),
+  );
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result))
+    expect(result.failure).toMatchObject({ _tag: "ConfigExpressionError", path: "x-value" });
 });

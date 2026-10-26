@@ -60,8 +60,8 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       resultSchema: setupSpec.resultSchema,
       deprecationWarnings: activeDeprecationWarnings,
       render: (value, ctx) => setupSpec.render?.(value, undefined, ctx),
-      formatError: (failure) => {
-        const message = commandErrorMessage(failure, activeCommandId);
+      formatError: (failure, redactor) => {
+        const message = commandErrorMessage(failure, activeCommandId, redactor);
         return activeRendererMode === "json" ? message : `${message}\nLANDO_INSTALL_DIR="${installDir}"`;
       },
     },

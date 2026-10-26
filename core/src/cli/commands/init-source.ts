@@ -1,3 +1,4 @@
+import { gitCloneUrl, isLiteralGitRef, splitSourceRef } from "@lando/landofile/git-ref";
 import { RecipeSourceError } from "@lando/sdk/errors";
 
 export interface InitSourceFlags {
@@ -10,6 +11,7 @@ export interface InitSourceFlags {
 }
 
 export interface ParsedInitSourceFlags {
+  readonly ref?: string;
   readonly source?: "git" | "tarball" | "npm" | "registry";
   readonly url?: string;
   readonly package?: string;
@@ -71,9 +73,19 @@ export const parseInitSourceFlags = (flags: InitSourceFlags): ParsedInitSourceFl
       remediation: `Pass --url=${urlLabel} with --source=${source}.`,
     });
   }
+  const git = source === "git" ? splitSourceRef(flags.url) : undefined;
+  if (git?.ref !== undefined && !isLiteralGitRef(git.ref)) {
+    throw new RecipeSourceError({
+      message: `Invalid git recipe ref: ${git.ref}`,
+      source: flags.url,
+      kind: "clone-failed",
+      remediation: "Choose a literal tag, branch, or full commit SHA.",
+    });
+  }
   return {
     source,
-    url: flags.url,
+    url: git === undefined ? flags.url : gitCloneUrl(git.value),
+    ...(git?.ref === undefined ? {} : { ref: git.ref }),
     ...(flags.path === undefined ? {} : { path: flags.path }),
     ...(source === "tarball" && flags.checksum !== undefined && flags.checksum.trim() !== ""
       ? { checksum: flags.checksum }

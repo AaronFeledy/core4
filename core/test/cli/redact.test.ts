@@ -1,52 +1,57 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { createStandaloneRedactor, makeRedactionService } from "@lando/redaction/service";
 import { Effect } from "effect";
 
 import { redactDetails, redactString } from "../../src/cli/redact.ts";
 
+let service = makeRedactionService();
+const patternRedactor = () => createStandaloneRedactor("secrets", { sourceEnv: {} });
 beforeEach(() => {
-  resetRegisteredRedactionValuesForTesting();
-});
-
-afterEach(() => {
-  resetRegisteredRedactionValuesForTesting();
+  service = makeRedactionService();
 });
 
 describe("redactString", () => {
   test("redacts exact values registered after the shim is imported", () => {
     // Given
-    Effect.runSync(registerRedactionValues(["opaque-canary-1252"]));
+    Effect.runSync(service.registerValues(["opaque-canary-1252"]));
     // When
-    const out = redactString("provider failed with opaque-canary-1252; retry lando setup");
+    const out = redactString(
+      "provider failed with opaque-canary-1252; retry lando setup",
+      Effect.runSync(service.forProfile("secrets")),
+    );
     // Then
     expect(out).toBe("provider failed with [redacted]; retry lando setup");
   });
 
   test("observes exact values registered after its first use", () => {
     // Given
-    redactString("initial provider check");
-    Effect.runSync(registerRedactionValues(["later-canary-1252"]));
+    const redactor = Effect.runSync(service.forProfile("secrets"));
+    redactString("initial provider check", redactor);
+    Effect.runSync(service.registerValues(["later-canary-1252"]));
     // When
-    const out = redactString("provider failed with later-canary-1252");
+    const out = redactString("provider failed with later-canary-1252", redactor);
     // Then
     expect(out).toBe("provider failed with [redacted]");
   });
 
   test("redacts env-style secrets", () => {
-    const out = redactString("setup failed HTTP_PROXY_PASSWORD=super-secret returned 1");
+    const out = redactString("setup failed HTTP_PROXY_PASSWORD=super-secret returned 1", patternRedactor());
     expect(out).toContain("HTTP_PROXY_PASSWORD=[redacted]");
     expect(out).not.toContain("super-secret");
   });
 
   test("redacts credentials embedded in a proxy URL authority", () => {
-    const out = redactString("proxy connect failed for http://corp-user:hunter2@proxy.example:3128");
+    const out = redactString(
+      "proxy connect failed for http://corp-user:hunter2@proxy.example:3128",
+      patternRedactor(),
+    );
     expect(out).toContain("http://[redacted]@proxy.example:3128");
     expect(out).not.toContain("hunter2");
     expect(out).not.toContain("corp-user");
   });
 
   test("redacts bearer tokens echoed in HTTP errors", () => {
-    const out = redactString("401 Unauthorized: Authorization: Bearer abc123.def456");
+    const out = redactString("401 Unauthorized: Authorization: Bearer abc123.def456", patternRedactor());
     expect(out).toContain("Bearer [redacted]");
     expect(out).not.toContain("abc123.def456");
   });
@@ -54,6 +59,7 @@ describe("redactString", () => {
   test("redacts secret-bearing query params in signed download URLs", () => {
     const out = redactString(
       "download failed https://github.com/lando/x/releases/download/v1/a.tgz?token=ABC123&X-Amz-Signature=deadbeef",
+      patternRedactor(),
     );
     expect(out).toContain("token=[redacted]");
     expect(out).toContain("Signature=[redacted]");
@@ -62,7 +68,10 @@ describe("redactString", () => {
   });
 
   test("does not redact innocuous query params that merely contain a secret substring", () => {
-    const out = redactString("request https://example.test/search?design=blue&keyword=token");
+    const out = redactString(
+      "request https://example.test/search?design=blue&keyword=token",
+      patternRedactor(),
+    );
     expect(out).toBe("request https://example.test/search?design=blue&keyword=token");
   });
 });
@@ -70,13 +79,17 @@ describe("redactString", () => {
 describe("redactDetails", () => {
   test("redacts late registered exact values in nested details without changing context", () => {
     // Given
-    redactDetails({ evidence: ["initial provider check"] });
-    Effect.runSync(registerRedactionValues(["nested-canary-1252"]));
+    const redactor = Effect.runSync(service.forProfile("secrets"));
+    redactDetails({ evidence: ["initial provider check"] }, redactor);
+    Effect.runSync(service.registerValues(["nested-canary-1252"]));
     // When
-    const out = redactDetails({
-      evidence: ["failed with nested-canary-1252", { detail: "nested-canary-1252" }],
-      context: { provider: "podman", retries: 2, available: false, detail: null },
-    });
+    const out = redactDetails(
+      {
+        evidence: ["failed with nested-canary-1252", { detail: "nested-canary-1252" }],
+        context: { provider: "podman", retries: 2, available: false, detail: null },
+      },
+      redactor,
+    );
     // Then
     expect(out).toEqual({
       evidence: ["failed with [redacted]", { detail: "[redacted]" }],

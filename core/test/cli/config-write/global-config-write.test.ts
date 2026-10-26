@@ -29,6 +29,33 @@ afterEach(async () => {
 });
 
 describe("meta global config set", () => {
+  test.each(["set", "unset"] as const)("keeps comments through global config %s", async (verb) => {
+    // Given
+    await seed("# global\nname: global\nruntime: 4\nrouter: # ports\n  httpPort: 8080 # chosen\n# tail\n");
+    // When
+    await run(
+      verb === "set"
+        ? globalConfigSet({ key: "router.httpPort", value: "8081" }, filePath())
+        : globalConfigUnset({ key: "router.httpPort" }, filePath()),
+    );
+    // Then
+    expect(await readFileText()).toBe(
+      verb === "set"
+        ? "# global\nname: global\nruntime: 4\nrouter: # ports\n  httpPort: 8081 # chosen\n# tail\n"
+        : "# global\nname: global\nruntime: 4\nrouter: {} # ports\n# tail\n",
+    );
+  });
+
+  test("infers a number when type is omitted", async () => {
+    // Given
+    await seed("name: global\nruntime: 4\n");
+    // When
+    const result = await run(globalConfigSet({ key: "router.httpPort", value: "8080" }, filePath()));
+    // Then
+    expect(result.value).toBe(8080);
+    expect(Bun.YAML.parse(await readFileText())).toMatchObject({ router: { httpPort: 8080 } });
+  });
+
   test("creates and writes the user Landofile from scratch", async () => {
     const result = await run(
       globalConfigSet(

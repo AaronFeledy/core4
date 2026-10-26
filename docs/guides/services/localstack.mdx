@@ -7,7 +7,7 @@ tags: [beta, docs, localstack, service]
 
 # Add LocalStack
 
-Put `type: localstack` in your services block:
+Add `type: localstack` under `services` in `.lando.yml`:
 
 ```yaml
 name: localstack-demo
@@ -38,8 +38,7 @@ app.
 ## Keep local AWS data
 
 Lando mounts persistent storage at `/var/lib/localstack`. Queues, buckets, and
-other supported state survive normal stop and start cycles, so you don't have to
-rebuild your tiny fake cloud every morning.
+other supported state survive normal stop and start cycles, so you can reuse local test data.
 
 ## Check readiness
 

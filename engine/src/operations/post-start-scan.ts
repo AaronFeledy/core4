@@ -1,11 +1,13 @@
 import { DateTime, Effect } from "effect";
 
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { type AppPlan, type CheckResult, ServiceName } from "@lando/sdk/schema";
+import { type AppPlan, type CheckResult, ServiceName, type StartedService } from "@lando/sdk/schema";
 import type { EventServiceShape, ScanEndpoint, UrlScannerShape } from "@lando/sdk/services";
 import { makeTaskTree } from "@lando/sdk/task-progress";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { appendScanPath } from "../subsystems/scanner/connection-targets.ts";
+import { activeHostHttpUrls } from "./service-connections.ts";
 import { startScanTreeId } from "./start-progress.ts";
 
 export interface PostStartScanInput {
@@ -15,30 +17,21 @@ export interface PostStartScanInput {
   readonly urls: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
 }
 
-const appendScanPath = (base: string, path: string): string => {
-  const origin = base.endsWith("/") ? base : `${base}/`;
-  const relative = path === "/" ? "" : path.replace(/^\//u, "");
-  return new URL(relative, origin).toString();
-};
-
 export const startupScanUrls = (
   plan: AppPlan,
-  services: ReadonlyArray<{ readonly name: string; readonly endpoints: ReadonlyArray<string> }>,
-): ReadonlyArray<{ readonly service: ServiceName; readonly url: string }> =>
-  services.flatMap((service) => {
+  services: readonly StartedService[],
+): ReadonlyArray<{ readonly service: ServiceName; readonly url: string }> => {
+  const targets = services.flatMap((service) => {
     const name = ServiceName.make(service.name);
     const scan = plan.services[name]?.scanner;
     const path = scan?.path ?? "/";
-    return service.endpoints
-      .filter((base) => {
-        const url = new URL(base);
-        return (url.protocol === "http:" || url.protocol === "https:") && !url.hostname.includes("*");
-      })
-      .map((base) => ({
-        service: name,
-        url: appendScanPath(base, path),
-      }));
+    return activeHostHttpUrls(service.connections).map((base) => ({
+      service: name,
+      url: appendScanPath(base, path),
+    }));
   });
+  return [...new Map(targets.map((target) => [`${target.service}/${target.url}`, target])).values()];
+};
 
 const resolveRedactor = Effect.gen(function* () {
   const redaction = yield* Effect.serviceOption(RedactionService);

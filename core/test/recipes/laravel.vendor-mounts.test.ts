@@ -5,7 +5,7 @@ import { join } from "node:path";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { makeLandoPaths } from "@lando/paths";
 import { LandofileShape, ServiceName, appMountSyncIgnores } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
@@ -24,6 +24,12 @@ test.each([
   try {
     const preview = await previewBuiltinRecipe("laravel", "laravel-vendor", { worker });
     const landofile = Schema.decodeUnknownSync(LandofileShape)(Bun.YAML.parse(preview.text));
+    const compiled = await Effect.runPromise(
+      loadAuthoredDocuments([{ file: join(root, ".lando.yml"), value: Bun.YAML.parse(preview.text) }], {
+        appRoot: root,
+        file: join(root, ".lando.yml"),
+      }),
+    );
     const planner = AppPlannerLayer.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -37,7 +43,7 @@ test.each([
     // When the production planner resolves storage and app binds.
     const plan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (service) =>
-        service.plan(rememberLandofileAppRoot(landofile, root), {
+        service.plan(compiled, {
           ...TestRuntimeProvider.capabilities,
           bindMountPerformance: slow ? "slow" : "native",
         }),

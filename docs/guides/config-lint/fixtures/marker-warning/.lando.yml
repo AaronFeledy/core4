@@ -1,0 +1,5 @@
+name: marker-warning
+services:
+  web:
+    type: node:lts
+    healthcheck: [CMD-SHELL, "echo ready"]

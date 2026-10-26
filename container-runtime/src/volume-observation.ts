@@ -36,7 +36,9 @@ const resolveMountedVolume = Effect.fnUntraced(
       path: `/containers/${encodeURIComponent(target.containerId)}/json`,
     });
     if (containerResponse.status !== 200)
-      return yield* Effect.fail(volumeObservationFailure(provider.providerId));
+      return yield* Effect.fail(
+        volumeObservationFailure(provider.providerId, "observeVolume", { status: containerResponse.status }),
+      );
     const container = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Container))(
       containerResponse.body,
     );
@@ -46,14 +48,20 @@ const resolveMountedVolume = Effect.fnUntraced(
       return yield* Effect.fail(volumeObservationFailure(provider.providerId));
     }
     const response = yield* request({ method: "GET", path: `/volumes/${encodeURIComponent(mount.Name)}` });
-    if (response.status !== 200) return yield* Effect.fail(volumeObservationFailure(provider.providerId));
+    if (response.status !== 200)
+      return yield* Effect.fail(
+        volumeObservationFailure(provider.providerId, "observeVolume", { status: response.status }),
+      );
     const volume = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(NativeVolumeSchema))(
       response.body,
     );
     if (volume.Name !== mount.Name) return yield* Effect.fail(volumeObservationFailure(provider.providerId));
     return volume;
   },
-  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+  (effect, provider) =>
+    Effect.catchTag(effect, "SchemaError", (cause) =>
+      Effect.fail(volumeObservationFailure(provider.providerId, "observeVolume", { cause })),
+    ),
 );
 
 export const locateVolume = Effect.fn("RuntimeProvider.locateVolume")(
@@ -72,7 +80,9 @@ export const locateVolume = Effect.fn("RuntimeProvider.locateVolume")(
       });
     }
     if (response.status !== 200)
-      return yield* Effect.fail(volumeObservationFailure(provider.providerId, "locateVolume"));
+      return yield* Effect.fail(
+        volumeObservationFailure(provider.providerId, "locateVolume", { status: response.status }),
+      );
     const volume = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(NativeVolumeSchema))(
       response.body,
     );
@@ -86,7 +96,9 @@ export const locateVolume = Effect.fn("RuntimeProvider.locateVolume")(
     });
   },
   (effect, provider) =>
-    Effect.mapError(effect, () => volumeObservationFailure(provider.providerId, "locateVolume")),
+    Effect.catchTag(effect, "SchemaError", (cause) =>
+      Effect.fail(volumeObservationFailure(provider.providerId, "locateVolume", { cause })),
+    ),
 );
 
 export const volumeInfo = (target: MountedVolumeTarget, volume: NativeVolume): VolumeInfo => {
@@ -98,62 +110,61 @@ export const volumeInfo = (target: MountedVolumeTarget, volume: NativeVolume): V
   };
 };
 
-export const observeMountedVolume = Effect.fn("RuntimeProvider.observeMountedVolume")(
-  function* (provider: VolumeObservationProvider, target: MountedVolumeTarget) {
-    const volume = yield* resolveMountedVolume(provider, target);
-    const base = volumeInfo(target, volume);
-    const resolution = yield* resolveNativeVolumeIdentity(provider, volume, { _tag: "mounted", target });
-    return resolution.identity === undefined ? base : { ...base, identity: resolution.identity };
-  },
-  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
-);
+export const observeMountedVolume = Effect.fn("RuntimeProvider.observeMountedVolume")(function* (
+  provider: VolumeObservationProvider,
+  target: MountedVolumeTarget,
+) {
+  const volume = yield* resolveMountedVolume(provider, target);
+  const base = volumeInfo(target, volume);
+  const resolution = yield* resolveNativeVolumeIdentity(provider, volume, { _tag: "mounted", target });
+  return resolution.identity === undefined ? base : { ...base, identity: resolution.identity };
+});
 
-export const adoptMountedVolume = Effect.fn("RuntimeProvider.adoptMountedVolume")(
-  function* (provider: VolumeObservationProvider, target: VolumeAdoptionTarget) {
-    const volume = yield* resolveMountedVolume(provider, target);
-    if (volume.Driver !== "local" || Object.keys(volume.Options ?? {}).length !== 0)
+export const adoptMountedVolume = Effect.fn("RuntimeProvider.adoptMountedVolume")(function* (
+  provider: VolumeObservationProvider,
+  target: VolumeAdoptionTarget,
+) {
+  const volume = yield* resolveMountedVolume(provider, target);
+  if (volume.Driver !== "local" || Object.keys(volume.Options ?? {}).length !== 0)
+    return yield* Effect.fail(volumeObservationFailure(provider.providerId));
+  const owner = volume.Labels?.[VOLUME_OWNER_LABEL];
+  if (owner !== undefined && owner !== target.ownerRoot)
+    return yield* Effect.fail(volumeObservationFailure(provider.providerId));
+  if (owner && volume.Labels?.[VOLUME_INSTANCE_LABEL]) {
+    const observed = yield* observeMountedVolume(provider, target);
+    if (!observed.identity || observed.identity.ownerRoot !== target.ownerRoot)
       return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-    const owner = volume.Labels?.[VOLUME_OWNER_LABEL];
-    if (owner !== undefined && owner !== target.ownerRoot)
-      return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-    if (owner && volume.Labels?.[VOLUME_INSTANCE_LABEL]) {
-      const observed = yield* observeMountedVolume(provider, target);
-      if (!observed.identity || observed.identity.ownerRoot !== target.ownerRoot)
-        return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-      return observed;
-    }
-    const key = yield* volumeCoordinationKey(provider, volume.Name);
-    if (!key) return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-    const witness = yield* adoptNativeVolumeWitness(provider, volume, target);
-    if (!witness || witness.ownerRoot !== target.ownerRoot)
-      return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-    const current = yield* resolveMountedVolume(provider, target);
-    if (
-      current.Labels?.[VOLUME_OWNER_LABEL] !== undefined &&
-      current.Labels[VOLUME_OWNER_LABEL] !== target.ownerRoot
-    )
-      return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-    if (
-      current.Name !== volume.Name ||
-      current.Driver !== "local" ||
-      Object.keys(current.Options ?? {}).length !== 0 ||
-      (yield* volumeCoordinationKey(provider, current.Name)) !== key
-    )
-      return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-    const resolution = yield* resolveNativeVolumeIdentity(provider, current, { _tag: "mounted", target });
-    const identity = resolution.identity;
-    if (
-      identity === undefined ||
-      identity.origin !== "adopted" ||
-      identity.generation !== witness.generation ||
-      identity.ownerRoot !== target.ownerRoot
-    )
-      return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-    return {
-      ...volumeInfo(target, current),
-      identity,
-    };
-  },
-  (effect, provider) =>
-    Effect.mapError(effect, () => volumeObservationFailure(provider.providerId, "adoptVolume")),
-);
+    return observed;
+  }
+  const key = yield* volumeCoordinationKey(provider, volume.Name);
+  if (!key) return yield* Effect.fail(volumeObservationFailure(provider.providerId));
+  const witness = yield* adoptNativeVolumeWitness(provider, volume, target);
+  if (!witness || witness.ownerRoot !== target.ownerRoot)
+    return yield* Effect.fail(volumeObservationFailure(provider.providerId));
+  const current = yield* resolveMountedVolume(provider, target);
+  if (
+    current.Labels?.[VOLUME_OWNER_LABEL] !== undefined &&
+    current.Labels[VOLUME_OWNER_LABEL] !== target.ownerRoot
+  )
+    return yield* Effect.fail(volumeObservationFailure(provider.providerId));
+  if (
+    current.Name !== volume.Name ||
+    current.Driver !== "local" ||
+    Object.keys(current.Options ?? {}).length !== 0 ||
+    (yield* volumeCoordinationKey(provider, current.Name)) !== key
+  )
+    return yield* Effect.fail(volumeObservationFailure(provider.providerId));
+  const resolution = yield* resolveNativeVolumeIdentity(provider, current, { _tag: "mounted", target });
+  const identity = resolution.identity;
+  if (
+    identity === undefined ||
+    identity.origin !== "adopted" ||
+    identity.generation !== witness.generation ||
+    identity.ownerRoot !== target.ownerRoot
+  )
+    return yield* Effect.fail(volumeObservationFailure(provider.providerId));
+  return {
+    ...volumeInfo(target, current),
+    identity,
+  };
+});

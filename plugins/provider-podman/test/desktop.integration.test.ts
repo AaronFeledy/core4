@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Stream } from "effect";
+import { Cause, Effect, Exit, Schema, Stream } from "effect";
 import { DateTime } from "effect";
 
 import type {
@@ -10,11 +10,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import {
-  PodmanMachineNotRunningError,
-  layer as makeProviderLayer,
-  resolvePodmanDesktopMachine,
-} from "@lando/provider-podman";
+import { PodmanMachineNotRunningError, resolvePodmanDesktopMachine } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -25,8 +21,10 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("desktop-app");
@@ -57,6 +55,7 @@ const servicePlan: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Desktop App",
   slug: "desktop-app",
@@ -64,7 +63,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: servicePlan },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -84,6 +82,13 @@ const FRAMED_LOG = (channel: 1 | 2, text: string): Uint8Array => {
 const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
+  const labels = new Map<string, Readonly<Record<string, string>>>();
+  const networks = new Map<
+    string,
+    { readonly Id: string; readonly Name: string; readonly Labels: Readonly<Record<string, string>> }
+  >();
+  const resolveContainer = (ref: string) =>
+    [...existing].find((name) => name === ref || `${name}-id` === ref) ?? ref;
   const calls: EngineHttpRequest[] = [];
 
   const api: PodmanApiClient = {
@@ -103,16 +108,52 @@ const makeFakeApi = () => {
             body: JSON.stringify({ Os: "linux", Architecture: "amd64", RepoDigests: [] }),
           };
         }
-        if (request.path === "/networks/create") return { status: 201, body: "{}" };
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+          const payload =
+            request.path === "/libpod/networks/create"
+              ? Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    name: Schema.String,
+                    driver: Schema.Literal("bridge"),
+                    dns_enabled: Schema.Literal(true),
+                    options: Schema.Struct({ metric: Schema.Literal("50") }),
+                    labels: Schema.Record(Schema.String, Schema.String),
+                  }),
+                )(request.body)
+              : undefined;
+          const body = Schema.decodeUnknownSync(
+            Schema.Struct({
+              Name: Schema.String,
+              Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+            }),
+          )(payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels });
+          const network = { Id: `${body.Name}-id`, Name: body.Name, Labels: body.Labels ?? {} };
+          networks.set(body.Name, network);
+          return { status: 201, body: JSON.stringify({ Id: network.Id }) };
+        }
         if (request.method === "POST" && request.path.startsWith("/libpod/volumes/prune")) {
           return { status: 200, body: "[]" };
         }
-        if (request.path.startsWith("/networks/") && request.method === "DELETE") {
+        if (
+          request.path.startsWith("/networks/") &&
+          (request.method === "GET" || request.method === "DELETE")
+        ) {
+          const ref = decodeURIComponent(request.path.slice("/networks/".length));
+          const network = [...networks.values()].find((entry) => entry.Name === ref || entry.Id === ref);
+          if (network === undefined) return { status: 404, body: "" };
+          if (request.method === "GET") return { status: 200, body: JSON.stringify(network) };
+          networks.delete(network.Name);
           return { status: 204, body: "" };
         }
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
           existing.add(name);
+          labels.set(
+            name,
+            Schema.decodeUnknownSync(Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }))(
+              request.body,
+            ).Labels,
+          );
           return { status: 201, body: JSON.stringify({ Id: `${name}-id` }) };
         }
         if (request.path.endsWith("/start")) {
@@ -122,23 +163,32 @@ const makeFakeApi = () => {
           return { status: 204, body: "" };
         }
         if (request.path.endsWith("/stop")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length));
+          const name = resolveContainer(
+            decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length)),
+          );
+          if (!existing.has(name)) return { status: 404, body: "" };
           const wasRunning = running.delete(name);
           return { status: wasRunning ? 204 : 304, body: "" };
         }
-        if (request.path.endsWith("?force=true") && request.method === "DELETE") {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length));
+        if (request.path.endsWith("?force=true&v=true") && request.method === "DELETE") {
+          const name = resolveContainer(
+            decodeURIComponent(request.path.slice("/containers/".length, -"?force=true&v=true".length)),
+          );
           const existed = existing.delete(name);
+          labels.delete(name);
           running.delete(name);
           return { status: existed ? 204 : 404, body: "" };
         }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const name = resolveContainer(
+            decodeURIComponent(request.path.slice("/containers/".length, -"/json".length)),
+          );
           if (!existing.has(name)) return { status: 404, body: "" };
           return {
             status: 200,
             body: JSON.stringify({
               Id: `${name}-id`,
+              Config: { Labels: labels.get(name) },
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
             }),
           };
@@ -207,7 +257,18 @@ describe.each([
 
     await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
 
-    expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
+    expect(fake.calls.find((call) => call.path === "/libpod/networks/create")?.body).toEqual({
+      name: `lando-${plan.slug}`,
+      driver: "bridge",
+      dns_enabled: true,
+      options: { metric: "50" },
+      labels: {
+        "dev.lando.app": plan.id,
+        "dev.lando.app-root": plan.root,
+        "dev.lando.owner": appIdentityKey("owner", plan.root),
+        "dev.lando.provider": plan.provider,
+      },
+    });
     expect(
       fake.calls.some((call) => call.path.startsWith("/containers/create?name=") && call.method === "POST"),
     ).toBe(true);
@@ -257,9 +318,9 @@ describe.each([
 
     await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
 
-    expect(fake.calls.some((call) => call.path.endsWith("?force=true") && call.method === "DELETE")).toBe(
-      true,
-    );
+    expect(
+      fake.calls.some((call) => call.path.endsWith("?force=true&v=true") && call.method === "DELETE"),
+    ).toBe(true);
     expect(fake.calls.some((call) => call.path.startsWith("/networks/") && call.method === "DELETE")).toBe(
       true,
     );
@@ -272,6 +333,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       providerId: "podman",
       operation: "podman-api",
       message: "ENOENT: socket missing",
+      remediation: "Install or start the `podman` provider and confirm it can perform `podman-api`.",
     });
     const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
 
@@ -306,6 +368,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       providerId: "podman",
       operation: "podman-api",
       message: "Named pipe not found",
+      remediation: "Install or start the `podman` provider and confirm it can perform `podman-api`.",
     });
     const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
 
@@ -338,6 +401,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       providerId: "podman",
       operation: "podman-api",
       message: "Named pipe not found",
+      remediation: "Install or start the `podman` provider and confirm it can perform `podman-api`.",
     });
     const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
     const original = process.env.LANDO_PODMAN_MACHINE;
@@ -380,6 +444,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       providerId: "podman",
       operation: "podman-api",
       message: "Connection refused",
+      remediation: "Install or start the `podman` provider and confirm it can perform `podman-api`.",
     });
     const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
 

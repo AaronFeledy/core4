@@ -6,3 +6,4 @@ services:
     environment:
       DB_PASSWORD: '${secret:DB_PASSWORD}'
       STRIPE_KEY: '${secret:op://Dev Vault/Stripe/credential}'
+      API_URL: 'https://${secret:HOST}/v1'

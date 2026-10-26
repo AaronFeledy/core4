@@ -223,7 +223,12 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
           Effect.map((fragment) => ({ layerId: entry.layerId, fragment })),
           Effect.mapError(
             (cause) =>
-              new ConfigTranslateError({ message: "Invalid established Landofile fragment.", cause }),
+              new ConfigTranslateError({
+                message: "Invalid established Landofile fragment.",
+                cause,
+                remediation:
+                  "Repair the established v4 Landofile fragment so it validates, then retry conversion.",
+              }),
           ),
         ),
       );

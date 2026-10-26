@@ -1,6 +1,7 @@
 import { Schema, type SchemaAST, SchemaTransformation } from "effect";
 import { isLandofileOverride, isLandofileReset, override, reset } from "../landofile/merge-directives.ts";
 import { isPlainRecord } from "../landofile/record.ts";
+import { recordDirectiveUnion } from "./authoring-issue-metadata.ts";
 import {
   LandofileLiteralWire,
   LandofileOverride,
@@ -15,12 +16,15 @@ const envelope = (value: Record<string, unknown>): boolean =>
     Object.hasOwn(value, "value") &&
     Object.keys(value).length === 2);
 
-const encodeOpaque = (value: unknown): unknown => {
+export const encodeLandofileSourceValue = (value: unknown): unknown => {
   if (isLandofileReset(value)) return { _tag: "LandofileReset" };
-  if (isLandofileOverride(value)) return { _tag: "LandofileOverride", value: encodeOpaque(value.value) };
-  if (Array.isArray(value)) return value.map(encodeOpaque);
+  if (isLandofileOverride(value))
+    return { _tag: "LandofileOverride", value: encodeLandofileSourceValue(value.value) };
+  if (Array.isArray(value)) return value.map(encodeLandofileSourceValue);
   if (!isPlainRecord(value)) return value;
-  const mapping = Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, encodeOpaque(entry)]));
+  const mapping = Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, encodeLandofileSourceValue(entry)]),
+  );
   return envelope(value) ? { _tag: "LandofileLiteral", value: mapping } : mapping;
 };
 
@@ -46,7 +50,7 @@ const decodeOpaque = (value: unknown): unknown => {
 const opaque = Schema.Union([LandofileLiteralWire, Schema.Unknown]).pipe(
   Schema.decodeTo(
     Schema.Unknown,
-    SchemaTransformation.transform({ decode: decodeOpaque, encode: encodeOpaque }),
+    SchemaTransformation.transform({ decode: decodeOpaque, encode: encodeLandofileSourceValue }),
   ),
 );
 
@@ -73,7 +77,11 @@ export const directiveMember = (value: Schema.Top, native: boolean): Schema.Top 
 };
 
 const makeDirectiveMember = (value: Schema.Top, native: boolean): Schema.Top => {
-  if (native) return Schema.Union([LandofileOverride(value), LandofileReset, value]);
+  if (native) {
+    const member = Schema.Union([LandofileOverride(value), LandofileReset, value]);
+    recordDirectiveUnion(member.ast, value.ast);
+    return member;
+  }
   if (value.ast._tag === "Unknown" || value.ast._tag === "Any") return opaque;
   const replace = LandofileOverrideWire(value).pipe(
     Schema.decodeTo(
@@ -84,5 +92,7 @@ const makeDirectiveMember = (value: Schema.Top, native: boolean): Schema.Top => 
       }),
     ),
   );
-  return Schema.Union([replace, remove, value]);
+  const member = Schema.Union([replace, remove, value]);
+  recordDirectiveUnion(member.ast, value.ast);
+  return member;
 };

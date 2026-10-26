@@ -1,6 +1,6 @@
 # Lando v4: Executable Guides and Scenarios
 
-> **Part 17 of 19** · [Index](./README.md)
+> **Part 17 of 20** · [Index](./README.md)
 > **Read next:** [18 The Global App](./18-global-app.md)
 
 This part defines how MDX-authored user guides generate runnable scenarios without turning reader prose into test syntax.
@@ -65,6 +65,8 @@ Prop schemas live in `@lando/sdk/docs/components`; implementations and AST helpe
 | `<Tab>` | Supplies content for one declared axis value. |
 
 `MatcherSchema` is the assertion vocabulary for `<Verify>` and `<Inspect>`. It supports deep-equal scalars, partial objects by default, and the named operators `exact`, `partial`, `regex`, `schema`, `anyOf`, `allOf`, `oneOf`, and `not`. Other assertions require justified `<Inline>`.
+
+`<Run command>` and `<Verify command>` accept an optional integer `expectExit`, defaulting to zero. Command verification MUST enforce that exit code before checking output matchers; `expectExit` is invalid on other verification targets. A negative lint report therefore uses explicit exit 1 in every format while retaining its report assertions, without a shell wrapper that hides the status.
 
 `<Hidden>` MUST NOT define distinct product behavior. `<Inline>` MUST remain exceptional. `<Variable>` display values MUST be short substitutions, never explanatory sentences.
 

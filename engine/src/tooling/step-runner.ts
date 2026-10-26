@@ -1,245 +1,152 @@
-import { Effect } from "effect";
-
-import { ToolingStepConditionError } from "@lando/sdk/errors";
-import { type ExpressionContext, evaluateTemplate, parseExpression } from "@lando/sdk/expressions";
 import {
-  type EventCommandInputValue,
-  PortablePath,
-  type ToolingTaskShape,
-  type ToolingVarLiteral,
-} from "@lando/sdk/schema";
-
+  type InvocationProgram,
+  compiledValueError,
+  evaluateInvocationSite,
+  instantiateInvocation,
+} from "@lando/landofile/compiled-sites";
+import { type ConfigExpressionError, ToolingStepConditionError } from "@lando/sdk/errors";
+import type { ExpressionContext } from "@lando/sdk/expressions";
+import { Environment, EventForSelector, PortablePath, ToolingTaskShape } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
+import { compileSelector } from "./step-compiler.ts";
 import { runToolingStepProgramWith } from "./step-executor.ts";
-import type {
-  ToolingCmdStepLeaf,
-  ToolingCommandStepLeaf,
-  ToolingStepLeaf,
-  ToolingStepProgram,
-  ToolingTaskStepLeaf,
-} from "./step-program.ts";
-import type { ToolingStepExpressionError, ToolingStepRunners } from "./step-runner-types.ts";
+import type { ToolingStepForNode, ToolingStepLeaf, ToolingStepProgram } from "./step-program.ts";
+import type { ToolingStepRunners } from "./step-runner-types.ts";
 
-const EXPRESSION_FILE = "<tooling-step>";
-
-const resolve = (
-  value: string,
-  context: ExpressionContext,
-): Effect.Effect<unknown, ToolingStepExpressionError> =>
-  parseExpression(value, { filePath: EXPRESSION_FILE, bareShellParameters: "preserve" }).pipe(
-    Effect.flatMap((template) => evaluateTemplate(template, context, { filePath: EXPRESSION_FILE })),
-  );
-
-const resolveString = (
-  value: string,
-  context: ExpressionContext,
-): Effect.Effect<string, ToolingStepExpressionError> =>
-  resolve(value, context).pipe(Effect.map((resolved) => String(resolved)));
-
-const resolveLiteral = (
-  value: ToolingVarLiteral,
-  context: ExpressionContext,
-): Effect.Effect<unknown, ToolingStepExpressionError> =>
-  typeof value === "string" ? resolve(value, context) : Effect.succeed(value);
-
-const resolveRecord = (
-  values: Readonly<Record<string, ToolingVarLiteral>>,
-  context: ExpressionContext,
-): Effect.Effect<Readonly<Record<string, unknown>>, ToolingStepExpressionError> =>
-  Effect.forEach(Object.entries(values), ([name, value]) =>
-    resolveLiteral(value, context).pipe(Effect.map((resolved) => [name, resolved] as const)),
-  ).pipe(Effect.map(Object.fromEntries));
-
-type RepeatableCommandInput = ReadonlyArray<string> | ReadonlyArray<number> | ReadonlyArray<boolean>;
-
-/** `Array.isArray` alone leaves readonly arrays in the scalar branch. */
-const isRepeatableInput = (value: EventCommandInputValue): value is RepeatableCommandInput =>
-  Array.isArray(value);
-
-const resolveCommandValue = (
-  value: EventCommandInputValue,
-  context: ExpressionContext,
-): Effect.Effect<unknown, ToolingStepExpressionError> =>
-  isRepeatableInput(value)
-    ? Effect.forEach(value, (entry) => resolveLiteral(entry, context))
-    : resolveLiteral(value, context);
-
-const resolveCommandRecord = (
-  values: Readonly<Record<string, EventCommandInputValue>>,
-  context: ExpressionContext,
-): Effect.Effect<Readonly<Record<string, unknown>>, ToolingStepExpressionError> =>
-  Effect.forEach(Object.entries(values), ([name, value]) =>
-    resolveCommandValue(value, context).pipe(Effect.map((resolved) => [name, resolved] as const)),
-  ).pipe(Effect.map(Object.fromEntries));
-
-const resolveScalarRecord = (
-  values: Readonly<Record<string, ToolingVarLiteral>>,
-  context: ExpressionContext,
-): Effect.Effect<Readonly<Record<string, ToolingVarLiteral>>, ToolingStepExpressionError> =>
-  Effect.forEach(Object.entries(values), ([name, value]) =>
-    resolveLiteral(value, context).pipe(
-      Effect.map(
-        (resolved) =>
-          [
-            name,
-            typeof resolved === "string" || typeof resolved === "number" || typeof resolved === "boolean"
-              ? resolved
-              : String(resolved),
-          ] as const,
-      ),
-    ),
-  ).pipe(Effect.map(Object.fromEntries));
-
-type ToolingStepEntry = Exclude<NonNullable<ToolingTaskShape["cmds"]>[number], string>;
-
-/** Resolves expressions inside an object-form command step, preserving its per-step overrides. */
-const resolveStepEntry = Effect.fnUntraced(function* (
-  step: ToolingStepEntry,
-  context: ExpressionContext,
-): Effect.fn.Return<ToolingStepEntry, ToolingStepExpressionError> {
-  const cmd = yield* resolveString(step.cmd, context);
-  const service = step.service === undefined ? undefined : yield* resolveString(step.service, context);
-  const dir =
-    step.dir === undefined ? undefined : PortablePath.make(yield* resolveString(String(step.dir), context));
-  const user = step.user === undefined ? undefined : yield* resolveString(step.user, context);
-  const env = step.env === undefined ? undefined : yield* resolveScalarRecord(step.env, context);
-  return {
-    ...step,
-    cmd,
-    ...(service === undefined ? {} : { service }),
-    ...(dir === undefined ? {} : { dir }),
-    ...(user === undefined ? {} : { user }),
-    ...(env === undefined ? {} : { env }),
-  };
+const Base = {
+  authoredIndex: Schema.Number,
+  source: Schema.optionalKey(Schema.Literals(["host", "project"])),
+  silent: Schema.Boolean,
+  ignoreError: Schema.Boolean,
+};
+const ResolvedCmd = Schema.Struct({
+  ...Base,
+  kind: Schema.Literal("cmd"),
+  command: Schema.String,
+  service: Schema.optionalKey(Schema.String),
+  dir: Schema.optionalKey(PortablePath),
+  user: Schema.optionalKey(Schema.String),
+  env: Schema.optionalKey(Environment),
+});
+const ResolvedTask = Schema.Struct({
+  ...Base,
+  kind: Schema.Literal("task"),
+  task: Schema.String,
+  vars: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+});
+const ResolvedCommand = Schema.Struct({
+  ...Base,
+  kind: Schema.Literal("command"),
+  command: Schema.String,
+  flags: Schema.Record(Schema.String, Schema.Unknown),
+  args: Schema.Record(Schema.String, Schema.Unknown),
+  raw: Schema.Array(Schema.String),
 });
 
 export const resolveToolingTaskShape = Effect.fnUntraced(function* (
   task: ToolingTaskShape,
   context: ExpressionContext,
-): Effect.fn.Return<ToolingTaskShape, ToolingStepExpressionError> {
-  let cmd: ToolingTaskShape["cmd"];
-  if (typeof task.cmd === "string") {
-    cmd = yield* resolveString(task.cmd, context);
-  } else if (task.cmd !== undefined) {
-    cmd = yield* Effect.forEach(task.cmd, (value) => resolveString(value, context));
-  }
-  const cmds =
-    task.cmds === undefined
-      ? undefined
-      : yield* Effect.forEach(
-          task.cmds,
-          (value): Effect.Effect<string | ToolingStepEntry, ToolingStepExpressionError> =>
-            typeof value === "string" ? resolveString(value, context) : resolveStepEntry(value, context),
-        );
-  const service = task.service === undefined ? undefined : yield* resolveString(task.service, context);
-  const dir =
-    task.dir === undefined ? undefined : PortablePath.make(yield* resolveString(String(task.dir), context));
-  const env = task.env === undefined ? undefined : yield* resolveScalarRecord(task.env, context);
-  return {
-    ...task,
-    ...(cmd === undefined ? {} : { cmd }),
-    ...(cmds === undefined ? {} : { cmds }),
-    ...(service === undefined ? {} : { service }),
-    ...(dir === undefined ? {} : { dir }),
-    ...(env === undefined ? {} : { env }),
-  };
-});
-
-const conditionError = (condition: string, cause?: unknown) =>
-  new ToolingStepConditionError({
-    message: `Tooling step condition must evaluate to a boolean: ${condition}`,
-    condition,
-    remediation: "Use a boolean literal or a whole expression that evaluates to a boolean.",
-    ...(cause === undefined ? {} : { cause }),
+  program: InvocationProgram,
+) {
+  const variableValue = yield* instantiateInvocation({
+    value: task,
+    sites: program.filter(
+      (site) => site.path[0] === "vars" && !Object.hasOwn(context.vars ?? {}, String(site.path[1])),
+    ),
+    context: { ...context, vars: { ...task.vars, ...context.vars } },
   });
-
-export const conditionAllows = (
-  condition: ToolingStepLeaf["condition"],
-  context: ExpressionContext,
-): Effect.Effect<boolean, ToolingStepConditionError> => {
-  if (condition === undefined || typeof condition === "boolean") return Effect.succeed(condition ?? true);
-  return resolve(condition, context).pipe(
-    Effect.mapError((cause) => conditionError(condition, cause)),
-    Effect.flatMap((value) =>
-      typeof value === "boolean" ? Effect.succeed(value) : Effect.fail(conditionError(condition)),
+  const variables = yield* Schema.decodeUnknownEffect(ToolingTaskShape)(variableValue).pipe(
+    Effect.mapError((cause) =>
+      compiledValueError(cause, { filePath: "<tooling-task>", pendingSites: program }),
     ),
   );
+  const value = yield* instantiateInvocation({
+    value: variables,
+    sites: program.filter((site) => site.path[0] !== "vars"),
+    context: { ...context, vars: { ...variables.vars, ...context.vars } },
+  });
+  return yield* Schema.decodeUnknownEffect(ToolingTaskShape)(value).pipe(
+    Effect.mapError((cause) =>
+      compiledValueError(cause, { filePath: "<tooling-task>", pendingSites: program }),
+    ),
+  );
+});
+
+export const conditionAllows = (condition: ToolingStepLeaf["condition"], context: ExpressionContext) => {
+  if (condition === undefined || typeof condition === "boolean") return Effect.succeed(condition ?? true);
+  const expression = typeof condition === "string" ? condition : condition.expression;
+  return Effect.try({
+    try: () => {
+      if (typeof condition === "string")
+        throw new ToolingStepConditionError({
+          message: "Unrecorded string predicates are not executable.",
+          condition,
+          remediation: "Use a recorded authored expression or a boolean literal.",
+        });
+      const value = evaluateInvocationSite(condition, context);
+      if (typeof value !== "boolean")
+        throw new ToolingStepConditionError({
+          message: "Tooling step condition must evaluate to a boolean.",
+          condition: expression,
+          remediation: "Use a whole expression that evaluates to a boolean.",
+        });
+      return value;
+    },
+    catch: (cause) =>
+      cause instanceof ToolingStepConditionError
+        ? cause
+        : new ToolingStepConditionError({
+            message: "Tooling step condition evaluation failed.",
+            condition: expression,
+            cause,
+            remediation: "Use a whole expression that evaluates to a boolean.",
+          }),
+  });
 };
 
-const resolveCmd = Effect.fnUntraced(function* (leaf: ToolingCmdStepLeaf, context: ExpressionContext) {
-  const command = yield* resolveString(leaf.command, context);
-  const service = leaf.service === undefined ? undefined : yield* resolveString(leaf.service, context);
-  const user = leaf.user === undefined ? undefined : yield* resolveString(leaf.user, context);
-  const dir = leaf.dir === undefined ? undefined : PortablePath.make(yield* resolveString(leaf.dir, context));
-  const env = leaf.env === undefined ? undefined : yield* resolveScalarRecord(leaf.env, context);
-  return {
-    kind: "cmd" as const,
-    authoredIndex: leaf.authoredIndex,
-    ...(leaf.source === undefined ? {} : { source: leaf.source }),
-    command,
-    silent: leaf.silent,
-    ignoreError: leaf.ignoreError,
-    ...(service === undefined ? {} : { service }),
-    ...(user === undefined ? {} : { user }),
-    ...(dir === undefined ? {} : { dir }),
-    ...(env === undefined ? {} : { env }),
-  };
-});
-
-const resolveTask = Effect.fnUntraced(function* (leaf: ToolingTaskStepLeaf, context: ExpressionContext) {
-  const task = yield* resolveString(leaf.task, context);
-  const overlay = yield* resolveRecord(leaf.vars ?? {}, context);
-  const vars = { ...(context.vars ?? {}), ...overlay };
-  return {
-    leaf: {
-      kind: "task" as const,
-      authoredIndex: leaf.authoredIndex,
-      ...(leaf.source === undefined ? {} : { source: leaf.source }),
-      task,
-      vars,
-      silent: leaf.silent,
-      ignoreError: leaf.ignoreError,
-    },
-    context: { ...context, vars },
-  };
-});
-
-const resolveCommand = Effect.fnUntraced(function* (
-  leaf: ToolingCommandStepLeaf,
-  context: ExpressionContext,
-) {
-  const command = yield* resolveString(leaf.command, context);
-  const flags = yield* resolveCommandRecord(leaf.flags, context);
-  const args = yield* resolveCommandRecord(leaf.args, context);
-  const raw = yield* Effect.forEach(leaf.raw, (value) => resolveString(value, context));
-  return {
-    kind: "command" as const,
-    authoredIndex: leaf.authoredIndex,
-    ...(leaf.source === undefined ? {} : { source: leaf.source }),
-    command,
-    flags,
-    args,
-    raw,
-    silent: leaf.silent,
-    ignoreError: leaf.ignoreError,
-  };
-});
-
-export const resolveLeaf = (leaf: ToolingStepLeaf, context: ExpressionContext) => {
+export const resolveLeaf = Effect.fnUntraced(function* (leaf: ToolingStepLeaf, context: ExpressionContext) {
+  const sites = leaf.invocationSites ?? [];
+  const value = yield* instantiateInvocation({ value: leaf, sites, context });
+  const locate = (cause: unknown): ConfigExpressionError =>
+    compiledValueError(cause, { filePath: "<tooling-step>", pendingSites: sites });
   switch (leaf.kind) {
     case "cmd":
-      return resolveCmd(leaf, context).pipe(Effect.map((resolved) => ({ leaf: resolved, context })));
-    case "task":
-      return resolveTask(leaf, context);
+      return {
+        leaf: yield* Schema.decodeUnknownEffect(ResolvedCmd)(value).pipe(Effect.mapError(locate)),
+        context,
+      };
     case "command":
-      return resolveCommand(leaf, context).pipe(Effect.map((resolved) => ({ leaf: resolved, context })));
+      return {
+        leaf: yield* Schema.decodeUnknownEffect(ResolvedCommand)(value).pipe(Effect.mapError(locate)),
+        context,
+      };
+    case "task": {
+      const resolved = yield* Schema.decodeUnknownEffect(ResolvedTask)(value).pipe(Effect.mapError(locate));
+      const vars = { ...context.vars, ...resolved.vars };
+      return { leaf: { ...resolved, vars }, context: { ...context, vars } };
+    }
+    default:
+      return leaf satisfies never;
   }
-};
+});
 
 export const runToolingStepProgram = <E, A>(
   program: ToolingStepProgram,
   context: ExpressionContext,
   runners: ToolingStepRunners<E, A>,
-) => runToolingStepProgramWith(program, context, runners, { conditionAllows, resolveLeaf });
+) => runToolingStepProgramWith(program, context, runners, { conditionAllows, resolveLeaf, resolveSelector });
+
+const resolveSelector = Effect.fnUntraced(function* (node: ToolingStepForNode, context: ExpressionContext) {
+  if (node.selectorInvocation === undefined) return node.selector;
+  const { value, sites } = node.selectorInvocation;
+  const instantiated = yield* instantiateInvocation({ value, sites, context });
+  const locate = (cause: unknown) =>
+    compiledValueError(cause, { filePath: "<tooling-selector>", pendingSites: sites });
+  const decoded = yield* Schema.decodeUnknownEffect(EventForSelector)(instantiated).pipe(
+    Effect.mapError(locate),
+  );
+  return yield* compileSelector(decoded).pipe(Effect.mapError(locate));
+});
 
 export type {
   ResolvedToolingCmdStepLeaf,

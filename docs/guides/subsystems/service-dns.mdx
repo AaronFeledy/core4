@@ -8,30 +8,43 @@ tags: [beta, docs, subsystems, networking, dns]
 
 # Reach services by name
 
-Start the app, then connect with the service key. Open `lando info` URLs only in the host browser.
+Use a service key such as `database` when one service connects to another in the
+same app. Browser URLs and cross-app names serve different purposes; the table
+below shows which name belongs in each context. From the app directory on the
+host, start the app and inspect both kinds of address:
 
 ```sh
 lando start
 lando info
 ```
 
-The URL `lando info` prints is for your browser. It is not the hostname PHP uses to reach MySQL.
+`lando info` groups each service's connections by where you dial them from.
+Host connections are the addresses you reach from this machine: route URLs for
+your browser and published host ports, including a TCP port for a database you
+open from a desktop client. App Network connections are the addresses other
+services in the app use, spelled `protocol://<service>:<port>`, such as
+`tcp://database:3306`. A host URL is not the hostname PHP uses to reach MySQL;
+the App Network address is.
 
-The default provider is `lando` (managed Podman). `LANDO_PROVIDER` does not persist.
+The default provider is `lando` (managed Podman).
 
 ## Pick the right name
 
 | Where you are | Name to use | Example |
 | --- | --- | --- |
 | Another service in this app | The service key | `database` |
-| Another app, or Traefik's backend | `<service>.<app>.internal` | `database.service-dns-demo.internal` |
+| Another app, Traefik's backend, or anywhere a bare key could be ambiguous | `<service>.<app>.internal` | `database.service-dns-demo.internal` |
+| A network you joined with `networks:` | `<service>.<app>.internal` or an authored alias | `api.service-dns-demo.internal` |
 | Host browser | `*.lndo.site` | `https://app.service-dns-demo.lndo.site` |
 
 Use the service key inside the app. Use `<service>.<app>.internal` across apps and for Traefik backends. Use `LANDO_MAIL_HOST` for Mailpit. Use `*.lndo.site` only in the host browser.
 
 ## Connect with the service key
 
-Point MySQL at `database`. Do not send that traffic through `*.lndo.site`.
+Configure the MySQL client in your app service to connect to `database`. Do not
+send that traffic through `*.lndo.site`. The Landofile below shows the host in the
+`db-query` tooling command; use the database's configured credentials when running
+your client.
 
 Recipe and service connection tables use the same host: the service key, not `127.0.0.1` or `localhost` (see [Add MariaDB](../services/mariadb.mdx)).
 
@@ -54,7 +67,7 @@ tooling:
     cmd: mysql -h database -u app app -e "SELECT 1"
 ```
 
-That `-h database` is intra-app DNS on the per-app bridge `lando-service-dns-demo`.
+That `-h database` is intra-app DNS on the per-app bridge `lando-service-dns-demo`. `lando info --format=json` lists the same name and port as a `database` connection with `scope: "app"` and `url: "tcp://database:3306"`, so a script can read the address instead of hardcoding it.
 
 ## Reach another app with `.internal`
 
@@ -62,11 +75,15 @@ Cross-app names live on `lando_bridge_network`. The alias is `<service>.<app>.in
 
 Global Mailpit is `mailpit.global.internal`. Non-global `type: lando` services get `LANDO_MAIL_HOST=mailpit.global.internal` and `LANDO_MAIL_PORT=1025`. Point SMTP at those env values.
 
-`lando info` omits `_tag: "internal"` endpoints. Do not look for `.internal` there.
+`lando info` does not list `.internal` names. Its `app`-scope connections use plain service keys on the app network; cross-app aliases live on the shared bridge and are not connections.
 
 Issued leaf certs list the service name and `<service>.<app>.internal` as SANs.
 
-Routes need shared cross-app networking. The default `lando` provider advertises that on Linux, macOS, and Windows.
+## Join another network
+
+To reach the containers of another Compose project on the same engine, or to give a few services a private network, declare it under top-level `networks:` and list it on the service. The service stays on its app network. On the extra network it answers to `<service>.<app>.internal` and any `aliases` you set, not to its bare service key, because other projects share that network. `<service>.<app>.internal` also resolves inside the app, so it's the safe name when a joined network has a service with the same bare name as one of yours. If the other stack is only used by this app, fold it in with `include:` instead and reach its services by key. See [Reach another project's services](../config/networks.mdx).
+
+Routes need shared cross-app networking and the same provider as the host router. The default `lando` provider advertises shared networking on Linux, macOS, and Windows. A routed app pinned to a different provider fails planning with `RouteProviderMismatchError`. See [Routing needs one provider](../setup/provider-selection.mdx#routing-needs-one-provider).
 
 ## Open `*.lndo.site` on this machine
 
@@ -111,10 +128,10 @@ Engine-native hostnames are not portable across every provider and platform. Kee
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"service-dns-demo\"" } }} />
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"app\"" } }} />
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"database\"" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"url\":\\s*\"tcp://database:3306\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 </Guide>

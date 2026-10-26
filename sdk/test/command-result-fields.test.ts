@@ -4,6 +4,7 @@ import {
   encodeCommandResult,
   encodeStreamResultFrame,
   identityRedactor,
+  internalErrorRemediation,
 } from "@lando/sdk/command-result";
 import { ConfigError, ConfigExpressionError, ServiceExecError, ServiceStartError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
@@ -70,9 +71,15 @@ test("preserves ConfigError path when its cause is excluded", () => {
     message: "Invalid config",
     path: "proxy.domain",
     cause: { token: "private" },
+    remediation: "Set proxy.domain to a valid hostname.",
   });
   const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
-  expect(envelope.error).toEqual({ _tag: "ConfigError", message: "Invalid config", path: "proxy.domain" });
+  expect(envelope.error).toEqual({
+    _tag: "ConfigError",
+    message: "Invalid config",
+    path: "proxy.domain",
+    remediation: "Set proxy.domain to a valid hostname.",
+  });
 });
 
 test("omits entire unsafe fields when projecting an error", () => {
@@ -108,6 +115,7 @@ test("omits entire unsafe fields when projecting an error", () => {
     _tag: "UnsafeError",
     message: "failure",
     safe: { list: [null, true, 3, "text"], shared: [{ value: "shared" }, { value: "shared" }], empty: {} },
+    remediation: internalErrorRemediation,
   });
 });
 
@@ -147,6 +155,7 @@ test("omits proxy fields without invoking traps when projecting an error", () =>
   expect(Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line)).error).toEqual({
     _tag: "ProxyFieldError",
     message: "failure",
+    remediation: internalErrorRemediation,
   });
   expect(trapCalls).toBe(0);
 });
@@ -174,6 +183,7 @@ for (const kind of ["object", "array"] as const) {
       expect(Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line)).error).toEqual({
         _tag: "SerializerFieldError",
         message: "failure",
+        remediation: internalErrorRemediation,
       });
       expect(serializerCalls).toBe(0);
     });
@@ -186,7 +196,11 @@ test("omits arrays with exotic prototypes when projecting an error", () => {
 
   const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
 
-  expect(envelope.error).toEqual({ _tag: "ExoticArrayError", message: "failure" });
+  expect(envelope.error).toEqual({
+    _tag: "ExoticArrayError",
+    message: "failure",
+    remediation: internalErrorRemediation,
+  });
 });
 
 test("omits own accessors without invoking getters when projecting an error", () => {
@@ -203,7 +217,12 @@ test("omits own accessors without invoking getters when projecting an error", ()
 
   const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
 
-  expect(envelope.error).toEqual({ _tag: "AccessorFieldError", message: "failure", path: "/x" });
+  expect(envelope.error).toEqual({
+    _tag: "AccessorFieldError",
+    message: "failure",
+    path: "/x",
+    remediation: internalErrorRemediation,
+  });
   expect(getterCalls).toBe(0);
 });
 
@@ -214,21 +233,28 @@ test("omits malformed typed fields instead of falling back when extras are valid
     remediation: 42,
     reason: { value: "nope" },
     issues: ["invalid"],
-    service: "not a SQL confirmation",
+    service: 42,
     steps: [{ id: "invalid" }],
     path: "config.path",
   };
   const line = Effect.runSync(encodeCommandResult(options(error)));
   const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
-  expect(envelope.error).toEqual({ _tag: "WrongShapesError", message: "failure", path: "config.path" });
+  expect(envelope.error).toEqual({
+    _tag: "WrongShapesError",
+    message: "failure",
+    path: "config.path",
+    remediation: internalErrorRemediation,
+  });
 });
 
-test("drops service from a non-start error that still has a service field", () => {
+test("preserves declared service context on non-start execution errors", () => {
   const error = new ServiceExecError({
     providerId: "lando",
     operation: "exec",
     service: "web",
     message: "exec failed",
+    remediation:
+      "Confirm service `web` is running and the exec command is valid inside that container, then retry.",
   });
   const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
   expect(envelope.error).toEqual({
@@ -236,8 +262,11 @@ test("drops service from a non-start error that still has a service field", () =
     message: "exec failed",
     providerId: "lando",
     operation: "exec",
+    service: "web",
+    remediation:
+      "Confirm service `web` is running and the exec command is valid inside that container, then retry.",
   });
-  expect(envelope.error).not.toHaveProperty("service");
+  expect(envelope.error?.service).toBe("web");
 });
 
 test("includes service and logTail on a ServiceStartError envelope", () => {
@@ -252,6 +281,8 @@ test("includes service and logTail on a ServiceStartError envelope", () => {
       truncated: false,
       exitCode: 1,
     },
+    remediation:
+      "Inspect `lando logs -s db`, fix the service configuration or image, and start the app again.",
   });
   const envelope = Effect.runSync(buildCommandResultEnvelope(options(error)));
   expect(envelope.error).toEqual({
@@ -266,6 +297,8 @@ test("includes service and logTail on a ServiceStartError envelope", () => {
       truncated: false,
       exitCode: 1,
     },
+    remediation:
+      "Inspect `lando logs -s db`, fix the service configuration or image, and start the app again.",
   });
 });
 

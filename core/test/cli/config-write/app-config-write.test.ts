@@ -12,6 +12,7 @@ import {
   appConfigSet,
   appConfigUnset,
   appConfigValidate,
+  renderAppConfigResult,
 } from "../../../src/cli/commands/app-config.ts";
 import type { EditorRunner } from "../../../src/recipes/prompts/editor-command.ts";
 import { testStateStoreLayer } from "../../_support/landofile-layer.ts";
@@ -35,6 +36,41 @@ afterEach(async () => {
 });
 
 describe("app config set", () => {
+  test.each(["set", "unset"] as const)("keeps comments through app config %s", async (verb) => {
+    // Given
+    await seed("# app\nname: myapp\nruntime: 4\nrouter: # ports\n  httpPort: 8080 # chosen\n# tail\n");
+    // When
+    if (verb === "set") await run(appConfigSet({ key: "router.httpPort", value: "8081", cwd: dir }));
+    else await run(appConfigUnset({ key: "router.httpPort", cwd: dir }));
+    // Then
+    expect(await readLandofile()).toBe(
+      verb === "set"
+        ? "# app\nname: myapp\nruntime: 4\nrouter: # ports\n  httpPort: 8081 # chosen\n# tail\n"
+        : "# app\nname: myapp\nruntime: 4\nrouter: {} # ports\n# tail\n",
+    );
+  });
+
+  test.each([false, true])("refuses unsafe authored edits without writing (dryRun=%s)", async (dryRun) => {
+    // Given
+    const source = "# keep\nname: myapp\nruntime: 4\nrouter: { }\n";
+    await seed(source);
+    // When
+    const result = await runExit(appConfigSet({ key: "router.httpPort", value: "8080", cwd: dir, dryRun }));
+    // Then
+    expect(Exit.isFailure(result)).toBe(true);
+    expect(await readLandofile()).toBe(source);
+  });
+
+  test("infers a number when type is omitted", async () => {
+    // Given
+    await seed("name: myapp\nruntime: 4\n");
+    // When
+    const result = await run(appConfigSet({ key: "router.httpPort", value: "8080", cwd: dir }));
+    // Then
+    expect(result.value).toBe(8080);
+    expect(Bun.YAML.parse(await readLandofile())).toMatchObject({ router: { httpPort: 8080 } });
+  });
+
   test("writes a scalar and reports changed (S1 happy path)", async () => {
     const result = await run(
       appConfigSet({ subcommand: "set", key: "services.web.type", value: "php:8.3", cwd: dir }),
@@ -272,6 +308,24 @@ describe("app config edit (S7) via injected editor seam", () => {
     );
     expect(result.changed).toBe(true);
     expect(await readLandofile()).toContain("php");
+  });
+
+  test("--dry-run validates the buffer, leaves the file untouched, and reports a dry run", async () => {
+    // Given
+    const before = await readLandofile();
+    // When
+    const result = await run(
+      appConfigEdit({
+        subcommand: "edit",
+        cwd: dir,
+        dryRun: true,
+        editorRunner: editorRunner((c) => `${c}services:\n  web:\n    type: php\n`),
+      }),
+    );
+    // Then
+    expect(result).toMatchObject({ subcommand: "edit", dryRun: true, changed: true, valid: true });
+    expect(await readLandofile()).toBe(before);
+    expect(renderAppConfigResult(result)).toBe(`${landofilePath()}: would save edited Landofile (dry run).`);
   });
 
   test("rejects an edit that fails validation, file untouched", async () => {

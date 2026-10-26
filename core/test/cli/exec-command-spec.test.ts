@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Context, DateTime, Effect, Layer, Stream } from "effect";
 
 import { TestRuntimeProvider, makeTestRuntime } from "@lando/core/testing";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, type RuntimeProviderShape } from "@lando/sdk/services";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
@@ -13,7 +13,9 @@ import { DEFAULT_SERVICE_LOGIN_SHELL } from "../../src/cli/service-login-shell.t
 const providerId = ProviderId.make("test");
 const serviceName = ServiceName.make("appserver");
 const runtimeTag = Context.Service<unknown>("exec-command-spec/runtime");
-const plan: AppPlan = {
+import type { CurrentExecutableAppPlan } from "@lando/sdk/schema";
+const plan: CurrentExecutableAppPlan = {
+  valueModel: 1,
   id: AppId.make("exec-command-spec"),
   name: "exec-command-spec",
   slug: "exec-command-spec",
@@ -41,7 +43,6 @@ const plan: AppPlan = {
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -185,7 +186,7 @@ describe("exec command spec", () => {
                     ]).run({
                       command: execSpec.id,
                       flags: {},
-                      args: { command: "cat" },
+                      args: { command: ["cat"] },
                       argv: [],
                       cwd: process.cwd(),
                     })
@@ -231,10 +232,13 @@ describe("exec command spec", () => {
   ] as const)("routes $name to provider exec without host stdin", async ({ interactive, spec }) => {
     // Given
     const stdinModes: Array<"inherit" | "ignore" | undefined> = [];
+    const commands: Array<readonly string[]> = [];
+    const commandArgv = ["printf", "%s", "two words", "", "$(echo injected)", "*.ts"] as const;
     const provider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
       execStream: (_target, command) => {
         stdinModes.push(command.stdin);
+        commands.push(command.command);
         return Stream.fromIterable([{ exitCode: 0 }]);
       },
     };
@@ -256,7 +260,7 @@ describe("exec command spec", () => {
             makeEventCommandExecutor(context, [entry]).run({
               command: spec.id,
               flags: spec === sshSpec ? {} : { interactive },
-              args: { command: "cat" },
+              args: { command: spec === sshSpec ? "cat" : commandArgv },
               argv: [],
               cwd: process.cwd(),
             }),
@@ -267,6 +271,7 @@ describe("exec command spec", () => {
 
     // Then
     expect(stdinModes).toEqual([undefined]);
+    expect(commands).toEqual([spec === sshSpec ? ["cat"] : commandArgv]);
   });
 
   test("ssh default command prefers bash when present and falls back to sh", async () => {

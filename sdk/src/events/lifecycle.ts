@@ -84,13 +84,20 @@ export const PostRebuildEvent = Schema.TaggedStruct("post-rebuild", {
 export type PostRebuildEvent = typeof PostRebuildEvent.Type;
 
 export const PreDestroyEvent = Schema.TaggedStruct("pre-destroy", {
-  app: AppRef,
-  timestamp: Timestamp,
+  app: AppRef.annotate({ description: "Recorded app identity being torn down." }),
+  evidence: Schema.Literals(["applied", "retained", "orphans", "inventory", "snapshots"]).annotate({
+    description: "Primary teardown resolution basis; retained identifies an unfinished accelerated start.",
+  }),
+  timestamp: Timestamp.annotate({ description: "Time the destroy bracket opened, before destructive work." }),
 });
 export type PreDestroyEvent = typeof PreDestroyEvent.Type;
 
 export const PostDestroyEvent = Schema.TaggedStruct("post-destroy", {
-  app: AppRef,
-  timestamp: Timestamp,
+  app: AppRef.annotate({ description: "Recorded app identity whose teardown completed." }),
+  evidence: PreDestroyEvent.fields.evidence,
+  outcome: Schema.Literals(["destroyed", "unchanged"]).annotate({
+    description: "Aggregate result of the entire destroy invocation, shared by every recorded app identity.",
+  }),
+  timestamp: Timestamp.annotate({ description: "Time all planned teardown work completed successfully." }),
 });
 export type PostDestroyEvent = typeof PostDestroyEvent.Type;

@@ -4,6 +4,7 @@ import { type Server, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { Effect, Exit, Stream } from "effect";
 
 import {
@@ -27,6 +28,15 @@ const listen = (server: Server, socketPath: string): Promise<void> =>
     server.once("error", reject);
     server.listen(socketPath, resolve);
   });
+
+test.each(["linux", "darwin", "win32"] as const)(
+  "Docker %s declares only its dialect realizations",
+  (platform) => {
+    expect(dockerCapabilitiesForPlatform(platform).composeKnobs?.supported).toEqual(
+      composeKnobsForDialect("docker"),
+    );
+  },
+);
 
 const close = (server: Server): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -211,6 +221,8 @@ describe("provider-docker capabilities", () => {
                   providerId: "docker",
                   operation: "capabilities",
                   message: "injected failure",
+                  remediation:
+                    "Install or start the `docker` provider and confirm it can perform `capabilities`.",
                 }),
               ),
             },
@@ -320,7 +332,7 @@ describe("provider-docker capabilities", () => {
             platform: "linux",
             env: {},
             dockerApi: { info: Effect.succeed({ Architecture: "aarch64" }) },
-            logFileHelperPayloads: { "linux-arm64": new Uint8Array([1, 2, 3]) },
+            resolveContainerHelper: () => Effect.die("provider construction resolved helper bytes"),
           }),
         ),
       ),
@@ -336,8 +348,8 @@ describe("provider-docker capabilities", () => {
           makeProviderLayer({
             platform: "linux",
             env: {},
-            dockerApi: { info: Effect.succeed({ Architecture: "x86_64" }) },
-            logFileHelperPayloads: { "linux-arm64": new Uint8Array([1, 2, 3]) },
+            dockerApi: { info: Effect.succeed({ Architecture: "riscv64" }) },
+            resolveContainerHelper: () => Effect.die("provider construction resolved helper bytes"),
           }),
         ),
       ),

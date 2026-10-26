@@ -47,7 +47,8 @@ export const pluginTest = Effect.fn("PluginTest.test")(function* (
         ? cause
         : new PluginManifestError({
             message: `Plugin manifest validation failed in ${pluginRoot}.`,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: `Check package.json in ${pluginRoot} and correct the reported manifest issues.`,
           }),
   });
   const { paths, forwarded } = splitPluginTestArgv(options.argv ?? []);
