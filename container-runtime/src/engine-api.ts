@@ -1,3 +1,4 @@
+import type { Redactor } from "@lando/sdk/secrets";
 import type { Effect, Stream } from "effect";
 
 import type {
@@ -9,12 +10,17 @@ import type {
 export type ProviderErrorContext = {
   readonly providerId: string;
   readonly remediation: string;
+  /** Explicit host env snapshot for heuristic secret collection. Never read process.env here. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly redactor?: Redactor;
 };
 
 export interface EngineHttpRequest {
   readonly method: "GET" | "POST" | "PUT" | "DELETE";
   readonly path: `/${string}`;
   readonly body?: unknown;
+  /** Docker-only feature opt-in; uses the negotiated prefix unless advertised support is known. */
+  readonly minimumApiVersion?: "1.48";
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;
@@ -27,6 +33,12 @@ export interface EngineHttpResponse {
   readonly body: string;
   readonly headers?: Readonly<Record<string, string>>;
 }
+
+/** Compat removal deletes engine-anonymous volumes, never explicitly named mounts. */
+export const buildContainerRemoveRequest = (rawReference: string): EngineHttpRequest => ({
+  method: "DELETE",
+  path: `/containers/${encodeURIComponent(rawReference)}?force=true&v=true`,
+});
 
 export interface EngineHttpApi {
   /** Named-pipe exec attach can stay open after Podman reports command exit. */

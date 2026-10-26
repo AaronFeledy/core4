@@ -8,8 +8,7 @@ tags: [beta, docs, config, services, security, ca]
 
 # Trust a corporate CA and proxy
 
-Project-specific certificate authorities belong under each service's `security` block. The canonical
-form is a list of certificate paths:
+Add a project-specific certificate authority to the service’s `security` block in your Landofile. Obtain the PEM certificate from your organization’s trusted source and save it at `certs/corporate-root.pem` under your app directory before using this fragment:
 
 ```yaml
 services:
@@ -20,6 +19,8 @@ services:
       inheritNetworkCa: true
       inheritNetworkProxy: false
 ```
+
+From the app directory, run `lando app:config:lint --format=json` to check the configuration, then `lando start` to apply the CA material. A valid configuration is not proof of HTTPS trust: check the outbound HTTPS request your application needs after the service starts.
 
 `inheritNetworkCa` and `inheritNetworkProxy` override the corresponding host network-injection
 setting for only that service. Omit either flag to inherit the host default.

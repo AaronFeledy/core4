@@ -8,6 +8,8 @@ tags: [beta, docs, landofile, includes, lockfile]
 
 # Include Landofile fragments
 
+Use `includes:` in your `.lando.yml` to share service or tooling configuration without copying it into every app. For a complete local example, follow [Opt into a user profile](#opt-into-a-user-profile), then inspect the result with `lando app:config --format=json` from the app directory.
+
 Put fragments under `includes:`. `kind: landofile` (the default,
 whole-file fragments) and `compose` fragments resolve per file before the
 layer merge, while `tooling` fragments resolve after it; see the
@@ -49,6 +51,12 @@ Remote git and npm includes are pinned in `.lando.lock.yml` by resolved
 revision and SHA-256 content hash; local includes are not locked. See
 [Pin a remote include](#pin-a-remote-include).
 
+A whole Compose file can be included too, with Compose's own top-level
+`include:` key rather than `includes:`. Its services become `type: compose`
+services of your app, and relative paths inside a local compose file resolve
+from that file's directory. See
+[Fold the stack into your app](../config/networks.mdx#fold-the-stack-into-your-app).
+
 <Guide>
   <Scenario id="local-include-merge" render>
     <Step name="scaffold">
@@ -72,7 +80,7 @@ services:
       API_TOKEN: '${secret:CORP_API_TOKEN}'
 ```
 
-Select it explicitly in each consuming app's Landofile:
+Review a profile before including it: opting in trusts its build and tooling commands, not just its environment values. Select it explicitly in each consuming app's Landofile:
 
 ```yaml
 includes:
@@ -86,12 +94,15 @@ lando app:config --format=json
 ```
 
 The structured result includes a `sources` inventory of logical source IDs and
-SHA-256 hashes, not profile contents or host paths. Exact service-environment
-secret references remain references in config and plans. A bare id such as
+SHA-256 hashes, not profile contents or host paths. A `${secret:...}` reference
+authored as a whole service `environment` value in a profile is a reference in
+the merged config and in the plan, the same as one written in `.lando.yml`. A bare id such as
 `CORP_API_TOKEN` resolves from `LANDO_SECRET_CORP_API_TOKEN` through the default
 `env` store; an `op://Vault/Item/field` reference resolves through the bundled
-1Password store. The routed SecretStore supplies values only for the provider
-action; don't interpolate secrets into build arguments or scripts. See
+1Password store. Lando reads the store only when it creates the container or
+runs a tooling command that needs the value; `lando app:config` shows the
+reference as a typed descriptor and never reads a store. Don't interpolate
+secrets into build arguments or scripts. See
 [secret stores](../config/secret-stores.mdx).
 
 No profile is loaded automatically. Opting in trusts its build and tooling
@@ -132,8 +143,9 @@ try {
       },
     })),
   );
-  expect(config.services?.[ServiceName.make("web")]?.environment?.REGION).toBe("project");
-  expect(config.services?.[ServiceName.make("web")]?.environment?.VALUE).toBe("\${secret:CORP_API_TOKEN}");
+  const web = config.document.services?.[ServiceName.make("web")];
+  expect(web?.environment?.REGION).toBe("project");
+  expect(web?.environment?.VALUE).toEqual({ _tag: "SecretRef", reference: "CORP_API_TOKEN" });
 } finally {
   process.chdir(previousCwd);
 }`}

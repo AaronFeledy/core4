@@ -1,5 +1,5 @@
 import { ToolingCompileError } from "@lando/sdk/errors";
-import type { ToolingTaskShape } from "@lando/sdk/schema";
+import type { Environment, ToolingTaskShape } from "@lando/sdk/schema";
 import { Result } from "effect";
 
 export type ToolingServiceRef =
@@ -33,7 +33,7 @@ export interface NormalizedToolingStep {
   readonly service?: ToolingServiceRef;
   readonly dir?: string;
   readonly user?: string;
-  readonly env: Readonly<Record<string, string>>;
+  readonly env: Environment;
 }
 
 export interface NormalizedToolingTask {
@@ -42,7 +42,7 @@ export interface NormalizedToolingTask {
   readonly service?: ToolingServiceRef;
   readonly user?: string;
   readonly dir?: string;
-  readonly env: Readonly<Record<string, string>>;
+  readonly env: Environment;
   readonly disabled: boolean;
   readonly hasInput: boolean;
   readonly acceptsArguments: boolean;
@@ -165,7 +165,7 @@ export const normalizeToolingTask = (
   };
   const service = serviceRef(task.service);
   if (Result.isFailure(service)) return Result.fail(service.failure);
-  const env = Object.fromEntries(Object.entries(task.env ?? {}).map(([key, value]) => [key, String(value)]));
+  const env = { ...task.env };
   if (task.cmd !== undefined && task.cmds !== undefined) return fail("Use cmd or cmds, not both.");
   const steps: NormalizedToolingStep[] = [];
   if (task.cmd !== undefined) {
@@ -193,7 +193,7 @@ export const normalizeToolingTask = (
       ...(user === undefined ? {} : { user }),
       env: {
         ...env,
-        ...Object.fromEntries(Object.entries(step.env ?? {}).map(([key, value]) => [key, String(value)])),
+        ...step.env,
       },
     });
   }

@@ -7,7 +7,7 @@ tags: [beta, docs, varnish, service]
 
 # Add Varnish
 
-Put `type: varnish` in front of another service and set `backend:`. That shorthand is Varnish 7. Traffic hits Varnish first. Varnish fetches from the named backend:
+In `.lando.yml`, add `type: varnish` in front of another service and set `backend:`. That shorthand is Varnish 7. Traffic hits Varnish first. Varnish fetches from the named backend:
 
 ```yaml
 name: varnish-demo
@@ -65,8 +65,7 @@ that names the missing service.
 
 ## Override VCL
 
-Lando writes a default VCL that points at `backend:` on port `80`. Mount your
-own file over `/etc/varnish/default.vcl` when you need custom VCL:
+Lando writes a default VCL that points at `backend:` on port `80`. Create `default.vcl` in your app root, then mount it over `/etc/varnish/default.vcl` when you need custom VCL:
 
 ```yaml
 services:

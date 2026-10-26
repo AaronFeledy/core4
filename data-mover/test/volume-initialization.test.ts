@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { Effect, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, type VolumeIdentity } from "@lando/sdk/schema";
 import { DataMover, EventService, PathsService, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
-import * as BunDataMover from "../src/service.ts";
+import * as BunDataMover from "./support.ts";
 
 test("the live shared port reads engine creation state and does not expose a creation writer", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-mover-initialization-"));
@@ -47,18 +47,7 @@ test("the live shared port reads engine creation state and does not expose a cre
             query: () => Effect.succeed([]),
           }),
         ),
-        Effect.provideService(
-          RedactionService,
-          RedactionService.of({
-            registerValues: registerRedactionValues,
-            payloadValues: () => Effect.succeed(() => []),
-            forProfile: () =>
-              Effect.succeed({
-                redactString: (text: string) => text,
-                redactValue: (value: unknown) => value,
-              }),
-          }),
-        ),
+        Effect.provideService(RedactionService, makeRedactionService()),
       ),
     );
     expect(mover.volumeInitialization).toBeDefined();

@@ -11,6 +11,7 @@ import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { LandofileShape, type PluginManifest, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 import {
   bundledFirstGlobalServiceLoader,
@@ -69,10 +70,9 @@ describe("bundled-first global service loader", () => {
     });
     // When
     const plan = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, TestRuntimeProvider.capabilities)).pipe(
-        Effect.provide(AppPlannerLayer.layer),
-        Effect.provide(PluginRegistryLayer.layer),
-      ),
+      Effect.flatMap(AppPlanner, (planner) =>
+        planner.plan(literalLandofile(landofile, process.cwd()), TestRuntimeProvider.capabilities),
+      ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
     );
     const sidecar = plan.services[ServiceName.make("ssh-agent")];
     // Then

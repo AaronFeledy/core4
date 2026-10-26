@@ -102,6 +102,10 @@
       "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-event-tooling",
+      "digest": "67f450cca3d98d73e3758805c3935025bc40ce9407d4b6b6480ac89f788d8a47"
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-invalid",
       "invalid": {
         "status": "invalid",
@@ -113,8 +117,37 @@
       "digest": "9af58cc2876625db8d252f8d3e0135ff558c57f81bd7bdc5d8189b911f9e3a14"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/config-lint-tooling-include",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileIncludeError"
+      }
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/marker-warning",
       "digest": "8243d238dba13dd7175234aea03cbdbc7a953c2b5568aa9618c133b83c709102"
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/route-declared-http",
+      "digest": "4d49aacd279230fe3efc6458589504641f955efae6f4f4b9465527706608d1de"
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/route-missing-http",
+      "digest": "ab78ee10251571f12549ce10a6d9728201df7344889fe42eee427380bf283cb9"
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/wrong-filter-prefix",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/wrong-type",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
     },
     {
       "fixture": "docs/guides/config-translate/fixtures/lando3-compose-arguments",
@@ -246,6 +279,14 @@
       "digest": "a7bf0e1d29ba95e31e4cc4b16402bc44eceb83a55c7e3af12cb35d09d384ee70"
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-bound-password-helper",
+      "digest": "9f18bbe623991927e5c0172d07e1320aa9d21bef958c3e8455bad28e49295533"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-escaped-literals",
+      "digest": "5b7e08fc5571540bd86652b554c130a67ffe5ac422348c0fa367dac0cdd84220"
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-missing-creds",
       "digest": "35d13d408375ea22d127f106d09db098d80f3d76e1697063f3a86c02d6bf3f35"
     },
@@ -273,6 +314,13 @@
       "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470"
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-unescaped-shell",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/external-access/fixtures/external-access-demo",
       "digest": "167f5aa0981074f86f93925c54bfc7c9c9d96654132433fd01353049d08111e0"
     },
@@ -290,7 +338,7 @@
     },
     {
       "fixture": "docs/guides/flags-and-args/fixtures/flags-demo",
-      "digest": "c5606017647f40a8e6a69bc7592efbc951ee0f83686e41c93c709b5cfb956cba"
+      "digest": "49fb4d290f20b8d94f80548c6c21dc10685a151bdb66e96b4254b6c2721b5440"
     },
     {
       "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",
@@ -400,6 +448,10 @@
       "digest": "0259f2d81b5170c7da88d33f880c1ce1280f79531320126f20daa2360d2394a3"
     },
     {
+      "fixture": "docs/guides/magento/fixtures/mageos",
+      "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
+    },
+    {
       "fixture": "docs/guides/mailpit/fixtures/invalid-target",
       "digest": "1a813e0ee00435605c4d9dce72db846f0e6ce9f86b7674510df1547ec4a4baf6"
     },
@@ -421,7 +473,7 @@
     },
     {
       "fixture": "docs/guides/meilisearch/fixtures/meilisearch-demo",
-      "digest": "bcc1c9b80cbdbb4548afa41e05380dce69a9095ecf92a9f691c42ee1f7242723"
+      "digest": "8d53de362d1d5a37948315af12d944a5b4f4a7956ffdfc36a1220f3a5d937924"
     },
     {
       "fixture": "docs/guides/memcached/fixtures/memcached-demo",
@@ -458,12 +510,43 @@
       "digest": "2896907ac9f7480907d73bc5a1abedd3d4c6fdde39fc116a2155ee213174ef42"
     },
     {
+      "fixture": "docs/guides/mongodb/fixtures/mongodb-e2e-default",
+      "digest": "602013e08cc40d2766fb8e9910c02b3d825a430cebf2332c3963aa451330d236"
+    },
+    {
+      "fixture": "docs/guides/mongodb/fixtures/mongodb-e2e-port",
+      "digest": "d01b31b0b3310bcfd22a7df546da2b93922a6eedaa12746c460ac216d148876c"
+    },
+    {
       "fixture": "docs/guides/mssql/fixtures/mssql-demo",
       "digest": "2798b1b10b1da4a3aea0d2ffc3dd451796ab08b8da8aa012d96598c4c40cdb78"
     },
     {
       "fixture": "docs/guides/mysql/fixtures/mysql-demo",
       "digest": "7a9fb91ab0023bac0648956ec7bd5c08d1694319d34e3f417038362492b516c2"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-demo",
+      "digest": "1a0e8d66f3e73cef88f44002d918e0522172dd2a39c25f9e5c6785545e0aed6f"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-include",
+      "digest": "cb069536a4627ca18f8601c497293d1b3ebb4802c1e70aae98184c0ee4ac6d1c"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-misdeclared",
+      "digest": "5c6f4865559c80cd10d6e618c2a948e35cfdaf784fe10c98c014e08ae3655eae"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-pinned-address",
+      "invalid": {
+        "status": "invalid",
+        "tag": "ComposeKeyRejectedError"
+      }
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-undeclared",
+      "digest": "1043e09b1fcfa6be384fb3bc16839209bc9df7e8b03a365c6d5655b236beaf93"
     },
     {
       "fixture": "docs/guides/nginx/fixtures/nginx-demo",
@@ -478,8 +561,20 @@
       "digest": "df96558b651021bf7df0d882b8a92e97daeb3d6d9dc411382d2fd34a8761b1cd"
     },
     {
+      "fixture": "docs/guides/node-playwright/fixtures/playwright-demo",
+      "digest": "7a07cec9f964825aca7f28fddfa28707839dfd570afa2e80c3f4dc807c453c60"
+    },
+    {
       "fixture": "docs/guides/node-postgres-scaffold/fixtures/invalid-service-type",
       "digest": "5d44c18a040b444d7daef194e8a3ca0c400bdc8e2e0748e1ab2fa456c3829bfd"
+    },
+    {
+      "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-demo",
+      "digest": "1f4813468c80736bda3387e6792eca52e54c70db64b943ffcbfb8bc2e02d9a1e"
+    },
+    {
+      "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-serve",
+      "digest": "887220566337da45e239ee73f19c6b4b153f625a98b40840f969dea892403786"
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-child",
@@ -530,6 +625,10 @@
       "digest": "d4ca26563b33f554f10a29552e6b81f010f86a5d92365d7bfa70fd275734709a"
     },
     {
+      "fixture": "docs/guides/ollama/fixtures/ollama-demo",
+      "digest": "9191a0b49df33e43ab8e9de2cc600a19888178d59c1598f147fbdd2a5444ff56"
+    },
+    {
       "fixture": "docs/guides/opensearch/fixtures/opensearch-demo",
       "digest": "d3c56e3f0c881c2f6f158d600bad70287b305c66739cac7753024ea1d03892b3"
     },
@@ -539,7 +638,7 @@
     },
     {
       "fixture": "docs/guides/output-streaming/fixtures/stream-container",
-      "digest": "b8e2a251576a526c9c5de65258ac4ee7208397b1af40b0993103fc2e118e2a8d"
+      "digest": "9185bfe3f0ad6878eed4924a4157fe63bca16fa652f941560b83d8bf328931e9"
     },
     {
       "fixture": "docs/guides/php-build-failures/fixtures/failing-build",
@@ -670,6 +769,10 @@
       "digest": "a9c5d23d76c646f8f1c68d0663c3b8f9cb9a649b1d40fdbd2349946f0fde9e4c"
     },
     {
+      "fixture": "docs/guides/postgres/fixtures/postgres-port-url",
+      "digest": "e7289b99f4f952f5c55f8c81608796203cff17a4fb6ad57957080d36f8279f08"
+    },
+    {
       "fixture": "docs/guides/poweroff/fixtures/poweroff-demo",
       "digest": "80e40bcb9df13af80098f3885ab401a93c3c37ce637f585e20a52209d1ff93f9"
     },
@@ -708,6 +811,10 @@
     {
       "fixture": "docs/guides/redis/fixtures/redis-demo",
       "digest": "060f75e1e04c35daaa174af392ecf82f5f9729dfcfdec4e529ef0f95a2190c1e"
+    },
+    {
+      "fixture": "docs/guides/route-shorthand/fixtures/ambiguous-default-route",
+      "digest": "fd0f10e651a4982ec3a8369cdc2a26ba4cf5d3ba5d574221cbd67f76828a04bb"
     },
     {
       "fixture": "docs/guides/route-shorthand/fixtures/catalog-endpoints",
@@ -766,6 +873,10 @@
         "status": "invalid",
         "tag": "LandofileValidationError"
       }
+    },
+    {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-bound-creds",
+      "digest": "4ca83b9cfe7169e2ff669a2c9ba702f47b64f5566abcf688531369c6b86bb1af"
     },
     {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-demo",
@@ -846,7 +957,7 @@
       "fixture": "docs/guides/timezone/fixtures/timezone-rejected-interpolation",
       "invalid": {
         "status": "invalid",
-        "tag": "NotImplementedError"
+        "tag": "LandofileValidationError"
       }
     },
     {
@@ -906,8 +1017,26 @@
       "digest": "497659277c73b4fceb9d7eb115d3f6e744e62ed10368cdddd4b468e169f436cd"
     },
     {
+      "fixture": "docs/guides/xhprof-xhgui/fixtures/xhprof-demo",
+      "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/dual-form-conflict",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileFormConflictError"
+      }
+    },
+    {
       "fixture": "docs/guides/your-landofile/fixtures/empty-routes-overlay",
       "digest": "097f0e2646abd0984cb33c6aa15193c8018ddeb1883184e708d08ba82e85e98b"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/flow-mapping-rejected",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileParseError"
+      }
     },
     {
       "fixture": "docs/guides/your-landofile/fixtures/merge-directives",
@@ -916,6 +1045,10 @@
     {
       "fixture": "docs/guides/your-landofile/fixtures/schema-merge-rules",
       "digest": "4c084b4b9d168141c77cf669e80c2ee93bf0990725783b5d481bf6c12adfc937"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/typescript-local-layer",
+      "digest": "51d6daed4c54038988d6f35c326d769d1e8c1ba1e8389f548ac163abcb5be4bc"
     },
     {
       "fixture": "docs/guides/your-landofile/fixtures/your-landofile-demo",
@@ -927,6 +1060,31 @@
     }
   ],
   "intended": {
+    "docs/guides/config-explain/fixtures/bare-recipe": {
+      "before": { "invalid": { "status": "invalid", "tag": "LandofileValidationError" } },
+      "after": { "invalid": { "status": "invalid", "tag": "ConfigExpressionError" } },
+      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. A bare recipe supplies no options, so this fixture remains rejected with a located ConfigExpressionError; no bare-recipe acceptance is introduced."
+    },
+    "docs/guides/migrating-recipes/fixtures/bare-recipe": {
+      "before": { "invalid": { "status": "invalid", "tag": "LandofileValidationError" } },
+      "after": { "invalid": { "status": "invalid", "tag": "ConfigExpressionError" } },
+      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. Missing options on the bare recipe now produce a located ConfigExpressionError while the same invalid fixture remains refused."
+    },
+    "docs/guides/expressions/fixtures/expressions-escaped-literals": {
+      "before": { "digest": "5b7e08fc5571540bd86652b554c130a67ffe5ac422348c0fa367dac0cdd84220" },
+      "after": { "digest": "73a76f1d968a938c8c84d4ee561567d39885c1e3be3e212009ac746e07e9829b" },
+      "reason": "Documented dollar and brace escapes decode exactly once at authored source sites. The encoded load-scoped document now carries the resulting literal text without retaining artificial delimiter escapes or granting later expression authority."
+    },
+    "docs/guides/expressions/fixtures/expressions-service-creds": {
+      "before": { "digest": "096e0c0033fd8b2ddc3fa52d5f415c469c9e733b3adb89712a3c192d37c9b8c9" },
+      "after": { "digest": "cd782ede6ce2a22f5af8be79c7d90b157dab49eece777299bf9eb62d70ccde4b" },
+      "reason": "The authored guide fixture now sets database port 5433, derives the URL port from services.database.port, and explicitly component-encodes its password. This records the deliberate input update, not a refresh of unchanged inputs."
+    },
+    "docs/guides/secret-stores/fixtures/secret-stores-demo": {
+      "before": { "digest": "129bb83ef1bf4571ca18662ff8789457241433a6931b4d0158f075eda41ccc25" },
+      "after": { "digest": "0bb28603bc928f7101b0620ed650b047bc9eac670af78170e7d7b7b3d47fd085" },
+      "reason": "Authored secret references now encode as SecretRef descriptors without store access. The guide also adds the API_URL mixed-reference example, encoded as BoundText with raw reference parts rather than decrypted bytes."
+    },
     "docs/guides/expressions/fixtures/expressions-typed-values": {
       "before": {
         "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470"
@@ -959,6 +1117,24 @@
         "digest": "414f700e136b7d620b521de335df7f8f05a4b89471af7ade6d2121a756b6d3d2"
       },
       "reason": "The guide fixture replaces unsupported braced positional shell substitution with a POSIX test and set default followed by quoted $1 expansion. The empty default keeps the static URL at one root slash. The corrected input now loads; the historical NotImplementedError remains preserved rather than refreshing same-input behavior."
+    },
+    "docs/guides/node-playwright/fixtures/playwright-demo": {
+      "before": {
+        "digest": "7a07cec9f964825aca7f28fddfa28707839dfd570afa2e80c3f4dc807c453c60"
+      },
+      "after": {
+        "digest": "aa9246e83fc28448cbd0704c046b9d649e44afbdb6a9b7301c71a6d0b0ed8204"
+      },
+      "reason": "Explicit empty endpoint declarations suppress generated listeners instead of inheriting the service defaults."
+    },
+    "docs/guides/route-shorthand/fixtures/route-shorthand-demo": {
+      "before": {
+        "digest": "a05a7da1df7e4e0880b520fa518a450cfd2ce591ebc275113f5e2c9d70c22e83"
+      },
+      "after": {
+        "digest": "8ce3989a78b0312903b6811adcf1593a85c8a14bd1491afa3a6e73cd287190b9"
+      },
+      "reason": "The route shorthand guide now explicitly declares its Compose listener as HTTP. This records the authored protocol change while retaining the previous fixture digest; publishing a TCP port alone no longer implies an HTTP listener."
     }
   }
 }

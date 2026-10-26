@@ -8,23 +8,23 @@ tags: [beta, docs, mcp, agent]
 
 # Drive Lando through MCP
 
-An MCP client starts `lando mcp` as a child process and owns its stdin and stdout
-pipes. The server speaks MCP over newline-delimited JSON-RPC and runs until the
-client closes stdin. Keep stdin open until every outstanding request id has
-answered; closing early interrupts in-flight tool calls. Serve mode writes
-protocol frames only; it does not wrap startup or shutdown in a Lando
-command-result envelope.
-
-Configure the MCP client to launch `lando mcp` with piped stdin and stdout.
-Audit the effective catalog without starting the long-running server with
-`lando mcp --list --format=json`.
+Configure your MCP client to launch `lando mcp` as a child process with piped
+stdin and stdout. For app-scoped tools and resources, start it in the app directory.
+Before connecting, inspect the tools the server will expose without starting the
+long-running session:
 
 ```sh
 lando mcp --list --format=json
 ```
 
 Check that the catalog includes the tools you intend to expose before connecting
-the client.
+the client. Do not launch serve mode directly in a terminal or add `--format=json`
+to it; that format is for the terminating `--list` command.
+
+The server speaks MCP over newline-delimited JSON-RPC and runs until the client
+closes stdin. Keep stdin open until every outstanding request id has an answer;
+closing early interrupts in-flight tool calls. Serve mode writes protocol frames
+only, not a Lando command-result envelope for startup or shutdown.
 
 ## Initialize the client
 
@@ -63,6 +63,14 @@ Send integer flags as JSON numbers without a fractional part. For example, the
 For tooling tasks, send positional arguments by name in `args`; Lando applies
 their declared `order`, just as the CLI does. Hyphen-leading values stay positional.
 
+For `app:exec`, send `args.command` as an array of exact arguments. An optional
+service name may come first; shell syntax runs only when you explicitly invoke
+a shell:
+
+```json
+{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"app:exec","arguments":{"args":{"command":["appserver","--","printf","%s","one argument"]}}}}
+```
+
 Positions are resolved by `order` and never compacted. A trailing positional
 with no value may be left out. Omit one that has no `default` while a later
 positional has a value (sent by you or filled from its `default`) and the call
@@ -77,6 +85,54 @@ and `channel` at `order: 1` with `default: stable`, this call fails on `label`:
 
 The tag, message, and `field` are byte-identical to what the CLI emits for the
 same declaration and input.
+
+## Read streamed command output
+
+To expose your app's tooling tasks, launch the server with `lando mcp --tooling`.
+Inspect that catalog first:
+
+```sh
+lando mcp --tooling --list --format=json
+```
+
+Include `_meta.progressToken` in a `tools/call` request to receive live output.
+For example, if your app defines a `report` tooling task:
+
+```json
+{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"app:report","arguments":{},"_meta":{"progressToken":"report-8"}}}
+```
+
+Match each `notifications/progress` notification by `params.progressToken`.
+Parse `params.message` as JSON to read a text frame with `_tag: "stdout"` or
+`"stderr"`, `chunk`, and optional `service` and `source` fields. Append `chunk`
+to the matching output stream; it is not a separate command result.
+
+Container output is decoded incrementally as UTF-8. Invalid or incomplete final
+byte sequences become replacement characters, so progress notifications are not
+a binary transfer channel. Continuous output is buffered to a newline or 64 KiB;
+the remaining tail is sent when the command finishes. Log records are delivered
+without waiting for a newline. Known secret values are masked even when split
+between output chunks.
+
+Wait for the response with the original request id before closing stdin.
+Every completed command response includes `structuredContent.output`, even without
+a progress token. Its `chunks` array holds redacted stdout and stderr text with
+the same optional `service` and `source` fields. Small output is complete. Large
+output keeps a bounded tail and sets `truncated: true`; the capture shares a
+128 KiB response budget across all channels and may shrink further to fit the
+final response. Treat this final capture as authoritative, rather than appending
+it to an already displayed live preview.
+
+A nonzero subprocess exit sets `isError: true` and `structuredContent.ok: false`.
+The response keeps the typed `result`, including its exit code, alongside the
+tagged `error` and captured output. A successfully produced diagnostic report can
+instead have `ok: true` while reporting findings; inspect its result fields too.
+
+Without a progress token, only live notifications are omitted. Final output,
+status, and diagnostics are still returned. Cancel an unwanted request with
+`notifications/cancelled` and its `requestId`; closing stdin also cancels active
+calls and releases their provider reads, including idle log followers. A canceled
+call does not acquire a fabricated successful result.
 
 ## Confirm changes to an app
 
@@ -108,7 +164,7 @@ results are.
 | URI | What you get |
 | --- | --- |
 | `lando://app/config` | Resolved configuration for the app in the server's working directory |
-| `lando://app/info` | Services and endpoints for that app |
+| `lando://app/info` | Services and connections for that app |
 | `lando://apps` | Known apps and their services |
 | `lando://doctor` | Host-safe diagnostics, no fixes applied |
 | `lando://schemas/{name}` | A public Lando JSON schema by name |
@@ -128,17 +184,23 @@ can tab through the public schema registry instead of guessing names.
       <Run
         runtime="library"
         code={`const { Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
-const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
 const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
 const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
 const { LandofileService } = yield* Effect.promise(() => import("@lando/sdk/services"));
+const { AbsolutePath, LoadScopedLandofile } = yield* Effect.promise(() => import("@lando/sdk/schema"));
+const landofile = LoadScopedLandofile.make({
+  stage: "load-scoped",
+  document: { name: "mcp-guide", services: {} },
+  pendingSites: [],
+  context: { appRoot: AbsolutePath.make(context.testDir), env: {} },
+});
 const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
 const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
 const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
-const { RedactionService, registerRedactionValues } = yield* Effect.promise(() => import("@lando/redaction/service"));
+const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
 const runtimeLayer = Layer.succeed(LandofileService, {
-  discover: Effect.succeed({ name: "mcp-guide", services: {} }),
+  discover: Effect.succeed(landofile),
 });
 const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   Layer.succeed(McpRuntimeConfig, {
@@ -146,11 +208,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
     defaultAllowlist: ["app:config:get", "app:config:view"],
     runtimeLayer,
   }),
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
-  }),
+  Layer.succeed(RedactionService, makeRedactionService()),
 )));
 const responses = yield* Effect.gen(function* () {
   const client = yield* makeStdioClient();
@@ -349,14 +407,20 @@ stdout write that does not finish fails after 5 seconds.
       <Run
         runtime="library"
 code={`const { Deferred, Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
-const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
 const { LandofileService } = yield* Effect.promise(() => import("@lando/sdk/services"));
+const { AbsolutePath, LoadScopedLandofile } = yield* Effect.promise(() => import("@lando/sdk/schema"));
+const landofile = LoadScopedLandofile.make({
+  stage: "load-scoped",
+  document: { name: "mcp-guide", services: {} },
+  pendingSites: [],
+  context: { appRoot: AbsolutePath.make(context.testDir), env: {} },
+});
 const { MAX_OUTSTANDING_REQUESTS } = yield* Effect.promise(() => import("../../../../../mcp/src/stdio-limits.ts"));
 const { buildCatalog, computeEffectiveAllowlist } = yield* Effect.promise(() => import("../../../../../mcp/src/catalog.ts"));
 const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
 const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
 const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
-const { RedactionService, registerRedactionValues } = yield* Effect.promise(() => import("@lando/redaction/service"));
+const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
 const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
@@ -381,7 +445,7 @@ expect(catalog.tools.find((tool) => tool.toolId === "app:config:view")?.inputSch
   .toHaveProperty("properties.args.properties", {});
 const release = yield* Deferred.make<void>();
 const runtimeLayer = Layer.succeed(LandofileService, {
-  discover: Deferred.await(release).pipe(Effect.as({ name: "mcp-guide", services: {} })),
+  discover: Deferred.await(release).pipe(Effect.as(landofile)),
 });
 const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   Layer.succeed(McpRuntimeConfig, {
@@ -389,11 +453,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
     defaultAllowlist: ["app:config:get", "app:config:view"],
     runtimeLayer,
   }),
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
-  }),
+  Layer.succeed(RedactionService, makeRedactionService()),
 )));
 const observed = yield* Effect.gen(function* () {
   const client = yield* makeStdioClient();
@@ -452,13 +512,12 @@ console.log(appConfigTools);`}
       <Run
         runtime="library"
 code={`const { Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
-const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
 const { JSON_SCHEMA_NAMES } = yield* Effect.promise(() => import("@lando/sdk/schema"));
 const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
 const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
 const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
 const { resources } = yield* Effect.promise(() => import("../../../../../core/src/mcp-resources.ts"));
-const { RedactionService, registerRedactionValues } = yield* Effect.promise(() => import("@lando/redaction/service"));
+const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   Layer.succeed(McpRuntimeConfig, {
     commandEntries: [],
@@ -466,11 +525,7 @@ const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
     runtimeLayer: Layer.empty,
     resources,
   }),
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
-  }),
+  Layer.succeed(RedactionService, makeRedactionService()),
 )));
 const observed = yield* Effect.gen(function* () {
   const client = yield* makeStdioClient();

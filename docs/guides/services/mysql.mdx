@@ -7,7 +7,7 @@ tags: [beta, docs, mysql, service, database]
 
 # Add MySQL
 
-Put `type: mysql` in your services block. Lando pulls `mysql:8.0` and listens on `3306`:
+Add `type: mysql` under `services` in `.lando.yml`. Lando pulls `mysql:8.0` and listens on `3306`:
 
 ```yaml
 name: mysql-demo
@@ -16,7 +16,7 @@ services:
     type: mysql
 ```
 
-Set `creds:` when you want explicit values. Defaults stay `lando` / `lando` / the app name, plus a generated root password. `creds.user` is the database username. Container `user:` is not.
+Set `creds:` when you want explicit values. By default, the username and password are both `lando`, the database is named after the app, and the root password is generated. `creds.user` is the database username. Container `user:` is not.
 
 ```yaml
 services:
@@ -72,7 +72,9 @@ The `mysql` type ships the client task. After start:
 lando mysql --version
 ```
 
-Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). Or pipe a plain SQL file straight into the client:
+The generated client supplies its password for each invocation. Lando scopes the client-only `MYSQL_PWD` variable to client and healthcheck processes, not the database server's initialization environment.
+
+Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). You can also pipe a plain SQL file directly into the client. This executes the dump's statements against the database, so back up any data you need first:
 
 ```sh
 lando mysql < dump.sql

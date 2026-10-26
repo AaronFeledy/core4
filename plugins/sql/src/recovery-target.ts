@@ -1,8 +1,8 @@
 import { VOLUME_OWNER_LABEL } from "@lando/container-runtime/labels";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
+import { type AppIdentity, ServiceName } from "@lando/sdk/schema";
 import type {
   SnapshotMetadata,
   VolumeIdentity,
@@ -13,6 +13,7 @@ import type {
 import type { VolumeInitialization } from "@lando/sdk/services";
 
 import type { SqlMover } from "./actions.ts";
+import { normalizeCommandFailure } from "./command-failure.ts";
 import type { SqlCreds } from "./creds.ts";
 import type { SqlFamily } from "./families.ts";
 import {
@@ -23,7 +24,7 @@ import {
   requireRuntimeIdentity,
   verifyRuntimeState,
 } from "./runtime-observation.ts";
-import type { SqlPlan, SqlPlanService } from "./views.ts";
+import { type SqlPlan, type SqlPlanService, sqlPlanIdentity } from "./views.ts";
 import { requireDatabaseMount } from "./volume-target.ts";
 
 export type SqlRecoveryDeps = SqlMover &
@@ -47,6 +48,7 @@ export type SqlRecoveryDeps = SqlMover &
   };
 
 export type SqlRecoveryContext = {
+  readonly owner: AppIdentity;
   readonly running: boolean;
   readonly metadata: SnapshotMetadata;
   readonly volumeIdentity: VolumeIdentity;
@@ -63,7 +65,7 @@ export type SqlPhysicalContextInput = {
   readonly serviceName: string;
   readonly family: SqlFamily;
   readonly creds: SqlCreds;
-  readonly env: Readonly<Record<string, string>>;
+  readonly env: import("@lando/sdk/schema").Environment;
   readonly label?: string;
   readonly format?: "tar" | "tar.gz" | "tar.zst";
   readonly preflight?: (context: SqlRecoveryContext) => Effect.Effect<void, unknown>;
@@ -213,32 +215,30 @@ export const resolvePhysicalContext = Effect.fnUntraced(function* (
   );
   const exactTransition = (running: boolean, transition: Effect.Effect<void, unknown>) =>
     transition.pipe(
-      Effect.mapError(() =>
-        recoveryUnavailable(
-          input.serviceName,
-          running
-            ? "The inspected database runtime could not be resumed after recovery."
-            : "The inspected database runtime could not be stopped before recovery.",
-          running
-            ? "Leave the database stopped and restore the reported recovery snapshot before retrying."
-            : "Leave the database stopped, inspect the service container, and retry recovery.",
+      Effect.mapError((error) =>
+        Option.getOrElse(normalizeCommandFailure(error), () =>
+          recoveryUnavailable(
+            input.serviceName,
+            running
+              ? "The inspected database runtime could not be resumed after recovery."
+              : "The inspected database runtime could not be stopped before recovery.",
+            running
+              ? "Inspect the database runtime before retrying or restoring the reported recovery snapshot."
+              : "Leave the database stopped, inspect the service container, and retry recovery.",
+          ),
         ),
       ),
       Effect.andThen(verifyRuntimeState(input.deps, input.serviceName, target.runtime, running)),
     );
   return {
     running: target.runtime.running,
+    owner: sqlPlanIdentity(input.plan),
     volume: target.volume.ref,
     resume: exactTransition(true, input.deps.resume(input.serviceName, target.runtime)),
     suspend: exactTransition(false, input.deps.suspend(input.serviceName, target.runtime)),
     verifyVolume,
     volumeIdentity: identity,
     metadata: {
-      sourceRoot: AbsolutePath.make(canonicalAppRoot(input.plan)),
-      ...(input.plan.identity?.ownerKey === undefined ? {} : { ownerKey: input.plan.identity.ownerKey }),
-      ...(input.plan.identity?.repoGroupKey === undefined
-        ? {}
-        : { repoGroupKey: input.plan.identity.repoGroupKey }),
       service: ServiceName.make(input.serviceName),
       volumeInstanceId: identity.generation,
       family: input.family,

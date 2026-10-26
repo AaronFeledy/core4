@@ -6,6 +6,7 @@ import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
@@ -55,12 +56,6 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["7"] });
   ctx.addEnv("VARNISH_BACKEND_HOST", backend);
   ctx.addEnv("VARNISH_BACKEND_PORT", service.environment?.VARNISH_BACKEND_PORT ?? DEFAULT_BACKEND_PORT);
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(port),
-    protocol: "http",
-    name: ctx.serviceName,
-  });
   ctx.setHealthcheck(commandHealthcheck(["varnishadm", "ping"], 5));
   if (backend.length > 0) {
     ctx.addDependency({
@@ -92,6 +87,10 @@ export const varnishServiceFeature: ServiceFeatureDefinition = {
   id: VARNISH_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+    ),
   apply: serviceFeatureApply(
     VARNISH_FEATURE_ID,
     "varnish service feature failed to apply",
@@ -121,6 +120,7 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
             },
           ],
           serviceType: id,
+          remediation: "Add backend: pointing at an existing service in this Landofile.",
         }),
       );
     }

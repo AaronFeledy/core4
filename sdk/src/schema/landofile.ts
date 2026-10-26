@@ -9,8 +9,12 @@ import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import { ComposeServiceKnobFields } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
+import { ServiceCreds } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
+import { ComposeEnvironmentInput } from "./environment-input.ts";
+import { EnvironmentValue } from "./environment-value.ts";
+import { LandofileEvents } from "./landofile-events.ts";
 import { StringImportRef } from "./landofile-reference.ts";
 import { type LayerMergeRule, layerMerge } from "./layer-merge.ts";
 import { LogSourceInput } from "./log-source.ts";
@@ -26,12 +30,15 @@ import {
   ProviderExtensionConfig,
   ProviderId,
   ServiceName,
+  ToolingEnvironment,
+  ToolingVarLiteral,
 } from "./primitives.ts";
 import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
+import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
 const REPLACE = { kind: "replace" } as const;
@@ -107,7 +114,7 @@ export const MountInput = Schema.Union([
     /** Includes — re-bind specific excluded paths. */
     includes: Schema.optionalKey(Schema.Array(Schema.String)),
   }),
-]).annotate({ description: MOUNT_INPUT_DESCRIPTION });
+]).annotate({ description: MOUNT_INPUT_DESCRIPTION, expected: "a source:target string or a mount object" });
 export type MountInput = typeof MountInput.Type;
 
 /** Storage input — named volume reference. */
@@ -123,7 +130,7 @@ export const StorageInput = Schema.Union([
     kind: Schema.optionalKey(Schema.Literals(["data", "cache"])),
     key: Schema.optionalKey(Schema.String),
   }),
-]).annotate({ description: STORAGE_INPUT_DESCRIPTION });
+]).annotate({ description: STORAGE_INPUT_DESCRIPTION, expected: "a target path string or a storage object" });
 export type StorageInput = typeof StorageInput.Type;
 
 export { HealthcheckInput } from "./compose-healthcheck.ts";
@@ -187,57 +194,6 @@ const ComposeScalarMapInput = mapInputWithPrecheck(
     ),
   ),
 );
-
-// JSON Schema publishes the encoded side, so each transformed field describes both sides.
-const COMPOSE_ENVIRONMENT_DESCRIPTION =
-  "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry or null map value is rejected because Landofiles do not read host environment variables.";
-
-const ComposeEnvironmentInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)])
-  .annotate({ description: COMPOSE_ENVIRONMENT_DESCRIPTION })
-  .pipe(
-    Schema.decodeTo(
-      StringRecord,
-      SchemaTransformation.transformEffect({
-        decode: (input, _options) => {
-          if (!Array.isArray(input)) {
-            const entries = Object.entries(input);
-            const unresolved = entries.find(([, value]) => value === null);
-            if (unresolved !== undefined) {
-              return Effect.fail(
-                new SchemaIssue.InvalidValue(
-                  {
-                    message: `Landofile service environment entry "${unresolved[0]}" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.`,
-                  },
-                  input,
-                ),
-              );
-            }
-            return Effect.succeed(Object.fromEntries(entries.map(([key, value]) => [key, String(value)])));
-          }
-          const entries: Array<readonly [string, string]> = [];
-          for (const entry of input) {
-            const separator = entry.indexOf("=");
-            if (separator < 0) {
-              return Effect.fail(
-                new SchemaIssue.InvalidValue(
-                  {
-                    message: `Landofile service environment entry "${entry}" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).`,
-                  },
-                  input,
-                ),
-              );
-            }
-            entries.push([entry.slice(0, separator), entry.slice(separator + 1)]);
-          }
-          const record = Object.fromEntries(entries);
-          if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
-          return Effect.succeed(record);
-        },
-        encode: (record) => Effect.succeed(record),
-      }),
-    ),
-  )
-  .annotate({ description: COMPOSE_ENVIRONMENT_DESCRIPTION });
 
 const COMPOSE_LABELS_DESCRIPTION =
   "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.";
@@ -368,16 +324,6 @@ const ExtensionRecord = Schema.Record(Schema.TemplateLiteral(["x-", Schema.Strin
 const ComposeNetworkAttachment = Schema.StructWithRest(
   Schema.Struct({
     aliases: Schema.optionalKey(Schema.Array(Schema.String)),
-    interface_name: Schema.optionalKey(Schema.String),
-    ipv4_address: Schema.optionalKey(Schema.String),
-    ipv6_address: Schema.optionalKey(Schema.String),
-    link_local_ips: Schema.optionalKey(Schema.Array(Schema.String)),
-    mac_address: Schema.optionalKey(Schema.String),
-    driver_opts: Schema.optionalKey(
-      Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Number])),
-    ),
-    priority: Schema.optionalKey(Schema.Number),
-    gw_priority: Schema.optionalKey(Schema.Number),
   }),
   [ExtensionRecord],
 );
@@ -385,7 +331,7 @@ const ComposeNetworkAttachment = Schema.StructWithRest(
 const ComposeNetworkAttachmentRecord = Schema.Record(Schema.String, ComposeNetworkAttachment);
 
 const COMPOSE_NETWORKS_DESCRIPTION =
-  "Service network attachments as a name list or long mapping; canonicalized to a long mapping and carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
+  "Extra networks this service joins, as a name list or long mapping keyed by a top-level networks: entry or default (the app network). Membership is additive: the service always stays on its app network. aliases add DNS names on that network; address and interface settings are rejected. Normalized into AppPlan.networking, with no preserved Compose copy. Attachment x-* keys remain inert metadata.";
 
 const ComposeNetworksInput = Schema.Union([
   Schema.Array(Schema.String),
@@ -548,25 +494,7 @@ const ServiceSecurityField = ServiceSecurityInput.pipe(
 /**
  * Login credentials a catalog service may author under `services.<name>.creds`.
  */
-export const ServiceCreds = Schema.Struct({
-  user: Schema.String.annotate({
-    description: "Username created or used by the service.",
-  }),
-  password: Schema.String.annotate({
-    description: "Password for the service user.",
-  }),
-  database: Schema.String.annotate({
-    description: "Database name the service user can access.",
-  }),
-  rootPassword: Schema.optionalKey(Schema.String).annotate({
-    description: "Optional administrative password distinct from the service user password.",
-  }),
-}).annotate({
-  identifier: "ServiceCreds",
-  title: "Service Creds",
-  description: "Username, password, and database credentials for a catalog service.",
-});
-export type ServiceCreds = typeof ServiceCreds.Type;
+export { ServiceCreds } from "./database-connection.ts";
 
 /**
  * App-relative file-backed configuration a catalog service may author under
@@ -685,7 +613,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     database: Schema.optionalKey(Schema.String).annotate({
       description: "Default database, bucket, or equivalent data namespace created for the service.",
     }),
-    password: Schema.optionalKey(Schema.String).annotate({
+    password: Schema.optionalKey(EnvironmentValue).annotate({
       description:
         "Redis authentication password, passed through the container environment rather than command arguments.",
     }),
@@ -897,12 +825,6 @@ const ServiceConfigDecode = ServiceConfigInput.pipe(
 );
 
 /**
- * ToolingVarLiteral — a scalar literal value for a Landofile `tooling.<task>.vars.<name>`.
- */
-export const ToolingVarLiteral = Schema.Union([Schema.String, Schema.Number, Schema.Boolean]);
-export type ToolingVarLiteral = typeof ToolingVarLiteral.Type;
-
-/**
  * ToolingVarDefault — `vars.<name>: { default: <literal> }`.
  */
 export const ToolingVarDefault = Schema.Struct({ default: ToolingVarLiteral });
@@ -935,10 +857,6 @@ export const ToolingVar = Schema.Union([
   ToolingVarPrompt,
 ]);
 export type ToolingVar = typeof ToolingVar.Type;
-
-const ToolingEnvironment = Schema.Record(Schema.String, ToolingVarLiteral).annotate({
-  description: "Environment variables supplied to a tooling task as scalar values.",
-});
 
 export const ToolingFlagShape = Schema.Struct({
   alias: Schema.optionalKey(Schema.String).annotate({
@@ -992,284 +910,6 @@ export const ToolingStepShape = Schema.Struct({
 });
 export type ToolingStepShape = typeof ToolingStepShape.Type;
 
-export const AppLifecycleEventName = Schema.Literals([
-  "pre-init",
-  "post-init",
-  "pre-start",
-  "post-start",
-  "pre-stop",
-  "post-stop",
-  "pre-restart",
-  "post-restart",
-  "pre-rebuild",
-  "post-rebuild",
-  "pre-destroy",
-  "post-destroy",
-]).annotate({ description: "App lifecycle point that runs an ordered Landofile event step list." });
-export type AppLifecycleEventName = typeof AppLifecycleEventName.Type;
-
-export const ToolingEventName = Schema.TemplateLiteral([Schema.Literals(["pre-", "post-"]), Schema.String]);
-export type ToolingEventName = typeof ToolingEventName.Type;
-
-export const LandofileEventName = Schema.Union([AppLifecycleEventName, ToolingEventName]);
-export type LandofileEventName = typeof LandofileEventName.Type;
-
-const EventStepCondition = Schema.Union([Schema.String, Schema.Boolean]);
-
-/**
- * Scalar literal or homogeneous scalar array for a canonical `command:` flag/arg.
- * Arrays support `multiple` inputs; mixed types and objects fail closed.
- */
-export const EventCommandInputValue = Schema.Union([
-  ToolingVarLiteral,
-  Schema.Array(Schema.String),
-  Schema.Array(Schema.Number),
-  Schema.Array(Schema.Boolean),
-]);
-export type EventCommandInputValue = typeof EventCommandInputValue.Type;
-
-const EventStepTail = {
-  ignoreError: Schema.optionalKey(Schema.Boolean),
-  if: Schema.optionalKey(EventStepCondition),
-  silent: Schema.optionalKey(Schema.Boolean),
-};
-
-const EventCmdFields = {
-  service: Schema.optionalKey(Schema.String),
-  dir: Schema.optionalKey(PortablePath),
-  env: Schema.optionalKey(ToolingEnvironment),
-  user: Schema.optionalKey(Schema.String),
-};
-
-const EventCommandFields = {
-  flags: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
-  args: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
-  raw: Schema.optionalKey(Schema.Array(Schema.String)),
-};
-
-const EventTaskFields = {
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVarLiteral)),
-};
-
-export const EventCommandStep = Schema.Struct({
-  cmd: Forbidden,
-  task: Forbidden,
-  command: Schema.String,
-  defer: Forbidden,
-  for: Forbidden,
-  ...EventCommandFields,
-  ...EventStepTail,
-}).annotate({
-  identifier: "EventCommandStep",
-  description: "Direct invocation of a canonical Lando command.",
-});
-export type EventCommandStep = typeof EventCommandStep.Type;
-
-export const EventTaskStep = Schema.Struct({
-  cmd: Forbidden,
-  task: Schema.String,
-  command: Forbidden,
-  defer: Forbidden,
-  for: Forbidden,
-  ...EventTaskFields,
-  ...EventStepTail,
-}).annotate({
-  identifier: "EventTaskStep",
-  description: "Invocation of an effective Landofile tooling task.",
-});
-export type EventTaskStep = typeof EventTaskStep.Type;
-
-export const EventCmdStep = Schema.Struct({
-  cmd: Schema.String,
-  task: Forbidden,
-  command: Forbidden,
-  defer: Forbidden,
-  for: Forbidden,
-  ...EventCmdFields,
-  ...EventStepTail,
-}).annotate({
-  identifier: "EventCmdStep",
-  description: "Provider tooling command with optional service targeting.",
-});
-export type EventCmdStep = typeof EventCmdStep.Type;
-
-const EventForVarSelector = Schema.Struct({
-  var: Schema.String,
-  matrix: Schema.optionalKey(Schema.Never),
-  sources: Schema.optionalKey(Schema.Never),
-  generates: Schema.optionalKey(Schema.Never),
-});
-
-const EventForMatrixSelector = Schema.Struct({
-  var: Schema.optionalKey(Schema.Never),
-  matrix: Schema.Record(Schema.String, Schema.Array(ToolingVarLiteral)),
-  sources: Schema.optionalKey(Schema.Never),
-  generates: Schema.optionalKey(Schema.Never),
-});
-
-const EventForSourcesSelector = Schema.Struct({
-  var: Schema.optionalKey(Schema.Never),
-  matrix: Schema.optionalKey(Schema.Never),
-  sources: Schema.Literal(true),
-  generates: Schema.optionalKey(Schema.Never),
-});
-
-const EventForGeneratesSelector = Schema.Struct({
-  var: Schema.optionalKey(Schema.Never),
-  matrix: Schema.optionalKey(Schema.Never),
-  sources: Schema.optionalKey(Schema.Never),
-  generates: Schema.Literal(true),
-});
-
-export const EventForSelector = Schema.Union([
-  Schema.Array(ToolingVarLiteral),
-  EventForVarSelector,
-  EventForMatrixSelector,
-  EventForSourcesSelector,
-  EventForGeneratesSelector,
-]).annotate({
-  identifier: "EventForSelector",
-  description: "Literal or task-derived values selected for an event step loop.",
-});
-export type EventForSelector = typeof EventForSelector.Type;
-
-const EventDeferredCmdShorthand = Schema.Struct({
-  cmd: Forbidden,
-  task: Forbidden,
-  command: Forbidden,
-  defer: Schema.String,
-  for: Forbidden,
-  ...EventCmdFields,
-  ...EventStepTail,
-});
-
-const EventDeferredCmdStep = Schema.Struct({
-  cmd: Schema.String,
-  task: Forbidden,
-  command: Forbidden,
-  defer: Schema.Literal(true),
-  for: Forbidden,
-  ...EventCmdFields,
-  ...EventStepTail,
-});
-
-const EventDeferredTaskStep = Schema.Struct({
-  cmd: Forbidden,
-  task: Schema.String,
-  command: Forbidden,
-  defer: Schema.Literal(true),
-  for: Forbidden,
-  ...EventTaskFields,
-  ...EventStepTail,
-});
-
-const EventDeferredCommandStep = Schema.Struct({
-  cmd: Forbidden,
-  task: Forbidden,
-  command: Schema.String,
-  defer: Schema.Literal(true),
-  for: Forbidden,
-  ...EventCommandFields,
-  ...EventStepTail,
-});
-
-export const EventDeferStep = Schema.Union([
-  EventDeferredCmdShorthand,
-  EventDeferredCmdStep,
-  EventDeferredTaskStep,
-  EventDeferredCommandStep,
-]).annotate({
-  identifier: "EventDeferStep",
-  description: "An event action registered for LIFO finalization.",
-});
-export type EventDeferStep = typeof EventDeferStep.Type;
-
-const EventForCmdStep = Schema.Struct({
-  cmd: Schema.String,
-  task: Forbidden,
-  command: Forbidden,
-  defer: Forbidden,
-  for: EventForSelector,
-  ...EventCmdFields,
-  ...EventStepTail,
-});
-
-const EventForTaskStep = Schema.Struct({
-  cmd: Forbidden,
-  task: Schema.String,
-  command: Forbidden,
-  defer: Forbidden,
-  for: EventForSelector,
-  ...EventTaskFields,
-  ...EventStepTail,
-});
-
-const EventForCommandStep = Schema.Struct({
-  cmd: Forbidden,
-  task: Forbidden,
-  command: Schema.String,
-  defer: Forbidden,
-  for: EventForSelector,
-  ...EventCommandFields,
-  ...EventStepTail,
-});
-
-const EventForDeferredCmdStep = Schema.Struct({
-  cmd: Forbidden,
-  task: Forbidden,
-  command: Forbidden,
-  defer: Schema.String,
-  for: EventForSelector,
-  ...EventCmdFields,
-  ...EventStepTail,
-});
-
-export const EventForStep = Schema.Union([
-  EventForCmdStep,
-  EventForTaskStep,
-  EventForCommandStep,
-  EventForDeferredCmdStep,
-]).annotate({
-  identifier: "EventForStep",
-  description: "An event action repeated for each selected value.",
-});
-export type EventForStep = typeof EventForStep.Type;
-
-export const EventStep = Schema.Union([
-  Schema.String,
-  EventCmdStep,
-  EventTaskStep,
-  EventCommandStep,
-  EventDeferStep,
-  EventForStep,
-]).annotate({
-  identifier: "EventStep",
-  description: "One ordered events-as-tasks step.",
-});
-export type EventStep = typeof EventStep.Type;
-
-export const LandofileEvents = Schema.StructWithRest(
-  Schema.Struct({
-    "pre-init": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-init": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "pre-start": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-start": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "pre-stop": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-stop": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "pre-restart": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-restart": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "pre-rebuild": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-rebuild": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "pre-destroy": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-    "post-destroy": Schema.optionalKey(layerMerge(Schema.Array(EventStep), REPLACE)),
-  }),
-  [Schema.Record(Schema.String, layerMerge(Schema.Array(EventStep), REPLACE))],
-).annotate({
-  identifier: "LandofileEvents",
-  description: "Ordered tasks keyed by lifecycle or tooling event name, validated after tooling resolution.",
-});
-export type LandofileEvents = typeof LandofileEvents.Type;
-
 /**
  * ToolingTaskShape — Landofile `tooling.<name>` task entry accepted by this
  * schema.
@@ -1304,10 +944,16 @@ export const ToolingTaskShape = Schema.Struct({
   disabled: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Disables the task so it is hidden from listings and refused at execution.",
   }),
-  service: Schema.optionalKey(Schema.String),
-  description: Schema.optionalKey(Schema.String),
-  summary: Schema.optionalKey(Schema.String),
-  cmd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+  service: Schema.optionalKey(Schema.String).annotate({
+    description: "Service target, :host for host execution, or :<flag-name> for a dynamic target.",
+  }),
+  description: Schema.optionalKey(Schema.String).annotate({ description: "Task description shown in help." }),
+  summary: Schema.optionalKey(Schema.String).annotate({
+    description: "Short task help, used when description is absent.",
+  }),
+  cmd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])).annotate({
+    description: "Single shell command or argv array run by the task.",
+  }),
   cmds: Schema.optionalKey(
     layerMerge(Schema.Array(Schema.Union([Schema.String, ToolingStepShape])), REPLACE),
   ).annotate({
@@ -1322,12 +968,58 @@ export const ToolingTaskShape = Schema.Struct({
   env: Schema.optionalKey(ToolingEnvironment).annotate({
     description: "Environment variables applied to this tooling task after app-wide tooling defaults.",
   }),
-  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)),
+  vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)).annotate({
+    description: "Task-local variables, overriding include and app-wide tooling variables.",
+  }),
   deprecated: Schema.optionalKey(DeprecationNotice),
-  flags: Schema.optionalKey(Schema.Record(Schema.String, ToolingFlagShape)),
-  args: Schema.optionalKey(Schema.Record(Schema.String, ToolingArgShape)),
+  flags: Schema.optionalKey(Schema.Record(Schema.String, ToolingFlagShape)).annotate({
+    description: "Named command-line flags accepted by the task.",
+  }),
+  args: Schema.optionalKey(Schema.Record(Schema.String, ToolingArgShape)).annotate({
+    description: "Positional arguments accepted by the task.",
+  }),
 });
 export type ToolingTaskShape = typeof ToolingTaskShape.Type;
+
+const TOOLING_TASK_FORMS = {
+  expected: "false, a non-empty command string, or a tooling task object",
+  message: "Expected false, a non-empty command string, or a tooling task object",
+};
+const ToolingTaskShorthand = Schema.Union([
+  Schema.Literal(false),
+  Schema.String.check(
+    Schema.isMinLength(toolingTaskStringConstraints.minLength, {
+      message: "Expected a non-empty command string; use false to disable a task",
+    }),
+    Schema.makeFilter((input) => input !== toolingTaskStringConstraints.not.const, {
+      message: "`disabled` is not a command; use false to disable a task",
+      toJsonSchema: () => ({ not: toolingTaskStringConstraints.not }),
+    }),
+  ),
+])
+  .annotate(TOOLING_TASK_FORMS)
+  .pipe(
+    Schema.decodeTo(
+      Schema.toType(ToolingTaskShape),
+      SchemaTransformation.transformEffect({
+        decode: (input): Effect.Effect<ToolingTaskShape, SchemaIssue.Issue> =>
+          Effect.succeed(input === false ? { disabled: true } : { cmd: input }),
+        // Task objects encode through the object member, which the union tries first.
+        encode: (): Effect.Effect<string | false, SchemaIssue.Issue> =>
+          Effect.fail(new SchemaIssue.Forbidden({ message: "Tooling tasks encode as objects" })),
+      }),
+    ),
+  );
+
+// The object member stays outside the shorthand codec so authoring derivation walks the
+// task struct itself and keeps its nested checks instead of a flattened encoded copy.
+export const ToolingTaskInput = Schema.Union([ToolingTaskShape, ToolingTaskShorthand]).annotate({
+  identifier: "ToolingTaskInput",
+  description:
+    "Tooling task object or non-empty command string; false disables the task. Shorthands replace inherited tasks after layer composition.",
+  ...TOOLING_TASK_FORMS,
+});
+export type ToolingTaskInput = typeof ToolingTaskInput.Type;
 
 /** App-wide defaults inherited by tooling tasks unless a task overrides them. */
 export const ToolingDefaultsShape = Schema.Struct({
@@ -1574,7 +1266,7 @@ const LandofileShapeBase = Schema.Struct({
   toolingDefaults: Schema.optionalKey(ToolingDefaultsShape).annotate({
     description: "App-wide service, directory, environment, and variable defaults for tooling tasks.",
   }),
-  tooling: Schema.optionalKey(Schema.Record(Schema.String, ToolingTaskShape)),
+  tooling: Schema.optionalKey(Schema.Record(Schema.String, ToolingTaskInput)),
   events: Schema.optionalKey(LandofileEvents),
   toolingIncludes: Schema.optionalKey(Schema.Record(Schema.String, ToolingIncludeShape)).annotate({
     description:

@@ -13,7 +13,7 @@ import type {
 } from "./engine-api.ts";
 import { missingApi, parseEngineJson } from "./engine-errors.ts";
 import { type PullImageOptions, inspectRequest, pullImage } from "./image-pull.ts";
-import { redactDetails, redactResponseDetails } from "./redact.ts";
+import { redactDetails, redactResponseDetails, redactorFor } from "./redact.ts";
 
 export interface EnsureImageOptions<E = never> {
   readonly ctx: ProviderErrorContext;
@@ -90,11 +90,14 @@ const localBuildPlatformError = (
     providerId: ctx.providerId,
     operation: "apply",
     message: `Local image ${reference} is ${localPlatformLabel(inspect)} but the service pins ${platform}.`,
-    details: redactDetails({
-      reference,
-      local: localPlatformLabel(inspect),
-      platform,
-    }),
+    details: redactDetails(
+      {
+        reference,
+        local: localPlatformLabel(inspect),
+        platform,
+      },
+      redactorFor(ctx),
+    ),
     remediation:
       "Rebuild the image for the pinned platform, or delete the local tag so Lando can pull the matching registry image.",
   });
@@ -104,7 +107,7 @@ const inspectFailure = (ctx: ProviderErrorContext, response: EngineHttpResponse)
     providerId: ctx.providerId,
     operation: "apply",
     message: `Image inspect failed with HTTP ${response.status}.`,
-    details: redactResponseDetails(response),
+    details: redactResponseDetails(response, redactorFor(ctx)),
     remediation: ctx.remediation,
   });
 
@@ -113,7 +116,7 @@ const unparseablePlatformError = (ctx: ProviderErrorContext, platform: string): 
     providerId: ctx.providerId,
     operation: "apply",
     message: `Service platform pin ${platform} is not a valid os/arch or os/arch/variant value.`,
-    details: redactDetails({ platform }),
+    details: redactDetails({ platform }, redactorFor(ctx)),
     remediation: "Use a platform pin such as linux/amd64 or linux/arm/v7.",
   });
 
@@ -140,7 +143,7 @@ export const ensureImage = Effect.fn("RuntimeProvider.ensureImage")(function* <E
   if (platform === undefined || pin === undefined) return;
   const decoded = yield* parseEngineJson(inspectResponse, options.ctx, "apply", {
     message: "Container engine API returned malformed JSON.",
-    details: redactResponseDetails(inspectResponse),
+    details: redactResponseDetails(inspectResponse, redactorFor(options.ctx)),
   });
   if (inspectMatchesPlatform(decoded, pin)) return;
   if (inspectRepoDigests(decoded).length > 0) {

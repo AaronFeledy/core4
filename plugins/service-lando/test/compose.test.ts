@@ -32,7 +32,7 @@ const planComposeService = (args: {
     featureOverrides: args.featureOverrides ?? defaultFeatureOverrides,
   });
 
-const landoEnvKeys = (environment: Readonly<Record<string, string>>): ReadonlyArray<string> =>
+const landoEnvKeys = (environment: import("@lando/sdk/schema").Environment): ReadonlyArray<string> =>
   Object.keys(environment).filter((key) => key === "LANDO" || key.startsWith("LANDO_"));
 
 const expectComposePlanRejects = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {

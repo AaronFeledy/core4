@@ -6,9 +6,8 @@
  * into a diagnostic record with `status`, `severity`, `recovery`, `context`,
  * and `solution` fields.
  *
- * The checks are read-only by default: each subsystem is probed through its
- * published Effect service tag, and the bundled fallback/disabled Live Layers
- * provide the identity/status data without mutating host state.
+ * Checks inspect the runtime services supplied by the caller. Missing services
+ * and probes that doctor does not execute are reported as skipped, not passed.
  *
  * When `--fix` is requested, a degraded subsystem whose recovery is classified
  * `automatic` (non-privileged, exposes a re-runnable `setup()` step) has its
@@ -18,24 +17,10 @@
  * `setup()` recovery step — are never auto-run and always fall back to a manual
  * remediation, matching the no-silent-elevation rule for diagnostics.
  */
-import { Effect, Layer } from "effect";
+import { Effect, Option } from "effect";
 
-import {
-  HealthcheckRunner,
-  HostProxyService,
-  RouterService,
-  RuntimeProvider,
-  SshService,
-  UrlScanner,
-} from "@lando/sdk/services";
+import { HostProxyService, RouterService, SshService } from "@lando/sdk/services";
 
-import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
-import * as ProviderHealthcheckRunner from "@lando/engine/subsystems/healthcheck/live";
-import * as HostProxyServiceLayer from "@lando/engine/subsystems/host-proxy/api";
-import * as RouterServiceLayer from "@lando/engine/subsystems/proxy/api";
-import * as ProviderUrlScanner from "@lando/engine/subsystems/scanner/live";
-import * as SshServiceLayer from "@lando/engine/subsystems/ssh/api";
-import * as LandoHttpClient from "@lando/http-client/live";
 import {
   type CertsDoctorStatus,
   UNRESOLVED_CERTS_STATUS,
@@ -49,13 +34,7 @@ import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
 import { buildProxyCheck } from "./doctor-proxy-check";
 import { renderSectionCheck } from "./doctor-section-render";
 import { type SshAgentDoctorOptions, sshAgentPostureCheck } from "./doctor-ssh-agent";
-import {
-  CERTS_SPEC,
-  type DoctorSubsystemCheck,
-  HEALTHCHECK_SPEC,
-  SCANNER_SPEC,
-  buildIdCheck,
-} from "./doctor-subsystem-checks";
+import { CERTS_SPEC, type DoctorSubsystemCheck, buildDegradedCheck } from "./doctor-subsystem-checks";
 
 export {
   DoctorSubsystemFailure,
@@ -67,6 +46,11 @@ export {
 
 export interface SubsystemDoctorResult {
   readonly checks: ReadonlyArray<DoctorSubsystemCheck>;
+  readonly skipped?: ReadonlyArray<{
+    readonly section: string;
+    readonly status: "skipped";
+    readonly reason: string;
+  }>;
 }
 
 export interface SubsystemDoctorOptions {
@@ -80,73 +64,100 @@ export interface SubsystemDoctorOptions {
   readonly sshAgent?: SshAgentDoctorOptions;
 }
 
-// Healthcheck/scanner doctor reads only the runner `id`, never invoking
-// `run()`/`scan()`, so the bootstrap placeholder provider satisfies the real
-// layers' dependencies while keeping `DefaultSubsystemDoctorLayer` self-contained.
-// Proxy readiness additionally reads `status()`.
-const doctorRuntimeProviderLayer = Layer.succeed(RuntimeProvider, RuntimeProvider.of(runtimeProviderService));
-
-const healthcheckRunnerDoctorLayer = ProviderHealthcheckRunner.layer.pipe(
-  Layer.provide(doctorRuntimeProviderLayer),
-);
-
-const urlScannerDoctorLayer = ProviderUrlScanner.layer.pipe(
-  Layer.provide(Layer.mergeAll(doctorRuntimeProviderLayer, LandoHttpClient.layer)),
-);
-
-export const DefaultSubsystemDoctorLayer: Layer.Layer<
-  RouterService | SshService | HealthcheckRunner | UrlScanner | HostProxyService | HostDnsResolver
-> = Layer.mergeAll(
-  RouterServiceLayer.layerUnavailable,
-  SshServiceLayer.layerUnavailable,
-  healthcheckRunnerDoctorLayer,
-  urlScannerDoctorLayer,
-  HostProxyServiceLayer.layerDisabled,
-  HostDnsResolver.layer,
-);
-
 export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   options: SubsystemDoctorOptions = {},
-): Effect.fn.Return<
-  SubsystemDoctorResult,
-  never,
-  RouterService | SshService | HealthcheckRunner | UrlScanner | HostProxyService | HostDnsResolver
-> {
+): Effect.fn.Return<SubsystemDoctorResult, never> {
   const fix = options.fix === true;
-  const proxy = yield* RouterService;
-  const ssh = yield* SshService;
-  const healthcheck = yield* HealthcheckRunner;
-  const scanner = yield* UrlScanner;
-  const hostProxy = yield* HostProxyService;
+  const proxy = Option.getOrUndefined(yield* Effect.serviceOption(RouterService));
+  const ssh = Option.getOrUndefined(yield* Effect.serviceOption(SshService));
+  const hostProxy = Option.getOrUndefined(yield* Effect.serviceOption(HostProxyService));
+  const resolver = yield* Effect.serviceOption(HostDnsResolver);
 
-  const proxyCheck = yield* buildProxyCheck(proxy, fix);
+  const proxyChecks = proxy === undefined ? [] : [yield* buildProxyCheck(proxy, fix)];
   const certs = options.certs ?? UNRESOLVED_CERTS_STATUS;
-  const certsCheck = yield* buildIdCheck(CERTS_SPEC, certsSubsystemId(certs), fix).pipe(
-    Effect.map((check) => ({
-      ...check,
-      context: { ...check.context, ...certsCheckContext(certs) },
-    })),
-  );
-  const sshCheck = yield* sshAgentPostureCheck({ ...options.sshAgent, sshService: ssh, fix });
-  const healthcheckCheck = yield* buildIdCheck(HEALTHCHECK_SPEC, healthcheck.id, fix);
-  const scannerCheck = yield* buildIdCheck(SCANNER_SPEC, scanner.id, fix);
-  const hostProxyCheck = yield* buildHostProxyCheck(hostProxy, fix);
+  const certsCheck =
+    certs._tag === "selected"
+      ? undefined
+      : yield* buildDegradedCheck(
+          CERTS_SPEC,
+          {
+            subsystem: "certs",
+            subsystemId: certsSubsystemId(certs),
+            ready: "false",
+            ...certsCheckContext(certs),
+          },
+          fix,
+        );
+  const sshChecks =
+    ssh === undefined ? [] : [yield* sshAgentPostureCheck({ ...options.sshAgent, sshService: ssh, fix })];
+  const hostProxyChecks = Option.isNone(resolver)
+    ? []
+    : [
+        yield* buildHostProxyCheck(hostProxy, fix).pipe(
+          Effect.provideService(HostDnsResolver, resolver.value),
+        ),
+      ];
 
   return {
     checks: [
-      proxyCheck,
-      certsCheck,
-      sshCheck,
-      healthcheckCheck,
-      scannerCheck,
-      hostProxyCheck,
+      ...proxyChecks,
+      ...(certsCheck === undefined ? [] : [certsCheck]),
+      ...sshChecks,
+      ...hostProxyChecks,
       ...(options.networkTrust === undefined ? [] : [options.networkTrust]),
+    ],
+    skipped: [
+      ...(certsCheck === undefined
+        ? [
+            {
+              section: "certs",
+              status: "skipped" as const,
+              reason:
+                "A certificate authority was selected, but its installation and trust were not inspected; the certificate authority contract has no read-only inspection operation.",
+            },
+          ]
+        : []),
+      ...[["router", proxy] as const, ["ssh", ssh] as const].flatMap(([section, service]) =>
+        service === undefined
+          ? [
+              {
+                section,
+                status: "skipped" as const,
+                reason: "Runtime subsystem service was not provided; no inspection was performed.",
+              },
+            ]
+          : [],
+      ),
+      ...(Option.isNone(resolver)
+        ? [
+            {
+              section: "host-proxy",
+              status: "skipped" as const,
+              reason: "Host DNS resolver was not provided; no host DNS inspection was performed.",
+            },
+          ]
+        : []),
+      {
+        section: "healthcheck",
+        status: "skipped",
+        reason:
+          "No service healthcheck was executed against a selected available provider. Service readiness and build gates inspect healthchecks during lando start and rebuild.",
+      },
+      {
+        section: "scanner",
+        status: "skipped",
+        reason:
+          "No app endpoints were inspected against a selected available provider. Endpoint scanning runs after lando start.",
+      },
     ],
   };
 });
 
 export const renderSubsystemDoctorResult = (result: SubsystemDoctorResult): string =>
-  result.checks.flatMap((check) => renderSectionCheck(check, { skipContextKeys: ["subsystem"] })).join("\n");
+  [
+    ...result.checks.flatMap((check) => renderSectionCheck(check, { skipContextKeys: ["subsystem"] })),
+    ...(result.skipped ?? []).map((entry) => `${entry.section}: SKIPPED · ${entry.reason}`),
+  ].join("\n");
 
 const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "subsystem",

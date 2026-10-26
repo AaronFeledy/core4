@@ -83,13 +83,16 @@ test("resolves a service_started gate without inspecting provider state", async 
   });
 });
 
-test("runs the dependency healthcheck before a service_healthy dependent's app step", async () => {
+test("runs strong readiness rather than cheap health before a dependent's app step", async () => {
   await withTempRoots(async () => {
     // Given
     const { calls, provider } = recordingProvider();
     const plan = planWith(
       { db: [], web: [install()] },
-      { db: { healthcheck }, web: dependsOn(dependency("db", "service_healthy")) },
+      {
+        db: { healthcheck, readiness: { ...healthcheck, command: ["strong-ready"] } },
+        web: dependsOn(dependency("db", "service_healthy")),
+      },
     );
 
     // When
@@ -100,7 +103,7 @@ test("runs the dependency healthcheck before a service_healthy dependent's app s
     );
 
     // Then
-    expect(calls).toEqual(["exec:db:pg_isready", "build:web:install"]);
+    expect(calls).toEqual(["exec:db:strong-ready", "build:web:install"]);
   });
 });
 
@@ -108,11 +111,15 @@ test("blocks a required dependent with one failure when its service_healthy gate
   await withTempRoots(async () => {
     // Given
     const { calls, provider } = recordingProvider({
-      exec: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "" }),
+      exec: (_target, command) =>
+        Effect.succeed({ exitCode: command.command[0] === "strong-ready" ? 1 : 0, stdout: "", stderr: "" }),
     });
     const plan = planWith(
       { db: [], web: [install()] },
-      { db: { healthcheck }, web: dependsOn(dependency("db", "service_healthy")) },
+      {
+        db: { healthcheck, readiness: { ...healthcheck, command: ["strong-ready"] } },
+        web: dependsOn(dependency("db", "service_healthy")),
+      },
     );
 
     // When

@@ -173,9 +173,9 @@ describe("renderIncludesVerifyResult", () => {
       ok: false,
     };
     // When
-    const code = appIncludesVerifySpec.successExitCode?.(report, { flags: { format } });
+    const code = appIncludesVerifySpec.completion?.(report, { flags: { format } });
     // Then
-    expect(code).toBeUndefined();
+    expect(code).toEqual({ ok: true, exitCode: 1 });
   });
   test("a mismatch names the update command without changing process.exitCode", () => {
     const report: IncludeVerifyReport = {

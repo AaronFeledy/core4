@@ -116,7 +116,9 @@ describe("runSmokeReadinessProbe", () => {
     expect(requests.some((request) => /^\/containers\/[^/]+\/start$/u.test(request.path))).toBe(true);
     expect(requests.some((request) => /^\/containers\/[^/]+\/wait$/u.test(request.path))).toBe(true);
     expect(requests.some((request) => /^\/containers\/[^/]+\/json$/u.test(request.path))).toBe(true);
-    expect(requests.some((request) => /^\/containers\/[^/?]+\?force=true$/u.test(request.path))).toBe(true);
+    expect(requests.some((request) => /^\/containers\/[^/?]+\?force=true&v=true$/u.test(request.path))).toBe(
+      true,
+    );
   });
 
   test("reports a non-zero run exit with a redacted operation discriminator", async () => {

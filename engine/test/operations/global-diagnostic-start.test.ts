@@ -91,6 +91,7 @@ for (const failBuild of [false, true]) {
     };
     const globalApp: typeof GlobalAppService.Service = {
       id: "global",
+      providerId: Effect.succeed(globalPlan.provider),
       root: Effect.succeed(root),
       ensureRoot: Effect.void,
       paths: Effect.succeed({ root, distLandofile, userLandofile }),
@@ -104,8 +105,13 @@ for (const failBuild of [false, true]) {
       const harness = makeHarness({ plannedApp: appPlan });
       const start = startApp({}, { plan: appPlan, root, app: { kind: "user", id: appPlan.id, root } }).pipe(
         Effect.provideService(GlobalAppService, globalApp),
-        Effect.provideService(AppPlanner, { plan: () => Effect.succeed(globalPlan) }),
+        Effect.provideService(AppPlanner, {
+          plan: () => Effect.succeed({ ...globalPlan, valueModel: 1 as const }),
+        }),
         Effect.provideService(RuntimeProviderRegistry, {
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([plan.provider]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -130,6 +136,8 @@ for (const failBuild of [false, true]) {
                         message: "injected build failure",
                         providerId: "lando",
                         operation: "build",
+                        remediation:
+                          "Install or start the `lando` provider and confirm it can perform `build`.",
                       }),
                     );
                   return built;

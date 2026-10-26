@@ -88,7 +88,9 @@ describe("mariadb ServiceType", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-mariadb-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3306, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },
+    ]);
   });
 
   test("writes matching MARIADB_* and MYSQL_* when creds are authored", async () => {
@@ -208,7 +210,9 @@ describe("mariadb ServiceType", () => {
       command: [
         "sh",
         "-c",
-        'mariadb-admin ping -h 127.0.0.1 -P 3306 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
+        'MYSQL_PWD="$MYSQL_PASSWORD" exec mariadb-admin ping -h 127.0.0.1 -P "$1" -u "$MYSQL_USER" --silent',
+        "mariadb-healthcheck",
+        "3306",
       ],
       intervalSeconds: 10,
       timeoutSeconds: 5,

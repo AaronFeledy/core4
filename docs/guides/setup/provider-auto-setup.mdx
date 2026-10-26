@@ -10,7 +10,7 @@ tags: [beta, docs, setup, providers]
 
 Run `lando setup` yourself. Lando does not provision a provider in the background when you first run `lando start`.
 
-The default provider is `lando` (managed Podman). It does not need system Docker or Podman.
+First [install Lando and put it on PATH](../install/path-and-setup.mdx). Run setup in your terminal and follow the prompts. Choose the recommended Lando-managed runtime on supported hosts; it does not need system Docker or Podman. On an Intel Mac (`darwin-x64`), install and start Docker Desktop first, then choose Docker when setup asks. Setup does not install Docker for you.
 
 ## Use the defaults
 
@@ -24,7 +24,7 @@ Then verify:
 lando doctor
 ```
 
-`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
+`--yes` consents to confirmation and privileged host changes. It does not switch providers. See [What persists](./provider-selection.mdx#what-persists).
 
 Host prerequisites can block the managed runtime. If setup names one, fix it and rerun `lando setup`.
 
@@ -36,11 +36,7 @@ You need working system Docker.
 lando setup --provider=docker
 ```
 
-After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker. You do not need to repeat the flag.
-
-`LANDO_PROVIDER=docker lando setup` does not persist. If you only set the env, keep it for later commands.
-
-`--provider=docker` and `--provider=podman` require that system runtime to already be present. Setup fails with remediation when it is missing. It does not install Docker or Podman for you.
+Later commands stay on Docker without repeating the flag. Setup does not install Docker or Podman for you. See [Pick a container provider](./provider-selection.mdx#what-persists) for what persists and how to switch back.
 
 ## Skip prompts
 

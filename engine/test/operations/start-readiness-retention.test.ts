@@ -8,7 +8,7 @@ import {
   ServiceNotReadyError,
   ServiceStartError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, FileSyncSessionRef } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, FileSyncSessionRef } from "@lando/sdk/schema";
 import {
   BuildOrchestrator,
   ProcessRunner,
@@ -34,6 +34,20 @@ import { failureOf } from "../subsystems/healthcheck/support.ts";
 import { acceleratedPlan } from "./accelerated-start-recovery-support.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
+const routedPlan: AppPlan = {
+  ...plan,
+  routes: [
+    {
+      hostname: "web.test-start.lndo.site",
+      priority: 2,
+      scheme: "https",
+      service: web.name,
+      endpoint: 3000,
+      backend: { service: web.name, protocol: "http", port: 3000 },
+    },
+  ],
+};
+
 const phases = ["apply", "dependency-gate", "app-build", "routes", "gpg-home", "readiness"] as const;
 for (const phase of phases) {
   for (const outcome of ["failure", "interrupt"] as const) {
@@ -49,6 +63,7 @@ for (const phase of phases) {
       };
       const planned = {
         ...acceleratedPlan,
+        routes: routedPlan.routes,
         extensions,
         services: Object.fromEntries(
           Object.entries(acceleratedPlan.services).map(([name, service]) => [
@@ -190,12 +205,12 @@ for (const phase of phases) {
             plan: planned,
             root: planned.root,
             app,
-            landofile: {
+            landofile: literalTestLandofile({
               name: planned.name,
               services: {},
               sshAgent: { sidecar: false },
               gpgAgent: { forward: true },
-            },
+            }),
           },
           { scope },
         ).pipe(
@@ -280,6 +295,7 @@ test.each(["restart", "rebuild"] as const)(
     let applied = false;
     let cleanupAfterApply = 0;
     const harness = makeHarness({
+      plannedApp: routedPlan,
       onApply: () => {
         applied = true;
       },
@@ -295,16 +311,22 @@ test.each(["restart", "rebuild"] as const)(
           service: target.service,
           providerId: plan.provider,
           status: applied ? "stopped" : "running",
+          publications: { status: "unknown" },
           state: applied ? "stopped" : "running",
           containerId: "container",
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
           exitCode: 17,
         }),
     });
-    const target = { plan, root: plan.root, app: { kind: "user", id: plan.id, root: plan.root } as const };
+    const target = {
+      plan: routedPlan,
+      root: plan.root,
+      app: { kind: "user", id: plan.id, root: plan.root } as const,
+    };
     const effect = operation === "restart" ? restartApp({}, target) : rebuildApp({}, target);
     const exit = await Effect.runPromiseExit(effect.pipe(Effect.provide(harness.layer)));
     expect(failureOf(exit)).toMatchObject({ _tag: "ServiceNotReadyError", service: String(web.name) });
     expect(cleanupAfterApply).toBe(0);
   },
 );
+import { literalTestLandofile } from "../compiled-landofile.ts";

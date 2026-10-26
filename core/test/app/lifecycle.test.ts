@@ -85,7 +85,6 @@ const planWithFileSync = (root: string): AppPlan => ({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [
     {
@@ -183,6 +182,7 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
   let appliedPlan: AppPlan | undefined;
   return RuntimeProvider.of({
     ...provider,
+    appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
     prepareFileSyncTargets: (syncPlan: AppPlan) =>
       Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
     inspectAppliedFileSync: () =>
@@ -288,12 +288,26 @@ const appLayer = (
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: (root) =>
+              (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
+                Effect.map((plans) => plans.find((candidate) => candidate.root === root)),
+              ),
+            resolveTeardownEvidence: (root) =>
+              (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
+                Effect.map((plans) => {
+                  const applied = plans.find((candidate) => candidate.root === root);
+                  return applied === undefined
+                    ? { kind: "absent" as const }
+                    : { kind: "applied" as const, plan: applied };
+                }),
+              ),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
             capabilities: Effect.succeed(fixtureProvider.capabilities),
             select: () => Effect.succeed(fixtureProvider),
           }),
         ),
-        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
         Layer.succeed(FileSyncEngine, FileSyncEngine.of(engine)),
         Layer.succeed(RouterService, RouterService.of(TestRouterService)),
       ],
@@ -783,6 +797,8 @@ describe("App handle managed lifecycle scopes", () => {
                 providerId: TestRuntimeProvider.id,
                 operation: "destroy",
                 message: "stop failed",
+                remediation:
+                  "Install or start the selected runtime provider and confirm it can perform `destroy`.",
               }),
             );
           }),
@@ -1046,7 +1062,13 @@ describe("App handle managed lifecycle scopes", () => {
         flushSession: Effect.fnUntraced(function* () {
           flushCalls += 1;
           if (flushCalls === 2) {
-            return yield* Effect.fail(new FileSyncStartError({ engineId: "test", message: "sync failed" }));
+            return yield* Effect.fail(
+              new FileSyncStartError({
+                engineId: "test",
+                message: "sync failed",
+                remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+              }),
+            );
           }
         }),
         pauseSession: () => Effect.void,
@@ -1107,6 +1129,8 @@ describe("App handle managed lifecycle scopes", () => {
                 providerId: TestRuntimeProvider.id,
                 operation: "apply",
                 message: "apply failed",
+                remediation:
+                  "Install or start the selected runtime provider and confirm it can perform `apply`.",
               }),
             );
           }
@@ -1268,7 +1292,13 @@ describe("App handle managed lifecycle scopes", () => {
         setup: () => Effect.void,
         createSession: (spec: FileSyncSessionSpec) =>
           spec.mountKey === "mount-0"
-            ? Effect.fail(new FileSyncStartError({ engineId: "test", message: "sync failed" }))
+            ? Effect.fail(
+                new FileSyncStartError({
+                  engineId: "test",
+                  message: "sync failed",
+                  remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+                }),
+              )
             : Effect.gen(function* () {
                 const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
                 sessions.set(ref, spec);
@@ -1324,6 +1354,9 @@ describe("App handle managed lifecycle scopes", () => {
                   Layer.succeed(
                     RuntimeProviderRegistry,
                     RuntimeProviderRegistry.of({
+                      resolveAppliedPlan: () => Effect.succeed(undefined),
+                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                      appliedPlansFor: () => Effect.succeed([]),
                       list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
                       capabilities: Effect.succeed(fixtureProvider.capabilities),
                       select: () => Effect.succeed(fixtureProvider),
@@ -1331,7 +1364,7 @@ describe("App handle managed lifecycle scopes", () => {
                   ),
                   Layer.succeed(
                     AppPlanner,
-                    AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync(dir)) }),
+                    AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync(dir))) }),
                   ),
                   Layer.succeed(FileSyncEngine, FileSyncEngine.of(tracking.engine)),
                   Layer.succeed(RouterService, RouterService.of(TestRouterService)),
@@ -1350,3 +1383,4 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 });
+import { currentTestPlan } from "../_support/value-contracts.ts";

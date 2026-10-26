@@ -53,7 +53,6 @@ export const plan: AppPlan = {
     endpoint: 80,
     backend: { service: ServiceName.make(name), protocol: "http", port: 80 },
   })),
-  networks: [{ name: "shared", shared: true }],
   stores: [],
   fileSync: [],
   metadata,
@@ -82,6 +81,7 @@ export const harness = (
         providerId: ProviderId.make("lando"),
         service: ServiceName.make(name),
         status,
+        publications: { status: "unknown" as const },
         ...(options.missing && name === "mail" ? {} : { containerId: `${name}-container` }),
       }))
     ).filter((observation) => !removedIds.has(observation.containerId));

@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Context, Effect, Layer } from "effect";
 
 import { Telemetry } from "@lando/core/services";
-import { cliRuntimeOptions, resolveCliTelemetryState } from "@lando/engine/runtime/cli-options";
+import {
+  cliRuntimeOptions,
+  resolveCliTelemetryState,
+  resolveEffectiveCliBootstrap,
+} from "@lando/engine/runtime/cli-options";
+import { readConfigCliGlobals } from "../../src/cli/renderer-mode-resolution.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const withEnv = async <T>(vars: Record<string, string>, run: (dir: string) => Promise<T>): Promise<T> => {
@@ -38,6 +43,47 @@ const readCliTelemetry = async (): Promise<boolean> => {
 };
 
 describe("CLI runtime telemetry precedence", () => {
+  test("cold telemetry reads honor config.d", async () => {
+    await withEnv({}, async (dir) => {
+      // Given conflicting main-file and drop-in telemetry settings.
+      await mkdir(join(dir, "config.d"));
+      await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: true\n");
+      await writeFile(join(dir, "config.d", "telemetry.yml"), "telemetry:\n  enabled: false\n");
+      // When the cold telemetry reader resolves its decision.
+      const state = resolveCliTelemetryState();
+      // Then the later drop-in is honored and remains attributed to user config.
+      expect(state).toEqual({ enabled: false, source: "config" });
+    });
+  });
+
+  test("cold renderer globals honor config.d despite unrelated schema errors", async () => {
+    await withEnv({}, async (dir) => {
+      // Given valid renderer globals in a drop-in and an unrelated invalid port.
+      await mkdir(join(dir, "config.d"));
+      await writeFile(join(dir, "config.yml"), "renderer: plain\nrouter:\n  httpPort: 99999\n");
+      await writeFile(join(dir, "config.d", "renderer.yml"), "renderer: verbose\nlogLevel: debug\n");
+      // When the Effect-free soft reader runs.
+      const globals = await readConfigCliGlobals();
+      // Then valid globals remain usable without requiring full config validation.
+      expect(globals).toEqual({ renderer: "verbose", logLevel: "debug" });
+    });
+  });
+
+  test("cold notify bootstrap promotion honors config.d", async () => {
+    await withEnv({}, async (dir) => {
+      // Given a drop-in requesting notification for a minimal command.
+      await mkdir(join(dir, "config.d"));
+      await writeFile(
+        join(dir, "config.d", "notify.yml"),
+        'notify:\n  commands: ["meta:config", "meta:version"]\n',
+      );
+      // When cold bootstrap selection runs.
+      const bootstrap = resolveEffectiveCliBootstrap("meta:config", "minimal");
+      // Then notification subscribers get the required commands bootstrap tier.
+      expect(bootstrap).toBe("minimal");
+      expect(resolveEffectiveCliBootstrap("meta:version", "none")).toBe("none");
+    });
+  });
   test("defaults CLI telemetry on when config and env are absent", async () => {
     await withEnv({}, async () => {
       await expect(readCliTelemetry()).resolves.toBe(true);
@@ -88,14 +134,22 @@ describe("CLI runtime telemetry precedence", () => {
   test("env false disables CLI telemetry even when config.yml is malformed", async () => {
     await withEnv({ LANDO_CONFIG__TELEMETRY__ENABLED: "0" }, async (dir) => {
       await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: [\n");
-      await expect(readCliTelemetry()).resolves.toBe(false);
+      expect(resolveCliTelemetryState()).toMatchObject({ enabled: false, source: "env" });
+      await expect(readCliTelemetry()).rejects.toMatchObject({
+        _tag: "ConfigError",
+        path: join(dir, "config.yml"),
+      });
     });
   });
 
   test("malformed config.yml without an explicit telemetry env keeps the CLI default on", async () => {
     await withEnv({}, async (dir) => {
       await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: [\n");
-      await expect(readCliTelemetry()).resolves.toBe(true);
+      expect(resolveCliTelemetryState()).toMatchObject({ enabled: true, source: "default" });
+      await expect(readCliTelemetry()).rejects.toMatchObject({
+        _tag: "ConfigError",
+        path: join(dir, "config.yml"),
+      });
     });
   });
 
@@ -105,7 +159,16 @@ describe("CLI runtime telemetry precedence", () => {
         join(dir, "config.yml"),
         ["defaultProviderId: 42", "telemetry:", "  enabled: false", ""].join("\n"),
       );
-      await expect(readCliTelemetry()).resolves.toBe(false);
+      expect(resolveCliTelemetryState()).toMatchObject({ enabled: false, source: "config" });
+      await expect(readCliTelemetry()).rejects.toMatchObject({
+        _tag: "ConfigError",
+        issues: [
+          {
+            path: ["defaultProviderId"],
+            source: { layer: "config-file", file: join(dir, "config.yml"), path: ["defaultProviderId"] },
+          },
+        ],
+      });
     });
   });
 

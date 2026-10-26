@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { providerImages } from "@lando/data-mover/provider-images";
+import { providerImages } from "@lando/container-runtime/provider-images";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { resolveCompiledBinaryVersion } from "../../../scripts/compiled-binary-version.ts";
 import corePackage from "../../package.json";
@@ -139,6 +139,30 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
       command: "meta:version",
       ok: true,
       result: { core: expect.any(String) },
+    });
+
+    const tsAppRoot = resolve(relocatedRoot, "ts-app");
+    await mkdir(tsAppRoot);
+    await Bun.write(
+      resolve(tsAppRoot, ".lando.yml"),
+      "name: compiled-author\nservices:\n  web:\n    type: nginx\n",
+    );
+    await Bun.write(
+      resolve(tsAppRoot, ".lando.local.ts"),
+      `
+      import { defineLandofile } from "@lando/sdk";
+      import { Effect } from "effect";
+      export default () => Effect.succeed(defineLandofile({ services: { web: { environment: { EXTRA: "host-modules" } } } }));
+    `,
+    );
+    const authorConfig = await runCommand([relocatedBinary, "app:config", "--format=json"], {
+      cwd: tsAppRoot,
+      env,
+    });
+    expect(authorConfig.exitCode, authorConfig.stderr + authorConfig.stdout).toBe(0);
+    expect(decodeEnvelope(authorConfig.stdout)).toMatchObject({
+      ok: true,
+      result: { landofile: { services: { web: { environment: { EXTRA: "host-modules" } } } } },
     });
 
     const jqOk = await runCommand([relocatedBinary, "version", "--jq", ".ok"], {

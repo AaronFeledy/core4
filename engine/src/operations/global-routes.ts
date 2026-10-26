@@ -1,11 +1,10 @@
 import { Effect } from "effect";
 
 import type { ProxyApplyError } from "@lando/sdk/errors";
-import type { AppPlan, ServiceName } from "@lando/sdk/schema";
+import type { AppPlan } from "@lando/sdk/schema";
 import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
 
 import { routerEnabled } from "../config/router-config.ts";
-import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 
 /**
  * Replace the global route file only after all selected groups succeed, retaining active owned siblings.
@@ -18,12 +17,12 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
     readonly started: ReadonlySet<string>;
     readonly failed: ReadonlySet<string>;
   },
-): Effect.fn.Return<ReadonlyMap<ServiceName, ReadonlyArray<string>>, ProxyApplyError | ProviderError> {
-  if (outcome.failed.size > 0) return new Map<ServiceName, ReadonlyArray<string>>();
+): Effect.fn.Return<void, ProxyApplyError | ProviderError> {
+  if (outcome.failed.size > 0) return;
   if (plan.routes.length === 0 || !routerEnabled(plan)) {
     // Best-effort: a route-free or router-disabled plan must not leave previously published hostnames live.
     yield* router.removeRoutes(plan.id).pipe(Effect.catch(() => Effect.void));
-    return new Map<ServiceName, ReadonlyArray<string>>();
+    return;
   }
   const { started } = outcome;
   const observed = plan.routes.some((route) => !started.has(route.service))
@@ -41,5 +40,5 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
       .map((service) => service.service),
   );
   const routes = plan.routes.filter((route) => started.has(route.service) || active.has(route.service));
-  return appliedProxyUrlsByService(yield* router.applyRoutes(routes, plan.id));
+  yield* router.applyRoutes(routes, plan.id);
 });

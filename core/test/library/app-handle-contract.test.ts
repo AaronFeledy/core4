@@ -9,6 +9,7 @@
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { currentTestPlan } from "../_support/value-contracts.ts";
 
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Stream } from "effect";
@@ -36,19 +37,14 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import { AppResolveError, ComposeKeyRejectedError, LandofileLoadOutsideRootError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
+import { makeScenarioProvider } from "../../src/testing/scenario-provider.ts";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
+const testProvider = makeScenarioProvider();
 const testProviderLayers = [
-  Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
-  Layer.succeed(
-    RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
-  ),
+  Layer.succeed(RuntimeProvider, testProvider.provider),
+  testProvider.layer,
   Layer.succeed(RouterService, RouterService.of(TestRouterService)),
 ];
 
@@ -101,7 +97,6 @@ const planWithFileSync = (root: string): AppPlan => ({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [
     {
@@ -409,6 +404,9 @@ describe("@lando/core App-handle library contract", () => {
                 Layer.succeed(
                   RuntimeProviderRegistry,
                   RuntimeProviderRegistry.of({
+                    resolveAppliedPlan: () => Effect.succeed(undefined),
+                    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                    appliedPlansFor: () => Effect.succeed([]),
                     list: Effect.succeed([ProviderId.make(acceleratedProvider.id)]),
                     capabilities: Effect.succeed(acceleratedProvider.capabilities),
                     select: () => Effect.succeed(acceleratedProvider),
@@ -417,7 +415,7 @@ describe("@lando/core App-handle library contract", () => {
                 Layer.succeed(RouterService, RouterService.of(TestRouterService)),
                 Layer.succeed(
                   AppPlanner,
-                  AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync(dir)) }),
+                  AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync(dir))) }),
                 ),
                 Layer.succeed(FileSyncEngine, FileSyncEngine.of(tracking.engine)),
               ],

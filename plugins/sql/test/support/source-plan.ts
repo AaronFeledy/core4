@@ -1,5 +1,8 @@
+import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
 import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { PortNumber } from "@lando/sdk/schema";
 import { DateTime } from "effect";
+import { familyFromServiceType } from "../../src/families.ts";
 
 export const sourcePlan = (root: string, type = "mysql:8.0", names: readonly string[] = ["database"]) => {
   const provider = ProviderId.make("test");
@@ -22,6 +25,11 @@ export const sourcePlan = (root: string, type = "mysql:8.0", names: readonly str
           type,
           provider,
           primary: true,
+          connection: {
+            family: familyFromServiceType(type) ?? "mysql",
+            port: PortNumber.make(DATABASE_FAMILY_DEFAULT_PORTS[familyFromServiceType(type) ?? "mysql"]),
+            creds: { user: "source-user", password: "source-secret", database: "source-db" },
+          },
           environment: {
             MYSQL_USER: "source-user",
             MYSQL_PASSWORD: "source-secret",
@@ -45,7 +53,6 @@ export const sourcePlan = (root: string, type = "mysql:8.0", names: readonly str
       ]),
     ),
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

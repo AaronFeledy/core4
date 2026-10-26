@@ -10,7 +10,7 @@ tags: [beta, docs, install, ci, github-actions]
 
 > **Alpha status:** There is no live `get.lando.dev` installer and no `releases/latest` v4 binary. Do not curl `https://github.com/lando/core/releases/latest/download/lando-linux-x64`. That is not this product. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-CI can run Lando on `ubuntu-latest` if you first put the Linux x64 `v4.0.0-dev.N` binary on PATH. Pin a specific prerelease tag from [AaronFeledy/core4 releases](https://github.com/AaronFeledy/core4/releases). Download the `lando` asset and `SHA256SUMS`, verify the checksum, `chmod +x`, then:
+CI can run Lando on `ubuntu-latest` if you first put the Linux x64 `v4.0.0-dev.N` binary on PATH. Pin a specific prerelease tag from [AaronFeledy/core4 releases](https://github.com/AaronFeledy/core4/releases). Download the `lando-linux-x64` asset and `SHA256SUMS`, verify the checksum, and [put the binary on PATH as `lando`](./path-and-setup.mdx). Run the following from the checked-out app directory containing its Landofile:
 
 ```sh
 lando --version
@@ -26,11 +26,13 @@ lando poweroff -y
 lando setup --provider=docker --yes --no-interactive
 ```
 
-`--no-interactive` fails closed instead of waiting for a TTY. `-y` on `poweroff` is the same idea: a job has no one to type yes.
+`--no-interactive` fails instead of waiting for a TTY when required input is missing. `poweroff` does not prompt; it accepts `-y` but does not require it. Provider rules live in [Pick a container provider](../setup/provider-selection.mdx).
 
 Do not scrape human text. Assert on JSON (`ok: true`) from `--format=json`.
 
-Default setup may fail on Alpha. The committed runtime-bundle manifest may still be placeholders. Treat a green `lando setup` as something you prove on your runner, not something this page can promise.
+The committed runtime-bundle manifest points to published assets. Host prerequisites can still block setup; follow its remediation before starting the app. A successful configuration read verifies the Landofile, not service readiness.
+
+For a minimal Node app, save this as `.lando.yml` in the checked-out app directory before running the commands above:
 
 ```yaml
 name: ci-github-actions-demo

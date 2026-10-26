@@ -36,6 +36,7 @@ const discoverFrom = async (cwd: string) => {
     process.chdir(cwd);
     return await Effect.runPromise(
       Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
+        Effect.map((compiled) => compiled.document),
         Effect.provide(TestLandofileServiceLayer.layer),
       ),
     );
@@ -505,7 +506,7 @@ describe("recipe option parity", () => {
       expect(landofile.services?.[ServiceName.make("api")]?.type).toBe("node:lts");
       expect(landofile.name).toBe("mean-defaults");
       expect(landofile.services?.[ServiceName.make("api")]?.environment?.MONGO_URL).toBe(
-        "mongodb://lando:lando@database:27017/{{ app.name }}?authSource=admin",
+        "mongodb://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?authSource=admin",
       );
       expect(yaml).not.toContain("type: redis");
 

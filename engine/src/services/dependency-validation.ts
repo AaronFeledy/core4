@@ -3,10 +3,12 @@ import { Effect, Graph, Option, Schema } from "effect";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { type AppPlan, DependencyPlan, HealthcheckPlan } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
+import { effectiveReadiness } from "@lando/sdk/schema";
 
 const DependencyServicePlan = Schema.Struct({
   dependsOn: Schema.Array(DependencyPlan),
   healthcheck: Schema.optionalKey(HealthcheckPlan),
+  readiness: Schema.optionalKey(HealthcheckPlan),
 });
 
 const DependencyServicePlans = Schema.Record(Schema.String, DependencyServicePlan);
@@ -45,7 +47,7 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
 
       if (
         dependency.condition === "service_healthy" &&
-        (target.healthcheck === undefined || target.healthcheck.kind === "none")
+        (effectiveReadiness(target) === undefined || effectiveReadiness(target)?.kind === "none")
       ) {
         return yield* Effect.fail(
           new LandofileValidationError({

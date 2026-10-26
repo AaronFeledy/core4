@@ -8,13 +8,15 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
 
 # Run lando doctor
 
+After `lando setup`, run `lando doctor` on the host to check the provider, proxy,
+certificates, and related setup state. Read the suggested action for each failing
+section; a failure does not prevent the remaining checks from running.
+
 ```sh
 lando doctor
 ```
 
-Doctor reports whether setup, the provider, the proxy, certs, and related checks are healthy. A failing section does not abort the rest of the report.
-
-Run it after `lando setup`. The default provider is `lando` (managed Podman). After a successful `lando setup --provider=docker`, bare `lando doctor` stays on Docker. `LANDO_PROVIDER` does not persist.
+Doctor checks the provider setup persisted, or the one `LANDO_PROVIDER` names for this command. See [Pick a container provider](../setup/provider-selection.mdx#what-persists).
 
 ## Read the report
 
@@ -26,8 +28,32 @@ Passing checks stay out of the way. To see every check, including the ones that 
 lando doctor --all
 ```
 
+A check passes only after doctor inspects it. Loading a healthcheck runner or an
+endpoint scanner does not prove either one works against your provider. Doctor
+reports `healthcheck` and `scanner` as `SKIPPED`, with a reason, because it does
+not run service probes or scan app endpoints. `lando start` runs those checks
+against the app's selected provider; rebuild also runs service readiness gates.
+`--fix` does not turn an uninspected check into a pass.
+
+JSON reports keep these entries in the report's `skipped` array, separate from
+`subsystems.checks`. The library `doctorReport()` skips the subsystem section
+when neither runtime subsystem services nor a host DNS resolver were supplied.
+
+The `host-proxy` check resolves `lando-doctor-probe.<proxy.defaultDomain>` through
+your host DNS resolver, even without a host-proxy service. It passes only when
+the answer is nonempty and every address matches the expected loopback address.
+Without that service, the context contains DNS observations, not service status.
+An unavailable resolver produces a `SKIPPED` entry with a reason.
+
+Selecting a certificate authority does not verify its installation or host trust.
+Doctor reports `certs` as `SKIPPED` when selection succeeds but no read-only trust
+inspection is available. Certificate selection errors still appear as findings.
+
 | Check | What to do |
 | --- | --- |
+| global-config | Your global config does not decode. Doctor prints the `ConfigError` and its fix, marks `provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, and `mcp` as `SKIPPED` (plus `app-config`, `app-version-constraints`, and `deprecations` under `--app` or `--deprecations`), still runs config-independent checks such as `filesystem-watch`, and exits `1`. Run `lando config validate`, repair with `lando config set`, `unset`, or `edit`, then rerun doctor. See [Repair an invalid global config](../config/global-config.mdx#repair-an-invalid-global-config). |
+| provider-bootstrap | Global config passed, but doctor could not build the provider runtime. Read this self check's failure and suggested repair. Doctor marks `provider`, `router`, `ssh`, `healthcheck`, `scanner`, `certificate-authority`, `missing-app-roots`, and `orphaned-volume-snapshots` as `SKIPPED`, plus requested `app-config` and `deprecations`. It does not invent router, SSH, or certificate warnings or suggest `--fix` for checks it never ran. Host DNS (`host-proxy`), filesystem watches, network trust, MCP, global-app files, accelerated-start journals, legacy snapshot catalogs, and requested app version constraints still get checked. Doctor exits `1`; repair the bootstrap failure, then rerun it. |
+| host-proxy | Host DNS did not resolve the probe hostname to loopback. Check connectivity and DNS-rebinding protection on your resolver, or add a local DNS rule for your configured domain. `lando setup` and `doctor --fix` do not write host DNS. See [Check host DNS](./host-proxy.mdx). |
 | proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. |
 | preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports in `config.yml`, then run `lando setup`. |
 | certs | Run `lando setup` to install and trust the local CA. |
@@ -36,11 +62,29 @@ lando doctor --all
 | accelerated-start | An accelerated file-sync start didn't finish. In the reported app root, run `lando start` to finish it. `lando stop` and `lando destroy` also work when the attempt's sessions and sync targets still check out as yours. |
 | missing-app-root | Move your app folder back to the reported path to keep using it, or remove its leftover resources with `lando destroy --root <path> --volumes`. |
 | missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
-| orphaned-volume-snapshots | Inspect leftover snapshot images with `lando snapshots:gc`, then remove them with `lando snapshots:gc --prune`. Stopped runtimes are skipped. |
+| orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. |
+| legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
 
-Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`.
+Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
 
-`lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config.
+## Inspect leftover snapshot images
+
+Read the orphan report before deleting anything. Without `--prune`, this command only reports candidates:
+
+<Guide>
+  <Scenario id="inspect-snapshot-catalog-orphans" render>
+    <Step name="inspect">
+      <Run command="lando snapshots:gc --format=json" />
+      <Verify command="lando snapshots:gc --format=json" expect={{ stdout: { regex: "totalCount" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+**`lando snapshots:gc --prune` deletes eligible native images.** It does not prune your catalogued manual or recovery snapshots; use the [database snapshot commands](../tooling/db-import-export.mdx) for those.
+
+GC skips stopped runtimes during discovery. If a runtime stops after the removal recheck, GC reports that provider as failed and does not count the failed deletion as removed. It never starts or repairs the runtime. `lando destroy --purge` may start a stopped runtime to remove catalogued snapshots.
+
+The `legacy-snapshot-catalogs` check reads the filesystem only. It finds old `index.bin` catalogs outside the owner-keyed directories, even when no runtime is running. An unreadable legacy catalog blocks GC rather than risking its images. **Deleting a legacy catalog directory releases its image protection.** Keep it if you still need those images; otherwise delete the reported catalog's containing directory, then run `lando snapshots:gc` to review the newly eligible images. Run `lando doctor` again to check the remaining catalogs.
 
 ## Finish an interrupted accelerated start
 

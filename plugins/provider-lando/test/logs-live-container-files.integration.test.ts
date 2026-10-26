@@ -111,13 +111,13 @@ const makePlan = (appRoot: string): AppPlan => {
   const node = service(appRoot);
   return {
     id: appId,
+    valueModel: 1,
     name: "File Logs App",
     slug: "livefilelogsapp",
     root: AbsolutePath.make(appRoot),
     provider: providerId,
     services: { [node.name]: node },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

@@ -18,18 +18,6 @@ const applyMailhogFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? MAILHOG_IMAGE });
   ctx.addEnv("MH_SMTP_BIND_ADDR", `0.0.0.0:${smtpPort}`);
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(smtpPort),
-    protocol: "tcp",
-    name: "smtp",
-  });
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(MAILPIT_WEB_PORT),
-    protocol: "http",
-    name: "ui",
-  });
 
   applyAuthoredProcessFields(ctx);
 };
@@ -38,6 +26,25 @@ export const mailhogServiceFeature: ServiceFeatureDefinition = {
   id: MAILHOG_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => {
+      const smtpPort = ctx.normalizedConfig.port ?? MAILPIT_SMTP_PORT;
+      return [
+        {
+          _tag: "internal" as const,
+          port: Schema.decodeUnknownSync(PortNumber)(smtpPort),
+          protocol: "tcp" as const,
+          name: "smtp",
+          primary: true as const,
+        },
+        {
+          _tag: "internal" as const,
+          port: Schema.decodeUnknownSync(PortNumber)(MAILPIT_WEB_PORT),
+          protocol: "http" as const,
+          name: "ui",
+        },
+      ];
+    }),
   apply: serviceFeatureApply(
     MAILHOG_FEATURE_ID,
     "mailhog service feature failed to apply",

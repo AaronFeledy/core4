@@ -10,40 +10,29 @@ import type {
 } from "@lando/sdk/errors";
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
-import type {
-  AppPlan,
-  AppRef,
-  ProxyAuthority,
-  ProxyStatus,
-  PublishedEndpoint,
-  RoutePlan,
-  ServicePlan,
-} from "@lando/sdk/schema";
+import type { AppPlan, AppRef, StartedService } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
   LandofileService,
-  RouterService,
+  type RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import type { ShellRunner } from "@lando/sdk/services";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
-import { publishedEndpointHost, publishedEndpointUrl } from "@lando/engine/operations/authority-url";
+import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
+import { observedAppPlan } from "@lando/engine/providers/app-placement";
 import { canOpenHost, openUrl } from "@lando/engine/services/host-opener";
 import { RedactionService } from "@lando/redaction/service";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution";
 import { isEnvelopeResultFormat } from "../format-flags";
 import type { RenderContext } from "../renderer-boundary";
 import { appendTerminalQr } from "../terminal-qr";
-
-export const OpenTargetSchema = Schema.Struct({
-  service: Schema.String,
-  hostname: Schema.String,
-  scheme: Schema.Literals(["http", "https"]),
-  url: Schema.String,
-});
-export type OpenTarget = typeof OpenTargetSchema.Type;
+import { collectOpenConnections } from "./open-connections";
+import { OpenTargetSchema, resolveOpenTargets } from "./open-targets";
+export { OpenTargetSchema, resolveOpenTargets } from "./open-targets";
+export type { OpenTarget, OpenTargetSelection } from "./open-targets";
 
 export const OpenLaunchOutcome = Schema.Literals(["opened", "printed", "headless-degraded"]);
 export type OpenLaunchOutcome = typeof OpenLaunchOutcome.Type;
@@ -56,19 +45,6 @@ export const OpenAppResultSchema = Schema.Struct({
 });
 export type OpenAppResult = typeof OpenAppResultSchema.Type;
 
-export interface OpenTargetSelection {
-  readonly service?: string;
-  readonly route?: string;
-  readonly all?: boolean;
-}
-
-type ResolvablePlan = Pick<AppPlan, "services" | "routes" | "router">;
-
-// A route hostname is only openable while the router publishes it, so a disabled
-// router leaves every selection form with published host ports alone.
-const openableRoutes = (plan: ResolvablePlan): ReadonlyArray<RoutePlan> =>
-  routerEnabled(plan) ? plan.routes : [];
-
 const OPENABLE_SCHEMES = new Set(["http:", "https:"]);
 
 export const isOpenableScheme = (url: string): boolean => {
@@ -77,97 +53,6 @@ export const isOpenableScheme = (url: string): boolean => {
   } catch {
     return false;
   }
-};
-
-export const buildOpenTarget = (
-  route: RoutePlan,
-  authorities: ReadonlyArray<ProxyAuthority> = [],
-  ports?: ProxyStatus["ports"],
-): OpenTarget => {
-  const scheme = route.scheme === "http" ? "http" : "https";
-  const authority = authorities.find(
-    (candidate) => candidate.hostname === route.hostname && candidate.scheme === scheme,
-  );
-  const defaultPort = scheme === "http" ? 80 : 443;
-  const listenPort = authority?.port ?? ports?.[scheme];
-  const port = listenPort === undefined || listenPort === defaultPort ? "" : `:${listenPort}`;
-  return {
-    service: String(route.service),
-    hostname: route.hostname,
-    scheme,
-    url: `${scheme}://${route.hostname}${port}${route.pathPrefix ?? ""}`,
-  };
-};
-
-const endpointOpenTarget = (service: ServicePlan, endpoint: PublishedEndpoint): OpenTarget | undefined => {
-  if (endpoint.protocol !== "http" && endpoint.protocol !== "https") return undefined;
-  const url = publishedEndpointUrl(endpoint);
-  if (url === undefined) return undefined;
-  return {
-    service: String(service.name),
-    hostname: publishedEndpointHost(endpoint),
-    scheme: endpoint.protocol,
-    url,
-  };
-};
-
-const routesForService = (plan: ResolvablePlan, service: string): RoutePlan[] =>
-  openableRoutes(plan).filter((route) => String(route.service) === service);
-
-const preferHttps = (routes: ReadonlyArray<RoutePlan>): RoutePlan | undefined =>
-  routes.find((route) => route.scheme === "https" || route.scheme === "both") ?? routes[0];
-
-const endpointTargetsForService = (plan: ResolvablePlan, serviceName: string): OpenTarget[] => {
-  const service = Object.values(plan.services).find((candidate) => String(candidate.name) === serviceName);
-  if (service === undefined) return [];
-  return service.endpoints.flatMap((endpoint) => {
-    if (endpoint._tag === "internal") return [];
-    const target = endpointOpenTarget(service, endpoint);
-    return target === undefined ? [] : [target];
-  });
-};
-
-const preferHttpsTarget = (targets: ReadonlyArray<OpenTarget>): OpenTarget | undefined =>
-  targets.find((target) => target.scheme === "https") ?? targets[0];
-
-export const resolveOpenTargets = (
-  plan: ResolvablePlan,
-  selection: OpenTargetSelection,
-  authorities: ReadonlyArray<ProxyAuthority> = [],
-  ports?: ProxyStatus["ports"],
-): ReadonlyArray<OpenTarget> => {
-  if (selection.route !== undefined) {
-    const match = openableRoutes(plan).find((route) => route.hostname === selection.route);
-    return match === undefined ? [] : [buildOpenTarget(match, authorities, ports)];
-  }
-  if (selection.service !== undefined) {
-    const serviceRoutes = routesForService(plan, selection.service);
-    if (selection.all === true && serviceRoutes.length > 0)
-      return serviceRoutes.map((route) => buildOpenTarget(route, authorities, ports));
-    const chosen = preferHttps(serviceRoutes);
-    if (chosen !== undefined) return [buildOpenTarget(chosen, authorities, ports)];
-    const endpoints = endpointTargetsForService(plan, selection.service);
-    if (selection.all === true) return endpoints;
-    const endpoint = preferHttpsTarget(endpoints);
-    return endpoint === undefined ? [] : [endpoint];
-  }
-  if (selection.all === true) {
-    const routes = openableRoutes(plan);
-    if (routes.length > 0) return routes.map((route) => buildOpenTarget(route, authorities, ports));
-    return Object.values(plan.services).flatMap((service) =>
-      endpointTargetsForService(plan, String(service.name)),
-    );
-  }
-  for (const service of Object.values(plan.services)) {
-    const routes = routesForService(plan, String(service.name));
-    const chosen = preferHttps(routes);
-    if (chosen !== undefined) return [buildOpenTarget(chosen, authorities, ports)];
-  }
-  for (const service of Object.values(plan.services)) {
-    const endpoint = preferHttpsTarget(endpointTargetsForService(plan, String(service.name)));
-    if (endpoint !== undefined) return [endpoint];
-  }
-  return [];
 };
 
 export interface OpenAppOptions {
@@ -224,11 +109,10 @@ const openNow = () => DateTime.nowUnsafe();
 
 export const openForPlan = Effect.fnUntraced(function* (
   plan: AppPlan,
-  options: OpenAppOptions = {},
-  authorities: ReadonlyArray<ProxyAuthority> = [],
-  ports?: ProxyStatus["ports"],
+  options: OpenAppOptions,
+  connections: readonly StartedService[],
 ): Effect.fn.Return<OpenAppResult, OpenAppError, ShellRunner | EventService | RedactionService> {
-  const targets = resolveOpenTargets(plan, options, authorities, ports);
+  const targets = resolveOpenTargets(plan, options, connections);
   if (targets.length === 0) {
     const knownServices = Object.values(plan.services).map((service) => String(service.name));
     const knownServicesText = knownServices.length === 0 ? "none" : knownServices.join(", ");
@@ -248,14 +132,15 @@ export const openForPlan = Effect.fnUntraced(function* (
     }
     if (
       (options.service !== undefined || options.route !== undefined) &&
-      resolveOpenTargets(plan, { all: true }, authorities, ports).length > 0
+      resolveOpenTargets(plan, { all: true }, connections).length > 0
     ) {
       const selected =
         options.route !== undefined ? `--route ${options.route}` : `--service ${options.service ?? ""}`;
       return yield* Effect.fail(
         new OpenTargetUnresolvedError({
           message: `No openable URL matched ${selected} for ${plan.name}. Known services: ${knownServicesText}.`,
-          remediation: "Choose one of the listed services or routes, then rerun `lando open`.",
+          remediation:
+            "Choose one of the listed services or routes. For multiple HTTP listeners, select an explicit --route or mark the intended HTTP endpoint primary: true, then rerun `lando open`.",
         }),
       );
     }
@@ -263,12 +148,12 @@ export const openForPlan = Effect.fnUntraced(function* (
       new OpenTargetUnresolvedError({
         message: unpublishedRoutes
           ? `No openable URL for ${plan.name}: its routes are declared but the router is disabled, and no service publishes an http host port. Known services: ${knownServicesText}.`
-          : `No openable URL for ${plan.name}: the app declares no matching route. Known services: ${knownServicesText}.`,
+          : `No active host HTTP(S) connection for ${plan.name}. Known services: ${knownServicesText}.`,
         app: plan.name,
         services: knownServices,
         remediation: unpublishedRoutes
           ? "Set `router:` `enabled: true` in your Landofile to publish the declared routes, or publish an http endpoint on a host port, then rerun `lando open`."
-          : "Declare a route under `proxy:` in your Landofile, then rerun `lando open`.",
+          : "Start the app and ensure its proxy routes or HTTP host publications are active. For multiple HTTP listeners, select an explicit --route or mark the intended HTTP endpoint primary: true, then rerun `lando open`.",
       }),
     );
   }
@@ -331,18 +216,18 @@ export const openApp = Effect.fn("OpenApp.open")(function* (
   const registry = yield* RuntimeProviderRegistry;
   const planner = yield* AppPlanner;
 
-  const plan =
-    target?.plan ??
-    (yield* Effect.gen(function* () {
-      const landofile = yield* loadUserLandofile(landofileService);
-      const capabilities = yield* registry.capabilities;
-      return yield* planner.plan(landofile, capabilities);
-    }));
+  const resolved = target ?? (yield* resolveAppliedStateTarget);
+  const plan = yield* observedAppPlan(
+    resolved?.plan ??
+      (yield* Effect.gen(function* () {
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities = yield* registry.capabilities;
+        return yield* planner.plan(landofile, capabilities);
+      })),
+  );
 
-  if (plan.routes.length === 0 || !routerEnabled(plan)) return yield* openForPlan(plan, options);
-  const router = yield* RouterService;
-  const status = yield* router.status;
-  return yield* openForPlan(plan, options, status.authorities, status.ports);
+  const connections = yield* collectOpenConnections(plan, options);
+  return yield* openForPlan(plan, options, connections);
 });
 
 export const renderOpenAppResult = (

@@ -403,7 +403,7 @@ const cases: ReadonlyArray<CatalogCase> = [
   },
 ];
 
-const landoEnvKeys = (environment: Readonly<Record<string, string>>): ReadonlyArray<string> =>
+const landoEnvKeys = (environment: import("@lando/sdk/schema").Environment): ReadonlyArray<string> =>
   Object.keys(environment).filter((key) => key === "LANDO" || key.startsWith("LANDO_"));
 
 const planFor = async (item: CatalogCase, serviceName: string, appName: string) => {

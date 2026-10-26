@@ -4,16 +4,16 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Cause, Duration, Effect, Exit, Fiber, Layer, Stream, Tracer } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, Layer, Schema, Stream, Tracer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import type * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ConfigError } from "@lando/sdk/errors";
-import type { GlobalConfig } from "@lando/sdk/schema";
+import { GlobalConfig } from "@lando/sdk/schema";
 import { ProviderId } from "@lando/sdk/schema";
-import { ConfigService, EventService, type LandoEvent, SecretStore } from "@lando/sdk/services";
+import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/services";
 
 import { RequestPolicy, type RequestPolicyShape, layer, layerWith } from "../src/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../src/network-trust.ts";
@@ -355,6 +355,7 @@ describe("HttpClient network trust", () => {
           direct: (requestUrl, init) =>
             fetchImpl(requestUrl, {
               ...init,
+              body: init.body ?? null,
               ...(init.ca === undefined ? {} : { tls: { ca: [...init.ca] } }),
             }),
         }),
@@ -417,7 +418,7 @@ describe("HttpClient network trust", () => {
     expect(capture.init()?.tls).toBeUndefined();
   });
 
-  test("self-resolves proxy and CA from env when ConfigService.load fails", async () => {
+  test("does not perform egress when config construction fails", async () => {
     const dir = await makeTempDir();
     const caPath = join(dir, "env-only.pem");
     const envCaPem = "-----BEGIN CERTIFICATE-----\nFROMENV\n-----END CERTIFICATE-----";
@@ -426,12 +427,14 @@ describe("HttpClient network trust", () => {
     stashEnv("HTTP_PROXY", "http://env-proxy:8080");
     stashEnv("LANDO_NETWORK_CA_CERTS", JSON.stringify([caPath]));
 
-    const configLayer = Layer.succeed(
+    const configLayer = Layer.effect(
       ConfigService,
-      ConfigService.of({
-        load: Effect.fail(new ConfigError({ message: "global config unavailable" })),
-        get: () => Effect.die("unused"),
-      }),
+      Effect.fail(
+        new ConfigError({
+          message: "global config unavailable",
+          remediation: "Provide a ConfigService for the live HTTP fixture.",
+        }),
+      ),
     );
 
     const capture = captureFetch();
@@ -445,9 +448,9 @@ describe("HttpClient network trust", () => {
       ),
     );
 
-    await Effect.runPromise(program);
-    expect(capture.init()?.proxy).toBe("http://env-proxy:8080");
-    expect(capture.init()?.tls).toEqual({ ca: [envCaPem] });
+    const result = await Effect.runPromise(Effect.result(program));
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ConfigError" } });
+    expect(capture.init()).toBeUndefined();
   });
 
   test("self-resolves proxy and CA from ConfigService when NetworkTrust is absent", async () => {
@@ -490,6 +493,24 @@ describe("HttpClient network trust", () => {
     await Effect.runPromise(program);
     expect(capture.init()?.proxy).toBe("http://config-proxy:3128");
     expect(capture.init()?.tls).toEqual({ ca: [fromConfig] });
+  });
+
+  test("ignores ambient proxies when the runtime supplies an empty environment", async () => {
+    // Given a captured policy-filtered environment and a conflicting live proxy.
+    stashEnv("HTTPS_PROXY", "http://ambient.invalid:8311");
+    const config = Schema.decodeUnknownSync(GlobalConfig)({});
+    const capture = captureFetch();
+    const configLayer = Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    );
+    const clientLayer = layerWith({ env: {}, fetch: capture.fetchImpl, systemCaPems: () => [] }).pipe(
+      Layer.provide(configLayer),
+    );
+    // When HTTP executes using only its retained layer services.
+    await run(getCollect("https://example.com/retained"), clientLayer);
+    // Then no ambient proxy reaches the transport.
+    expect(capture.init()?.proxy).toBeUndefined();
   });
 
   test("fails before fetch when a configured CA path is unreadable", async () => {
@@ -820,16 +841,12 @@ describe("HttpClient egress span redaction", () => {
       },
     });
     const serve = (() => Promise.resolve(new Response("ok", { status: 200 }))) as unknown as typeof fetch;
-    const store = SecretStore.of({
-      id: "review-store",
-      list: Effect.succeed(["path-token"]),
-      get: () => Effect.succeed(secret),
-      has: () => Effect.succeed(true),
-    });
+    const redaction = makeRedactionService();
+    await Effect.runPromise(redaction.registerValues([secret]));
     await Effect.runPromise(
       getCollect(url).pipe(
         Effect.provide(layerWith({ fetch: serve })),
-        Effect.provideService(RedactionService, RedactionService.of(makeRedactionService(store))),
+        Effect.provideService(RedactionService, redaction),
         Effect.provideService(Tracer.Tracer, tracer),
       ),
     );

@@ -23,6 +23,7 @@ nativeListenPortSuite({
   variable: "MSSQL_TCP_PORT",
   defaultPort: 1433,
   reservedPorts: [1434],
+  startupCommand: "/bin/bash",
 });
 
 const metadata = {
@@ -148,7 +149,9 @@ describe("mssql ServiceType", () => {
         expect(serviceType.schema).toBe(MssqlServiceConfig);
         expect(plan.type).toBe("mssql");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
-        expect(plan.endpoints).toEqual([{ _tag: "internal", port: 1433, protocol: "tcp", name: "database" }]);
+        expect(plan.endpoints).toEqual([
+          { _tag: "internal", port: 1433, protocol: "tcp", name: "database", primary: true },
+        ]);
         expect(plan.storage).toHaveLength(1);
         expect(plan.storage[0]?.store).toBe("myapp-mssql-data");
         expect(String(plan.storage[0]?.target)).toBe("/var/opt/mssql");
@@ -158,19 +161,21 @@ describe("mssql ServiceType", () => {
           MSSQL_PID: "Developer",
           SA_PASSWORD: rootPassword,
         });
-        expect(plan.environment.MSSQL_SA_PASSWORD).toBeUndefined();
-        expect(plan.environment.LANDO_DB_USER).toBe("lando");
-        expect(plan.environment.LANDO_DB_PASSWORD).toBe("lando");
+        expect(plan.environment.MSSQL_SA_PASSWORD).toBe(rootPassword);
+        expect(plan.environment.SQLCMDPASSWORD).toBe(rootPassword);
+        expect(plan.environment.LANDO_DB_USER).toBe("sa");
+        expect(plan.environment.LANDO_DB_PASSWORD).toBe(rootPassword);
         expect(plan.environment.LANDO_DB_NAME).toBe("myapp");
         expect(plan.environment.LANDO_DB_ROOT_PASSWORD).toBe(rootPassword);
-        expect(plan.healthcheck).toEqual({
+        expect(plan.healthcheck).toMatchObject({
           kind: "command",
-          command: [SQLCMD, "-S", "localhost,1433", "-U", "sa", "-P", rootPassword, "-C", "-Q", "SELECT 1"],
           intervalSeconds: 10,
           timeoutSeconds: 5,
           retries: 5,
           startPeriodSeconds: 30,
         });
+        expect(plan.healthcheck?.command).not.toContain(rootPassword);
+        expect(plan.healthcheck?.command).toContain("master");
       });
 
       test("resolves default creds and sqlcmd tooling as literal argv", async () => {
@@ -178,8 +183,8 @@ describe("mssql ServiceType", () => {
         const rootPassword = defaultRootPassword("myapp", "database");
 
         expect(resolution.normalizedConfig.creds).toEqual({
-          user: "lando",
-          password: "lando",
+          user: "sa",
+          password: rootPassword,
           database: "myapp",
           rootPassword,
         });
@@ -198,8 +203,8 @@ describe("mssql ServiceType", () => {
 
       test("authored creds win over defaults", async () => {
         const creds = {
-          user: "appuser",
-          password: "app-secret",
+          user: "sa",
+          password: "pa'ss; rm -rf /",
           database: "appdb",
           rootPassword: "pa'ss; rm -rf /",
         };
@@ -217,18 +222,8 @@ describe("mssql ServiceType", () => {
           cmd: [SQLCMD, "-S", "localhost,1433", "-U", "sa", "-C"],
           env: { SQLCMDPASSWORD: creds.rootPassword },
         });
-        expect(plan.healthcheck?.command).toEqual([
-          SQLCMD,
-          "-S",
-          "localhost,1433",
-          "-U",
-          "sa",
-          "-P",
-          creds.rootPassword,
-          "-C",
-          "-Q",
-          "SELECT 1",
-        ]);
+        expect(plan.healthcheck?.command).not.toContain(creds.rootPassword);
+        expect(plan.healthcheck?.command?.at(-1)).toContain("name = N'appdb'");
       });
 
       test("SA_PASSWORD environment drives sqlcmd tooling and healthcheck", async () => {
@@ -249,18 +244,8 @@ describe("mssql ServiceType", () => {
           cmd: [SQLCMD, "-S", "localhost,1433", "-U", "sa", "-C"],
           env: { SQLCMDPASSWORD: saPassword },
         });
-        expect(plan.healthcheck?.command).toEqual([
-          SQLCMD,
-          "-S",
-          "localhost,1433",
-          "-U",
-          "sa",
-          "-P",
-          saPassword,
-          "-C",
-          "-Q",
-          "SELECT 1",
-        ]);
+        expect(plan.healthcheck?.command).not.toContain(saPassword);
+        expect(plan.healthcheck?.command).toContain("-b");
       });
 
       test("authored environment overrides MSSQL_PID", async () => {
@@ -286,10 +271,27 @@ describe("mssql ServiceType", () => {
 
         expect(plan.artifact).toEqual({ kind: "ref", ref: "mcr.microsoft.com/mssql/server:custom" });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 14333, protocol: "tcp", name: "database" },
+          { _tag: "internal", port: 14333, protocol: "tcp", name: "database", primary: true },
         ]);
         expect(plan.command).toEqual(["/opt/mssql/bin/sqlservr"]);
         expect(plan.user).toBe("1000:1000");
+      });
+      test("owns startup for the planner-stamped catalog image", async () => {
+        const plan = await planMssqlService(serviceType, { type: id, image, port: 14333 });
+        expect(plan.command?.[0]).toBe("/bin/bash");
+        expect(plan.command).toContain("localhost,14333");
+      });
+      test.each([
+        { image: "acme/mssql:custom" },
+        { build: { context: "." } },
+        { entrypoint: ["custom-init"] },
+      ])("leaves startup ownership to authored %j", async (config) => {
+        const plan = await planMssqlService(serviceType, { type: id, ...config });
+        expect(plan.command).toBeUndefined();
+      });
+      test("leaves an authored command untouched on a catalog image", async () => {
+        const plan = await planMssqlService(serviceType, { type: id, command: ["custom-server"] });
+        expect(plan.command).toEqual(["custom-server"]);
       });
     });
   }

@@ -26,8 +26,6 @@ When `runs` is present, any other id fails with `RecipeRunNotAllowedError` befor
 
 If you omit `runs`, Lando uses a built-in default list of common VCS and language tools. Those ids run without a warning. Any other id warns and still runs. Add an explicit `runs` list when you want that warning gone, or when you want anything outside your list to fail closed.
 
-One line of policy, then the recipe has to live with it. That is the point.
-
 ## Check the manifest
 
 From the recipe directory (basename must match `id`):

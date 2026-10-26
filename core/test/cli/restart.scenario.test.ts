@@ -39,19 +39,15 @@ import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { makeTestStateStore } from "@lando/core/testing";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import {
-  attachEffectiveEvents,
   compileEffectiveEvents,
   effectiveEventsForPlan,
+  withEventsPlan,
 } from "@lando/engine/planner/effective-events";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ContainerHelperAssets } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 const testStateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
@@ -141,7 +137,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -176,6 +171,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
   Layer.mergeAll(
+    environmentResolverLayer(),
     Layer.succeed(
       ContainerHelperAssets,
       ContainerHelperAssets.of({ resolve: () => Effect.die("unused container helper") }),
@@ -197,14 +193,7 @@ const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
         loadAppFeature: () => Effect.die("not used"),
       }),
     ),
-    Layer.succeed(
-      RedactionService,
-      RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-      }),
-    ),
+    Layer.succeed(RedactionService, makeRedactionService()),
     Layer.succeed(RouterService, RouterService.of(proxy)),
     shellRunnerLive,
   );
@@ -269,11 +258,21 @@ const makeRestartLayer = (
         status: "running",
         state: "running",
         containerId: `cid-${String(target.service)}`,
-        endpoints: (plannedApp.services[target.service]?.endpoints ?? []).map((endpoint) =>
-          endpoint._tag === "published" && endpoint.publication.hostPort === undefined
-            ? { ...endpoint, materialization: { bindAddress: "127.0.0.1", hostPort: 34567 } }
-            : endpoint,
-        ),
+        publications: {
+          status: "present",
+          bindings: (plannedApp.services[target.service]?.endpoints ?? []).flatMap((endpoint) =>
+            endpoint._tag === "published"
+              ? [
+                  {
+                    port: endpoint.port,
+                    transport: endpoint.protocol === "udp" ? ("udp" as const) : ("tcp" as const),
+                    bindAddress: endpoint.publication.bindAddress ?? "127.0.0.1",
+                    hostPort: endpoint.publication.hostPort ?? 34567,
+                  },
+                ]
+              : [],
+          ),
+        },
       }),
   };
 
@@ -283,18 +282,23 @@ const makeRestartLayer = (
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({
-          name: "test-restart",
-          services: {},
-          ...(effectiveEventsForPlan(plannedApp) === undefined
-            ? {}
-            : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
-        }),
+        discover: Effect.succeed(
+          literalLandofile(
+            {
+              name: "test-restart",
+              services: {},
+              ...(effectiveEventsForPlan(plannedApp) === undefined
+                ? {}
+                : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
+            },
+            plannedApp.root,
+          ),
+        ),
       }),
     ),
     makeTestStateStore().layer,
     Layer.succeed(PathsService, makeLandoPaths()),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plannedApp)) })),
     Layer.succeed(
       BuildOrchestrator,
       BuildOrchestrator.of({
@@ -306,6 +310,8 @@ const makeRestartLayer = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
@@ -357,7 +363,7 @@ describe("lando restart", () => {
         },
       },
     });
-    const eventPlan = attachEffectiveEvents({ ...plan }, effective);
+    const eventPlan = withEventsPlan({ ...plan }, effective);
     const harness = makeRestartLayer({ plannedApp: eventPlan });
 
     // When
@@ -406,7 +412,7 @@ describe("lando restart", () => {
       ["web", "running"],
     ]);
     expect(renderRestartAppResult(result)).toBe(
-      "restarted: test-restart - web (running) http://localhost:3000",
+      "restarted: test-restart - web (running) Host: http://localhost:3000 App Network: http://web:3000",
     );
   });
 
@@ -426,6 +432,7 @@ describe("lando restart", () => {
       providerId: "lando",
       operation: "buildArtifact",
       message: "build failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
     });
     const harness = makeRestartLayer({ buildEffect: Effect.fail(failure) });
 
@@ -488,3 +495,4 @@ describe("lando restart", () => {
     expect(harness.destroyCalls).toEqual([]);
   });
 });
+import { currentTestPlan, environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";

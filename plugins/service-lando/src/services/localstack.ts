@@ -1,12 +1,19 @@
 import { Effect, Schema } from "effect";
 
-import { PortablePath } from "@lando/sdk/schema";
+import { ServiceFeatureError } from "@lando/sdk/errors";
+import { PortablePath, type ServiceConfig, formatValidationIssuePath } from "@lando/sdk/schema";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  ServiceConfigIssue,
+  commandHealthcheck,
+  literalEnvironmentValue,
+  rootIdentity,
+  serviceFeatureApply,
+} from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "localstack/localstack:4.14.0";
@@ -31,14 +38,21 @@ const gatewayListenForPort = (authored: string | undefined, port: number): strin
   return `${authored.replace(/\s+$/, "")}:${port}`;
 };
 
+const localstackListener = (service: ServiceConfig) => {
+  const gateway = service.environment?.GATEWAY_LISTEN;
+  const authoredGateway =
+    gateway === undefined ? undefined : literalEnvironmentValue(gateway, ["environment", "GATEWAY_LISTEN"]);
+  const port = plannedPort(service, {
+    port:
+      (authoredGateway === undefined ? undefined : portFromGatewayListen(authoredGateway)) ?? DEFAULT_PORT,
+    daemon: "LocalStack",
+  });
+  return { port, gatewayListen: gatewayListenForPort(authoredGateway, port) } as const;
+};
+
 const applyLocalStackFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const authoredGateway = service.environment?.GATEWAY_LISTEN;
-  const port =
-    service.port ??
-    (authoredGateway === undefined ? undefined : portFromGatewayListen(authoredGateway)) ??
-    DEFAULT_PORT;
-  const gatewayListen = gatewayListenForPort(authoredGateway, port);
+  const { port, gatewayListen } = localstackListener(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("GATEWAY_LISTEN", gatewayListen);
@@ -48,7 +62,6 @@ const applyLocalStackFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(
     commandHealthcheck(["sh", "-c", `curl -sf http://localhost:${port}/_localstack/health`], 30),
   );
@@ -61,6 +74,28 @@ export const localstackServiceFeature: ServiceFeatureDefinition = {
   schema: Schema.Unknown,
   // After lando.env so GATEWAY_LISTEN stays aligned with the planned endpoint port.
   priority: 750,
+  declareEndpoints: (ctx) =>
+    Effect.try({
+      try: () => {
+        const { port } = localstackListener(ctx.normalizedConfig);
+        return servicePortEndpoints(ctx, { port, protocol: "http" });
+      },
+      catch: (cause) => {
+        if (!(cause instanceof ServiceConfigIssue)) throw cause;
+        return new ServiceFeatureError({
+          feature: LOCALSTACK_FEATURE_ID,
+          message: `${formatValidationIssuePath(["services", ctx.serviceName, ...cause.path])}: ${cause.message}${cause.suggestion ? ` ${cause.suggestion}` : ""}`,
+          cause,
+          remediation:
+            cause instanceof Error &&
+            "suggestion" in cause &&
+            typeof cause.suggestion === "string" &&
+            cause.suggestion
+              ? cause.suggestion
+              : `Correct the ${LOCALSTACK_FEATURE_ID} feature configuration in the Landofile, then re-run.`,
+        });
+      },
+    }),
   apply: serviceFeatureApply(
     LOCALSTACK_FEATURE_ID,
     "localstack service feature failed to apply",

@@ -4,12 +4,12 @@ import {
   type AppPlan,
   type ServiceName,
   type ServicePlan,
+  landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
 
 import { CREATE_CONFIG_LABEL } from "../create-fingerprint.ts";
 import { HOST_PROXY_SESSION_LABEL } from "../labels.ts";
 import { commonContainerLabels, fingerprintPlannedPublishPorts } from "../plan.ts";
-import { podmanNetworkNames } from "./networks.ts";
 
 // Private SSH sidecar protocol: the optional POSIX host socket bind endpoint.
 const SSH_SIDECAR_HOST_SOCKET_DIRECTORY = "/ssh-auth";
@@ -131,16 +131,22 @@ export const bindSourceChanged = (service: ServicePlan, inspected: BringUpInspec
     if (hostSocketMount?.source !== source(SSH_SIDECAR_HOST_SOCKET_DIRECTORY)) return true;
   }
   const socketTarget = service.environment.LANDO_HOST_PROXY_SOCKET;
-  if (socketTarget === undefined) return false;
+  if (typeof socketTarget !== "string") return false;
   const plannedSocket = service.mounts.find(
     (mount) => mount.type === "bind" && mount.realization === "passthrough" && mount.target === socketTarget,
   );
   return plannedSocket?.source !== undefined && source(socketTarget) !== plannedSocket.source;
 };
 
-export const plannedNetworkMissing = (plan: AppPlan, inspected: BringUpInspectSnapshot): boolean => {
+export const plannedNetworkMissing = (
+  plan: AppPlan,
+  service: ServicePlan,
+  inspected: BringUpInspectSnapshot,
+): boolean => {
   const names = networkLookup(inspected.networkNames);
-  return names !== undefined && podmanNetworkNames(plan).some((name) => !names.has(name));
+  return (
+    names !== undefined && landoServiceNetworkAttachments(plan, service).some(({ name }) => !names.has(name))
+  );
 };
 
 export const publishPortMismatch = (plan: ServicePlan, inspected: BringUpInspectSnapshot): boolean => {
@@ -180,7 +186,7 @@ export const bringUpRecreateReasons = (
       reasons.push("bind-source");
   }
   if (!skipAbsent || inspected.networkNames !== undefined) {
-    if (plannedNetworkMissing(plan, inspected)) reasons.push("network");
+    if (plannedNetworkMissing(plan, service, inspected)) reasons.push("network");
   }
   if (!skipAbsent || inspected.labels !== undefined) {
     if (

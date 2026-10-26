@@ -34,13 +34,18 @@ describe("combined command failures", () => {
     // When: the JSON report receives the actual additional failure separately.
     const report = formatBugReport({
       error,
-      additionalErrors: [{ role: "cleanup", error: { _tag: "CleanupError", message: "Cleanup refused." } }],
+      additionalErrors: [
+        {
+          role: "cleanup",
+          error: { _tag: "CleanupError", message: "Cleanup refused.", remediation: "Repair cleanup." },
+        },
+      ],
       context: { commandId: "app:start", cacheRoot: "/cache" },
       rendererMode: "json",
     });
-    // Then: report-owned failures survive without an invented remediation.
+    // Then: report-owned failures and their remediation survive.
     expect(JSON.parse(report).additionalErrors).toEqual([
-      { role: "cleanup", code: "CleanupError", body: "Cleanup refused." },
+      { role: "cleanup", code: "CleanupError", body: "Cleanup refused.", remediation: "Repair cleanup." },
     ]);
   });
 

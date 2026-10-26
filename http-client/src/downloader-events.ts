@@ -3,7 +3,7 @@
  */
 import { Cause, type Context, Effect, Option } from "effect";
 
-import { createStandaloneRedactor } from "@lando/redaction/service";
+import type { Redactor } from "@lando/sdk/secrets";
 import type { EventService, LandoEvent } from "@lando/sdk/services";
 
 import { type DownloadError, failureDetailForError, isDownloadError } from "./downloader-errors.ts";
@@ -27,8 +27,9 @@ export const noopDownloaderEvents: DownloaderEvents = {
 /** Build a redacted, fail-open event seam from an optional `EventService`. */
 export const makeDownloaderEvents = (
   eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
+  redactor: Redactor,
 ): DownloaderEvents => {
-  const redactText = createStandaloneRedactor("secrets").redactString;
+  const redactText = redactor.redactString;
   const publish: DownloaderEvents["publish"] = Option.isSome(eventService)
     ? (event) => eventService.value.publish(event).pipe(Effect.catchCause(() => Effect.void))
     : () => Effect.void;

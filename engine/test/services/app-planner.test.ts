@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize } from "node:v8";
 import { Cause, Effect, Exit, Layer, Option, References, Schema, Tracer } from "effect";
+import { planLiteralTestLandofile as planTestLandofile } from "../compiled-landofile.ts";
 
 import {
   CapabilityError,
@@ -41,6 +42,7 @@ import * as AppCacheService from "../../src/cache/service.ts";
 import { resolvePinnedArtifactTag } from "../../src/planner/service-types.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
+import { GlobalConfigSources } from "../../src/services/config.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { DEFAULT_APP_MOUNT_EXCLUDES } from "../../src/services/planner.ts";
@@ -126,18 +128,23 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 
 const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCapabilities) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
+      Effect.provideService(GlobalConfigSources, {
+        env: { ...process.env },
+        sources: { user: false, env: true },
+      }),
     ),
   );
 
 const planExit = (landofile: LandofileShape, providerCapabilities = providerLandoCapabilities) =>
   Effect.runPromiseExit(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
-      Effect.provide(PluginRegistryLayer.layer),
-    ),
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
 
 test("planning emits phase spans beneath AppPlanner.plan", async () => {
@@ -152,7 +159,9 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
   });
   // When
   const result = await Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofileFixture, providerLandoCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) =>
+      planTestLandofile(planner, landofileFixture, providerLandoCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.withTracer(tracer),
@@ -187,8 +196,10 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     "AppPlanner.discover",
     "AppPlanner.loadComposeConfigs",
     "AppPlanner.planServices",
-    "AppPlanner.composeFeatures",
+    "AppPlanner.applyPreparedFeatures",
     "AppPlanner.finalizeServices",
+    "AppPlanner.normalizeNetworks",
+    "AppPlanner.validateServiceProbes",
   ]);
   const discover = spans.find((span) => span.name === "AppPlanner.discover");
   const resolvedLandofile = spans.find((span) => span.name === "AppPlanner.resolve");
@@ -274,7 +285,9 @@ test("sidecar mode plans without agentSocket and retains intent", async () => {
 
 const planWithFileSystem = (landofile: LandofileShape) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerLandoCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provide(BunFileSystem.layer),
@@ -300,7 +313,9 @@ const planWithConfig = (
   providerCapabilities = providerLandoCapabilities,
 ) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provide(configLayer(defaultProviderId)),
@@ -388,13 +403,23 @@ const publishedEndpointServiceType = makeLegacyServiceTypeFake({
 const customPluginRegistry = {
   list: Effect.succeed([]),
   load: (pluginName: string) =>
-    Effect.fail(new PluginLoadError({ message: `Plugin ${pluginName} is not registered.`, pluginName })),
+    Effect.fail(
+      new PluginLoadError({
+        message: `Plugin ${pluginName} is not registered.`,
+        pluginName,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    ),
   loadServiceType: (id: string) => {
     if (id === appMountOnlyServiceType.id) return Effect.succeed(appMountOnlyServiceType);
     if (id === socketOnlyServiceType.id) return Effect.succeed(socketOnlyServiceType);
     if (id === publishedEndpointServiceType.id) return Effect.succeed(publishedEndpointServiceType);
     return Effect.fail(
-      new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+      new PluginLoadError({
+        message: `Service type ${id} is not registered.`,
+        pluginName: id,
+        remediation: "Install or register the plugin, then retry.",
+      }),
     );
   },
   loadServiceFeature: (id: string) => {
@@ -405,12 +430,22 @@ const customPluginRegistry = {
     ].find((candidate) => candidate.id === id);
     return feature === undefined
       ? Effect.fail(
-          new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+          new PluginLoadError({
+            message: `Service feature ${id} is not registered.`,
+            pluginName: id,
+            remediation: "Install or register the plugin, then retry.",
+          }),
         )
       : Effect.succeed(feature);
   },
   loadAppFeature: (id: string) =>
-    Effect.fail(new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id })),
+    Effect.fail(
+      new PluginLoadError({
+        message: `App feature ${id} is not registered.`,
+        pluginName: id,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    ),
 };
 
 const followLogSourceServiceType = (required: boolean): ServiceType => ({
@@ -454,7 +489,9 @@ const planWithCustomRegistry = (
   providerCapabilities = providerLandoCapabilities,
 ) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
@@ -465,7 +502,9 @@ const planExitWithCustomRegistry = (
   providerCapabilities = providerLandoCapabilities,
 ) =>
   Effect.runPromiseExit(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      planTestLandofile(appPlanner, landofile, providerCapabilities),
+    ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
@@ -533,7 +572,7 @@ describe("AppPlannerLayer.layer", () => {
         const execute = () =>
           Effect.runPromise(
             Effect.flatMap(AppPlanner, (planner) =>
-              planner.plan(landofile, {
+              planTestLandofile(planner, landofile, {
                 ...providerLandoCapabilities,
                 agentSocket: { delivery: "bind-directory" },
               }),
@@ -652,7 +691,9 @@ describe("AppPlannerLayer.layer", () => {
     });
     // When
     const appPlan = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+      Effect.flatMap(AppPlanner, (planner) =>
+        planTestLandofile(planner, landofile, providerLandoCapabilities),
+      ).pipe(
         Effect.provide(AppPlannerLayer.layer),
         Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
       ),
@@ -1013,7 +1054,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const appPlan = await Effect.runPromise(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
@@ -1314,7 +1357,8 @@ describe("AppPlannerLayer.layer", () => {
       const serviceType = followLogSourceServiceType(true);
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             Schema.decodeUnknownSync(LandofileShape)({
               name: "logs-app",
               runtime: 4,
@@ -1347,7 +1391,8 @@ describe("AppPlannerLayer.layer", () => {
       const serviceType = followLogSourceServiceType(false);
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             Schema.decodeUnknownSync(LandofileShape)({
               name: "logs-app",
               runtime: 4,
@@ -1440,7 +1485,7 @@ describe("AppPlannerLayer.layer", () => {
     process.env.LANDO_PROVIDER = "docker";
     try {
       const appPlan = await planWithConfig(
-        { ...landofileFixture, provider: ProviderId.make("podman") },
+        { ...landofileFixture, provider: ProviderId.make("podman"), router: { enabled: false } },
         ProviderId.make("lando"),
       );
       expect(String(appPlan.provider)).toBe("podman");
@@ -1518,7 +1563,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const appPlan = await Effect.runPromise(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
@@ -1591,7 +1638,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const exit = await Effect.runPromiseExit(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
@@ -1658,7 +1707,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const exit = await Effect.runPromiseExit(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
@@ -1697,7 +1748,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const appPlan = await Effect.runPromise(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
@@ -1734,7 +1787,9 @@ describe("AppPlannerLayer.layer", () => {
 
       // When
       const exit = await Effect.runPromiseExit(
-        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.flatMap(AppPlanner, (planner) =>
+          planTestLandofile(planner, landofile, providerLandoCapabilities),
+        ).pipe(
           Effect.provide(AppPlannerLayer.layer),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
@@ -1783,7 +1838,7 @@ describe("AppPlannerLayer.layer", () => {
       const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-app-plan-cache-root-")));
       process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
       await writeFile(join(appRoot, "cache.env"), "ENV_FILE_VALUE=one\n");
-      let servicePlanCalls = 0;
+      let featureApplyCalls = 0;
       const cachedType = makeLegacyServiceTypeFake({
         id: "cached-type",
         toServicePlan: ({
@@ -1793,7 +1848,6 @@ describe("AppPlannerLayer.layer", () => {
           primary = false,
           metadata,
         }) => {
-          servicePlanCalls += 1;
           return Schema.decodeUnknownSync(ServicePlan)({
             name: ServiceName.make(name),
             type: "cached-type",
@@ -1821,6 +1875,15 @@ describe("AppPlannerLayer.layer", () => {
           });
         },
       });
+      // Declaration also builds a fake plan; only application must be skipped on cache hits.
+      const cachedFeature: ServiceFeatureDefinition = {
+        ...cachedType.testFeature,
+        apply: (ctx) =>
+          Effect.suspend(() => {
+            featureApplyCalls += 1;
+            return cachedType.testFeature.apply(ctx);
+          }),
+      };
       const layer = AppPlannerLayer.layer.pipe(
         Layer.provide(
           Layer.mergeAll(
@@ -1841,11 +1904,12 @@ describe("AppPlannerLayer.layer", () => {
                 loadServiceType: () => Effect.succeed(cachedType),
                 loadServiceFeature: (id: string) =>
                   id === cachedType.testFeature.id
-                    ? Effect.succeed(cachedType.testFeature)
+                    ? Effect.succeed(cachedFeature)
                     : Effect.fail(
                         new PluginLoadError({
                           message: `Service feature ${id} is not registered.`,
                           pluginName: id,
+                          remediation: "Install or register the plugin, then retry.",
                         }),
                       ),
                 loadAppFeature: () => Effect.die("not used"),
@@ -1862,16 +1926,19 @@ describe("AppPlannerLayer.layer", () => {
       try {
         const runPlan = (landofile: LandofileShape) =>
           Effect.runPromise(
-            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-              Effect.provide(layer),
-            ),
+            Effect.flatMap(AppPlanner, (planner) =>
+              planTestLandofile(planner, landofile, providerLandoCapabilities),
+            ).pipe(Effect.provide(layer)),
           );
 
         const first = await runPlan(cachedLandofile);
+        expect(featureApplyCalls).toBe(1);
         const cachedBytes = await readFile(appPlanCachePath(cacheRoot, "cached-app", process.cwd()));
         const second = await runPlan(cachedLandofile);
+        expect(featureApplyCalls).toBe(1);
         await writeFile(join(appRoot, "cache.env"), "ENV_FILE_VALUE=two\n");
         const changedFromFile = await runPlan(cachedLandofile);
+        expect(featureApplyCalls).toBe(2);
         const changed = await runPlan({
           ...cachedLandofile,
           services: {
@@ -1889,7 +1956,7 @@ describe("AppPlannerLayer.layer", () => {
         expect(second.metadata.resolvedAt).toEqual(first.metadata.resolvedAt);
         expect(changedFromFile.services[ServiceName.make("web")]?.environment.ENV_FILE_VALUE).toBe("two");
         expect(changed.name).toBe("cached-app");
-        expect(servicePlanCalls).toBe(3);
+        expect(featureApplyCalls).toBe(3);
       } finally {
         if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
         else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
@@ -1905,7 +1972,7 @@ describe("AppPlannerLayer.layer", () => {
       const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-app-plan-env-file-cache-")));
       process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
       await writeFile(join(appRoot, "cache.env"), "ENV_FILE_VALUE=one\n");
-      let servicePlanCalls = 0;
+      let featureApplyCalls = 0;
       const cachedType = makeLegacyServiceTypeFake({
         id: "env-file-cache-type",
         normalizeConfig: ({ environment: _environment, ...normalizedConfig }) => normalizedConfig,
@@ -1916,7 +1983,6 @@ describe("AppPlannerLayer.layer", () => {
           primary = false,
           metadata,
         }) => {
-          servicePlanCalls += 1;
           return Schema.decodeUnknownSync(ServicePlan)({
             name: ServiceName.make(name),
             type: "env-file-cache-type",
@@ -1944,6 +2010,15 @@ describe("AppPlannerLayer.layer", () => {
           });
         },
       });
+      // Keep declaration work out of the persisted-cache application counter.
+      const cachedFeature: ServiceFeatureDefinition = {
+        ...cachedType.testFeature,
+        apply: (ctx) =>
+          Effect.suspend(() => {
+            featureApplyCalls += 1;
+            return cachedType.testFeature.apply(ctx);
+          }),
+      };
       const layer = AppPlannerLayer.layer.pipe(
         Layer.provide(
           Layer.mergeAll(
@@ -1964,11 +2039,12 @@ describe("AppPlannerLayer.layer", () => {
                 loadServiceType: () => Effect.succeed(cachedType),
                 loadServiceFeature: (id: string) =>
                   id === cachedType.testFeature.id
-                    ? Effect.succeed(cachedType.testFeature)
+                    ? Effect.succeed(cachedFeature)
                     : Effect.fail(
                         new PluginLoadError({
                           message: `Service feature ${id} is not registered.`,
                           pluginName: id,
+                          remediation: "Install or register the plugin, then retry.",
                         }),
                       ),
                 loadAppFeature: () => Effect.die("not used"),
@@ -1986,29 +2062,29 @@ describe("AppPlannerLayer.layer", () => {
       try {
         const runPlan = () =>
           Effect.runPromise(
-            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-              Effect.provide(layer),
-            ),
+            Effect.flatMap(AppPlanner, (planner) =>
+              planTestLandofile(planner, landofile, providerLandoCapabilities),
+            ).pipe(Effect.provide(layer)),
           );
 
         // When
         await runPlan();
 
         // Then
-        expect(servicePlanCalls).toBe(1);
+        expect(featureApplyCalls).toBe(1);
 
         // When
         await runPlan();
 
         // Then
-        expect(servicePlanCalls).toBe(1);
+        expect(featureApplyCalls).toBe(1);
 
         // When
         await writeFile(join(appRoot, "cache.env"), "ENV_FILE_VALUE=two\n");
         await runPlan();
 
         // Then
-        expect(servicePlanCalls).toBe(2);
+        expect(featureApplyCalls).toBe(2);
       } finally {
         if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
         else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
@@ -2063,7 +2139,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("emits one canonical route when a service has multiple HTTP endpoints", async () => {
+  test("emits one canonical route for the explicit primary among multiple HTTP endpoints", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(
         Schema.decodeUnknownSync(LandofileShape)({
@@ -2076,8 +2152,8 @@ describe("AppPlannerLayer.layer", () => {
               home: false,
               appMount: false,
               endpoints: [
-                { _tag: "internal", name: "primary", protocol: "http", port: 8080 },
                 { _tag: "internal", name: "admin", protocol: "http", port: 8081 },
+                { _tag: "internal", name: "primary", protocol: "http", port: 8080, primary: true },
               ],
             },
           },
@@ -2160,6 +2236,7 @@ describe("AppPlannerLayer.layer", () => {
           [ServiceName.make("worker")]: {
             image: "node:lts",
             ports: [],
+            endpoints: [],
             home: false,
           },
         },
@@ -2197,13 +2274,18 @@ describe("AppPlannerLayer.layer", () => {
           id === "test.smtp"
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2251,13 +2333,18 @@ describe("AppPlannerLayer.layer", () => {
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2323,25 +2410,38 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) =>
           id === serviceFeature.id
             ? Effect.succeed(serviceFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadAppFeature: (id: string) =>
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2416,25 +2516,38 @@ describe("AppPlannerLayer.layer", () => {
           id === buildStepServiceType.id
             ? Effect.succeed(buildStepServiceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) =>
           id === buildStepServiceType.testFeature.id
             ? Effect.succeed(buildStepServiceType.testFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadAppFeature: (id: string) =>
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2497,13 +2610,18 @@ describe("AppPlannerLayer.layer", () => {
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2549,13 +2667,18 @@ describe("AppPlannerLayer.layer", () => {
           id === "test.php-only"
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -2638,7 +2761,15 @@ describe("AppPlannerLayer.layer", () => {
       });
       expect(web?.mounts).toEqual([]);
       expect(web?.endpoints).toEqual([
-        { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3000 } },
+        { _tag: "internal", port: 3000, protocol: "http", primary: true, name: "web" },
+        {
+          _tag: "published",
+          port: 3000,
+          protocol: "http",
+          primary: true,
+          name: "web",
+          publication: { hostPort: 3000 },
+        },
       ]);
       expect(web?.dependsOn).toEqual([
         { service: ServiceName.make("db"), condition: "service_started", required: true },
@@ -2650,7 +2781,15 @@ describe("AppPlannerLayer.layer", () => {
       expect(db?.environment.POSTGRES_DB).toBe("myapp");
       expect(db?.environment.POSTGRES_PASSWORD).toBe("lando");
       expect(db?.endpoints).toEqual([
-        { _tag: "published", port: 5432, protocol: "tcp", publication: { hostPort: 5432 } },
+        { _tag: "internal", port: 5432, protocol: "tcp", primary: true, name: "db" },
+        {
+          _tag: "published",
+          port: 5432,
+          protocol: "tcp",
+          primary: true,
+          name: "db",
+          publication: { hostPort: 5432 },
+        },
       ]);
       expect(db?.storage[0]?.target).toBe(PortablePath.make("/var/lib/postgresql/data"));
     });
@@ -2765,9 +2904,9 @@ describe("AppPlannerLayer.layer", () => {
       );
       const runPlan = () =>
         Effect.runPromise(
-          Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-            Effect.provide(layer),
-          ),
+          Effect.flatMap(AppPlanner, (planner) =>
+            planTestLandofile(planner, landofile, providerLandoCapabilities),
+          ).pipe(Effect.provide(layer)),
         );
 
       try {
@@ -2969,13 +3108,18 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.testFeature.id
             ? Effect.succeed(serviceType.testFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadAppFeature: () => Effect.die("not used"),
       };
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "slow-sync-app",
               runtime: 4,
@@ -3618,7 +3762,7 @@ describe("AppPlannerLayer.layer", () => {
     await withTempCwd(async () => {
       const appPlan = await plan(landofileFixture);
 
-      expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-myapp", driver: "bridge" });
     });
   });
 
@@ -3632,7 +3776,7 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
 
-      expect(appPlan.networks).toEqual([{ name: "lando-my-app", shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-my-app", driver: "bridge" });
     });
   });
 
@@ -3660,7 +3804,7 @@ describe("AppPlannerLayer.layer", () => {
       expect(appPlan.name).toBe(name);
       expect(appPlan.id).toBe(AppId.make(slug));
       expect(appPlan.slug).toBe(slug);
-      expect(appPlan.networks).toEqual([{ name: `lando-${slug}`, shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: `lando-${slug}`, driver: "bridge" });
       expect(appPlan.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toContain(
         `web.${slug}.internal`,
       );
@@ -3676,7 +3820,7 @@ describe("AppPlannerLayer.layer", () => {
         services: {},
       });
 
-      expect(appPlan.networks).toEqual([]);
+      expect(appPlan.networking).toBeUndefined();
     });
   });
 
@@ -3991,13 +4135,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = features.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4005,13 +4157,18 @@ describe("AppPlannerLayer.layer", () => {
           id === appFeature.id
             ? Effect.succeed(appFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -4078,13 +4235,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = baseDefaultFeatures.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4092,7 +4257,8 @@ describe("AppPlannerLayer.layer", () => {
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -4176,13 +4342,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = features.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4190,13 +4364,18 @@ describe("AppPlannerLayer.layer", () => {
           id === appFeature.id
             ? Effect.succeed(appFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
+          planTestLandofile(
+            appPlanner,
             {
               name: "myapp",
               runtime: 4,
@@ -4269,13 +4448,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = features.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4292,9 +4479,9 @@ describe("AppPlannerLayer.layer", () => {
       try {
         const runPlan = () =>
           Effect.runPromise(
-            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-              Effect.provide(layer),
-            ),
+            Effect.flatMap(AppPlanner, (planner) =>
+              planTestLandofile(planner, landofile, providerLandoCapabilities),
+            ).pipe(Effect.provide(layer)),
           );
 
         const first = await runPlan();
@@ -4427,7 +4614,8 @@ describe("AppPlannerLayer.layer", () => {
           const runPlan = (version: string) =>
             Effect.runPromise(
               Effect.flatMap(AppPlanner, (appPlanner) =>
-                appPlanner.plan(
+                planTestLandofile(
+                  appPlanner,
                   {
                     name: "myapp",
                     runtime: 4,
@@ -4470,7 +4658,8 @@ describe("AppPlannerLayer.layer", () => {
           const appName = "skip-plan-cache";
           const result = await Effect.runPromise(
             Effect.flatMap(AppPlanner, (appPlanner) =>
-              appPlanner.plan(
+              planTestLandofile(
+                appPlanner,
                 {
                   name: appName,
                   runtime: 4,
@@ -4531,20 +4720,29 @@ describe("AppPlannerLayer.layer", () => {
           id === "fake-db"
             ? Effect.succeed(pinnedType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) =>
           id === basePinnedType.testFeature.id
             ? Effect.succeed(basePinnedType.testFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
       await withTempCwd(async () => {
         const exactPin = await Effect.runPromise(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(
+            planTestLandofile(
+              appPlanner,
               {
                 name: "myapp",
                 runtime: 4,
@@ -4564,7 +4762,8 @@ describe("AppPlannerLayer.layer", () => {
 
         const imageOverride = await Effect.runPromise(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(
+            planTestLandofile(
+              appPlanner,
               {
                 name: "myapp",
                 runtime: 4,
@@ -4590,7 +4789,8 @@ describe("AppPlannerLayer.layer", () => {
 
         const missingArtifact = await Effect.runPromiseExit(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(
+            planTestLandofile(
+              appPlanner,
               {
                 name: "myapp",
                 runtime: 4,
@@ -4611,7 +4811,8 @@ describe("AppPlannerLayer.layer", () => {
 
         const unsupported = await Effect.runPromiseExit(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(
+            planTestLandofile(
+              appPlanner,
               {
                 name: "myapp",
                 runtime: 4,
@@ -4864,7 +5065,7 @@ describe("AppPlannerLayer.layer", () => {
       try {
         const validPlan = await Effect.runPromise(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(landofile, providerLandoCapabilities),
+            planTestLandofile(appPlanner, landofile, providerLandoCapabilities),
           ).pipe(Effect.provide(plannerLayer)),
         );
         const cachedBytes = await readFile(appPlanCachePath(cacheRoot, appName, appRoot));
@@ -4902,7 +5103,7 @@ describe("AppPlannerLayer.layer", () => {
         // When
         const exit = await Effect.runPromiseExit(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(landofile, providerLandoCapabilities),
+            planTestLandofile(appPlanner, landofile, providerLandoCapabilities),
           ).pipe(Effect.provide(plannerLayer)),
         );
 
@@ -5154,7 +5355,7 @@ describe("Compose runtime knobs", () => {
   const planInjectedExit = (providerCapabilities: ProviderCapabilities) =>
     Effect.runPromiseExit(
       Effect.flatMap(AppPlanner, (appPlanner) =>
-        appPlanner.plan(injectedLandofile, providerCapabilities),
+        planTestLandofile(appPlanner, injectedLandofile, providerCapabilities),
       ).pipe(
         Effect.provide(AppPlannerLayer.layer),
         Effect.provide(Layer.succeed(PluginRegistry, tmpfsInjectingRegistry)),
@@ -5198,7 +5399,7 @@ describe("Compose runtime knobs", () => {
       const runPlan = (providerCapabilities: ProviderCapabilities) =>
         Effect.runPromiseExit(
           Effect.flatMap(AppPlanner, (appPlanner) =>
-            appPlanner.plan(knobLandofile, providerCapabilities),
+            planTestLandofile(appPlanner, knobLandofile, providerCapabilities),
           ).pipe(Effect.provide(cachedLayer)),
         );
 

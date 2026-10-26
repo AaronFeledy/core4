@@ -10,6 +10,7 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
+import { removeOrphanedNetworks } from "./orphaned-networks.ts";
 import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { makeResourceOwnershipStore } from "./resource-ownership.ts";
 export { makeResourceOwnershipStore } from "./resource-ownership.ts";
@@ -44,6 +45,12 @@ type ProviderPlanStateOptions = AppliedPlanCacheOptions &
   };
 
 export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
+  removeOrphanedNetworks: (plan: AppPlan, previous: AppPlan | undefined) =>
+    removeOrphanedNetworks(plan, previous, {
+      ctx: options.ctx,
+      ...(options.api === undefined ? {} : { api: options.api }),
+      store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
+    }),
   ownership: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
   cleanupOwnedResources: makeOwnedResourcesCleanup({
     store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
@@ -57,10 +64,8 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
           providerId: options.ctx.providerId,
           api: options.api,
           capabilities: options.capabilities,
-          redactDetails: options.redactDetails,
-          ...(options.prepareWitnessImage === undefined
-            ? {}
-            : { prepareWitnessImage: options.prepareWitnessImage }),
+          redactor: options.redactor,
+          ...(options.pullHelperImage === undefined ? {} : { pullHelperImage: options.pullHelperImage }),
           ...(options.volumeCreationLabels === undefined
             ? {}
             : { volumeCreationLabels: options.volumeCreationLabels }),
@@ -113,6 +118,7 @@ export const notImplementedError = (providerId: string, operation: string) =>
     providerId,
     operation,
     message: `provider-${providerId} does not implement ${operation} yet.`,
+    remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 
 export const composeAdaptersFor = (ctx: ProviderErrorContext) => ({

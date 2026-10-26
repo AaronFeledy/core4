@@ -19,7 +19,7 @@
  * root the owner label records, `appIdentityKey("owner", appRoot)` — the
  * derivation the planner uses to stamp `AppPlan.identity`. Both labels are
  * emitted together by {@link volumeOwnershipLabels} and every reader resolves
- * ownership through {@link planVolumeOwnership}, so the pair cannot drift.
+ * ownership through {@link planAppIdentity}, so the pair cannot drift.
  *
  * A plan that carries no `identity` is migrated here, at read time, from
  * `plan.root`: the planner assigns `root` from `identity.appRoot`, so the
@@ -34,8 +34,9 @@
  * either form. The labels are not collapsed into one, so nothing here needs a
  * migration path for volumes an earlier build created.
  */
-import { type AppIdentity, type AppPlan, appIdentityKey } from "@lando/sdk/schema";
+import { type AppPlan, appIdentityKey, planAppIdentity } from "@lando/sdk/schema";
 
+import { isOwnershipRoot } from "./ownership-root.ts";
 import {
   type VolumeFilterMap,
   type VolumeSelectorClass,
@@ -43,6 +44,7 @@ import {
   volumeSelectorValue,
 } from "./podman/volume-prune.ts";
 import { volumeClassForStore } from "./volume-classes.ts";
+import { volumeClassFromLabels } from "./volume-classes.ts";
 
 /** Canonical app root, written verbatim; the ownership proof readers compare against. */
 export const VOLUME_OWNER_LABEL = "dev.lando.volume-owner";
@@ -50,20 +52,46 @@ export const VOLUME_OWNER_LABEL = "dev.lando.volume-owner";
 /** Ownership-complete selection value; the only label a prune filter may select on. */
 export const VOLUME_SELECTOR_LABEL = "dev.lando.volume-selector";
 
-/**
- * The ownership identity behind both labels. A planned plan answers with the
- * identity the planner stamped; a plan that lost it is migrated from its root
- * through the same derivation.
- */
-export const planVolumeOwnership = (plan: Pick<AppPlan, "root" | "identity">): AppIdentity =>
-  plan.identity ?? { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) };
+export const coherentVolumeOwnership = (
+  labels: Readonly<Record<string, string>>,
+  providerId: string,
+): boolean => {
+  const root = labels[VOLUME_OWNER_LABEL];
+  const app = labels["dev.lando.app"];
+  const scope = labels["dev.lando.scope"];
+  const kind = labels["dev.lando.storage-kind"];
+  if (
+    !root ||
+    !isOwnershipRoot(root) ||
+    !app ||
+    !labels["dev.lando.store"] ||
+    !labels["dev.lando.volume-instance"]
+  )
+    return false;
+  if (scope !== "app" && scope !== "service" && scope !== "global") return false;
+  if (kind !== undefined && kind !== "cache") return false;
+  if (labels["dev.lando.provider"] !== undefined && labels["dev.lando.provider"] !== providerId) return false;
+  if (labels["dev.lando.app-root"] !== undefined && labels["dev.lando.app-root"] !== root) return false;
+  if (labels["dev.lando.owner"] !== undefined && labels["dev.lando.owner"] !== appIdentityKey("owner", root))
+    return false;
+  if (labels["com.lando.app"] !== undefined && labels["com.lando.app"] !== app) return false;
+  return (
+    labels[VOLUME_SELECTOR_LABEL] ===
+    volumeSelectorValue({
+      providerId,
+      appId: app,
+      ownerKey: appIdentityKey("owner", root),
+      volumeClass: volumeClassFromLabels(labels),
+    })
+  );
+};
 
 /** The ownership label pair for one store; neither label is ever written without the other. */
 export const volumeOwnershipLabels = (
   plan: Pick<AppPlan, "id" | "provider" | "root" | "identity">,
   store: AppPlan["stores"][number],
 ): Readonly<Record<string, string>> => {
-  const ownership = planVolumeOwnership(plan);
+  const ownership = planAppIdentity(plan);
   return {
     [VOLUME_OWNER_LABEL]: ownership.appRoot,
     [VOLUME_SELECTOR_LABEL]: volumeSelectorValue({
@@ -82,6 +110,6 @@ export const planVolumeFilters = (
 ): VolumeFilterMap =>
   buildLandoVolumeFilters(plan.id, {
     providerId: plan.provider,
-    ownerKey: planVolumeOwnership(plan).ownerKey,
+    ownerKey: planAppIdentity(plan).ownerKey,
     volumeClasses,
   });

@@ -1,16 +1,23 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import { DateTime, Effect, Result } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { commonContainerLabels } from "../src/plan.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { privateNetworkLabels } from "../src/resource-cleanup.ts";
-import { planVolumeOwnership } from "../src/volume-ownership.ts";
 
 const metadata = { source: "ownership-test", runtime: 4 as const, resolvedAt: DateTime.makeUnsafe(0) };
 const web = ServiceName.make("web");
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("owned"),
   name: "owned",
   slug: "owned",
@@ -38,7 +45,6 @@ const plan: AppPlan = {
     perAppBridge: { name: "private", driver: "bridge" },
     sharedNetworkMembership: { name: "shared", aliases: {} },
   },
-  networks: [],
   stores: [],
   routes: [],
   fileSync: [],
@@ -49,11 +55,11 @@ const service = plan.services[web];
 if (service === undefined) throw new TypeError("Missing fixture service");
 const ownedLabels = commonContainerLabels(plan, service);
 const networkLabels = privateNetworkLabels({
-  ...planVolumeOwnership(plan),
+  ...planAppIdentity(plan),
   appId: plan.id,
   providerId: plan.provider,
 });
-const ctx = { providerId: "docker", remediation: "retry" };
+const ctx = { providerId: "docker", remediation: "retry", env: {} };
 
 const fakeApi = (observations: ReadonlyMap<string, object>) => {
   const calls: EngineHttpRequest[] = [];
@@ -211,7 +217,7 @@ test("bring-down mutates verified native IDs rather than reusable names", async 
     fake.calls.filter((call) => call.method !== "GET").map((call) => `${call.method} ${call.path}`),
   ).toEqual([
     "POST /containers/observed-container/stop",
-    "DELETE /containers/observed-container?force=true",
+    "DELETE /containers/observed-container?force=true&v=true",
     "DELETE /networks/observed-network",
   ]);
 });

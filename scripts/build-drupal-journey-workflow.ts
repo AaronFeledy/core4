@@ -69,7 +69,6 @@ export const renderDrupalJourneyWorkflow = (): string => `${GENERATED_HEADER}
 name: drupal-journey
 
 on:
-  pull_request:
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:

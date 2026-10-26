@@ -8,14 +8,33 @@ tags: [beta, docs, subsystems, proxy, traefik]
 
 # Use the Traefik proxy
 
-Start an app. Lando starts Traefik for you. You do not start Traefik by hand.
+From an app directory, start an app with routes and read its published URLs.
+For HTTPS, run `lando setup` first so the local certificate authority is ready.
+Lando starts Traefik when the app needs routing; do not start it by hand.
 
 ```sh
 lando start
 lando info
 ```
 
-Open the URL `lando info` prints. Hostnames look like `web.myapp.lndo.site`. Two apps never collide on the same host port because Traefik routes by hostname.
+Open the URL `lando info` prints. Hostnames look like `web.myapp.lndo.site`. Apps share the router's listener ports, and Traefik selects a route by hostname
+and path. Use distinct route identities for different backends; sharing a listener
+does not prevent hostname conflicts.
+
+Before `start` or `restart` reports success, Lando confirms that Traefik loaded
+the app's complete route configuration. Unchanged routes are checked immediately,
+without rewriting their files or reissuing current certificates. This confirms
+routing configuration, not the HTTP status your app returns.
+
+If Traefik cannot confirm the routes within 30 seconds, the command fails with
+`ProxyApplyError` instead of claiming readiness. The app stays available for
+diagnosis. Inspect the router before retrying:
+
+```sh
+lando global:logs --service=traefik --tail=100
+lando global:info
+lando doctor
+```
 
 The Traefik dashboard is at `traefik.lndo.site/dashboard/` over HTTP and HTTPS, and global Mailpit is at `https://mailpit.lndo.site`. Both follow global `proxy.defaultDomain`. Add the selected port when it is not 80 or 443.
 
@@ -46,7 +65,7 @@ HTTP-only apps skip CA setup. If a browser warns on HTTPS, see [Trust local HTTP
 
 The default domain is `lndo.site`. Public DNS answers every `*.lndo.site` name with `127.0.0.1`, so most hosts need no DNS setup. Offline hosts, and resolvers that drop loopback answers as DNS-rebinding protection, need a local rule; see [Resolve lndo.site on this machine](./host-proxy.mdx). Other devices on the LAN get that same loopback answer, which points them at themselves. See [Reach an app from another device](./external-access.mdx).
 
-Most apps skip `routes:`. A service with no `routes:` and no `proxy.<name>` entry gets the default hostname. Author routes and Lando serves exactly those instead, so list every name you want. Set `routes: []` (or `proxy.<name>: []`) to give a service no hostname at all; its published endpoints still work.
+Most apps skip `routes:`. A service with no `routes:` and no `proxy.<name>` entry gets the default hostname. Author routes and Lando serves exactly those instead, so list every name you want. Set `routes: []` (or `proxy.<name>: []`) to give a service no hostname at all; its published host ports still work.
 
 ## Change the default domain
 

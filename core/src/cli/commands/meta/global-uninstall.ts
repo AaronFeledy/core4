@@ -10,7 +10,10 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import {
+  type LoadObservedGlobalPlanError,
+  loadObservedGlobalPlan,
+} from "@lando/engine/operations/global-plan";
 
 export interface GlobalUninstallOptions {
   readonly plugin?: string;
@@ -39,9 +42,14 @@ export const GlobalUninstallResultSchema = Schema.Struct({
   servicesRemoved: Schema.Array(Schema.String),
 });
 
-type GlobalUninstallError = LoadGlobalPlanError | GlobalDistConflictError | ProviderError;
+type GlobalUninstallError = LoadObservedGlobalPlanError | GlobalDistConflictError | ProviderError;
 
-type GlobalUninstallServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
+type GlobalUninstallServices =
+  | AppPlanner
+  | FileSystem
+  | GlobalAppService
+  | RuntimeProviderRegistry
+  | import("@lando/sdk/services").StateStore;
 
 const pluginUninstallError = (plugin: string): GlobalAppError =>
   new GlobalAppError({
@@ -69,7 +77,7 @@ export const globalUninstall = Effect.fn("GlobalUninstall.uninstall")(function* 
     return yield* Effect.fail(pluginUninstallError(options.plugin));
   }
 
-  const loaded = yield* loadGlobalPlan();
+  const loaded = yield* loadObservedGlobalPlan();
   const globalApp = yield* GlobalAppService;
   const purged = options.purge ?? false;
   const servicesRemoved = loaded.materialized

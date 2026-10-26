@@ -1,10 +1,13 @@
 import { LandofileParseError } from "@lando/sdk/errors";
 import { isPlainRecord, mergeValuesWithOrigins, valueOriginAt, withValueOrigins } from "@lando/sdk/landofile";
-import { LandofileShape } from "@lando/sdk/schema";
+import { AbsolutePath, LandofileShape, LoadScopedLandofile, type ParsedPendingSite } from "@lando/sdk/schema";
 import type { Logger } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
+import { captureCompilationContext, composedCarrier } from "../compilation.ts";
+import { survivingSites } from "../compiled-sites.ts";
 import { composeKeyRejectedError, firstComposeRejection } from "../compose/rejections.ts";
 import { copyLandofileProvenance } from "../copy-provenance.ts";
+import { decodedPendingSites } from "../decoded-sites.ts";
 import type { LandofileRelaxedRead } from "../include-context.ts";
 import { includeAcquisitionView } from "../include-layer-overlays.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "../include-provenance.ts";
@@ -13,6 +16,7 @@ import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "../load-expression-provenance.ts";
+import { applyToolingIncludeDefaults } from "../tooling-include-defaults.ts";
 import {
   getInternalToolingTasks,
   rememberInternalToolingTasks,
@@ -27,6 +31,7 @@ import {
   isValidSemverRange,
   rememberVersionConstraintEntries,
 } from "../version-constraint.ts";
+import { type LandofileFinalizeOverrides, applyFinalizeOverrides } from "./finalize-overrides.ts";
 import {
   type LandofileLoadScope,
   buildLandofileLoadScope,
@@ -38,19 +43,38 @@ import { getSourceDocuments, rememberSourceDocuments } from "./source-table.ts";
 
 export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   file: string,
-  document: Record<string, unknown>,
+  authoredDocument: Record<string, unknown>,
   context: {
     readonly appRoot: string;
-    readonly env?: Readonly<Record<string, string>>;
+    readonly overrides?: LandofileFinalizeOverrides | undefined;
+    readonly pendingSites?: ParsedPendingSite[] | undefined;
+    readonly env?: Readonly<Record<string, string>> | undefined;
     readonly scope?: LandofileLoadScope;
     readonly loadPolicy?: LandofileLoadPolicy;
     readonly onRelaxedRead?: (read: LandofileRelaxedRead) => Effect.Effect<void>;
     readonly logger?: Context.Service.Shape<typeof Logger> | undefined;
   },
 ) {
-  const scope = context.scope ?? (yield* buildLandofileLoadScope([{ file, value: document }], context.env));
-  const materialized = yield* materializeLandofileLayer(file, document, scope);
-  const value = isPlainRecord(materialized) ? copyLandofileProvenance(document, materialized) : document;
+  // Replacement origins on overridden keys make every origin-filtered site consumer drop the
+  // displaced expressions; shadowed `lando:` sites stay in scope for constraint accumulation.
+  const document = applyFinalizeOverrides(authoredDocument, context.overrides);
+  const scope =
+    context.scope ??
+    (yield* buildLandofileLoadScope([{ file, value: document }], context.env, context.pendingSites));
+  const constraintScope = { ...scope, pendingSites: [...(scope.pendingSites ?? [])] };
+  const composed = yield* Effect.try({
+    try: () =>
+      composedCarrier({
+        document,
+        pendingSites: context.pendingSites ?? scope.pendingSites ?? [],
+        context: captureCompilationContext(context.appRoot, scope.env),
+      }),
+    catch: (cause) => validationErrorFromCause(file, document, cause),
+  });
+  const materialized = yield* materializeLandofileLayer(file, composed.document, scope);
+  if (!isPlainRecord(materialized))
+    return yield* Effect.fail(validationErrorFromCause(file, materialized, undefined));
+  const value = materialized;
   const acquisition = yield* Effect.try({
     try: () => includeAcquisitionView(value),
     catch: (cause) => validationErrorFromCause(file, value, cause),
@@ -78,16 +102,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     sourceRoot: context.appRoot,
     ...(context.loadPolicy === undefined ? {} : { loadPolicy: context.loadPolicy }),
     ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
-    layerForSource: (source) => {
-      for (const [namespace, entry] of Object.entries(acquisition.toolingIncludes ?? {})) {
-        if (entry.file === source)
-          return valueOriginAt(ownOrigins, ["toolingIncludes", namespace]).source.layer;
-      }
-      const index = (acquisition.includes ?? []).findIndex(
-        (entry) => typeof entry !== "string" && entry.source === source,
-      );
-      return valueOriginAt(ownOrigins, index < 0 ? [] : ["includes", index]).source.layer;
-    },
+    origins: ownOrigins,
   });
   rememberSourceDocuments(document, [...getSourceDocuments(document), ...tooling.sources]);
   rememberSourceDocuments(value, getSourceDocuments(document));
@@ -170,7 +185,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     const resolved = yield* materializeLandofileLayer(
       entry.source,
       rememberOrigins(authored, origins),
-      scope,
+      constraintScope,
     );
     const range = isPlainRecord(resolved) ? resolved.lando : undefined;
     if (typeof range !== "string" || !isValidSemverRange(range))
@@ -180,11 +195,29 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
           filePath: entry.source,
           line: undefined,
           column: undefined,
+          remediation: `Edit the lando: field in ${entry.source} to a valid npm semver range such as ">=4.1 <5", "^4", or "4.x".`,
         }),
       );
     constraints.push({ ...entry, range });
   }
   rememberVersionConstraintEntries(assembled, constraints);
-  const decoded = yield* validateLandofile(file, assembled);
-  return copyLandofileProvenance(assembled, decoded);
+  const validated = yield* validateLandofile(file, assembled);
+  const defaults = applyToolingIncludeDefaults(validated, tooling.defaults, {
+    included: tooling.tooling,
+    authored: ownOrigins,
+    effective: effectiveOrigins,
+  });
+  const decoded = defaults.document;
+  const compiled = LoadScopedLandofile.make({
+    stage: "load-scoped",
+    document: decoded,
+    pendingSites: [
+      ...decodedPendingSites(assembled, decoded, survivingSites(effectiveOrigins, scope.pendingSites ?? [])),
+      ...survivingSites(defaults.addedOrigins, scope.pendingSites ?? []),
+    ],
+    context: { appRoot: AbsolutePath.make(context.appRoot), env: scope.env },
+  });
+  rememberOrigins(assembled, defaults.origins);
+  copyLandofileProvenance(assembled, compiled.document);
+  return copyLandofileProvenance(assembled, compiled);
 });

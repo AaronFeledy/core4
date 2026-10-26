@@ -1,6 +1,8 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { isIP } from "node:net";
 import type { Transform } from "node:stream";
+import { checkServerIdentity } from "node:tls";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 
 export interface DirectHttpInit {
@@ -9,6 +11,7 @@ export interface DirectHttpInit {
   readonly signal: AbortSignal;
   readonly ca: ReadonlyArray<string> | undefined;
   readonly body?: RequestInit["body"] | undefined;
+  readonly connectionAddress?: string;
 }
 
 export type DirectHttpTransport = (url: URL, init: DirectHttpInit) => Promise<Response>;
@@ -16,6 +19,7 @@ export type DirectHttpTransport = (url: URL, init: DirectHttpInit) => Promise<Re
 /** Bun fetch cannot suppress ambient proxies; Node's request API can go direct without global mutation. */
 export const directHttpRequest: DirectHttpTransport = (url, init) =>
   new Promise((resolve, reject) => {
+    const identity = url.hostname.replace(/^\[|\]$/gu, "");
     const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(
       url,
       {
@@ -25,6 +29,16 @@ export const directHttpRequest: DirectHttpTransport = (url, init) =>
         agent: false,
         ...(init.ca === undefined ? {} : { ca: [...init.ca] }),
         rejectUnauthorized: true,
+        ...(init.connectionAddress === undefined
+          ? {}
+          : {
+              hostname: init.connectionAddress,
+              servername: isIP(identity) === 0 ? identity : "",
+              checkServerIdentity: (
+                _hostname: string,
+                certificate: Parameters<typeof checkServerIdentity>[1],
+              ) => checkServerIdentity(identity, certificate),
+            }),
       },
       (incoming) => {
         const headers = new Headers();

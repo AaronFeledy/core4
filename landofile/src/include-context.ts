@@ -1,12 +1,13 @@
 import type {
   ComposeKeyRejectedError,
+  ConfigExpressionError,
   LandofileIncludeError,
   LandofileLockMismatchError,
   LandofileParseError,
   LandofileValidationError,
   NotImplementedError,
-  ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
+import type { ParsedPendingSite } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { includeError } from "./include-guard.ts";
@@ -40,6 +41,7 @@ export interface LandofileRelaxedRead {
   readonly appRoot: string;
 }
 export interface ResolveLandofileIncludesOptions {
+  readonly pendingSites?: ParsedPendingSite[] | undefined;
   readonly loadScope?: LandofileLoadScope;
   readonly landofile: Record<string, unknown>;
   readonly appRoot: string;
@@ -77,6 +79,7 @@ export interface RemoteIncludeOrigin {
   readonly cacheRoot: string;
 }
 export interface ResolveContext {
+  readonly pendingSites?: ParsedPendingSite[] | undefined;
   readonly ancestors?: ReadonlyArray<string>;
   readonly remoteOrigin?: RemoteIncludeOrigin | undefined;
   readonly loadScope: LandofileLoadScope | undefined;
@@ -141,11 +144,11 @@ export const resolveCacheRoot = (
   return Effect.fail(missingRuntimeInput("cache root"));
 };
 export type ResolveIncludesError =
+  | ConfigExpressionError
   | ComposeKeyRejectedError
   | LandofileIncludeError
   | LandofileLockMismatchError
   | LandofileParseError
   | LandofileValidationError
   | ResolveLandofileLoadExpressionError
-  | NotImplementedError
-  | ToolingIncludeCycleError;
+  | NotImplementedError;

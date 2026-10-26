@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 import { Cause, DateTime, Duration, Effect, Exit } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -20,10 +20,19 @@ import { bringUpRecreateReasons } from "../src/podman/bring-up-recreate.ts";
 import { waitForServiceHealth } from "../src/podman/health.ts";
 import { inspect } from "../src/podman/inspect.ts";
 
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = {
+  providerId: "podman",
+  remediation: "Run `lando setup` and retry.",
+  env: {},
+  get redactor() {
+    return Effect.runSync(fixtureRedaction.forProfile("secrets"));
+  },
+} as const;
 
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
+let fixtureRedaction = makeRedactionService();
+beforeEach(() => {
+  fixtureRedaction = makeRedactionService();
+});
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("healthapp");
 const appRoot = AbsolutePath.make("/tmp/lando-health-app");
@@ -69,7 +78,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -195,7 +203,7 @@ describe("podman inspect health", () => {
   test("redacts runtime-registered values in a failed inspect response", async () => {
     // Given
     const canary = "opaque-inspect-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
+    Effect.runSync(fixtureRedaction.registerValues([canary]));
     const fake = apiFromResponses([
       { status: 500, body: JSON.stringify({ message: `engine said ${canary}` }) },
     ]);
@@ -235,7 +243,7 @@ describe("podman inspect health", () => {
     },
   );
 
-  test("materializes published endpoints from inspect and includes the app root", async () => {
+  test("observes publications from inspect and includes the app root", async () => {
     // Given
     const fake = apiFromResponses([
       {
@@ -254,15 +262,10 @@ describe("podman inspect health", () => {
 
     // Then
     expect(info.appRoot).toBe(appRoot);
-    expect(info.endpoints).toEqual([
-      {
-        _tag: "published",
-        port: 31080,
-        protocol: "tcp",
-        name: "31080/tcp",
-        publication: { bindAddress: "0.0.0.0", hostPort: 32768 },
-      },
-    ]);
+    expect(info.publications).toEqual({
+      status: "present",
+      bindings: [{ port: 31080, transport: "tcp", bindAddress: "0.0.0.0", hostPort: 32768 }],
+    });
   });
 
   test("includes the app root when the inspected container is absent", async () => {
@@ -274,7 +277,7 @@ describe("podman inspect health", () => {
 
     // Then
     expect(info.appRoot).toBe(appRoot);
-    expect(info.endpoints).toEqual(service.endpoints);
+    expect(info.publications).toEqual({ status: "missing" });
   });
 
   test.each(["healthy", "starting", "unhealthy"])(
@@ -315,7 +318,7 @@ describe("podman inspect health", () => {
 
     // Then
     expect(error).toBeInstanceOf(ProviderUnavailableError);
-    expect(error.providerId).toBe("podman");
+    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
     expect(error.remediation).toBe(ctx.remediation);
   });
 
@@ -326,7 +329,7 @@ describe("podman inspect health", () => {
 
     // Then
     expect(error).toBeInstanceOf(ProviderUnavailableError);
-    expect(error.providerId).toBe("podman");
+    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
     expect(error.message).toContain("provider-podman");
   });
 });
@@ -456,6 +459,8 @@ describe("waitForServiceHealth", () => {
             operation: "inspect",
             message: `failed to reach ${secretUrl}`,
             details: { url: secretUrl },
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `inspect`.",
           }),
         ),
     };

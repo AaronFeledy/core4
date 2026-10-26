@@ -186,6 +186,7 @@ const unavailable = (providerId: string, operation: string) =>
     providerId,
     operation,
     message: `${providerId} evidence unavailable`,
+    remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 
 const planFor = (providerId: string): AppPlan => ({
@@ -197,7 +198,6 @@ const planFor = (providerId: string): AppPlan => ({
   provider: ProviderId.make(providerId),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -219,6 +219,7 @@ describe("observeProviderRuntime", () => {
         service: ServiceName.make("web"),
         providerId: plan.provider,
         status: "running",
+        publications: { status: "unknown" as const },
       };
       const volume = { ref: { app: plan.id, store: "data" } };
       const result = await Effect.runPromise(
@@ -352,6 +353,7 @@ describe("resolveAppliedPlanEvidence", () => {
                 service: ServiceName.make("appserver"),
                 providerId: ProviderId.make("lando"),
                 status: "running",
+                publications: { status: "unknown" as const },
               },
             ]),
         }),
@@ -374,6 +376,7 @@ describe("resolveAppliedPlanEvidence", () => {
                 service: ServiceName.make("appserver"),
                 providerId: ProviderId.make("lando"),
                 status: "running",
+                publications: { status: "unknown" as const },
               },
             ]),
         }),
@@ -445,6 +448,7 @@ describe("resolveTeardownEvidence", () => {
       service: ServiceName.make("appserver"),
       providerId: ProviderId.make("lando"),
       status: "running",
+      publications: { status: "unknown" as const },
     };
     const result = await Effect.runPromise(
       resolveTeardownEvidence(root, [provider("lando", { list: () => Effect.succeed([service]) })]),
@@ -503,6 +507,7 @@ describe("resolveTeardownEvidence", () => {
                 service: ServiceName.make("appserver"),
                 providerId: ProviderId.make("lando"),
                 status: "running",
+                publications: { status: "unknown" as const },
               },
             ]),
         }),

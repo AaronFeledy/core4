@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
+    "@lando/redaction": "workspace:*",
     "@lando/sdk": "workspace:*",
     "effect": "catalog:"
   },

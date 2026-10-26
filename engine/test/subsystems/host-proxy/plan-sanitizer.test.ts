@@ -29,6 +29,7 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
   const service = {
     name: ServiceName.make("web"),
     type: "lando",
+    serviceTypeId: "derived-web",
     provider: ProviderId.make("lando"),
     primary: true,
     artifact: { kind: "ref", ref: "node:22-alpine" },
@@ -80,7 +81,6 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
     provider: ProviderId.make("lando"),
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -97,6 +97,7 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
 
   // Then
   expect(sanitized).toEqual(stripHostProxyRunLando(fixturePlan));
+  expect(sanitized.services[service.name]?.serviceTypeId).toBe("derived-web");
   expect(sanitized.services[service.name]?.mounts).toEqual([
     {
       type: "volume",
@@ -139,7 +140,6 @@ test("sanitizer strips ssh-agent overlay", async () => {
     provider: ProviderId.make("lando"),
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -191,7 +191,6 @@ test("sanitizer strips gpg-agent overlay", async () => {
     provider: ProviderId.make("lando"),
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

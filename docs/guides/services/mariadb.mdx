@@ -7,7 +7,7 @@ tags: [beta, docs, mariadb, service, database]
 
 # Add MariaDB
 
-Put `type: mariadb` in your services block. Lando pulls `mariadb:11.4` and listens on `3306`:
+Add `type: mariadb` under `services` in `.lando.yml`. Lando pulls `mariadb:11.4` and listens on `3306`:
 
 ```yaml
 name: mariadb-demo
@@ -16,7 +16,7 @@ services:
     type: mariadb
 ```
 
-Set `creds:` when you want explicit values. Defaults stay `lando` / `lando` / the app name, plus a generated root password. `creds.user` is the database username. Container `user:` is not.
+Set `creds:` when you want explicit values. By default, the username and password are both `lando`, the database is named after the app, and the root password is generated. `creds.user` is the database username. Container `user:` is not.
 
 ```yaml
 services:
@@ -71,7 +71,9 @@ The `mariadb` type ships the client task. After start:
 lando mariadb
 ```
 
-Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). Or pipe a plain SQL file straight into the client:
+The generated client supplies its password for each invocation. Lando scopes the client-only `MYSQL_PWD` variable to client and healthcheck processes, not the database server's initialization environment.
+
+Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). You can also pipe a plain SQL file directly into the client. This executes the statements in the dump against the database, so back up any data you need first:
 
 ```sh
 lando mariadb < dump.sql
@@ -117,6 +119,8 @@ lando mariadb -N -e 'SELECT @@port'
 ```
 
 ## Pin a version
+
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Set `image:` when `mariadb:11.4` isn't the version you want. For example, the 10.11 LTS line:
 

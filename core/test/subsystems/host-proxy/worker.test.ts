@@ -4,11 +4,8 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { fileURLToPath } from "node:url";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { encodeCommandResult } from "@lando/sdk/command-result";
 import { DateTime, Effect, Exit, Fiber, Schema } from "effect";
 
@@ -66,7 +63,6 @@ const plan: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -120,8 +116,8 @@ const startDetachedHostProxyWorker = (
   startDetachedHostProxyWorkerWithPrivateFileAccess({
     ...options,
     privateFileAccess: options.privateFileAccess ?? ownerOnlyFileAccess,
-    spawnWorker: (spec) => {
-      const worker = (options.spawnWorker ?? defaultSpawnWorker)(spec);
+    spawnWorker: async (spec) => {
+      const worker = await (options.spawnWorker ?? defaultSpawnWorker)(spec);
       if (options.spawnWorker === undefined) spawnedPids.add(worker.pid);
       return worker;
     },
@@ -233,6 +229,7 @@ test.each(["interruption", "failure"] as const)(
             }),
           spawnWorker: (spec) => ({
             pid: 876543,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => undefined,
             readReady: async () => ({
@@ -457,6 +454,7 @@ describe("detached host-proxy worker manager", () => {
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 12345,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async (value) => {
               writes.push(value);
@@ -600,6 +598,7 @@ describe("detached host-proxy worker manager", () => {
         shimArtifactPath: join(root, "shim"),
         spawnWorker: (spec) => ({
           pid,
+          logPath: join(root, "worker.log"),
           argv: spec.argv,
           writeStdin: async () => undefined,
           readReady: async () => {
@@ -666,7 +665,10 @@ console.log(JSON.stringify({
 `,
       );
 
-      const worker = defaultSpawnWorker({ argv: [process.execPath, scriptPath] });
+      const worker = await defaultSpawnWorker({
+        argv: [process.execPath, scriptPath],
+        privateFileAccess: ownerOnlyFileAccess,
+      });
       const ready = await worker.readReady();
 
       expect(JSON.parse(ready.token)).toEqual([]);
@@ -838,6 +840,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: () => ({
             pid: 56789,
+            logPath: join(root, "worker.log"),
             argv: hostProxyWorkerArgv({ ...workerEntry, appId: "demo" }),
             writeStdin: async () => undefined,
             readReady: async () => ({
@@ -881,6 +884,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 67890,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => undefined,
             readReady: () => {
@@ -914,6 +918,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 67901,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => {
               throw new Error("stdin failed");
@@ -995,17 +1000,17 @@ console.log(JSON.stringify({
     // Given a live app-wide worker.
     const root = await tempRoot();
     const registered: string[] = [];
+    const service = makeRedactionService();
     const redactor = RedactionService.of({
+      ...service,
       registerValues: (values) =>
-        registerRedactionValues(values).pipe(
+        service.registerValues(values).pipe(
           Effect.tap(() =>
             Effect.sync(() => {
               registered.push(...values);
             }),
           ),
         ),
-      payloadValues: () => Effect.succeed(() => []),
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     });
     const options = { app, plan, paths: { userDataRoot: root }, shimArtifactPath: await fakeShim(root) };
     const first = await Effect.runPromise(
@@ -1083,11 +1088,37 @@ console.log(JSON.stringify({
     "%s refreshes routes and cwd mounts in the same real worker",
     async (reusePolicy) => {
       const root = await tempRoot();
-      const options = { app, plan, paths: { userDataRoot: root }, shimArtifactPath: await fakeShim(root) };
+      const eventPath = join(root, "requests.jsonl");
+      const options = {
+        app,
+        plan,
+        paths: { userDataRoot: root },
+        shimArtifactPath: await fakeShim(root),
+        spawnWorker: async (spec: Parameters<typeof defaultSpawnWorker>[0]) => {
+          const worker = await defaultSpawnWorker({
+            ...spec,
+            argv: [
+              process.execPath,
+              "--preload",
+              fileURLToPath(new URL("./observed-worker-preload.ts", import.meta.url)),
+              ...spec.argv.slice(1),
+              "--test-events",
+              eventPath,
+            ],
+          });
+          spawnedPids.add(worker.pid);
+          return worker;
+        },
+      };
       const first = await Effect.runPromise(startDetachedHostProxyWorker(options));
       try {
         const before = await Effect.runPromise(readWorkerRecord(app, options.paths));
-        const service = servicePlan("appserver", "/changed");
+        const service: ServicePlan = {
+          ...servicePlan("appserver", "/changed"),
+          endpoints: [
+            { _tag: "internal", protocol: "http", port: PortNumber.make(80), name: "http", primary: true },
+          ],
+        };
         const updated: AppPlan = {
           ...plan,
           metadata: { ...plan.metadata, resolvedAt: DateTime.makeUnsafe("2026-02-01T00:00:00Z") },
@@ -1142,10 +1173,16 @@ console.log(JSON.stringify({
           first.token,
           first.controlToken,
         ]);
-        expect(result.envelope.ok).toBe(true);
+        expect(result.envelope).toMatchObject({ ok: true });
         expect(result.envelope.result).toMatchObject({
           targets: [expect.objectContaining({ url: expect.stringContaining("changed.lndo.site") })],
         });
+        expect(
+          (await readFile(eventPath, "utf8"))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line)),
+        ).toContainEqual(expect.objectContaining({ cwd: "/srv/apps/demo/web" }));
       } finally {
         await first.close();
         await rm(root, { recursive: true, force: true });
@@ -1163,6 +1200,7 @@ console.log(JSON.stringify({
       shimArtifactPath: await fakeShim(root),
       spawnWorker: () => ({
         pid: 12345,
+        logPath: join(root, "worker.log"),
         argv: [],
         writeStdin: async (value: string) => {
           digests.push(JSON.parse(value).configDigest);
@@ -1304,8 +1342,9 @@ console.log(JSON.stringify({
               ? {
                   privateFileAccess: {
                     ...ownerOnlyFileAccess,
-                    verify: async () => {
-                      throw new Error("private access rejected");
+                    verify: async (candidate) => {
+                      if (candidate === path) throw new Error("private access rejected");
+                      await ownerOnlyFileAccess.verify(candidate);
                     },
                   },
                 }
@@ -1427,6 +1466,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 78901,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => undefined,
             readReady: async () => ({

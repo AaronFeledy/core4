@@ -38,7 +38,7 @@ for (const marker of ["CMD", "CMD-SHELL", "NONE"]) {
       expect.objectContaining({
         rule: "healthcheck.bare-compose-marker",
         severity: "warning",
-        scope: "effective",
+        scopes: ["effective"],
         path: ["services", "web", "healthcheck"],
         source: {
           file: join(root, ".lando.yml"),
@@ -49,7 +49,7 @@ for (const marker of ["CMD", "CMD-SHELL", "NONE"]) {
         column: 5,
       }),
     ]);
-    expect(Object.values(resolved?.services ?? {})[0]?.healthcheck).toEqual({
+    expect(Object.values(resolved?.document.services ?? {})[0]?.healthcheck).toEqual({
       kind: "command",
       command: [marker, "true"],
     });
@@ -73,7 +73,7 @@ test("warns only for surviving dialect fields contributed by different sources",
   expect(result.violations).toEqual([
     expect.objectContaining({ rule: "healthcheck.mixed-dialects", severity: "warning" }),
   ]);
-  expect(Object.values(resolved?.services ?? {})[0]?.healthcheck).toEqual({
+  expect(Object.values(resolved?.document.services ?? {})[0]?.healthcheck).toEqual({
     kind: "command",
     command: "echo ready",
   });

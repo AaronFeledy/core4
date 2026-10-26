@@ -4,10 +4,9 @@ import {
   type NormalizedToolingTask,
   normalizeToolingTask,
 } from "@lando/landofile/tooling-normalize";
-import { Effect, Option } from "effect";
+import { Effect, Option, type Scope } from "effect";
 
 import {
-  type NoProviderInstalledError,
   ToolingCompileError,
   ToolingDisabledError,
   type ToolingExecError,
@@ -16,6 +15,7 @@ import {
 import type { AppPlan, HostTerminal, ToolingTaskShape } from "@lando/sdk/schema";
 import {
   type ProviderError,
+  type ProviderSelectionError,
   RuntimeProviderRegistry,
   ShellRunner,
   ToolingEngine,
@@ -23,6 +23,7 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
+import { EnvironmentValueResolver } from "@lando/sdk/services";
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
@@ -60,7 +61,7 @@ interface InvocationOptions {
   readonly args?: ReadonlyArray<string>;
   readonly user?: string;
   readonly cwd?: string;
-  readonly env?: Readonly<Record<string, string>>;
+  readonly env?: import("@lando/sdk/schema").Environment;
   readonly agentEnvAllowlist?: ReadonlyArray<string>;
   readonly tty?: boolean;
   readonly hostTerminal?: HostTerminal;
@@ -167,8 +168,8 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
 });
 
 export type ToolingExecutionError =
+  | ProviderSelectionError
   | ToolingCompileError
-  | NoProviderInstalledError
   | ToolingExecError
   | ProviderError;
 
@@ -188,7 +189,12 @@ export interface ExecuteToolingInput {
  */
 export const executeToolingInvocations = Effect.fnUntraced(function* (
   input: ExecuteToolingInput,
-): Effect.fn.Return<ToolingEngineResult, ToolingExecutionError, ToolingEngine | RuntimeProviderRegistry> {
+): Effect.fn.Return<
+  ToolingEngineResult,
+  ToolingExecutionError,
+  ToolingEngine | RuntimeProviderRegistry | EnvironmentValueResolver | Scope.Scope
+> {
+  const session = yield* (yield* EnvironmentValueResolver).openSession();
   const provider = input.requiresProvider
     ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(input.plan))
     : runtimeProviderService;
@@ -199,8 +205,18 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
     stdout: "",
     stderr: "",
   };
-  for (const invocation of input.invocations) {
-    const result = yield* withToolingOutput(
+  for (const typedInvocation of input.invocations) {
+    const invocation = {
+      ...typedInvocation,
+      ...(typedInvocation.env === undefined
+        ? {}
+        : { env: yield* session.resolveEnvironment(typedInvocation.env) }),
+    };
+    const run: Effect.Effect<
+      ToolingEngineResult,
+      ToolingExecutionError,
+      EnvironmentValueResolver | ToolingEngine
+    > =
       invocation.service === ":host"
         ? Effect.gen(function* () {
             const shell = yield* Effect.serviceOption(ShellRunner);
@@ -217,8 +233,8 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
               ? hostRun
               : withShellRedactionTokens(input.redactionTokens, hostRun);
           })
-        : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, input.plan, provider)),
-    );
+        : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, input.plan, provider));
+    const result = yield* withToolingOutput(run);
     combined = {
       ...result,
       stdout: combined.stdout + result.stdout,
@@ -227,4 +243,4 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
     if (result.exitCode !== 0) break;
   }
   return combined;
-});
+}, Effect.scoped);

@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { expect, test } from "bun:test";
-import { AbsolutePath, AppId, ProviderId } from "@lando/core/schema";
 import { Effect } from "effect";
 
 import {
@@ -14,8 +13,8 @@ import {
 } from "@lando/engine/cache/app-plan";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
 
-test.each([19, 20, 21, 22, 23, 24, 25])(
-  "app-plan reuses only revision 25 when the persisted fixture is revision %i",
+test.each([19, 20, 21, 22, 23, 24, 25, 26, 27, 28])(
+  "app-plan revision 32 rejects the persisted revision %i fixture",
   async (revision) => {
     // Given intact versioned bytes at the real cache path.
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-previous-"));
@@ -42,15 +41,8 @@ test.each([19, 20, 21, 22, 23, 24, 25])(
         }),
       );
 
-      // Then valid current bytes load, while intact historical entries are rejected.
-      if (revision === 25) {
-        expect(cached?.id).toBe(AppId.make("fixture-app"));
-        expect(cached?.name).toBe("fixture-app");
-        expect(cached?.root).toBe(AbsolutePath.make("/workspace/fixture-app"));
-        expect(cached?.provider).toBe(ProviderId.make("lando"));
-      } else {
-        expect(cached).toBeNull();
-      }
+      // Then even the upstream revision 28 bytes are intact but historical.
+      expect(cached).toBeNull();
     } finally {
       await rm(cacheRoot, { recursive: true, force: true });
     }

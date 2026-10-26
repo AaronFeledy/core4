@@ -1,8 +1,5 @@
 name: lando-container-helper
 runtime: 4
-# The builder serves nothing, so it needs no router (and works on hosts that can't run one, like CI).
-router:
-  enabled: false
 services:
   builder:
     type: compose

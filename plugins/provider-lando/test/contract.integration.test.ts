@@ -140,6 +140,34 @@ const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string)
   return undefined;
 };
 
+// A real engine can inspect an image right after pulling it; libpod pulls inspect to report its digest.
+const pulledImageReference = (request: EngineHttpRequest): string | undefined =>
+  request.path.startsWith("/libpod/images/pull?")
+    ? (new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1)).get("reference") ?? undefined)
+    : undefined;
+
+const pulledImageInspect = (
+  pulled: ReadonlySet<string>,
+  request: EngineHttpRequest,
+): EngineHttpResponse | undefined => {
+  if (
+    request.method !== "GET" ||
+    !request.path.startsWith("/libpod/images/") ||
+    !request.path.endsWith("/json")
+  )
+    return undefined;
+  const ref = decodeURIComponent(request.path.slice("/libpod/images/".length, -"/json".length));
+  if (!pulled.has(ref)) return { status: 404, body: "" };
+  return {
+    status: 200,
+    body: JSON.stringify({
+      Os: "linux",
+      Architecture: "amd64",
+      RepoDigests: [`${ref.split(":")[0]}@sha256:test`],
+    }),
+  };
+};
+
 const makeFakeApi = () => {
   const networks = new Map<string, object>();
   const configs = new Map<string, unknown>();
@@ -149,6 +177,7 @@ const makeFakeApi = () => {
   const execs = new Map<string, number>();
   const containerBinds = new Map<string, ReadonlyArray<string>>();
   const calls: EngineHttpRequest[] = [];
+  const pulledImages = new Set<string>();
 
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
@@ -157,6 +186,8 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
+        const image = pulledImageInspect(pulledImages, request);
+        if (image !== undefined) return image;
         if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
         if (request.path === "/volumes/create") {
           const body = Schema.decodeUnknownSync(
@@ -235,16 +266,17 @@ const makeFakeApi = () => {
           const wasRunning = running.delete(name);
           return { status: wasRunning ? 204 : 304, body: "" };
         }
-        if (request.path.endsWith("?force=true") && request.method === "DELETE") {
+        if (request.path.endsWith("?force=true&v=true") && request.method === "DELETE") {
           const name = decodeURIComponent(
-            request.path.slice("/containers/".length, -"?force=true".length),
+            request.path.slice("/containers/".length, -"?force=true&v=true".length),
           ).replace(/-id$/u, "");
           const existed = existing.delete(name);
           running.delete(name);
           return { status: existed ? 204 : 404, body: "" };
         }
         if (request.path.endsWith("/json")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const key = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const name = existing.has(key) ? key : key.replace(/-id$/u, "");
           if (!existing.has(name)) {
             return { status: 404, body: "" };
           }
@@ -259,6 +291,20 @@ const makeFakeApi = () => {
           };
         }
 
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return {
+            status: 200,
+            body: JSON.stringify(
+              Array.from(existing).map((name) => ({
+                Id: `${name}-id`,
+                State: running.has(name) ? "running" : "exited",
+                Labels: Schema.decodeUnknownSync(
+                  Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }),
+                )(configs.get(name)).Labels,
+              })),
+            ),
+          };
+        }
         return {
           status: 500,
           body: JSON.stringify({ error: `unhandled ${request.method} ${request.path}` }),
@@ -266,6 +312,8 @@ const makeFakeApi = () => {
       }),
     stream: (request) => {
       calls.push(request);
+      const pulled = pulledImageReference(request);
+      if (pulled !== undefined) pulledImages.add(pulled);
       if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
         return Stream.fromIterable([attachFrame(1, "exec-ok\n")]);
       }
@@ -403,9 +451,9 @@ const makeFakeApiWithHooks = () => {
           running.delete(name);
           return { status: 204, body: "" };
         }
-        if (request.path.endsWith("?force=true") && request.method === "DELETE") {
+        if (request.path.endsWith("?force=true&v=true") && request.method === "DELETE") {
           const name = resolveContainerName(
-            decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length)),
+            decodeURIComponent(request.path.slice("/containers/".length, -"?force=true&v=true".length)),
           );
           const id = containerIds.get(name);
           const existed = existing.delete(name);
@@ -488,6 +536,18 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     request: (request) =>
       Effect.promise(async (): Promise<EngineHttpResponse> => {
         calls.push(request);
+        // Pinned data-plane helpers are already cached locally; inspect reports the digest they name.
+        if (
+          request.method === "GET" &&
+          request.path.startsWith("/libpod/images/") &&
+          request.path.endsWith("/json")
+        ) {
+          const ref = decodeURIComponent(request.path.slice("/libpod/images/".length, -"/json".length));
+          const at = ref.lastIndexOf("@");
+          if (at === -1) return { status: 404, body: "" };
+          const name = ref.slice(0, at).replace(/:[^/:]+$/, "");
+          return { status: 200, body: JSON.stringify({ RepoDigests: [`${name}${ref.slice(at)}`] }) };
+        }
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
           containers.set(name, { body: request.body, stdout: new Uint8Array(), exitCode: 0 });
@@ -523,7 +583,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           return { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) };
         if (
           request.path.startsWith("/containers/") &&
-          request.path.endsWith("?force=true") &&
+          request.path.endsWith("?force=true&v=true") &&
           request.method === "DELETE"
         )
           return { status: 204, body: "" };

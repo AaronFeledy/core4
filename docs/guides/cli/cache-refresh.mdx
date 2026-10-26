@@ -8,7 +8,7 @@ tags: [beta, docs, cli, cache]
 
 # Refresh a stale app cache
 
-`lando app:cache:refresh` rebuilds the app plan, tooling graph, and command index without starting services.
+`lando app:cache:refresh` rebuilds the app plan, tooling graph, and command index without starting services. Run it from your app directory after a tooling command disappears or stops reflecting your Landofile.
 
 ```sh
 lando app:cache:refresh
@@ -16,7 +16,7 @@ lando app:cache:refresh
 
 There is no top-level `lando cache:refresh` alias. Use the `app:` form.
 
-If a tooling command vanished after you edited the Landofile, refresh before you start rewriting YAML.
+To check the refresh result, run `lando app:cache:refresh --format=json`. A successful result has `ok: true` and reports the app and the number of compiled commands. Refresh before rewriting YAML to recover a missing tooling command.
 
 ## When the cache goes stale
 

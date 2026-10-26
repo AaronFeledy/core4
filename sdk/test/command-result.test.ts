@@ -267,12 +267,14 @@ describe("encodeCommandResult", () => {
       "keyPath",
       "message",
       "remediation",
+      "service",
       "source",
     ]);
     expect(encoded).toEqual({
       _tag: "ComposeKeyRejectedError",
       message: "Compose key deploy.replicas is rejected.",
       remediation: "Use the matrix remediation.",
+      service: "web",
       source: "/workspace/.lando.yml",
       keyPath: "deploy.replicas",
     });

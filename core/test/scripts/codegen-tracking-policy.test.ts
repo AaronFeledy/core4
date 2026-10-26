@@ -44,8 +44,8 @@ const derivedTypeScriptPolicies = [
   },
   {
     ids: ["provider-images"],
-    ignoreProbe: "data-mover/src/generated/provider-images.ts",
-    trackingPath: "data-mover/src/generated/provider-images.ts",
+    ignoreProbe: "container-runtime/src/generated/provider-images.ts",
+    trackingPath: "container-runtime/src/generated/provider-images.ts",
   },
   {
     ids: ["bundled-plugins"],

@@ -14,7 +14,7 @@ import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("bring-up-order-app");
 const dbName = ServiceName.make("db");
 const dependentNames = {
@@ -62,13 +62,13 @@ const planWithDependency = (dependentName: ServicePlan["name"], required: boolea
 
   return {
     id: appId,
+    valueModel: 1,
     name: "Bring Up Order App",
     slug: "bring-up-order-app",
     root: AbsolutePath.make("/tmp/bring-up-order-app"),
     provider: providerId,
     services: { [dependentName]: dependent, [dbName]: db },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -371,13 +371,13 @@ test("unchanged container ID across failed B then retry", async () => {
   const webSvc = servicePlan(dependentNames.web, true);
   const plan: AppPlan = {
     id: appId,
+    valueModel: 1,
     name: "Bring Up Order App",
     slug: "bring-up-order-app",
     root: AbsolutePath.make("/tmp/bring-up-order-app"),
     provider: providerId,
     services: { [apiSvc.name]: apiSvc, [webSvc.name]: webSvc },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -415,13 +415,13 @@ test("corrected config recreates ONLY B", async () => {
   const webSvc = servicePlan(dependentNames.web, true);
   const plan: AppPlan = {
     id: appId,
+    valueModel: 1,
     name: "Bring Up Order App",
     slug: "bring-up-order-app",
     root: AbsolutePath.make("/tmp/bring-up-order-app"),
     provider: providerId,
     services: { [apiSvc.name]: apiSvc, [webSvc.name]: webSvc },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -471,6 +471,7 @@ test("a filtered apply leaves an unselected container's real ID untouched", asyn
   const web = servicePlan(dependentNames.web, true);
   const db = servicePlan(dbName, false);
   const fullPlan: AppPlan = {
+    valueModel: 1,
     id: appId,
     name: "Bring Up Order App",
     slug: "bring-up-order-app",
@@ -478,7 +479,6 @@ test("a filtered apply leaves an unselected container's real ID untouched", asyn
     provider: providerId,
     services: { [web.name]: web, [db.name]: db },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

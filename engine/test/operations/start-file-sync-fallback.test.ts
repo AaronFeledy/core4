@@ -88,6 +88,20 @@ const acceleratedPlan: AppPlan = {
   ],
 };
 
+const routedAcceleratedPlan: AppPlan = {
+  ...acceleratedPlan,
+  routes: [
+    {
+      hostname: "web.test-start.lndo.site",
+      priority: 2,
+      scheme: "https",
+      service: web.name,
+      endpoint: 3000,
+      backend: { service: web.name, protocol: "http", port: 3000 },
+    },
+  ],
+};
+
 const expectRetainedStart = async (harness: ReturnType<typeof makeHarness>, cause: Cause.Cause<unknown>) => {
   const failures = Array.from(cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error));
   expect(failures.length).toBeGreaterThan(0);
@@ -566,7 +580,12 @@ describe("file-sync session reconciliation", () => {
 
   test("retains a resumed session when blocking flush fails", async () => {
     const calls: string[] = [];
-    const failure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
+    const failure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const engine = {
       ...TestFileSyncEngine,
       id: "mutagen",
@@ -633,7 +652,12 @@ describe("file-sync session reconciliation", () => {
   });
   test("retains a newly created session when blocking flush fails", async () => {
     const calls: string[] = [];
-    const failure = new FileSyncStartError({ engineId: "mutagen", message: "initial flush failed" });
+    const failure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "initial flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const engine = {
       ...TestFileSyncEngine,
       id: "mutagen",
@@ -656,11 +680,18 @@ describe("file-sync session reconciliation", () => {
     expect(calls).toEqual(["create", "flush"]);
   });
   test("reports only the unmanaged flush failure without attempting termination", async () => {
-    const startupFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
+    const startupFailure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const cleanupFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: ref,
       message: "terminate failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const engine = {
       ...TestFileSyncEngine,
@@ -685,11 +716,18 @@ describe("file-sync session reconciliation", () => {
   });
 
   test("reports only the resumed-session flush failure without attempting pause", async () => {
-    const startupFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
+    const startupFailure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const cleanupFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: ref,
       message: "pause failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const engine = {
       ...TestFileSyncEngine,
@@ -760,7 +798,12 @@ describe("file-sync session reconciliation", () => {
   test("keeps a reused persistent running session when a later flush fails", async () => {
     const calls: string[] = [];
     const scope = await Effect.runPromise(Scope.make());
-    const failure = new FileSyncStartError({ engineId: "mutagen", message: "later flush failed" });
+    const failure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "later flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const [first, second] = acceleratedPlan.fileSync;
     if (first === undefined || second === undefined) throw new Error("Missing planned sessions");
     const engine = {
@@ -789,11 +832,18 @@ describe("file-sync session reconciliation", () => {
 
   test("preserves the tagged startup failure without persistent cleanup errors", async () => {
     const scope = await Effect.runPromise(Scope.make());
-    const startupFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
+    const startupFailure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const cleanupFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: ref,
       message: "terminate failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const engine = {
       ...TestFileSyncEngine,
@@ -931,11 +981,15 @@ describe("file-sync session reconciliation", () => {
       engineId: "mutagen",
       sessionRef: ref,
       message: "pause failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const terminateFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: otherRef,
       message: "terminate failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const engine = {
       ...TestFileSyncEngine,
@@ -1019,7 +1073,11 @@ describe("file-sync session reconciliation", () => {
   test("retains a reused persistent session when a later startup step fails", async () => {
     const calls: string[] = [];
     const scope = await Effect.runPromise(Scope.make());
-    const failure = new FileSyncStartError({ engineId: "mutagen", message: "create failed" });
+    const failure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "create failed",
+      remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+    });
     const [first, second] = acceleratedPlan.fileSync;
     if (first === undefined || second === undefined) throw new Error("Missing planned sessions");
     const engine = {
@@ -1867,7 +1925,16 @@ describe("pre-apply accelerated mount preparation", () => {
           ? Effect.sync(() => {
               order.push("init");
             }).pipe(
-              Effect.andThen(Effect.fail(new EventError({ message: "stop after init", event: "pre-init" }))),
+              Effect.andThen(
+                Effect.fail(
+                  new EventError({
+                    message: "stop after init",
+                    event: "pre-init",
+                    remediation:
+                      "Fix the handler or emitter for event `pre-init`, then re-run the operation that publishes it.",
+                  }),
+                ),
+              ),
             )
           : Effect.void,
       onPrepareFileSync: () => order.push("prepare"),
@@ -1940,6 +2007,7 @@ describe("pre-apply accelerated mount preparation", () => {
           providerId: "lando",
           operation: "apply",
           message: "app container failed to start",
+          remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
         }),
       ),
       fileSync: {
@@ -1965,7 +2033,12 @@ describe("pre-apply accelerated mount preparation", () => {
       onApply: () => order.push("apply"),
       onDestroy: () => order.push("destroy"),
       applyEffect: Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "apply", message: "failed" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "apply",
+          message: "failed",
+          remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
+        }),
       ),
       fileSync: {
         ...TestFileSyncEngine,
@@ -1999,6 +2072,7 @@ describe("pre-apply accelerated mount preparation", () => {
       providerId: "lando",
       operation: "apply",
       message: "app container failed to start",
+      remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
     });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
@@ -2040,11 +2114,14 @@ describe("pre-apply accelerated mount preparation", () => {
       providerId: "lando",
       operation: "apply",
       message: "app container failed to start",
+      remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
     });
     const terminateFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: "sync-mount-0",
       message: "session termination failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
@@ -2080,7 +2157,14 @@ describe("pre-apply accelerated mount preparation", () => {
       onDestroy: () => order.push("destroy"),
       onPublish: (event) =>
         event._tag === "post-app-start"
-          ? Effect.fail(new EventError({ message: "post-app-start failed", event: "post-app-start" }))
+          ? Effect.fail(
+              new EventError({
+                message: "post-app-start failed",
+                event: "post-app-start",
+                remediation:
+                  "Fix the handler or emitter for event `post-app-start`, then re-run the operation that publishes it.",
+              }),
+            )
           : Effect.void,
       fileSync: {
         ...TestFileSyncEngine,
@@ -2099,12 +2183,19 @@ describe("pre-apply accelerated mount preparation", () => {
   test("a later post-start publish failure retains routes and persistent sessions", async () => {
     const order: string[] = [];
     const harness = makeHarness({
-      plannedApp: acceleratedPlan,
+      plannedApp: routedAcceleratedPlan,
       onRemoveRoutes: () => order.push("remove-routes"),
       onDestroy: () => order.push("destroy"),
       onPublish: (event) =>
         event._tag === "post-start"
-          ? Effect.fail(new EventError({ message: "post-start failed", event: "post-start" }))
+          ? Effect.fail(
+              new EventError({
+                message: "post-start failed",
+                event: "post-start",
+                remediation:
+                  "Fix the handler or emitter for event `post-start`, then re-run the operation that publishes it.",
+              }),
+            )
           : Effect.void,
       fileSync: {
         ...TestFileSyncEngine,
@@ -2116,14 +2207,14 @@ describe("pre-apply accelerated mount preparation", () => {
         pauseSession: (ref) => Effect.sync(() => order.push(`pause:${ref}`)),
       },
     });
-    await expect(runStart(harness, acceleratedPlan)).rejects.toThrow("post-start failed");
+    await expect(runStart(harness, routedAcceleratedPlan)).rejects.toThrow("post-start failed");
     expect(order).toEqual([]);
   });
 
   test("interruption after routes retains writers and sessions", async () => {
     const order: string[] = [];
     const harness = makeHarness({
-      plannedApp: acceleratedPlan,
+      plannedApp: routedAcceleratedPlan,
       onRemoveRoutes: () => order.push("remove-routes"),
       onDestroy: () => order.push("destroy"),
       onPublish: (event) => (event._tag === "post-start" ? Effect.interrupt : Effect.void),
@@ -2137,7 +2228,7 @@ describe("pre-apply accelerated mount preparation", () => {
         pauseSession: (ref) => Effect.sync(() => order.push(`pause:${ref}`)),
       },
     });
-    await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
+    await expect(runStart(harness, routedAcceleratedPlan)).rejects.toThrow();
     expect(order).toEqual([]);
   });
 
@@ -2148,7 +2239,7 @@ describe("pre-apply accelerated mount preparation", () => {
       routeEntered = resolve;
     });
     const harness = makeHarness({
-      plannedApp: acceleratedPlan,
+      plannedApp: routedAcceleratedPlan,
       afterApplyRoutes: Effect.sync(() => {
         order.push("route-applied");
         routeEntered();
@@ -2169,9 +2260,9 @@ describe("pre-apply accelerated mount preparation", () => {
       startApp(
         {},
         {
-          plan: acceleratedPlan,
-          root: acceleratedPlan.root,
-          app: { kind: "user", id: acceleratedPlan.id, root: acceleratedPlan.root },
+          plan: routedAcceleratedPlan,
+          root: routedAcceleratedPlan.root,
+          app: { kind: "user", id: routedAcceleratedPlan.id, root: routedAcceleratedPlan.root },
         },
       ).pipe(Effect.provide(harness.layer)),
     );
@@ -2191,10 +2282,16 @@ describe("pre-apply accelerated mount preparation", () => {
           providerId: "lando",
           operation: "destroy",
           message: "writers remain",
+          remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
         }),
       ),
       applyEffect: Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "apply", message: "failed" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "apply",
+          message: "failed",
+          remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
+        }),
       ),
       fileSync: {
         ...TestFileSyncEngine,
@@ -2226,7 +2323,12 @@ describe("pre-apply accelerated mount preparation", () => {
       appliedFileSyncState: "accelerated",
       onDestroy: () => order.push("destroy"),
       applyEffect: Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "apply", message: "failed" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "apply",
+          message: "failed",
+          remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
+        }),
       ),
       fileSync: {
         ...TestFileSyncEngine,
@@ -2262,7 +2364,13 @@ describe("pre-apply accelerated mount preparation", () => {
         flushSession: () =>
           Effect.sync(() => order.push("flush")).pipe(
             Effect.andThen(
-              Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "initial sync failed" })),
+              Effect.fail(
+                new FileSyncStartError({
+                  engineId: "mutagen",
+                  message: "initial sync failed",
+                  remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+                }),
+              ),
             ),
           ),
         terminateSession: () => Effect.sync(() => order.push("terminate")),
@@ -2274,7 +2382,11 @@ describe("pre-apply accelerated mount preparation", () => {
 
   test("failed initial flush retains prepared targets and journal without provider rollback", async () => {
     const order: string[] = [];
-    const flushFailure = new FileSyncStartError({ engineId: "mutagen", message: "initial sync failed" });
+    const flushFailure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "initial sync failed",
+      remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+    });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       onPrepareFileSync: () => order.push("prepare"),
@@ -2424,7 +2536,14 @@ describe("pre-apply accelerated mount preparation", () => {
         listSessions: ({ mountKey }) => Effect.succeed(mountKey === "app-mount" ? [] : [existing]),
         createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
         flushSession: () =>
-          Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "flush failed" })),
+          Effect.fail(
+            new FileSyncStartError({
+              engineId: "mutagen",
+              message: "flush failed",
+              remediation:
+                "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+            }),
+          ),
         terminateSession: () => Effect.sync(() => order.push("terminate")),
       },
     });
@@ -2434,11 +2553,18 @@ describe("pre-apply accelerated mount preparation", () => {
 
   test("flush failure preserves targets without attempting fallible termination", async () => {
     const order: string[] = [];
-    const flushFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
+    const flushFailure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const terminateFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: "sync-app-mount",
       message: "terminate failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,

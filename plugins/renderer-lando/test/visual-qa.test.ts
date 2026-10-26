@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
-import { AppId } from "@lando/sdk/schema";
+import { AbsolutePath, AppPlan, appIdentityKey } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -212,14 +212,31 @@ describe("provider-free injected-event pipeline", () => {
     // runtime, network, or host mutation is reachable from this gate.
     const available = await Effect.runPromise(TestRuntimeProvider.isAvailable);
     expect(available).toBe(true);
+    // A service-less plan is the smallest plan the provider contract admits; applying it
+    // changes nothing, and destroying it afterwards leaves no applied state behind.
+    const appRoot = AbsolutePath.make("/tmp/lando-renderer-visual-qa");
+    const plan = Schema.decodeUnknownSync(AppPlan)({
+      id: "visual-qa",
+      name: "visual-qa",
+      slug: "visual-qa",
+      root: appRoot,
+      provider: TestRuntimeProvider.id,
+      services: {},
+      routes: [],
+      stores: [],
+      fileSync: [],
+      identity: { appRoot, ownerKey: appIdentityKey("owner", appRoot) },
+      extensions: {},
+      metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: `${appRoot}/.lando.yml`, runtime: 4 },
+    });
     const applied = await Effect.runPromise(
-      Effect.scoped(TestRuntimeProvider.apply(undefined as never, undefined as never)),
+      Effect.scoped(TestRuntimeProvider.apply(plan, { reconcile: false })),
     );
     expect(applied).toEqual({ changed: false });
     const destroyed = await Effect.runPromise(
-      TestRuntimeProvider.destroy({ app: AppId.make("visual-qa") }, { volumes: false }),
+      TestRuntimeProvider.destroy({ app: plan.id }, { volumes: false }),
     );
-    expect(destroyed).toEqual({ kind: "no-op", reason: "no-applied-plan" });
+    expect(destroyed).toEqual({ kind: "destroyed" });
 
     const io = {
       ...createBufferedRendererIO({ isTTY: true, terminalColumns: 100 }),

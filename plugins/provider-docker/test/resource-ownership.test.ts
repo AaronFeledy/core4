@@ -197,7 +197,14 @@ const failingWrites = (state: PluginStateStore): PluginStateStore => ({
     state.open(spec).pipe(
       Effect.map((bucket) => ({
         ...bucket,
-        modify: () => Effect.fail(new StateStoreError({ reason: "io", operation: "modify" })),
+        modify: () =>
+          Effect.fail(
+            new StateStoreError({
+              reason: "io",
+              operation: "modify",
+              remediation: "Injected modify failure for resource-ownership fixture.",
+            }),
+          ),
       })),
     ),
 });
@@ -208,7 +215,12 @@ test("shared networks are never claimed or selected for cleanup", async () => {
     const global = {
       ...plan,
       id: AppId.make("global"),
-      networking: landoNetworkingPlan({ slug: "global", serviceNames: [], sharedCrossAppNetwork: true }),
+      networking: landoNetworkingPlan({
+        slug: "global",
+        serviceNames: [],
+        sharedCrossAppNetwork: true,
+        perAppBridge: false,
+      }),
     };
     await Effect.runPromise(store.prepare(global));
     // When

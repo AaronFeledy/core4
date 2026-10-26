@@ -65,6 +65,7 @@ const makeRetentionDouble = (): {
         service: target.service,
         providerId: testProviderId,
         status: "stopped",
+        publications: { status: "unknown" },
       };
     }
     return {
@@ -72,6 +73,7 @@ const makeRetentionDouble = (): {
       service: record.service,
       providerId: testProviderId,
       status: record.running ? "running" : "stopped",
+      publications: { status: "unknown" },
       containerId: record.id,
     };
   };
@@ -101,6 +103,8 @@ const makeRetentionDouble = (): {
             operation: "bringUp.schedule",
             service: String(pending[0]?.name ?? "unknown"),
             message: "dependency cycle in retention double",
+            remediation:
+              "Inspect the service logs, fix the service configuration or image, and start the app again.",
           }),
         );
       }
@@ -125,6 +129,8 @@ const makeRetentionDouble = (): {
             operation: "bringUp.start",
             service: String(service.name),
             message: `forced start failure for ${name}`,
+            remediation:
+              "Inspect the service logs, fix the service configuration or image, and start the app again.",
           }),
         );
       }
@@ -182,6 +188,7 @@ describe("runProviderStartRetentionContract", () => {
           service: target.service,
           providerId: testProviderId,
           status: "stopped",
+          publications: { status: "unknown" },
         }),
     };
     const wipingHooks: ProviderStartRetentionHooks = {

@@ -6,6 +6,8 @@ export const sourceCoordinates = (source: SourceDocument, path: readonly (string
   const parents: { indent: number; path: readonly (string | number)[] }[] = [];
   const indexes = new Map<string, number>();
   const lines = source.content.split("\n");
+  const matches = (current: readonly (string | number)[]) =>
+    current.length === path.length && current.every((part, position) => part === path[position]);
   for (const [index, line] of lines.entries()) {
     if (/^\s*(#|$)/.test(line)) continue;
     const indent = line.length - line.trimStart().length;
@@ -19,11 +21,11 @@ export const sourceCoordinates = (source: SourceDocument, path: readonly (string
       const next = (indexes.get(identity) ?? -1) + 1;
       indexes.set(identity, next);
       current = [...parent, next];
+      if (matches(current)) return { line: index + 1, column: indent + 1 };
       if (key !== undefined) parents.push({ indent, path: current });
     }
     if (key !== undefined) current = [...current, key];
-    if (current.length === path.length && current.every((part, position) => part === path[position]))
-      return { line: index + 1, column: indent + 1 };
+    if (matches(current)) return { line: index + 1, column: indent + 1 };
     parents.push({ indent: sequence && key !== undefined ? indent + 2 : indent, path: current });
   }
   return {};
@@ -38,12 +40,14 @@ export const attributeLintIssue = (
   const retained =
     source === undefined
       ? undefined
-      : documents.find((document) => document.file === source.file && document.layer === source.layer);
+      : documents.find(
+          (document) => "file" in source && document.file === source.file && document.layer === source.layer,
+        );
   return {
     ...issue,
     rule: issue.rule ?? "landofile.validation",
     severity: issue.severity ?? "error",
-    scope,
+    scopes: [scope],
     ...(retained === undefined || source === undefined ? {} : sourceCoordinates(retained, source.path)),
   };
 };

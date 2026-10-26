@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { AppPlan } from "@lando/sdk/schema";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
@@ -16,8 +17,18 @@ for (const mode of ["fiber", "signal"] as const) {
       let cleanup = 0;
       let closed = 0;
       const scope = await Effect.runPromise(Scope.make());
-      const plannedApp = {
+      const plannedApp: AppPlan = {
         ...plan,
+        routes: [
+          {
+            hostname: "web.test-start.lndo.site",
+            priority: 2,
+            scheme: "https",
+            service: web.name,
+            endpoint: 3000,
+            backend: { service: web.name, protocol: "http", port: 3000 },
+          },
+        ],
         services: {
           [web.name]: {
             ...web,
@@ -49,6 +60,7 @@ for (const mode of ["fiber", "signal"] as const) {
             service: target.service,
             providerId: plan.provider,
             status: "running",
+            publications: { status: "unknown" },
             state: "running",
             containerId: "container",
             lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),

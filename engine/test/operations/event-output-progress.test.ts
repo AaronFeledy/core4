@@ -1,9 +1,5 @@
-import { afterEach, expect, test } from "bun:test";
-import {
-  RedactionService,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { expect, test } from "bun:test";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { EventService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -11,12 +7,10 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { DateTime, Effect, Layer } from "effect";
 import { runAppEvent } from "../../src/operations/events.ts";
 import { StreamFrameSink, createCollectingStreamFrameSink } from "../../src/operations/stream-frame-sink.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as EventRuntime from "../../src/services/event-service.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
-
-afterEach(resetRegisteredRedactionValuesForTesting);
 
 for (const kind of ["cmd", "task"] as const) {
   for (const live of [false, true]) {
@@ -24,7 +18,7 @@ for (const kind of ["cmd", "task"] as const) {
       // Given
       const secret = "hook-progress-canary";
       const task = { service: "web", cmd: "hook", env: { API_TOKEN: secret } };
-      const plan: AppPlan = {
+      const basePlan: AppPlan = {
         id: AppId.make("event-output"),
         name: "event-output",
         slug: "event-output",
@@ -32,28 +26,25 @@ for (const kind of ["cmd", "task"] as const) {
         provider: ProviderId.make("test"),
         services: {},
         routes: [],
-        networks: [],
         fileSync: [],
         stores: [],
         extensions: {},
         metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-01T00:00:00Z"), source: "test", runtime: 4 },
       };
-      attachEffectiveTooling(plan, { named: task });
-      attachEffectiveEvents(plan, { "post-start": [kind === "cmd" ? task : { task: "named" }] });
+      const plan = attachEffectiveTooling(
+        withProjectEvents(basePlan, { "post-start": [kind === "cmd" ? task : { task: "named" }] }),
+        { named: task },
+      );
       const payload = createCollectingStreamFrameSink();
       const layer = Layer.mergeAll(
+        testEnvironmentResolverLayer,
         EventRuntime.layer,
-        Layer.succeed(
-          RedactionService,
-          makeRedactionService({
-            id: "empty",
-            list: Effect.succeed([]),
-            get: () => Effect.succeed(""),
-            has: () => Effect.succeed(false),
-          }),
-        ),
+        Layer.succeed(RedactionService, makeRedactionService()),
         Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
         Layer.succeed(RuntimeProviderRegistry, {
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([plan.provider]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(TestRuntimeProvider),
@@ -76,6 +67,7 @@ for (const kind of ["cmd", "task"] as const) {
         Effect.gen(function* () {
           const events = yield* EventService;
           yield* runAppEvent(plan, "post-start");
+          yield* payload.finish();
           return yield* events.query("task.detail");
         }).pipe(Effect.provide(layer)),
       );
@@ -89,3 +81,4 @@ for (const kind of ["cmd", "task"] as const) {
     });
   }
 }
+import { testEnvironmentResolverLayer } from "../environment-values.ts";
