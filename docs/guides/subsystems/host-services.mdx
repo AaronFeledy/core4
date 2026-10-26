@@ -8,7 +8,7 @@ tags: [beta, docs, subsystems, networking, host, compose]
 
 # Reach host services and sibling stacks
 
-Your app container needs something that runs outside Lando: an API on your host, a name from your host's `/etc/hosts`, or a service in another Compose project. `localhost` inside a container is the container itself, so point the app at the host gateway instead.
+Your app container needs something that runs outside Lando, such as an API on your host, a name from your host's `/etc/hosts`, or a service in another Compose project. `localhost` inside a container is the container itself, so point the app at the host gateway instead.
 
 You need Lando 4 with a ready provider. Run these commands from a new app directory, then merge the keys into your own Landofile.
 
@@ -81,61 +81,9 @@ Both names resolve to the same gateway address, and the request to `api.test` re
 
 ## Reach a sibling Compose stack
 
-Another Compose project, such as a shared mail catcher, runs on its own network that Lando services don't join. Publish its ports on the host and reach them through the host alias. Save this as `compose.yaml` in a separate directory:
+Another Compose project, such as a shared mail catcher, runs on its own network that Lando services don't join. [Reach another project's services](../config/networks.mdx) covers the three ways in: [fold the stack into your app](../config/networks.mdx#fold-the-stack-into-your-app) with `include:`, [join the stack's network](../config/networks.mdx#join-the-stacks-network) on the `docker` or `podman` provider, or [reach the stack through your host](../config/networks.mdx#reach-the-stack-through-your-host).
 
-```yaml
-name: mailstack
-services:
-  mailpit:
-    image: axllent/mailpit:v1.27
-    ports:
-      - "8025:8025"
-      - "1025:1025"
-```
-
-Start it from that directory, then call it from the app:
-
-```sh
-docker compose up -d --wait
-lando exec web -- wget -qO- http://host.lando.internal:8025/api/v1/info
-```
-
-`--wait` returns once the container reports healthy. The JSON response proves the app container reached the sibling stack's published port. Point your app's SMTP settings at `host.lando.internal` port `1025`. Publish without a `127.0.0.1:` prefix; on native Linux a loopback-only publication is not reachable from Lando services.
-
-These ports publish on every interface, which exposes them to your network wherever the host firewall allows it. To keep them off the LAN, prefix each one with the host gateway IP that `lando exec web -- getent hosts host.lando.internal` prints, for example `"172.17.0.1:8025:8025"`. The app still reaches them through `host.lando.internal`.
-
-Stop the sibling stack from its directory when you finish:
-
-```sh
-docker compose down
-```
-
-## Fold the stack into the Landofile
-
-When only this app uses the other stack, move its services into the Landofile instead. They join the app network and resolve by service key, so nothing goes through the host. Add the service next to `web`:
-
-```yaml
-services:
-  mailpit:
-    type: compose
-    image: axllent/mailpit:v1.27
-    home: false
-    appMount: false
-```
-
-For Mailpit itself, use the built-in service in [Add Mailpit](../services/mailpit.mdx); fold in Compose services only for software Lando doesn't ship.
-
-If the stack brought its own database, leave that service out and point the moved service at your app's database service by its key.
-
-Apply the change and wait for the service:
-
-```sh
-lando start
-lando exec web -- timeout 30 sh -c 'until wget -q -O /dev/null http://mailpit:8025/api/v1/info; do sleep 1; done'
-lando exec web -- wget -qO- http://mailpit:8025/api/v1/info
-```
-
-The response proves `mailpit` answers on the app network under its service key, with no host port published.
+When you take the host route, the bind rules above apply to published ports too. Publish without a `127.0.0.1:` prefix, for example `"8025:8025"`, then call `http://host.lando.internal:8025` from the app. On native Linux a loopback-only publication is not reachable from Lando services. To keep the port off the LAN, prefix it with the host gateway IP that `lando exec web -- getent hosts host.lando.internal` prints, for example `"172.17.0.1:8025:8025"`.
 
 ## Check the Lando configuration
 
@@ -177,5 +125,5 @@ kill %1
 
 - [Reach services by name](./service-dns.mdx) for app and cross-app service names
 - [Reach an app from another device](./external-access.mdx) for the reverse direction
-- [Paste a Compose service into a Landofile](../config/compose-service-block.mdx) for other Compose keys
+- [Reach another project's services](../config/networks.mdx) for sibling Compose stacks
 - [Add Mailpit](../services/mailpit.mdx) for a built-in mail catcher
