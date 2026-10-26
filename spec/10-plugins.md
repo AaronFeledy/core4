@@ -180,6 +180,7 @@ App-declared plugins install only into their app-scoped store, use the same trus
 
 - Manifest validation, source resolution, compatibility, module resolution, and realpath containment precede import.
 - Bundled modules are statically included; external modules use absolute file URLs. Cwd-relative imports and paths escaping the plugin root are forbidden.
+- External entries and contribution modules MUST use the host-owned SDK and Effect instances in §7.1.1, including when a contribution loads before its entry. Plugin-local peer copies MUST NOT override them; other bare packages resolve beside the importing file. Host ownership does not waive manifest compatibility checks.
 - App-scoped plugins load only from their lockfile-selected local copy.
 - The validated plugin-command cache is the sole command-metadata owner. It follows discovery precedence, invalidates on plugin-set or manifest change, and MUST NOT be treated as an executable registry.
 - Duplicate command ids retain the first occurrence in resolved manifest order. Executable plugin command loaders remain lazy and keyed by canonical id.

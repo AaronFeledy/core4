@@ -46,7 +46,7 @@ The default destination, if you omit it, is the package basename with a leading 
 
 ## Adapt the service
 
-You get the same small service in every template. Replace its greeting with your plugin's behavior. Keep the `Context.Service` class, static `layer`, and `Greeter.of` construction. Use `Effect.fn` for traced service methods.
+You get the same small service in every template. Replace its greeting with your plugin's behavior. Keep the `Context.Service` class, static `layer`, and `Greeter.of` construction. Use `Effect.fn` for traced service methods. When Lando loads your plugin, it supplies its own `@lando/sdk` and `effect` to the module, so the installed copy shares Lando's service tags and schemas; a local install of those two packages is for editor types only, while every other dependency must ship in the plugin's `node_modules`.
 
 ```ts
 import { Context, Effect, Layer } from "effect";

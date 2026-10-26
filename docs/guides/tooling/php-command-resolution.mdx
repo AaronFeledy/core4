@@ -26,6 +26,8 @@ tooling:
 
 The `phpunit` task requires your project’s Composer dependencies to have installed `vendor/bin/phpunit` inside the service. After editing the Landofile, run `lando app:cache:refresh` and `lando app:config:lint --format=json` from the app directory to check the task configuration.
 
+For a full Drupal setup with Kernel, Functional, and browser tests, see [Run Drupal tests with PHPUnit and headless Chrome](../../recipes/drupal-testing/).
+
 Composer is the one PHP tool preinstalled on `PATH`, at `/usr/local/bin/composer`. A bare `composer` always hits that binary. Drush, PHPUnit, PHP-CS-Fixer, and anything else under `vendor/bin` need an explicit path.
 
 The Drupal recipe shows the pattern: its generated `drush` task pins `vendor/bin/drush` instead of trusting a bare `drush`.

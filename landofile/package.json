@@ -23,6 +23,7 @@
     ".": "./src/index.ts",
     "./app-resolution": "./src/app-resolution.ts",
     "./app-root-provenance": "./src/app-root-provenance.ts",
+    "./author-modules": "./src/author-modules.ts",
     "./bun-sh-discovery": "./src/bun-sh-discovery.ts",
     "./bun-sh-script": "./src/bun-sh-script.ts",
     "./compose/rejection-trie": "./src/compose/rejection-trie.ts",

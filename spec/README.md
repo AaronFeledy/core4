@@ -107,6 +107,7 @@ If you are looking for a public surface or policy:
 | Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
 | Service log-source contracts | 06 | §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
+| Host-owned SDK and Effect modules for author code | 07 | §7.1.1 |
 | Six-layer Landofile merge | 07 | §7.2 |
 | Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
@@ -190,7 +191,7 @@ If you are looking for a public surface or policy:
 | Transcripts, codegen, source maps, and lint | 17 | §19.6 + §19.10 |
 | Recipe README and library-guide integration | 17 | §19.13 + §19.14 |
 | Guide acceptance and tabbed variants | 17 | §19.15 + §19.16 |
-| Global-app identity, Landofile, and plugin contributions | 18 | §20.2 + §20.4 |
+| Global-app identity, Landofile, and plugin contributions | 18 | §20.2 + §20.3 + §20.4 |
 | Global service, lifecycle, CLI, networking, and storage | 18 | §20.5 + §20.9 |
 | Global restart/rebuild and router startup revalidation | 18 | §20.6.5 |
 | Selected global stop and its orphan fail-closed rule | 18 | §20.7 |
@@ -209,6 +210,12 @@ If you are looking for a public surface or policy:
 | Effect composition and future integration boundary | 20 | §22.9 |
 | Local-development UX/performance and execution acceptance | 20 | §22.10 + §22.12 |
 | Execution tagged errors | 20 | §22.11 |
+
+---
+
+## Plugin implementation plans
+
+- [GitHub Actions plugin](./github-actions-plugin-plan.md): a planned optional integration, evaluated against the completed execution-foundation contracts (§22). It is not a shipped feature, a new spec part, or a release commitment.
 
 ---
 

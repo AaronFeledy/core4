@@ -26,7 +26,13 @@ export {
   mysqlServiceType,
 } from "./mysql.ts";
 export { nginxServiceType } from "./nginx.ts";
-export { node22ServiceType, nodeLtsServiceType, nodeServiceType } from "./node.ts";
+export {
+  node22ServiceType,
+  node24ServiceType,
+  node26ServiceType,
+  nodeLtsServiceType,
+  nodeServiceType,
+} from "./node.ts";
 export {
   OPENSEARCH_SERVICE_DESCRIPTION,
   opensearch2ServiceType,

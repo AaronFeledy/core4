@@ -256,13 +256,6 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
-    dependsOn: ["core-service-env-catalog"],
-    id: "php-base-workflow",
-    ownership: "committed-workflow",
-    script: "build-php-base-workflow.ts",
-    workspace: "repo",
-  },
-  {
     id: "compose-vendor-bump-workflow",
     ownership: "committed-workflow",
     script: "build-compose-vendor-bump-workflow.ts",
