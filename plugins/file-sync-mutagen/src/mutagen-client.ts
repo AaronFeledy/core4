@@ -202,6 +202,7 @@ export const makeFakeMutagenClient = (
               engineId: ENGINE_ID,
               message: "Fake Mutagen rejected the __REJECT__ sentinel.",
               sessionSpec: args.spec,
+              remediation: "Use a mount key other than the __REJECT__ test sentinel.",
             }),
           );
         }
@@ -240,6 +241,7 @@ export const makeFakeMutagenClient = (
               engineId: ENGINE_ID,
               sessionRef: name,
               message: "Fake Mutagen rejected the __STOP_FAIL__ sentinel.",
+              remediation: "Use a session ref other than the __STOP_FAIL__ test sentinel.",
             }),
           );
         }
@@ -261,6 +263,7 @@ export const makeFakeMutagenClient = (
               conflictedPaths: ["README.md"],
               message: "Fake Mutagen drift sentinel triggered.",
               suggestedMode: "two-way-resolved",
+              remediation: "Resolve the conflicting README.md versions before resuming this Mutagen session.",
             }),
           );
         }

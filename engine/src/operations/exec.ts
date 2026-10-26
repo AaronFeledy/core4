@@ -65,9 +65,10 @@ const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError 
         ? "exec needs a service, but this app has none."
         : `exec needs a service (available: ${list}).`,
     tool: "app:exec",
-    ...(first === undefined || first.length === 0
-      ? {}
-      : { remediation: `Example: lando exec ${first} -- <command>` }),
+    remediation:
+      first === undefined || first.length === 0
+        ? "Add a service to the Landofile before running lando exec."
+        : `Example: lando exec ${first} -- <command>`,
   });
 };
 
@@ -178,9 +179,10 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
       new ToolingExecError({
         message: "exec requires a command to run.",
         tool: "app:exec",
-        ...(first === undefined || first.length === 0
-          ? {}
-          : { remediation: `Example: lando exec ${first} -- <command>` }),
+        remediation:
+          first === undefined || first.length === 0
+            ? "Pass a command after --, e.g. lando exec -- ls."
+            : `Example: lando exec ${first} -- <command>`,
       }),
     );
   }

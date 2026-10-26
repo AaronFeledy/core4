@@ -6,7 +6,7 @@ import {
   DataTreeOwnershipCapabilityError,
   HomePathCapabilityError,
   LandofileValidationError,
-  PublicationUnsupportedError,
+  type PublicationUnsupportedError,
   type RouteInputError,
 } from "@lando/sdk/errors";
 import {
@@ -25,18 +25,18 @@ import { sortRecord } from "../services/draft.ts";
 import { endpointValidationError, normalizeEndpoints } from "../services/endpoint-normalizer.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
-import {
-  bindRealization,
-  missingCapability,
-  serviceArtifactBuildRemediation,
-  serviceBindRemediation,
-} from "./compose-capabilities.ts";
+import { bindRealization, missingCapability } from "./compose-capabilities.ts";
 import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
 import { resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
 import { applyServiceHome } from "./home.ts";
+import {
+  publicationCapabilityError,
+  requiredLogSourceCapabilityError,
+  serviceResourceCapabilityErrors,
+} from "./resource-capabilities.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
 import { type ShadowHostCheck, checkShadowHosts } from "./shadow-host-checks.ts";
@@ -111,20 +111,12 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   } of input.plannedServiceDrafts) {
     const followLogSources = runtimeFollowLogSources(logSources);
     const providerSupportsLogSources = input.providerCapabilities.serviceLogSources === true;
-    if (!providerSupportsLogSources) {
-      const requiredFollowSource = followLogSources.find((source) => source.required === true);
-      if (requiredFollowSource !== undefined) {
-        yield* Effect.fail(
-          missingCapability(
-            input.provider,
-            name,
-            `required follow log source ${String(requiredFollowSource.id)}`,
-            "serviceLogSources",
-            `Use strategy: redirect for service ${name} log source ${String(requiredFollowSource.id)}, or choose a provider that advertises serviceLogSources.`,
-          ),
-        );
-      }
-    }
+    const requiredFollowSource = followLogSources.find((source) => source.required === true);
+    const logSourceError = requiredLogSourceCapabilityError(input.provider, input.providerCapabilities, {
+      name,
+      ...(requiredFollowSource === undefined ? {} : { id: String(requiredFollowSource.id) }),
+    });
+    if (logSourceError !== undefined) yield* Effect.fail(logSourceError);
 
     const unavailableFollowSources = providerSupportsLogSources
       ? []
@@ -187,28 +179,20 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ...(logSources.length === 0 ? {} : { logSources }),
     };
 
-    if (
-      (servicePlan.appMount !== undefined || servicePlan.mounts.some((mount) => mount.type === "bind")) &&
-      (!input.providerCapabilities.bindMounts || input.providerCapabilities.bindMountPerformance === "none")
-    ) {
-      yield* Effect.fail(
-        missingCapability(input.provider, name, "bind mount", "bindMounts", serviceBindRemediation(name)),
-      );
-    }
+    for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
+      name,
+      bindMounts:
+        servicePlan.appMount !== undefined || servicePlan.mounts.some((mount) => mount.type === "bind"),
+    }))
+      yield* Effect.fail(error);
 
     const withArtifact =
       authoredArtifact === undefined ? servicePlan : { ...servicePlan, artifact: authoredArtifact };
-    if (withArtifact.artifact?.kind === "build" && !input.providerCapabilities.artifactBuild) {
-      yield* Effect.fail(
-        missingCapability(
-          input.provider,
-          name,
-          "artifact build",
-          "artifactBuild",
-          serviceArtifactBuildRemediation(name),
-        ),
-      );
-    }
+    for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
+      name,
+      artifactBuild: withArtifact.artifact?.kind === "build",
+    }))
+      yield* Effect.fail(error);
 
     const realization = bindRealization(input.providerCapabilities);
     const hostChecks = yield* checkShadowHosts(withArtifact.appMount, input.fileSystem);
@@ -299,32 +283,17 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ),
     };
 
-    if (
-      servicePlanWithRoutes.endpoints.some((endpoint) => endpoint._tag === "published") &&
-      input.providerCapabilities.hostPortPublish === "none"
-    ) {
-      yield* Effect.fail(
-        new PublicationUnsupportedError({
-          message: `Provider ${input.provider} cannot publish endpoints for service ${name}.`,
-          providerId: input.provider,
-          service: name,
-          capability: "hostPortPublish",
-          remediation: `Choose a provider with host port publish support or make service ${name} endpoints internal.`,
-        }),
-      );
-    }
+    const publicationError = publicationCapabilityError(input.provider, input.providerCapabilities, {
+      name,
+      published: servicePlanWithRoutes.endpoints.some((endpoint) => endpoint._tag === "published"),
+    });
+    if (publicationError !== undefined) yield* Effect.fail(publicationError);
 
-    if (servicePlanWithRoutes.storage.length > 0 && !input.providerCapabilities.persistentStorage) {
-      yield* Effect.fail(
-        missingCapability(
-          input.provider,
-          name,
-          "persistent storage",
-          "persistentStorage",
-          `Choose a provider with persistent storage support or remove persistent storage from service ${name}.`,
-        ),
-      );
-    }
+    for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
+      name,
+      persistentStorage: servicePlanWithRoutes.storage.length > 0,
+    }))
+      yield* Effect.fail(error);
 
     const healthcheck = servicePlanWithRoutes.healthcheck;
     if (healthcheck !== undefined && healthcheck.kind !== "command" && healthcheck.kind !== "none") {

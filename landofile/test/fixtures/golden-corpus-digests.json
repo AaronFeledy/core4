@@ -136,6 +136,20 @@
       "digest": "ab78ee10251571f12549ce10a6d9728201df7344889fe42eee427380bf283cb9"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/wrong-filter-prefix",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/config-lint/fixtures/wrong-type",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
       "fixture": "docs/guides/config-translate/fixtures/lando3-compose-arguments",
       "invalid": {
         "status": "invalid",
@@ -324,7 +338,7 @@
     },
     {
       "fixture": "docs/guides/flags-and-args/fixtures/flags-demo",
-      "digest": "c5606017647f40a8e6a69bc7592efbc951ee0f83686e41c93c709b5cfb956cba"
+      "digest": "49fb4d290f20b8d94f80548c6c21dc10685a151bdb66e96b4254b6c2721b5440"
     },
     {
       "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",
@@ -510,6 +524,29 @@
     {
       "fixture": "docs/guides/mysql/fixtures/mysql-demo",
       "digest": "7a9fb91ab0023bac0648956ec7bd5c08d1694319d34e3f417038362492b516c2"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-demo",
+      "digest": "1a0e8d66f3e73cef88f44002d918e0522172dd2a39c25f9e5c6785545e0aed6f"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-include",
+      "digest": "cb069536a4627ca18f8601c497293d1b3ebb4802c1e70aae98184c0ee4ac6d1c"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-misdeclared",
+      "digest": "5c6f4865559c80cd10d6e618c2a948e35cfdaf784fe10c98c014e08ae3655eae"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-pinned-address",
+      "invalid": {
+        "status": "invalid",
+        "tag": "ComposeKeyRejectedError"
+      }
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-undeclared",
+      "digest": "1043e09b1fcfa6be384fb3bc16839209bc9df7e8b03a365c6d5655b236beaf93"
     },
     {
       "fixture": "docs/guides/nginx/fixtures/nginx-demo",
@@ -982,6 +1019,13 @@
     {
       "fixture": "docs/guides/xhprof-xhgui/fixtures/xhprof-demo",
       "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/dual-form-conflict",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileFormConflictError"
+      }
     },
     {
       "fixture": "docs/guides/your-landofile/fixtures/empty-routes-overlay",

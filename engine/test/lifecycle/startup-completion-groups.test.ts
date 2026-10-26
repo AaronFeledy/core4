@@ -93,6 +93,8 @@ test.each([false, true])(
                           providerId: "lando",
                           operation: "apply",
                           message: "injected",
+                          remediation:
+                            "Inspect `lando logs -s apply-failed`, fix the service configuration or image, and start the app again.",
                         }),
                       },
                     ]

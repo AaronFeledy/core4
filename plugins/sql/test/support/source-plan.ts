@@ -53,7 +53,6 @@ export const sourcePlan = (root: string, type = "mysql:8.0", names: readonly str
       ]),
     ),
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

@@ -1,15 +1,16 @@
 import { Effect, Schema } from "effect";
 
 import {
-  LandofileFormConflictError,
-  LandofileNotFoundError,
-  LandofileParseError,
+  type LandofileFormConflictError,
+  type LandofileNotFoundError,
+  type LandofileParseError,
   ManagedFileError,
 } from "@lando/sdk/errors";
 import { ManagedFileAction, type ManagedFileResult } from "@lando/sdk/schema";
 import { ManagedFileService } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
+import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 import { AGENT_SKILLS_OWNER, agentSkillManagedFiles } from "./agent-skills-pack.ts";
 import { canonicalAppRoot } from "./app-root-identity.ts";
 
@@ -52,32 +53,11 @@ export type AgentSkillsError =
 export const resolveAgentSkillsAppRoot = Effect.fn("resolveAgentSkillsAppRoot")(
   (options: AgentSkillsOptions): Effect.Effect<string, AgentSkillsError> =>
     Effect.gen(function* () {
-      const cwd = options.cwd ?? process.cwd();
-      const appRoot =
+      const discovered =
         options.appRoot !== undefined && options.appRoot !== ""
           ? options.appRoot
-          : yield* Effect.tryPromise({
-              try: () => findAppRoot(cwd),
-              catch: (cause) =>
-                cause instanceof LandofileFormConflictError
-                  ? cause
-                  : new LandofileParseError({
-                      message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
-                      filePath: cwd,
-                      line: undefined,
-                      column: undefined,
-                      cause,
-                    }),
-            });
-      if (appRoot === undefined) {
-        return yield* Effect.fail(
-          new LandofileNotFoundError({
-            message:
-              "No .lando.yml or .lando.ts found. Run `lando init` to create an app before installing agent skills.",
-            cwd,
-          }),
-        );
-      }
+          : yield* findAppRoot(options.cwd);
+      const appRoot = discovered ?? (yield* findDiscoveredLandofilePath(options.cwd)).appRoot;
       return yield* canonicalAppRoot(appRoot).pipe(
         Effect.mapError(
           (error) =>

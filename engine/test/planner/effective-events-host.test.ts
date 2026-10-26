@@ -20,7 +20,6 @@ const plan = (): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-09T00:00:00Z"), source: ".lando.yml", runtime: 4 },

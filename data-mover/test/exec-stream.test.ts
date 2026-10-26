@@ -12,7 +12,13 @@ import { execStdoutStream } from "../src/exec-stream.ts";
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 const text = (value: Uint8Array): string => new TextDecoder().decode(value);
 const failedExit = (exitCode: number | undefined, stderrTail?: string) =>
-  new DataTransferError({ message: "command failed", operation: "test", exitCode, stderrTail });
+  new DataTransferError({
+    message: "command failed",
+    operation: "test",
+    exitCode,
+    stderrTail,
+    remediation: "Fix the fixture command so it exits 0.",
+  });
 
 describe("execStdoutStream", () => {
   test.each([false, true])("retains only safe stderr on command failure (upstream=%s)", async (upstream) => {

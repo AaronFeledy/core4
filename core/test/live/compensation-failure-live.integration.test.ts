@@ -37,6 +37,7 @@ const containerObservation = Schema.Struct({
 const inspectContainer = async (container: string) => {
   // Use the provider's HTTP transport for Unix sockets and Windows named pipes alike.
   const api = makePodmanApiClient(managedProviderSocketPath, {
+    env: { ...process.env },
     providerId: "lando",
     remediation: "Inspect the opted-in managed provider socket.",
   });

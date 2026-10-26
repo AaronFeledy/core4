@@ -1,7 +1,7 @@
 import { DateTime, Effect, Layer, Option, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
-import { redactString } from "@lando/container-runtime/redact";
+import { redactString, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { CaError, ProxyApplyError, ProxyError, ProxySetupError, RouterWatcherError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, type ProxyConfig, type RoutePlan, ServiceName } from "@lando/sdk/schema";
@@ -80,7 +80,8 @@ const observeWatcherStartup = Effect.fn("TraefikRouter.observeWatcherStartup")(f
     yield* clearWatcherDiagnostic(dependencies.fileSystem, dependencies.paths);
     return;
   }
-  const redact = dependencies.redactDiagnostic ?? redactString;
+  const fallbackRedactor = standaloneSecretsRedactor({ ...process.env });
+  const redact = dependencies.redactDiagnostic ?? ((value: string) => redactString(value, fallbackRedactor));
   const detail = boundWatcherDetail(redact(hit.detail));
   const watcherHost = watcherHostLabel({
     providerId: observation.providerId,

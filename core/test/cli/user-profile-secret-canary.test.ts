@@ -122,6 +122,8 @@ test.each([
                   providerId: "lando",
                   operation: "execStream",
                   message: sentinel,
+                  remediation:
+                    "Re-run the command after checking `lando` logs for the `execStream` failure; if it persists, report the error with that operation name.",
                 }),
               )
             : Stream.make({ exitCode: 0 }),

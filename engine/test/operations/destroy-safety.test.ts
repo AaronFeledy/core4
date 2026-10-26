@@ -70,7 +70,11 @@ test.each([false, true])("retained destroy purges before disposal (purge fails=%
     native: { provider: "lando", id: "owned", digest: "sha256:snapshot", sizeBytes: 1, format: "native" },
   });
   let snapshots = [snapshot];
-  const failure = new DataTransferError({ message: "Snapshot removal failed", operation: "removeSnapshot" });
+  const failure = new DataTransferError({
+    message: "Snapshot removal failed",
+    operation: "removeSnapshot",
+    remediation: "Make the snapshot provider available and retry destroy.",
+  });
   const mover = DataMover.of({
     ...emptySnapshots,
     listSnapshots: () => Effect.sync(() => snapshots),

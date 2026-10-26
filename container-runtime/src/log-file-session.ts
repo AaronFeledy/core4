@@ -25,7 +25,7 @@ const stdinLines = (queue: AsyncQueue<Uint8Array>): AsyncIterable<Uint8Array> =>
 });
 
 export interface HelperSessionOptions {
-  readonly redactor?: Redactor;
+  readonly redactor: Redactor;
   /**
    * When the exec stream ends before a response line arrives, produce a richer
    * ProviderUnavailableError (e.g. after inspecting exec ExitCode).
@@ -50,7 +50,7 @@ export class HelperSession {
       stdin: AsyncIterable<Uint8Array>,
       signal: AbortSignal,
     ) => Stream.Stream<Uint8Array, ProviderError>,
-    options: HelperSessionOptions = {},
+    options: HelperSessionOptions,
   ) {
     this.decodeOutput = makeHelperExecOutputDecoder(providerId, options.redactor);
     this.onEndedBeforeResponse = options.onEndedBeforeResponse;

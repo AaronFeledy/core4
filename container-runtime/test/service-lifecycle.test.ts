@@ -48,7 +48,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -62,7 +61,11 @@ beforeEach(() => {
 });
 
 describe.each(["docker", "lando", "podman"] as const)("%s service lifecycle", (providerName) => {
-  const ctx = { providerId: providerName, remediation: `Repair ${providerName} and retry.` } as const;
+  const ctx = {
+    providerId: providerName,
+    remediation: `Repair ${providerName} and retry.`,
+    env: {},
+  } as const;
 
   for (const action of lifecycleActions) {
     test(`issues only POST /${action} for the planned container`, async () => {
@@ -117,6 +120,7 @@ describe("service lifecycle failures", () => {
   const ctx = {
     providerId: "podman",
     remediation: "Repair Podman and retry.",
+    env: {},
     get redactor() {
       return Effect.runSync(fixtureRedaction.forProfile("secrets"));
     },
@@ -175,6 +179,8 @@ describe("service lifecycle failures", () => {
       providerId: "podman",
       operation: "podman-api",
       message: "socket parse failed",
+      remediation:
+        "Re-run the command after checking `podman` logs for the `podman-api` failure; if it persists, report the error with that operation name.",
     });
     const api: EngineHttpApi = { request: () => Effect.fail(requestFailure) };
 
@@ -223,7 +229,7 @@ describe.each(["docker", "lando", "podman"] as const)("%s exact service lifecycl
         target,
         { containerId: "sha256:inspected-container", imageIdentity: "sha256:inspected-image" },
         "start",
-        { api, ctx: { providerId: providerName, remediation: `Repair ${providerName} and retry.` } },
+        { api, ctx: { providerId: providerName, remediation: `Repair ${providerName} and retry.`, env: {} } },
       ),
     );
 

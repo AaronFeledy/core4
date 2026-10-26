@@ -1,5 +1,6 @@
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { DEFAULT_PROXY_DOMAIN } from "@lando/engine/planner/naming";
+import { HOST_PROXY_DEFAULT_LOOPBACK } from "@lando/engine/subsystems/host-proxy/api";
 import { Duration, Effect, Ref, Result } from "effect";
 
 import { runProbe } from "@lando/sdk/probe";
@@ -14,25 +15,29 @@ import {
 } from "./doctor-subsystem-checks";
 
 export const buildHostProxyCheck = Effect.fnUntraced(function* (
-  hostProxy: typeof HostProxyService.Service,
+  hostProxy: typeof HostProxyService.Service | undefined,
   fix: boolean,
 ): Effect.fn.Return<DoctorSubsystemCheck, never, HostDnsResolver> {
   const baseDomain = (yield* resolveProxyDefaultDomain).toLowerCase();
-  const status = yield* Effect.result(hostProxy.status());
+  const status = hostProxy === undefined ? undefined : yield* Effect.result(hostProxy.status());
+  const loopback =
+    status !== undefined && Result.isSuccess(status) ? status.success.loopback : HOST_PROXY_DEFAULT_LOOPBACK;
   const context: Record<string, string> = {
     subsystem: "host-proxy",
-    subsystemId: hostProxy.id,
-    ...(Result.isSuccess(status)
-      ? {
-          active: String(status.success.active),
-          mode: status.success.mode,
-          mechanism: status.success.mechanism,
-          baseDomain,
-          loopback: status.success.loopback,
-        }
-      : { active: "false", baseDomain }),
+    baseDomain,
+    loopback,
+    ...(hostProxy === undefined ? {} : { subsystemId: hostProxy.id }),
+    ...(status === undefined
+      ? {}
+      : Result.isSuccess(status)
+        ? {
+            active: String(status.success.active),
+            mode: status.success.mode,
+            mechanism: status.success.mechanism,
+          }
+        : { active: "false" }),
   };
-  if (Result.isFailure(status)) {
+  if (status !== undefined && Result.isFailure(status)) {
     return yield* buildDegradedCheck(HOST_PROXY_SPEC, context, fix, undefined, status.failure);
   }
 
@@ -51,10 +56,7 @@ export const buildHostProxyCheck = Effect.fnUntraced(function* (
       },
       resolver.lookup(hostname).pipe(
         Effect.tap((addresses) => Ref.set(addressesRef, addresses)),
-        Effect.map(
-          (addresses) =>
-            addresses.length > 0 && addresses.every((address) => address === status.success.loopback),
-        ),
+        Effect.map((addresses) => addresses.length > 0 && addresses.every((address) => address === loopback)),
       ),
     ),
   );
@@ -72,8 +74,8 @@ export const buildHostProxyCheck = Effect.fnUntraced(function* (
     baseDomain === DEFAULT_PROXY_DOMAIN
       ? `${baseDomain} relies on public DNS, which fails offline or behind a resolver that drops loopback answers (DNS-rebinding protection).`
       : `Lando does not configure DNS for ${baseDomain}.`;
-  const manualRemediation = `Host DNS does not resolve ${hostname} to ${status.success.loopback}. ${cause} Add a local DNS rule (dnsmasq or your OS resolver) that resolves *.${baseDomain} to ${status.success.loopback}, then run \`lando doctor\` again.`;
-  if (!status.success.active) {
+  const manualRemediation = `Host DNS does not resolve ${hostname} to ${loopback}. ${cause} Add a local DNS rule (dnsmasq or your OS resolver) that resolves *.${baseDomain} to ${loopback}, then run \`lando doctor\` again.`;
+  if (status === undefined || !status.success.active) {
     return {
       name: HOST_PROXY_SPEC.name,
       status: "warn",

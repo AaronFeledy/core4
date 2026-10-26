@@ -38,7 +38,13 @@ test("indexContributions routes duplicate id failures through onIndexError witho
   const original = makePluginCapabilityIndex(modules);
   expect(Result.isFailure(original)).toBe(true);
   if (!Result.isFailure(original)) return;
-  const mapped = new ProxyError({ message: "index failed", proxyId: "test", cause: original.failure });
+  const mapped = new ProxyError({
+    message: "index failed",
+    proxyId: "test",
+    cause: original.failure,
+    remediation:
+      "Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
+  });
   const seen: unknown[] = [];
   const result = await Effect.runPromise(
     indexContributions(modules, "routerServices", (error) => {
@@ -53,7 +59,12 @@ test("indexContributions routes duplicate id failures through onIndexError witho
 
 test("indexContributions routes descriptor mismatches through onIndexError", async () => {
   const module = moduleFor("broken", ["declared"]);
-  const failure = new ProxyError({ message: "descriptor failed", proxyId: "test" });
+  const failure = new ProxyError({
+    message: "descriptor failed",
+    proxyId: "test",
+    remediation:
+      "Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
+  });
   const result = await Effect.runPromise(
     indexContributions([{ ...module, routerServices: new Map() }], "routerServices", () => failure).pipe(
       Effect.result,
@@ -68,7 +79,13 @@ test("selectRegistration returns the requested id and original registration", as
     selectRegistration({
       registrations: new Map([["present", registration]]),
       id: "present",
-      onMissing: (id) => new ProxyError({ message: "missing", proxyId: id }),
+      onMissing: (id) =>
+        new ProxyError({
+          message: "missing",
+          proxyId: id,
+          remediation:
+            "Install a RouterService plugin and set `defaultRouterService` to an installed router id.",
+        }),
     }),
   );
   expect(selected.id).toBe("present");
@@ -80,8 +97,22 @@ test("selectRegistration forwards a missing id to the caller error factory", asy
     selectRegistration({
       registrations: new Map([["other", { value: 1 }]]),
       id: "missing",
-      onMissing: (id) => new ProxyError({ message: "not installed", proxyId: id }),
+      onMissing: (id) =>
+        new ProxyError({
+          message: "not installed",
+          proxyId: id,
+          remediation: `Install or repair the \`${id}\` router plugin and ensure \`defaultRouterService\` points at an installed id.`,
+        }),
     }).pipe(Effect.result),
   );
-  expect(result).toEqual(Result.fail(new ProxyError({ message: "not installed", proxyId: "missing" })));
+  expect(result).toEqual(
+    Result.fail(
+      new ProxyError({
+        message: "not installed",
+        proxyId: "missing",
+        remediation:
+          "Install or repair the `missing` router plugin and ensure `defaultRouterService` points at an installed id.",
+      }),
+    ),
+  );
 });

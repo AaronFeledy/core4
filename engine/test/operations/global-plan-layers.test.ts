@@ -71,7 +71,6 @@ const withGlobalFiles = async <A>(
               provider: landofile.document.provider ?? ProviderId.make("docker"),
               services: {},
               routes: [],
-              networks: [],
               stores: [],
               fileSync: [],
               extensions: {},

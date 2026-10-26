@@ -13,7 +13,7 @@ test("returns the first digest when build output mixes malformed lines and JSON 
   const digest = Effect.runSync(
     requestContainerBuild({
       request,
-      options: { providerId: "docker", api: { request } },
+      options: { providerId: "docker", api: { request }, sourceEnv: {} },
       path: "/build",
       tag: "test-image",
       stdin: (async function* () {})(),
@@ -35,7 +35,7 @@ test("returns the first build error when invalid lines precede multiple error fr
   const error = Effect.runSync(
     requestContainerBuild({
       request,
-      options: { providerId: "docker", api: { request } },
+      options: { providerId: "docker", api: { request }, sourceEnv: {} },
       path: "/build",
       tag: "test-image",
       stdin: (async function* () {})(),

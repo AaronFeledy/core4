@@ -29,15 +29,17 @@ class OverlayMerge<Source> {
     return {
       value,
       origins: this.tracked
-        ? { source: node.origins.source, deleted: value === ABSENT, children: children ?? new Map() }
+        ? { ...node.origins, deleted: value === ABSENT, children: children ?? new Map() }
         : node.origins,
     };
   }
 
   materialize(node: ValueWithOrigins<Source>): ValueWithOrigins<Source> {
     const value = node.value;
-    if (isLandofileReset(value)) return this.result(node, ABSENT);
-    if (isLandofileOverride(value)) return this.materialize({ ...node, value: value.value });
+    if (isLandofileReset(value))
+      return this.result({ ...node, origins: { ...node.origins, replaced: true } }, ABSENT);
+    if (isLandofileOverride(value))
+      return this.materialize({ value: value.value, origins: { ...node.origins, replaced: true } });
     if (!Array.isArray(value) && !isPlainRecord(value)) return node;
     const children = this.tracked ? new Map<string | number, ValueOrigins<Source>>() : undefined;
     if (Array.isArray(value)) {
@@ -70,6 +72,8 @@ class OverlayMerge<Source> {
     path: readonly (string | number)[],
   ): ValueWithOrigins<Source> {
     if (isLandofileReset(right.value) || isLandofileOverride(right.value)) return this.materialize(right);
+    if (right.origins.replaced)
+      return right.origins.deleted ? this.result(right, ABSENT) : this.materialize(right);
     const rule = resolveLayerMergeRule(this.root, path);
     if (Array.isArray(right.value) && right.value.length === 0) return this.materialize(right);
     if (rule.descriptor.kind === "keyed") {
@@ -156,7 +160,18 @@ class OverlayMerge<Source> {
           );
       }
     }
-    if (!isPlainRecord(left.value) || !isPlainRecord(right.value)) return this.materialize(right);
+    if (!isPlainRecord(left.value) || !isPlainRecord(right.value)) {
+      return this.materialize(
+        this.tracked &&
+          (left.origins.deleted ||
+            left.origins.replaced ||
+            (left.value !== undefined &&
+              (isPlainRecord(left.value) !== isPlainRecord(right.value) ||
+                Array.isArray(left.value) !== Array.isArray(right.value))))
+          ? { ...right, origins: { ...right.origins, replaced: true } }
+          : right,
+      );
+    }
     const result: Record<string, unknown> = { ...left.value };
     const children = this.tracked ? new Map(left.origins.children) : undefined;
     for (const [key, value] of Object.entries(right.value)) {
@@ -174,7 +189,17 @@ class OverlayMerge<Source> {
           writable: true,
         });
     }
-    return this.result(right, result, children);
+    for (const [key, origin] of right.origins.children) {
+      if (origin.deleted && !Object.hasOwn(right.value, key)) {
+        children?.set(key, origin);
+        delete result[String(key)];
+      }
+    }
+    return this.result(
+      left.origins.replaced ? { ...right, origins: { ...right.origins, replaced: true } } : right,
+      result,
+      children,
+    );
   }
 }
 

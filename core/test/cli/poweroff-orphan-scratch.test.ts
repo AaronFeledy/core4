@@ -84,7 +84,13 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
               case "registered":
                 return { id, app: { kind: "scratch" as const, id, root: AbsolutePath.make(root) } };
               case "destroy-failure":
-                return yield* Effect.fail(new ScratchAppError({ operation: "destroy", message: "Denied" }));
+                return yield* Effect.fail(
+                  new ScratchAppError({
+                    operation: "destroy",
+                    message: "Denied",
+                    remediation: "Injected destroy denial for poweroff orphan fixture.",
+                  }),
+                );
               case "orphan":
               case "prune-failure":
                 yield* scanner.pruneScratch(id);

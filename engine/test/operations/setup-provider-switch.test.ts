@@ -28,7 +28,6 @@ const planAt = (root: AbsolutePath, id: string): AppPlan => ({
   provider: ProviderId.make("lando"),
   identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
   services: {},
-  networks: [],
   stores: [],
   routes: [],
   fileSync: [],

@@ -72,7 +72,6 @@ const planOf = (services: ReadonlyArray<readonly [string, ServicePlan]>): AppPla
   provider,
   services: Object.fromEntries(services),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

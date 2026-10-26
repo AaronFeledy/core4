@@ -35,6 +35,8 @@ const resolve = (
               serviceType: "availability",
               message: "invalid seed",
               issues: [{ path: ["port"], message: "invalid seed" }],
+              remediation:
+                "Correct the `availability` service configuration in the Landofile (see the reported field path), then re-run.",
             }),
           )
         : Effect.succeed({
@@ -76,7 +78,13 @@ const resolve = (
         ...base,
         loadAppFeature: (id) =>
           options.failAppLoad
-            ? Effect.fail(new PluginLoadError({ pluginName: id, message: "app load failed" }))
+            ? Effect.fail(
+                new PluginLoadError({
+                  pluginName: id,
+                  message: "app load failed",
+                  remediation: "Install or register the plugin, then retry.",
+                }),
+              )
             : base.loadAppFeature(id),
       }),
     ),
@@ -132,7 +140,12 @@ test("declaration failure retains selector facts but app declarations cannot rep
     priority: 100,
     declareEndpoints: () =>
       Effect.fail(
-        new ServiceFeatureError({ feature: "test.invalid-declaration", message: "declaration failed" }),
+        new ServiceFeatureError({
+          feature: "test.invalid-declaration",
+          message: "declaration failed",
+          remediation:
+            "Correct the `test.invalid-declaration` feature configuration in the Landofile, then re-run.",
+        }),
       ),
     apply: () => Effect.void,
   };
@@ -165,7 +178,13 @@ test("explicit empty endpoints remain authoritative without hiding a declaration
     id: "test.invalid",
     priority: 100,
     declareEndpoints: () =>
-      Effect.fail(new ServiceFeatureError({ feature: "test.invalid", message: "failed" })),
+      Effect.fail(
+        new ServiceFeatureError({
+          feature: "test.invalid",
+          message: "failed",
+          remediation: "Correct the `test.invalid` feature configuration in the Landofile, then re-run.",
+        }),
+      ),
     apply: () => Effect.void,
   };
   const result = await resolve(

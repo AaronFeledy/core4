@@ -201,6 +201,7 @@ describe("meta:setup task tree progress", () => {
               providerId: "lando",
               operation: "setup",
               message: "Podman API unreachable in test fake.",
+              remediation: "Install or start the `lando` provider and confirm it can perform `setup`.",
             }),
           );
         }),

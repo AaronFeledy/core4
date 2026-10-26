@@ -60,7 +60,6 @@ const eventPlan = (): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
@@ -1096,6 +1095,8 @@ describe("hostEvents runtime", () => {
             operation: "inspect",
             message: "no container",
             service: "web",
+            remediation:
+              "Add service `web` to the Landofile or correct the service name, then re-run the command.",
           }),
         ),
     };
@@ -1142,6 +1143,8 @@ describe("hostEvents runtime", () => {
             providerId: "test",
             operation: "inspect",
             message: `inspect exploded: ${secret}`,
+            remediation:
+              "Re-run the command after checking `test` logs for the `inspect` failure; if it persists, report the error with that operation name.",
           }),
         ),
     };

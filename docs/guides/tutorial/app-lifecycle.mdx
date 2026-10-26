@@ -76,13 +76,13 @@ Tooling aliases declared under `tooling:` run inside their target service.
 
 `lando rebuild` and `lando destroy` ask for confirmation first. Pass `-y` to skip the prompt in scripts.
 
-Bare `restart` stops then starts, so it removes and recreates containers. It is not an in-place process restart. `lando start` applies Landofile changes such as command, environment, image, and mounts, and keeps unchanged containers and volumes. Reach for `rebuild` when you need a forced image pull or a forced rerun of build steps whose command text did not change. `start` does not take `-y`.
+Bare `restart` stops then starts, so it removes and recreates containers. It is not an in-place process restart. `lando start` applies Landofile changes such as command, environment, image, and mounts, and keeps unchanged containers and named volumes. Reach for `rebuild` when you need a forced image pull or a forced rerun of build steps whose command text did not change. `start` does not take `-y`.
 
 ```sh
-# Stop the app's containers but keep volumes and state
+# Stop the app's containers but keep named volumes and state
 lando stop
 
-# Bring the app up and apply create-config changes. Volumes stay
+# Bring the app up and apply create-config changes. Named volumes stay
 lando start
 
 # Stop then start in one step
@@ -92,9 +92,43 @@ lando restart
 lando rebuild
 ```
 
+## Keep data across stop, restart, and destroy
+
+Database data stores, persistent homes, `node_modules` and `vendor` shadows, and caches use named volumes. The app lifecycle commands retain that storage unless you request its removal with `--volumes`, `--purge`, or `--purge-caches`. Bind mounts keep their files on the host instead.
+
+An image that declares a `VOLUME` path you never mapped gets an anonymous volume instead. The runtime creates it with the container, and Lando asks the runtime to drop it whenever it removes that container: `lando stop`, `lando destroy`, bare `lando restart`, `lando rebuild`, and a `lando start` that recreates a changed container. The runtime keeps one that another live container still uses. `lando restart --service <name>` restarts in place and keeps the container's volumes. A failed start retains established resources for inspection rather than rolling them back.
+
+To keep data at such a path, name it. A bare container path under `volumes:` becomes a named store Lando owns:
+
+```yaml
+services:
+  search:
+    type: compose
+    image: getmeili/meilisearch:v1.12
+    home: false
+    volumes:
+      - /meili_data
+```
+
+`lando app:config:lint` confirms the Landofile is valid, and from then on only `--volumes` or `--purge` removes that store. Declaring the store does not migrate existing data: the next `lando start` recreates the container on the named store, and whatever the anonymous volume held leaves with the old container. Export anything you need first, for example with [Import and export app databases](../tooling/db-import-export.mdx). Lando only drops the anonymous volumes of the container it is removing; it never prunes unlabeled volumes left behind by anything else.
+
+### Check what a service mounts
+
+`lando info --format=json` lists each service's mounts under `services[].mounts` and its application source mount under `services[].appMount`. Ordinary `info` reads the one container inspection it already performs per service; it does not query images or volumes, so it reports evidence rather than guesses:
+
+| Field | Values | Meaning |
+| --- | --- | --- |
+| `type` | `bind`, `volume`, `tmpfs`, `unknown` | Mount kind as the runtime reports it. |
+| `target`, `source`, `readOnly` | path, host path or volume name, boolean | Where it mounts, what backs it, and whether it is read-only. `source` and `readOnly` appear only when known. |
+| `origin` | `planned`, `runtime` | Whether the mount matches your resolved plan or only appeared on the running container. |
+| `observation` | `present`, `missing`, `unknown` | Whether the container's mount table confirmed it, the container is absent, or evidence was unavailable. |
+| `lifetime` | `retained`, `container`, `unknown` | Bind mounts and declared stores are `retained`; `tmpfs` is `container`; a runtime-only volume is `unknown`. |
+
+A runtime-only volume with `lifetime: unknown` is unverified, not proven anonymous. Lando does not infer lifetime from a volume name, so decide from the image: if the path is an image `VOLUME` you have not declared, declare it as above. The agent-forwarding and host-proxy mounts Lando adds for its own SSH, GPG, and `lando` integration are not user data and need no declaration.
+
 ## Tear down
 
-`destroy` removes the app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`. The `-y` flag is required in non-interactive contexts:
+`destroy` removes the app's containers and networks. Named volumes stay unless you pass `--volumes` or `--purge`. The `-y` flag is required in non-interactive contexts:
 
 ```sh
 lando destroy -y
@@ -117,7 +151,7 @@ provider before it touches anything.
 
 Teardown looks at what is actually running before it reads your config. An app
 that was never started reports `unchanged` and exits 0, even when its Landofile
-does not validate. If a plain `destroy` kept your data volumes, a later
+does not validate. If a plain `destroy` kept your named data volumes, a later
 `lando destroy -y --volumes` still removes them and tells you what it removed.
 
 The next commands affect the whole host, not just this tutorial app. Poweroff also removes scratch apps and their disposable data unless you pass `--keep-scratch`. Run it only when you mean to stop all targeted apps:

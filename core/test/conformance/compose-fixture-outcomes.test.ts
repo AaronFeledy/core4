@@ -58,7 +58,6 @@ const missingOutcomeContext = (serviceConfig: Readonly<Record<string, unknown>> 
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: deterministicMetadata,

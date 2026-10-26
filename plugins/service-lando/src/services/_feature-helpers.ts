@@ -44,6 +44,10 @@ export const serviceFeatureApply =
                 : fallbackMessage,
           feature: featureId,
           cause,
+          remediation:
+            cause instanceof ServiceConfigIssue && cause.suggestion
+              ? cause.suggestion
+              : `Correct the ${featureId} feature configuration in the Landofile, then re-run.`,
         }),
     });
 
@@ -70,6 +74,10 @@ export const serviceTypeResolve = <A>(
               ],
             }
           : {}),
+        remediation:
+          cause instanceof ServiceConfigIssue && cause.suggestion
+            ? cause.suggestion
+            : `Correct the ${serviceType} service configuration in the Landofile (see the reported field path), then re-run.`,
       }),
   });
 

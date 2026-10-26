@@ -24,6 +24,7 @@ export class EventStepCompileError extends Schema.TaggedError<EventStepCompileEr
     source: Schema.optionalKey(Schema.Literals(["host", "project"])),
     kind: Schema.Literals(["cmd", "task", "command"]),
     cause: Schema.Union([ToolingStepSelectorUnavailableError, ToolingCompileError]),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -243,6 +244,7 @@ export const compileEventStepProgram = (
             ...(identity.source === undefined ? {} : { source: identity.source }),
             kind: compileLeaf(step, identity.authoredIndex, identity.source).kind,
             cause,
+            remediation: cause.remediation,
           }),
       ),
     );

@@ -1,0 +1,173 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`human diagnostic goldens renders AppIdReservedError with actionable context 1`] = `
+"The app id "global" is reserved for the global Lando app and cannot be used as a project name.
+  ↳ Rename the project in your Landofile, e.g. name: my-app.
+code: AppIdReservedError
+commandId: app:start
+reserved: global
+suggested: my-app
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders LandofileParseError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: LandofileParseError
+commandId: app:start
+filePath: /app/.lando.yml
+line: 3
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders SqlDumpNotFoundError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: SqlDumpNotFoundError
+commandId: app:start
+path: data.sql
+appRoot: /app
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders DataTransferError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: DataTransferError
+commandId: app:start
+fromEndpoint: database:dump
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders RendererSelectionError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: RendererSelectionError
+commandId: app:start
+value: missing
+source: flag
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders RecipePromptValidationError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: RecipePromptValidationError
+commandId: app:start
+promptName: name
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders UpdateLaunchProbeError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: UpdateLaunchProbeError
+commandId: app:start
+platform: linux-x64
+attemptedVersion: 4.0.0
+probeCommand: lando version
+outputSummary: Launch failed
+rollbackFailure: Permission denied
+exitCode: 1
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders ServiceStartError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: ServiceStartError
+commandId: app:start
+service: web
+logTail (web, exit 1, truncated): Starting web
+Address already in use
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders ServiceNotReadyError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: ServiceNotReadyError
+commandId: app:start
+service: web
+logTail (web, exit 1, truncated): Starting web
+Address already in use
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders ServiceExecError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: ServiceExecError
+commandId: app:start
+service: web
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders ServiceNotFoundError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: ServiceNotFoundError
+commandId: app:start
+service: web
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders CapabilityError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: CapabilityError
+commandId: app:start
+service: web
+key: shm_size
+capability: composeSpec
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders LandofileEventStepFailedError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: LandofileEventStepFailedError
+commandId: app:start
+event: pre-start
+step: 1
+kind: command
+service: web
+outputTail: Unknown command app:confgi
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders ComposeKeyRejectedError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: ComposeKeyRejectedError
+commandId: app:start
+source: compose
+service: web
+keyPath: deploy.replicas
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;
+
+exports[`human diagnostic goldens renders RecipePostInitError with actionable context 1`] = `
+"The operation failed.
+  ↳ Correct the configuration, then run lando start.
+code: RecipePostInitError
+commandId: app:start
+recipe: drupal
+exitCode: 1
+logsDir: /tmp/lando-cache/logs
+cacheDir: /tmp/lando-cache"
+`;

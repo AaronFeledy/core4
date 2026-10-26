@@ -5,15 +5,18 @@ import type { LandoCommandError } from "@lando/sdk/errors";
 import { UpdateChannel as UpdateChannelSchema } from "@lando/sdk/schema";
 import type { InstallOwnershipError } from "../install/owned-executable.ts";
 
+const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
+
 export const CoreUpdateFailureSchema = Schema.Struct({
   tag: Schema.String,
   message: Schema.String,
-  remediation: Schema.String,
+  remediation: Remediation,
 });
 
 export class UpdateNetworkError extends Schema.TaggedError<UpdateNetworkError>()("UpdateNetworkError", {
   message: Schema.String,
   url: Schema.optionalKey(Schema.String),
+  remediation: Remediation,
   cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
@@ -23,6 +26,7 @@ export class UpdateSignatureVerificationError extends Schema.TaggedError<UpdateS
     message: Schema.String,
     manifestUrl: Schema.String,
     signatureUrl: Schema.String,
+    remediation: Remediation,
     cause: Schema.optionalKey(Schema.Unknown),
   },
 ) {}
@@ -33,7 +37,7 @@ export class UpdateMinimumVersionError extends Schema.TaggedError<UpdateMinimumV
     message: Schema.String,
     currentVersion: Schema.String,
     minimumVersion: Schema.String,
-    remediation: Schema.String,
+    remediation: Remediation,
   },
 ) {}
 
@@ -41,7 +45,7 @@ export class UpdateDowngradeError extends Schema.TaggedError<UpdateDowngradeErro
   message: Schema.String,
   currentVersion: Schema.String,
   manifestVersion: Schema.String,
-  remediation: Schema.String,
+  remediation: Remediation,
 }) {}
 
 export class UpdateManifestReplayError extends Schema.TaggedError<UpdateManifestReplayError>()(
@@ -51,6 +55,7 @@ export class UpdateManifestReplayError extends Schema.TaggedError<UpdateManifest
     channel: UpdateChannelSchema,
     cachedVersion: Schema.String,
     manifestVersion: Schema.String,
+    remediation: Remediation,
   },
 ) {}
 
@@ -60,6 +65,7 @@ export class UpdateChecksumSignatureVerificationError extends Schema.TaggedError
     message: Schema.String,
     checksumsUrl: Schema.String,
     signatureUrl: Schema.String,
+    remediation: Remediation,
     cause: Schema.optionalKey(Schema.Unknown),
   },
 ) {}
@@ -71,6 +77,7 @@ export class UpdateChecksumVerificationError extends Schema.TaggedError<UpdateCh
     artifact: Schema.String,
     expected: Schema.optionalKey(Schema.String),
     actual: Schema.optionalKey(Schema.String),
+    remediation: Remediation,
   },
 ) {}
 
@@ -84,6 +91,7 @@ export class UpdateLaunchProbeError extends Schema.TaggedError<UpdateLaunchProbe
     outputSummary: Schema.String,
     exitCode: Schema.Number,
     rollbackFailure: Schema.optionalKey(Schema.String),
+    remediation: Remediation,
     cause: Schema.optionalKey(Schema.Unknown),
   },
 ) {}
@@ -93,7 +101,7 @@ export class UpdatePermissionError extends Schema.TaggedError<UpdatePermissionEr
   {
     message: Schema.String,
     path: Schema.optionalKey(Schema.String),
-    remediation: Schema.optionalKey(Schema.String),
+    remediation: Remediation,
     cause: Schema.optionalKey(Schema.Unknown),
   },
 ) {}

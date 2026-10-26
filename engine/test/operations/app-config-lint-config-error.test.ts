@@ -13,7 +13,13 @@ test.each([99999, -1])("fails bootstrap before app lint for invalid port %i", as
   const root = await mkdtemp(join(tmpdir(), "lando-lint-config-error-"));
   let entered = false;
   const unavailable = (pluginName: string) =>
-    Effect.fail(new PluginLoadError({ message: "Not registered.", pluginName }));
+    Effect.fail(
+      new PluginLoadError({
+        message: "Not registered.",
+        pluginName,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    );
   const plugins = PluginRegistry.of({
     list: Effect.succeed([]),
     load: unavailable,

@@ -223,7 +223,6 @@ describe("provider-free injected-event pipeline", () => {
       provider: TestRuntimeProvider.id,
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       identity: { appRoot, ownerKey: appIdentityKey("owner", appRoot) },

@@ -144,20 +144,47 @@ test("missing secrets stay absent without caching failed reads", async () => {
 
 test.each([
   {
-    error: new ProcessExecError({ message: "spawn failed", cmd: "op", cause: { code: "ENOENT" } }),
+    error: new ProcessExecError({
+      message: "spawn failed",
+      cmd: "op",
+      cause: { code: "ENOENT" },
+      remediation: "Install `op` on this host or fix its executable path, then re-run the command.",
+    }),
     reason: "cli-missing",
   },
-  { error: new ProcessExecError({ message: "spawn failed", cmd: "op", errno: -2 }), reason: "cli-missing" },
   {
-    error: new ProcessExecError({ message: "Executable not found in $PATH: op", cmd: "op" }),
+    error: new ProcessExecError({
+      message: "spawn failed",
+      cmd: "op",
+      errno: -2,
+      remediation: "Install `op` on this host or fix its executable path, then re-run the command.",
+    }),
     reason: "cli-missing",
   },
   {
-    error: new ProcessExecError({ message: "EACCES sensitive-stderr", cmd: "op", errno: -13 }),
+    error: new ProcessExecError({
+      message: "Executable not found in $PATH: op",
+      cmd: "op",
+      remediation: "Install `op` on this host or fix its executable path, then re-run the command.",
+    }),
+    reason: "cli-missing",
+  },
+  {
+    error: new ProcessExecError({
+      message: "EACCES sensitive-stderr",
+      cmd: "op",
+      errno: -13,
+      remediation: "Install `op` on this host or fix its executable path, then re-run the command.",
+    }),
     reason: "denied",
   },
   {
-    error: new ProcessTimeoutError({ message: "sensitive-stderr", cmd: "op", elapsedMs: 120_000 }),
+    error: new ProcessTimeoutError({
+      message: "sensitive-stderr",
+      cmd: "op",
+      elapsedMs: 120_000,
+      remediation: "Increase timeoutMs for `op` above 120000ms, or investigate why it did not finish.",
+    }),
     reason: "timeout",
   },
 ])("ProcessRunner failure maps to $reason", async ({ error, reason }) => {

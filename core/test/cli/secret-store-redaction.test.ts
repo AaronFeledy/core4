@@ -95,6 +95,8 @@ test.each([
               providerId: TestRuntimeProvider.id,
               operation: "apply",
               message: `Provider observed ${resolved}`,
+              remediation:
+                "Install or start the selected runtime provider and confirm it can perform `apply`.",
             }),
           );
         return { changed: true };
@@ -142,7 +144,6 @@ test.each([
         },
       },
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata,

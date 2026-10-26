@@ -466,7 +466,14 @@ describe("subscriber runtime", () => {
           calls += 1;
         });
     }).pipe(
-      Effect.mapError(() => new PluginLoadError({ pluginName: "@example/subscriber", message: "load" })),
+      Effect.mapError(
+        () =>
+          new PluginLoadError({
+            pluginName: "@example/subscriber",
+            message: "load",
+            remediation: "Install or register the plugin, then retry.",
+          }),
+      ),
     );
 
     // When: the cached handler is requested and invoked twice.

@@ -34,7 +34,6 @@ const planFor = (landofile: LandofileShape): AppPlan =>
       provider: ProviderId.make("test"),
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       extensions: {},
@@ -148,6 +147,7 @@ test.each([0, 7])("keeps CLI, event and MCP tooling argv and exit %i equal", asy
             effective: new Set([entry.spec.id]),
             allowlistSource: "tooling",
             redactor: createRedactor("secrets"),
+            resultRedactor: (tokens) => Effect.succeed(createRedactor("secrets", { values: tokens })),
             execute: (target, input) =>
               target.spec.run(input).pipe(
                 Effect.provide(context),

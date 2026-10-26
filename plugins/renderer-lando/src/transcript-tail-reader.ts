@@ -37,6 +37,7 @@ export class TranscriptTailReadError extends Schema.TaggedError<TranscriptTailRe
   {
     path: AbsolutePath,
     cause: Schema.Unknown,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {
   override get message(): string {
@@ -71,7 +72,12 @@ export class TranscriptTailReader extends Context.Service<TranscriptTailReader, 
             : {
                 open: Effect.fn("TranscriptTailReader.open")(function* (path: AbsolutePath) {
                   return yield* Effect.fail(
-                    new TranscriptTailReadError({ path, cause: new TranscriptPathOutsideRootError(path) }),
+                    new TranscriptTailReadError({
+                      path,
+                      cause: new TranscriptPathOutsideRootError(path),
+                      remediation:
+                        "Provide PathsService so transcript tails resolve under the user-data root.",
+                    }),
                   );
                 }),
               },
@@ -169,7 +175,13 @@ const readStartingAt = Effect.fnUntraced(function* (
 const assertContained = (userDataRoot: string, path: AbsolutePath) =>
   Effect.tryPromise({
     try: () => assertTranscriptPathContained(userDataRoot, path),
-    catch: (cause) => new TranscriptTailReadError({ path, cause }),
+    catch: (cause) =>
+      new TranscriptTailReadError({
+        path,
+        cause,
+        remediation:
+          "Keep the transcript path as a regular file under the configured user-data root; paths that escape that root are rejected.",
+      }),
   });
 
 const makeSession = (userDataRoot: string, path: AbsolutePath): TranscriptTailSession => {
@@ -231,7 +243,15 @@ const makeSession = (userDataRoot: string, path: AbsolutePath): TranscriptTailSe
         }),
       ),
       Effect.map((next) => next.page),
-      Effect.mapError((cause) => new TranscriptTailReadError({ path, cause })),
+      Effect.mapError(
+        (cause) =>
+          new TranscriptTailReadError({
+            path,
+            cause,
+            remediation:
+              "Ensure the transcript path is a readable regular file under the user-data root and retry the tail read.",
+          }),
+      ),
     );
   return { read };
 };
@@ -259,7 +279,13 @@ const openReader = Effect.fnUntraced(function* (
         watcher.on("error", () => Effect.runSync(Queue.offer(notifications, undefined)));
         return watcher;
       },
-      catch: (cause) => new TranscriptTailReadError({ path, cause }),
+      catch: (cause) =>
+        new TranscriptTailReadError({
+          path,
+          cause,
+          remediation:
+            "Ensure the transcript path is a readable regular file under the user-data root and retry opening the tail session.",
+        }),
     }),
     (watcher) => Effect.sync(() => watcher.close()),
   );

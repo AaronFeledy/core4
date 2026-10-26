@@ -39,7 +39,6 @@ test("nests provider inspection under the operation span when info runs against 
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -82,9 +81,9 @@ test("nests provider inspection under the operation span when info runs against 
     })),
   ).toEqual([
     { name: "AppOperation.infoForPlan", parent: Option.none() },
-    { name: "Connections.collectPlan", parent: Option.some("AppOperation.infoForPlan") },
-    { name: "RuntimeProvider.inspect", parent: Option.some("Connections.collectPlan") },
-    { name: "Connections.collectObserved", parent: Option.some("Connections.collectPlan") },
+    { name: "Connections.observePlan", parent: Option.some("AppOperation.infoForPlan") },
+    { name: "RuntimeProvider.inspect", parent: Option.some("Connections.observePlan") },
+    { name: "Connections.collectObserved", parent: Option.some("AppOperation.infoForPlan") },
   ]);
   const operation = spans[0];
   const collection = spans[1];

@@ -160,38 +160,53 @@ test("direct create payload refuses unresolved descriptors", () => {
   );
 });
 
-test.each(["network", "volume"] as const)(
-  "resource-only legacy apply cannot create a missing %s",
-  async (resource) => {
-    // Given
-    const desired: AppPlan = {
-      ...legacyPlan(),
-      services: {},
-      stores: resource === "volume" ? [{ name: "data", scope: "app", kind: "data" }] : [],
-    };
-    const calls: string[] = [];
-    // When
-    const error = await Effect.runPromise(
-      Effect.flip(
-        bringUp(desired, {
-          ctx,
-          api: {
-            request: (request) => {
-              calls.push(request.method);
-              return Effect.succeed({
-                status: resource === "volume" && request.path.startsWith("/networks/") ? 200 : 404,
-                body: "{}",
-              });
-            },
+test("resource-only legacy apply cannot create a missing volume", async () => {
+  // Given
+  const desired: AppPlan = {
+    ...legacyPlan(),
+    services: {},
+    stores: [{ name: "data", scope: "app", kind: "data" }],
+  };
+  const calls: string[] = [];
+  // When
+  const error = await Effect.runPromise(
+    Effect.flip(
+      bringUp(desired, {
+        ctx,
+        api: {
+          request: (request) => {
+            calls.push(request.method);
+            return Effect.succeed({ status: 404, body: "{}" });
           },
-        }),
-      ),
-    );
-    // Then
-    expect(error).toBeInstanceOf(PlanReplanRequiredError);
-    expect(calls.every((method) => method === "GET")).toBe(true);
-  },
-);
+        },
+      }),
+    ),
+  );
+  // Then
+  expect(error).toBeInstanceOf(PlanReplanRequiredError);
+  expect(calls.every((method) => method === "GET")).toBe(true);
+});
+
+test("service-less legacy apply creates no network because no service joins one", async () => {
+  // Given
+  const desired: AppPlan = { ...legacyPlan(), services: {}, stores: [] };
+  const calls: string[] = [];
+  // When
+  const result = await Effect.runPromise(
+    bringUp(desired, {
+      ctx,
+      api: {
+        request: (request) => {
+          calls.push(`${request.method} ${request.path}`);
+          return Effect.succeed({ status: 404, body: "{}" });
+        },
+      },
+    }),
+  );
+  // Then
+  expect(result.changed).toBe(false);
+  expect(calls.filter((call) => call.includes("/networks"))).toEqual([]);
+});
 
 test("resource-only legacy reuse observes existing volumes without recreating them", async () => {
   // Given

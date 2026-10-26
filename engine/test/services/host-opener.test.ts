@@ -1,10 +1,32 @@
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Result, Stream } from "effect";
 
-import { ShellRunner } from "@lando/sdk/services";
+import { ProcessTimeoutError } from "@lando/sdk/errors";
+import { ProcessRunner, ShellRunner } from "@lando/sdk/services";
 
-import { canOpenHost, openUrl, openerCommandFor } from "../../src/services/host-opener";
+import { canOpenHost, openHostTarget, openUrl, openerCommandFor } from "../../src/services/host-opener";
+
+test("keeps the process failure as the host opener cause", async () => {
+  const cause = new ProcessTimeoutError({
+    cmd: "xdg-open",
+    message: "The host opener timed out.",
+    elapsedMs: 100,
+    remediation: "Restore the desktop session before opening the URL.",
+  });
+  const result = await Effect.runPromise(
+    openHostTarget("https://example.test", { platform: "linux" }).pipe(
+      Effect.provideService(ProcessRunner, {
+        run: () => Effect.fail(cause),
+        stream: () => Stream.die("unused"),
+        streamWithExit: () => Stream.die("unused"),
+      }),
+      Effect.result,
+    ),
+  );
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) expect(result.failure.cause).toBe(cause);
+});
 
 const fakeShell = (record: { commands: string[] }) =>
   Layer.succeed(

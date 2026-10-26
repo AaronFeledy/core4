@@ -183,7 +183,7 @@ describe("generic CLI command lifecycle", () => {
       effect: Effect.fail(new CommandLifecycleTestError({ message: "provider unavailable" })),
       failureTag: "CommandLifecycleTestError",
     },
-    { name: "defect", effect: Effect.die(new Error("unexpected defect")), failureTag: "Defect" },
+    { name: "defect", effect: Effect.die(new Error("unexpected defect")), failureTag: "LandoInternalError" },
     { name: "interruption", effect: Effect.interrupt, failureTag: "Interrupted" },
   ]) {
     test(`publishes one terminal error for ${scenario.name}`, async () => {
