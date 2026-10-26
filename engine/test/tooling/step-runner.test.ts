@@ -4,7 +4,7 @@ import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect";
 import { ToolingStepConditionError } from "@lando/sdk/errors";
 import type { EventStep } from "@lando/sdk/schema";
 
-import { compileEventStepProgram } from "../../src/tooling/step-compiler.ts";
+import { compileAuthoredEventStepProgram as compileEventStepProgram } from "../../src/tooling/authored-step-compiler.ts";
 import type { ResolvedToolingStepLeaf, ToolingStepRunners } from "../../src/tooling/step-runner.ts";
 import { runToolingStepProgram } from "../../src/tooling/step-runner.ts";
 

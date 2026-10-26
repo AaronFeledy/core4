@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import {
   AbsolutePath,
@@ -13,11 +13,12 @@ import {
 } from "@lando/sdk/schema";
 import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
+import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { SERVICE_PUBLISH_PORT_MIN, type ServicePublishProbe } from "../src/service-publish-ports.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("publish-ports");
 const serviceName = ServiceName.make("web");
 const metadata = {
@@ -54,13 +55,13 @@ const planWithPublication = (publication: EndpointPublication): AppPlan => {
   };
   return {
     id: appId,
+    valueModel: 1,
     name: "Publish Ports",
     slug: "publish-ports",
     root: AbsolutePath.make("/tmp/lando-publish-ports"),
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     networking: { perAppBridge: { name: "publish-ports-network", driver: "bridge" } },
     stores: [],
     fileSync: [],
@@ -86,6 +87,7 @@ const makeFakeApi = (input: {
   readonly startStatuses?: ReadonlyArray<number>;
   readonly startBodies?: ReadonlyArray<string>;
   readonly existingBindSource?: string;
+  readonly plan?: AppPlan;
 }) => {
   const calls: EngineHttpRequest[] = [];
   let exists = input.exists ?? false;
@@ -93,6 +95,10 @@ const makeFakeApi = (input: {
   let hostPort = input.inspectHostPort ?? "31234";
   let createIndex = 0;
   let startIndex = 0;
+  const original = input.plan ?? planWithPublication({});
+  const originalService = original.services[serviceName];
+  if (originalService === undefined) throw new TypeError("Missing fixture service");
+  let labels = commonContainerLabels(original, originalService);
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
@@ -105,7 +111,10 @@ const makeFakeApi = (input: {
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: 404, body: "{}" };
         }
-        if (request.method === "POST" && request.path === "/networks/create") {
+        if (
+          request.method === "POST" &&
+          ["/networks/create", "/libpod/networks/create"].includes(request.path)
+        ) {
           return { status: 201, body: "{}" };
         }
         if (request.method === "POST" && request.path.endsWith("/connect")) {
@@ -114,6 +123,8 @@ const makeFakeApi = (input: {
         if (request.method === "GET" && action === "json") {
           if (!exists) return { status: 404, body: "{}" };
           const body = JSON.parse(inspectBody(hostPort, running)) as Record<string, unknown>;
+          body.Id = containerName;
+          body.Config = { Labels: labels };
           if (input.inspectBindingHostPort !== undefined && createIndex === 0) {
             body.HostConfig = {
               PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: input.inspectBindingHostPort }] },
@@ -141,6 +152,9 @@ const makeFakeApi = (input: {
           const body = input.createBodies?.[createIndex] ?? "{}";
           createIndex += 1;
           if (status === 201 || status === 409) {
+            labels = Schema.decodeUnknownSync(
+              Schema.Struct({ Labels: Schema.Record(Schema.String, Schema.String) }),
+            )(request.body).Labels;
             exists = true;
             const created = request.body as {
               HostConfig?: { PortBindings?: Record<string, Array<{ HostPort?: string }>> };
@@ -444,7 +458,9 @@ describe("create-body service publish ports", () => {
     expect(createHostPort(fake.calls, 1)).toBe(String(SERVICE_PUBLISH_PORT_MIN + 1));
     expect(ports).toEqual([SERVICE_PUBLISH_PORT_MIN, SERVICE_PUBLISH_PORT_MIN + 1]);
     expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
-    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+    expect(fake.calls.filter((call) => call.method === "DELETE")).toEqual([
+      { method: "DELETE", path: `/containers/${containerName}?force=true&v=true` },
+    ]);
   });
 
   test("a stopped existing container recovers with a fresh port", async () => {
@@ -467,8 +483,63 @@ describe("create-body service publish ports", () => {
     expect(createCalls(fake.calls)).toHaveLength(1);
     expect(createHostPort(fake.calls)).toBe(String(SERVICE_PUBLISH_PORT_MIN + 1));
     expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
-    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+    expect(fake.calls.filter((call) => call.method === "DELETE")).toEqual([
+      { method: "DELETE", path: `/containers/${containerName}?force=true&v=true` },
+    ]);
   });
+
+  test.each([false, true])(
+    "shared-only Docker start recovery reconnects only the existing container (existing=%s)",
+    async (existing) => {
+      const plan: AppPlan = {
+        ...planWithPublication({}),
+        networking: {
+          perAppBridge: null,
+          sharedNetworkMembership: {
+            name: "lando_bridge_network",
+            aliases: { [serviceName]: ["web.global.internal"] },
+          },
+        },
+      };
+      const fake = makeFakeApi({
+        plan,
+        exists: existing,
+        running: false,
+        inspectHostPort: String(SERVICE_PUBLISH_PORT_MIN),
+        startStatuses: [500, 204],
+        startBodies: ["port is already allocated", ""],
+      });
+
+      await Effect.runPromise(
+        bringUp(plan, {
+          api: fake.api,
+          ctx,
+          platform: "linux",
+          dialect: dockerLifecycleDialect,
+          probeBind: () => Effect.succeed({ kind: "success" }),
+        }),
+      );
+
+      expect(createCalls(fake.calls)).toHaveLength(existing ? 1 : 2);
+      expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
+      expect(fake.calls.filter((call) => call.path.endsWith("/connect"))).toEqual(
+        existing
+          ? [
+              {
+                method: "POST",
+                path: "/networks/lando_bridge_network/connect",
+                body: {
+                  Container: containerName,
+                  EndpointConfig: { Aliases: ["web.publish-ports.internal", "web.global.internal"] },
+                },
+              },
+            ]
+          : [],
+      );
+      const firstStart = fake.calls.findIndex((call) => call.path.endsWith("/start"));
+      expect(fake.calls.slice(firstStart).filter((call) => call.path.endsWith("/connect"))).toEqual([]);
+    },
+  );
 
   test("a pinned start bind rejection does not retry", async () => {
     const fake = makeFakeApi({ startStatuses: [500], startBodies: ["address already in use"] });
@@ -485,7 +556,7 @@ describe("create-body service publish ports", () => {
     expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(1);
   });
 
-  test("a second start failure retains both responses and rolls back the recreation", async () => {
+  test("a second start failure retains both responses and keeps the recreated container", async () => {
     const fake = makeFakeApi({
       exists: true,
       running: false,
@@ -515,9 +586,10 @@ describe("create-body service publish ports", () => {
       },
     });
     expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
+    // Host-port recovery removes only the prior container once; the failed recreation is retained.
     expect(
       fake.calls.filter((call) => call.method === "DELETE" && call.path.startsWith("/containers/")),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
 
   test("daemon-assigned ports do not trigger start recovery", async () => {

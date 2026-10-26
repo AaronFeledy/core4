@@ -58,7 +58,9 @@ describe("solr ServiceType", () => {
     expect(plan.storage[0]?.store).toBe("myapp-solr-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/solr");
     expect(plan.storage[0]?.readOnly).toBe(false);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8983, protocol: "http", name: "search" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8983, protocol: "http", name: "search", primary: true },
+    ]);
   });
 
   test("respects image, port, and command overrides", async () => {
@@ -164,7 +166,15 @@ describe("solr ServiceType", () => {
       );
 
       expect(rejection).toBeInstanceOf(Error);
-      expect(String(rejection)).toMatch(/services\.search\.cores\[0]/);
+      expect(rejection).toMatchObject({
+        issues: [
+          {
+            path: ["cores", 0],
+            message: `${JSON.stringify(core)} is not a usable Solr core directory name.`,
+            suggestion: expect.stringContaining("Rename the core"),
+          },
+        ],
+      });
     },
   );
 
@@ -177,7 +187,15 @@ describe("solr ServiceType", () => {
       );
 
       expect(rejection).toBeInstanceOf(Error);
-      expect(String(rejection)).toMatch(/services\.search\.cores\[0]/);
+      expect(rejection).toMatchObject({
+        issues: [
+          {
+            path: ["cores", 0],
+            message: `${JSON.stringify(core)} is not a usable Solr core directory name.`,
+            suggestion: expect.stringContaining("Rename the core"),
+          },
+        ],
+      });
     },
   );
 
@@ -209,9 +227,14 @@ describe("solr ServiceType", () => {
     if (Result.isFailure(outcome)) {
       expect(outcome.failure._tag).toBe("ServiceTypeError");
       expect(outcome.failure.serviceType).toBe(id);
-      expect(outcome.failure.message).toBe(
-        'services.search.cores[1] ".." is not a usable Solr core directory name. Use letters, numbers, dots, underscores, and dashes. "." and ".." are reserved, and "/" and "\\" are not allowed. Rename the core to a plain directory name.',
-      );
+      expect(outcome.failure.issues).toEqual([
+        {
+          path: ["cores", 1],
+          message: '".." is not a usable Solr core directory name.',
+          suggestion:
+            'Use letters, numbers, dots, underscores, and dashes. "." and ".." are reserved, and "/" and "\\" are not allowed. Rename the core to a plain directory name.',
+        },
+      ]);
     }
   });
 

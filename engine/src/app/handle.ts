@@ -24,12 +24,12 @@ import type {
 } from "@lando/sdk/app";
 import { LogSourceId, ServiceName } from "@lando/sdk/schema";
 import type { BuildOrchestrator, LogChunk, RouterService, ShellRunner } from "@lando/sdk/services";
-import { EventService, Renderer } from "@lando/sdk/services";
+import { type EnvironmentValueResolver, EventService, Renderer } from "@lando/sdk/services";
 
-import type { RedactionService } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
+import { createPayloadRedactor } from "@lando/sdk/secrets";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { shouldRetainReadinessResources } from "../lifecycle/readiness-failure.ts";
 import type { LogsAppLine } from "../operations/logs.ts";
 import { provideRuntime } from "../runtime/observability.ts";
 import type { AppLifecycle } from "./lifecycle.ts";
@@ -47,6 +47,7 @@ const toLogChunk = (line: LogsAppLine): LogChunk => ({
 });
 
 export type AppHandleRuntimeServices =
+  | EnvironmentValueResolver
   | LandoRuntimeServices
   | BuildOrchestrator
   | PrivateFileAccessService
@@ -66,6 +67,24 @@ export const makeAppHandle = (
 ): App => {
   const { plan, app: ref, root } = target;
   const provide = <A, E, R>(program: Effect.Effect<A, E, R>) => provideRuntime(program, runtime);
+  const stageReplacement = Effect.fnUntraced(function* () {
+    const current = yield* lifecycle.current;
+    const resumeScope = current ?? (yield* lifecycle.stageFresh);
+    const scope = yield* lifecycle.stageFresh;
+    return {
+      managed: {
+        scope,
+        onStopped: lifecycle.replaceCurrent(scope),
+        resume: {
+          scope: resumeScope,
+          beforeStart: current === undefined ? lifecycle.replaceCurrent(resumeScope) : Effect.void,
+        },
+      },
+      discardUnused: lifecycle
+        .discardStaged(scope)
+        .pipe(Effect.andThen(lifecycle.discardStaged(resumeScope))),
+    };
+  });
   const implementation = {
     id: plan.id,
     ref,
@@ -77,7 +96,6 @@ export const makeAppHandle = (
         return yield* ops
           .startApp(options, target, {
             scope: current,
-            onScopeClosedByStartApp: lifecycle.forgetIfCurrent(current),
           })
           .pipe(provide);
       }
@@ -91,17 +109,14 @@ export const makeAppHandle = (
         .startApp(
           options,
           target,
-          { scope, onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope) },
+          { scope },
           {
             beforeStart: lifecycle.replaceCurrent(scope),
-            onFailedStart: lifecycle.discardIfCurrent(scope),
           },
         )
         .pipe(
           provide,
-          Effect.onError((cause) =>
-            shouldRetainReadinessResources(cause) ? Effect.void : lifecycle.discard(scope),
-          ),
+          Effect.onError(() => lifecycle.discardStaged(scope)),
         );
     }, lifecycle.serialize),
     stop: (options?: StopAppOptions) =>
@@ -110,39 +125,19 @@ export const makeAppHandle = (
       if (options?.services !== undefined && options.services.length > 0) {
         return yield* ops.restartApp(options, target).pipe(provide);
       }
-      const scope = yield* lifecycle.stageFresh;
-      return yield* ops
-        .restartApp(options, target, {
-          scope,
-          onStopped: lifecycle.replaceCurrent(scope),
-          onFailedStart: lifecycle.discard(scope),
-          onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
-        })
-        .pipe(
-          provide,
-          Effect.onError((cause) =>
-            shouldRetainReadinessResources(cause) ? Effect.void : lifecycle.discard(scope),
-          ),
-        );
+      const { managed, discardUnused } = yield* stageReplacement();
+      return yield* ops.restartApp(options, target, managed).pipe(provide, Effect.ensuring(discardUnused));
     }, lifecycle.serialize),
     rebuild: Effect.fn("App.rebuild")(function* (options?: RebuildAppOptions) {
       if (options?.services !== undefined && options.services.length > 0) {
-        return yield* ops.rebuildApp(options, target).pipe(provide);
+        // A worker a selected rebuild starts belongs to the handle's current managed scope.
+        const current = yield* lifecycle.current;
+        const scope = current ?? (yield* lifecycle.stageFresh);
+        if (current === undefined) yield* lifecycle.replaceCurrent(scope);
+        return yield* ops.rebuildApp(options, target, { scope }).pipe(provide);
       }
-      const scope = yield* lifecycle.stageFresh;
-      return yield* ops
-        .rebuildApp(options, target, {
-          scope,
-          onStopped: lifecycle.replaceCurrent(scope),
-          onFailedStart: lifecycle.discard(scope),
-          onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
-        })
-        .pipe(
-          provide,
-          Effect.onError((cause) =>
-            shouldRetainReadinessResources(cause) ? Effect.void : lifecycle.discard(scope),
-          ),
-        );
+      const { managed, discardUnused } = yield* stageReplacement();
+      return yield* ops.rebuildApp(options, target, managed).pipe(provide, Effect.ensuring(discardUnused));
     }, lifecycle.serialize),
     destroy: (options?: DestroyAppOptions) =>
       lifecycle.serialize(ops.destroyApp(options, target, lifecycle.closeCurrent).pipe(provide)),
@@ -152,7 +147,13 @@ export const makeAppHandle = (
         Effect.tap((result) =>
           result.stderr.length === 0
             ? Effect.void
-            : Renderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(result.stderr))),
+            : Effect.gen(function* () {
+                const redaction = yield* RedactionService;
+                const payload = createPayloadRedactor(yield* redaction.payloadValues());
+                const bytes = payload.write(new TextEncoder().encode(result.stderr));
+                const text = new TextDecoder().decode(Buffer.concat([bytes, payload.flush()]));
+                yield* Renderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(text)));
+              }),
         ),
         provide,
       ),

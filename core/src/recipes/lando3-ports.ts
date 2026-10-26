@@ -3,10 +3,17 @@ import type { Redactor } from "@lando/sdk/secrets";
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 
 /** Lazily assembles the translator ports the bundled lando3 frontend closes over. */
-export const loadLando3TranslatorPorts = async (): Promise<{
+export const loadLando3TranslatorPorts = async (
+  redactor?: Redactor,
+  sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
+): Promise<{
   readonly decomposers: ReadonlyMap<string, RecipeDecomposerFactory>;
   readonly redactor: Redactor;
 }> => {
+  const environment = { ...sourceEnv };
   const { BUILTIN_RECIPE_DECOMPOSERS } = await import("./builtin/decomposers.ts");
-  return { decomposers: BUILTIN_RECIPE_DECOMPOSERS, redactor: createStandaloneRedactor("secrets") };
+  return {
+    decomposers: BUILTIN_RECIPE_DECOMPOSERS,
+    redactor: redactor ?? createStandaloneRedactor("secrets", { sourceEnv: environment }),
+  };
 };

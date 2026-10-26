@@ -1,4 +1,5 @@
 import { ProviderInternalError } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError } from "@lando/sdk/services";
 import { redactString } from "./redact.ts";
 
@@ -12,15 +13,21 @@ export type HelperExecOutput =
 
 const decoder = new TextDecoder();
 
-const stderrFrameError = (providerId: string, payload: StreamBytes): ProviderInternalError =>
+const stderrFrameError = (
+  providerId: string,
+  payload: StreamBytes,
+  redactor: Redactor,
+): ProviderInternalError =>
   new ProviderInternalError({
     providerId,
     operation: "logFileAccess",
     message: "Log helper wrote to stderr.",
-    details: redactString(decoder.decode(payload)),
+    details: redactString(decoder.decode(payload), redactor),
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
-export const makeHelperExecOutputDecoder = (providerId: string) => {
+export const makeHelperExecOutputDecoder = (providerId: string, redactor: Redactor) => {
   const decodeAttach = makeAttachDecoder();
   let mode: OutputMode = "unknown";
 
@@ -33,7 +40,7 @@ export const makeHelperExecOutputDecoder = (providerId: string) => {
     return decodeAttach(chunk).map((frame) =>
       frame.stream === "stdout"
         ? { kind: "stdout", payload: frame.payload }
-        : { kind: "error", error: stderrFrameError(providerId, frame.payload) },
+        : { kind: "error", error: stderrFrameError(providerId, frame.payload, redactor) },
     );
   };
 };

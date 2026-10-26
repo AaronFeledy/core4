@@ -1,6 +1,6 @@
 # Lando v4: The Global App
 
-> **Part 18 of 19** · [Index](./README.md)
+> **Part 18 of 20** · [Index](./README.md)
 > **Read next:** [19 Scratch Apps](./19-scratch-apps.md)
 
 The **global app** is the reserved host-level Lando app for services shared across user apps. Plugins contribute those services through `globalServices:`, and `AppFeature` activations declare user-app dependencies on them (§6.11.4).
@@ -17,7 +17,8 @@ The global app uses the standard `AppPlan`, `RuntimeProvider`, build orchestrati
 - Its root is `<userDataRoot>/global/`, owned by Lando.
 - Plugins contribute services through `globalServices:`; user overrides remain layered through the Landofile.
 - Required services auto-start through `AppFeature.requires.globalServices`.
-- It is always planned and applied with the Lando-managed provider (§5.8), independent of the user's `defaultProviderId`, so the `ssh-agent` sidecar and the `traefik` router host every app's traffic from one place. Code that observes global-app containers MUST pin that provider rather than selecting the active one.
+- Desired placement follows the host provider (§5). Realized placement is the installed provider holding an applied plan whose `identity.appRoot` exactly equals the global root. The query MUST read contribution-level applied plans without constructing or contacting runtimes; ownership inventories alone MUST NOT claim placement. Multiple realized providers MUST fail as ambiguous with remediation.
+- The global app uses the shared placement rule (§5.3.1) against its canonical root. Before creating or applying global services, and before router port acquisition, operations MUST reject differing placement with `AppPlacementError`. Observation and teardown MUST use realized placement, or the host provider when no applied plan exists. `global:destroy --provider=<id> --yes` MUST target one provider explicitly when placement is ambiguous. Only the explicit setup switch (§10.8) MAY retire an old realization and create one on the selected provider; lifecycle commands MUST NOT relocate it.
 - Providers with `sharedCrossAppNetwork` expose services at `<service>.global.internal` and through the `LANDO_GLOBAL_*` environment family (§5.4, §6.9, §10.1).
 - `apps:poweroff` stops it unless `--keep-global` is set. Destroying one user app MUST NOT affect it.
 - `scope: global` storage survives user-app and global-app destruction under §6.5 and §20.9.
@@ -31,15 +32,17 @@ The global app is not a daemon, a place to promote user-defined services, or a r
 | `AppRef.kind` | `global` |
 | `name`, `slug`, id | Reserved literal `global` |
 | Root | `<userDataRoot>/global/` |
-| Provider | The Lando-managed provider, regardless of a user `defaultProviderId`; per-app and cross-provider overrides are excluded (§5.9). |
+| Provider | Desired: host provider. Realized: exact-root applied-plan owner. Per-app `provider:` MUST NOT change global placement. |
 
 User-authored Landofiles resolving to `global`, including normalized directory names, fail with `AppIdReservedError` and remediation to choose an explicit different name. Inside global services, `LANDO_APP_NAME` and `LANDO_PROJECT` are `global`; `LANDO_GLOBAL_*` is reserved for cross-app discovery.
 
 ### 20.3 The global Landofile
 
-The global Landofile is `<userDataRoot>/global/.lando.yml` and follows the six-layer merge order in §7.2. `<userDataRoot>/global/.lando.dist.yml` is the generated plugin layer; users MUST NOT edit it. `GlobalAppService.regenerateDist` is its single writer and overwrites edits. The canonical `.lando.yml` is user-editable, while `.lando.local.yml` and `.lando.user.yml` retain their standard override roles.
+The global Landofile loads from `<userDataRoot>/global/` through the same root pipeline as user apps: all six §7.2 layers accept YAML or TypeScript, conflicting forms fail with `LandofileFormConflictError`, and each file resolves its includes before layer precedence using `<globalRoot>/.lando.lock.yml` under §7.7. `<userDataRoot>/global/.lando.dist.yml` remains the generated plugin layer; users MUST NOT edit it. `GlobalAppService.regenerateDist` is its single writer and overwrites edits; a sibling `.lando.dist.ts` is a normal form conflict. The canonical `.lando.{yml,ts}` is user-editable, while local and user layers retain their standard override roles.
 
-The root is created on demand. With no contributions, the generated layer names the app `global` and has no services; the canonical file is created only when a user override is written.
+After composition and before expression materialization, the runtime MUST impose `name: global` and the host provider (§20.2), replacing their authored origins and discarding pending expression sites at or below those fields. Literal values, `!reset`, and load- or planner-owned expressions MUST NOT change this identity. View and validate load a canonical `.lando.ts`; `global:config set|unset|edit` MUST refuse it with `NotImplementedError` and direct the user to edit the source, as for app config writes (§8.2.1).
+
+The root is created on demand. With no contributions, the generated layer names the app `global` and has no services. Installation seeds a comment-only canonical `.lando.yml` when neither canonical form exists; it MUST preserve existing canonical files and MUST NOT create YAML beside a canonical `.lando.ts`.
 
 #### 20.3.1 The plugin enablement map
 
@@ -48,11 +51,11 @@ The root is created on demand. With no contributions, the generated layer names 
 - `enabledByDefault` defaults to `true`; an explicit user value wins.
 - `meta:global:install` enables all contributions owned by the selected plugin, and `meta:global:uninstall` disables them.
 - Disabled services are omitted from the generated plan. Their `scope: global` volumes survive and are reused if re-enabled.
-- Service configuration belongs in `<userDataRoot>/global/.lando.yml`, not the enablement map.
+- Service configuration belongs in the global Landofile layers (§20.3), not the enablement map.
 
 #### 20.3.2 Discovery rules
 
-`<userDataRoot>/global/` MUST be excluded from cwd discovery and `cwd-app-map` (§7.1, §12.1). `app:*` commands resolve only user apps; `meta:global:*` resolves the global app explicitly through `GlobalAppService`. `apps:list` excludes it unless `--include-global` or `--all` is set. Global lifecycle payloads carry `AppRef { kind: "global", id: "global", root }`.
+`<userDataRoot>/global/` MUST be excluded from cwd discovery (§7.1). `app:*` commands resolve only user apps; `meta:global:*` resolves the global app explicitly through `GlobalAppService`. `apps:list` excludes it unless `--include-global` or `--all` is set. Global lifecycle payloads carry `AppRef { kind: "global", id: "global", root }`.
 
 ### 20.4 The `globalServices:` plugin contribution surface
 
@@ -81,6 +84,7 @@ Required behavior:
 - `start` and `ensureRunning` are idempotent and reconcile drift. `ensureRunning` limits work to requested service ids.
 - `regenerateDist` is the single writer for `.lando.dist.yml` and performs contribution validation, conflicts, capability checks, service-schema validation, and atomic replacement.
 - Bind sources written as `~` or `~/...` MUST resolve against the user's home, not the global root, and MUST NOT be created by generated-layer reconciliation.
+- `providerId` resolves the provider holding the applied global plan for the canonical global root, else the host provider (§5). It reads applied state only and MUST NOT construct, initialize, or contact a runtime.
 - Failures are tagged as listed in §20.13.
 
 ### 20.6 Lifecycle
@@ -107,6 +111,8 @@ The `Global` scope extends §3.5 with every event below:
 
 Start payloads carry the global `AppRef`, plan, trigger, requested service ids, cache status, and timestamp. `pre-global-start` and `post-global-start` MUST fire for every successful `ensureRunning`, including warm no-op checks. Warm checks set `cached: true` and MUST NOT regenerate, contact the provider, or emit a global build block. Explicit `meta:global:start` is never marked cached. On failure, `post-global-start` does not fire.
 
+Destroy payloads carry the global `AppRef`, `evidence` (`applied`, `orphans`, or `owned`), `purge`, and timestamp; `post-global-destroy` adds `outcome` (`destroyed` or `unchanged`). Only `meta:global:destroy` publishes them: global stop shares the teardown path but publishes no destroy events. `pre-global-destroy` fires before any destructive step; `post-global-destroy` fires after resource teardown and route withdrawal succeed, and a failure skips it. A destroy with no teardown evidence publishes neither. Global `--purge` removes volumes only.
+
 Generated-layer events carry the trigger, contribution identities, enablement, capability verdicts, and timestamp. Standard Build-scope events and transcript contracts apply when global services build (§6.13, §12.4).
 
 #### 20.6.3 Auto-start integration with user apps
@@ -114,7 +120,7 @@ Generated-layer events carry the trigger, contribution identities, enablement, c
 `AppFeature.requires.globalServices` is the only hard dependency declaration for global services. During user-app `pre-start`, after early subscribers and before user-app build, the planner aggregates required ids and calls `GlobalAppService.ensureRunning`.
 
 - A healthy set emits the start pair with `cached: true` and proceeds without provider work.
-- A cold or unhealthy set starts the required services with `cached: false` before user-app build.
+- A cold or unhealthy set starts the required services with `cached: false` before user-app build. Shared services started this way stay up when the user-app start later fails or is interrupted; a failed user app never undoes global services.
 - A required id absent from the resolved global plan emits `pre-global-start`, fails with `GlobalServiceMissingError`, aborts user-app start, and MUST NOT emit `post-global-start`.
 
 Direct Landofile `dependsOn` syntax for global services is not part of this contract (§14.2).
@@ -127,20 +133,20 @@ The global start event pair for required services is nested inside user-app `pre
 
 #### 20.6.5 Restart, rebuild, and router revalidation
 
-`meta:global:restart` is `stop` then `start`; `meta:global:rebuild` is regenerate, destroy, build, then apply. None of `meta:global:start`, restart, or rebuild reaches `RouterService.setup` or `prepare`, which are reached only from app start, `lando setup`, and doctor's proxy fix. Changed installation `router:` ports therefore take effect on the next of those, not on a global restart. Because the router is the reason these commands are prescribed as recovery steps, both MUST call `RouterService.revalidateStartup` (§10.2) after global services have started, including partial startup. The persisted router startup observation is refreshed or cleared. Without an existing global-service failure, a classified watcher failure MUST fail the command with `RouterWatcherError`; otherwise the global-service failure remains primary and the persisted watcher diagnostic MUST remain doctor-visible. A remediation that names `lando global:restart` or `lando global:rebuild` therefore clears the diagnostic it names once the condition is gone; the `router-file-watcher` doctor check keeps reporting the record as an unrevalidated observation and never probes live. The restart result schema is the start result schema, and the error channel adds `ProxyError` and `RouterWatcherError`.
+`meta:global:restart` checks placement (§20.1), then runs `stop` then `start`; a placement failure MUST leave the global app and its route definition untouched; `meta:global:rebuild` is regenerate, destroy, build, then apply. The stop phase withdraws the route definition exactly as `meta:global:stop` does, so a restart whose start phase fails leaves it withdrawn until a fully successful start publishes it. None of `meta:global:start`, restart, or rebuild reaches `RouterService.setup` or `prepare`, which are reached only from app start, `lando setup`, and doctor's proxy fix. Changed installation `router:` ports therefore take effect on the next of those, not on a global restart. Because the router is the reason these commands are prescribed as recovery steps, both MUST call `RouterService.revalidateStartup` (§10.2) after global services have started, including partial startup. The persisted router startup observation is refreshed or cleared. Without an existing global-service failure, a classified watcher failure MUST fail the command with `RouterWatcherError`; otherwise the global-service failure remains primary and the persisted watcher diagnostic MUST remain doctor-visible. A remediation that names `lando global:restart` or `lando global:rebuild` therefore clears the diagnostic it names once the condition is gone; the `router-file-watcher` doctor check keeps reporting the record as an unrevalidated observation and never probes live. The restart result schema is the start result schema, and the error channel adds `ProxyError` and `RouterWatcherError`.
 
-Explicit global start, restart, and rebuild MUST attempt selected services and their dependencies in dependency-connected groups. A typed build or apply failure in one group MUST NOT prevent independent groups from being attempted or cause successful groups to be rolled back. Partial failure MUST remain a command failure and MUST NOT publish `post-global-start` or `post-global-rebuild`. Routes of services in a failed group MUST NOT be applied.
+Explicit global start, restart, and rebuild MUST attempt selected services and their dependencies in dependency-connected groups. A typed build or apply failure in one group MUST NOT prevent independent groups from being attempted or cause successful groups to be rolled back. Successful services stay running. A failed group keeps the containers, networks, volume creation receipts, workers, and sessions it established (§6.7); the next explicit global start converges on those service resources. Partial failure MUST remain a command failure and MUST NOT publish `post-global-start` or `post-global-rebuild`. Explicit global commands do not emit the §6.15 incomplete-start warning, which belongs to app `start`, `restart`, and `rebuild`. The route definition is one app-wide resource, not a per-group resource: if any group fails, the one previously published definition is left unchanged.
 
-After committed apply, every successfully applied group MUST pass the §6.7 readiness barrier before route publication and success events. Readiness verdicts are group outcomes: a failed readiness group joins the partial-failure aggregate and its routes are withdrawn like other failed groups; independent successful groups remain applied. Restart and rebuild MUST revalidate the router even if readiness fails after apply, without replacing the primary failure. Warm cached `ensureRunning` MUST skip the barrier because it MUST NOT contact the provider (§20.6.2); cold starts run it.
+After committed apply, every successfully applied group MUST pass the §6.7 readiness barrier before success events. Readiness verdicts are group outcomes: a failed readiness group joins the partial-failure aggregate and keeps its established service resources; independent successful groups remain applied and running. If any group fails, the previously published route definition is left unchanged. Restart and rebuild MUST revalidate the router even if readiness fails after apply, without replacing the primary failure. Warm cached `ensureRunning` MUST skip the barrier because it MUST NOT contact the provider (§20.6.2); cold starts run it.
 
-The global app owns one route definition. After its groups are attempted, including when every group fails, explicit global start, restart, and rebuild MUST publish it through `RouterService.applyRoutes` alone, containing exactly the routes of services the command started plus those of unselected services the managed provider observes running, paused, or restarting under the global app root. Routes of stopped, missing, or failed services are withdrawn; an empty set removes the definition. With routing disabled, or when the global plan declares no routes, the definition is withdrawn instead (§10.2) without router setup. Started and rebuilt rows report their published route URLs. When routing is enabled and the global plan declares a service whose id is the active `RouterService.id`, a `meta:global:start` selection that contains a routed service also starts that service with its dependencies and reports it in `servicesStarted`, so the command never starts a service it does not report.
+The global app owns one route definition. `RouterService` does not expose a read of that definition (`observeRoutes` returns read-only evidence for requested routes, §10.2, not the definition), and provider applied state precedes publication, so a partial result MUST NOT be merged or reconstructed. If any selected group fails, explicit global start, restart, and rebuild MUST return before `RouterService.applyRoutes`, including before empty-set removal and before disabled-routing removal. The one previously published definition stays unchanged. A command whose groups all succeed publishes through `RouterService.applyRoutes` alone, as before: the definition contains exactly the routes of services the command started plus those of unselected services the global app's provider observes running, paused, or restarting under the global app root. A fully successful retry therefore publishes the current desired routes. On that success path, routes of stopped, missing, or failed services are withdrawn; an empty set removes the definition; with routing disabled, or when the global plan declares no routes, the definition is withdrawn instead (§10.2) without router setup. Explicit stop and destroy own route removal. Started and rebuilt rows report their published route URLs. When routing is enabled and the global plan declares a service whose id is the active `RouterService.id`, a `meta:global:start` selection that contains a routed service also starts that service with its dependencies and reports it in `servicesStarted`, so the command never starts a service it does not report.
 
 ### 20.7 CLI surface (`meta:global:*`)
 
 | Canonical id | Alias | Bootstrap | Contract |
 |---|---|---|---|
-| `meta:global:config` | `global:config` | `minimal` | Read or write the canonical global Landofile and enablement map. The generated layer is read-only. |
-| `meta:global:destroy` | `global:destroy` | `global` | Destroy services and resources; requires confirmation unless `--yes`. `--purge` follows §20.9. |
+| `meta:global:config` | `global:config` | `minimal` | Read or write the canonical global Landofile and enablement map; `set`/`unset` follow the §8.2.1 format-preserving, fail-closed write contract. The generated layer is read-only. |
+| `meta:global:destroy` | `global:destroy` | `global` | Destroy services and resources; requires confirmation unless `--yes`. `--provider=<id>` restricts applied evidence and cleanup to that provider. `--purge` follows §20.9. |
 | `meta:global:info` | `global:info` | `global` | Report service information; supports `--service` and `--format`. |
 | `meta:global:install` | `global:install` | `global` | Enable a plugin's contributions and regenerate without starting. |
 | `meta:global:list` | `global:list` | `minimal` | Report catalog state, source plugin, and declared command ids. JSON is the canonical machine shape. |
@@ -152,13 +158,13 @@ The global app owns one route definition. After its groups are attempted, includ
 | `meta:global:stop` | `global:stop` | `global` | Stop all running services or repeated `--service` selections. |
 | `meta:global:uninstall` | `global:uninstall` | `global` | Disable a plugin's contributions, regenerate, and stop affected services. |
 
-`meta:global:stop` with no selection is the §5.3.1 teardown. `--service`/`-s` is repeatable and stops and removes exactly the observed containers of the named services, with no dependency expansion. It MUST retain applied state, all volumes, the shared network, and unselected containers and their active routes. With no applied plan and no owned runtime resources it reports `unchanged`, even with selections. When an applied plan exists, unknown or empty service names MUST fail before any mutation. An otherwise valid selected orphan request (orphaned resources, no applied plan) fails closed with `AppResolveError` (§5.3.1). A retry reconciles the selected services' routes even when their containers were already removed, while `servicesStopped` lists only containers actually removed, so an `unchanged` container receipt MAY accompany route reconciliation. Later app starts MAY start a stopped global service again (§20.6.3).
+`meta:global:stop` with no selection is the §5.3.1 teardown. `--service`/`-s` is repeatable and stops and removes exactly the observed containers of the named services, with no dependency expansion. It MUST retain applied state, all named volumes, the shared network, and unselected containers and their active routes. With no applied plan and no owned runtime resources it reports `unchanged`, even with selections. When an applied plan exists, unknown or empty service names MUST fail before any mutation. An otherwise valid selected orphan request (orphaned resources, no applied plan) fails closed with `AppResolveError` (§5.3.1). A retry reconciles the selected services' routes even when their containers were already removed, while `servicesStopped` lists only containers actually removed, so an `unchanged` container receipt MAY accompany route reconciliation. Later app starts MAY start a stopped global service again (§20.6.3).
 
 `meta:global:start` and auto-start refuse an absent generated layer when no contribution can materialize it. Install and uninstall accept a plugin package name or contribution id; ambiguity is rejected. `meta:global:config` MUST reject generated-layer writes with `GlobalDistReadOnlyError`. `apps:poweroff` stops the global app by default; `--keep-global` leaves it running.
 
 #### 20.7.1 Top-level alias reservation
 
-The `global:` prefix is reserved under §8.1.2. Plugin aliases using it fail with `CommandAliasConflictError`. User `commandAliases.custom:` MAY remap an alias; canonical `meta:global:*` ids remain callable.
+The `global:` prefix is reserved under §8.1.2. Plugin aliases using it fail with `CommandAliasConflictError`. User `commandAliases.custom:` MAY remap a plugin alias claim; canonical `meta:global:*` ids remain callable.
 
 ### 20.8 Networking and discovery
 
@@ -178,11 +184,13 @@ At `app` bootstrap, `globalServices.<name>.{type,primary,creds,hostnames,routes,
 
 | Written scope | Global-app behavior |
 |---|---|
-| `service` | Owned by one global service; removed by destroy and by purge. |
-| `app` | Shared across global services; preserved by normal destroy and removed by `--purge`. |
+| `service` | Data owned by one global service; preserved by normal destroy and removed by `--purge`. |
+| `app` | Data shared across global services; preserved by normal destroy and removed by `--purge`. |
 | `global` | Shared under §6.5; survives `meta:global:destroy --purge` and is removed only by `meta:uninstall` (§17.7). |
 
 Global-app resources carry the standard ownership labels plus a global-app marker so `apps:poweroff --keep-global` can exclude them.
+
+Ordinary global destroy MUST retain service- and app-scoped data (§5.3.1); that guarantee covers named stores only, and a removed global container's anonymous volumes go with it (§6.5). Scratch apps retain their explicit lifetime and volume-removal policy (§21).
 
 ### 20.10 Proxy and CA realization through the global app
 
@@ -190,7 +198,9 @@ Global-app resources carry the standard ownership labels plus a global-app marke
 
 The default `RouterService` layer (`@lando/proxy-traefik`) realizes routes through the `traefik` service in the global app. `@lando/proxy-traefik` contributes both `globalServices: traefik` and `routerServices: traefik`; an unpaired contribution fails with `ProxyContributionPairError`. `RouterService.setup` ensures the service is running, and route application uses the service's standard managed mounts. The §10.2 interface is unchanged.
 
-The router's own `traefik` and `traefik-diagnostics` global services author `routes: []` (§6.6), so global ready output and `lando global:info` list Traefik's published endpoints and never a generated `<service>.global.<domain>` hostname the router does not serve. The router-owned dashboard keeps its own route above `ROUTE_PRIORITY_MAX` (§10.2).
+Routed user and scratch apps MUST use the host provider. Nonempty routes with an enabled router on another provider MUST fail planning with `RouteProviderMismatchError` (§10.2), never route through host-published ports.
+
+The router's own `traefik` and `traefik-diagnostics` global services author `routes: []` (§6.6), so global ready output and `lando global:info` list Traefik's published host connections (§6.10) and never a generated `<service>.global.<domain>` hostname the router does not serve. The router-owned dashboard keeps its own route above `ROUTE_PRIORITY_MAX` (§10.2).
 
 Alternative `RouterService` implementations MAY avoid `GlobalAppService`. Selection keeps §4.3 precedence: explicit Landofile selection, global default, plugin `defaultFor`, then sole implementation.
 
@@ -233,7 +243,8 @@ All errors are tagged and include remediation where applicable:
 - `LegacyProxyContainerDetected`, informational and non-blocking
 - `LegacyProxyContainerConflictError`, blocking global proxy start while the conflict exists
 - `GlobalAppError`, the umbrella for global state-transition failures. Partial start or rebuild failure MUST carry operation `start` or `rebuild`, identify failed and running services, preserve the first underlying failure as `cause`, and provide global-scoped recovery remediation. If no group succeeds, the first original failure MUST be returned unchanged.
-- `ServiceNotReadyError`, the shared post-commit readiness verdict. It participates in group outcomes and partial-failure aggregation; if no group succeeds the first original failure remains unchanged. Remediation uses `lando global:logs -s <service>` and `lando global:start`, except `inspect-failed`, which prescribes `lando doctor`. Applied containers remain available for diagnosis while failed routes are reconciled (§20.6.5).
+- `AppPlacementError`, with `app`, `desiredProviderId`, `realizedProviderId`, message, and remediation. Start and setup MUST propagate it as the top-level failure for required global services and routing, never wrapped by `GlobalAppError`, `GlobalAutoStartError`, or `ProxySetupError`. Explicit global lifecycle commands MUST also preserve it at top level. Best-effort SSH sidecar acquisition (§10.4, §20.6.3) is exempt: its placement failure warns and MUST NOT abort the caller.
+- `ServiceNotReadyError`, the shared post-commit readiness verdict. It participates in group outcomes and partial-failure aggregation; if no group succeeds the first original failure remains unchanged. Remediation uses `lando global:logs -s <service>` and `lando global:start`, except `inspect-failed`, which prescribes `lando doctor`. Established resources and published routes remain available for diagnosis and convergence on retry (§20.6.5).
 - `ProxyError` and `RouterWatcherError`, added to the `meta:global:restart` and `meta:global:rebuild` error channels by `RouterService.revalidateStartup` (§10.2, §20.6.5)
 
 This surface also uses the shared `CommandAliasConflictError` and `ConfigExpressionScopeNotPermittedError` tags defined by their owning contracts (§7.3.1, §8.1.2).
@@ -242,7 +253,7 @@ This surface also uses the shared `CommandAliasConflictError` and `ConfigExpress
 
 - Multi-host shared global apps are not supported.
 - The global root is not independently relocatable; changing `<userDataRoot>` relocates it (§7.5).
-- Per-app or cross-provider global-app selection is excluded with §5.9.
+- Independent per-app global-provider overrides and multiple providers within the global app are unsupported. Global placement follows §20.1.
 - Explicit Landofile `dependsOn: ["global:<service>"]` is not a contract; only `AppFeature.requires.globalServices` applies.
 - Users cannot promote user-app services into the global app.
 - Plugins MUST NOT register canonical ids under `meta:global:*`; they MAY operate on the global app through commands in their own namespaces.

@@ -31,6 +31,11 @@ export const NETAVARK_SYSTEMD_USER_BUS_PATCH_PATH = join(
   "patches",
   "netavark-v2.0.0-systemd-user-bus.patch",
 );
+/** Repo patch the source build applies to `component`, if any; notices link the same file. */
+export const sourcePatchFor = (component: RuntimeBundleComponent): string | undefined =>
+  component.sourceBuild === LinuxNetavarkSourceBuild && component.version === "2.0.0"
+    ? NETAVARK_SYSTEMD_USER_BUS_PATCH_PATH
+    : undefined;
 const NETAVARK_AARDVARK_SOURCE_SHA256 = "0cc2090fc5124a68f69da60215a2b7a85023d1c495d2e5685e83ccf20ecd3823";
 const NETAVARK_AARDVARK_PATCHED_SHA256 = "f01cefaf9a960ead28008b6bddb9d76811dbbb44b339e70c64fff66a5c3c969d";
 
@@ -106,7 +111,7 @@ export const buildLinuxHelperFromSource = async (options: LinuxHelperSourceBuild
   try {
     await options.execute(["tar", "-xf", inputPath(options.artifactPaths, "source"), "-C", workDir]);
     const sourceDir = join(workDir, sourceDirName(options.component));
-    if (options.component.sourceBuild === LinuxNetavarkSourceBuild && options.component.version === "2.0.0") {
+    if (sourcePatchFor(options.component) !== undefined) {
       await applyVerifiedSourcePatch({
         sourceDir,
         sourcePath: join(sourceDir, "src", "dns", "aardvark.rs"),

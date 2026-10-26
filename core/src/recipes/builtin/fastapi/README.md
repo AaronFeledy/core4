@@ -1,6 +1,25 @@
 # fastapi
 
-FastAPI scaffold with PostgreSQL and Redis.
+Use this recipe for a FastAPI app with PostgreSQL and Redis. It configures the
+services but does not create application files or install their dependencies.
+Install dependencies through the generated tooling before serving the app.
+
+## Host prerequisites
+
+- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+
+## Install dependencies
+
+Create your application files and `requirements.txt`, then run
+`lando pip install -r requirements.txt`. Startup does not install requirements
+or launch the application server; the default command keeps the service running
+for setup. Add `.venv/` to `.gitignore` and commit `requirements.txt` so the
+dependency list stays with your project.
+
+The recipe's entrypoint initializes `/app/.venv` when its pip is missing, then
+executes the original command. `VIRTUAL_ENV` and `PATH` select this virtual
+environment for tooling and commands you run yourself. Installed packages stay
+on the app mount and survive container recreation.
 
 ## Generated services
 
@@ -13,20 +32,9 @@ FastAPI scaffold with PostgreSQL and Redis.
 - `lando uvicorn …`: uvicorn inside the web service's venv.
 - `lando pip …`: pip inside the web service's venv.
 
-The recipe's entrypoint initializes `/app/.venv` when its pip is missing and executes the
-original command. `VIRTUAL_ENV` and `PATH` select it for tooling and bare user
-commands. Installed packages survive container recreation on the app mount.
-Add `.venv/` to `.gitignore` and commit `requirements.txt` for reproducibility.
-Run `lando pip install -r requirements.txt` before serving an app; startup never
-installs requirements automatically. The default command stays keep-alive.
-
 ## Alpha limitations
 
 - The recipe writes a Landofile only; create application files yourself and
   install dependencies through the generated tooling.
 - Alembic migrations, ASGI lifespan tooling, and SSE/WebSocket-specific
   presets are deferred to Beta.
-
-## Host prerequisites
-
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.

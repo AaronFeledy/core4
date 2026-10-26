@@ -8,31 +8,33 @@ tags: [beta, docs, library, embedding]
 
 # Embedding defaults
 
+An embedded runtime is silent by default and loads only plugins supplied by the
+host. These defaults let your application decide how Lando reports output,
+collects telemetry, and loads code.
+
 ## Library defaults
 
-Library runtimes use the silent logger by default.
-
-Library runtimes provide a json renderer service by default.
-
-Telemetry is disabled unless the embedder opts in (`off`).
-
-The root entry installs no bundled plugin modules; plugin discovery is host-provided only by default (`explicit`).
+| Setting | Default |
+| --- | --- |
+| Logger | Silent |
+| Renderer service | JSON |
+| Telemetry | Disabled (`off`) unless the host opts in |
+| Plugin discovery | Host-provided only (`explicit`); the root entry installs no bundled plugin modules |
 
 ## Library overrides
 
-Embedders can override the renderer field at runtime construction (`plain`).
-
-Embedders can opt into telemetry at runtime construction (`true`).
-
-Embedders can import @lando/core/bundled-plugins before runtime construction to opt into bundled-only loading.
+Choose overrides when constructing the runtime. For example, set the renderer
+to `plain` or opt into telemetry with `true`. To load bundled plugins, import
+`@lando/core/bundled-plugins` before construction; this enables bundled-only loading.
 
 Host plugin layers are built once and override matching generated runtime services.
-
-Resolved plugin manifests register contributions without enabling external imports.
+You can also supply resolved plugin manifests to register contributions without
+enabling external imports. See [Embedding the Lando runtime](./embedding-runtime.mdx)
+for runtime construction and plugin options.
 
 ## Library import boundary
 
-Embedders import makeLandoRuntime from the default package entry (`@lando/core`).
+Import `makeLandoRuntime` from the default package entry, `@lando/core`.
 
 OCLIF is development-only; the private CLI spec directories contain native metadata/adapters and manifest tooling, and no published package specifier exposes them (`not-published`).
 

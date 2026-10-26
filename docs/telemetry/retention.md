@@ -5,7 +5,7 @@ description: How Lando redacts telemetry before it leaves your machine and how l
 
 # Telemetry Redaction and Retention Policy
 
-This is the canonical, in-repo policy for how Lando telemetry is redacted before it leaves your machine and how long any collected data is retained. It is published before telemetry emission is enabled by default and is linked from the [telemetry event inventory](./events.md), the opt-out command output (`lando config telemetry status`), and the machine-readable inventory in [`telemetry/src/inventory.ts`](../../telemetry/src/inventory.ts).
+Lando redacts telemetry on your machine before buffering or sending it. This policy limits raw-event retention to 30 days and aggregated-data retention to 13 months. For the events and fields Lando records, see the [telemetry event inventory](./events.md). To check your current setting, run `lando config telemetry status`; to disable telemetry, see [How to opt out](#how-to-opt-out).
 
 ## Redaction rules {#redaction}
 
@@ -13,7 +13,7 @@ Every telemetry payload passes through the shared redaction layer ([`telemetry/s
 
 Redaction does two things:
 
-1. **Field allowlisting.** For a known event, only the fields declared in the [event inventory](./events.md) survive. Enum fields keep only inventory-allowed values; any other field — install directories, raw command arguments, raw error messages, host details — is removed. This is what constrains `update-outcome` telemetry to `version`, `targetVersion`, `channel`, `platform`, and `outcome`.
+1. **Field allowlisting.** For a known event, only the fields declared in the [event inventory](./events.md) survive. Enum fields keep only inventory-allowed values; any other field, including install directories, raw command arguments, raw error messages, and host details, is removed. This is what constrains `update-outcome` telemetry to `version`, `targetVersion`, `channel`, `platform`, and `outcome`.
 2. **Value scrubbing.** Free-string values are scrubbed of sensitive content even on an allowed field. The layer rejects or removes:
    - POSIX paths, Windows drive paths, UNC paths, and `~/` home-directory aliases;
    - hostnames and fully-qualified domain names;

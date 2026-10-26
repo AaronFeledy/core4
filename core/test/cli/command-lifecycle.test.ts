@@ -183,7 +183,7 @@ describe("generic CLI command lifecycle", () => {
       effect: Effect.fail(new CommandLifecycleTestError({ message: "provider unavailable" })),
       failureTag: "CommandLifecycleTestError",
     },
-    { name: "defect", effect: Effect.die(new Error("unexpected defect")), failureTag: "Defect" },
+    { name: "defect", effect: Effect.die(new Error("unexpected defect")), failureTag: "LandoInternalError" },
     { name: "interruption", effect: Effect.interrupt, failureTag: "Interrupted" },
   ]) {
     test(`publishes one terminal error for ${scenario.name}`, async () => {
@@ -337,7 +337,7 @@ describe("generic CLI command lifecycle", () => {
 
     // Then
     expect(rendered).toEqual(["started"]);
-    expect(harness.exitCodes).toEqual([]);
+    expect(harness.exitCodes).toEqual([0]);
   });
 
   test("logs lifecycle publication failures at debug without changing command success", async () => {
@@ -359,7 +359,7 @@ describe("generic CLI command lifecycle", () => {
       "CLI lifecycle event publication failed.",
       "CLI lifecycle event publication failed.",
     ]);
-    expect(harness.exitCodes).toEqual([]);
+    expect(harness.exitCodes).toEqual([0]);
   });
 
   test("uses an internal event service for Layer.empty bootstrap-none commands", async () => {
@@ -416,7 +416,7 @@ describe("generic CLI command lifecycle", () => {
     } satisfies LifecycleOptions<{ readonly ok: boolean }, EventService, never>;
     const command = Effect.gen(function* () {
       const sink = yield* Effect.serviceOption(StreamFrameSink);
-      if (Option.isSome(sink)) yield* sink.value.emit({ _tag: "stdout", chunk: "working" });
+      if (Option.isSome(sink)) yield* sink.value.emit({ kind: "record", _tag: "stdout", chunk: "working" });
       return { ok: true };
     });
 

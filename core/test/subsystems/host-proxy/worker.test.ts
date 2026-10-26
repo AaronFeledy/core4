@@ -1,15 +1,19 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { DateTime, Effect, Fiber } from "effect";
+import { fileURLToPath } from "node:url";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { encodeCommandResult } from "@lando/sdk/command-result";
+import { DateTime, Effect, Exit, Fiber, Schema } from "effect";
 
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  AppPlan,
+  PortNumber,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -18,6 +22,7 @@ import {
 
 import { hostProxyWorkerEntry } from "@lando/engine/composition";
 import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "@lando/engine/subsystems/host-proxy/session-env";
+import { sendHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import {
   hostProxyMountInfoFromPlan,
   hostProxyWorkerArgv,
@@ -28,6 +33,10 @@ import {
   workerStatePath,
 } from "@lando/engine/subsystems/host-proxy/worker";
 import { defaultSpawnWorker } from "@lando/engine/subsystems/host-proxy/worker-process";
+import {
+  type HostProxyControlRecord,
+  HostProxyWorkerIdentity,
+} from "@lando/engine/subsystems/host-proxy/worker-records";
 import {
   HOST_PROXY_WORKER_PROTOCOL_VERSION,
   type HostProxyWorkerRecord,
@@ -54,7 +63,6 @@ const plan: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -94,10 +102,26 @@ const servicePlan = (name: string, target: string, eligible = true): ServicePlan
 });
 
 const tempRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "lando-host-proxy-worker-"));
+const spawnedPids = new Set<number>();
 const startDetachedHostProxyWorker = (
-  options: Omit<Parameters<typeof startDetachedHostProxyWorkerWithPrivateFileAccess>[0], "privateFileAccess">,
+  options: Omit<
+    Parameters<typeof startDetachedHostProxyWorkerWithPrivateFileAccess>[0],
+    "privateFileAccess"
+  > & {
+    readonly privateFileAccess?: Parameters<
+      typeof startDetachedHostProxyWorkerWithPrivateFileAccess
+    >[0]["privateFileAccess"];
+  },
 ) =>
-  startDetachedHostProxyWorkerWithPrivateFileAccess({ ...options, privateFileAccess: ownerOnlyFileAccess });
+  startDetachedHostProxyWorkerWithPrivateFileAccess({
+    ...options,
+    privateFileAccess: options.privateFileAccess ?? ownerOnlyFileAccess,
+    spawnWorker: async (spec) => {
+      const worker = await (options.spawnWorker ?? defaultSpawnWorker)(spec);
+      if (options.spawnWorker === undefined) spawnedPids.add(worker.pid);
+      return worker;
+    },
+  });
 const terminateOwnedHostProxyWorker = (
   app: Parameters<typeof terminateOwnedHostProxyWorkerWithPrivateFileAccess>[0],
   options: Omit<
@@ -143,17 +167,14 @@ const fakeShim = async (root: string): Promise<string> => {
 };
 
 const killLeakedWorkers = async (): Promise<void> => {
-  const proc = Bun.spawn(["pgrep", "-f", "__internal:host-proxy-worker"], { stdout: "pipe", stderr: "pipe" });
-  const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
-  if (exitCode !== 0) return;
-  for (const raw of stdout.split("\n")) {
-    const pid = Number(raw.trim());
-    if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) {
-      try {
-        process.kill(pid, "SIGTERM");
-      } catch {}
+  for (const pid of spawnedPids) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch (cause) {
+      if (!(cause instanceof Error && hasNodeCode(cause, "ESRCH"))) throw cause;
     }
   }
+  spawnedPids.clear();
 };
 
 const hasNodeCode = (cause: unknown, code: string): boolean =>
@@ -179,6 +200,70 @@ const waitForPidExit = async (pid: number): Promise<void> => {
 
 afterEach(killLeakedWorkers);
 
+test.each(["interruption", "failure"] as const)(
+  "ownership record write %s preserves worker ownership semantics",
+  async (outcome) => {
+    const root = await tempRoot();
+    const published: string[] = [];
+    let terminated = 0;
+    try {
+      const fiber = Effect.runFork(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: join(root, "shim"),
+          privateFileAccess: {
+            enforce: async (path) => {
+              await chmod(path, 0o600);
+              if (path.includes("worker.json.tmp-")) {
+                if (outcome === "failure") throw new Error("record write denied");
+                fiber.interruptUnsafe();
+              }
+            },
+            verify: async () => undefined,
+          },
+          publish: (session) =>
+            Effect.sync(() => {
+              published.push(session.sessionId);
+            }),
+          spawnWorker: (spec) => ({
+            pid: 876543,
+            logPath: join(root, "worker.log"),
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: async () => ({
+              _tag: "ready",
+              appId: app.id,
+              sessionId: "session",
+              token: "token",
+              controlToken: "control",
+              socketPath: join(root, "host-proxy.sock"),
+              shimPath: join(root, "lando"),
+              transport: "unix-socket",
+            }),
+            terminate: async () => {
+              terminated++;
+            },
+          }),
+        }),
+      );
+      const exit = await Effect.runPromise(Fiber.await(fiber));
+      expect(exit._tag).toBe("Failure");
+      expect(Exit.hasInterrupts(exit)).toBe(outcome === "interruption");
+      expect(terminated).toBe(outcome === "interruption" ? 0 : 1);
+      expect(published).toEqual(outcome === "interruption" ? ["session"] : []);
+      expect(await Effect.runPromise(readWorkerRecord(app, { userDataRoot: root }))).toEqual(
+        outcome === "interruption"
+          ? expect.objectContaining({ sessionId: "session", pid: 876543 })
+          : undefined,
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
 const workerRecord = (
   root: string,
   overrides: { readonly socketPath?: string; readonly pid?: number } = {},
@@ -194,11 +279,18 @@ const workerRecord = (
     startedAt: "2026-01-01T00:00:00.000Z",
     pid: overrides.pid ?? 12345,
     controlToken: "control-token",
+    providerId: "lando",
+    sessionId: "session-1",
+    token: "secret-token",
+    configDigest: "previous-config",
   };
 };
 
-type TestControlRecord = Omit<HostProxyWorkerRecord, "appRoot" | "socketPath"> & {
+type TestControlRecord = HostProxyControlRecord & {
   readonly socketPath: string;
+  readonly shimPath: string;
+  readonly startedAt: string;
+  readonly configDigest?: string;
 };
 
 const legacyWorkerRecord = (root: string): TestControlRecord => {
@@ -208,7 +300,7 @@ const legacyWorkerRecord = (root: string): TestControlRecord => {
     transport: "unix-socket",
     socketPath: join(runDir, "host-proxy.sock"),
     shimPath: join(runDir, "lando"),
-    protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+    protocolVersion: 1,
     startedAt: "2026-01-01T00:00:00.000Z",
     pid: 12345,
     controlToken: "control-token",
@@ -221,9 +313,12 @@ const listenControlServerForRecord = async <Record extends TestControlRecord>(
   readonly record: Record;
   readonly server: ReturnType<typeof createServer>;
   readonly shutdowns: () => number;
+  readonly requests: () => number;
 }> => {
   let shutdowns = 0;
+  let requests = 0;
   const server = createServer((request, response) => {
+    requests++;
     const pathname = new URL(request.url ?? "", "http://control.invalid").pathname;
     if (request.headers["x-lando-host-proxy-control"] !== record.controlToken) {
       response.writeHead(401).end();
@@ -234,6 +329,7 @@ const listenControlServerForRecord = async <Record extends TestControlRecord>(
         JSON.stringify({
           appId: record.appId,
           sessionId: "session-1",
+          configDigest: record.configDigest,
           transport: record.transport,
           protocolVersion: record.protocolVersion,
           pid: record.pid,
@@ -255,13 +351,87 @@ const listenControlServerForRecord = async <Record extends TestControlRecord>(
     server.once("error", rejectListen);
     server.listen(socketPath, resolveListen);
   });
-  return { record, server, shutdowns: () => shutdowns };
+  return { record, server, shutdowns: () => shutdowns, requests: () => requests };
 };
 
 const listenControlServer = async (root: string) => listenControlServerForRecord(workerRecord(root));
 
 describe("detached host-proxy worker manager", () => {
-  test("starts a detached worker, persists socket-owned state, and keeps session token out of worker.json", async () => {
+  test.each([0, -1, 1.5])("rejects malformed worker pid %s", async (pid) => {
+    // Given untrusted persisted control state.
+    const root = await tempRoot();
+    const path = join(root, "worker.json");
+    try {
+      await writeFile(path, JSON.stringify({ ...workerRecord(root), pid }));
+      // When decoded, then it cannot authorize process control.
+      expect((await Effect.runPromise(readWorkerRecordStateAt(path)))._tag).toBe("malformed");
+      expect(
+        Schema.is(HostProxyWorkerIdentity)({
+          appId: "demo",
+          sessionId: "session",
+          transport: "unix-socket",
+          protocolVersion: 2,
+          pid,
+        }),
+      ).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each(["terminate", "root", "replace"] as const)(
+    "%s never contacts an untrusted record",
+    async (operation) => {
+      // Given a live control server referenced by a world-readable record.
+      const root = await tempRoot();
+      const control = await listenControlServerForRecord(workerRecord(root, { pid: process.pid }));
+      const signals: number[] = [];
+      try {
+        await Effect.runPromise(writeWorkerRecord(app, { userDataRoot: root }, control.record));
+        await chmod(workerStatePath(app, { userDataRoot: root }), 0o644);
+        // When a cleanup or replacement is requested.
+        if (operation === "root")
+          await Effect.runPromise(
+            terminateOwnedHostProxyWorkersInRootWithPrivateFileAccess(root, {
+              privateFileAccess: ownerOnlyFileAccess,
+              terminateProcess: async (pid) => {
+                signals.push(pid);
+              },
+            }),
+          );
+        else if (operation === "terminate")
+          await Effect.runPromise(
+            terminateOwnedHostProxyWorker(app, {
+              paths: { userDataRoot: root },
+              terminateProcess: async (pid) => {
+                signals.push(pid);
+              },
+            }),
+          );
+        else {
+          const session = await Effect.runPromise(
+            startDetachedHostProxyWorker({
+              app,
+              plan,
+              paths: { userDataRoot: root },
+              shimArtifactPath: await fakeShim(root),
+              terminateProcess: async (pid) => {
+                signals.push(pid);
+              },
+            }),
+          );
+          await session.close();
+        }
+        // Then the untrusted record grants neither network nor signal authority.
+        expect(control.requests()).toBe(0);
+        expect(signals).toEqual([]);
+      } finally {
+        control.server.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+  test("persists private reusable session credentials in worker.json", async () => {
     const root = await tempRoot();
     const writes: string[] = [];
     const database = servicePlan("database", "/app", false);
@@ -284,6 +454,7 @@ describe("detached host-proxy worker manager", () => {
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 12345,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async (value) => {
               writes.push(value);
@@ -305,17 +476,18 @@ describe("detached host-proxy worker manager", () => {
       );
 
       const record = await readFile(workerStatePath(app, { userDataRoot: root }), "utf8");
+      expect((await Bun.file(workerStatePath(app, { userDataRoot: root })).stat()).mode & 0o077).toBe(0);
 
       expect(session.token).toBe("secret-token");
       expect(session.controlToken).toBe("control-token");
       expect(writes[0]).toContain('"id":"demo"');
       expect(writes.join("\n")).not.toContain("secret-token");
       expect(record).toContain('"controlToken": "control-token"');
-      expect(record).toContain('"protocolVersion": 1');
+      expect(record).toContain('"protocolVersion": 2');
       expect(record).toContain('"providerId": "lando"');
       expect(record).toContain('"containerUrl": "http://host.containers.internal:32123"');
       expect(record).toContain('"probeServices": [\n    "appserver",\n    "worker"\n  ]');
-      expect(record).not.toContain("secret-token");
+      expect(JSON.parse(record)).toMatchObject({ token: session.token, sessionId: session.sessionId });
       expect(hostProxyWorkerArgv({ ...workerEntry, appId: "demo" })).toEqual(
         expect.arrayContaining(["--app-id", "demo"]),
       );
@@ -362,7 +534,7 @@ describe("detached host-proxy worker manager", () => {
     }
   });
 
-  test("classifies an invalid current-shaped worker record as malformed", async () => {
+  test("classifies a partial record with control credentials as terminable legacy state", async () => {
     // Given
     const root = await tempRoot();
     const path = join(root, "invalid-current-worker.json");
@@ -374,7 +546,7 @@ describe("detached host-proxy worker manager", () => {
       const state = await Effect.runPromise(readWorkerRecordStateAt(path));
 
       // Then
-      expect(state._tag).toBe("malformed");
+      expect(state._tag).toBe("legacy");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -426,6 +598,7 @@ describe("detached host-proxy worker manager", () => {
         shimArtifactPath: join(root, "shim"),
         spawnWorker: (spec) => ({
           pid,
+          logPath: join(root, "worker.log"),
           argv: spec.argv,
           writeStdin: async () => undefined,
           readReady: async () => {
@@ -492,7 +665,10 @@ console.log(JSON.stringify({
 `,
       );
 
-      const worker = defaultSpawnWorker({ argv: [process.execPath, scriptPath] });
+      const worker = await defaultSpawnWorker({
+        argv: [process.execPath, scriptPath],
+        privateFileAccess: ownerOnlyFileAccess,
+      });
       const ready = await worker.readReady();
 
       expect(JSON.parse(ready.token)).toEqual([]);
@@ -517,6 +693,20 @@ console.log(JSON.stringify({
     }
   });
 
+  test("identity without root and provider can authorize shutdown but not reuse", async () => {
+    const root = await tempRoot();
+    const { record, server } = await listenControlServer(root);
+    try {
+      expect(
+        await Effect.runPromise(probeWorkerWithPrivateFileAccess(record, { requireSessionIdentity: true })),
+      ).toBe("dead");
+      expect(await Effect.runPromise(probeWorker(record))).toBe("live");
+    } finally {
+      server.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("shuts down a bridged Windows worker through its TCP control listener", async () => {
     const root = await tempRoot();
     const base = workerRecord(root);
@@ -532,6 +722,7 @@ console.log(JSON.stringify({
           JSON.stringify({
             appId: base.appId,
             sessionId: "session-1",
+            configDigest: base.configDigest,
             transport: "tcp-host-gateway",
             protocolVersion: base.protocolVersion,
             pid: base.pid,
@@ -634,7 +825,7 @@ console.log(JSON.stringify({
     }
   });
 
-  test("replaces a live worker before spawning the next worker", async () => {
+  test("replaces a config-mismatched live worker before spawning the next worker", async () => {
     const root = await tempRoot();
     const control = await listenControlServer(root);
     const terminatedNewWorkers: number[] = [];
@@ -649,6 +840,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: () => ({
             pid: 56789,
+            logPath: join(root, "worker.log"),
             argv: hostProxyWorkerArgv({ ...workerEntry, appId: "demo" }),
             writeStdin: async () => undefined,
             readReady: async () => ({
@@ -692,6 +884,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 67890,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => undefined,
             readReady: () => {
@@ -725,6 +918,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 67901,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => {
               throw new Error("stdin failed");
@@ -768,7 +962,7 @@ console.log(JSON.stringify({
     }
   });
 
-  test("replacing a live real worker exits the old worker pid", async () => {
+  test("replacing a config-mismatched live real worker exits the old worker pid", async () => {
     const root = await tempRoot();
     try {
       const first = await Effect.runPromise(
@@ -782,12 +976,13 @@ console.log(JSON.stringify({
       const firstRecord = await Effect.runPromise(readWorkerRecord(app, { userDataRoot: root }));
       if (firstRecord === undefined) throw new Error("Expected first worker record after startup.");
 
+      await writeFile(join(root, "replacement-shim"), "#!/usr/bin/env sh\nexit 0\n");
       const second = await Effect.runPromise(
         startDetachedHostProxyWorker({
           app,
           plan,
           paths: { userDataRoot: root },
-          shimArtifactPath: await fakeShim(root),
+          shimArtifactPath: join(root, "replacement-shim"),
         }),
       );
       await waitForPidExit(firstRecord.pid);
@@ -798,6 +993,418 @@ console.log(JSON.stringify({
     } finally {
       await rm(root, { recursive: true, force: true });
       await killLeakedWorkers();
+    }
+  });
+
+  test("two real ensures reuse the worker pid and all credentials and register secrets", async () => {
+    // Given a live app-wide worker.
+    const root = await tempRoot();
+    const registered: string[] = [];
+    const service = makeRedactionService();
+    const redactor = RedactionService.of({
+      ...service,
+      registerValues: (values) =>
+        service.registerValues(values).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              registered.push(...values);
+            }),
+          ),
+        ),
+    });
+    const options = { app, plan, paths: { userDataRoot: root }, shimArtifactPath: await fakeShim(root) };
+    const first = await Effect.runPromise(
+      startDetachedHostProxyWorker(options).pipe(Effect.provideService(RedactionService, redactor)),
+    );
+    try {
+      const before = await Effect.runPromise(readWorkerRecord(app, options.paths));
+      expect(registered).toEqual([first.sessionId, first.token, first.controlToken]);
+      registered.length = 0;
+      // When the unchanged configuration is ensured again.
+      const second = await Effect.runPromise(
+        startDetachedHostProxyWorker(options).pipe(Effect.provideService(RedactionService, redactor)),
+      );
+      const after = await Effect.runPromise(readWorkerRecord(app, options.paths));
+      // Then no credentials or process change, including the control credential.
+      expect(after?.pid).toBe(before?.pid);
+      expect([second.sessionId, second.token, second.controlToken]).toEqual([
+        first.sessionId,
+        first.token,
+        first.controlToken,
+      ]);
+      expect(registered).toEqual(expect.arrayContaining([first.sessionId, first.token, first.controlToken]));
+      const output = await Effect.runPromise(
+        encodeCommandResult({
+          command: "app:open",
+          resultSchema: Schema.Struct({
+            sessionId: Schema.String,
+            token: Schema.String,
+            controlToken: Schema.String,
+          }),
+          outcome: {
+            _tag: "success",
+            value: { sessionId: first.sessionId, token: first.token, controlToken: first.controlToken },
+          },
+          redactor: await Effect.runPromise(redactor.forProfile("secrets")),
+        }),
+      );
+      expect(JSON.parse(output).ok).toBe(true);
+      expect(output).not.toContain(first.token);
+      expect(output).not.toContain(first.sessionId);
+      expect(output).not.toContain(first.controlToken);
+      await second.close();
+      expect(existsSync(dirname(workerStatePath(app, options.paths)))).toBe(false);
+    } finally {
+      await first.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("adopt reuses a healthy differently configured worker and close leaves it alive", async () => {
+    const root = await tempRoot();
+    const options = { app, plan, paths: { userDataRoot: root }, shimArtifactPath: await fakeShim(root) };
+    const first = await Effect.runPromise(startDetachedHostProxyWorker(options));
+    try {
+      const before = await Effect.runPromise(readWorkerRecord(app, options.paths));
+      const adopted = await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          ...options,
+          plan: { ...plan, name: "new-config" },
+          reusePolicy: "adopt",
+        }),
+      );
+      await adopted.close();
+      expect(adopted.token).toBe(first.token);
+      expect(adopted.sessionId).toBe(first.sessionId);
+      expect(before !== undefined && pidIsAlive(before.pid)).toBe(true);
+      expect(await Effect.runPromise(readWorkerRecord(app, options.paths))).toEqual(before);
+    } finally {
+      await first.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each(["exact", "adopt"] as const)(
+    "%s refreshes routes and cwd mounts in the same real worker",
+    async (reusePolicy) => {
+      const root = await tempRoot();
+      const eventPath = join(root, "requests.jsonl");
+      const options = {
+        app,
+        plan,
+        paths: { userDataRoot: root },
+        shimArtifactPath: await fakeShim(root),
+        spawnWorker: async (spec: Parameters<typeof defaultSpawnWorker>[0]) => {
+          const worker = await defaultSpawnWorker({
+            ...spec,
+            argv: [
+              process.execPath,
+              "--preload",
+              fileURLToPath(new URL("./observed-worker-preload.ts", import.meta.url)),
+              ...spec.argv.slice(1),
+              "--test-events",
+              eventPath,
+            ],
+          });
+          spawnedPids.add(worker.pid);
+          return worker;
+        },
+      };
+      const first = await Effect.runPromise(startDetachedHostProxyWorker(options));
+      try {
+        const before = await Effect.runPromise(readWorkerRecord(app, options.paths));
+        const service: ServicePlan = {
+          ...servicePlan("appserver", "/changed"),
+          endpoints: [
+            { _tag: "internal", protocol: "http", port: PortNumber.make(80), name: "http", primary: true },
+          ],
+        };
+        const updated: AppPlan = {
+          ...plan,
+          metadata: { ...plan.metadata, resolvedAt: DateTime.makeUnsafe("2026-02-01T00:00:00Z") },
+          services: { [service.name]: service },
+          routes: [
+            {
+              service: service.name,
+              endpoint: "http",
+              hostname: "changed.lndo.site",
+              scheme: "http",
+              pathPrefix: "/",
+              priority: 2,
+              backend: { service: service.name, protocol: "http", port: PortNumber.make(80) },
+            },
+          ],
+        };
+        const second = await Effect.runPromise(
+          startDetachedHostProxyWorker({ ...options, plan: updated, reusePolicy }),
+        );
+        const after = await Effect.runPromise(readWorkerRecord(app, options.paths));
+        const wire = Schema.encodeUnknownSync(AppPlan)(updated);
+        for (const invalid of [{}, { ...wire, root: "/foreign" }, { ...wire, provider: "docker" }]) {
+          const status = await new Promise<number | undefined>((resolve, reject) => {
+            const request = httpRequest(
+              {
+                socketPath: second.socketPath,
+                method: "POST",
+                path: "/_lando/host-proxy/configure",
+                headers: {
+                  "x-lando-host-proxy-control": second.controlToken,
+                  authorization: `Bearer ${second.token}`,
+                  "x-lando-host-proxy-session": second.sessionId,
+                  "x-lando-host-proxy-app": second.appId,
+                },
+              },
+              (response) => {
+                response.resume();
+                response.on("end", () => resolve(response.statusCode));
+              },
+            );
+            request.on("error", reject);
+            request.end(JSON.stringify(invalid));
+          });
+          expect(status).toBe(400);
+        }
+        const result = await Effect.runPromise(
+          sendHostProxyRunLando(second, { argv: ["open", "--print"], cwd: "/changed/web", tty: false }),
+        );
+        expect(after?.pid).toBe(before?.pid);
+        expect([second.sessionId, second.token, second.controlToken]).toEqual([
+          first.sessionId,
+          first.token,
+          first.controlToken,
+        ]);
+        expect(result.envelope).toMatchObject({ ok: true });
+        expect(result.envelope.result).toMatchObject({
+          targets: [expect.objectContaining({ url: expect.stringContaining("changed.lndo.site") })],
+        });
+        expect(
+          (await readFile(eventPath, "utf8"))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line)),
+        ).toContainEqual(expect.objectContaining({ cwd: "/srv/apps/demo/web" }));
+      } finally {
+        await first.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("worker payload config digest is deterministic and independent of routes", async () => {
+    const root = await tempRoot();
+    const digests: unknown[] = [];
+    const options = {
+      app,
+      plan,
+      paths: { userDataRoot: root },
+      shimArtifactPath: await fakeShim(root),
+      spawnWorker: () => ({
+        pid: 12345,
+        logPath: join(root, "worker.log"),
+        argv: [],
+        writeStdin: async (value: string) => {
+          digests.push(JSON.parse(value).configDigest);
+        },
+        readReady: async () => ({
+          _tag: "ready" as const,
+          appId: app.id,
+          sessionId: "session-1",
+          token: "bearer",
+          controlToken: "control",
+          shimPath: join(root, "shim"),
+        }),
+        terminate: async () => undefined,
+      }),
+    };
+    try {
+      await Effect.runPromise(startDetachedHostProxyWorker(options));
+      await Effect.runPromise(startDetachedHostProxyWorker(options));
+      await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          ...options,
+          plan: {
+            ...plan,
+            routes: [
+              {
+                service: ServiceName.make("appserver"),
+                endpoint: "http",
+                hostname: "demo.lndo.site",
+                scheme: "http",
+                pathPrefix: "/",
+                priority: 2,
+                backend: {
+                  service: ServiceName.make("appserver"),
+                  protocol: "http",
+                  port: PortNumber.make(80),
+                },
+              },
+            ],
+          },
+        }),
+      );
+      expect(digests[0]).toMatch(/^[a-f0-9]{64}$/);
+      expect(digests[1]).toBe(digests[0]);
+      expect(digests[2]).toBe(digests[0]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    "dead",
+    "foreign-app",
+    "foreign-root",
+    "config",
+    "provider",
+    "v1",
+    "non-private",
+    "verify-fails",
+    "corrupt",
+    "bearer",
+    "session",
+    "identity-digest",
+    "shim",
+    "socket-file",
+    "socket-public",
+  ] as const)(
+    "replaces a rejected %s real worker record without signalling foreign workers",
+    async (rejection) => {
+      // Given a healthy worker whose persisted ownership or reuse proof is rejected.
+      const root = await tempRoot();
+      const options = { app, plan, paths: { userDataRoot: root }, shimArtifactPath: await fakeShim(root) };
+      const first = await Effect.runPromise(startDetachedHostProxyWorker(options));
+      const path = workerStatePath(app, options.paths);
+      const before = await Effect.runPromise(readWorkerRecord(app, options.paths));
+      if (before === undefined) throw new Error("Missing initial worker record");
+      let second: typeof first | undefined;
+      try {
+        const wire = JSON.parse(await readFile(path, "utf8"));
+        switch (rejection) {
+          case "dead":
+            process.kill(before.pid, "SIGKILL");
+            await waitForPidExit(before.pid);
+            break;
+          case "foreign-app":
+            wire.appId = "foreign";
+            break;
+          case "foreign-root":
+            wire.appRoot = "/foreign";
+            break;
+          case "config":
+            wire.configDigest = "mismatch";
+            break;
+          case "provider":
+            wire.providerId = "docker";
+            break;
+          case "v1":
+            wire.protocolVersion = 1;
+            wire.token = undefined;
+            wire.sessionId = undefined;
+            wire.configDigest = undefined;
+            break;
+          case "non-private":
+            await chmod(path, 0o644);
+            break;
+          case "verify-fails":
+            break;
+          case "corrupt":
+            break;
+          case "bearer":
+            wire.token = "wrong-bearer";
+            break;
+          case "session":
+            wire.sessionId = "wrong-session";
+            break;
+          case "identity-digest":
+            wire.configDigest = "wrong-identity-config";
+            break;
+          case "shim":
+            await rm(before.shimPath);
+            break;
+          case "socket-file":
+            if (before.socketPath === undefined) throw new Error("Expected socket");
+            await rm(before.socketPath);
+            await writeFile(before.socketPath, "not a socket", { mode: 0o600 });
+            break;
+          case "socket-public":
+            if (before.socketPath === undefined) throw new Error("Expected socket");
+            await chmod(before.socketPath, 0o666);
+            break;
+        }
+        if (rejection !== "dead")
+          await writeFile(path, rejection === "corrupt" ? "{broken" : JSON.stringify(wire));
+        // When ensuring again.
+        second = await Effect.runPromise(
+          startDetachedHostProxyWorker({
+            ...options,
+            ...(rejection === "identity-digest" ? { reusePolicy: "adopt" as const } : {}),
+            ...(rejection === "verify-fails"
+              ? {
+                  privateFileAccess: {
+                    ...ownerOnlyFileAccess,
+                    verify: async (candidate) => {
+                      if (candidate === path) throw new Error("private access rejected");
+                      await ownerOnlyFileAccess.verify(candidate);
+                    },
+                  },
+                }
+              : {}),
+          }),
+        );
+        const after = await Effect.runPromise(readWorkerRecord(app, options.paths));
+        // Then replacement gets a new session; foreign processes are untouched.
+        expect(after?.pid).not.toBe(before.pid);
+        expect(second.sessionId).not.toBe(first.sessionId);
+        if (rejection === "foreign-app" || rejection === "foreign-root" || rejection === "corrupt")
+          expect(pidIsAlive(before.pid)).toBe(true);
+        if (
+          rejection === "config" ||
+          rejection === "provider" ||
+          rejection === "bearer" ||
+          rejection === "session"
+        )
+          expect(pidIsAlive(before.pid)).toBe(false);
+      } finally {
+        await second?.close();
+        await first.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("shuts down a live protocol-v1 control-only record before replacing it", async () => {
+    const root = await tempRoot();
+    const control = await listenControlServerForRecord({ ...workerRecord(root), protocolVersion: 1 });
+    try {
+      await writeFile(
+        workerStatePath(app, { userDataRoot: root }),
+        JSON.stringify({
+          appId: app.id,
+          appRoot: app.root,
+          transport: control.record.transport,
+          protocolVersion: 1,
+          socketPath: control.record.socketPath,
+          pid: control.record.pid,
+          controlToken: control.record.controlToken,
+        }),
+        { mode: 0o600 },
+      );
+      const session = await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: await fakeShim(root),
+        }),
+      );
+      expect(control.shutdowns()).toBe(1);
+      expect((await Effect.runPromise(readWorkerRecord(app, { userDataRoot: root })))?.protocolVersion).toBe(
+        2,
+      );
+      await session.close();
+    } finally {
+      control.server.close();
+      await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -835,6 +1442,7 @@ console.log(JSON.stringify({
           pid: legacy.pid,
           controlToken: legacy.controlToken,
         })}\n`,
+        { mode: 0o600 },
       );
 
       await Effect.runPromise(terminateOwnedHostProxyWorkersInRoot(root));
@@ -858,6 +1466,7 @@ console.log(JSON.stringify({
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
             pid: 78901,
+            logPath: join(root, "worker.log"),
             argv: spec.argv,
             writeStdin: async () => undefined,
             readReady: async () => ({

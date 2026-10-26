@@ -135,7 +135,14 @@ describe("runtime bootstrap lifecycle", () => {
       events.push(event);
       return event._tag === "before-exit"
         ? Effect.void
-        : Effect.fail(new EventError({ event: event._tag, message: "subscriber rejected bootstrap" }));
+        : Effect.fail(
+            new EventError({
+              event: event._tag,
+              message: "subscriber rejected bootstrap",
+              remediation:
+                "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+            }),
+          );
     });
     const tracker = makeBootstrapLifecycleTracker();
     await Effect.runPromise(tracker.complete("minimal", service));
@@ -181,7 +188,14 @@ describe("runtime bootstrap lifecycle", () => {
           makeRecordingEventLayer(hostEvents),
           Layer.effect(
             EventService,
-            Effect.fail(new EventError({ event: "bootstrap", message: "host bootstrap failed" })),
+            Effect.fail(
+              new EventError({
+                event: "bootstrap",
+                message: "host bootstrap failed",
+                remediation:
+                  "Fix the handler or emitter for event `bootstrap`, then re-run the operation that publishes it.",
+              }),
+            ),
           ),
         ],
       },
@@ -198,7 +212,14 @@ describe("runtime bootstrap lifecycle", () => {
       events.push(event);
       return event._tag === "before-exit"
         ? Effect.void
-        : Effect.fail(new EventError({ event: event._tag, message: "subscriber aborted bootstrap" }));
+        : Effect.fail(
+            new EventError({
+              event: event._tag,
+              message: "subscriber aborted bootstrap",
+              remediation:
+                "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+            }),
+          );
     });
     const tracker = makeBootstrapLifecycleTracker();
     await Effect.runPromise(tracker.complete("minimal", service));

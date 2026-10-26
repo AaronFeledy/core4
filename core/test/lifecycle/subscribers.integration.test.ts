@@ -70,11 +70,15 @@ const runtime = async (
       pluginManifests: [],
       externalImports,
       cwd,
-      rootOverrides: {
-        userDataRoot: absolute("data"),
-        userConfRoot: absolute("config"),
-        userCacheRoot: absolute("cache"),
-        systemPluginRoot: absolute("system"),
+      configInputs: {
+        env: {},
+        sources: { user: true, env: false },
+        rootOverrides: {
+          userDataRoot: absolute("data"),
+          userConfRoot: absolute("config"),
+          userCacheRoot: absolute("cache"),
+          systemPluginRoot: absolute("system"),
+        },
       },
     });
   return {
@@ -277,8 +281,8 @@ describe("subscriber runtime integration", () => {
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
         if (failure.value instanceof ConfigError) {
-          expect(failure.value.path).toBe("notify.commands[0]");
-          expect(failure.value.message).toContain("app:project-release");
+          expect(failure.value.issues?.[0]?.path).toEqual(["notify", "commands", 0]);
+          expect(failure.value.issues?.[0]?.source?.layer).toBe("config-file");
           expect(failure.value.message).toContain("install and enable the plugin");
         }
       }
@@ -320,8 +324,8 @@ describe("subscriber runtime integration", () => {
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
         if (failure.value instanceof ConfigError) {
-          expect(failure.value.path).toBe("notify.commands[0]");
-          expect(failure.value.message).toContain("app:notify-release");
+          expect(failure.value.issues?.[0]?.path).toEqual(["notify", "commands", 0]);
+          expect(failure.value.issues?.[0]?.source?.layer).toBe("config-file");
           expect(failure.value.message).toContain("install and enable the plugin");
         }
       }
@@ -426,8 +430,8 @@ describe("subscriber runtime integration", () => {
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
         if (failure.value instanceof ConfigError) {
-          expect(failure.value.path).toBe("notify.commands[0]");
-          expect(failure.value.message).toContain(appCommandId);
+          expect(failure.value.issues?.[0]?.path).toEqual(["notify", "commands", 0]);
+          expect(failure.value.issues?.[0]?.source?.layer).toBe("config-file");
           expect(failure.value.message).toContain("install and enable the plugin");
         }
       }
@@ -520,8 +524,8 @@ describe("subscriber runtime integration", () => {
         const value: unknown = failure.value;
         expect(value).toBeInstanceOf(ConfigError);
         if (value instanceof ConfigError) {
-          expect(value.path).toBe("notify.commands[0]");
-          expect(value.message).toContain("app:missing-command");
+          expect(value.issues?.[0]?.path).toEqual(["notify", "commands", 0]);
+          expect(value.issues?.[0]?.source?.layer).toBe("config-file");
           expect(value.message).toContain("install and enable the plugin");
         }
       }
@@ -557,8 +561,8 @@ describe("subscriber runtime integration", () => {
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
         if (failure.value instanceof ConfigError) {
-          expect(failure.value.path).toBe("notify.commands[0]");
-          expect(failure.value.message).toContain("app:missing-command");
+          expect(failure.value.issues?.[0]?.path).toEqual(["notify", "commands", 0]);
+          expect(failure.value.issues?.[0]?.source?.layer).toBe("config-file");
           expect(failure.value.message).toContain("install and enable the plugin");
         }
       }

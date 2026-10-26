@@ -4,16 +4,18 @@ import { MessageWarnEvent } from "@lando/sdk/events";
 import { EventService, type ServiceRuntimeInfo } from "@lando/sdk/services";
 import { DateTime, Deferred, Effect, Option } from "effect";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
-import { startedServiceRow } from "./authority-url.ts";
+import type { ObservedService } from "./connection-collector.ts";
+import { reconcileReadinessState } from "./connection-state.ts";
 import {
   type ReadinessTarget,
+  inspectReadinessRuntime,
   inspectServiceRunning,
   isSupervisedTarget,
   readinessCommands,
   redactorForReadiness,
 } from "./service-readiness-error.ts";
 
-type ReadinessRow = ReturnType<typeof startedServiceRow> & { readonly initial: ServiceRuntimeInfo };
+type ReadinessRow = ObservedService & { readonly initial: ServiceRuntimeInfo };
 interface SupervisedActor {
   readonly target: ReadinessTarget;
   readonly initial: ServiceRuntimeInfo;
@@ -77,7 +79,12 @@ export const makeServiceSupervision = Effect.fnUntraced(function* (
     if (actor.publishing) return yield* Deferred.await(actor.signal);
     actor.publishing = true;
     yield* warnRestarting(error, actor.target);
-    const row = { ...startedServiceRow(service, actor.initial), state: "restarting", initial: actor.initial };
+    const row: ReadinessRow = {
+      name: String(service.name),
+      state: "restarting",
+      runtime: yield* inspectReadinessRuntime(actor.target),
+      initial: actor.initial,
+    };
     actor.row = row;
     yield* Deferred.succeed(actor.signal, row);
     return row;
@@ -104,11 +111,12 @@ export const makeServiceSupervision = Effect.fnUntraced(function* (
           ),
     );
   const finish = (target: ReadinessTarget, row: ReadinessRow) =>
-    row.state === "restarting"
-      ? Effect.succeed(row)
-      : inspectServiceRunning(target, row.initial).pipe(
-          Effect.as(row),
-          Effect.catchTag("ServiceNotReadyError", settle),
-        );
+    (row.state === "restarting"
+      ? inspectReadinessRuntime(target)
+      : inspectServiceRunning(target, row.initial)
+    ).pipe(
+      Effect.map((runtime) => ({ ...row, runtime, state: reconcileReadinessState(row.state, runtime) })),
+      Effect.catchTag("ServiceNotReadyError", settle),
+    );
   return { wait, observe, finish };
 });

@@ -2,14 +2,14 @@ import { describe, expect, test } from "bun:test";
 
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 
+import { authoredInvocationSites } from "@lando/landofile/compiled-sites";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { DateTime } from "effect";
 import {
-  attachEffectiveEvents,
   compileEffectiveEvents,
-  compiledEventsForPlan,
   effectiveEventsForPlan,
   hostEventStatusesForApp,
+  withEventsPlan,
 } from "../../src/planner/effective-events.ts";
 
 const plan = (): AppPlan => ({
@@ -20,7 +20,6 @@ const plan = (): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-09T00:00:00Z"), source: ".lando.yml", runtime: 4 },
@@ -28,6 +27,38 @@ const plan = (): AppPlan => ({
 });
 
 describe("compileEffectiveEvents host steps", () => {
+  test("keeps equal step bytes when their parsed authority differs", () => {
+    const step = { cmd: "{{ event.value }}", service: ":host" };
+    const sites = authoredInvocationSites({ "post-start": [step] }, "<host-events>").map((site) => ({
+      ...site,
+      path: ["hostEvents", ...site.path],
+    }));
+    const compiled = compileEffectiveEvents({
+      landofile: { events: { "post-start": [step] } },
+      hostEvents: { "post-start": [step] },
+      invocationSites: sites,
+    });
+    expect(compiled["post-start"]?.map((entry) => entry.status)).toEqual(["active", "active"]);
+  });
+
+  test("deduplicates equivalent programs despite different source coordinates", () => {
+    const step = { cmd: "{{ event.value }}", service: ":host" };
+    const sites = authoredInvocationSites({ "post-start": [step] }, "<host-events>");
+    const compiled = compileEffectiveEvents({
+      landofile: { events: { "post-start": [step] } },
+      hostEvents: { "post-start": [step] },
+      invocationSites: [
+        ...sites.map((site) => ({ ...site, path: ["hostEvents", ...site.path] })),
+        ...sites.map((site) => ({
+          ...site,
+          id: `project-${site.id}`,
+          source: { ...site.source, file: "/project/.lando.yml" },
+          path: ["events", ...site.path],
+        })),
+      ],
+    });
+    expect(compiled["post-start"]?.map((entry) => entry.status)).toEqual(["deduped", "active"]);
+  });
   test("returns host steps first and drops a canonical host duplicate", () => {
     const compiled = compileEffectiveEvents({
       landofile: { events: { "post-start": [{ cmd: "echo hi" }] } },
@@ -40,7 +71,7 @@ describe("compileEffectiveEvents host steps", () => {
       ["host", "active"],
       ["project", "active"],
     ]);
-    expect(effectiveEventsForPlan(attachEffectiveEvents(plan(), compiled))?.["post-start"]).toEqual([
+    expect(effectiveEventsForPlan(withEventsPlan(plan(), compiled))?.["post-start"]).toEqual([
       { cmd: "echo host", service: ":host" },
       { cmd: "echo hi" },
     ]);
@@ -115,26 +146,21 @@ describe("compileEffectiveEvents host steps", () => {
     });
   });
 
-  test("reattaching compiled events keeps provenance on both cache-shaped paths", () => {
+  test("events travel with the plan value through spreads and re-attachment", () => {
     const compiled = compileEffectiveEvents({
       landofile: { events: { "pre-stop": ["echo project"] } },
       hostEvents: { "pre-stop": [{ cmd: "echo host", service: ":host" }] },
       services: { web: { primary: true } },
     });
-    const fresh = attachEffectiveEvents(plan(), compiled);
-    const cached = attachEffectiveEvents(
-      { ...plan(), id: AppId.make("adopted") },
-      compiledEventsForPlan(fresh) ?? {},
-    );
-    expect(compiledEventsForPlan(fresh)?.["pre-stop"]?.[0]).toMatchObject({
-      source: "host",
-      sourceIndex: 0,
-      status: "active",
-    });
-    expect(compiledEventsForPlan(cached)?.["pre-stop"]?.[0]).toMatchObject({
-      source: "host",
-      sourceIndex: 0,
-      status: "active",
-    });
+    const fresh = withEventsPlan(plan(), compiled);
+    const spread = { ...fresh, fileSync: [] };
+    const cached = withEventsPlan({ ...plan(), id: AppId.make("adopted") }, fresh.events ?? {});
+    for (const candidate of [fresh, spread, cached]) {
+      expect(candidate.events?.["pre-stop"]?.[0]).toMatchObject({
+        source: "host",
+        sourceIndex: 0,
+        status: "active",
+      });
+    }
   });
 });

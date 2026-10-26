@@ -20,9 +20,9 @@ test("preserves Landofile extension slots and descriptions in the editor project
 
   expect(artifact).toHaveProperty(["patternProperties", "^x-"]);
   expect(artifact).not.toHaveProperty("propertyNames");
-  expect(artifact).toHaveProperty("properties.name.description", expect.any(String));
+  expect(artifact).toHaveProperty("properties.name.anyOf.0.description", expect.any(String));
   expect(artifact).toHaveProperty(
-    "properties.services.additionalProperties.$ref",
+    "properties.services.anyOf.0.additionalProperties.anyOf.0.$ref",
     expect.stringMatching(/^#\/definitions\//),
   );
 });

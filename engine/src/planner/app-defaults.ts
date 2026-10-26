@@ -62,7 +62,7 @@ export const withUserAppDefaults = (input: {
   readonly service: ServiceConfig;
   readonly defaults: UserAppDefaults;
   readonly topLevelEnvironment: Readonly<Record<string, string>>;
-  readonly serviceEnvironment: Readonly<Record<string, string>> | undefined;
+  readonly serviceEnvironment: import("@lando/sdk/schema").Environment | undefined;
   readonly hasEnvFiles: boolean;
 }): ServiceConfig => {
   const hasAppEnv = input.defaults.appEnv !== undefined;

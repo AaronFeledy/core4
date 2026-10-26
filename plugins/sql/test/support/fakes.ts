@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 
+import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
+import { PortNumber } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
+import { familyFromServiceType } from "../../src/families.ts";
 
 import {
   SnapshotAmbiguousError,
@@ -18,7 +21,14 @@ import type {
   VolumeInfo,
   VolumeInitializationRecord,
 } from "@lando/sdk/schema";
-import { AbsolutePath, AppId, ProviderId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  ProviderId,
+  ServiceName,
+  SnapshotInfo,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 
 import type { SqlCommandDeps } from "../../src/run.ts";
 import type { SqlLandofile, SqlPlan } from "../../src/views.ts";
@@ -55,6 +65,18 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     database: {
       name: "database",
       type: options.type ?? "mysql:8.0",
+      connection: options.connection ?? {
+        family: familyFromServiceType(options.type ?? "mysql:8.0") ?? "mysql",
+        port: PortNumber.make(
+          DATABASE_FAMILY_DEFAULT_PORTS[familyFromServiceType(options.type ?? "mysql:8.0") ?? "mysql"],
+        ),
+        creds: {
+          user: options.type?.startsWith("mssql") ? "sa" : "lando",
+          database: "sql-app",
+          password: options.password,
+          ...(options.rootPassword === undefined ? {} : { rootPassword: options.rootPassword }),
+        },
+      },
       environment: options.environment ?? {
         MYSQL_USER: "lando",
         MYSQL_PASSWORD: options.password,
@@ -88,14 +110,14 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     ),
   };
 
-  const root = mkdtempSync(join(tmpdir(), "lando-sql-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lando-sql-")));
+  const owner = planAppIdentity({ root: AbsolutePath.make(root) });
   const plan: SqlPlan = {
     id: "sql-app",
     name: "sql-app",
     root,
     identity: {
-      appRoot: root,
-      ownerKey: "owner:sql-app",
+      ...owner,
       repoGroupKey: "repository:sql-app",
     },
     services,
@@ -109,6 +131,21 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     landofile,
     plan,
     providerId: "test",
+    environmentResolver: {
+      openSession: () =>
+        Effect.succeed({
+          resolveEnvironment: (environment) =>
+            Effect.sync(() =>
+              Object.fromEntries(
+                Object.entries(environment).map(([key, value]) => {
+                  if (typeof value !== "string")
+                    throw new Error("Fixture resolver requires an explicit binding implementation");
+                  return [key, value];
+                }),
+              ),
+            ),
+        }),
+    },
     ...(options.appliedPlans === undefined ? {} : { appliedPlans: options.appliedPlans }),
     inspectSource:
       options.inspectSource ??
@@ -118,11 +155,12 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
           service: target.service,
           providerId: ProviderId.make("test"),
           status: "running",
+          publications: { status: "unknown" as const },
         })),
     resolveSnapshot(reference, scope) {
       const list = this.listSnapshots;
       return Effect.gen(function* () {
-        const exact = (yield* list({ id: reference })).find((entry) => entry.id === reference);
+        const exact = (yield* list({ ...scope, id: reference })).find((entry) => entry.id === reference);
         if (exact !== undefined) return exact;
         const matches = (yield* list({ ...scope, label: reference }))
           .filter((entry) => entry.label === reference)
@@ -164,15 +202,21 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         lifecycle.push("snapshot");
         if (options.snapshotFails === true) throw new FakeRestoreError();
         snapshots.push({
+          owner,
           store: store.store,
           ...(opts?.format === undefined ? {} : { format: opts.format }),
           ...(opts?.label === undefined ? {} : { label: opts.label }),
+          ...(opts?.repoGroupKey === undefined ? {} : { repoGroupKey: opts.repoGroupKey }),
           ...(opts?.metadata === undefined ? {} : { metadata: opts.metadata }),
         });
-        return { id: `snap-${store.store}-${snapshots.length}`, store };
+        return {
+          id: `snap-${store.store}-${snapshots.length}`,
+          store,
+          ownerKey: owner.ownerKey,
+        };
       }),
-    restore: (id, store, opts) => {
-      restores.push({ id, store, ...(opts === undefined ? {} : { opts }) });
+    restore: (handle, store, opts) => {
+      restores.push({ id: handle.id, handle, store, ...(opts === undefined ? {} : { opts }) });
       lifecycle.push("restore");
       return options.restoreFails === true ? Effect.fail(new FakeRestoreError()) : Effect.void;
     },
@@ -183,14 +227,13 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
           ? []
           : [
               SnapshotInfo.make({
+                owner,
                 id: filter.id,
                 store: { app: AppId.make("sql-app"), store: storage[0]?.store ?? "" },
                 digest: "sha256:test",
                 sizeBytes: 12,
                 createdAt: DateTime.makeUnsafe("2026-09-11T00:00:00Z"),
                 metadata: {
-                  sourceRoot: AbsolutePath.make(root),
-                  ownerKey: plan.identity?.ownerKey ?? "owner:sql-app",
                   service: ServiceName.make("database"),
                   volumeInstanceId:
                     options.snapshotVolumeInstance ?? `volume-instance:${storage[0]?.store ?? ""}`,
@@ -227,19 +270,19 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         joined.includes("db.getCollectionNames().length");
       if (isVersion) {
         execs.push({ command, ...(env === undefined ? {} : { env }) });
-        return Effect.succeed({ ok: true, stdout: options.observedVersion ?? "8.0" });
+        return Effect.succeed({ exitCode: 0, stdout: options.observedVersion ?? "8.0", stderr: "" });
       }
       if (isCount) {
         return Effect.sync(() => {
           countAttempts += 1;
           if (options.countFails === true || countAttempts <= (options.countFailuresBeforeSuccess ?? 0)) {
-            return { ok: false, stdout: "" };
+            return { exitCode: 1, stdout: "", stderr: "" };
           }
-          return { ok: true, stdout: options.countStdout ?? "0" };
+          return { exitCode: 0, stdout: options.countStdout ?? "0", stderr: "" };
         });
       }
       execs.push({ command, ...(env === undefined ? {} : { env }) });
-      return Effect.succeed({ ok: options.execFails !== true, stdout: "" });
+      return Effect.succeed({ exitCode: options.execFails === true ? 1 : 0, stdout: "", stderr: "" });
     },
     confirm: () => Effect.succeed(false),
     resume: Effect.fnUntraced(function* () {

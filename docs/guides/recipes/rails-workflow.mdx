@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, rails, ruby, postgres, redis]
 
 # Run the Rails recipe
 
+Run a Rails application with Postgres and Redis. These host-terminal commands create the environment; you will still need Rails application code in the app directory.
+
 ```sh
 lando init --recipe rails --name=rails-demo --yes
 cd rails-demo
@@ -16,6 +18,26 @@ lando start
 The named init creates `rails-demo/`. Change into it before app commands. `--yes` skips the name prompt. First start builds `web`: `build-essential`, then `gem install rails`. That can take a minute. The `Gemfile` is just `source "https://rubygems.org"`. The Rails gem comes from that build step, not Bundler.
 
 The `web` container stays up. The Rails server does not start on its own.
+
+## Run Rails, Bundler, Rake, and the clients
+
+Add your Rails application to the app directory, keeping `.lando.yml`. The recipe installs the Rails toolchain but does not start your application server. Check the tools and start the server:
+
+```sh
+lando rails --version
+lando bundle --version
+lando rake --version
+lando redis-cli ping
+lando psql
+lando psql -c 'SELECT 1'
+lando rails server -b 0.0.0.0
+```
+
+Bind `0.0.0.0` or the proxy cannot reach it. Then open the URL `lando info` prints.
+
+`lando psql -c` runs one query, prints the result, and exits.
+
+`lando rake db:migrate` runs Rake on `web`. Swap `rails-demo` for your app name anywhere you pass the database name yourself.
 
 ## See what the recipe writes
 
@@ -66,26 +88,6 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. They re
   </Scenario>
 </Guide>
 
-## Run Rails, Bundler, Rake, and the clients
-
-Put a Rails app in the directory (keep `.lando.yml`). Then:
-
-```sh
-lando rails --version
-lando bundle --version
-lando rake --version
-lando redis-cli ping
-lando psql
-lando psql -c 'SELECT 1'
-lando rails server -b 0.0.0.0
-```
-
-Bind `0.0.0.0` or the proxy cannot reach it. Then open the URL `lando info` prints.
-
-`lando psql -c` runs one query, prints the result, and exits.
-
-`lando rake db:migrate` runs Rake on `web`. Swap `rails-demo` for your app name anywhere you pass the database name yourself.
-
 ## Connect ActiveRecord and Redis
 
 `web` already has the connection strings:
@@ -95,7 +97,7 @@ Bind `0.0.0.0` or the proxy cannot reach it. Then open the URL `lando info` prin
 | `DATABASE_URL` | `postgresql://lando:<password>@database:5432/rails-demo` |
 | `REDIS_URL` | `redis://cache:6379` |
 
-ActiveRecord reads `DATABASE_URL` on its own, so `config/database.yml` can stay at the generator default and `lando rake db:create db:migrate` just works. Point your Redis client at `ENV["REDIS_URL"]`. Do not paste the password into `database.yml` or a committed `.env`; the Landofile fills it from the database service's resolved credentials, so it follows an authored `creds:` block and survives a rebuild.
+ActiveRecord reads `DATABASE_URL` on its own, so `config/database.yml` can stay at the generator default and `lando rake db:create db:migrate` uses that connection. Point your Redis client at `ENV["REDIS_URL"]`. Do not paste the password into `database.yml` or a committed `.env`; the Landofile fills it from the database service's resolved credentials, so it follows an authored `creds:` block and survives a rebuild.
 
 `lando info` shows the user and database name and redacts the password. `lando exec web -- printenv DATABASE_URL` masks the credentials in what it prints, `postgresql://[redacted]@database:5432/rails-demo`. Rails inside `web` still sees the real value.
 

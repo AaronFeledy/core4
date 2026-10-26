@@ -56,6 +56,7 @@ const node: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Logs App",
   slug: "logsapp",
@@ -63,7 +64,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [node.name]: node },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -115,7 +115,7 @@ describe("provider-lando logs", () => {
         sanitizeAppliedPlan: stripHostProxyRunLando,
         podmanApi: { info: Effect.succeed({ host: { arch: "x64" } }), ping: Effect.void },
         logFileAccess: memory.access,
-        logFileHelperPayloads: { "linux-x64": new Uint8Array([1]) },
+        resolveContainerHelper: () => Effect.die("injected access must bypass helper resolution"),
       }),
     );
     // When: the selected file source is read through the provider.

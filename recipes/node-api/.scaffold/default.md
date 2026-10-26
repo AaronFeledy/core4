@@ -1,6 +1,13 @@
 # Node API
 
-`lando init --recipe node-api` scaffolds a Node API service with an Express, Fastify, or Hono framework picker and an optional Postgres database.
+Create the Lando services for a Node API with an Express, Fastify, or Hono
+framework choice and an optional PostgreSQL database. The recipe writes only
+`.lando.yml`; add the application code and dependencies separately.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe node-api --name=my-node-api --yes
@@ -10,6 +17,9 @@ lando info
 ```
 
 The named init creates `my-node-api/`. Change into it before app commands. `--yes` uses Node lts, Express, and Postgres. Pass `--answer` to change those.
+
+To choose a different stack, use this initialization command instead of the
+default one above. Run it from the parent directory, not inside the app:
 
 ```sh
 lando init --recipe node-api --name=my-node-api --yes \
@@ -24,7 +34,7 @@ lando init --recipe node-api --name=my-node-api --yes \
 | `framework` | `express`, `fastify`, `hono` | `express` |
 | `database` | `postgres`, `none` | `postgres` |
 
-The scaffold writes only `.lando.yml`. It declares an `api` service on `node:<node>` listening on port 3000 with your framework choice exposed as the `API_FRAMEWORK` environment variable, plus a `database` service when you keep Postgres. Choose `database=none` and the `database` service is gone, not stubbed.
+The scaffold writes only `.lando.yml`. It declares an `api` service on `node:<node>` listening on port 3000 with your framework choice exposed as the `API_FRAMEWORK` environment variable, plus a `database` service when you keep Postgres. Choose `database=none` to omit the `database` service.
 
 Two tooling commands ship with the Landofile, both running inside the `api` service:
 
@@ -37,7 +47,7 @@ When Postgres is present, `api` starts with `DATABASE_URL` set to `postgresql://
 
 `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it.
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For day-to-day tooling and `DATABASE_URL` from Node, see [Run the Node API recipe](/guides/recipes/node-api-workflow/).
 

@@ -9,15 +9,14 @@ export interface CiPlatform {
 }
 
 /**
- * GitHub-hosted Ubuntu x64 runners covered by Linux CI test jobs.
- * Keep the older LTS (24.04) as the primary/reference runner for portable
- * glibc builds; also exercise the newer preview runner (26.04).
+ * Test execution uses one current host; portable builds retain the older glibc baseline.
  */
-export const LINUX_X64_CI_RUNNERS = ["ubuntu-24.04", "ubuntu-26.04"] as const;
+export const LINUX_X64_TEST_RUNNER = "ubuntu-26.04";
+export const LINUX_X64_CI_RUNNERS = [LINUX_X64_TEST_RUNNER] as const;
 export type LinuxX64CiRunner = (typeof LINUX_X64_CI_RUNNERS)[number];
 
 /** Reference Linux x64 runner — older glibc for portable compiled binaries. */
-export const LINUX_X64_PRIMARY_RUNNER: LinuxX64CiRunner = "ubuntu-24.04";
+export const LINUX_X64_PRIMARY_RUNNER = "ubuntu-24.04";
 
 export const isWindowsCiPlatform = (platform: Pick<CiPlatform, "id">): boolean =>
   platform.id.startsWith("windows-");
@@ -59,7 +58,8 @@ export const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
     bunTarget: "bun-linux-x64",
     binaryName: "lando",
     timeoutMinutes: 30,
-    providerTimeoutMinutes: 25,
+    // The live setup-driven suite runs 20-25 minutes; keep headroom above it.
+    providerTimeoutMinutes: 35,
     liveProviderIntegration: true,
   },
   {
@@ -90,7 +90,7 @@ export type PlatformReadinessCell = {
   readonly provider: "lando" | "docker";
   readonly bundleKey: string;
   readonly bundleMode: "current-commit" | "published" | "none";
-  readonly cadence: "pr+evidence" | "evidence";
+  readonly cadence: "evidence";
   readonly runsOn: string | readonly string[];
 };
 
@@ -100,15 +100,15 @@ export const PLATFORM_READINESS_CELLS: ReadonlyArray<PlatformReadinessCell> = [
     provider: "lando",
     bundleKey: "linux-x64",
     bundleMode: "current-commit",
-    cadence: "pr+evidence",
-    runsOn: "ubuntu-24.04",
+    cadence: "evidence",
+    runsOn: LINUX_X64_TEST_RUNNER,
   },
   {
     id: "linux-arm64",
     provider: "lando",
     bundleKey: "linux-arm64",
     bundleMode: "current-commit",
-    cadence: "pr+evidence",
+    cadence: "evidence",
     runsOn: "ubuntu-24.04-arm",
   },
   {

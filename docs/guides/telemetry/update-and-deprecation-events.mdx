@@ -8,6 +8,10 @@ tags: [beta, docs, telemetry, update, deprecation]
 
 # Update and deprecation telemetry events
 
+When enabled, telemetry records bounded update outcomes and deprecation usage.
+Disabling telemetry stops these records without disabling deprecation warnings
+or doctor summaries.
+
 ## Update outcome
 
 The update command records its outcome through the Telemetry service as an `update-outcome` event.
@@ -19,14 +23,14 @@ Only the canonical inventory fields are emitted: `version`, `targetVersion`, `ch
 
 `DeprecationService` publishes a `deprecation-used` runtime event after recording usage; `Telemetry`
 observes that shared event stream instead of running a parallel deprecation reporter. Deprecation
-telemetry carries only `kind`, `id`, `since`, `severity` — it omits callsites, app ids, plugin ids,
-and timestamps.
+telemetry carries only `kind`, `id`, `since`, and `severity`. It omits callsites,
+app ids, plugin ids, and timestamps.
 
 ## When telemetry is disabled
 
 Disabled telemetry (`telemetry.enabled=false`) suppresses both update outcome and deprecation
-telemetry records. Deprecation recording, renderer behavior, and doctor summaries are unaffected —
-they continue to use the normal deprecation path regardless of the telemetry setting.
+telemetry records. Deprecation recording, renderer behavior, and doctor summaries
+continue through the normal deprecation path regardless of the telemetry setting.
 
 <Guide>
   <Scenario id="telemetry-events-config-check" render={false} reason="Update outcome telemetry, deprecation event consumption, and disablement above are covered by focused command tests, DeprecationService telemetry tests, and telemetry-off update/deprecation tests, without downloading or replacing a binary or contacting a sink. This scenario keeps one real CLI check in the guide harness.">

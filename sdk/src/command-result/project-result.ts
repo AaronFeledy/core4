@@ -14,14 +14,13 @@ const PATH_SEPARATOR = ".";
 
 const isPlainObject = Predicate.isObject;
 
-const schemaFields = (schema: unknown): Record<string, unknown> | undefined => {
+const schemaFieldKeys = (schema: unknown): readonly string[] => {
   if (schema === null || (typeof schema !== "object" && typeof schema !== "function")) {
-    return undefined;
+    return [];
   }
-  if (!("fields" in schema)) return undefined;
-  const fields = schema.fields;
-  if (!isPlainObject(fields)) return undefined;
-  return fields;
+  if ("fields" in schema && isPlainObject(schema.fields)) return Object.keys(schema.fields);
+  if ("members" in schema && Array.isArray(schema.members)) return schema.members.flatMap(schemaFieldKeys);
+  return [];
 };
 
 const throwJsonProjectionError = (fields: {
@@ -105,10 +104,8 @@ const assignPath = (target: Record<string, unknown>, segments: readonly string[]
   current[leaf] = value;
 };
 
-export const listSelectableResultKeys = (schema: unknown): readonly string[] => {
-  const fields = schemaFields(schema);
-  return fields === undefined ? [] : Object.keys(fields).filter((key) => key !== "redactionTokens");
-};
+export const listSelectableResultKeys = (schema: unknown): readonly string[] =>
+  [...new Set(schemaFieldKeys(schema))].filter((key) => key !== "redactionTokens");
 
 export const projectEncodedResult = (encoded: unknown, keys: readonly string[]): Record<string, unknown> => {
   const record = requirePlainObject(encoded, keys);

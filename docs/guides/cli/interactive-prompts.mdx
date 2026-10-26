@@ -8,6 +8,8 @@ tags: [beta, docs, cli, prompts]
 
 # Answer or skip prompts
 
+Use `--yes` when you want recipe defaults, or `--no-interactive` when a command must not prompt. The latter fails if a required answer has no supplied value or default. For example:
+
 ```sh
 lando init --recipe lamp --yes
 lando setup --no-interactive

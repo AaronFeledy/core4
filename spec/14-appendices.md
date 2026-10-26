@@ -1,6 +1,6 @@
 # Lando v4: Appendices
 
-> **Part 14 of 19** · [Index](./README.md)
+> **Part 14 of 20** · [Index](./README.md)
 > **Read next:** [15 Binary Build and Release Engineering](./15-binary-build-and-release.md)
 
 This part is reference material, not workflow. Keep it open while reading the other parts.
@@ -57,8 +57,9 @@ The implementation must satisfy every item below; binary-shipping criteria remai
 - Host healthchecks use `ShellRunner` and unsupported targets raise `HealthcheckTargetUnsupportedError`. Recipe `postInit.bun` scripts are contained and checksum-verified or raise `BunScriptChecksumError`.
 - Doctor shell checks and fixes produce redacted transcripts at `<userCacheRoot>/logs/doctor/<run-id>.transcript`; `--transcript-only` prints them. Every core `ShellRunner` invocation publishes `pre-shell-exec` and `post-shell-exec`. Release/codegen scripts use `Bun.$` for shell shapes and `Bun.spawn` for argv shapes.
 - Lifecycle and tooling events compose; CLI events use canonical ids regardless of aliases.
-- Routes cover hostname, port, path, wildcard, and object forms; route filters express request/response headers provider-neutrally; certificates support disabled, generated, and custom forms with required SANs; host access uses `host.lando.internal` and `LANDO_HOST_IP` when supported.
-- `lando.host-proxy` binds `<userDataRoot>/run/<app-id>/host-proxy.sock`, unlinks it on stop/finalization, and installs deterministic `xdg-open`/`open`/`lando` shim behavior through authenticated `openUrl` and `runLando` requests.
+- Routes cover hostname, port, path, wildcard, and object forms; route filters express request/response headers provider-neutrally; certificates support disabled, generated, and custom forms with required SANs; host access uses `host.lando.internal` and `LANDO_HOST_IP` when supported. Service `networks:` joins app-owned and external networks additively on every bundled provider; destroy removes owned ones and never touches external ones.
+- `lando.host-proxy` binds `<userDataRoot>/run/<app-id>-<root-hash>/host-proxy.sock`, unlinks it on stop/finalization, and installs deterministic `xdg-open`/`open`/`lando` shim behavior through authenticated `openUrl`, mount-contained `openPath`, and `runLando` requests. The opener aliases intentionally shadow image openers under `/usr/local/bin`, accept one target without flags, and never persist session binds. The shim is the static in-container helper and runs in glibc, musl, and distroless images.
+- `openPath` reveals the canonical target in the host file manager and MUST NOT launch it: container-writable app files may be executable scripts, bundles, or desktop entries. Linux opens only the target directory or a file's parent directory; macOS uses `open -R` even for directories; Windows uses Explorer `/select,` and ignores its unreliable exit code. URLs alone reach the scheme-checked URL opener. Existing `lando open` launch behavior is unchanged.
 - `HostProxyService` enforces token auth, URL schemes, `host-proxy-allowlist`, recursion, and concurrency; rejected calls still publish redacted events. Lifecycle commands are forbidden by `HostProxyAllowlistConflictError`; one retained runtime serves nested calls; every implementation passes the host-proxy suite.
 - Healthchecks support disabled, string, script, array, object, user, retry, and delay forms. SSH loading supports disablement and allowlists and defaults to the sidecar agent; `sshAgent.sidecar: false` forwards the host agent through the same relay, and `gpgAgent.forward: true` forwards the host gpg-agent. SQL plugins can expose import/export. Mount includes/excludes are per mount.
 - Slow-provider binds use the active `FileSyncEngine` invisibly; canonical config MUST NOT expose engine identity. `@lando/file-sync-mutagen` auto-selects, provisions pinned binaries under `<userDataRoot>/bin/`, uses its Lando-owned daemon endpoint, ignores system Mutagen, and is doctor-visible.
@@ -67,7 +68,7 @@ The implementation must satisfy every item below; binary-shipping criteria remai
 - Plugins install from registry, git, directory, or tarball. Compiled binaries load validated absolute `file://` external modules while bundled plugins remain static; module paths MUST stay within package roots.
 - Logger, renderer, and tooling engine are configurable. Missing providers produce installation guidance.
 - Compiled level-`none`, `minimal`, and `tooling` commands meet §2.1 p95 budgets. Level-`none` uses embedded data without OCLIF or services; `bin/lando.ts` short-circuits recognized shapes and falls through unknown flags; bytecode and generated static bootstrap layers are mandatory.
-- `cwd-app-map` provides warm constant-time resolution. Hot-path caches are versioned binary data; incompatible headers regenerate. The command-registry manifest is build-embedded, not a runtime cache.
+- App discovery is memoized only within an operation (§7.1), not persisted in a CWD index. Hot-path caches are versioned binary data; incompatible headers regenerate. The command-registry manifest is build-embedded, not a runtime cache.
 - Renderer first paint, spinner, and table-header budgets hold. Telemetry never blocks, changes exit status, or hangs shutdown. Zero-subscriber event publication is a no-op. Bootstrap levels are sequential while independent in-level IO is concurrent.
 - `lando events --follow --format json` streams traces. `lando uninstall --dry-run` reports ownership; `--yes` removes only Lando-owned binary/data/cache paths, not provider resources.
 - Hot tooling uses only command and plan caches. Routine post-build local development works offline unless user work or absent remote artifacts require network. All Lando egress honors corporate proxies and custom CAs through the one Effect `HttpClient` implementation in `@lando/http-client`; compiled and interpreted decoders agree on the shared Landofile corpus (§12.5.1).
@@ -80,17 +81,23 @@ The implementation must satisfy every item below; binary-shipping criteria remai
 - Tabbed guides generate each Cartesian variant and transcript with prefixed failure context; non-uniform tab steps produce visible `test.skip` coverage entries.
 - User slug `global` raises `AppIdReservedError`. `<userDataRoot>/global/` is excluded from cwd discovery. `globalServices:` regenerates the global `.lando.dist.yml`, starts through `meta:global:*`, and supports `<service>.global.internal` only with shared networking.
 - `AppFeature.requires.globalServices` auto-starts requirements or raises `GlobalServiceMissingError`. `apps:poweroff` includes global services unless `--keep-global`. In sidecar mode, app start after `apps:poweroff` or a host reboot starts the SSH agent sidecar and waits for its agent, restoring forwarding without `lando setup`; a sidecar failure warns and never aborts start. `meta:global:restart` and `meta:global:rebuild` revalidate router startup so a cleared watcher condition clears its persisted record (§20.6.5). The `@lando/proxy-traefik` router layer requires paired router/global contributions or raises `ProxyContributionPairError`.
-- `@lando/service-mailpit` contributes its service type, global service, and framework-aware mail env feature. `global:` alias prefix is reserved. Global volumes carry `dev.lando.storage-global-app: "TRUE"`.
+- `@lando/service-mailpit` contributes its service type, global service, and framework-aware mail env feature. `global:` alias prefix is reserved. Global-app volumes carry `dev.lando.app: "global"` and the standard storage labels (§6.5).
 - Fork scratch apps copy into `<userCacheRoot>/scratch/<scratch-id>/root/` with exclusions and distinct labels; recipe scratches skip `postInit` by default and honor `baked`/`cwd` isolation and `--mount-cwd`.
 - Scratch global storage rewrites to app scope unless `--share-global-storage`; routes use `ScratchHostnameSuffix` unless overridden. Foreground scope interruption destroys all scratch state; detached state persists in `<userCacheRoot>/scratch/registry.bin` and GC reconciles provider labels.
 - `apps:poweroff` destroys scratches unless `--keep-scratch`; keep flags compose. Scratch ids and user slugs are separate namespaces keyed by `AppRef.kind`; every consumer considers both kind and id.
 - Library scratch acquisition finalizes on scope close and remains steady-state under runtime reuse. The scratch contract suite covers copy, recipes, isolation, storage rewrite, routes, finalization, registry concurrency, and orphan GC.
+- Programmable execution remains opt-in and local-development-first: minimal host work needs no app/provider, borrowed apps survive closure, config-backed scratch retains its source, admission survives captured-context delegation, process outcomes remain truthful, and artifacts follow explicit lifetime ownership. Existing commands/hooks/budgets are unchanged (§22).
 
 ### D. Why OCLIF (and not `@effect/cli`) — historical decision
 
 OCLIF was originally selected for its mature plugin manifest, lazy-loading, install, and update ecosystem despite adapter costs around Effect and typed flags. Compiled Bun binaries later proved unable to use supported OCLIF dispatch because root discovery and runtime module loading require adjacent filesystem packages. The normative architecture is now one native registry and dispatcher for source and compiled modes (§8.4.1); registry completeness, machine-output conformance, and relocated-binary smoke replace the retired dual-dispatch parity design.
 
 ### E. Glossary
+
+- **Execution session**: In-process, scope-owned composition context over a retained runtime, not another runtime, app kind, or daemon (§22).
+- **Execution environment**: A borrowed App binding or session-owned scratch with explicit lifetime ownership (§22.3).
+- **Execution operation**: Typed work composed through existing Effect services, not a mandatory serialized job or workflow step (§22.5).
+- **Execution artifact**: Explicitly captured private file bytes and a metadata reference, distinct from a runnable provider artifact (§22.8).
 
 - **Adapter** — Plugin Layer implementing a port.
 - **AppPlan** — Provider-neutral, schema-validated desired state for one app.

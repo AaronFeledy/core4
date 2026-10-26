@@ -20,11 +20,14 @@ export interface PullDialect {
   readonly frameError: (frame: unknown) => string | undefined;
   readonly inspect?: {
     readonly request: (reference: string) => EngineHttpRequest;
-    readonly decodeDigest: (json: unknown) => string | undefined;
+    readonly decodeDigest: (json: unknown, reference: string) => string | undefined;
   };
 }
 
+export type EngineDialect = "libpod" | "docker";
+
 export interface LifecycleDialect {
+  readonly engine: EngineDialect;
   readonly wait: WaitDialect;
   /**
    * How service containers join the shared Lando network.
@@ -123,14 +126,28 @@ export const libpodWaitDialect: WaitDialect = {
 };
 
 export const libpodLifecycleDialect: LifecycleDialect = {
+  engine: "libpod",
   wait: libpodWaitDialect,
   sharedNetworkAttachment: "create-body",
   volumePrune: { enabled: true },
 };
 
 export const dockerLifecycleDialect: LifecycleDialect = {
+  engine: "docker",
   wait: dockerWaitDialect,
   sharedNetworkAttachment: "connect-after-create",
+};
+
+const decodeDigest = (json: unknown, reference: string): string | undefined => {
+  if (typeof json !== "object" || json === null || !("RepoDigests" in json)) return undefined;
+  if (!Array.isArray(json.RepoDigests)) return undefined;
+  const digests = json.RepoDigests.flatMap((entry: unknown) => {
+    if (typeof entry !== "string") return [];
+    const match = /^[^@\s]+@([a-zA-Z][a-zA-Z0-9_+.-]*:[a-zA-Z0-9=_-]+)$/.exec(entry);
+    return match?.[1] === undefined ? [] : [match[1]];
+  });
+  const requested = reference.includes("@") ? reference.slice(reference.lastIndexOf("@") + 1) : undefined;
+  return requested !== undefined && digests.includes(requested) ? requested : digests[0];
 };
 
 export const dockerPullDialect: PullDialect = {
@@ -155,14 +172,7 @@ export const dockerPullDialect: PullDialect = {
       method: "GET",
       path: `/images/${encodeURIComponent(reference)}/json`,
     }),
-    decodeDigest: (json) => {
-      if (typeof json !== "object" || json === null || !("RepoDigests" in json)) return undefined;
-      if (!Array.isArray(json.RepoDigests)) return undefined;
-      const first = json.RepoDigests[0];
-      if (typeof first !== "string") return undefined;
-      const separator = first.indexOf("@");
-      return separator === -1 ? undefined : first.slice(separator + 1);
-    },
+    decodeDigest,
   },
 };
 
@@ -175,4 +185,11 @@ export const libpodPullDialect: PullDialect = {
     ),
   }),
   frameError: (frame) => objectString(frame, "error"),
+  inspect: {
+    request: (reference) => ({
+      method: "GET",
+      path: `/libpod/images/${encodeURIComponent(reference)}/json`,
+    }),
+    decodeDigest,
+  },
 };

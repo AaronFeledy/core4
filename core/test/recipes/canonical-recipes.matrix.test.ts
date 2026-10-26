@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import type { LandofileShape } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
+import type { LoadScopedLandofile } from "@lando/sdk/schema";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -140,7 +140,7 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   }
 };
 
-const discoverFrom = async (cwd: string): Promise<LandofileShape> => {
+const discoverFrom = async (cwd: string): Promise<LoadScopedLandofile> => {
   const previousCwd = process.cwd();
   try {
     process.chdir(cwd);
@@ -154,7 +154,7 @@ const discoverFrom = async (cwd: string): Promise<LandofileShape> => {
   }
 };
 
-const planLandofile = (landofile: LandofileShape) =>
+const planLandofile = (landofile: LoadScopedLandofile) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLayer.layer),
@@ -241,8 +241,8 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
 
         await withScrubbedRecipeEnv(async () => {
           const landofile = await discoverFrom(result.directory);
-          expect(landofile.name, `[${recipeId}] discovered landofile.name`).toBe(answersEntry.name);
-          expect(landofile.recipe, `[${recipeId}] discovered landofile.recipe`).toMatchObject({
+          expect(landofile.document.name, `[${recipeId}] discovered landofile.name`).toBe(answersEntry.name);
+          expect(landofile.document.recipe, `[${recipeId}] discovered landofile.recipe`).toMatchObject({
             id: recipeId,
             version: manifest.version,
             producer: manifest.snapshot?.identity,

@@ -1,12 +1,6 @@
 import { Schema } from "effect";
 
-export const ComposeServiceFieldKey = Schema.Literals([
-  "networks",
-  "configs",
-  "secrets",
-  "profiles",
-  "labels",
-]).annotate({
+export const ComposeServiceFieldKey = Schema.Literals(["configs", "secrets", "profiles", "labels"]).annotate({
   identifier: "ComposeServiceFieldKey",
   title: "Compose Service Field Key",
   description:

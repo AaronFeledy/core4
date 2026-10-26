@@ -8,9 +8,8 @@ tags: [beta, docs, telemetry, config]
 
 # Telemetry defaults and precedence
 
-CLI runs construct telemetry as enabled when no flag, env overlay, or config value overrides it —
-`GlobalConfig` decoding treats an omitted telemetry setting as enabled for CLI config
-(`telemetry.enabled=true`).
+CLI telemetry is enabled by default (`telemetry.enabled=true`). A flag,
+environment overlay, or global config value can override that default.
 
 Library runtimes default the other way: telemetry stays off unless the embedding host explicitly
 opts in with `telemetry: true` at runtime construction.

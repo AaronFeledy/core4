@@ -25,7 +25,7 @@ as the default way to run project tools.
 - On the host (no Lando service environment): run tools through Lando.
 - Inside a Lando service (\`LANDO_APP_NAME\` is set and you are on the service
   filesystem): you are already in the app environment. Run the tool on PATH.
-  \`lando\` still reaches the host when \`LANDO_HOST_PROXY_SHIM\` is set.
+  \`lando\` still reaches the host when \`LANDO_HOST_PROXY_SESSION\` is set.
 - Confirm app state from the host with \`lando app:info --format=json\`. Do not
   scrape prose.
 

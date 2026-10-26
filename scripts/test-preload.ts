@@ -10,6 +10,7 @@
  * bunfig.toml and this file also awaits the plugins import after a static
  * guard import for local/preload-flag use.
  */
+import "./test-preload-roots.ts";
 import "./require-derived-codegen-preload.ts";
 
 await import("../core/src/runtime/bundled-plugins.ts");

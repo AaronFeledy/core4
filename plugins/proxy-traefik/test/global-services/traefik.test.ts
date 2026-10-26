@@ -112,13 +112,13 @@ describe("traefik global service ServiceConfig", () => {
       http: {
         routers: {
           dashboard: {
-            rule: "Host(`traefik.custom.test`)",
+            rule: 'Host("traefik.custom.test")',
             priority: TRAEFIK_DASHBOARD_PRIORITY,
             service: "api@internal",
             entryPoints: ["web"],
           },
           "dashboard-https": {
-            rule: "Host(`traefik.custom.test`)",
+            rule: 'Host("traefik.custom.test")',
             priority: TRAEFIK_DASHBOARD_PRIORITY,
             service: "api@internal",
             entryPoints: ["websecure"],

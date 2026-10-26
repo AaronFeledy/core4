@@ -1,10 +1,3 @@
-/**
- * Fail-fast check that derived codegen outputs exist before tests or the
- * source CLI try to resolve them. Effect-free; node:fs + node:path only.
- *
- * Bundled into the compiled binary via `core/bin/lando.ts` but only executed
- * in source mode (and by the test preload).
- */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -16,7 +9,7 @@ export const DERIVED_CODEGEN_SENTINELS = [
   "core/src/recipes/bundled.ts",
   "mcp/src/generated/mcp-allowlist.ts",
   "engine/src/deprecation/generated/schema-deprecations.ts",
-  "data-mover/src/generated/provider-images.ts",
+  "container-runtime/src/generated/provider-images.ts",
 ] as const;
 
 export const missingDerivedCodegen = (repoRoot: string): string[] =>

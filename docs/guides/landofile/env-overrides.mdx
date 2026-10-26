@@ -8,7 +8,7 @@ tags: [beta, docs, landofile, config, env]
 
 # Override config with env
 
-Prefix an env var with `LANDO_CONFIG__` to overlay global config without editing `config.yml`. Double underscore separates path segments:
+Prefix a host environment variable with `LANDO_CONFIG__` to override global config without editing `config.yml`. Export the variable in your shell before running Lando, or prefix a single command with its assignment in a POSIX shell. The examples below show variable names and values, not complete commands. Double underscores separate path segments:
 
 ```sh
 LANDO_CONFIG__telemetry__enabled=true
@@ -26,21 +26,25 @@ JSON-parseable values become objects and arrays. Values that are not valid JSON 
 LANDO_CONFIG__default_provider_id=podman
 ```
 
+Some keys also have short aliases, such as `LANDO_ROUTER_HTTP_PORT` for `router.httpPort` and `LANDO_NOTIFY_ENABLED` for `notify.enabled`. Root vars (`LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, `LANDO_USER_CACHE_ROOT`) sit in the same layer.
+
+An override that fails validation stops every command that needs config with a `ConfigError` that names the variable and what the schema expected, never the value you exported: `Invalid global configuration (environment override LANDO_ROUTER_HTTP_PORT): router.httpPort: Expected a value between 1 and 65535. Unset LANDO_ROUTER_HTTP_PORT or set it to a valid value.`. `lando config validate` reports the same error, so you can check without running anything else. An invalid `LANDO_CONFIG__RENDERER` or `LANDO_CONFIG__LOG_LEVEL` is reported the same way while the command falls back to the default renderer and log level; `LANDO_RENDERER` is not a config override and an invalid value there fails before dispatch.
+
 ## Read precedence
 
-Highest-precedence source wins. An env overlay overrides the on-disk config value. A command flag overrides an env-resolved value:
+Highest-precedence source wins. Env overrides sit above `config.yml` and `config.d/*.yml` drop-ins; see [the layer table](../config/global-config.mdx#choose-the-effective-value). A command flag overrides an env-resolved value:
 
 ```sh
-lando start --provider=docker
+lando setup --provider=docker
 ```
 
-That flag wins over `LANDO_PROVIDER=podman` for that command. `LANDO_PROVIDER` does not persist. After a successful `lando setup --provider=docker`, later commands stay on Docker without repeating the flag.
+That flag wins over `LANDO_PROVIDER=podman` for that command. The flag persists; the env var does not. See [What persists](../setup/provider-selection.mdx#what-persists).
 
 A local Landofile overrides the main Landofile during merge.
 
 ## Share env files across services
 
-Top-level `env_file` loads app-root-relative `KEY=VALUE` files into every service. Later files win, then a service's own `env_file` and `environment` values override the shared values.
+Create `shared.env` in your app root with the `KEY=VALUE` entries you want to share, then add the following configuration to `.lando.yml`. Top-level `env_file` loads app-root-relative `KEY=VALUE` files into every service. Later files win, then a service's own `env_file` and `environment` values override the shared values.
 
 ```yaml
 name: env-overrides-shared

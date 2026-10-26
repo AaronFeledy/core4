@@ -21,7 +21,7 @@ export interface ExportEntry {
 }
 
 export const commandError = (message: string, remediation: string): PluginManifestError =>
-  new PluginManifestError({ message, issues: [remediation] });
+  new PluginManifestError({ message, issues: [{ path: [], message: remediation }], remediation });
 
 export const readPackageJson = async (pluginRoot: string): Promise<PackageJson> => {
   const raw = await readFile(join(pluginRoot, "package.json"), "utf8");

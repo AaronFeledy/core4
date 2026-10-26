@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 
 import { parseRuntimeBundleSources } from "../../../scripts/runtime-bundle-sources.ts";
+import { fixtureLicense } from "./runtime-bundle-license-fixture.ts";
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 
@@ -14,6 +15,7 @@ const sourcePins = (runtimeVersion: string): unknown => ({
       components: [
         {
           name: "passt",
+          license: fixtureLicense("2026_06_11.a9c61ff"),
           version: "2026_06_11.a9c61ff",
           sourceBuild: "passt-linux-native",
           inputs: [
@@ -64,6 +66,7 @@ describe("runtime-bundle source pins", () => {
             components: [
               {
                 name: "netavark",
+                license: fixtureLicense("2.0.0"),
                 version: "2.0.0",
                 sourceBuild: "netavark-linux-native",
                 inputs: [

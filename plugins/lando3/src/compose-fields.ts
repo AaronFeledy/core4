@@ -185,6 +185,14 @@ export const lowerComposeFields = (
         drop(relative);
         continue;
       }
+    } else if (key === "networks" && hasPlainObjectPrototype(input)) {
+      for (const [network, attachment] of Object.entries(input)) {
+        if (!hasPlainObjectPrototype(attachment)) continue;
+        for (const nestedKey of Object.keys(attachment)) {
+          const dotted = `networks.*.${nestedKey}`;
+          if (dispositionOf(dotted) === "rejected") reject(dotted, [...relative, network, nestedKey]);
+        }
+      }
     } else if ((key === "volumes" || key === "ports") && Array.isArray(input)) {
       input.forEach((entry: unknown, index) => {
         if (!hasPlainObjectPrototype(entry)) return;

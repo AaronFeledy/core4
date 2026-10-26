@@ -1,147 +1,177 @@
-import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer } from "effect";
-
-import {
-  AbsolutePath,
-  AppId,
-  type AppPlan,
-  ProviderId,
-  ServiceName,
-  type ServicePlan,
-} from "@lando/sdk/schema";
-import {
-  RouterService,
-  RuntimeProviderRegistry,
-  type RuntimeProviderShape,
-  type ServiceRuntimeInfo,
-} from "@lando/sdk/services";
+import { expect, test } from "bun:test";
+import { type AppPlan, type PublicationObservation, ServiceInfo, type ServicePlan } from "@lando/sdk/schema";
+import { RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
-
+import { Effect, Layer, Schema } from "effect";
 import { infoForPlan } from "../../src/operations/info.ts";
+import { plan, web } from "./start-progress-topology-support.ts";
 
-const providerId = ProviderId.make("test");
-const web = ServiceName.make("web");
-const metadata = {
-  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00.000Z"),
-  source: "info-router.test",
-  runtime: 4 as const,
-};
+const route = {
+  hostname: "web.demo.lndo.site",
+  priority: 2,
+  scheme: "https",
+  service: web.name,
+  pathPrefix: "/api",
+  backend: { service: web.name, protocol: "http", port: 3000 },
+} satisfies AppPlan["routes"][number];
 
-const published = {
-  _tag: "published" as const,
-  protocol: "http" as const,
-  port: 80,
-  publication: { hostPort: 8080 },
-  materialization: { bindAddress: "127.0.0.1" as const, hostPort: 8080 },
-};
-
-const service: ServicePlan = {
-  name: web,
-  type: "nginx",
-  provider: providerId,
-  primary: true,
-  environment: {},
-  mounts: [],
-  storage: [],
-  endpoints: [published],
-  routes: [],
-  dependsOn: [],
-  hostAliases: [],
-  metadata,
-  extensions: {},
-};
-
-const planWithRouter = (enabled: boolean): AppPlan => ({
-  id: AppId.make("demo"),
-  name: "demo",
-  slug: "demo",
-  root: AbsolutePath.make("/srv/apps/demo"),
-  provider: providerId,
-  router: { enabled },
-  services: { [web]: service },
-  routes: [
-    {
-      hostname: "web.demo.lndo.site",
-      priority: 2,
-      scheme: "https",
-      service: web,
-      backend: { service: web, protocol: "http", port: 80 },
-    },
-  ],
-  networks: [],
-  stores: [],
-  fileSync: [],
-  metadata,
-  extensions: {},
-});
-
-const infoOf = (plan: AppPlan, endpoints: ServiceRuntimeInfo["endpoints"] = [published]) => {
-  const provider: RuntimeProviderShape = {
+const infoOf = (
+  service: ServicePlan,
+  options: {
+    readonly state?: string;
+    readonly publications?: PublicationObservation;
+    readonly routerEnabled?: boolean;
+    readonly observedRoute?: boolean;
+  } = {},
+) => {
+  const planned = {
+    ...plan,
+    services: { [service.name]: service },
+    routes: [route],
+    router: { enabled: options.routerEnabled ?? true },
+  };
+  const provider = {
     ...TestRuntimeProvider,
-    inspect: (target) =>
+    inspect: () =>
       Effect.succeed({
-        app: plan.id,
-        service: target.service,
-        providerId,
-        status: "running",
-        state: "running",
-        endpoints,
+        app: planned.id,
+        service: service.name,
+        providerId: planned.provider,
+        status: options.state ?? "running",
+        publications: options.publications ?? { status: "unknown" as const },
       }),
   };
-  const proxy = {
-    ...makeTestRouterService(),
-    status: Effect.succeed({
-      state: "running" as const,
-      authorities: [{ scheme: "https" as const, hostname: "web.demo.lndo.site", port: 38443 }],
-      configuredApps: [plan.id],
-    }),
-  };
+  const authority = { scheme: "https" as const, hostname: route.hostname, port: 38443 };
   return Effect.runPromise(
-    infoForPlan(plan).pipe(
-      Effect.provide(Layer.succeed(RouterService, proxy)),
+    infoForPlan(planned).pipe(
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          list: Effect.succeed([planned.provider]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        }),
+      ),
       Effect.provide(
-        Layer.succeed(
-          RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            list: Effect.succeed([providerId]),
-            capabilities: Effect.succeed(provider.capabilities),
-            select: () => Effect.succeed(provider),
-          }),
-        ),
+        Layer.succeed(RouterService, {
+          ...makeTestRouterService(),
+          observeRoutes: () =>
+            Effect.succeed({
+              configuredAuthorities: [authority],
+              observation:
+                options.observedRoute === true
+                  ? { status: "present" as const, publications: [{ route, authority }] }
+                  : { status: "unknown" as const },
+            }),
+        }),
       ),
     ),
   );
 };
 
-describe("infoForPlan", () => {
-  test("renders a Redis TCP endpoint without advertising HTTP", async () => {
-    // Given
-    const plan = planWithRouter(false);
-    const redisPlan = { ...plan, services: { [web]: { ...service, type: "redis" } } };
-    // When
-    const result = await infoOf(redisPlan, [
-      {
-        _tag: "published",
-        protocol: "tcp",
-        port: 6379,
-        publication: {},
-        materialization: { bindAddress: "127.0.0.1", hostPort: 16379 },
-      },
-    ]);
-    // Then
-    expect(result.services[0]?.endpoints).toEqual(["tcp://localhost:16379"]);
+test("round trips actual info without redundant fields or runtime leakage", async () => {
+  const result = await infoOf(web, {
+    publications: {
+      status: "present",
+      bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
+    },
   });
+  const encoded = result.services.map((row) => Schema.encodeSync(ServiceInfo)(row));
+  const decoded = encoded.map((row) => Schema.decodeUnknownSync(ServiceInfo)(row));
+  expect(result.services).toEqual(decoded);
+  expect(Object.keys(result.services[0] ?? {}).sort()).toEqual([
+    "api",
+    "app",
+    "connections",
+    "primary",
+    "provider",
+    "service",
+    "status",
+    "type",
+  ]);
+});
 
-  test("omits routed hostnames when the plan disables the router", async () => {
-    const result = await infoOf(planWithRouter(false));
-    expect(result.services[0]?.endpoints).toEqual(["http://localhost:8080"]);
-  });
+test.each(["unknown", "present", "missing"] as const)(
+  "keeps planned internals and fixed host addresses with %s evidence",
+  async (status) => {
+    const result = await infoOf(web, {
+      publications: status === "present" ? { status, bindings: [] } : { status },
+    });
+    const rows = result.services[0]?.connections ?? [];
+    expect(rows.filter((row) => row.scope === "app").map((row) => row.url)).toEqual(["http://web:3000"]);
+    expect(rows.find((row) => row.source === "publication")).toMatchObject({
+      url: "http://localhost:3000",
+      state: status === "unknown" ? "unknown" : "inactive",
+    });
+  },
+);
 
-  test("includes routed hostnames when the plan enables the router", async () => {
-    const result = await infoOf(planWithRouter(true));
-    expect(result.services[0]?.endpoints).toEqual([
-      "https://web.demo.lndo.site:38443",
-      "http://localhost:8080",
-    ]);
+test.each(["stopped", "unknown", "paused", "restarting"])(
+  "preserves the %s state vocabulary and configured route prefix",
+  async (state) => {
+    const result = await infoOf(web, { state, observedRoute: true });
+    expect(result.services[0]?.status).toBe(state);
+    expect(result.services[0]?.connections.find((row) => row.source === "route")).toMatchObject({
+      url: "https://web.demo.lndo.site:38443/api",
+      state: state === "unknown" || state === "restarting" ? "unknown" : "inactive",
+    });
+  },
+);
+
+test("retains disabled routes but never describes them as active", async () => {
+  const result = await infoOf(web, { routerEnabled: false, observedRoute: true });
+  expect(result.services[0]?.connections.find((row) => row.source === "route")).toMatchObject({
+    state: "inactive",
+    url: "https://web.demo.lndo.site:38443/api",
   });
+});
+
+test.each([
+  ["postgres", "postgresql://db%40user@[::1]:49152/app%2Fdb", []],
+  ["postgres:18", "postgresql://db%40user@[::1]:49152/app%2Fdb", []],
+  ["memcached", "memcached://[::1]:49152", []],
+  ["memcached:1.6", "memcached://[::1]:49152", []],
+  ["valkey", "valkey://[::1]:49152", ["redis://[::1]:49152"]],
+  ["valkey:8", "valkey://[::1]:49152", ["redis://[::1]:49152"]],
+] as const)("preserves %s client URIs only for its declared listener", async (type, url, alternateUrls) => {
+  const { connection: _connection, nonSqlCreds: _nonSqlCreds, ...serviceBase } = web;
+  const service: ServicePlan = {
+    ...serviceBase,
+    type,
+    environment: { POSTGRES_USER: "wrong-user", POSTGRES_DB: "wrong-db", POSTGRES_PASSWORD: "canary" },
+    ...(type.startsWith("postgres")
+      ? {
+          connection: {
+            family: "postgres" as const,
+            port: 15432,
+            creds: { user: "db@user", database: "app/db", password: "canary" },
+          },
+        }
+      : {}),
+    endpoints: [
+      { _tag: "published", protocol: "tcp", port: 15432, primary: true, publication: { bindAddress: "::1" } },
+      { _tag: "internal", protocol: "tcp", port: 9000 },
+    ],
+  };
+  const result = await infoOf(service, {
+    publications: {
+      status: "present",
+      bindings: [
+        { port: 15432, transport: "tcp", bindAddress: "::1", hostPort: 49152 },
+        { port: 9000, transport: "tcp", bindAddress: "::1", hostPort: 19000 },
+      ],
+    },
+  });
+  expect(
+    result.services[0]?.connections.find(
+      (row) => row.source === "publication" && row.endpoint.port === 15432,
+    ),
+  ).toMatchObject({ url, alternateUrls });
+  expect(
+    result.services[0]?.connections.find((row) => row.source === "publication" && row.endpoint.port === 9000),
+  ).toMatchObject({ url: "tcp://[::1]:19000", endpoint: { primary: false, names: [] } });
+  expect(JSON.stringify(result)).not.toContain("canary");
 });

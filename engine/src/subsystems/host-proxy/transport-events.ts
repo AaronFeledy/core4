@@ -13,9 +13,10 @@ export const publishRejected = Effect.fnUntraced(function* (input: {
   readonly callerService: string;
   readonly depth: number;
   readonly failureDetail: string;
+  readonly kind?: string;
 }) {
   const events = yield* EventService;
-  const request = { kind: "runLando" };
+  const request = { kind: input.kind ?? "runLando" };
   yield* events.publish(
     PreHostProxyCallEvent.make({
       app: input.app,

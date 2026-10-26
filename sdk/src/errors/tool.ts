@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 /**
  * Manifest/host-resolution failure in the tool-provisioning helper: the active
@@ -9,7 +9,7 @@ export class ToolManifestError extends Schema.TaggedError<ToolManifestError>()("
   message: Schema.String,
   toolId: Schema.optional(Schema.String),
   key: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -22,7 +22,7 @@ export class ToolExtractError extends Schema.TaggedError<ToolExtractError>()("To
   message: Schema.String,
   toolId: Schema.optional(Schema.String),
   member: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -35,6 +35,12 @@ export class ToolInstallPathError extends Schema.TaggedError<ToolInstallPathErro
   message: Schema.String,
   toolId: Schema.optional(Schema.String),
   installName: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+    Schema.withConstructorDefault(
+      Effect.succeed(
+        "Use an install name that stays inside the private Lando bin directory, then retry setup.",
+      ),
+    ),
+  ),
   cause: Schema.optional(Schema.Unknown),
 }) {}

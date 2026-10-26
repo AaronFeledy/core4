@@ -1,5 +1,6 @@
 import type { Effect, Schema } from "effect";
 
+import type { CommandCompletion } from "../schema/machine-output.ts";
 import type { BootstrapLevel } from "../schema/primitives.ts";
 
 /** Built-in command namespaces (`app`, `apps`, `meta`). */
@@ -82,7 +83,7 @@ export interface ExecutableCommandSpec<
   readonly strict?: boolean;
   readonly run: (input: Input) => Effect.Effect<A, E, R>;
   readonly resultSchema: Schema.Codec<unknown, unknown>;
-  readonly successExitCode?: (result: A, input?: Input) => number | undefined;
+  readonly completion?: (result: A, input: Input) => CommandCompletion;
   /**
    * Optional post-run render hook. Receives the validated input, result, and
    * captured streams; returns an Effect that performs framework-neutral output.

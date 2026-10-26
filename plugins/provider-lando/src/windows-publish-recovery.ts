@@ -1,8 +1,10 @@
 import { APP_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
+import { physicalListenerPorts } from "@lando/container-runtime/physical-publications";
 import { Effect, Predicate } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
+import type { EndpointPlan, NetworkingPlan, ServiceNetworkAttachment } from "@lando/sdk/schema";
 
 import {
   type PublishedContainerReceipt,
@@ -37,24 +39,22 @@ export const compatNetworkIds = (value: unknown): ReadonlyArray<string> => {
 export const WINDOWS_COMPAT_NETWORK_LIST_PATH = "/networks" as const;
 
 export const supportsWindowsPublishedRecovery = (input: {
-  readonly appId: string;
-  readonly networks?: unknown;
-  readonly endpoints: ReadonlyArray<{
-    readonly _tag: string;
-    readonly protocol?: string;
-    readonly publication?: { readonly bindAddress?: string | undefined } | undefined;
-  }>;
+  readonly networking: NetworkingPlan | undefined;
+  readonly attachments: ReadonlyArray<ServiceNetworkAttachment>;
+  readonly endpoints: ReadonlyArray<EndpointPlan>;
 }): boolean => {
-  const published = input.endpoints.filter((endpoint) => endpoint._tag === "published");
+  // Internal facets of a published listener describe the same physical port, not an unpublished one.
+  const published = input.endpoints.flatMap((endpoint) => (endpoint._tag === "published" ? [endpoint] : []));
   return (
-    input.appId === "global" &&
+    input.networking?.perAppBridge === null &&
+    input.networking.sharedNetworkMembership !== undefined &&
     published.length > 0 &&
-    published.length === input.endpoints.length &&
+    input.endpoints.every((endpoint) => endpoint.protocol !== "unix") &&
+    physicalListenerPorts(input.endpoints).length === physicalListenerPorts(published).length &&
     published.every(
-      (endpoint) => endpoint.protocol !== "udp" && endpoint.publication?.bindAddress === "127.0.0.1",
+      (endpoint) => endpoint.protocol !== "udp" && endpoint.publication.bindAddress === "127.0.0.1",
     ) &&
-    (input.networks === undefined ||
-      (Predicate.isObject(input.networks) && Object.keys(input.networks).length <= 1))
+    input.attachments.length <= 1
   );
 };
 export const publishedFactsFromCompatResponses = (input: {

@@ -60,6 +60,28 @@ describe("authoring AST derivation", () => {
 
 // ==== Public authoring schema contracts
 describe("Landofile authoring schemas", () => {
+  test("programmatic authoring and translator fragments accept shorthand inputs", () => {
+    const input = Public.defineLandofile({
+      name: "shorthand",
+      services: {
+        db: { healthcheck: false },
+        web: { healthcheck: "pg_isready", appMount: "/site" },
+      },
+    }) satisfies typeof Public.LandofileAuthoringShape.Encoded;
+    const fragment = {
+      services: input.services,
+    } satisfies typeof Public.LandofileAuthoringFragment.Encoded;
+    for (const options of [{}, { onExcessProperty: "error" as const }]) {
+      expect(Schema.decodeUnknownSync(Public.LandofileAuthoringShape, options)(input)).toEqual(input);
+      expect(Schema.decodeUnknownSync(Public.LandofileAuthoringFragment, options)(fragment)).toEqual(
+        fragment,
+      );
+      expect(Schema.decodeUnknownSync(Public.LandofileShape, options)(input).services).toMatchObject({
+        db: { healthcheck: false },
+        web: { healthcheck: { kind: "command", command: "pg_isready" }, appMount: { target: "/site" } },
+      });
+    }
+  });
   const producer = {
     sourceKind: "bundled",
     packageName: "@lando/recipe-demo",
@@ -353,20 +375,12 @@ describe("Landofile authoring schemas", () => {
       },
     });
     expect(fragment).toMatchObject({ $defs: { DeprecationNotice: { required: ["since", "note"] } } });
+    expect(shape).toHaveProperty(["properties", "tooling", "anyOf", 0, "additionalProperties"], {
+      $ref: "#/$defs/ToolingTaskInputAuthoring",
+    });
     expect(shape).toHaveProperty(
-      [
-        "properties",
-        "tooling",
-        "anyOf",
-        0,
-        "additionalProperties",
-        "anyOf",
-        0,
-        "properties",
-        "deprecated",
-        "anyOf",
-      ],
-      [{ $ref: "#/$defs/DeprecationNotice" }, { type: "string" }],
+      ["$defs", "ToolingTaskInputAuthoring", "anyOf", 0, "anyOf", 0, "properties", "deprecated", "anyOf"],
+      [{ $ref: "#/$defs/DeprecationNotice" }, { type: "string", pattern: expect.any(String) }],
     );
     expect(decoded._tag).toBe("Success");
   });

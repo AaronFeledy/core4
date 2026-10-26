@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { describe, expect, test } from "bun:test";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { type Context, Effect, Layer, Option, Queue, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
@@ -15,13 +15,12 @@ import { Downloader, EventService, type LandoEvent } from "@lando/sdk/services";
 import { makeDownloaderEvents } from "../src/downloader-events.ts";
 import { layer as DownloaderLayer } from "../src/downloader.ts";
 
-afterEach(resetRegisteredRedactionValuesForTesting);
-
 test("downloader event text masks values registered after event seam construction", async () => {
   // Given
-  const events = makeDownloaderEvents(Option.none());
+  const redaction = makeRedactionService();
+  const events = makeDownloaderEvents(Option.none(), Effect.runSync(redaction.forProfile("secrets")));
   const secret = "downloader-registered-canary";
-  await Effect.runPromise(registerRedactionValues([secret]));
+  await Effect.runPromise(redaction.registerValues([secret]));
   // When
   const text = events.redactText(`download failed with ${secret}`);
   // Then
@@ -46,7 +45,7 @@ const makeFakeHttpClient = (bodies: Record<string, Uint8Array | "fail">) => {
           }),
         );
       }
-      return HttpClientResponse.fromWeb(request, new Response(body, { status: 200 }));
+      return HttpClientResponse.fromWeb(request, new Response(new Uint8Array(body), { status: 200 }));
     }),
   );
   return { layer: Layer.succeed(HttpClient.HttpClient, client) };
@@ -75,6 +74,47 @@ const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
 };
 
 describe("Downloader layer event publication + redaction", () => {
+  test.each([false, true])(
+    "masks environment secrets in events (runtime service=%s)",
+    async (withService) => {
+      // Given: the caller id contains a secret not labelled in the emitted text.
+      const secret = "downloader-environment-canary";
+      const previous = process.env.P5_DOWNLOADER_SECRET;
+      process.env.P5_DOWNLOADER_SECRET = secret;
+      const payload = bytes("verified payload");
+      const url = "https://artifacts.test/environment";
+      const fake = makeFakeHttpClient({ [url]: payload });
+      const capture = makeCapturingEventService();
+      const dependencies = Layer.mergeAll(
+        fake.layer,
+        capture.layer,
+        withService ? Layer.succeed(RedactionService, makeRedactionService()) : Layer.empty,
+      );
+      try {
+        // When: the production Downloader layer publishes its lifecycle events.
+        await Effect.runPromise(
+          Effect.scoped(
+            Effect.flatMap(Downloader, (downloader) =>
+              downloader.download({
+                url,
+                destination: { kind: "memory" },
+                expectedSha256: sha256Hex(payload),
+                callerId: secret,
+              }),
+            ),
+          ).pipe(Effect.provide(DownloaderLayer.pipe(Layer.provide(dependencies)))),
+        );
+        // Then: both optional-service paths mask the secret before publishing.
+        expect(capture.events().length).toBeGreaterThan(0);
+        expect(JSON.stringify(capture.events())).not.toContain(secret);
+        expect(capture.events().find((event) => event._tag === "pre-download")?.callerId).toBe("[redacted]");
+      } finally {
+        if (previous === undefined) Reflect.deleteProperty(process.env, "P5_DOWNLOADER_SECRET");
+        else process.env.P5_DOWNLOADER_SECRET = previous;
+      }
+    },
+  );
+
   test("a successful download emits pre-download, download-progress, and post-download", async () => {
     await withTempDir(async (dir) => {
       const payload = bytes("verified artifact contents");

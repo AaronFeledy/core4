@@ -1,11 +1,8 @@
-import { DateTime, Effect, Result, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
-import { publishGlobalRoutes } from "@lando/engine/operations/global-routes";
-import {
-  applyGlobalServiceGroups,
-  globalServiceGroupError,
-  waitForGlobalServiceGroups,
-} from "@lando/engine/operations/global-service-groups";
+import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
+import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
+import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import type {
   GlobalAppError,
   GlobalDistConflictError,
@@ -21,7 +18,7 @@ import type {
   ServiceNotReadyError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
-import { ServiceName } from "@lando/sdk/schema";
+import { StartedService } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -39,7 +36,6 @@ import { globalAppRef, renderGlobalServiceRow, withGlobalLifecycleEvents } from 
 
 import { globalInstall } from "@lando/engine/operations/global-install";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 
 const now = () => DateTime.nowUnsafe();
 
@@ -47,29 +43,12 @@ export interface GlobalRebuildOptions {
   readonly signal?: AbortSignal;
 }
 
-export interface GlobalRebuiltService {
-  readonly name: string;
-  readonly state: string;
-  readonly endpoints: ReadonlyArray<string>;
-}
-
-export interface GlobalRebuildResult {
-  readonly app: string;
-  readonly materialized: boolean;
-  readonly servicesRebuilt: ReadonlyArray<GlobalRebuiltService>;
-}
-
-export const GlobalRebuiltServiceSchema = Schema.Struct({
-  name: Schema.String,
-  state: Schema.String,
-  endpoints: Schema.Array(Schema.String),
-});
-
 export const GlobalRebuildResultSchema = Schema.Struct({
   app: Schema.String,
   materialized: Schema.Boolean,
-  servicesRebuilt: Schema.Array(GlobalRebuiltServiceSchema),
+  servicesRebuilt: Schema.Array(StartedService),
 });
+export type GlobalRebuildResult = typeof GlobalRebuildResultSchema.Type;
 
 export type GlobalRebuildError =
   | ServiceNotReadyError
@@ -89,6 +68,8 @@ export type GlobalRebuildError =
   | SecretReferenceInvalidError;
 
 export type GlobalRebuildServices =
+  | import("@lando/sdk/services").StateStore
+  | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -109,7 +90,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
   if (services.length === 0) return { app: loaded.plan.name, materialized: true, servicesRebuilt: [] };
 
   const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const provider = yield* registry.select(loaded.plan.provider);
   const events = yield* EventService;
   const builder = yield* BuildOrchestrator;
 
@@ -153,34 +134,24 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
         },
         (plan) => builder.build(plan, { refresh: true }),
       );
-      const outcome = yield* waitForGlobalServiceGroups(provider, applied, options.signal);
-      const partialError = globalServiceGroupError("rebuild", outcome);
       const router = yield* RouterService;
-      const startedNames = new Set(outcome.services.map((service) => service.name));
-      const failedNames = new Set(outcome.failures.flatMap((failure) => failure.names));
-      const publish = publishGlobalRoutes(router, provider, outcome.builtPlan, {
-        started: startedNames,
-        failed: failedNames,
-      });
-      const publication = yield* Effect.result(publish);
-      if (partialError !== undefined) {
-        if (applied.services.length > 0) yield* Effect.result(router.revalidateStartup);
-        return yield* Effect.fail(partialError);
-      }
+      const outcome = yield* completeStartup({
+        policy: "global-groups",
+        operation: "rebuild",
+        provider,
+        router,
+        outcome: applied,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      }).pipe(
+        Effect.tapError(() =>
+          applied.services.length > 0 ? Effect.asVoid(Effect.result(router.revalidateStartup)) : Effect.void,
+        ),
+      );
       const { builtPlan } = outcome;
-      if (Result.isFailure(publication)) {
-        yield* Effect.result(router.revalidateStartup);
-        return yield* Effect.fail(publication.failure);
-      }
-      const routeUrls = publication.success;
-      const servicesRebuilt = outcome.ready.map((row) => ({
-        ...row,
-        endpoints: [...row.endpoints, ...(routeUrls.get(ServiceName.make(row.name)) ?? [])],
-      }));
-
       // Re-observe the router before the post event: a rebuild that leaves the
       // router's startup observation broken has not finished rebuilding.
       yield* router.revalidateStartup;
+      const servicesRebuilt = startedServices(yield* collectObservedConnections(builtPlan, outcome.ready));
 
       return { builtPlan, servicesRebuilt };
     }),

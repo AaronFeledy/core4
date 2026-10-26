@@ -1,10 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { RouteInputError } from "@lando/sdk/errors";
 import type { RouteInput } from "@lando/sdk/schema";
 import { Result } from "effect";
-import { normalizeRoute, normalizeRoutes, parseRouteShorthand } from "../src/route-normalize.ts";
+import { normalizeRoute, parseRouteShorthand } from "../src/route-normalize.ts";
 
 describe("route normalization", () => {
+  test("collects every invalid field of one object route", () => {
+    const result = normalizeRoute(
+      { hostname: "bad_host!", pathPrefix: "no-slash" },
+      { path: ["services", "web", "routes", 2] },
+    );
+    if (Result.isSuccess(result)) throw new Error("Expected field issues");
+    expect(result.failure.map((issue) => issue.path)).toEqual([
+      ["services", "web", "routes", 2, "hostname"],
+      ["services", "web", "routes", 2, "pathPrefix"],
+    ]);
+    expect(result.failure.every((issue) => issue.suggestion !== undefined)).toBe(true);
+  });
   test.each([
     ["normalizes a bare hostname", "app.lndo.site", { hostname: "app.lndo.site" }],
     ["normalizes host:port", "app.lndo.site:8080", { hostname: "app.lndo.site", endpoint: 8080 }],
@@ -49,10 +60,14 @@ describe("route normalization", () => {
       // Given
       Object.freeze(route);
       // When
-      const result = normalizeRoute(route, { keyPath: "services.web.routes[0]" });
+      const result = normalizeRoute(route, { path: ["services", "web", "routes", 0] });
       // Then
       expect(result).toEqual(
-        Result.succeed({ ...route, filters: route.filters ?? [], source: { key: "services.web.routes[0]" } }),
+        Result.succeed({
+          ...route,
+          filters: route.filters ?? [],
+          source: { key: "services.web.routes[0]", path: ["services", "web", "routes", 0] },
+        }),
       );
     },
   );
@@ -66,6 +81,58 @@ describe("route normalization", () => {
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isSuccess(result)) expect(Object.hasOwn(result.success, "scheme")).toBe(false);
   });
+
+  test.each([
+    "myapp.lndo.site:8080/api",
+    "myapp.lndo.site:8080",
+    "myapp.lndo.site/api",
+    "https://app.lndo.site",
+    "",
+    "api..lndo.site",
+    "a b",
+    "-app.site",
+  ])("rejects object hostname %j at its field", (hostname) => {
+    // Given
+    const ctx = { path: ["services", "web", "routes", 0], file: "/app/.lando.yml" };
+    // When
+    const result = normalizeRoute({ hostname }, ctx);
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toMatchObject([{ path: ["services", "web", "routes", 0, "hostname"] }]);
+      expect(result.failure[0]?.message).toContain(JSON.stringify(hostname));
+      if (/[:/]/.test(hostname)) expect(result.failure[0]?.suggestion).toMatch(/endpoint.*pathPrefix/);
+    }
+  });
+
+  test.each(["nope", "/a b", "/a?x", "/a#x"])("rejects object pathPrefix %j at its field", (pathPrefix) => {
+    // Given
+    const ctx = { path: ["services", "web", "routes", 0], file: "/app/.lando.yml" };
+    // When
+    const result = normalizeRoute({ hostname: "app.site", pathPrefix }, ctx);
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result))
+      expect(result.failure).toMatchObject([{ path: ["services", "web", "routes", 0, "pathPrefix"] }]);
+  });
+
+  test.each(["*.app.site", "*-app.site", "wild.*.app.site", "a**b.*x*.site"])(
+    "preserves wildcard object hostname %s and route-entry provenance",
+    (hostname) => {
+      // Given
+      const ctx = { path: ["services", "web", "routes", 0], file: "/app/.lando.yml" };
+      // When
+      const result = normalizeRoute({ hostname }, ctx);
+      // Then
+      expect(result).toEqual(
+        Result.succeed({
+          hostname,
+          filters: [],
+          source: { key: "services.web.routes[0]", file: ctx.file, path: ["services", "web", "routes", 0] },
+        }),
+      );
+    },
+  );
 
   test.each([
     "",
@@ -94,16 +161,15 @@ describe("route normalization", () => {
     "rejects scheme prefixes, whitespace, empty labels, out-of-range ports, query, and fragment with the authored key path: %j",
     (route) => {
       // Given
-      const ctx = { keyPath: "services.web.routes[2]", file: "/app/.lando.yml" };
+      const ctx = { path: ["services", "web", "routes", 2], file: "/app/.lando.yml" };
       // When
       const result = normalizeRoute(route, ctx);
       // Then
       expect(Result.isFailure(result)).toBe(true);
       if (Result.isFailure(result)) {
-        expect(result.failure).toBeInstanceOf(RouteInputError);
-        expect(result.failure).toMatchObject({ key: ctx.keyPath, file: ctx.file });
-        expect(result.failure.message.length).toBeGreaterThan(0);
-        expect(result.failure.remediation.length).toBeGreaterThan(0);
+        expect(result.failure).toMatchObject([{ path: ["services", "web", "routes", 2] }]);
+        expect(result.failure[0]?.message.length).toBeGreaterThan(0);
+        expect(result.failure[0]?.suggestion?.length).toBeGreaterThan(0);
       }
     },
   );
@@ -112,12 +178,13 @@ describe("route normalization", () => {
     // Given
     const routes = ["app.lndo.site", "app:65536"];
     // When
-    const result = normalizeRoutes(routes, { keyPath: "proxy.web" });
+    const result = Result.all(
+      routes.map((route, index) => normalizeRoute(route, { path: ["proxy", "web", index] })),
+    );
     // Then
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
-      expect(result.failure.key).toBe("proxy.web[1]");
-      expect(result.failure.file).toBeUndefined();
+      expect(result.failure).toMatchObject([{ path: ["proxy", "web", 1] }]);
     }
   });
 
@@ -125,12 +192,24 @@ describe("route normalization", () => {
     // Given
     const routes = ["app:1", "app:65535"];
     // When
-    const result = normalizeRoutes(routes, { keyPath: "services.web.routes" });
+    const result = Result.all(
+      routes.map((route, index) => normalizeRoute(route, { path: ["services", "web", "routes", index] })),
+    );
     // Then
     expect(result).toEqual(
       Result.succeed([
-        { hostname: "app", endpoint: 1, filters: [], source: { key: "services.web.routes[0]" } },
-        { hostname: "app", endpoint: 65535, filters: [], source: { key: "services.web.routes[1]" } },
+        {
+          hostname: "app",
+          endpoint: 1,
+          filters: [],
+          source: { key: "services.web.routes[0]", path: ["services", "web", "routes", 0] },
+        },
+        {
+          hostname: "app",
+          endpoint: 65535,
+          filters: [],
+          source: { key: "services.web.routes[1]", path: ["services", "web", "routes", 1] },
+        },
       ]),
     );
   });

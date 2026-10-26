@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Queue, Stream } from "effect";
+import * as ContainerHelperAssetsLayer from "../../src/container-helper/assets.ts";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import {
@@ -18,11 +19,13 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { appSteps } from "@lando/engine/services/build-app-plan";
 import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
 import * as LandoConfigService from "@lando/engine/services/config";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProviderInternalError } from "@lando/sdk/errors";
@@ -86,9 +89,12 @@ test.each([
       id: "lando",
       isAvailable: Effect.succeed(true),
       apply: (plan, options) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           appliedPlan = plan;
-          providerValue = options.serviceEnvironment?.[web]?.VALUE;
+          const service = plan.services[web];
+          if (service === undefined || options.resolveServiceEnvironment === undefined)
+            throw new TypeError("Expected web environment resolver");
+          providerValue = (yield* options.resolveServiceEnvironment(service)).VALUE;
           return { changed: true };
         }),
       inspect: (target) =>
@@ -98,7 +104,7 @@ test.each([
           providerId: ProviderId.make("lando"),
           status: "running",
           state: "running",
-          endpoints: [],
+          publications: { status: "present", bindings: [] },
         }),
       execStream: () => {
         executions += 1;
@@ -116,6 +122,8 @@ test.each([
                   providerId: "lando",
                   operation: "execStream",
                   message: sentinel,
+                  remediation:
+                    "Re-run the command after checking `lando` logs for the `execStream` failure; if it persists, report the error with that operation name.",
                 }),
               )
             : Stream.make({ exitCode: 0 }),
@@ -138,10 +146,13 @@ test.each([
         }),
       ),
       Layer.succeed(SecretStore, secretStore),
-      Layer.succeed(RedactionService, RedactionService.of(makeRedactionService(secretStore))),
+      Layer.succeed(RedactionService, makeRedactionService()),
       Layer.succeed(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando")]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -157,18 +168,33 @@ test.each([
       Layer.succeed(
         LandofileService,
         LandofileService.of({
-          discover: resolveLandofileIncludes({
-            landofile: { name: "profile-canary", includes: ["user:profile.yml"] },
-            appRoot,
-            cacheRoot: paths.roots.userCacheRoot,
-            ports: { ...landofileRuntimeInputs().ports, resolveUserIncludesDir: () => paths.userIncludesDir },
-            stateStore: store,
-          }),
+          discover: buildLandofileLoadScope([
+            {
+              file: join(appRoot, ".lando.yml"),
+              value: { name: "profile-canary", includes: ["user:profile.yml"] },
+            },
+          ]).pipe(
+            Effect.flatMap((loadScope) =>
+              resolveLandofileIncludes({
+                landofile: { name: "profile-canary", includes: ["user:profile.yml"] },
+                loadScope,
+                appRoot,
+                cacheRoot: paths.roots.userCacheRoot,
+                ports: {
+                  ...landofileRuntimeInputs().ports,
+                  resolveUserIncludesDir: () => paths.userIncludesDir,
+                },
+                stateStore: store,
+              }),
+            ),
+          ),
         }),
       ),
     );
     const layer = Layer.mergeAll(
+      ContainerHelperAssetsLayer.layer.pipe(Layer.provide(dependencies)),
       dependencies,
+      EnvironmentValueResolverLayer.layer.pipe(Layer.provide(dependencies)),
       AppPlannerLayer.layer.pipe(Layer.provide(dependencies)),
       BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)),
     );
@@ -193,7 +219,7 @@ test.each([
             const planner = yield* AppPlanner;
             const plan = yield* planner.plan(landofile, provider.capabilities);
             yield* writeAppCommandCacheStrict({
-              landofile,
+              landofile: landofile.document,
               entries: [{ id: "app:check", summary: "Check", hidden: false, service: "web" }],
               cwd: appRoot,
               cacheRoot: paths.roots.userCacheRoot,
@@ -214,16 +240,25 @@ test.each([
               events: [...(yield* Queue.clear(queue))],
             };
           }),
-        ).pipe(Effect.provide(layer)),
+        ).pipe(Effect.provide(layer), Effect.provide(LandoConfigService.layer)),
       );
 
       // Then: provider action sees the value; durable identities and every observed surface do not.
       expect(providerValue).toBe(sentinel);
       expect(result.outcome._tag).toBe(fails ? "Failure" : "Success");
-      expect(appliedPlan?.services[web]?.environment.VALUE).toBe(reference);
-      expect(result.plan.services[web]?.environment.VALUE).toBe(reference);
+      expect(appliedPlan?.services[web]?.environment.VALUE).toEqual({
+        _tag: "SecretRef",
+        reference: "OPAQUE",
+      });
+      expect(result.plan.services[web]?.environment.VALUE).toEqual({
+        _tag: "SecretRef",
+        reference: "OPAQUE",
+      });
       expect(result.cachedPlan).toEqual(result.plan);
-      expect(result.get.value).toBe(reference);
+      expect("value" in result.get ? result.get.value : undefined).toEqual({
+        _tag: "SecretRef",
+        reference: "OPAQUE",
+      });
       expect(appSteps(result.cachedPlan)).toEqual(result.buildIdentity);
       expect(result.buildIdentity).toHaveLength(1);
       expect(executions).toBe(1);

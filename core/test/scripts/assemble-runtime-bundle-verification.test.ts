@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { buildManagedRuntimeServiceArgs } from "@lando/provider-lando";
 import { assembleBundle, parseRuntimeBundleSources } from "../../../scripts/assemble-runtime-bundle.ts";
 import { verifyLinuxPodmanPortability } from "../../../scripts/linux-podman-source-build.ts";
+import { fixtureLicense } from "./runtime-bundle-license-fixture.ts";
 
 const podmanBytes = new TextEncoder().encode("pinned-podman-binary");
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -61,6 +62,7 @@ const sourcesFor = (hostKey: "darwin-arm64" | "linux-x64") =>
         components: [
           {
             name: "fixture-engine",
+            license: fixtureLicense("6.0.0", podmanBytes),
             version: "6.0.0",
             url: `https://example.test/podman-${hostKey}`,
             sha256: sha256(podmanBytes),
@@ -151,6 +153,7 @@ describe("Linux runtime bundle verification", () => {
     let configIsDirectory = false;
     try {
       const result = await assembleBundle({
+        repository: "AaronFeledy/core4",
         hostKey: "linux-x64",
         sources: sourcesFor("linux-x64"),
         outDir: dir,
@@ -205,6 +208,7 @@ describe("Linux runtime bundle verification", () => {
       let failure: unknown;
       try {
         await assembleBundle({
+          repository: "AaronFeledy/core4",
           hostKey: "linux-x64",
           sources: sourcesFor("linux-x64"),
           outDir: dir,
@@ -233,6 +237,7 @@ describe("Linux runtime bundle verification", () => {
     let verifierCalls = 0;
     try {
       const result = await assembleBundle({
+        repository: "AaronFeledy/core4",
         hostKey: "darwin-arm64",
         sources: sourcesFor("darwin-arm64"),
         outDir: dir,

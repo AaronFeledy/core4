@@ -8,6 +8,7 @@ import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
 import { globalServices, services } from "../src/index.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
 
@@ -47,10 +48,9 @@ const registryLayer = Layer.merge(services, PluginRegistryLayer.layer);
 
 const plan = (landofile: LandofileShape) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
-      Effect.provide(registryLayer),
-    ),
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      appPlanner.plan(compileTestLandofile(landofile), providerCapabilities),
+    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(registryLayer)),
   );
 
 describe("@lando/service-lando registration", () => {
@@ -186,7 +186,7 @@ describe("@lando/service-lando registration", () => {
         "port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [],
       ),
     ).toEqual([
-      ["tcp", 9000],
+      ["http", 9000],
       ["http", 9001],
     ]);
     expect(objectStore.environment.MINIO_BUCKET).toBe("uploads");
@@ -347,24 +347,37 @@ describe("@lando/service-lando registration", () => {
     // Then
     expect(database.environment).toMatchObject({ ACCEPT_EULA: "Y", MSSQL_PID: "Developer" });
     const saPassword = database.environment.SA_PASSWORD;
-    if (saPassword === undefined) throw new Error("mssql SA_PASSWORD missing");
+    if (typeof saPassword !== "string") throw new Error("default mssql SA_PASSWORD must be literal");
     expect(saPassword).toStartWith("Lando!");
+    expect(database.environment.SQLCMDPASSWORD).toBe(saPassword);
+    expect(database.environment.LANDO_DB_USER).toBe("sa");
+    expect(database.environment.LANDO_DB_PASSWORD).toBe(saPassword);
     expect(database.storage).toContainEqual({
       store: "sql-app-mssql-data",
       target: PortablePath.make("/var/opt/mssql"),
       readOnly: false,
     });
     expect(database.healthcheck?.command).toEqual([
+      "/bin/bash",
+      "-c",
+      'export SQLCMDPASSWORD="$SA_PASSWORD"; exec "$@"',
+      "lando-mssql-health",
       "/opt/mssql-tools18/bin/sqlcmd",
       "-S",
-      "localhost",
+      "localhost,1433",
       "-U",
       "sa",
-      "-P",
-      saPassword,
       "-C",
+      "-b",
+      "-r1",
+      "-d",
+      "master",
+      "-l",
+      "2",
+      "-t",
+      "5",
       "-Q",
-      "SELECT 1",
+      "IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'sql-app' AND state_desc = 'ONLINE' AND HAS_DBACCESS(name) = 1) THROW 50000, 'Database is not accessible', 1;",
     ]);
   });
 
