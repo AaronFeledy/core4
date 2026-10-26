@@ -14,8 +14,9 @@ import {
   renderLlmsIndex,
   routeFor,
   serializeDocsPage,
+  writeLlmsFiles,
 } from "../src/lib/llms.ts";
-import { createSourceLinkInventory } from "../src/lib/source-links.ts";
+import { type SourceLinkInventory, createSourceLinkInventory } from "../src/lib/source-links.ts";
 
 const docsRoot = resolve(import.meta.dir, "..");
 const repoRoot = resolve(docsRoot, "..");
@@ -157,10 +158,10 @@ describe("llms serializer", () => {
     const out = serializeDocsPage(source, { file: "/x/v.mdx" });
     expect(out.match(/echo public-a/g)).toHaveLength(2);
     expect(out).toContain("echo one");
-    expect(out).toContain('expect: command `echo two` `expect="two"`');
+    expect(out).toContain('expect: command `echo two` `expect="{{app}}"`');
     expect(out).toContain("echo public-b");
     expect(out).not.toContain("runtime");
-    expect(out).not.toContain("{{app}}");
+    expect(out).not.toContain("echo {{app}}");
     for (const hidden of [
       '<Hidden><Variable name="private" value="excluded" /></Hidden>',
       '<Scenario id="hidden" render={false}><Variable name="private" value="excluded" /></Scenario>',
@@ -179,6 +180,34 @@ describe("llms serializer", () => {
     expect(out).toContain("lando init --recipe drupal-cms --name=my-drupal-cms-app --yes");
     expect(out).toContain("lando init --recipe drupal-cms --name=my-drupal-cms-nginx --yes");
     expect(out).not.toContain("{{appName}}");
+  });
+
+  test("preserves literal templates in expectations, event/error targets, shell, and library code", () => {
+    const expectation = { stdout: { equals: "{{token}}", regex: "{{missing}}" }, values: ["{{token}}"] };
+    for (const declaration of ["", '<Variable name="token" value="runtime" display="public" />']) {
+      const out = serializeDocsPage(
+        `${declaration}
+
+<Verify command="echo" expect={${JSON.stringify(expectation)}} />
+<Verify event="{{token}}" expect="{{token}}" />
+<Verify errorTag="{{token}}" />
+<Run shell="echo {{token}}" />
+<Run runtime="library" code="const value = '{{token}}';" />
+<Run runtime="library" code="ignored" displayCode="const shown = '{{token}}';" />`,
+        { file: "/x/literal.mdx" },
+      );
+      expect(out).toContain(`expect=${JSON.stringify(expectation)}`);
+      expect(out).toContain('expect: event `{{token}}` `expect="{{token}}"`');
+      expect(out).toContain("expect: error `{{token}}`");
+      expect(out).toContain("```sh\necho {{token}}\n```");
+      expect(out).toContain("```ts\nconst value = '{{token}}';\n```");
+      expect(out).toContain("```ts\nconst shown = '{{token}}';\n```");
+    }
+    const out = serializeDocsPage(
+      '<Variable name="token" value="runtime" display="public" />\n\n<Verify file="{{token}}.txt" expect="{{token}}" />',
+      { file: "/x/target.mdx" },
+    );
+    expect(out).toContain('expect: file `public.txt` `expect="{{token}}"`');
   });
 
   test("preserves current-main conflict, stop-marker, and plugin-manifest fixtures", async () => {
@@ -273,6 +302,33 @@ describe("llms serializer", () => {
     }
     expect(() => builtFileFor(`https://example.com${base}a`, base, site, root)).toThrow(LlmsSerializeError);
   });
+
+  test.each(["llms.txt", "llms-full.txt"])(
+    "refuses a dangling %s output symlink before writing either output",
+    async (output) => {
+      const root = await mkdtemp(join(tmpdir(), "llms-output-containment-"));
+      try {
+        const outDir = join(root, "output");
+        const outside = join(root, "outside.txt");
+        await mkdir(outDir);
+        await symlink(outside, join(outDir, output), "file");
+        const inventory: SourceLinkInventory = {
+          repoRoot: root,
+          base,
+          pages: new Map(),
+          files: new Set(),
+          directories: new Set(),
+          schemas: new Map(),
+        };
+        await expect(writeLlmsFiles(inventory, site, outDir)).rejects.toThrow("output symlink");
+        expect(existsSync(outside)).toBe(false);
+        const other = output === "llms.txt" ? "llms-full.txt" : "llms.txt";
+        expect(existsSync(join(outDir, other))).toBe(false);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("llms.txt", async () => {

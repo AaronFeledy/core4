@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { GuideId } from "@lando/sdk/docs/components";
@@ -260,20 +260,17 @@ const verifyNodes = (props: Map<string, PropValue>, variables: Variables, file: 
   if (target !== undefined)
     children.push(
       { type: "text", value: `${target[0]} ` },
-      code(interpolate(target[1] ?? "", variables, file)),
+      code(
+        target[0] === "command" || target[0] === "file"
+          ? interpolate(target[1] ?? "", variables, file)
+          : (target[1] ?? ""),
+      ),
     );
   if (expect === undefined) return [paragraph(...children), ...exitNodes(props)];
   const expectation = typeof expect === "object" ? staticValue(expressionOf(expect.estree)) : expect;
-  const substitute = (value: StaticValue): StaticValue => {
-    if (typeof value === "string") return interpolate(value, variables, file);
-    if (Array.isArray(value)) return value.map(substitute);
-    if (typeof value === "object" && value !== null)
-      return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, substitute(child)]));
-    return value;
-  };
   children.push(
     { type: "text", value: target === undefined ? "" : " " },
-    code(`expect=${JSON.stringify(substitute(expectation))}`),
+    code(`expect=${JSON.stringify(expectation)}`),
   );
   return [paragraph(...children), ...exitNodes(props)];
 };
@@ -330,17 +327,18 @@ const replaceComponent = (
   if (UNWRAPPED.has(name)) return transformChildren(node, options, source, scoped).children as RootContent[];
   switch (name) {
     case "Run": {
-      const command =
-        text(props.get("displayCode")) ??
-        text(props.get("command")) ??
-        text(props.get("shell")) ??
-        text(props.get("code"));
+      const displayCode = text(props.get("displayCode"));
+      const commandProp = text(props.get("command"));
+      const command = displayCode ?? commandProp ?? text(props.get("shell")) ?? text(props.get("code"));
       if (command === undefined || command.trim() === "")
         throw new LlmsSerializeError(`<Run> without a command in ${at(node, options.file)}`);
+      const library = text(props.get("runtime")) === "library";
       return [
         fence(
-          text(props.get("runtime")) === "library" ? "ts" : "sh",
-          interpolate(command, variables, at(node, options.file)),
+          library ? "ts" : "sh",
+          !library && displayCode === undefined && commandProp !== undefined
+            ? interpolate(command, variables, at(node, options.file))
+            : command,
         ),
         ...exitNodes(props),
       ];
@@ -587,12 +585,34 @@ export const writeLlmsFiles = async (
   site: string,
   outDir: string,
 ): Promise<void> => {
+  await mkdir(outDir, { recursive: true });
+  const outputs: string[] = [];
+  for (const name of ["llms.txt", "llms-full.txt"]) {
+    const path = resolve(outDir, name);
+    const entry = await lstat(path).catch((error: unknown) => {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")
+        return undefined;
+      throw error;
+    });
+    if (entry?.isSymbolicLink()) throw new LlmsSerializeError(`Refusing output symlink: ${name}`);
+    outputs.push(containedPath(outDir, path));
+  }
   const pages = await collectLlmsPages(inventory, site);
   const index = renderLlmsIndex(pages, inventory, site);
-  await mkdir(outDir, { recursive: true });
-  await writeFile(containedPath(outDir, resolve(outDir, "llms.txt")), index);
   const full = renderLlmsFull(pages);
-  await writeFile(containedPath(outDir, resolve(outDir, "llms-full.txt")), full);
+  for (const [offset, path] of outputs.entries()) {
+    const temporary = resolve(outDir, `.llms-${crypto.randomUUID()}`);
+    try {
+      await writeFile(temporary, offset === 0 ? index : full, { flag: "wx" });
+      // Renaming replaces the directory entry instead of following a symlink swapped in after preflight.
+      await rename(temporary, path);
+    } finally {
+      await unlink(temporary).catch((error: unknown) => {
+        if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return;
+        throw error;
+      });
+    }
+  }
   const own = new URL(inventory.base, site).href;
   const fullUrls = [...full.matchAll(/\]\(([^)\s]+)\)/g)].map((match) =>
     (match[1] ?? "").replace(/#.*$/, ""),
