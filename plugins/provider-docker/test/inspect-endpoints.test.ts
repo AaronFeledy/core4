@@ -24,7 +24,6 @@ const service = {
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   routes: [],
   dependsOn: [],
   hostAliases: [],

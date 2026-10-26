@@ -118,7 +118,7 @@ const normalizedServicePaths = [
   ["ports.published"],
   ["ports.target"],
   ["user", ["user"]],
-  ["volumes", ["mounts", "storage", "extensions.compose.tmpfs"]],
+  ["volumes", ["mounts"]],
   // Type-specific volume options reach only their own destination, never the root's full set.
   ["volumes.bind", ["mounts"]],
   ["volumes.bind.create_host_path", ["mounts"]],
@@ -126,8 +126,13 @@ const normalizedServicePaths = [
   ["volumes.source"],
   ["volumes.target"],
   ["volumes.type"],
-  ["volumes.volume", ["storage"]],
-  ["volumes.volume.subpath", ["storage"]],
+  ["volumes.volume", ["mounts"]],
+  ["volumes.volume.subpath", ["mounts"]],
+  ["tmpfs", ["mounts"]],
+  ["volumes.tmpfs", ["mounts"]],
+  ["volumes.tmpfs.mode", ["mounts"]],
+  ["volumes.tmpfs.size", ["mounts"]],
+  ["volumes.tmpfs.x-*", ["mounts"]],
   ["working_dir", ["workingDirectory"]],
 ] as const satisfies ReadonlyArray<NormalizedServicePath>;
 
@@ -228,16 +233,11 @@ const preservedServicePaths = [
   "stop_signal",
   "sysctls",
   "sysctls.*",
-  "tmpfs",
   "ulimits",
   "ulimits.*",
   "ulimits.*.hard",
   "ulimits.*.soft",
   "ulimits.*.x-*",
-  "volumes.tmpfs",
-  "volumes.tmpfs.mode",
-  "volumes.tmpfs.size",
-  "volumes.tmpfs.x-*",
   "x-*",
 ] as const;
 

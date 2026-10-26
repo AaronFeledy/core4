@@ -78,7 +78,6 @@ test.each([false, true])(
           artifact: { kind: "ref", ref: "nginx:alpine" },
           environment: {},
           mounts: [],
-          storage: [],
           endpoints: [],
           routes: [],
           dependsOn: [],

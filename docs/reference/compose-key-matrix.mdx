@@ -22,7 +22,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Scope | Normalized | Preserved | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | Top-level keys | 6 | 3 | 1 | 10 |
-| Service keys | 43 | 107 | 212 | 362 |
+| Service keys | 48 | 102 | 212 | 362 |
 | YAML tags | 2 | 0 | 0 | 2 |
 
 ## Top-level keys
@@ -136,14 +136,14 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `stop_signal` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `storage_opt` | rejected | — | Translate storage_opt with a Compose-to-Lando config translator. |
 | [`sysctls`](#sysctls) | preserved | 1 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `tmpfs` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `tmpfs` | normalized | — | Normalizes into `ServicePlan.mounts` |
 | `tty` | rejected | — | Translate tty with a Compose-to-Lando config translator. |
 | [`ulimits`](#ulimits) | preserved | 4 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `use_api_socket` | rejected | — | Translate use_api_socket with a Compose-to-Lando config translator. |
 | `user` | normalized | — | Normalizes into `ServicePlan.user` |
 | `userns_mode` | rejected | — | Translate userns_mode with a Compose-to-Lando config translator. |
 | `uts` | rejected | — | Translate uts with a Compose-to-Lando config translator. |
-| [`volumes`](#volumes) | normalized | 25 | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
+| [`volumes`](#volumes) | normalized | 25 | Normalizes into `ServicePlan.mounts` |
 | `volumes_from` | rejected | — | Translate volumes_from with a Compose-to-Lando config translator. |
 | `working_dir` | normalized | — | Normalizes into `ServicePlan.workingDirectory` |
 | `x-*` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose; inert and not capability-gated. |
@@ -557,7 +557,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 
 | Key path | Disposition | Detail |
 | --- | --- | --- |
-| `volumes` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
+| `volumes` | normalized | Normalizes into `ServicePlan.mounts` |
 | `volumes.bind` | normalized | Normalizes into `ServicePlan.mounts` |
 | `volumes.bind.create_host_path` | normalized | Normalizes into `ServicePlan.mounts` |
 | `volumes.bind.propagation` | rejected | Translate volumes.bind.propagation with a Compose-to-Lando config translator. |
@@ -568,18 +568,18 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `volumes.image` | rejected | Translate volumes.image with a Compose-to-Lando config translator. |
 | `volumes.image.subpath` | rejected | Translate volumes.image.subpath with a Compose-to-Lando config translator. |
 | `volumes.image.x-*` | rejected | Translate volumes.image.x-* with a Compose-to-Lando config translator. |
-| `volumes.read_only` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
-| `volumes.source` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
-| `volumes.target` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
-| `volumes.tmpfs` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `volumes.tmpfs.mode` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `volumes.tmpfs.size` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `volumes.tmpfs.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `volumes.type` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
-| `volumes.volume` | normalized | Normalizes into `ServicePlan.storage` |
+| `volumes.read_only` | normalized | Normalizes into `ServicePlan.mounts` |
+| `volumes.source` | normalized | Normalizes into `ServicePlan.mounts` |
+| `volumes.target` | normalized | Normalizes into `ServicePlan.mounts` |
+| `volumes.tmpfs` | normalized | Normalizes into `ServicePlan.mounts` |
+| `volumes.tmpfs.mode` | normalized | Normalizes into `ServicePlan.mounts` |
+| `volumes.tmpfs.size` | normalized | Normalizes into `ServicePlan.mounts` |
+| `volumes.tmpfs.x-*` | normalized | Normalizes into `ServicePlan.mounts` |
+| `volumes.type` | normalized | Normalizes into `ServicePlan.mounts` |
+| `volumes.volume` | normalized | Normalizes into `ServicePlan.mounts` |
 | `volumes.volume.labels` | rejected | Translate volumes.volume.labels with a Compose-to-Lando config translator. |
 | `volumes.volume.labels.*` | rejected | Translate volumes.volume.labels.* with a Compose-to-Lando config translator. |
 | `volumes.volume.nocopy` | rejected | Translate volumes.volume.nocopy with a Compose-to-Lando config translator. |
-| `volumes.volume.subpath` | normalized | Normalizes into `ServicePlan.storage` |
+| `volumes.volume.subpath` | normalized | Normalizes into `ServicePlan.mounts` |
 | `volumes.volume.x-*` | rejected | Translate volumes.volume.x-* with a Compose-to-Lando config translator. |
 | `volumes.x-*` | rejected | Translate volumes.x-* with a Compose-to-Lando config translator. |

@@ -41,7 +41,6 @@ const service = (name: string, dependencies: ReadonlyArray<string> = []): Servic
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   hostAliases: [],

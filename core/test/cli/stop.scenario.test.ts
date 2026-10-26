@@ -102,11 +102,11 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "web" ? ["node", "server.js"] : ["postgres"],
   environment: {},
-  mounts: [],
-  storage:
+  mounts:
     name === "database"
       ? [
           {
+            type: "volume",
             store: "test_stop_database_data",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,

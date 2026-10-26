@@ -28,25 +28,33 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
           },
         };
 
-  let appMount: ServicePlan["appMount"];
+  const mounts: Array<ServicePlan["mounts"][number]> = [];
   if (draft.appMount !== undefined) {
     const parsed = parseContainerDestination(draft.appMount.target);
     if (!parsed.ok) return destinationError(draft.appMount.target, parsed.reason);
-    appMount = { ...draft.appMount, target: parsed.value, realization: "passthrough" };
+    mounts.push({
+      ...draft.appMount,
+      type: "bind",
+      role: "app",
+      target: parsed.value,
+      realization: "passthrough",
+    });
   }
 
-  const mounts: Array<ServicePlan["mounts"][number]> = [];
   for (const mount of draft.mounts) {
     const parsed = parseContainerDestination(mount.target);
     if (!parsed.ok) return destinationError(mount.target, parsed.reason);
-    mounts.push({ ...mount, target: parsed.value, realization: "passthrough" });
+    mounts.push(
+      mount.type === "bind"
+        ? { ...mount, target: parsed.value, realization: "passthrough" }
+        : { ...mount, target: parsed.value },
+    );
   }
 
-  const storage: Array<ServicePlan["storage"][number]> = [];
   for (const entry of draft.storage) {
     const parsed = parseContainerDestination(entry.target);
     if (!parsed.ok) return destinationError(entry.target, parsed.reason);
-    storage.push({ ...entry, target: parsed.value });
+    mounts.push({ ...entry, type: "volume", target: parsed.value });
   }
 
   return {
@@ -66,9 +74,7 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
         : { nonSqlCreds: draft.nonSqlCreds }),
     ...(draft.user === undefined ? {} : { user: draft.user }),
     ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
-    ...(appMount === undefined ? {} : { appMount }),
     mounts,
-    storage,
     endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
     routes: [],
     dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),

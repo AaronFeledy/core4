@@ -2,6 +2,7 @@ import { ServiceRestartWouldRecreateError } from "@lando/sdk/errors";
 import {
   AGENT_SOCKET_CONTAINER_DIR,
   type AppPlan,
+  type BindMountPlan,
   type ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
@@ -114,26 +115,38 @@ export const bindSourceChanged = (service: ServicePlan, inspected: BringUpInspec
   const source = sourceLookup(inspected.bindSources);
   for (const target of Object.values(AGENT_SOCKET_CONTAINER_DIR)) {
     const agentMount = service.mounts.find((mount) => mount.target === target);
-    // Global sidecars declare socket volumes as storage; app overlays use mounts.
-    const agentStorage = service.storage.find((mount) => mount.target === target);
-    const agentSource =
-      agentMount !== undefined
-        ? `${agentMount.type}:${agentMount.source}`
-        : agentStorage === undefined
-          ? undefined
-          : `volume:${agentStorage.store}`;
+    let agentSource: string | undefined;
+    if (agentMount !== undefined) {
+      switch (agentMount.type) {
+        case "bind":
+          agentSource = `bind:${agentMount.source}`;
+          break;
+        case "volume":
+          agentSource = `volume:${agentMount.store}`;
+          break;
+        case "tmpfs":
+          agentSource = "tmpfs:";
+          break;
+        default:
+          agentMount satisfies never;
+      }
+    }
     if (agentSource !== source(target)) return true;
   }
-  if (service.storage.some((mount) => mount.target === AGENT_SOCKET_CONTAINER_DIR.ssh)) {
+  if (
+    service.mounts.some((mount) => mount.type === "volume" && mount.target === AGENT_SOCKET_CONTAINER_DIR.ssh)
+  ) {
     const hostSocketMount = service.mounts.find(
-      (mount) => mount.target === SSH_SIDECAR_HOST_SOCKET_DIRECTORY,
+      (mount): mount is BindMountPlan =>
+        mount.type === "bind" && mount.target === SSH_SIDECAR_HOST_SOCKET_DIRECTORY,
     );
     if (hostSocketMount?.source !== source(SSH_SIDECAR_HOST_SOCKET_DIRECTORY)) return true;
   }
   const socketTarget = service.environment.LANDO_HOST_PROXY_SOCKET;
   if (typeof socketTarget !== "string") return false;
   const plannedSocket = service.mounts.find(
-    (mount) => mount.type === "bind" && mount.realization === "passthrough" && mount.target === socketTarget,
+    (mount): mount is BindMountPlan =>
+      mount.type === "bind" && mount.realization === "passthrough" && mount.target === socketTarget,
   );
   return plannedSocket?.source !== undefined && source(socketTarget) !== plannedSocket.source;
 };

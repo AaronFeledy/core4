@@ -59,13 +59,13 @@ import {
 import {
   AppId,
   type AppPlan,
-  type DataStoreMountPlan,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
   type ServiceName,
   type StorageScope,
   type VolumeInfo,
+  type VolumeMountPlan,
   type VolumeSnapshotRef,
 } from "@lando/sdk/schema";
 import type {
@@ -260,11 +260,11 @@ const serviceContainerName = (target: {
 const ephemeralContainerName = (providerId: string): string =>
   `lando-${sanitize(providerId)}-data-${randomUUID()}`;
 
-const firstDataStoreMount = (spec: EphemeralRunSpec): DataStoreMountPlan | undefined =>
-  spec.mounts?.find((mount): mount is DataStoreMountPlan => "store" in mount);
+const firstVolumeMount = (spec: EphemeralRunSpec): VolumeMountPlan | undefined =>
+  spec.mounts?.find((mount): mount is VolumeMountPlan => mount.type === "volume");
 
-const dataStoreMounts = (spec: EphemeralRunSpec): ReadonlyArray<DataStoreMountPlan> =>
-  spec.mounts?.filter((mount): mount is DataStoreMountPlan => "store" in mount) ?? [];
+const volumeMounts = (spec: EphemeralRunSpec): ReadonlyArray<VolumeMountPlan> =>
+  spec.mounts?.filter((mount): mount is VolumeMountPlan => mount.type === "volume") ?? [];
 
 const envList = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> | undefined =>
   env === undefined ? undefined : Object.entries(env).map(([key, value]) => `${key}=${value}`);
@@ -529,7 +529,7 @@ const ensureHelperImage = (
 };
 
 const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) => {
-  const mounts = dataStoreMounts(spec);
+  const mounts = volumeMounts(spec);
   if (mounts.length === 0) return Effect.void;
   const owner = spec.owner;
   const plan = owner?.plan;
@@ -595,20 +595,21 @@ const createEphemeralContainer = (
   witnessSource?: WitnessMountSource,
 ) => {
   const name = ephemeralContainerName(options.providerId);
-  const mount = firstDataStoreMount(spec);
-  const binds = dataStoreMounts(spec).flatMap((mount) =>
-    requiresLongMountSyntax(mount.target)
+  const mount = firstVolumeMount(spec);
+  const binds = volumeMounts(spec).flatMap((mount) =>
+    mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
       ? []
       : [`${volumeName(mount.store)}:${mount.target}${mount.readOnly ? ":ro" : ""}`],
   );
-  const mounts = dataStoreMounts(spec).flatMap((mount) =>
-    requiresLongMountSyntax(mount.target)
+  const mounts = volumeMounts(spec).flatMap((mount) =>
+    mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
       ? [
           {
             Type: "volume",
             Source: volumeName(mount.store),
             Target: mount.target,
             ReadOnly: mount.readOnly,
+            ...(mount.subpath === undefined ? {} : { VolumeOptions: { Subpath: mount.subpath } }),
           },
         ]
       : [],
@@ -776,16 +777,14 @@ const waitForEphemeralContainer = (options: ProviderDataPlaneOptions, name: stri
   request(options, "run.wait", {
     method: "POST",
     path: `/containers/${encodeURIComponent(name)}/wait`,
-  }).pipe(
-    Effect.tap((response) => ensure2xx(options, "run.wait", response, firstDataStoreMount(spec)?.store)),
-  );
+  }).pipe(Effect.tap((response) => ensure2xx(options, "run.wait", response, firstVolumeMount(spec)?.store)));
 
 const inspectEphemeralExitCode = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) =>
   request(options, "run.inspect", {
     method: "GET",
     path: `/containers/${encodeURIComponent(name)}/json`,
   }).pipe(
-    Effect.tap((response) => ensure2xx(options, "run.inspect", response, firstDataStoreMount(spec)?.store)),
+    Effect.tap((response) => ensure2xx(options, "run.inspect", response, firstVolumeMount(spec)?.store)),
     Effect.map((response) => {
       const parsed =
         response.body.length === 0 ? {} : (JSON.parse(response.body) as { State?: { ExitCode?: number } });
@@ -807,7 +806,7 @@ const runBytes = (
           method: "POST",
           path: `/containers/${encodeURIComponent(name)}/start`,
         });
-        yield* ensure2xx(options, "run.start", start, firstDataStoreMount(spec)?.store);
+        yield* ensure2xx(options, "run.start", start, firstVolumeMount(spec)?.store);
         if (spec.stdinStream !== undefined) {
           yield* Fiber.join(stdinFiber);
         }
@@ -835,7 +834,7 @@ const runBytes = (
               "Provider ephemeral run failed.",
               undefined,
               cause,
-              firstDataStoreMount(spec)?.store,
+              firstVolumeMount(spec)?.store,
             ),
           ),
         ),
@@ -882,7 +881,7 @@ const runByteStream = (
             method: "POST",
             path: `/containers/${encodeURIComponent(name)}/start`,
           });
-          yield* ensure2xx(options, "run.start", started, firstDataStoreMount(spec)?.store);
+          yield* ensure2xx(options, "run.start", started, firstVolumeMount(spec)?.store);
           const output = stream(options, "run.logs", {
             method: "GET",
             path: `/containers/${encodeURIComponent(name)}/logs?follow=true&stdout=true&stderr=true`,
@@ -914,7 +913,7 @@ const runByteStream = (
               "Provider ephemeral stream failed.",
               undefined,
               cause,
-              firstDataStoreMount(spec)?.store,
+              firstVolumeMount(spec)?.store,
             ),
           ),
         ),
@@ -956,7 +955,9 @@ const snapshotCommitHelper = (options: ProviderDataPlaneOptions, spec: NativeSna
         "-c",
         `mkdir -p /snapshot && find /lando-data -mindepth 1 -maxdepth 1 ${preserveWitness} -exec sh -c 'cp -a -- "$@" /snapshot/' sh {} +`,
       ],
-      mounts: [{ store: volumeName(spec.store), target: snapshotDataMountTarget, readOnly: true }],
+      mounts: [
+        { type: "volume", store: volumeName(spec.store), target: snapshotDataMountTarget, readOnly: true },
+      ],
       remove: true,
     }),
     (name) =>
@@ -1051,6 +1052,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         captureStdout: true,
         mounts: [
           {
+            type: "volume",
             store: nativeName,
             target: PortablePath.make(VOLUME_WITNESS_MOUNT),
             readOnly: true,
@@ -1296,7 +1298,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           runBytes(options, {
             image: nativeSnapshotImage(spec.snapshot.id),
             command: ["sh", "-c", command],
-            mounts: [{ store: name, target: snapshotDataMountTarget, readOnly: false }],
+            mounts: [{ type: "volume", store: name, target: snapshotDataMountTarget, readOnly: false }],
             remove: true,
           }),
         ),

@@ -166,7 +166,6 @@ describe("openForPlan", () => {
             primary: false,
             environment: {},
             mounts: [],
-            storage: [],
             endpoints: [{ _tag: "published", protocol: "http", port: 80, publication: {} }],
             routes: [],
             dependsOn: [],

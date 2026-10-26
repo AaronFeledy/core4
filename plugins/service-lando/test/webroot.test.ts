@@ -92,7 +92,7 @@ describe("resolved service document roots", () => {
       // When: the service is composed with the authored mount wrapper.
       const plan = await composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata });
       // Then: the launcher, working directory, and webroot environment agree with that mount.
-      expect(String(plan.appMount?.target)).toBe("/site");
+      expect(String(serviceAppMount(plan)?.target)).toBe("/site");
       expect(plan.environment.LANDO_WEBROOT).toBe(resolved);
       expect(String(plan.workingDirectory)).toBe(resolved);
       expect(Array.isArray(plan.command) ? plan.command.join(" ") : String(plan.command)).toContain(
@@ -229,7 +229,7 @@ describe("resolved service document roots", () => {
 
     // Then: the authored webroot is kept and the app mount stays at /app.
     expect(String(resolution.normalizedConfig.webroot)).toBe(webroot);
-    expect(String(plan.appMount?.target)).toBe("/app");
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
   });
 
   for (const [type, serviceType, label] of [
@@ -270,7 +270,7 @@ describe("resolved service document roots", () => {
       // When: the service is planned.
       const plan = await composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata });
       // Then: image content is served without app code or app-root environment.
-      expect(plan.appMount).toBeUndefined();
+      expect(serviceAppMount(plan)).toBeUndefined();
       expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
       expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
       expect(plan.workingDirectory).toBeUndefined();
@@ -278,3 +278,4 @@ describe("resolved service document roots", () => {
     });
   }
 });
+import { serviceAppMount } from "@lando/sdk/schema";

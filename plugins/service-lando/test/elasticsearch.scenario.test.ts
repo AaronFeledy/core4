@@ -185,8 +185,9 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
     expect(search.endpoints).toEqual([
       { _tag: "internal", port: 9200, protocol: "tcp", name: "search", primary: true },
     ]);
-    expect(search.storage).toHaveLength(1);
-    expect(search.storage[0]?.store).toBe("myapp-elasticsearch-data");
+    const volumes = search.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-elasticsearch-data");
     expect(search.healthcheck?.kind).toBe("command");
     expect(search.healthcheck?.command).toEqual([
       "bash",

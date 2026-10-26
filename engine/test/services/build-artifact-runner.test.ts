@@ -23,7 +23,6 @@ test("retains the CA bundle mount for an app-phase reserved step after another a
     artifact: { kind: "ref", ref: "debian:12" },
     environment: {},
     mounts: [bundleMount],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

@@ -65,7 +65,6 @@ const plan: CurrentExecutableAppPlan = {
         primary: true,
         environment: { DISPLAY_VALUE: "${secret:X}", DISPLAY_URL: "${secret:Y}" },
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],

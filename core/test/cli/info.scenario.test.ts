@@ -116,11 +116,11 @@ const servicePlan = (name: "node" | "postgres" | "memcached" | "valkey"): Servic
         },
       }
     : {}),
-  mounts: [],
-  storage:
+  mounts:
     name === "postgres"
       ? [
           {
+            type: "volume",
             store: "test_info_postgres_data",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,
@@ -467,14 +467,16 @@ describe("lando info", () => {
 
   test("retains storage observations and resolved app mounts across the info JSON contract", async () => {
     const appMount = {
+      type: "bind" as const,
       source: plan.root,
       target: PortablePath.make("/app"),
       readOnly: false,
       includes: [".git"],
       excludes: ["vendor"],
       realization: "passthrough" as const,
+      role: "app" as const,
     };
-    const plannedApp = { ...plan, services: { [node.name]: { ...node, appMount } } };
+    const plannedApp = { ...plan, services: { [node.name]: { ...node, mounts: [appMount] } } };
     const inspectCalls: ServiceName[] = [];
     const result = await Effect.runPromise(
       infoApp().pipe(

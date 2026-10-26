@@ -82,16 +82,18 @@ const fakeServiceType = makeLegacyServiceTypeFake({
       artifact: { kind: "ref", ref: "lando-global-service:test" },
       environment: service.environment ?? {},
       workingDirectory: PortablePath.make("/app"),
-      appMount: {
-        source: AbsolutePath.make(appRoot),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "passthrough",
-      },
-      mounts: [],
-      storage: [],
+      mounts: [
+        {
+          type: "bind",
+          source: AbsolutePath.make(appRoot),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          excludes: [],
+          includes: [],
+          realization: "passthrough",
+          role: "app",
+        },
+      ],
       endpoints: [
         { _tag: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
       ],

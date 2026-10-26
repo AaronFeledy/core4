@@ -48,8 +48,9 @@ const plan: AppPlan = {
       primary: true,
       artifact: { kind: "ref", ref: "mysql:8" },
       environment: {},
-      mounts: [],
-      storage: [{ store: "data", target: PortablePath.make("/var/lib/mysql"), readOnly: false }],
+      mounts: [
+        { type: "volume", store: "data", target: PortablePath.make("/var/lib/mysql"), readOnly: false },
+      ],
       endpoints: [],
       routes: [],
       dependsOn: [],

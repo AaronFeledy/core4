@@ -17,7 +17,6 @@ test("publishes paired stop events for each service when containers are already 
     artifact: { kind: "ref" as const, ref: "node:22" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

@@ -96,7 +96,6 @@ const renderStartFailure = async (reference: string) => {
           primary: true,
           environment: { DISPLAY_VALUE: { _tag: "SecretRef", reference } },
           mounts: [],
-          storage: [],
           endpoints: [],
           routes: [],
           dependsOn: [],

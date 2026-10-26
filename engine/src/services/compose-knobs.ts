@@ -9,9 +9,6 @@ export type ComposeKnobUse = {
 
 type ComposeCapabilityView = Pick<ProviderCapabilities, "composeSpec" | "composeKnobs">;
 
-const isStringList = (value: unknown): value is ReadonlyArray<string> =>
-  Array.isArray(value) && value.every((entry: unknown) => typeof entry === "string");
-
 const compareKnobUses = (left: ComposeKnobUse, right: ComposeKnobUse): number => {
   if (left.service < right.service) return -1;
   if (left.service > right.service) return 1;
@@ -24,14 +21,6 @@ export const mergeComposeKnobs = (servicePlan: ServicePlan, serviceConfig: Servi
   let changed = false;
 
   for (const key of ComposeServiceKnobKey.literals) {
-    if (key === "tmpfs") {
-      if (serviceConfig.tmpfs === undefined) continue;
-      const existing = isStringList(compose.tmpfs) ? compose.tmpfs : [];
-      compose.tmpfs = [...existing, ...serviceConfig.tmpfs];
-      changed = true;
-      continue;
-    }
-
     if (key === "deploy.resources") {
       if (serviceConfig.deploy === undefined) continue;
       compose.deploy = serviceConfig.deploy;

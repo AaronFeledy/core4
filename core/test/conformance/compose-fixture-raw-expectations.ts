@@ -104,14 +104,18 @@ const expectations = {
       createHostPath: false,
       realization: "passthrough",
     });
-    expect(web.storage).toContainEqual({
+    expect(web.mounts).toContainEqual({
+      type: "volume",
       store: `${context.plan.name}-cache`,
       target: PortablePath.make("/var/cache/app"),
       readOnly: false,
       subpath: "web",
     });
-    expect(web.extensions.compose).toMatchObject({
-      tmpfs: [{ target: "/run/app", size: 67_108_864, mode: 1770 }],
+    expect(web.mounts).toContainEqual({
+      type: "tmpfs",
+      target: PortablePath.make("/run/app"),
+      readOnly: false,
+      options: `size=67108864,mode=${(1770).toString(8)}`,
     });
   },
   "corpus/runtime-knobs.compose.yaml": (context) => {

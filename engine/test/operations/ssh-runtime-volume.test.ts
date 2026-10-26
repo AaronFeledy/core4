@@ -33,7 +33,6 @@ const plan = Schema.decodeUnknownSync(AppPlan)({
       primary: true,
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -187,7 +186,7 @@ test.each(["win32", "linux", "darwin"] as const)(
     // Then
     expect(session.services[ServiceName.make("web")]?.environment.SSH_AUTH_SOCK).toBeDefined();
     expect(session.services[ServiceName.make("web")]?.mounts).toContainEqual(
-      expect.objectContaining({ type: "volume", source: "plugin-owned-agent", readOnly: true }),
+      expect.objectContaining({ type: "volume", store: "plugin-owned-agent", readOnly: true }),
     );
     expect(setups).toBe(0);
     expect(selected).toEqual(["lando"]);

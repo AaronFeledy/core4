@@ -89,21 +89,19 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
     ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine",
   },
   environment: name === "web" ? { NODE_ENV: "development" } : { POSTGRES_PASSWORD: "lando" },
-  ...(name === "web"
-    ? {
-        appMount: {
-          source: appRoot,
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          excludes: ["node_modules"],
-          includes: [],
-          realization: "passthrough" as const,
-        },
-      }
-    : {}),
   mounts:
     name === "web"
       ? [
+          {
+            type: "bind",
+            source: appRoot,
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            excludes: ["node_modules"],
+            includes: [],
+            realization: "passthrough",
+            role: "app",
+          },
           {
             type: "bind",
             source: "/srv/shared/config",
@@ -112,17 +110,14 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
             realization: "passthrough",
           },
         ]
-      : [],
-  storage:
-    name === "database"
-      ? [
+      : [
           {
+            type: "volume",
             store: "myapp_database_data",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,
           },
-        ]
-      : [],
+        ],
   endpoints:
     name === "web"
       ? [
@@ -194,37 +189,45 @@ describe("Podman Compose emission", () => {
       // Given
       const withColons: ServicePlan = {
         ...web,
-        appMount: {
-          source: appRoot,
-          target: PortablePath.make("/app:ro"),
-          readOnly: true,
-          realization,
-          excludes: [],
-          includes: [],
-        },
         mounts: [
+          {
+            type: "bind",
+            source: appRoot,
+            target: PortablePath.make("/app:ro"),
+            readOnly: true,
+            realization,
+            excludes: [],
+            includes: [],
+            role: "app",
+            ...(realization === "accelerated" ? { mountKey: "app-mount" } : {}),
+          },
           {
             type: "bind",
             source: "/host/config",
             target: PortablePath.make("/config:v1"),
             readOnly: false,
             realization,
+            ...(realization === "accelerated" ? { mountKey: "mount-c0f10001" } : {}),
           },
           {
             type: "volume",
-            source: "named",
+            store: "named",
             target: PortablePath.make("/named:v1"),
             readOnly: true,
-            realization: "passthrough",
           },
           {
             type: "tmpfs",
             target: PortablePath.make("/tmp:v1"),
             readOnly: false,
-            realization: "passthrough",
+            options: "size=8m,mode=1777",
+          },
+          {
+            type: "volume",
+            store: "data",
+            target: PortablePath.make("/data:v1"),
+            readOnly: true,
           },
         ],
-        storage: [{ store: "data", target: PortablePath.make("/data:v1"), readOnly: true }],
         extensions: { compose: { configs: [{ source: "config", target: "/etc/config:v1" }] } },
       };
       // When
@@ -251,12 +254,17 @@ describe("Podman Compose emission", () => {
               },
               {
                 type: realization === "accelerated" ? "volume" : "bind",
-                source: realization === "accelerated" ? "My-App-web-mount-0" : "/host/config",
+                source: realization === "accelerated" ? "My-App-web-mount-c0f10001" : "/host/config",
                 target: "/config:v1",
                 read_only: false,
               },
               { type: "volume", source: "named", target: "/named:v1", read_only: true },
-              { type: "tmpfs", target: "/tmp:v1", read_only: false },
+              {
+                type: "tmpfs",
+                target: "/tmp:v1",
+                read_only: false,
+                tmpfs: { size: "8m", mode: 0o1777 },
+              },
               { type: "volume", source: "data", target: "/data:v1", read_only: true },
               { type: "bind", source: "/srv/apps/myapp/config", target: "/etc/config:v1", read_only: true },
             ],
@@ -391,7 +399,7 @@ describe("Podman Compose emission", () => {
     expect(content).toContain('    depends_on:\n      database:\n        condition: "service_healthy"\n');
   });
 
-  test("tmpfs mounts appear under tmpfs: key, not in volumes: list", () => {
+  test("plain tmpfs mounts appear under tmpfs: with options and ro, not in volumes:", () => {
     const webWithTmpfs: ServicePlan = {
       ...web,
       mounts: [
@@ -399,8 +407,13 @@ describe("Podman Compose emission", () => {
         {
           type: "tmpfs",
           target: PortablePath.make("/tmp/cache"),
+          readOnly: true,
+          options: "size=64m,mode=1777",
+        },
+        {
+          type: "tmpfs",
+          target: PortablePath.make("/scratch"),
           readOnly: false,
-          realization: "passthrough",
         },
       ],
     };
@@ -412,13 +425,131 @@ describe("Podman Compose emission", () => {
       ctx,
     );
 
-    expect(content).toContain('    tmpfs:\n      - "/tmp/cache"\n');
+    expect(content).toContain('    tmpfs:\n      - "/tmp/cache:ro,size=64m,mode=1777"\n      - "/scratch"\n');
 
     const lines = content.split("\n");
     const volumesIdx = lines.findIndex((l) => l === "    volumes:");
     const nextSectionIdx = lines.findIndex((l, i) => i > volumesIdx && /^ {4}[a-z]/u.test(l));
     const volumesLines = lines.slice(volumesIdx + 1, nextSectionIdx === -1 ? lines.length : nextSectionIdx);
-    expect(volumesLines.every((l) => !l.includes("/tmp/cache"))).toBe(true);
+    expect(volumesLines.every((l) => !l.includes("/tmp/cache") && !l.includes("/scratch"))).toBe(true);
+  });
+
+  test("colon-target tmpfs uses long volumes syntax and rejects unsupported option tokens", () => {
+    const ok: ServicePlan = {
+      ...web,
+      mounts: [
+        {
+          type: "tmpfs",
+          target: PortablePath.make("/run:x"),
+          readOnly: true,
+          options: "size=8m,mode=1770",
+        },
+      ],
+    };
+    const parsed = Bun.YAML.parse(renderCompose({ ...plan, services: { [ok.name]: ok } }, ctx));
+    expect(parsed).toMatchObject({
+      services: {
+        web: {
+          volumes: [
+            {
+              type: "tmpfs",
+              target: "/run:x",
+              read_only: true,
+              tmpfs: { size: "8m", mode: 0o1770 },
+            },
+          ],
+        },
+      },
+    });
+    expect(parsed).not.toHaveProperty("services.web.tmpfs");
+
+    const bad: ServicePlan = {
+      ...web,
+      mounts: [
+        {
+          type: "tmpfs",
+          target: PortablePath.make("/run:x"),
+          readOnly: false,
+          options: "size=8m,uid=0",
+        },
+      ],
+    };
+    expect(() => renderCompose({ ...plan, services: { [bad.name]: bad } }, ctx)).toThrowError(
+      expect.objectContaining({ providerId: "podman", operation: "emitCompose" }),
+    );
+  });
+
+  test("duplicate mount targets fail at the provider boundary", () => {
+    const dup: ServicePlan = {
+      ...web,
+      mounts: [
+        {
+          type: "bind",
+          source: "/a",
+          target: PortablePath.make("/dup"),
+          readOnly: false,
+          realization: "passthrough",
+        },
+        {
+          type: "tmpfs",
+          target: PortablePath.make("/dup"),
+          readOnly: false,
+        },
+      ],
+    };
+    expect(() => renderCompose({ ...plan, services: { [dup.name]: dup } }, ctx)).toThrowError(
+      expect.objectContaining({ providerId: "podman", operation: "emitCompose" }),
+    );
+  });
+
+  test("nested bind under volume and keyed acceleration preserve plan order", () => {
+    const nested: ServicePlan = {
+      ...web,
+      mounts: [
+        {
+          type: "bind",
+          source: appRoot,
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+          role: "app",
+          mountKey: "app-mount",
+          excludes: ["vendor"],
+        },
+        {
+          type: "volume",
+          store: "myapp-web-vendor-shadow",
+          target: PortablePath.make("/app/vendor"),
+          readOnly: false,
+        },
+        {
+          type: "bind",
+          source: "/srv/apps/myapp/vendor/acme/sdk",
+          target: PortablePath.make("/app/vendor/acme/sdk"),
+          readOnly: false,
+          realization: "passthrough",
+        },
+        {
+          type: "bind",
+          source: "/srv/extra",
+          target: PortablePath.make("/extra"),
+          readOnly: false,
+          realization: "accelerated",
+          mountKey: "mount-deadbeef",
+        },
+      ],
+    };
+    const content = renderCompose({ ...plan, services: { [nested.name]: nested } }, ctx);
+    const entries = [
+      '      - "My-App-web-app-mount:/app"',
+      '      - "myapp-web-vendor-shadow:/app/vendor"',
+      '      - "/srv/apps/myapp/vendor/acme/sdk:/app/vendor/acme/sdk"',
+      '      - "My-App-web-mount-deadbeef:/extra"',
+    ] as const;
+    for (const entry of entries) expect(content).toContain(`${entry}\n`);
+    const order = entries.map((entry) => content.indexOf(entry));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((left, right) => left - right));
   });
 
   test("uses long volume syntax only for subpath and disabled bind path creation", () => {
@@ -441,13 +572,15 @@ describe("Podman Compose emission", () => {
           readOnly: false,
           createHostPath: false,
           realization: "accelerated",
+          mountKey: "mount-synced",
         },
       ],
     };
     const databaseWithSubpath: ServicePlan = {
       ...database,
-      storage: [
+      mounts: [
         {
+          type: "volume",
           store: "myapp_database_data",
           target: PortablePath.make("/var/lib/postgresql/data"),
           readOnly: true,
@@ -469,7 +602,7 @@ describe("Podman Compose emission", () => {
 
     expect(content).toContain('      - "/srv/apps/myapp:/app"\n');
     expect(content).toContain('      - "/srv/shared/config:/config:ro"\n');
-    expect(content).toContain('      - "My-App-web-mount-2:/synced"\n');
+    expect(content).toContain('      - "My-App-web-mount-synced:/synced"\n');
     expect(content).toContain(
       '      - type: "bind"\n        source: "/srv/existing/config"\n        target: "/existing-config"\n        read_only: false\n        bind:\n          create_host_path: false\n',
     );
@@ -516,22 +649,23 @@ describe("Podman Compose emission", () => {
     expect(fileSystem.calls).toEqual([]);
   });
 
-  test("Given a podman ctx, When renderCompose rejects a sourceless mount, Then the thrown error names that providerId", () => {
+  test("Given a podman ctx, When renderCompose rejects accelerated bind without mountKey, Then the thrown error names that providerId", () => {
     // Given
-    const sourceless: ServicePlan = {
+    const missingKey: ServicePlan = {
       ...database,
       mounts: [
         {
           type: "bind",
+          source: "/host",
           target: PortablePath.make("/nope"),
           readOnly: false,
-          realization: "passthrough",
+          realization: "accelerated",
         },
       ],
     };
 
     // When / Then
-    expect(() => renderCompose({ ...plan, services: { [sourceless.name]: sourceless } }, ctx)).toThrowError(
+    expect(() => renderCompose({ ...plan, services: { [missingKey.name]: missingKey } }, ctx)).toThrowError(
       expect.objectContaining({ providerId: "podman", operation: "emitCompose" }),
     );
   });
@@ -690,8 +824,9 @@ describe("Compose mapping-key quoting", () => {
       ...web,
       name: ServiceName.make("yes"),
       environment,
-      storage: [
+      mounts: [
         {
+          type: "volume",
           store: "yes",
           target: PortablePath.make("/data"),
           readOnly: false,

@@ -42,7 +42,6 @@ const web: ServicePlan = {
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     {
       _tag: "published",
@@ -80,14 +79,19 @@ const acceleratedPlanFor = (root: AbsolutePath): AppPlan => {
     services: {
       [web.name]: {
         ...web,
-        appMount: {
-          source: root,
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          realization: "accelerated",
-          excludes: [],
-          includes: [],
-        },
+        mounts: [
+          {
+            type: "bind",
+            role: "app",
+            source: root,
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            realization: "accelerated",
+            excludes: [],
+            includes: [],
+            mountKey: "app-mount",
+          },
+        ],
       },
     },
     routes: [],

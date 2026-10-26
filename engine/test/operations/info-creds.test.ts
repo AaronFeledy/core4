@@ -45,7 +45,6 @@ const makeService = (
   environment,
   ...(connection === undefined ? {} : { connection }),
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

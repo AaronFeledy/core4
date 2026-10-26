@@ -212,9 +212,8 @@ test("omits bind-only fields when the socket uses a volume", () => {
   // Then
   expect(mount).toEqual({
     type: "volume",
-    source: "agent",
+    store: "agent",
     target,
     readOnly: true,
-    realization: "passthrough",
   });
 });

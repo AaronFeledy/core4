@@ -72,8 +72,9 @@ export const storageLifecycleFixture = (source: EngineHttpApi, provider: "docker
         artifact: { kind: "ref", ref: image },
         command: storageLifecycleCommand,
         environment: {},
-        mounts: [],
-        storage: [{ store: retained, target: PortablePath.make("/retained"), readOnly: false }],
+        mounts: [
+          { type: "volume", store: retained, target: PortablePath.make("/retained"), readOnly: false },
+        ],
         endpoints: [],
         routes: [],
         dependsOn: [],

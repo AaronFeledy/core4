@@ -33,7 +33,6 @@ const plan = (withRootStep: boolean): AppPlan => {
     user: runtimeUser,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

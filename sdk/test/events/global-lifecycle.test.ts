@@ -33,7 +33,6 @@ const servicePlanFixture: typeof ServicePlan.Encoded = {
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [{ _tag: "internal", port: 80, protocol: "http", name: "web" }],
   routes: [],
   dependsOn: [],

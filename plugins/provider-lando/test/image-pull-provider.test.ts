@@ -239,7 +239,6 @@ const makeApplyService = (compose?: Record<string, unknown>): ServicePlan => ({
   artifact: { kind: "ref", ref: applyRef },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

@@ -1,48 +1,69 @@
 import { Effect } from "effect";
 import { Schema } from "effect";
 
-import { AbsolutePath, PortablePath } from "./primitives.ts";
+import { PortablePath } from "./primitives.ts";
 
-/**
- * App mount — the special mount of the app source root into the service.
- */
-export const AppMountPlan = Schema.Struct({
-  /** Absolute host path of the app root. */
-  source: AbsolutePath,
-  /** Mount point inside the container. */
-  target: PortablePath,
-  /** Read-only? */
-  readOnly: Schema.Boolean,
-  /** Overlay excludes: per-service empty directories, also ignored during sync. */
-  excludes: Schema.Array(Schema.String),
-  /** Includes — exact entries here cancel excludes and fixed VCS ignores. */
-  includes: Schema.Array(Schema.String),
-  /**
-   * `passthrough` — provider-native bind mount.
-   * `accelerated` — routed through the active FileSyncEngine.
-   */
-  realization: Schema.Literals(["passthrough", "accelerated"]),
-});
-export type AppMountPlan = typeof AppMountPlan.Type;
+// ==== Planned mounts ==========================================================
+// `ServicePlan.mounts` is the one list of every container path a service gets,
+// sorted shallow to deep with unique targets, so the deepest target wins.
 
-/**
- * Generic mount plan — any non-app, non-storage mount.
- */
-export const MountPlan = Schema.Struct({
-  /** Mount type: `bind` (host path), `tmpfs`, or `volume` (named/anon). */
-  type: Schema.Literals(["bind", "tmpfs", "volume"]),
-  /** Host path (`bind`), volume name (`volume`), or undefined (`tmpfs`). */
-  source: Schema.optionalKey(Schema.String),
-  /** Mount point inside the container. */
-  target: PortablePath,
-  /** Read-only? */
-  readOnly: Schema.Boolean,
-  /** For bind mounts, whether the provider may create a missing host source path. */
-  createHostPath: Schema.optionalKey(Schema.Boolean),
-  /** Realization strategy (same semantics as AppMountPlan.realization). */
-  realization: Schema.Literals(["passthrough", "accelerated"]),
+/** A host path bound into the container. */
+export const BindMountPlan = Schema.Struct({
+  type: Schema.Literal("bind").annotate({ description: "Mount kind." }),
+  source: Schema.String.annotate({ description: "Host path." }),
+  target: PortablePath.annotate({ description: "Mount point inside the container." }),
+  readOnly: Schema.Boolean.annotate({ description: "Whether the container sees the mount read-only." }),
+  createHostPath: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Whether the provider may create a missing host source path.",
+  }),
+  realization: Schema.Literals(["passthrough", "accelerated"]).annotate({
+    description: "passthrough binds through the provider; accelerated routes through the file-sync engine.",
+  }),
+  role: Schema.optionalKey(Schema.Literal("app")).annotate({
+    description: "app marks the app-source mount; a service has at most one.",
+  }),
+  excludes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+    description: "Paths beneath this mount that belong to the service instead of the host.",
+  }),
+  includes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+    description:
+      "Exact entries cancel excludes and the fixed .git sync ignore; nested entries reopen host paths.",
+  }),
+  mountKey: Schema.optionalKey(Schema.String).annotate({
+    description: "File-sync correlation key, present exactly when the mount is accelerated.",
+  }),
 });
+export type BindMountPlan = typeof BindMountPlan.Type;
+
+/** A named data store mounted into the container. */
+export const VolumeMountPlan = Schema.Struct({
+  type: Schema.Literal("volume").annotate({ description: "Mount kind." }),
+  store: Schema.String.annotate({ description: "Name of the mounted data store." }),
+  target: PortablePath.annotate({ description: "Mount point inside the container." }),
+  readOnly: Schema.Boolean.annotate({ description: "Whether the container sees the mount read-only." }),
+  subpath: Schema.optionalKey(Schema.String).annotate({
+    description: "Path within the data store to mount instead of its root.",
+  }),
+});
+export type VolumeMountPlan = typeof VolumeMountPlan.Type;
+
+/** A memory-backed filesystem that lives as long as the container. */
+export const TmpfsMountPlan = Schema.Struct({
+  type: Schema.Literal("tmpfs").annotate({ description: "Mount kind." }),
+  target: PortablePath.annotate({ description: "Mount point inside the container." }),
+  readOnly: Schema.Boolean.annotate({ description: "Whether the container sees the mount read-only." }),
+  options: Schema.optionalKey(Schema.String).annotate({
+    description: "Canonical runtime tmpfs options such as size=64m,mode=1777; access mode is readOnly.",
+  }),
+});
+export type TmpfsMountPlan = typeof TmpfsMountPlan.Type;
+
+/** One planned container mount. */
+export const MountPlan = Schema.Union([BindMountPlan, VolumeMountPlan, TmpfsMountPlan]);
 export type MountPlan = typeof MountPlan.Type;
+
+// ==== Data stores =============================================================
+// Named volumes the provider creates and owns; services mount them by name.
 
 /**
  * Storage scope — drives auto-naming for named volumes.
@@ -70,44 +91,103 @@ export const DataStorePlan = Schema.Struct({
 });
 export type DataStorePlan = typeof DataStorePlan.Type;
 
-/**
- * Mount of a `DataStorePlan` into a service.
- */
-export const DataStoreMountPlan = Schema.Struct({
-  /** Name of the DataStorePlan being mounted. */
-  store: Schema.String,
-  /** Mount point inside the container. */
-  target: PortablePath,
-  /** Read-only? */
-  readOnly: Schema.Boolean,
-  /** Optional path within the data store to mount instead of its root. */
-  subpath: Schema.optionalKey(Schema.String),
-});
-export type DataStoreMountPlan = typeof DataStoreMountPlan.Type;
+// ==== Mount list helpers ======================================================
+// Derivations every planner, renderer, and verifier shares.
 
 /** Fixed sync-only ignores; these never create volume overlays. */
 export const VCS_SYNC_IGNORES = [".git"] as const;
 
-/** Ordered sync ignores derived from the finalized service's app mount and non-bind overlays. */
-export const appMountSyncIgnores = (service: {
-  readonly appMount?: AppMountPlan | undefined;
-  readonly storage: readonly (string | DataStoreMountPlan)[];
-  readonly mounts: readonly MountPlan[];
-}): readonly string[] => {
-  const { appMount } = service;
-  if (appMount === undefined) return [];
-  const includes = new Set(appMount.includes);
-  const ignores = new Set(appMount.excludes.filter((entry) => !includes.has(entry)));
-  const prefix = `${appMount.target.replace(/\/+$/u, "")}/`;
-  const targets = [
-    ...service.storage.map((entry) => (typeof entry === "string" ? entry : entry.target)),
-    ...service.mounts.filter((mount) => mount.type !== "bind").map((mount) => mount.target),
-  ];
-  for (const target of targets) {
-    if (target.startsWith(prefix)) ignores.add(target.slice(prefix.length));
+interface MountListOwner {
+  readonly mounts: ReadonlyArray<MountPlan>;
+}
+
+/** The app-source mount, absent when the service does not mount the app. */
+export const serviceAppMount = (service: MountListOwner): BindMountPlan | undefined =>
+  service.mounts.find((mount): mount is BindMountPlan => mount.type === "bind" && mount.role === "app");
+
+const targetDepth = (target: string): number =>
+  target.split("/").filter((segment) => segment.length > 0).length;
+
+/** Mounts ordered shallow to deep, then by target, so a deeper target always mounts over its parent. */
+export const orderMounts = <M extends MountPlan>(mounts: ReadonlyArray<M>): M[] =>
+  [...mounts].sort((left, right) => {
+    const depth = targetDepth(left.target) - targetDepth(right.target);
+    if (depth !== 0) return depth;
+    return left.target < right.target ? -1 : left.target > right.target ? 1 : 0;
+  });
+
+/** The first container target claimed by more than one mount, if any. */
+export const duplicateMountTarget = (mounts: ReadonlyArray<MountPlan>): string | undefined => {
+  const seen = new Set<string>();
+  for (const mount of mounts) {
+    if (seen.has(mount.target)) return mount.target;
+    seen.add(mount.target);
+  }
+  return undefined;
+};
+
+/** Excludes left after exact `includes` entries cancel them. */
+export const effectiveExcludes = (bind: Pick<BindMountPlan, "excludes" | "includes">): readonly string[] => {
+  const includes = new Set(bind.includes ?? []);
+  return (bind.excludes ?? []).filter((entry) => !entry.startsWith("!") && !includes.has(entry));
+};
+
+const targetPrefix = (target: string): string => `${target.replace(/\/+$/u, "")}/`;
+
+/**
+ * Ordered sync ignores for an accelerated bind: its effective excludes, the
+ * relative target of every other mount beneath it, then `.git` unless included.
+ */
+export const bindSyncIgnores = (service: MountListOwner, bind: BindMountPlan): readonly string[] => {
+  const includes = new Set(bind.includes ?? []);
+  const ignores = new Set(effectiveExcludes(bind));
+  const prefix = targetPrefix(bind.target);
+  for (const mount of service.mounts) {
+    if (mount !== bind && mount.target.startsWith(prefix)) ignores.add(mount.target.slice(prefix.length));
   }
   for (const entry of VCS_SYNC_IGNORES) {
     if (!includes.has(entry)) ignores.add(entry);
   }
   return [...ignores];
+};
+
+/** Shared file-sync volume naming used by the planner and providers. */
+export const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
+  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+
+/** One accelerated bind's expected file-sync session, derived from the plan alone. */
+export interface PlannedFileSyncSession {
+  readonly service: string;
+  readonly mountKey: string;
+  readonly source: string;
+  readonly targetPath: PortablePath;
+  readonly volumeName: string;
+  readonly excludes: readonly string[];
+}
+
+/**
+ * The single derivation of the sessions an app's accelerated binds need. The
+ * planner builds `AppPlan.fileSync` from it and verifiers compare against it.
+ * A bind marked accelerated without a `mountKey` yields `undefined`.
+ */
+export const plannedFileSyncSessions = (plan: {
+  readonly name: string;
+  readonly services: Readonly<Record<string, MountListOwner>>;
+}): readonly PlannedFileSyncSession[] | undefined => {
+  const sessions: PlannedFileSyncSession[] = [];
+  for (const [serviceName, service] of Object.entries(plan.services)) {
+    for (const mount of service.mounts) {
+      if (mount.type !== "bind" || mount.realization !== "accelerated") continue;
+      if (mount.mountKey === undefined) return undefined;
+      sessions.push({
+        service: serviceName,
+        mountKey: mount.mountKey,
+        source: mount.source,
+        targetPath: mount.target,
+        volumeName: fileSyncVolumeName(plan.name, serviceName, mount.mountKey),
+        excludes: bindSyncIgnores(service, mount),
+      });
+    }
+  }
+  return sessions;
 };

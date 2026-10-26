@@ -114,7 +114,6 @@ const servicePlan = (name: "web"): ServicePlan => ({
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     { _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } },
   ],

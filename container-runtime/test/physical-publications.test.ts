@@ -43,7 +43,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "nginx:alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [publication],
   routes: [],
   dependsOn: [],

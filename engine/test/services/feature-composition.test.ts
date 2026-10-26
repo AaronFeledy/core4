@@ -96,7 +96,9 @@ describe("composeService", () => {
         realization: "passthrough",
       },
     ]);
-    expect(plan.mounts.every((mount) => mount.realization === "passthrough")).toBe(true);
+    expect(plan.mounts.every((mount) => mount.type !== "bind" || mount.realization === "passthrough")).toBe(
+      true,
+    );
     expect(plan.extensions).toEqual({
       "@lando/core/service-features": {
         featureIds: ["feature.plan-intent"],

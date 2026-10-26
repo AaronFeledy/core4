@@ -31,7 +31,6 @@ const service = (input: Partial<ServicePlan>): ServicePlan => ({
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

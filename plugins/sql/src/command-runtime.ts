@@ -119,8 +119,11 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
             })),
           ),
       inspectVolume: (service, store, destination) => {
-        const mount = planned.services[ServiceName.make(service)]?.storage.find(
-          (entry) => entry.store === store && (destination === undefined || entry.target === destination),
+        const mount = planned.services[ServiceName.make(service)]?.mounts.find(
+          (entry) =>
+            entry.type === "volume" &&
+            entry.store === store &&
+            (destination === undefined || entry.target === destination),
         );
         return mount === undefined || provider.observeVolume === undefined
           ? Effect.succeed(undefined)
@@ -131,8 +134,11 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
       },
       locateVolume: (volume) => provider.locateVolume(volume),
       adoptVolume: (service, store, destination) => {
-        const mount = planned.services[ServiceName.make(service)]?.storage.find(
-          (entry) => entry.store === store && (destination === undefined || entry.target === destination),
+        const mount = planned.services[ServiceName.make(service)]?.mounts.find(
+          (entry) =>
+            entry.type === "volume" &&
+            entry.store === store &&
+            (destination === undefined || entry.target === destination),
         );
         return mount === undefined || provider.adoptVolume === undefined
           ? Effect.succeed(undefined)

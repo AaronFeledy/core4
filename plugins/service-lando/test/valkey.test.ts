@@ -39,13 +39,14 @@ describe("valkey ServiceType", () => {
     expect(plan.type).toBe("valkey");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "valkey/valkey:8" });
     expect(plan.command).toEqual(["valkey-server", "--appendonly", "yes", "--port", "6379"]);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-valkey-data");
-    expect(String(plan.storage[0]?.target)).toBe("/data");
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-valkey-data");
+    expect(String(volumes[0]?.target)).toBe("/data");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 6379, protocol: "tcp", name: "cache", primary: true },
     ]);
-    expect(plan.appMount).toBeUndefined();
+    expect(serviceAppMount(plan)).toBeUndefined();
   });
 
   test("respects image, port, and command overrides", async () => {
@@ -111,3 +112,4 @@ describe("valkey ServiceType", () => {
     expect(plan.user).toBe("valkey");
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

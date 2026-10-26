@@ -3,14 +3,16 @@ import { type AppId, AppPlan } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import {
+  APPLIED_STATE_VERSION,
   appliedPlanPath,
   appliedPlansDir,
   makeAppliedPlanStore,
+  migrateAppliedPlan,
 } from "@lando/container-runtime/applied-state";
 
 const store = makeAppliedPlanStore({ providerId: "lando", layout: "per-app" });
 
-export { appliedPlanPath, appliedPlansDir };
+export { APPLIED_STATE_VERSION, appliedPlanPath, appliedPlansDir, migrateAppliedPlan };
 export const { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } = store;
 
 /** Missing state is distinct from unreadable state when deciding a safe teardown. */
@@ -28,12 +30,12 @@ export const inspectAppliedPlan = (
       namespace: "applied-plans",
       key: `${appId}.json`,
       schema: AppPlan,
-      version: 1,
+      version: APPLIED_STATE_VERSION,
       codec: "json",
       mode: 0o600,
       lock: "advisory",
       onCorrupt: "fail",
-      onVersionMismatch: "discard",
+      onVersionMismatch: migrateAppliedPlan,
     })
     .pipe(
       Effect.flatMap((bucket) =>

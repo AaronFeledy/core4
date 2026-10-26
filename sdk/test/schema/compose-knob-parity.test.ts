@@ -17,7 +17,6 @@ const PUBLISHED_COMPOSE_SERVICE_KNOB_KEY_ORDER = [
   "devices",
   "ulimits",
   "sysctls",
-  "tmpfs",
   "shm_size",
   "dns",
   "dns_search",

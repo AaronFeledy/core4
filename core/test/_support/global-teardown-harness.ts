@@ -46,7 +46,6 @@ export const globalPlanAt = (root: AbsolutePath): AppPlan => ({
       artifact: { kind: "ref", ref: "ssh-agent:test" },
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

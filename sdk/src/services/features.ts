@@ -15,22 +15,22 @@ import { type Effect, Schema } from "effect";
 
 import type { ServiceFeatureError } from "../errors/index.ts";
 import type {
-  AppMountPlan,
   ArtifactBuildSpec,
   ArtifactRef,
+  BindMountPlan,
   CertificatePlan,
   CommandSpec,
-  DataStoreMountPlan,
   DatabaseConnection,
   DependencyPlan,
   EndpointPlan,
   EnvironmentValue,
   HealthcheckPlan,
   HostAliasPlan,
-  MountPlan,
   PortablePath,
   ProviderCapabilities,
   ServiceConfig,
+  TmpfsMountPlan,
+  VolumeMountPlan,
 } from "../schema/index.ts";
 import type { ServiceTypeHostFacts } from "./plugins.ts";
 
@@ -39,13 +39,14 @@ import type { ServiceTypeHostFacts } from "./plugins.ts";
  * declare WHAT to mount; whether the mount is a provider-native bind or routed
  * through a file-sync engine is decided later by core's finalization stage.
  */
-export type ServiceMountIntent = Omit<MountPlan, "realization">;
+export type ServiceMountIntent = Omit<BindMountPlan, "realization" | "role" | "mountKey"> | TmpfsMountPlan;
 
 /**
  * The app-source mount a feature declares, stripped of the `realization`
  * decision (same reasoning as {@link ServiceMountIntent}).
  */
-export type ServiceAppMountIntent = Omit<AppMountPlan, "realization">;
+export type ServiceAppMountIntent = Pick<BindMountPlan, "source" | "target" | "readOnly"> &
+  Required<Pick<BindMountPlan, "excludes" | "includes">>;
 
 /** A host CA file injected into a derived service image after digest verification. */
 export const ServiceCaFileDescriptor = Schema.Struct({
@@ -154,7 +155,7 @@ export interface ServiceFeatureContext {
    * gives the target to, which a fresh volume inherits and which therefore need
    * no preparation.
    */
-  addStorage(storage: DataStoreMountPlan, ownership?: DataStoreOwnershipIntent): void;
+  addStorage(storage: Omit<VolumeMountPlan, "type">, ownership?: DataStoreOwnershipIntent): void;
   /** Add a service dependency. */
   addDependency(dependency: DependencyPlan): void;
   /** Add a host alias. */

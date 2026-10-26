@@ -285,7 +285,6 @@ describe("live-app-scope: daemon polling", () => {
           environment: {},
           endpoints: [],
           mounts: [],
-          storage: [],
           routes: [],
           dependsOn: [],
           hostAliases: [],

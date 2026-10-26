@@ -45,7 +45,6 @@ const planFor = (id: string, proxy?: string): AppPlan => {
         command: ["node", "server.js"],
         environment: proxy === undefined ? {} : { HTTPS_PROXY: proxy },
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],

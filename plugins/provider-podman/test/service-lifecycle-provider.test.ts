@@ -41,7 +41,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "busybox:1.37" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

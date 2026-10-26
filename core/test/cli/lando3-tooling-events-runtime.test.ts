@@ -91,7 +91,6 @@ const service = (name: string) => ({
   primary: name === "appserver",
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

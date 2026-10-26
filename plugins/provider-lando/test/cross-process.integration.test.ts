@@ -55,11 +55,11 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "web" ? ["node", "-e", "setInterval(() => {}, 1000)"] : ["postgres"],
   environment: name === "web" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
-  mounts: [],
-  storage:
+  mounts:
     name === "database"
       ? [
           {
+            type: "volume",
             store: "crossprocessapp_database_data",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,

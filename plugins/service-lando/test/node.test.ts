@@ -82,13 +82,17 @@ describe("node:lts ServiceType", () => {
     expect(plan.type).toBe("node:lts");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "node:lts" });
     expect(String(plan.workingDirectory)).toBe("/app");
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
-    expect(plan.appMount?.excludes).toEqual([]);
-    expect(plan.appMount?.includes).toEqual([]);
-    expect(plan.appMount?.realization).toBe("passthrough");
-    expect(plan.mounts).toEqual([]);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
+    expect(serviceAppMount(plan)?.excludes).toEqual([]);
+    expect(serviceAppMount(plan)?.includes).toEqual([]);
+    expect(serviceAppMount(plan)?.realization).toBe("passthrough");
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
     expect(plan.command).toEqual(idleCommand);
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
@@ -204,7 +208,7 @@ describe("node:lts ServiceType", () => {
     expect(plan.command).toEqual(idleCommand);
     expect(plan.name).toBe(ServiceName.make("web"));
     expect(String(plan.workingDirectory)).toBe("/app");
-    expect(String(plan.appMount?.target)).toBe("/app");
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
   });
 });
 
@@ -215,11 +219,15 @@ describe("node:22 ServiceType", () => {
     expect(plan.type).toBe("node:22");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "node:22" });
     expect(String(plan.workingDirectory)).toBe("/app");
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
-    expect(plan.appMount?.realization).toBe("passthrough");
-    expect(plan.mounts).toEqual([]);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
+    expect(serviceAppMount(plan)?.realization).toBe("passthrough");
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
     expect(plan.command).toEqual(idleCommand);
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
@@ -285,6 +293,7 @@ describe("node:22 ServiceType", () => {
     expect(plan.command).toEqual(idleCommand);
     expect(plan.name).toBe(ServiceName.make("web"));
     expect(String(plan.workingDirectory)).toBe("/app");
-    expect(String(plan.appMount?.target)).toBe("/app");
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

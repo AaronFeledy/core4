@@ -106,7 +106,6 @@ const assertArtifact = (
 
 const assertVolumes = (context: ServiceOutcomeContext): void => {
   const { appName, appRoot, planService, service } = context;
-  const tmpfs = valueAt(planService, "extensions.compose.tmpfs");
   for (const volume of matchedVolumes(context.match, service)) {
     switch (volume.type) {
       case "bind": {
@@ -122,9 +121,10 @@ const assertVolumes = (context: ServiceOutcomeContext): void => {
         break;
       }
       case "volume": {
-        const projected = planService.storage.find((storage) => String(storage.target) === volume.target);
-        requireProducedValue(projected, context.match, "ServicePlan.storage");
+        const projected = planService.mounts.find((mount) => String(mount.target) === volume.target);
+        requireProducedValue(projected, context.match, "ServicePlan.mounts");
         expect<unknown>(projected).toEqual({
+          type: "volume",
           store:
             volume.source === undefined
               ? `${appName}-${String(planService.name)}-${volume.target.split("/").filter(Boolean).join("-")}`
@@ -136,15 +136,17 @@ const assertVolumes = (context: ServiceOutcomeContext): void => {
         break;
       }
       case "tmpfs": {
-        const projected = Array.isArray(tmpfs)
-          ? tmpfs.find((entry) => valueAt(entry, "target") === volume.target)
-          : undefined;
-        requireProducedValue(projected, context.match, "ServicePlan.extensions.compose.tmpfs");
-        expect(projected).toEqual({
+        const projected = planService.mounts.find((mount) => String(mount.target) === volume.target);
+        requireProducedValue(projected, context.match, "ServicePlan.mounts");
+        const options = [
+          ...(volume.tmpfs?.size === undefined ? [] : [`size=${volume.tmpfs.size}`]),
+          ...(volume.tmpfs?.mode === undefined ? [] : [`mode=${volume.tmpfs.mode.toString(8)}`]),
+        ].join(",");
+        expect<unknown>(projected).toEqual({
+          type: "tmpfs",
           target: volume.target,
-          ...(volume.readOnly ? { read_only: true } : {}),
-          ...(volume.tmpfs?.size === undefined ? {} : { size: volume.tmpfs.size }),
-          ...(volume.tmpfs?.mode === undefined ? {} : { mode: volume.tmpfs.mode }),
+          readOnly: volume.readOnly,
+          ...(options.length === 0 ? {} : { options }),
         });
         break;
       }

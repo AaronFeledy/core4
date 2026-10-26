@@ -251,13 +251,11 @@ describe("hostProxyRunLandoFeature", () => {
         },
         {
           type: "volume" as const,
-          source: "app-data",
+          store: "app-data",
           target: PortablePath.make("/data"),
           readOnly: false,
-          realization: "passthrough" as const,
         },
       ],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -286,10 +284,9 @@ describe("hostProxyRunLandoFeature", () => {
     expect(strippedWeb?.mounts).toEqual([
       {
         type: "volume",
-        source: "app-data",
+        store: "app-data",
         target: PortablePath.make("/data"),
         readOnly: false,
-        realization: "passthrough",
       },
     ]);
     expect(strippedWeb?.extensions).toEqual({ keep: true });

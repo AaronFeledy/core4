@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  ContainerPlanError,
   commonContainerLabels,
   containerCreateBodyFragment,
   containerHostConfigFragment,
@@ -46,12 +47,18 @@ const service = {
     },
     { _tag: "internal", port: 9090, protocol: "tcp" },
   ],
-  appMount: { source: "/host/app", target: "/app", readOnly: true, realization: "passthrough" },
   mounts: [
-    { type: "bind", source: "/host/app", target: "/app", readOnly: true, realization: "passthrough" },
+    {
+      type: "bind",
+      source: "/host/app",
+      target: "/app",
+      readOnly: true,
+      realization: "passthrough",
+      role: "app",
+    },
     { type: "bind", source: "/host/cache", target: "/cache", readOnly: false, realization: "passthrough" },
+    { type: "volume", store: "lando-cache-npm", target: "/home/node/.npm", readOnly: false },
   ],
-  storage: [{ store: "lando-cache-npm", target: "/home/node/.npm", readOnly: false }],
   hostAliases: [],
   extensions: {},
 } as unknown as ServicePlan;
@@ -64,23 +71,16 @@ describe("container plan helpers", () => {
       mounts: [
         {
           type: "volume",
-          source: "lando-ssh-agent",
+          store: "lando-ssh-agent",
           target: PortablePath.make("/run/lando/ssh-agent"),
           readOnly: true,
-          realization: "passthrough",
         },
       ],
-      storage: [],
     };
     // When
     const host = containerHostConfigFragment(plan, mounted);
     // Then
-    expect(host.Mounts).toContainEqual({
-      Type: "volume",
-      Source: "lando-ssh-agent",
-      Target: "/run/lando/ssh-agent",
-      ReadOnly: true,
-    });
+    expect(host.Binds).toEqual(["lando-ssh-agent:/run/lando/ssh-agent:ro"]);
   });
   test.each(["passthrough", "accelerated"] as const)(
     "preserves colon targets in API Mounts when %s",
@@ -89,25 +89,26 @@ describe("container plan helpers", () => {
       const target = PortablePath.make("/home/user:ro");
       const withColons: ServicePlan = {
         ...service,
-        appMount: {
-          source: AbsolutePath.make("/host/app"),
-          target,
-          readOnly: true,
-          realization,
-          excludes: [],
-          includes: [],
-        },
         mounts: [
-          { type: "bind", source: "/host/app", target, readOnly: true, realization },
+          {
+            type: "bind",
+            source: "/host/app",
+            target,
+            readOnly: true,
+            realization,
+            role: "app",
+            ...(realization === "accelerated" ? { mountKey: "app-mount" } : {}),
+          },
           {
             type: "bind",
             source: "/host/cache",
             target: PortablePath.make("/cache:v1"),
             readOnly: false,
             realization,
+            ...(realization === "accelerated" ? { mountKey: "mount-deadbeef" } : {}),
           },
+          { type: "volume", store: "data", target: PortablePath.make("/data:v1"), readOnly: true },
         ],
-        storage: [{ store: "data", target: PortablePath.make("/data:v1"), readOnly: true }],
         extensions: { compose: { configs: [{ source: "config", target: "/etc/config:v1" }] } },
       };
       // When
@@ -129,7 +130,7 @@ describe("container plan helpers", () => {
         },
         {
           Type: realization === "accelerated" ? "volume" : "bind",
-          Source: realization === "accelerated" ? "myapp-web-mount-1" : "/host/cache",
+          Source: realization === "accelerated" ? "myapp-web-mount-deadbeef" : "/host/cache",
           Target: "/cache:v1",
           ReadOnly: false,
         },
@@ -248,9 +249,8 @@ describe("container plan helpers", () => {
   });
 
   test("emits option-bearing mounts as HostConfig Mounts without duplicate Binds", () => {
-    const { appMount: _appMount, ...withoutAppMount } = service;
     const serviceWithMountOptions: ServicePlan = {
-      ...withoutAppMount,
+      ...service,
       mounts: [
         {
           type: "bind",
@@ -267,6 +267,7 @@ describe("container plan helpers", () => {
           readOnly: false,
           createHostPath: false,
           realization: "accelerated",
+          mountKey: "mount-deadbeef",
         },
         {
           type: "bind",
@@ -275,15 +276,14 @@ describe("container plan helpers", () => {
           readOnly: false,
           realization: "passthrough",
         },
-      ],
-      storage: [
         {
+          type: "volume",
           store: "lando-data",
           target: PortablePath.make("/data"),
           readOnly: true,
           subpath: "tenant",
         },
-        { store: "lando-cache", target: PortablePath.make("/cache"), readOnly: false },
+        { type: "volume", store: "lando-cache", target: PortablePath.make("/cache"), readOnly: false },
       ],
     };
 
@@ -291,7 +291,7 @@ describe("container plan helpers", () => {
 
     expect(hostConfig).toEqual({
       PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
-      Binds: ["myapp-web-mount-1:/synced", "/host/ordinary:/ordinary", "lando-cache:/cache"],
+      Binds: ["myapp-web-mount-deadbeef:/synced", "/host/ordinary:/ordinary", "lando-cache:/cache"],
       Mounts: [
         {
           Type: "bind",
@@ -311,10 +311,11 @@ describe("container plan helpers", () => {
     });
   });
 
-  test("omits an option-bearing bind that overlaps the app mount from Binds and Mounts", () => {
+  test("rejects duplicate targets rather than dropping an overlapping bind", () => {
     const serviceWithOverlap: ServicePlan = {
       ...service,
       mounts: [
+        ...service.mounts,
         {
           type: "bind",
           source: "/host/app",
@@ -326,12 +327,129 @@ describe("container plan helpers", () => {
       ],
     };
 
-    const hostConfig = containerHostConfigFragment(plan, serviceWithOverlap);
+    expect(() => containerHostConfigFragment(plan, serviceWithOverlap)).toThrow(ContainerPlanError);
+  });
 
-    expect(hostConfig).toEqual({
-      PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
-      Binds: ["/host/app:/app:ro", "lando-cache-npm:/home/node/.npm"],
+  test.each([
+    { target: "/scratch", readOnly: false, options: undefined, expected: "" },
+    { target: "/scratch:v1", readOnly: false, options: "size=64m", expected: "size=64m" },
+    {
+      target: "/scratch",
+      readOnly: true,
+      options: "size=64m,mode=1777,noexec",
+      expected: "ro,size=64m,mode=1777,noexec",
+    },
+  ])("realizes tmpfs at $target with $expected", ({ target, readOnly, options, expected }) => {
+    const mounted: ServicePlan = {
+      ...service,
+      mounts: [
+        {
+          type: "tmpfs",
+          target: PortablePath.make(target),
+          readOnly,
+          ...(options === undefined ? {} : { options }),
+        },
+      ],
+    };
+    const host = containerHostConfigFragment(plan, mounted);
+    expect(host.Tmpfs).toEqual({ [target]: expected });
+    expect(host).not.toHaveProperty("Mounts");
+    expect(host).not.toHaveProperty("Binds");
+  });
+
+  test("retains a nested bind beneath a volume in plan order", () => {
+    const mounted: ServicePlan = {
+      ...service,
+      mounts: [
+        { type: "volume", store: "vendor", target: PortablePath.make("/app/vendor"), readOnly: false },
+        {
+          type: "bind",
+          source: "/host/sdk",
+          target: PortablePath.make("/app/vendor/acme/sdk"),
+          readOnly: false,
+          realization: "passthrough",
+        },
+      ],
+    };
+    const host = containerHostConfigFragment(plan, mounted);
+    expect(host.Binds).toEqual(["vendor:/app/vendor", "/host/sdk:/app/vendor/acme/sdk"]);
+  });
+
+  test("preserves colon targets and canonical tmpfs options without splitting the target", () => {
+    const mounted: ServicePlan = {
+      ...service,
+      mounts: [
+        {
+          type: "tmpfs",
+          target: PortablePath.make("/run:app"),
+          readOnly: true,
+          options: "size=67108864,mode=1770",
+        },
+        { type: "tmpfs", target: PortablePath.make("/ordinary"), readOnly: false, options: "size=32m" },
+      ],
+    };
+    expect(containerHostConfigFragment(plan, mounted).Tmpfs).toEqual({
+      "/run:app": "ro,size=67108864,mode=1770",
+      "/ordinary": "size=32m",
     });
+  });
+
+  test("realizes tmpfs mounts with and without options from the mount list", () => {
+    const mounted: ServicePlan = {
+      ...service,
+      mounts: [
+        { type: "tmpfs", target: PortablePath.make("/run"), readOnly: false },
+        { type: "tmpfs", target: PortablePath.make("/tmp"), readOnly: false, options: "size=64m,mode=1777" },
+      ],
+    };
+    expect(containerHostConfigFragment(plan, mounted).Tmpfs).toEqual({
+      "/run": "",
+      "/tmp": "size=64m,mode=1777",
+    });
+  });
+
+  test("delivers canonical long-form tmpfs options to the runtime", () => {
+    const mounted: ServicePlan = {
+      ...service,
+      mounts: [
+        {
+          type: "tmpfs",
+          target: PortablePath.make("/run/app"),
+          readOnly: true,
+          options: "size=67108864,mode=1770",
+        },
+      ],
+    };
+    expect(containerHostConfigFragment(plan, mounted).Tmpfs).toEqual({
+      "/run/app": "ro,size=67108864,mode=1770",
+    });
+  });
+
+  test("rejects duplicate tmpfs destinations instead of overwriting options", () => {
+    const mounted: ServicePlan = {
+      ...service,
+      mounts: [
+        { type: "tmpfs", target: PortablePath.make("/tmp"), readOnly: false, options: "size=64m" },
+        { type: "tmpfs", target: PortablePath.make("/tmp"), readOnly: false, options: "mode=1777" },
+      ],
+    };
+    expect(() => containerHostConfigFragment(plan, mounted)).toThrow(ContainerPlanError);
+  });
+
+  test("rejects acceleration without a planner mount identity", () => {
+    const mounted: ServicePlan = {
+      ...service,
+      mounts: [
+        {
+          type: "bind",
+          source: "/host/app",
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+        },
+      ],
+    };
+    expect(() => containerHostConfigFragment(plan, mounted)).toThrow(ContainerPlanError);
   });
 
   test("builds common create body fields from a ref artifact", () => {

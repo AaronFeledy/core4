@@ -131,7 +131,6 @@ test.each([
           primary: true,
           environment: { DISPLAY_VALUE: { _tag: "SecretRef", reference } },
           mounts: [],
-          storage: [],
           // Keep a secret in the projected result even when the opaque provider state is discarded.
           endpoints: [{ _tag: "internal", protocol: "tcp", port: 8080, name: value }],
           routes: [],

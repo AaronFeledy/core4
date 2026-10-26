@@ -51,7 +51,6 @@ const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseCon
     primary: true,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

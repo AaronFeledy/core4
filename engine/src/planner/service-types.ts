@@ -276,6 +276,7 @@ export type AuthoredStorageInfo = {
 
 export type PlannedServiceDraft = {
   readonly name: string;
+  readonly authoredStorage: ServiceConfig["storage"];
   readonly hostnames: ReadonlyArray<string>;
   readonly authoredArtifact: ServicePlan["artifact"];
   readonly authored: ResolvedService["authored"];

@@ -97,7 +97,6 @@ test("reconstructs trusted scope only from persisted connection facts including 
         primary: true,
         environment: { POSTGRES_PASSWORD: "must-not-be-used" },
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],

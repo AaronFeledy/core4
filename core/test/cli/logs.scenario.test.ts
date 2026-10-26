@@ -83,7 +83,6 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   command: name === "web" ? ["node", "server.js"] : ["postgres"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints:
     name === "web"
       ? [{ _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } }]

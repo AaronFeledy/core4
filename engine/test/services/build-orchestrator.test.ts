@@ -71,7 +71,6 @@ const servicePlan = (name: "web" | "db"): ServicePlan => ({
   primary: name === "web",
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

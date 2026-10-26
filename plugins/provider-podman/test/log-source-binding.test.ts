@@ -34,7 +34,6 @@ const plan: AppPlan = {
       artifact: { kind: "ref", ref: "node:22" },
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

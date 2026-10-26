@@ -79,7 +79,6 @@ export const web: ServicePlan = {
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     {
       _tag: "published",

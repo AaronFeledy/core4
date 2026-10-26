@@ -209,8 +209,8 @@ describe("compose passthrough — scenario: third-party image with default endpo
     ).toEqual([]);
     expect(whoami.environment.LANDO_HOST_IP).toBe("host.lando.internal");
 
-    expect(whoami.appMount).toMatchObject({ target: "/app", readOnly: false });
-    expect(whoami.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(false);
+    expect(serviceAppMount(whoami)).toMatchObject({ target: "/app", readOnly: false });
+    expect(whoami.mounts.filter((m) => m.type === "bind" && String(m.target) === "/app")).toHaveLength(1);
 
     expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
   });
@@ -269,7 +269,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
     const sidekick = appPlan.services[ServiceName.make("sidekick")];
     if (sidekick === undefined) throw new Error("sidekick service missing from compose passthrough plan");
 
-    expect(sidekick.appMount).toBeUndefined();
+    expect(serviceAppMount(sidekick)).toBeUndefined();
     expect(sidekick.mounts).toEqual([]);
     expect(
       Object.keys(sidekick.environment).filter(
@@ -288,3 +288,4 @@ describe("compose passthrough — scenario: third-party image with default endpo
     expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

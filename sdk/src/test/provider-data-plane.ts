@@ -18,12 +18,12 @@ import {
   AbsolutePath,
   AppId,
   type DataEndpoint,
-  type DataStoreMountPlan,
   PortablePath,
   ProviderId,
   type ServiceName,
   type StorageScope,
   type VolumeInfo,
+  type VolumeMountPlan,
   type VolumeRef,
   type VolumeSnapshotRef,
 } from "../schema/index.ts";
@@ -97,7 +97,8 @@ const nextContractRunId = (): string => {
   return `contract-data-${randomUUID()}`;
 };
 
-const dataStoreMount = (store: string): DataStoreMountPlan => ({
+const dataStoreMount = (store: string): VolumeMountPlan => ({
+  type: "volume",
   store,
   target: Schema.decodeUnknownSync(PortablePath)("/data"),
   readOnly: false,
@@ -357,8 +358,10 @@ const servicePathKey = (
 
 const firstDataStoreMount = (
   mounts: Parameters<RuntimeProviderShape["run"]>[0]["mounts"],
-): DataStoreMountPlan | undefined =>
-  Array.isArray(mounts) ? mounts.find((mount): mount is DataStoreMountPlan => "store" in mount) : undefined;
+): VolumeMountPlan | undefined =>
+  Array.isArray(mounts)
+    ? mounts.find((mount): mount is VolumeMountPlan => mount.type === "volume")
+    : undefined;
 
 const storageScopeFromKey = (scope: string | undefined): StorageScope | undefined =>
   scope === "service" || scope === "app" || scope === "global" ? scope : undefined;

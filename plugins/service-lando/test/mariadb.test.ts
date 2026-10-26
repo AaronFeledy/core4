@@ -85,9 +85,10 @@ describe("mariadb ServiceType", () => {
     expect(plan.environment.MYSQL_PASSWORD).toBe(plan.environment.MARIADB_PASSWORD);
     expect(plan.environment.MYSQL_DATABASE).toBe(plan.environment.MARIADB_DATABASE);
     expect(plan.environment.MYSQL_ROOT_PASSWORD).toBe(plan.environment.MARIADB_ROOT_PASSWORD);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-mariadb-data");
-    expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-mariadb-data");
+    expect(String(volumes[0]?.target)).toBe("/var/lib/mysql");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },
     ]);
@@ -230,7 +231,7 @@ describe("mariadb ServiceType", () => {
     const plan = await planMariadb(definition);
 
     // Then
-    expect(plan.mounts).toEqual([
+    expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([
       {
         type: "bind",
         source: "/srv/apps/myapp/config/my.cnf",
@@ -252,7 +253,7 @@ describe("mariadb ServiceType", () => {
     const plan = await planMariadb(definition);
 
     // Then
-    expect(plan.mounts).toEqual([]);
+    expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([]);
     expect(plan.command).toBeUndefined();
     expect(plan.entrypoint).toBeUndefined();
   });

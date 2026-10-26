@@ -63,17 +63,43 @@ describe("ServiceFeature contract surface", () => {
     expect(noDraft).toBe(false);
   });
 
-  test("mount intent types omit the realization decision", () => {
-    // A mount intent must NOT carry `realization`; features emit intent only.
+  test("mount intent types omit realization, role, and mountKey decisions", () => {
+    // A mount intent must NOT carry planner-only fields; features emit intent only.
     type MountIntent = Parameters<ServiceFeatureContext["addMount"]>[0];
     type HasRealization = "realization" extends keyof MountIntent ? true : false;
+    type HasRole = "role" extends keyof MountIntent ? true : false;
+    type HasMountKey = "mountKey" extends keyof MountIntent ? true : false;
     const noRealization: HasRealization = false;
+    const noRole: HasRole = false;
+    const noMountKey: HasMountKey = false;
     expect(noRealization).toBe(false);
+    expect(noRole).toBe(false);
+    expect(noMountKey).toBe(false);
 
     type AppMountIntent = Parameters<ServiceFeatureContext["setAppMount"]>[0];
     type AppHasRealization = "realization" extends keyof AppMountIntent ? true : false;
+    type AppHasRole = "role" extends keyof AppMountIntent ? true : false;
+    type AppHasMountKey = "mountKey" extends keyof AppMountIntent ? true : false;
     const appNoRealization: AppHasRealization = false;
+    const appNoRole: AppHasRole = false;
+    const appNoMountKey: AppHasMountKey = false;
     expect(appNoRealization).toBe(false);
+    expect(appNoRole).toBe(false);
+    expect(appNoMountKey).toBe(false);
+
+    // addStorage takes a volume entry without the discriminant; addMount accepts tmpfs.
+    type StorageIntent = Parameters<ServiceFeatureContext["addStorage"]>[0];
+    type StorageHasType = "type" extends keyof StorageIntent ? true : false;
+    const storageNoType: StorageHasType = false;
+    expect(storageNoType).toBe(false);
+    type TmpfsIntent = Extract<MountIntent, { type: "tmpfs" }>;
+    const tmpfsOk: TmpfsIntent = {
+      type: "tmpfs",
+      target: PortablePath.make("/scratch"),
+      readOnly: false,
+      options: "size=8m",
+    };
+    expect(tmpfsOk.type).toBe("tmpfs");
   });
 
   test("CA file descriptors expose a runtime schema", () => {

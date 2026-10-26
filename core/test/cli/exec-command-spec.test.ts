@@ -28,7 +28,6 @@ const plan: CurrentExecutableAppPlan = {
       primary: true,
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

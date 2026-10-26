@@ -2,6 +2,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type BindMountPlan,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -20,7 +21,6 @@ export const service: ServicePlan = {
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -42,7 +42,10 @@ export const plan: AppPlan = {
   metadata,
   extensions: {},
 };
+/** Full resolved app-source bind; used as ServiceInfo.appMount projection shape and plan fixture. */
 export const appMount = {
+  type: "bind" as const,
+  role: "app" as const,
   source: plan.root,
   target: PortablePath.make("/app"),
   readOnly: false,
@@ -50,6 +53,12 @@ export const appMount = {
   excludes: ["node_modules"],
   realization: "passthrough" as const,
 };
+
+/** ServicePlan with the app bind in the one mounts list. */
+export const withAppMount = (base: ServicePlan = service, bind: BindMountPlan = appMount): ServicePlan => ({
+  ...base,
+  mounts: [...base.mounts.filter((m) => !(m.type === "bind" && m.role === "app")), bind],
+});
 
 export const runInfo = async (
   selected: ServicePlan,

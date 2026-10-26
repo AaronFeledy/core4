@@ -22,7 +22,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "alpine:3" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

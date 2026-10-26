@@ -7,7 +7,18 @@ import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, AppPlan, type AppPlan as AppPlanShape } from "@lando/sdk/schema";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 
-const APPLIED_STATE_VERSION = 1;
+import {
+  APPLIED_STATE_VERSION,
+  migrateAppliedPlan,
+  migrateAppliedPlansRecord,
+} from "./applied-state-migrate.ts";
+
+export {
+  APPLIED_STATE_VERSION,
+  migrateAppliedPlan,
+  migrateAppliedPlansRecord,
+} from "./applied-state-migrate.ts";
+
 const APPLIED_PLAN_NAMESPACE = "applied-plans";
 const APPLIED_PLANS_KEY = "applied-plans.json";
 const AppliedPlans = Schema.Record(AppId, AppPlan);
@@ -95,7 +106,7 @@ export function makeAppliedPlanStore(
         mode: 0o600,
         lock: "advisory",
         onCorrupt: "discard",
-        onVersionMismatch: "discard",
+        onVersionMismatch: migrateAppliedPlan,
       });
     const loadForList = (stateStore: PluginStateStore, appId: AppId) =>
       open(stateStore, appId).pipe(
@@ -156,7 +167,7 @@ export function makeAppliedPlanStore(
       mode: 0o600,
       lock: "advisory",
       onCorrupt: "discard",
-      onVersionMismatch: "discard",
+      onVersionMismatch: migrateAppliedPlansRecord,
       default: {},
     });
   return {

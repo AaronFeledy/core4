@@ -54,7 +54,6 @@ const plan: AppPlan = {
       artifact: { kind: "ref", ref: "nginx:1.27-alpine" },
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

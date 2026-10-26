@@ -37,7 +37,6 @@ test("derived Dockerfiles contain only build-phase steps", async () => {
     artifact: { kind: "ref", ref: "php:8.2-apache-bookworm" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

@@ -31,7 +31,6 @@ import type {
   AgentSocketBridgeResult,
   AppId,
   AppPlan,
-  DataStoreMountPlan,
   DoctorResourceNameQuery,
   FileSyncSessionSpec,
   HostPlatform,
@@ -215,7 +214,7 @@ export interface EphemeralRunSpec {
   readonly owner?: AppSelector;
   readonly image: string;
   readonly command: ReadonlyArray<string>;
-  readonly mounts?: ReadonlyArray<MountPlan | DataStoreMountPlan>;
+  readonly mounts?: ReadonlyArray<MountPlan>;
   readonly stdin?: "inherit" | "ignore";
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly captureStdout?: boolean;

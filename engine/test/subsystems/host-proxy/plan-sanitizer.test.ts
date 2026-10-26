@@ -56,13 +56,11 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
       },
       {
         type: "volume",
-        source: "app-data",
+        store: "app-data",
         target: PortablePath.make("/data"),
         readOnly: false,
-        realization: "passthrough",
       },
     ],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -102,10 +100,9 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
   expect(sanitized.services[service.name]?.mounts).toEqual([
     {
       type: "volume",
-      source: "app-data",
+      store: "app-data",
       target: PortablePath.make("/data"),
       readOnly: false,
-      realization: "passthrough",
     },
   ]);
 });
@@ -125,7 +122,6 @@ test("sanitizer strips ssh-agent overlay", async () => {
     primary: true,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -147,11 +143,13 @@ test("sanitizer strips ssh-agent overlay", async () => {
     metadata,
     extensions: {},
   };
-  const overlaid = withSshAgentOverlay(plan, {
-    kind: "ssh",
-    socketName: "agent.sock",
-    mount: { _tag: "volume", volume: "agent" },
-  });
+  const overlaid = Effect.runSync(
+    withSshAgentOverlay(plan, {
+      kind: "ssh",
+      socketName: "agent.sock",
+      mount: { _tag: "volume", volume: "agent" },
+    }),
+  );
   // When
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -177,7 +175,6 @@ test("sanitizer strips gpg-agent overlay", async () => {
     primary: true,
     environment: { KEEP_ME: "yes" },
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -199,14 +196,16 @@ test("sanitizer strips gpg-agent overlay", async () => {
     metadata,
     extensions: {},
   };
-  const overlaid = withGpgAgentOverlay(
-    plan,
-    {
-      kind: "gpg",
-      socketName: "S.gpg-agent",
-      mount: { _tag: "bind-directory", directory: AbsolutePath.make("/relay/gpg-socket") },
-    },
-    "/relay/gpg-keyring",
+  const overlaid = Effect.runSync(
+    withGpgAgentOverlay(
+      plan,
+      {
+        kind: "gpg",
+        socketName: "S.gpg-agent",
+        mount: { _tag: "bind-directory", directory: AbsolutePath.make("/relay/gpg-socket") },
+      },
+      "/relay/gpg-keyring",
+    ),
   );
   expect(overlaid.services[service.name]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
   expect(overlaid.services[service.name]?.mounts).toHaveLength(2);

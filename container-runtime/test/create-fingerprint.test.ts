@@ -28,7 +28,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "nginx:1.27-alpine", digest: "sha256:before" },
   environment: { MODE: "before", PASSWORD: "${secret:db/password}" },
   mounts: [],
-  storage: [],
   endpoints: [],
   hostAliases: [],
   routes: [],
@@ -83,14 +82,18 @@ describe("desired immutable create config", () => {
     [
       "app mount",
       {
-        appMount: {
-          source: plan.root,
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          realization: "passthrough",
-          excludes: [],
-          includes: [],
-        },
+        mounts: [
+          {
+            type: "bind",
+            role: "app",
+            source: plan.root,
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            realization: "passthrough",
+            excludes: [],
+            includes: [],
+          },
+        ],
       },
     ],
     [
@@ -111,7 +114,15 @@ describe("desired immutable create config", () => {
     [
       "storage subpath",
       {
-        storage: [{ store: "data", target: PortablePath.make("/data"), readOnly: false, subpath: "tenant" }],
+        mounts: [
+          {
+            type: "volume",
+            store: "data",
+            target: PortablePath.make("/data"),
+            readOnly: false,
+            subpath: "tenant",
+          },
+        ],
       },
     ],
     ["healthcheck", { healthcheck: { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 3 } }],
@@ -121,6 +132,19 @@ describe("desired immutable create config", () => {
     ["host config knob", { extensions: { compose: { privileged: true } } }],
     ["top-level knob", { extensions: { compose: { stop_signal: "SIGQUIT" } } }],
     ["query knob", { extensions: { compose: { platform: "linux/arm64" } } }],
+    [
+      "tmpfs options",
+      {
+        mounts: [
+          {
+            type: "tmpfs",
+            target: PortablePath.make("/scratch"),
+            readOnly: true,
+            options: "size=64m,mode=1777",
+          },
+        ],
+      },
+    ],
   ];
   test.each(changes)("changes the fingerprint for %s drift", (_name, change) => {
     // Given two desired configurations differing in one immutable input.
@@ -141,6 +165,37 @@ describe("desired immutable create config", () => {
     // Then equivalent create arguments match and reordered arguments do not.
     expect(actual).toBe(fingerprint(normalized));
     expect(actual).not.toBe(fingerprint({ ...normalized, command: ["sleep 60", "-lc", "sh"] }));
+  });
+
+  test("ignores bind sync metadata but fingerprints its physical volume identity", () => {
+    const mount = {
+      type: "bind",
+      source: "/host/app",
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      realization: "accelerated",
+      mountKey: "app-mount",
+    } as const;
+    const before: ServicePlan = { ...service, mounts: [mount] };
+    const metadataOnly: ServicePlan = {
+      ...before,
+      mounts: [{ ...mount, role: "app", excludes: ["vendor"], includes: [".git"] }],
+    };
+    const changedIdentity: ServicePlan = { ...before, mounts: [{ ...mount, mountKey: "mount-deadbeef" }] };
+    expect(fingerprint(metadataOnly)).toBe(fingerprint(before));
+    expect(fingerprint(changedIdentity)).not.toBe(fingerprint(before));
+  });
+
+  test("fingerprints tmpfs runtime options independently of its target", () => {
+    const mount = {
+      type: "tmpfs",
+      target: PortablePath.make("/scratch"),
+      readOnly: false,
+      options: "size=64m",
+    } as const;
+    const before: ServicePlan = { ...service, mounts: [mount] };
+    const after: ServicePlan = { ...service, mounts: [{ ...mount, options: "size=128m" }] };
+    expect(fingerprint(after)).not.toBe(fingerprint(before));
   });
 
   test("ignores map order, metadata, runtime host ports, and unrelated extensions", () => {

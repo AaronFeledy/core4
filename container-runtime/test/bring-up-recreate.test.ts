@@ -35,7 +35,6 @@ const planWithHostPort = (hostPort: number): AppPlan => {
     artifact: { kind: "ref", ref: "nginx:1.27-alpine" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [
       {
         _tag: "published",
@@ -223,12 +222,17 @@ test.each([false, true])(
     if (original === undefined) throw new Error("Missing service");
     const previous = {
       ...original,
-      storage: [{ store: "retained-data", target: PortablePath.make("/data"), readOnly: false }],
       environment: {
         LANDO_HOST_PROXY_SESSION: "previous-session",
         LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
       },
       mounts: [
+        {
+          type: "volume" as const,
+          store: "retained-data",
+          target: PortablePath.make("/data"),
+          readOnly: false,
+        },
         {
           type: "bind" as const,
           source: "/home/user/session/host-proxy.sock",
@@ -464,15 +468,24 @@ describe("Podman publish-port recreate", () => {
           mounts:
             type === undefined
               ? []
-              : [
-                  {
-                    type,
-                    ...(source === undefined ? {} : { source }),
-                    target,
-                    readOnly: true,
-                    realization: "passthrough" as const,
-                  },
-                ],
+              : type === "volume"
+                ? [
+                    {
+                      type: "volume" as const,
+                      store: source ?? "",
+                      target,
+                      readOnly: true,
+                    },
+                  ]
+                : [
+                    {
+                      type: "bind" as const,
+                      source: source ?? "",
+                      target,
+                      readOnly: true,
+                      realization: "passthrough" as const,
+                    },
+                  ],
         },
       },
     };
@@ -511,7 +524,7 @@ describe("Podman publish-port recreate", () => {
       services: {
         [serviceName]: {
           ...service,
-          storage: [{ store: "lando-ssh-agent", target, readOnly: false }],
+          mounts: [{ type: "volume" as const, store: "lando-ssh-agent", target, readOnly: false }],
         },
       },
     };
@@ -547,11 +560,11 @@ describe("Podman publish-port recreate", () => {
       services: {
         [serviceName]: {
           ...service,
-          storage: [{ store: "lando-ssh-agent", target, readOnly: false }],
           mounts:
             source === undefined
-              ? []
+              ? [{ type: "volume" as const, store: "lando-ssh-agent", target, readOnly: false }]
               : [
+                  { type: "volume" as const, store: "lando-ssh-agent", target, readOnly: false },
                   {
                     type: "bind" as const,
                     source,

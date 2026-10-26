@@ -53,16 +53,18 @@ const service = Schema.decodeUnknownSync(ServicePlan)({
   provider: "lando",
   primary: true,
   environment: {},
-  appMount: {
-    source: "/app",
-    target: "/app",
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough",
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: "/app",
+      target: "/app",
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "passthrough",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -85,9 +87,15 @@ test.each(["identical bind", "read-only volume", "storage"] as const)(
     const authored = Schema.decodeUnknownSync(ServicePlan)({
       ...Schema.encodeSync(ServicePlan)(service),
       ...(kind === "storage"
-        ? { storage: [{ store: "repo", target: "/repo.git", readOnly: false }] }
+        ? {
+            mounts: [
+              ...service.mounts,
+              { type: "volume", store: "repo", target: "/repo.git", readOnly: false },
+            ],
+          }
         : {
             mounts: [
+              ...service.mounts,
               kind === "identical bind"
                 ? {
                     type: "bind",
@@ -97,7 +105,7 @@ test.each(["identical bind", "read-only volume", "storage"] as const)(
                     createHostPath: false,
                     realization: "passthrough",
                   }
-                : { type: "volume", target: "/repo.git", readOnly: true, realization: "passthrough" },
+                : { type: "volume", store: "repo", target: "/repo.git", readOnly: true },
             ],
           }),
     });
@@ -131,7 +139,10 @@ test("does not add Git metadata binds behind an effective .git overlay", () => {
   // Given a service that explicitly shadows .git.
   const target = Schema.decodeUnknownSync(ServicePlan)({
     ...Schema.encodeSync(ServicePlan)(service),
-    storage: [{ store: "git-shadow", target: "/app/.git", readOnly: false }],
+    mounts: [
+      ...service.mounts,
+      { type: "volume", store: "git-shadow", target: "/app/.git", readOnly: false },
+    ],
   });
   // When metadata mounts are derived.
   const additions = worktreeGitMounts(target, directories);

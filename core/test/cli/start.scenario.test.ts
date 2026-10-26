@@ -140,7 +140,6 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   command: name === "web" ? ["node", "server.js"] : ["postgres"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints:
     name === "web"
       ? [
@@ -220,24 +219,29 @@ const routedPlan: AppPlan = {
 
 const fileSyncWeb: ServicePlan = {
   ...web,
-  appMount: {
-    source: plan.root,
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    realization: "accelerated",
-    excludes: [],
-    includes: [],
-  },
+  mounts: [
+    {
+      type: "bind",
+      source: plan.root,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      realization: "accelerated",
+      role: "app",
+      excludes: [],
+      includes: [],
+      mountKey: "app-mount",
+    },
+  ],
 };
 
 const fileSyncWebWithExtra: ServicePlan = {
   ...fileSyncWeb,
   mounts: [
+    ...fileSyncWeb.mounts,
     {
       type: "tmpfs",
       target: PortablePath.make("/tmp"),
       readOnly: false,
-      realization: "passthrough",
     },
     {
       type: "bind",
@@ -245,6 +249,7 @@ const fileSyncWebWithExtra: ServicePlan = {
       target: PortablePath.make("/cache"),
       readOnly: false,
       realization: "accelerated",
+      mountKey: "mount-1",
     },
   ],
 };
@@ -3049,7 +3054,6 @@ describe("lando start", () => {
         ...plan.services,
         [web.name]: {
           ...hostProxyEnabledWeb,
-          appMount: fileSyncWebWithExtra.appMount,
           mounts: fileSyncWebWithExtra.mounts,
         },
       },
@@ -3066,7 +3070,7 @@ describe("lando start", () => {
             path: PortablePath.make(mountKey === "app-mount" ? "/app" : "/cache"),
           },
           mode: "two-way-safe" as const,
-          excludes: mountKey === "app-mount" ? [".git"] : [],
+          excludes: [".git"],
         },
       })),
     };
@@ -3237,7 +3241,7 @@ describe("lando start", () => {
             path: PortablePath.make(mountKey === "app-mount" ? "/app" : "/cache"),
           },
           mode: "two-way-safe" as const,
-          excludes: mountKey === "app-mount" ? [".git"] : [],
+          excludes: [".git"],
         },
       })),
     };

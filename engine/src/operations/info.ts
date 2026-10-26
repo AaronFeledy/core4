@@ -14,6 +14,7 @@ import {
   ServiceInfo,
   type ServicePlan,
   type ServiceState,
+  serviceAppMount,
 } from "@lando/sdk/schema";
 import { REDACTED } from "@lando/sdk/secrets";
 import {
@@ -121,10 +122,11 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     if (service === undefined) throw new TypeError(`Missing service plan for ${row.name}`);
     const runtime = observations.find((observed) => observed.name === row.name)?.runtime;
     const mounts = projectServiceMounts(plan, service, runtime);
+    const appMount = serviceAppMount(service);
     return {
       ...toServiceInfo(plan, service, row.state, row.connections, serviceLogSources),
       ...(mounts === undefined ? {} : { mounts }),
-      ...(service.appMount === undefined ? {} : { appMount: service.appMount }),
+      ...(appMount === undefined ? {} : { appMount }),
     };
   });
 

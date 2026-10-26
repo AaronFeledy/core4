@@ -143,14 +143,15 @@ export const applyServiceHome = (input: {
   ]);
   if (target instanceof LandofileValidationError) return target;
 
-  const occupied = input.servicePlan.storage.some((mount) => mount.target === target);
+  const occupied = input.servicePlan.mounts.some((mount) => mount.target === target);
   if (occupied) return input.servicePlan;
 
   return {
     ...input.servicePlan,
-    storage: [
-      ...input.servicePlan.storage,
+    mounts: [
+      ...input.servicePlan.mounts,
       {
+        type: "volume",
         store: homeStoreName(input.appSlug, input.serviceName),
         target,
         readOnly: false,

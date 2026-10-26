@@ -23,7 +23,6 @@ const servicePlan = (name: string, compose?: Record<string, unknown>): ServicePl
   primary: name === "web",
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

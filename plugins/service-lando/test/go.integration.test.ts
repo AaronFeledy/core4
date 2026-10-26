@@ -97,16 +97,18 @@ const goServicePlan = (appRoot: AbsolutePath): ServicePlan => ({
   artifact: { kind: "ref", ref: "golang:1.22" },
   command: ["go", "run", "/app/main.go"],
   environment: { GOFLAGS: "-mod=mod" },
-  appMount: {
-    source: appRoot,
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough",
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: appRoot,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "passthrough",
+    },
+  ],
   endpoints: [
     {
       _tag: "published",

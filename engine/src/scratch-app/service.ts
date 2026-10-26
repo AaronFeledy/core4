@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { migrateAppliedPlan } from "@lando/container-runtime/applied-state";
 import { sha256Hex } from "@lando/sdk/digest";
 
-import { Context, DateTime, Effect, Layer, Option, Schema, type Scope } from "effect";
+import { Context, DateTime, Effect, Layer, Option, Predicate, Schema, type Scope } from "effect";
 
 import {
   AppPlacementError,
@@ -24,8 +25,10 @@ import {
   type ProviderCapabilities,
   type RouterConfig,
   ServiceName,
+  duplicateMountTarget,
   landoNetworkingPlan,
-  sameAppMountTarget,
+  orderMounts,
+  serviceAppMount,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -113,6 +116,27 @@ const scratchAppError = (
   remediation?: string,
 ): ScratchAppError =>
   new ScratchAppError({ message, operation, cause, ...(remediation === undefined ? {} : { remediation }) });
+
+export const decodeScratchPlan = (raw: unknown): AppPlan => {
+  if (
+    Predicate.isObject(raw) &&
+    Predicate.isObject(raw.services) &&
+    Object.values(raw.services).some(
+      (service) => Predicate.isObject(service) && ("appMount" in service || "storage" in service),
+    )
+  ) {
+    const migrated = migrateAppliedPlan(raw, 1);
+    if (migrated === null)
+      throw scratchAppError(
+        "planCache",
+        "Unable to migrate the saved scratch plan's mount layout.",
+        undefined,
+        "Recover the saved scratch plan before retrying teardown.",
+      );
+    return migrated;
+  }
+  return Schema.decodeUnknownSync(AppPlanSchema)(raw);
+};
 
 const scratchSourceLabel = (input: ScratchAcquireInput): string => {
   if (input.source === undefined) return "unresolved";
@@ -247,49 +271,59 @@ export const findPrimaryServiceName = (plan: AppPlan): ServiceName | undefined =
   return names.find((name) => plan.services[name]?.primary === true) ?? names[0];
 };
 
-const dropAppMountFileSync = (fileSync: AppPlan["fileSync"], serviceName: ServiceName): AppPlan["fileSync"] =>
-  fileSync.filter(
-    (entry) => !(entry.session.service === serviceName && entry.session.mountKey === "app-mount"),
-  );
-
-const applyMountCwd = (plan: AppPlan, target: string | undefined, hostCwd: string): AppPlan | undefined => {
+export const applyMountCwd = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  target: string | undefined,
+  hostCwd: string,
+): Effect.fn.Return<AppPlan | undefined, ScratchAppError> {
   const primaryName = findPrimaryServiceName(plan);
   if (primaryName === undefined) return undefined;
   const primary = plan.services[primaryName];
   if (primary === undefined) return undefined;
   const source = AbsolutePath.make(hostCwd);
-  const appMount = primary.appMount;
-  if (appMount !== undefined && (target === undefined || target === appMount.target)) {
-    const nextPrimary = {
-      ...primary,
-      appMount: { ...appMount, source, realization: "passthrough" as const },
-      // Drop redundant app-root binds a service type mirrored into `mounts`
-      // (e.g. `type: lando`): after the source rewrite they no longer match
-      // the appMount, so providers would realize two mounts at one target.
-      mounts: primary.mounts.filter((mount) => !sameAppMountTarget(appMount, mount)),
-    };
-    return {
-      ...plan,
-      services: { ...plan.services, [primaryName]: nextPrimary },
-      fileSync: dropAppMountFileSync(plan.fileSync, primaryName),
-    };
-  }
+  const appMount = serviceAppMount(primary);
   const containerTarget = PortablePath.make(target ?? appMount?.target ?? "/app");
+  const { mountKey: _mountKey, ...appBind } = appMount ?? {};
+  const mounts = orderMounts([
+    ...primary.mounts.filter((mount) =>
+      appMount === undefined ? mount.target !== containerTarget : mount !== appMount,
+    ),
+    {
+      ...appBind,
+      type: "bind" as const,
+      source: String(source),
+      target: containerTarget,
+      readOnly: appMount?.readOnly ?? false,
+      realization: "passthrough" as const,
+    },
+  ]);
+  const duplicate = duplicateMountTarget(mounts);
+  if (duplicate !== undefined)
+    return yield* Effect.fail(
+      scratchAppError(
+        "start",
+        `Unable to mount the current working directory: duplicate mount target ${duplicate}.`,
+        undefined,
+        "Choose a --mount-cwd target that does not collide with another planned mount.",
+      ),
+    );
   const nextPrimary = {
     ...primary,
-    mounts: [
-      ...primary.mounts,
-      {
-        type: "bind" as const,
-        source: String(source),
-        target: containerTarget,
-        readOnly: false,
-        realization: "passthrough" as const,
-      },
-    ],
+    mounts,
   };
-  return { ...plan, services: { ...plan.services, [primaryName]: nextPrimary } };
-};
+  return {
+    ...plan,
+    services: { ...plan.services, [primaryName]: nextPrimary },
+    fileSync: plan.fileSync.filter(
+      (entry) =>
+        !(
+          entry.session.service === primaryName &&
+          appMount?.mountKey !== undefined &&
+          entry.session.mountKey === appMount.mountKey
+        ),
+    ),
+  };
+});
 
 const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
   const built = landoNetworkingPlan({
@@ -344,7 +378,7 @@ const applyScratchStartFlags = Effect.fnUntraced(function* (
   let next = plan;
   const mountCwd = resolveScratchAcquireIsolation(input) === "cwd" ? (input.mountCwd ?? {}) : input.mountCwd;
   if (mountCwd !== undefined) {
-    const mounted = applyMountCwd(next, mountCwd.target, hostCwd);
+    const mounted = yield* applyMountCwd(next, mountCwd.target, hostCwd);
     if (mounted === undefined) {
       return yield* Effect.fail(
         scratchAppError(
@@ -426,21 +460,16 @@ const planMountPoints = (plan: AppPlan): ReadonlyArray<ScratchMountPoint> => {
   const points: ScratchMountPoint[] = [];
   for (const [name, service] of Object.entries(plan.services)) {
     if (service === undefined) continue;
-    if (service.appMount !== undefined) {
-      points.push({
-        service: name,
-        target: String(service.appMount.target),
-        source: String(service.appMount.source),
-        kind: "app",
-        readOnly: service.appMount.readOnly,
-      });
-    }
     for (const mount of service.mounts) {
       points.push({
         service: name,
         target: String(mount.target),
-        ...(mount.source === undefined ? {} : { source: mount.source }),
-        kind: mount.type,
+        ...(mount.type === "bind"
+          ? { source: mount.source }
+          : mount.type === "volume"
+            ? { source: mount.store }
+            : {}),
+        kind: mount.type === "bind" && mount.role === "app" ? "app" : mount.type,
         readOnly: mount.readOnly,
       });
     }
@@ -587,7 +616,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     fileSystem.readText(planCache).pipe(
       Effect.flatMap((content) =>
         Effect.try({
-          try: () => Schema.decodeUnknownSync(AppPlanSchema)(JSON.parse(content)),
+          try: () => decodeScratchPlan(JSON.parse(content)),
           catch: () => undefined,
         }),
       ),
@@ -1153,7 +1182,7 @@ export const acquireScratchAppWithPlan = Effect.fn("ScratchAppService.acquireScr
       ),
     );
   const plan = yield* Effect.try({
-    try: () => Schema.decodeUnknownSync(AppPlanSchema)(JSON.parse(content)),
+    try: () => decodeScratchPlan(JSON.parse(content)),
     catch: (cause) =>
       scratchAppError("acquire", `Unable to decode the cached plan for scratch app ${handle.id}.`, cause),
   });

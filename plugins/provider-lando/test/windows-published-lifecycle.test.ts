@@ -45,7 +45,6 @@ const makePlan = (id: string): AppPlan => {
     artifact: { kind: "ref", ref: "nginx:alpine" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

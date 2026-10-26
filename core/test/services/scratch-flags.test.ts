@@ -6,10 +6,12 @@ import { DateTime, Effect, Layer, Stream } from "effect";
 
 import {
   type AppPlan,
+  PortablePath,
   type ProviderCapabilities,
   ProviderId,
   type ServicePlan,
   landoSharedNetworkName,
+  serviceAppMount,
 } from "@lando/core/schema";
 import {
   PathsService,
@@ -269,26 +271,30 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch acquire did not apply a plan");
       const primary = primaryService(appliedPlan);
-      expect(primary.appMount).toBeDefined();
-      expect(String(primary.appMount?.source)).toBe(dir);
-      expect(primary.appMount?.realization).toBe("passthrough");
+      expect(serviceAppMount(primary)).toBeDefined();
+      expect(String(serviceAppMount(primary)?.source)).toBe(dir);
+      expect(serviceAppMount(primary)?.realization).toBe("passthrough");
       expect(String(appliedPlan.root)).not.toBe(dir);
     });
   });
 
-  test("mount-cwd with an explicit target appends a bind mount and leaves appMount intact", async () => {
+  test("mount-cwd with an explicit target rebinds the app mount at that target", async () => {
     await withScratchEnv(undefined, async (dir) => {
       const appliedPlans: AppPlan[] = [];
       await Effect.runPromise(acquireRecipe(appliedPlans, { mountCwd: { target: "/srv/site" } }));
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch acquire did not apply a plan");
       const primary = primaryService(appliedPlan);
-      expect(String(primary.appMount?.source)).not.toBe(dir);
+      expect(String(serviceAppMount(primary)?.source)).toBe(dir);
+      expect(serviceAppMount(primary)?.target).toBe(PortablePath.make("/srv/site"));
+      expect(primary.mounts.some((mount) => mount.target === "/app")).toBe(false);
       const added = primary.mounts.find((mount) => mount.target === "/srv/site");
       expect(added).toBeDefined();
       expect(added?.type).toBe("bind");
-      expect(added?.source).toBe(dir);
-      expect(added?.realization).toBe("passthrough");
+      if (added?.type === "bind") {
+        expect(added.source).toBe(dir);
+        expect(added.realization).toBe("passthrough");
+      }
     });
   });
 
@@ -348,7 +354,7 @@ describe("ScratchAppServiceLayer.layer mount-cwd + share-global-storage together
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch acquire did not apply a plan");
       const primary = primaryService(appliedPlan);
-      expect(String(primary.appMount?.source)).toBe(dir);
+      expect(String(serviceAppMount(primary)?.source)).toBe(dir);
       expect(appliedPlan.networking?.sharedNetworkMembership).toBeDefined();
       expect(scratchMarker(appliedPlan).shareGlobalStorage).toBe(true);
     });

@@ -32,10 +32,9 @@ export const agentSocketMountPlan = (mount: AgentSocketBridgeResult, target: Por
     case "volume":
       return {
         type: "volume",
-        source: mount.volume,
+        store: mount.volume,
         target,
         readOnly: true,
-        realization: "passthrough",
       };
     default:
       return mount satisfies never;

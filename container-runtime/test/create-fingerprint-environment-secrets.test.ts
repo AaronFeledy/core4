@@ -24,7 +24,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "nginx:latest" },
   environment: { TOKEN: "${secret:TEST}" },
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

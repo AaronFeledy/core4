@@ -72,20 +72,21 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "node" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "node" ? nodeCommand : ["postgres", "-c", "port=55432"],
   environment: name === "node" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
-  ...(name === "node"
-    ? {
-        appMount: {
-          source: appRoot,
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          excludes: [],
-          includes: [],
-          realization: "passthrough",
-        },
-      }
-    : {}),
-  mounts: [],
-  storage: [],
+  mounts:
+    name === "node"
+      ? [
+          {
+            type: "bind",
+            role: "app",
+            source: appRoot,
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            excludes: [],
+            includes: [],
+            realization: "passthrough",
+          },
+        ]
+      : [],
   endpoints:
     name === "node"
       ? [
@@ -152,7 +153,6 @@ const makeAliasProbePlan = (): AppPlan => ({
       command: ["node", "-e", "setInterval(() => {}, 1000)"],
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -465,7 +465,15 @@ describe("provider-lando bringUp", () => {
     const fake = makeFakeApi();
     const cacheService: ServicePlan = {
       ...node,
-      storage: [{ store: "lando-cache-npm", target: PortablePath.make("/home/node/.npm"), readOnly: false }],
+      mounts: [
+        ...node.mounts,
+        {
+          type: "volume",
+          store: "lando-cache-npm",
+          target: PortablePath.make("/home/node/.npm"),
+          readOnly: false,
+        },
+      ],
     };
     const cachePlan: AppPlan = {
       ...plan,
@@ -544,21 +552,25 @@ describe("provider-lando bringUp", () => {
     const acceleratedNode: ServicePlan = {
       ...node,
       dependsOn: [],
-      appMount: {
-        source: acceleratedAppRoot,
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "accelerated",
-      },
       mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: acceleratedAppRoot,
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          excludes: [],
+          includes: [],
+          realization: "accelerated",
+          mountKey: "app-mount",
+        },
         {
           type: "bind",
           source: AbsolutePath.make("/tmp/lando-accel-cache"),
           target: PortablePath.make("/cache"),
           readOnly: true,
           realization: "accelerated",
+          mountKey: "mount-cace0001",
         },
       ],
     };
@@ -576,22 +588,22 @@ describe("provider-lando bringUp", () => {
     const body = create?.body as CreateContainerBody | undefined;
     expect(body?.HostConfig?.Binds).toEqual([
       "BringUp-App-node-app-mount:/app",
-      "BringUp-App-node-mount-0:/cache:ro",
+      "BringUp-App-node-mount-cace0001:/cache:ro",
     ]);
   });
 
-  test("fails passthrough bind mounts without a source before creating the container", async () => {
+  test("fails accelerated bind mounts without a mountKey before creating the container", async () => {
     const fake = makeFakeApi();
-    const { appMount: _omitAppMount, ...nodeWithoutAppMount } = node;
     const invalidNode: ServicePlan = {
-      ...nodeWithoutAppMount,
+      ...node,
       dependsOn: [],
       mounts: [
         {
           type: "bind",
+          source: "/host/cache",
           target: PortablePath.make("/cache"),
           readOnly: false,
-          realization: "passthrough",
+          realization: "accelerated",
         },
       ],
     };

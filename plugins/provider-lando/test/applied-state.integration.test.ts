@@ -49,11 +49,11 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "web" ? ["node", "server.js"] : ["postgres"],
   environment: {},
-  mounts: [],
-  storage:
+  mounts:
     name === "database"
       ? [
           {
+            type: "volume",
             store: "applied_state_db",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,
@@ -139,7 +139,7 @@ describe("provider-lando applied state persistence", () => {
       expect(written).toBe(appliedPlanPath(stateDir, proxyPlan.id));
 
       const raw = JSON.parse(await readFile(written, "utf8"));
-      expect(raw.version).toBe(1);
+      expect(raw.version).toBe(2);
       expect(raw.data).toBeDefined();
 
       const loaded = await Effect.runPromise(loadAppliedPlan(stateB, proxyPlan.id));
@@ -235,14 +235,19 @@ describe("provider-lando applied state persistence", () => {
           ...plan.services,
           [web.name]: {
             ...web,
-            appMount: {
-              source: plan.root,
-              target: PortablePath.make("/app"),
-              readOnly: false,
-              realization: "accelerated",
-              excludes: [],
-              includes: [],
-            },
+            mounts: [
+              {
+                type: "bind",
+                role: "app",
+                source: plan.root,
+                target: PortablePath.make("/app"),
+                readOnly: false,
+                realization: "accelerated",
+                excludes: [],
+                includes: [],
+                mountKey: "app-mount",
+              },
+            ],
           },
         },
         fileSync: [

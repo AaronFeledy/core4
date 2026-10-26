@@ -33,7 +33,6 @@ const makeService = (name: string, ref: string, compose?: Record<string, unknown
   artifact: { kind: "ref", ref },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

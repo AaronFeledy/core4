@@ -36,7 +36,6 @@ const planFor = (
       artifact: { kind: "ref", ref: "scratch" },
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

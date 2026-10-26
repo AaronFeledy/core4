@@ -109,10 +109,14 @@ export const MountInput = Schema.Union([
     source: Schema.optionalKey(Schema.String),
     target: Schema.String,
     readOnly: Schema.optionalKey(Schema.Boolean),
-    /** Overlay excludes (gitignore-flavoured) — bind only; realized as volume shadows. */
-    excludes: Schema.optionalKey(Schema.Array(Schema.String)),
-    /** Includes — re-bind specific excluded paths. */
-    includes: Schema.optionalKey(Schema.Array(Schema.String)),
+    excludes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+      description:
+        "Bind mounts only: paths beneath the bind that become service-owned volume shadows. Use includes instead of ! entries.",
+    }),
+    includes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+      description:
+        "Bind mounts only: exact paths cancel excludes; literal relative paths nested beneath a shadow reopen host directories. No ! entries or glob patterns.",
+    }),
   }),
 ]).annotate({ description: MOUNT_INPUT_DESCRIPTION, expected: "a source:target string or a mount object" });
 export type MountInput = typeof MountInput.Type;
@@ -696,7 +700,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     expose: Schema.optionalKey(ComposeExposeField),
     volumes: Schema.optionalKey(ComposeVolumesField).annotate({
       description:
-        'Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths normalize into mounts, named and anonymous volumes into storage, and tmpfs into the preserved tmpfs runtime knob.',
+        'Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths, named and anonymous volumes, and tmpfs normalize into the service mount list.',
     }),
     networks: Schema.optionalKey(ComposeNetworksInput).annotate({
       description: COMPOSE_NETWORKS_DESCRIPTION,

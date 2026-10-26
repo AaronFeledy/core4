@@ -74,10 +74,10 @@ export const ComposeServiceKnobFields = {
   tmpfs: Schema.optionalKey(
     describeEncodedField(
       ComposeTmpfsField,
-      "Temporary filesystem mounts as a single Compose mount string or string list; canonicalized to a string list.",
+      "Temporary filesystem mounts as a single Compose mount string or string list; normalized into tmpfs entries in the service mount list.",
     ),
   ).annotate({
-    description: "Temporary filesystem mounts; a scalar mount specification canonicalizes to a list.",
+    description: "Temporary filesystem mounts normalized into tmpfs entries in the service mount list.",
   }),
   shm_size: Schema.optionalKey(
     describeEncodedField(

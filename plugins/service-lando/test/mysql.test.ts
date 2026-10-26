@@ -72,9 +72,10 @@ describe("mysql ServiceType", () => {
       MYSQL_DATABASE: "myapp",
     });
     expect(plan.environment.MYSQL_ROOT_PASSWORD).toMatch(/^lando-[a-f0-9]{24}$/);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-db-mysql-data");
-    expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-db-mysql-data");
+    expect(String(volumes[0]?.target)).toBe("/var/lib/mysql");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },
     ]);
@@ -186,7 +187,7 @@ describe("mysql ServiceType", () => {
       config: { server: "config/my.cnf" },
     });
 
-    expect(plan.mounts).toEqual([
+    expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([
       {
         type: "bind",
         source: "/srv/apps/myapp/config/my.cnf",
@@ -203,7 +204,7 @@ describe("mysql ServiceType", () => {
   test("omits the server config mount when config.server is absent", async () => {
     const plan = await planMysqlService({ type: "mysql" });
 
-    expect(plan.mounts).toEqual([]);
+    expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([]);
     expect(plan.command).toBeUndefined();
     expect(plan.entrypoint).toBeUndefined();
   });

@@ -7,7 +7,7 @@ import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { EventsPlan } from "./landofile-events.ts";
 import { LogSource } from "./log-source.ts";
-import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan } from "./mounts.ts";
+import { DataStorePlan, MountPlan } from "./mounts.ts";
 import {
   CertificatePlan,
   DependencyPlan,
@@ -49,9 +49,10 @@ const ServicePlanFields = {
   environment: Environment,
   user: Schema.optionalKey(Schema.String),
   workingDirectory: Schema.optionalKey(PortablePath),
-  appMount: Schema.optionalKey(AppMountPlan),
-  mounts: Schema.Array(MountPlan),
-  storage: Schema.Array(DataStoreMountPlan),
+  mounts: Schema.Array(MountPlan).annotate({
+    description:
+      "Every container mount, sorted shallow to deep with unique targets; the app-source bind has role app.",
+  }),
   endpoints: Schema.Array(EndpointPlan),
   routes: Schema.Array(RouteRef),
   dependsOn: Schema.Array(DependencyPlan),
@@ -91,10 +92,6 @@ export const ServicePlan = Schema.Union([
   }),
 ]);
 export type ServicePlan = typeof ServicePlan.Type;
-
-// Shared file-sync naming and mount-target contract used by the planner and providers.
-export const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
-  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 export const LANDO_SHARED_CROSS_APP_NETWORK = "lando_bridge_network" as const;
 
@@ -171,15 +168,6 @@ export const landoServiceNetworkAliases = (
   }
   return serviceCrossAppAliases(plan.slug, service.name);
 };
-
-export const sameAppMountTarget = (
-  appMount: ServicePlan["appMount"],
-  mount: ServicePlan["mounts"][number],
-): boolean =>
-  appMount !== undefined &&
-  mount.type === "bind" &&
-  mount.source === appMount.source &&
-  mount.target === appMount.target;
 
 /**
  * One file-sync session entry on an `AppPlan`.

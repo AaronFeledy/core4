@@ -21,7 +21,6 @@ const planWith = (environment: Readonly<Record<string, string>>, eligible = fals
         provider: "test",
         environment,
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],
