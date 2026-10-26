@@ -623,7 +623,14 @@ describe("PluginRegistryLayer.layer", () => {
         2,
       )}\n`,
     );
-    await writeFile(join(packageRoot, "src", "index.ts"), `export const marker: string = "loaded";\n`);
+    await writeFile(
+      join(packageRoot, "src", "index.ts"),
+      `
+      import { definePlugin } from "@lando/sdk/plugins";
+      if (typeof definePlugin !== "function") throw new Error("host SDK unavailable");
+      export const marker: string = "loaded";
+    `,
+    );
     await writeInstalledPluginRegistry(userPluginsRoot, [
       { name: "@example/ts-plugin", version: "1.0.0", path: packageRoot },
     ]);
@@ -687,7 +694,6 @@ describe("PluginRegistryLayer.layer", () => {
     const userPluginsRoot = join(userDataRoot, "plugins");
     const packageRoot = join(userPluginsRoot, "@example", "global-plugin", "1.0.0");
     await mkdir(join(packageRoot, "src"), { recursive: true });
-    const effectModuleUrl = import.meta.resolve("effect");
     await writeFile(
       join(packageRoot, "package.json"),
       `${JSON.stringify(
@@ -711,7 +717,7 @@ describe("PluginRegistryLayer.layer", () => {
     await writeFile(join(packageRoot, "index.js"), "export {};\n");
     await writeFile(
       join(packageRoot, "src", "global-service.mjs"),
-      `import { Effect } from ${JSON.stringify(effectModuleUrl)};\nexport default Effect.succeed({ id: "external-mail", type: "node:lts" });\n`,
+      `import { Effect } from "effect";\nexport default Effect.succeed({ id: "external-mail", type: "node:lts" });\n`,
     );
     await writeInstalledPluginRegistry(userPluginsRoot, [
       { name: "@example/global-plugin", version: "1.0.0", path: packageRoot },

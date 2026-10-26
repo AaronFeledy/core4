@@ -30,7 +30,7 @@ const recipe: Recipe = {
 export default defineRecipe(recipe);
 ```
 
-`defineRecipe` is an identity helper. It pins the export to `Recipe` or `RecipeFactory`. Import it from `@lando/sdk/schema`, not the `@lando/sdk` root.
+`defineRecipe` is an identity helper. It pins the export to `Recipe` or `RecipeFactory`. Import it from `@lando/sdk/schema`, not the `@lando/sdk` root. Lando provides `@lando/sdk` (root and public subpaths except `test` and `docs/components`) and `effect` to `recipe.ts` when it loads the file, so the recipe directory needs no `node_modules` for those imports; any other package must be installed in a `node_modules` reachable from the file.
 
 ## Factory export
 

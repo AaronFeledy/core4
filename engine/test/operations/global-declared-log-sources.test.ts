@@ -7,6 +7,7 @@ import { GlobalAppService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { readGlobalLandofile } from "../../src/operations/global-plan.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 test.each(["node:22", "compose"])("merges global declared logs before decoding (%s)", async (type) => {
   // Given a generated global service and an authored override for the same log source.
@@ -39,7 +40,13 @@ test.each(["node:22", "compose"])("merges global declared logs before decoding (
     // When the real global adapter composes its generated and authored layers.
     const loaded = await Effect.runPromise(
       readGlobalLandofile().pipe(
-        Effect.provide(Layer.merge(BunFileSystem.layer, Layer.succeed(GlobalAppService, globalApp))),
+        Effect.provide(
+          Layer.mergeAll(
+            makeTestStateStore().layer,
+            BunFileSystem.layer,
+            Layer.succeed(GlobalAppService, globalApp),
+          ),
+        ),
       ),
     );
 

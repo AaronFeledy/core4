@@ -5,6 +5,7 @@ import { Effect, Result, Schema } from "effect";
 import { type PresentLandofileLayer, presentLandofileLayers } from "./layers.ts";
 import { ensureConsistentRoot, loadContext } from "./load-context.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
+import type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 import { prepareLandofileSource, prepareLandofileValue } from "./source.ts";
@@ -17,7 +18,10 @@ export interface LandofileReplacement {
 }
 
 export const validateLandofileReplacement = Effect.fn("Landofile.validateReplacement")(
-  function* (replacement: LandofileReplacement, inputs: LandofileRuntimeInputs) {
+  function* (
+    replacement: LandofileReplacement,
+    inputs: LandofileRuntimeInputs & { readonly overrides?: LandofileFinalizeOverrides | undefined },
+  ) {
     yield* ensureConsistentRoot(replacement.appRoot, inputs);
     const runtime = yield* loadContext(replacement.appRoot, inputs.templates.context?.env);
     const layers = yield* presentLandofileLayers(replacement.appRoot);
@@ -88,6 +92,7 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
     const merged = yield* composePreparedLayers(prepared, runtime, inputs);
     yield* finalizeLandofile(join(replacement.appRoot, ".lando.yml"), merged, {
       appRoot: replacement.appRoot,
+      overrides: inputs.overrides,
       pendingSites: runtime.pendingSites,
       loadPolicy: runtime.policy,
       logger: runtime.logger,

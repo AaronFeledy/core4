@@ -38,9 +38,11 @@ User-authored Landofiles resolving to `global`, including normalized directory n
 
 ### 20.3 The global Landofile
 
-The global Landofile is `<userDataRoot>/global/.lando.yml` and follows the six-layer merge order in §7.2. `<userDataRoot>/global/.lando.dist.yml` is the generated plugin layer; users MUST NOT edit it. `GlobalAppService.regenerateDist` is its single writer and overwrites edits. The canonical `.lando.yml` is user-editable, while `.lando.local.yml` and `.lando.user.yml` retain their standard override roles.
+The global Landofile loads from `<userDataRoot>/global/` through the same root pipeline as user apps: all six §7.2 layers accept YAML or TypeScript, conflicting forms fail with `LandofileFormConflictError`, and each file resolves its includes before layer precedence using `<globalRoot>/.lando.lock.yml` under §7.7. `<userDataRoot>/global/.lando.dist.yml` remains the generated plugin layer; users MUST NOT edit it. `GlobalAppService.regenerateDist` is its single writer and overwrites edits; a sibling `.lando.dist.ts` is a normal form conflict. The canonical `.lando.{yml,ts}` is user-editable, while local and user layers retain their standard override roles.
 
-The root is created on demand. With no contributions, the generated layer names the app `global` and has no services; the canonical file is created only when a user override is written.
+After composition and before expression materialization, the runtime MUST impose `name: global` and the host provider (§20.2), replacing their authored origins and discarding pending expression sites at or below those fields. Literal values, `!reset`, and load- or planner-owned expressions MUST NOT change this identity. View and validate load a canonical `.lando.ts`; `global:config set|unset|edit` MUST refuse it with `NotImplementedError` and direct the user to edit the source, as for app config writes (§8.2.1).
+
+The root is created on demand. With no contributions, the generated layer names the app `global` and has no services. Installation seeds a comment-only canonical `.lando.yml` when neither canonical form exists; it MUST preserve existing canonical files and MUST NOT create YAML beside a canonical `.lando.ts`.
 
 #### 20.3.1 The plugin enablement map
 
@@ -49,7 +51,7 @@ The root is created on demand. With no contributions, the generated layer names 
 - `enabledByDefault` defaults to `true`; an explicit user value wins.
 - `meta:global:install` enables all contributions owned by the selected plugin, and `meta:global:uninstall` disables them.
 - Disabled services are omitted from the generated plan. Their `scope: global` volumes survive and are reused if re-enabled.
-- Service configuration belongs in `<userDataRoot>/global/.lando.yml`, not the enablement map.
+- Service configuration belongs in the global Landofile layers (§20.3), not the enablement map.
 
 #### 20.3.2 Discovery rules
 

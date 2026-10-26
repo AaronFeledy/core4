@@ -168,12 +168,26 @@ const makeGlobalAppService = (
     ),
   );
 
+  // The canonical layer in effect: a `.lando.ts` the user wrote, else the YAML Lando seeds and writes.
   const paths = root.pipe(
-    Effect.map((globalRoot) => ({
-      root: globalRoot,
-      distLandofile: AbsolutePath.make(join(globalRoot, ".lando.dist.yml")),
-      userLandofile: AbsolutePath.make(join(globalRoot, ".lando.yml")),
-    })),
+    Effect.flatMap((globalRoot) => {
+      const typescript = AbsolutePath.make(join(globalRoot, ".lando.ts"));
+      return fileSystem.exists(typescript).pipe(
+        Effect.mapError((cause) =>
+          globalAppError(
+            "paths",
+            `Unable to inspect the global app TypeScript Landofile at ${typescript}.`,
+            cause,
+            `Ensure ${typescript} is accessible, then retry.`,
+          ),
+        ),
+        Effect.map((hasTypescript) => ({
+          root: globalRoot,
+          distLandofile: AbsolutePath.make(join(globalRoot, ".lando.dist.yml")),
+          userLandofile: hasTypescript ? typescript : AbsolutePath.make(join(globalRoot, ".lando.yml")),
+        })),
+      );
+    }),
   );
 
   const ensureRoot = root.pipe(
