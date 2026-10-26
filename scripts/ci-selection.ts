@@ -37,7 +37,7 @@ export const CI_JOB_TIERS: Readonly<Record<string, CiTier>> = {
   ),
   "provider-integration-linux-x64-runner": "providers",
   "provider-integration-linux-x64": "providers",
-  "guide-scenarios-windows-x64": "runtime",
+  "guide-scenarios-windows-x64": "guides",
 };
 
 const affectsProviders = (path: string): boolean =>

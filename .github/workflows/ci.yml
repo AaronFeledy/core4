@@ -1047,7 +1047,7 @@ jobs:
 
   guide-scenarios-windows-x64:
     needs: [selection, static-checks]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: windows-2022
     timeout-minutes: 30
     steps:

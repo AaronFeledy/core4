@@ -7,13 +7,7 @@
  * Do not pass `--update-timings` with `--run`: a single shard would overwrite
  * the committed full timings file. Refresh with `update-test-timings.ts`.
  *
- * Native `bun test --shard` does not know this repo's exclusions, so this
- * script still collects the file set. Shards cover the same files as
- * `bun run test:unit` EXCEPT:
- * - files owned by dedicated CI jobs (`library-api-tests`, `recipe-tests`),
- *   which would otherwise run twice per PR, and
- * - NIGHTLY_TIER_TESTS, heavy meta-suites that re-run generators or other
- *   test files; nightly.yml runs them (see build-nightly-workflow.ts).
+ * The collector excludes integration tests except the three fake-client provider contract suites, plus suites owned by dedicated jobs and the nightly tier.
  *
  * Balance comes from `bun test --shard --timings=.bun-test-timings.json`.
  */

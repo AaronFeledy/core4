@@ -6,13 +6,14 @@ import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   ProviderId,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
 
 import { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "@lando/proxy-traefik";
+import { currentTestPlan } from "../_support/value-contracts.ts";
 
 const providerId = ProviderId.make("lando");
 // Host ports are per run: a fixed port collides with any other runtime on a shared loopback.
@@ -37,19 +38,20 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const appPlan = (slug: string, service: ServicePlan): AppPlan => ({
-  id: AppId.make(slug),
-  name: slug,
-  slug,
-  root: AbsolutePath.make(`/tmp/lando-${slug}`),
-  provider: providerId,
-  services: { [service.name]: service },
-  routes: [],
-  stores: [],
-  fileSync: [],
-  metadata,
-  extensions: {},
-});
+const appPlan = (slug: string, service: ServicePlan): CurrentExecutableAppPlan =>
+  currentTestPlan({
+    id: AppId.make(slug),
+    name: slug,
+    slug,
+    root: AbsolutePath.make(`/tmp/lando-${slug}`),
+    provider: providerId,
+    services: { [service.name]: service },
+    routes: [],
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  });
 
 const nginxStartScript = [
   "cat > /etc/nginx/conf.d/default.conf <<'LANDO_NGINX_CONF'",

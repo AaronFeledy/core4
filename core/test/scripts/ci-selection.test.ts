@@ -45,6 +45,7 @@ describe("CI selection", () => {
       "build-linux-x64",
       "runtime-bundle-linux-x64",
       "guide-scenarios-linux-x64-runner",
+      "guide-scenarios-windows-x64",
     ]) {
       const tier = CI_JOB_TIERS[id];
       expect(tier && jobSelected(tier, selection)).toBe(true);
@@ -52,6 +53,23 @@ describe("CI selection", () => {
     expect(jobSelected("broad", selection)).toBe(false);
     expect(jobSelected("runtime", selection)).toBe(false);
   });
+
+  test.each(["docs/guides/start.mdx", "docs/guides/start/fixtures/input.json"])(
+    "requires Windows guide execution for %s",
+    (path) => {
+      const selection = selectPaths([path]);
+      const tier = CI_JOB_TIERS["guide-scenarios-windows-x64"];
+      expect(tier && jobSelected(tier, selection)).toBe(true);
+      expect(resultFailures(selection, { "guide-scenarios-windows-x64": { result: "skipped" } })).toEqual([
+        "guide-scenarios-windows-x64: skipped",
+      ]);
+      expect(
+        resultFailures(selectPaths(["docs/intro.md"]), {
+          "guide-scenarios-windows-x64": { result: "skipped" },
+        }),
+      ).toEqual([]);
+    },
+  );
 
   test.each(["failure", "cancelled", "skipped"])("rejects selected %s results", (result) => {
     expect(resultFailures(selectPaths(["docs/intro.md"]), { "docs-build": { result } })).toEqual([
@@ -197,6 +215,7 @@ describe("CI selection", () => {
         "runtime-bundle-linux-x64",
         "guide-scenarios-linux-x64-runner",
         "guide-scenarios-linux-x64",
+        "guide-scenarios-windows-x64",
       ];
       const runtime = [
         ...guides,
@@ -204,7 +223,6 @@ describe("CI selection", () => {
         "unit-tests-linux-x64",
         "test-isolation-linux-x64",
         "perf-budget-linux-x64",
-        "guide-scenarios-windows-x64",
       ];
       const providers = [
         ...runtime,

@@ -119,8 +119,8 @@ test("forgets the applied plan when destroy uses a symlink to its root", async (
         const alias = join(context.testDir, "linked-app");
         yield* Effect.tryPromise(() => symlink(root, alias, "dir"));
         const provider = makeScenarioProvider();
-        yield* Effect.tryPromise(() => provider.remember(root));
         yield* Effect.tryPromise(() => provider.remember(alias));
+        yield* Effect.tryPromise(() => provider.remember(root));
 
         // When: destroy removes applied state through the alias.
         yield* Effect.tryPromise(() => provider.forget(alias));

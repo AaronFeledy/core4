@@ -2,9 +2,8 @@
 /**
  * Refresh committed `.bun-test-timings.json` from the collected shard file set.
  *
- * Native `bun test --shard` balances from this file. The collector still
- * excludes `*.integration.test.ts`, dedicated library/recipe CI jobs, and
- * NIGHTLY_TIER_TESTS so timings match what `bun run test:unit:shard` runs.
+ * Native `bun test --shard` balances from this file.
+ * The collector excludes integration tests except the three fake-client provider contract suites, plus suites owned by dedicated jobs and the nightly tier.
  */
 import { resolve } from "node:path";
 
