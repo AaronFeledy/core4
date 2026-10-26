@@ -1,0 +1,40 @@
+name: drupal-demo
+services:
+  appserver:
+    type: php:8.4
+    webroot: web
+    allowOverride: true
+    port: 80
+    primary: true
+    dependsOn:
+      - database
+    environment:
+      SIMPLETEST_BASE_URL: http://appserver
+      SIMPLETEST_DB: mysql://lando:lando@database/drupal-demo
+      BROWSERTEST_OUTPUT_DIRECTORY: /app/web/sites/simpletest/browser_output
+      MINK_DRIVER_ARGS_WEBDRIVER: '["chrome", {"browserName":"chrome","goog:chromeOptions":{"w3c":true,"args":["--headless=new","--disable-gpu","--no-sandbox"]}}, "http://chrome:4444"]'
+  database:
+    type: mariadb:11.4
+  chrome:
+    type: compose
+    image: selenium/standalone-chromium:latest
+    appMount: false
+    home: false
+    shm_size: 2gb
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:4444/status]
+      interval: 5s
+      retries: 24
+tooling:
+  composer:
+    service: appserver
+    cmd:
+      - composer
+  phpunit:
+    service: appserver
+    user: www-data
+    description: Run Drupal's PHPUnit suites as the web server user.
+    cmd:
+      - vendor/bin/phpunit
+      - -c
+      - web/core

@@ -1,0 +1,228 @@
+---
+id: drupal-testing
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, drupal, php, phpunit, selenium, compose]
+---
+
+# Run Drupal tests with PHPUnit and headless Chrome
+
+Drupal's Kernel and Functional tests need a database and a web server, and FunctionalJavascript tests also need a real browser. Add a headless Chromium service and four environment variables to a `drupal` recipe app, and every PHPUnit suite runs inside `appserver`.
+
+Start with a scaffolded app from [Run the Drupal recipe](./drupal-workflow.mdx). This page uses its `drupal-demo` app name and the recipe defaults: Apache, MariaDB, and webroot `web`. You don't need to install the site first, because each test installs its own throwaway copy.
+
+## Install Drupal's test dependencies
+
+Run these from the app directory on your host:
+
+```sh
+lando composer require --dev drupal/core-dev -W
+lando exec appserver -- vendor/bin/phpunit --version
+```
+
+`drupal/core-dev` pulls in PHPUnit, Mink, and the WebDriver client that core's test base classes use. `-W` lets Composer update locked packages that `drupal/core-dev` needs at other versions; without it, the require can stop on a lock conflict. Check that the second command prints a PHPUnit version.
+
+## Add Chrome and the test settings
+
+In `.lando.yml`, add the `environment` block under the existing `services.appserver`, then add the `chrome` service and the `phpunit` tooling task. Keep everything the recipe already wrote.
+
+```yaml
+services:
+  appserver:
+    environment:
+      SIMPLETEST_BASE_URL: http://appserver
+      SIMPLETEST_DB: mysql://lando:lando@database/drupal-demo
+      BROWSERTEST_OUTPUT_DIRECTORY: /app/web/sites/simpletest/browser_output
+      MINK_DRIVER_ARGS_WEBDRIVER: '["chrome", {"browserName":"chrome","goog:chromeOptions":{"w3c":true,"args":["--headless=new","--disable-gpu","--no-sandbox"]}}, "http://chrome:4444"]'
+  chrome:
+    type: compose
+    image: selenium/standalone-chromium:latest
+    appMount: false
+    home: false
+    shm_size: 2gb
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:4444/status]
+      interval: 5s
+      retries: 24
+tooling:
+  phpunit:
+    service: appserver
+    user: www-data
+    description: Run Drupal's PHPUnit suites as the web server user.
+    cmd:
+      - vendor/bin/phpunit
+      - -c
+      - web/core
+```
+
+- `SIMPLETEST_BASE_URL` is the address the test HTTP client and Chrome use to load the site. `http://appserver` is the service's app network address, so both containers reach Apache directly instead of going through the proxy.
+- `SIMPLETEST_DB` is where Kernel and Functional tests install their throwaway sites, each under its own table prefix. `lando`/`lando` and a database named after the app are the MariaDB defaults; replace `drupal-demo` with your app name. `lando info` shows the credentials.
+- `BROWSERTEST_OUTPUT_DIRECTORY` is where Functional tests save an HTML snapshot of each page they load.
+- `MINK_DRIVER_ARGS_WEBDRIVER` names the browser, its options, and the Selenium URL. Keep `"w3c":true`. Drupal sets `w3c` to `false` when you leave it out, and the Chromium image refuses that session.
+- `chrome` runs Selenium's [standalone Chromium image](https://github.com/SeleniumHQ/docker-selenium), which serves WebDriver on port `4444`. `appMount: false` keeps your code out of it, `home: false` skips Lando's managed home for this third-party image, and `shm_size: 2gb` gives Chromium the shared memory Selenium recommends.
+- The healthcheck polls Selenium's `/status` endpoint. `lando start` and `lando restart` wait for it to pass, so tests don't connect before Selenium answers.
+- `phpunit` runs as `www-data`, the user Apache runs as, so the test runner and the site it serves can write the same files. It points PHPUnit at core's `web/core/phpunit.xml.dist` and appends your arguments.
+
+That file declares the four variables with empty values. PHPUnit keeps values that are already set in the environment, so you don't need a copied `phpunit.xml`.
+
+Apply the changes:
+
+```sh
+lando restart
+lando info
+```
+
+Check that `lando info` lists `chrome` as running next to `appserver` and `database`.
+
+## Give tests a writable sites directory
+
+Functional tests build each throwaway site under `web/sites/simpletest`. Create it with `lando exec`'s default user, then hand it to `www-data`:
+
+```sh
+lando exec appserver -- mkdir -p web/sites/simpletest/browser_output
+lando exec appserver -- chown -R www-data:www-data web/sites/simpletest
+```
+
+## Run a Unit and a Kernel test
+
+```sh
+lando phpunit web/core/tests/Drupal/Tests/Component/Utility/HtmlTest.php
+lando phpunit web/core/modules/user/tests/src/Kernel/UserEntityLabelTest.php
+```
+
+Check that both runs end with `OK`. The Unit test proves PHPUnit and Drupal's test bootstrap load. The Kernel test proves `SIMPLETEST_DB` reaches MariaDB.
+
+Always pass a path. Without one, PHPUnit collects every test in core and errors on tests that expect a full Drupal source checkout.
+
+## Test your own module in a browser
+
+Drupal registers a module's `tests/src` directory only when the module has an info file. You don't need to enable it.
+
+Save this as `web/modules/custom/hello/hello.info.yml`:
+
+```yaml nolint
+name: Hello
+type: module
+description: Example module for running tests.
+core_version_requirement: ^11
+package: Custom
+```
+
+Save this as `web/modules/custom/hello/tests/src/Functional/LoginPageTest.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace Drupal\Tests\hello\Functional;
+
+use Drupal\Tests\BrowserTestBase;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
+
+#[Group('hello')]
+#[RunTestsInSeparateProcesses]
+final class LoginPageTest extends BrowserTestBase {
+
+  protected $defaultTheme = 'stark';
+
+  public function testLoginPage(): void {
+    $this->drupalGet('user/login');
+    $this->assertSession()->statusCodeEquals(200);
+    $this->assertSession()->fieldExists('name');
+  }
+
+}
+```
+
+Save this as `web/modules/custom/hello/tests/src/FunctionalJavascript/LoginPageJsTest.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace Drupal\Tests\hello\FunctionalJavascript;
+
+use Drupal\FunctionalJavascriptTests\WebDriverTestBase;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
+
+#[Group('hello')]
+#[RunTestsInSeparateProcesses]
+final class LoginPageJsTest extends WebDriverTestBase {
+
+  protected $defaultTheme = 'stark';
+
+  public function testLoginPageInChrome(): void {
+    $this->drupalGet('user/login');
+    $this->assertNotNull($this->assertSession()->waitForElementVisible('css', 'input[name="name"]'));
+    $agent = $this->getSession()->evaluateScript('navigator.userAgent');
+    $this->assertStringContainsString('Chrome', $agent);
+  }
+
+}
+```
+
+Drupal 11.3 and later expect the `#[RunTestsInSeparateProcesses]` attribute on Functional and FunctionalJavascript test classes. Leave it off and PHPUnit reports a deprecation.
+
+Run both tests:
+
+```sh
+lando phpunit web/modules/custom/hello
+```
+
+Check that the run reports `OK (2 tests, 5 assertions)`. The Functional test proves `SIMPLETEST_BASE_URL` reaches Apache and that `www-data` can write the test site. The FunctionalJavascript test proves PHPUnit opened a WebDriver session in `chrome`: the page rendered and JavaScript ran inside Chromium.
+
+PHPUnit prints snapshot links under `http://appserver/`, which only resolve on the app network. Open the same files from `web/sites/simpletest/browser_output` in your project instead.
+
+To run one test method, add PHPUnit's `--filter`:
+
+```sh
+lando phpunit --filter testLoginPageInChrome web/modules/custom/hello
+```
+
+## Tear down
+
+```sh
+lando destroy -y
+```
+
+That removes the containers, including `chrome`. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Verify the resolved config
+
+The fixture below mirrors the Landofile above with the recipe's services spelled out. Lint it and check that Lando resolves the Chrome service, the test settings, and the `phpunit` task:
+
+<Guide>
+  <Scenario id="drupal-testing-config" render>
+    <Step name="scaffold">
+      <UseFixture name="drupal-demo" />
+    </Step>
+    <Step name="lint-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect-chrome">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "selenium/standalone-chromium:latest" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"shm_size\":\\s*2147483648" } }} />
+    </Step>
+    <Step name="inspect-test-settings">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "SIMPLETEST_DB" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "MINK_DRIVER_ARGS_WEBDRIVER" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"user\":\\s*\"www-data\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+The lint step proves the Landofile is valid. The `shm_size` check proves Lando accepted `2gb` and converted it to bytes. The last step proves the environment reaches `appserver` and the `phpunit` task runs as `www-data`.
+
+## Next
+
+- [Run the Drupal recipe](../drupal-workflow/)
+- [Change a Drupal stack after init](../drupal-stack-overrides/)
+- [Debug PHP with Xdebug in PhpStorm](../../tooling/xdebug-phpstorm/)
+- [Add a Compose service](../../services/compose-passthrough/)
