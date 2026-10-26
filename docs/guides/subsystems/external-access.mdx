@@ -86,7 +86,9 @@ ports:
 
 The proxy answers a hostname like `web.external-access-demo.lndo.site`. Public DNS resolves `*.lndo.site` to `127.0.0.1`, and Lando does not write host DNS rules. On another device, that address points at the device itself, not your app host.
 
-The shared proxy listener is a separate bind from a service `ports:` `host_ip`. Default is `127.0.0.1`. Set `router.bindAddress` in the installation `config.yml` or `LANDO_ROUTER_BIND_ADDRESS` to a LAN address when you want the proxy itself reachable from another device, then run `lando start`. A Landofile `router.bindAddress` is ignored and lint warns. `0.0.0.0` and `::` publish on every interface; `lando doctor` warns.
+The shared proxy has its own bind, separate from a service's `ports:` `host_ip`. It defaults to `127.0.0.1`. To share the proxy, set `router.bindAddress` to the host's LAN interface IP in the installation `config.yml`, or use `LANDO_ROUTER_BIND_ADDRESS`. A Landofile value is ignored and lint warns. Wildcard values `0.0.0.0` and `::` bind on every interface, subject to the host firewall.
+
+Run `lando start` from an app that uses the router, then check `lando global:info` and `lando doctor`. Non-default binds bypass the Linux/WSL loopback helper and may use fallback ports. Do not assume narrowing to loopback succeeded while doctor reports `bind-application-unconfirmed`. See [Set the shared router bind](./proxy-traefik.mdx#set-the-shared-router-bind).
 
 Proxy routing and published ports are independent. Reaching a proxied hostname from the host does not need a `ports:` entry. `ports:` only controls direct host-port publication.
 
