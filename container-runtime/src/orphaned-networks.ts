@@ -32,13 +32,14 @@ export const removeOrphanedNetworks = Effect.fn("RuntimeProvider.removeOrphanedN
   const api = options.api;
   if (api?.request === undefined) return yield* Effect.fail(ownershipFailure(options.ctx.providerId));
   const inventory = yield* options.store.load(previous.root);
+  const labels = networkOwnershipLabels(previous);
   for (const network of orphaned) {
     const id = yield* inspectOwnedNativeId(
       api,
       {
         kind: "network",
         name: network.name,
-        labels: networkOwnershipLabels(previous),
+        labels,
         legacy: "reject",
         exactName: true,
       },

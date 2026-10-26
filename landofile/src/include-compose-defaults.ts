@@ -1,12 +1,11 @@
 import { isAbsolute, relative, resolve, sep, win32 } from "node:path";
 import { isLandofileOverride, isLandofileReset, isPlainRecord, override } from "@lando/sdk/landofile";
 
-const mapValue = (value: unknown, transform: (plain: unknown) => unknown): unknown =>
-  isLandofileReset(value)
-    ? value
-    : isLandofileOverride(value)
-      ? override(mapValue(value.value, transform))
-      : transform(value);
+const mapValue = (value: unknown, transform: (plain: unknown) => unknown): unknown => {
+  if (isLandofileReset(value)) return value;
+  if (isLandofileOverride(value)) return override(mapValue(value.value, transform));
+  return transform(value);
+};
 
 const mapRecord = (value: unknown, transform: (key: string, value: unknown) => unknown): unknown =>
   mapValue(value, (plain) =>
@@ -45,7 +44,8 @@ export const composeIncludeDefaults = (
         .split(sep)
         .join("/");
       // Keep bind sources visibly path-like; a bare name would become a named volume.
-      return rebased === "" ? "." : rebased.startsWith("../") ? rebased : `./${rebased}`;
+      if (rebased === "") return ".";
+      return rebased.startsWith("../") ? rebased : `./${rebased}`;
     });
   const source = (value: unknown) => mapFields(value, { source: path });
   const shortSource = (spec: string): string => {
@@ -57,16 +57,14 @@ export const composeIncludeDefaults = (
     mapValue(value, (plain) => {
       if (typeof plain === "string") return plain.startsWith(".") ? shortSource(plain) : plain;
       if (!isPlainRecord(plain)) return plain;
-      return plain.type === "bind"
-        ? source(plain)
-        : plain.type === undefined
-          ? mapFields(plain, {
-              source: (value) =>
-                mapValue(value, (plain) =>
-                  typeof plain === "string" && plain.startsWith(".") ? path(plain) : plain,
-                ),
-            })
-          : plain;
+      if (plain.type === "bind") return source(plain);
+      if (plain.type !== undefined) return plain;
+      return mapFields(plain, {
+        source: (value) =>
+          mapValue(value, (plain) =>
+            typeof plain === "string" && plain.startsWith(".") ? path(plain) : plain,
+          ),
+      });
     });
   const envEntry = (value: unknown): unknown =>
     mapValue(value, (plain) => (isPlainRecord(plain) ? mapFields(plain, { path }) : path(plain)));

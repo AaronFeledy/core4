@@ -115,7 +115,8 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
         yield* check(assertComposePreservedPathsSupported(provider, capabilities, services));
       }
     const config = seed.resolution.normalizedConfig;
-    const endpoints = resolution.endpointProjection.services.get(seed.name)?.endpoints;
+    const projection = resolution.endpointProjection.services.get(seed.name);
+    const endpoints = projection?.endpoints;
     const publicationError = publicationCapabilityError(provider, capabilities, {
       name,
       published:
@@ -129,7 +130,7 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
       const error = requiredLogSourceCapabilityError(provider, capabilities, { name, id: String(source.id) });
       if (error !== undefined) record(error, ["services", name, "logs"]);
     }
-    const preparation = resolution.endpointProjection.services.get(seed.name)?.preparation;
+    const preparation = projection?.preparation;
     for (const error of agentSocketCapabilityErrors(provider, capabilities, {
       name,
       hostSsh:

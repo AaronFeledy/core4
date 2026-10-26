@@ -18,41 +18,40 @@ export const serviceResourceCapabilityErrors = (
     readonly artifactBuild?: boolean;
     readonly persistentStorage?: boolean;
   },
-): readonly CapabilityError[] => [
-  ...(intent.bindMounts && (!capabilities.bindMounts || capabilities.bindMountPerformance === "none")
-    ? [
-        missingCapability(
-          provider,
-          intent.name,
-          "bind mount",
-          "bindMounts",
-          serviceBindRemediation(intent.name),
-        ),
-      ]
-    : []),
-  ...(intent.artifactBuild && !capabilities.artifactBuild
-    ? [
-        missingCapability(
-          provider,
-          intent.name,
-          "artifact build",
-          "artifactBuild",
-          serviceArtifactBuildRemediation(intent.name),
-        ),
-      ]
-    : []),
-  ...(intent.persistentStorage && !capabilities.persistentStorage
-    ? [
-        missingCapability(
-          provider,
-          intent.name,
-          "persistent storage",
-          "persistentStorage",
-          `Choose a provider with persistent storage support or remove persistent storage from service ${intent.name}.`,
-        ),
-      ]
-    : []),
-];
+): readonly CapabilityError[] => {
+  const errors: CapabilityError[] = [];
+  if (intent.bindMounts && (!capabilities.bindMounts || capabilities.bindMountPerformance === "none"))
+    errors.push(
+      missingCapability(
+        provider,
+        intent.name,
+        "bind mount",
+        "bindMounts",
+        serviceBindRemediation(intent.name),
+      ),
+    );
+  if (intent.artifactBuild && !capabilities.artifactBuild)
+    errors.push(
+      missingCapability(
+        provider,
+        intent.name,
+        "artifact build",
+        "artifactBuild",
+        serviceArtifactBuildRemediation(intent.name),
+      ),
+    );
+  if (intent.persistentStorage && !capabilities.persistentStorage)
+    errors.push(
+      missingCapability(
+        provider,
+        intent.name,
+        "persistent storage",
+        "persistentStorage",
+        `Choose a provider with persistent storage support or remove persistent storage from service ${intent.name}.`,
+      ),
+    );
+  return errors;
+};
 
 export const assertRouteNetworkingSupported = (
   provider: ProviderId,
@@ -75,33 +74,31 @@ export const agentSocketCapabilityErrors = (
   provider: ProviderId,
   capabilities: ProviderCapabilities,
   intent: { readonly name: string; readonly hostSsh: boolean; readonly gpgForward: boolean },
-): readonly CapabilityError[] =>
-  providerSatisfiesCapability(capabilities, "agentSocket")
-    ? []
-    : [
-        ...(intent.hostSsh
-          ? [
-              missingCapability(
-                provider,
-                intent.name,
-                SSH_AGENT_FEATURE_ID,
-                "agentSocket",
-                "Select a provider that advertises agentSocket delivery or set sshAgent.sidecar to true to use best-effort sidecar forwarding.",
-              ),
-            ]
-          : []),
-        ...(intent.gpgForward
-          ? [
-              missingCapability(
-                provider,
-                intent.name,
-                "lando.gpg-agent",
-                "agentSocket",
-                "Select a provider with agentSocket delivery or disable gpgAgent.forward.",
-              ),
-            ]
-          : []),
-      ];
+): readonly CapabilityError[] => {
+  if (providerSatisfiesCapability(capabilities, "agentSocket")) return [];
+  const errors: CapabilityError[] = [];
+  if (intent.hostSsh)
+    errors.push(
+      missingCapability(
+        provider,
+        intent.name,
+        SSH_AGENT_FEATURE_ID,
+        "agentSocket",
+        "Select a provider that advertises agentSocket delivery or set sshAgent.sidecar to true to use best-effort sidecar forwarding.",
+      ),
+    );
+  if (intent.gpgForward)
+    errors.push(
+      missingCapability(
+        provider,
+        intent.name,
+        "lando.gpg-agent",
+        "agentSocket",
+        "Select a provider with agentSocket delivery or disable gpgAgent.forward.",
+      ),
+    );
+  return errors;
+};
 
 export const requiredLogSourceCapabilityError = (
   provider: ProviderId,
