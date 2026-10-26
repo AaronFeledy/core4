@@ -29,7 +29,7 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   return failure.value;
 };
 
-test("cache hits reject each unsupported network attachment exact path", async () => {
+test("cache hits reject each unsupported preserved exact path", async () => {
   const appRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-network-path-cache-app-")));
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-network-path-cache-root-")));
   try {
@@ -44,7 +44,7 @@ test("cache hits reject each unsupported network attachment exact path", async (
           });
           const capabilities: ProviderCapabilities = {
             ...TestRuntimeProvider.capabilities,
-            composeServiceFields: { supported: ["networks"] },
+            composeServiceFields: { supported: [] },
           };
           const plannerLayer = AppPlannerLayer.layer.pipe(
             Layer.provide(
@@ -65,15 +65,9 @@ test("cache hits reject each unsupported network attachment exact path", async (
           const { key } = Schema.decodeUnknownSync(Schema.Struct({ key: Schema.String }))(
             deserialize(bytes.subarray(APP_PLAN_CACHE_HEADER_BYTES)),
           );
-          for (const [field, value] of Object.entries({
-            ipv4_address: "172.20.0.10",
-            ipv6_address: "fd00::10",
-            link_local_ips: ["169.254.1.1"],
-            mac_address: "02:42:ac:14:00:0a",
-            driver_opts: { mtu: "1400" },
-            priority: 1,
-            gw_priority: 0,
-            interface_name: "eth1",
+          for (const [preservedKey, compose] of Object.entries({
+            "depends_on.*.restart": { depends_on: { peer: { restart: true } } },
+            "healthcheck.start_interval": { healthcheck: { start_interval: "1s" } },
           })) {
             await Effect.runPromise(
               writeCachedAppPlan({
@@ -87,7 +81,7 @@ test("cache hits reject each unsupported network attachment exact path", async (
                     ...seeded.value.services,
                     [web.name]: {
                       ...web,
-                      extensions: { ...web.extensions, compose: { networks: { peer: { [field]: value } } } },
+                      extensions: { ...web.extensions, compose },
                     },
                   },
                 },
@@ -97,8 +91,8 @@ test("cache hits reject each unsupported network attachment exact path", async (
             expect(expectFailure(exit)).toMatchObject({
               _tag: "CapabilityError",
               service: "web",
-              key: `networks.*.${field}`,
-              feature: `compose preserved path networks.*.${field}`,
+              key: preservedKey,
+              feature: `compose preserved path ${preservedKey}`,
             });
           }
         }),

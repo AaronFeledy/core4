@@ -19,6 +19,7 @@ import {
   ServiceName,
   type ServiceNetworkAttachment,
   type ServicePlan,
+  landoAppNetworkName,
   landoExternalNetworkNames,
   landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
@@ -358,6 +359,10 @@ const createContainerRequest = (
       });
     }
   }
+  const attachments = createBodyAttachments(deps, plan, service);
+  const gatewayPriority =
+    (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create" &&
+    attachments.length > 0;
   const body = {
     ...containerCreateBodyFragment(plan, service, {
       name,
@@ -368,7 +373,13 @@ const createContainerRequest = (
       },
       networkingConfig: {
         EndpointsConfig: Object.fromEntries(
-          createBodyAttachments(deps, plan, service).map(({ name, aliases }) => [name, { Aliases: aliases }]),
+          attachments.map(({ name, aliases }) => [
+            name,
+            {
+              Aliases: aliases,
+              ...(gatewayPriority ? { GwPriority: 1 } : {}),
+            },
+          ]),
         ),
       },
       onMissingArtifact: (artifact) => {
@@ -385,7 +396,11 @@ const createContainerRequest = (
   };
   const searchParams = new URLSearchParams({ name, ...knobs.query });
   const path: EngineHttpRequest["path"] = `/containers/create?${searchParams.toString()}`;
-  return { body, path };
+  return {
+    body,
+    path,
+    ...(gatewayPriority ? { minimumApiVersion: "1.48" as const } : {}),
+  };
 };
 
 const ensureNetwork = (
@@ -393,6 +408,12 @@ const ensureNetwork = (
   name: string,
   plan: AppPlan,
 ): Effect.Effect<void, ProviderError> => {
+  const driver =
+    plan.networking?.perAppBridge?.name === name ? plan.networking.perAppBridge.driver : "bridge";
+  const preferredBridge =
+    (deps.options.dialect ?? libpodLifecycleDialect).engine === "libpod" &&
+    landoAppNetworkName(plan) === name &&
+    !isSharedNetwork(plan, name);
   return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
       if (inspectResponse.status === 200) {
@@ -403,19 +424,24 @@ const ensureNetwork = (
           Effect.andThen(() =>
             request(deps, {
               method: "POST",
-              path: "/networks/create",
-              body: {
-                Name: name,
-                Driver:
-                  plan.networking?.perAppBridge?.name === name
-                    ? plan.networking.perAppBridge.driver
-                    : "bridge",
-                ...(isSharedNetwork(plan, name)
-                  ? {}
-                  : {
-                      Labels: networkOwnershipLabels(plan),
-                    }),
-              },
+              path: preferredBridge ? "/libpod/networks/create" : "/networks/create",
+              body: preferredBridge
+                ? {
+                    name,
+                    driver,
+                    dns_enabled: true,
+                    options: { metric: "50" },
+                    labels: networkOwnershipLabels(plan),
+                  }
+                : {
+                    Name: name,
+                    Driver: driver,
+                    ...(isSharedNetwork(plan, name)
+                      ? {}
+                      : {
+                          Labels: networkOwnershipLabels(plan),
+                        }),
+                  },
             }),
           ),
         )

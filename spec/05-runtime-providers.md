@@ -174,6 +174,7 @@ The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, 
 | `composeSpec` | Compose realization is `none`, `portable`, or `native`. |
 | `composeKnobs` | Exact supported preserved container-runtime knobs. |
 | `composeServiceFields` | Exact supported preserved service field families. |
+| `authoredNetworks` | Optional boolean for normalized authored network attachments and aliases; omission means unsupported. |
 | `composeProjectFields` | Exact supported preserved project fields. |
 | `composePreservedPaths` | Exact supported preserved descendant paths. |
 | `volumeSnapshot` | Volume snapshots are `native` or `none`. DataMover owns the host-archive fallback. |
@@ -185,7 +186,7 @@ The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, 
 
 Missing required capabilities fail before provider action with `CapabilityError` naming the provider, feature, service when applicable, and remediation. Published endpoints require `hostPortPublish`; internal endpoints do not. Providers report assigned host ports only as `PublicationObservation` bindings from real inspection and MUST NOT mutate desired publication state or substitute plan values for observed ones.
 
-`composeSpec: native` is necessary but not sufficient for preserved Compose semantics. `composeKnobs`, `composeServiceFields`, `composeProjectFields`, and `composePreservedPaths` are fail-closed exact declarations; omission means no support, non-empty declarations below `native` are invalid, and support MUST NOT be inferred from a parent field or tier. Declaring a field claims complete realization of its accepted forms. For the `networks` service field family, complete realization means the additive membership model of §10.1 (listed networks are joined in addition to the app and shared networks, never instead of them) with attachment `aliases`; every other non-`x-*` attachment field is its own exact `composePreservedPaths` entry (`networks.*.<field>`). Service and project `x-*` fields remain inert preserved metadata unless a specific namespace later gains an explicit capability or provider extension.
+`composeSpec: native` is necessary but not sufficient for preserved Compose semantics. `composeKnobs`, `composeServiceFields`, `composeProjectFields`, and `composePreservedPaths` are fail-closed exact declarations; omission means no support, non-empty declarations below `native` are invalid, and support MUST NOT be inferred from a parent field or tier. Declaring a field claims complete realization of its accepted forms. Service and project `x-*` fields remain inert preserved metadata unless a specific namespace later gains an explicit capability or provider extension.
 
 Bundled container providers MUST derive `composeKnobs.supported` from the shared realization table. Each realization declares the engine dialects for which its request fields implement the accepted forms with identical semantics. Docker uses the verified Docker Engine mappings; Lando-managed and system Podman use the libpod dialect's compatible create API. Independent request fixtures MUST cover every declared knob for each dialect, including query parameters and the Config versus HostConfig boundary. Docker's supported API range MUST preserve these mappings, including the container-create `platform` query parameter introduced in API 1.41.
 
@@ -230,7 +231,7 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `provider` | Selected provider id. |
 | `services` | Planned services keyed by service name. |
 | `routes` | Planner-resolved routes with explicit backend service, protocol, and port. |
-| `networks`, `stores` | Provider-neutral network and storage intent. |
+| `stores` | Provider-neutral storage intent. |
 | `networking` | Explicit per-app bridge (or `null`), optional shared-network membership with service aliases, and the authored networks services join (§10.1). |
 | `events` | Compiled Landofile `events:` and `hostEvents` steps with provenance and plan-time status (§8.5.7). Omitted from provider applied-state records. |
 | `metadata` | App planning metadata. |

@@ -82,7 +82,6 @@ const withRefreshFixture = async <T>(
       provider: providerId,
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: {

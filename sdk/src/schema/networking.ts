@@ -191,19 +191,6 @@ export const DependencyPlan = Schema.Struct({
 export type DependencyPlan = typeof DependencyPlan.Type;
 
 /**
- * Network plan — provider-realized network.
- */
-export const NetworkPlan = Schema.Struct({
-  /** Network name. */
-  name: Schema.String,
-  /** Whether this network is shared across apps. */
-  shared: Schema.Boolean,
-  /** Driver (provider-specific). */
-  driver: Schema.optionalKey(Schema.String),
-});
-export type NetworkPlan = typeof NetworkPlan.Type;
-
-/**
  * Per-app bridge network — the isolated network every service in an app joins
  * so intra-app service-name DNS (`<service>`) resolves.
  */
@@ -365,6 +352,10 @@ export const ProviderCapabilities = Schema.Struct({
   serviceHealth: Schema.Literals(["native", "lando", "none"]),
   hostReachability: Schema.Literals(["native", "emulated", "none"]),
   sharedCrossAppNetwork: Schema.Boolean,
+  authoredNetworks: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Whether the provider realizes authored network attachments and aliases; omission means unsupported.",
+  }),
   persistentStorage: Schema.Boolean,
   bindMounts: Schema.Boolean,
   bindMountPerformance: Schema.Literals(["native", "slow", "none"]),

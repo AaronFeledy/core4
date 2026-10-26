@@ -7,13 +7,22 @@ import { networkOwnershipLabels } from "../src/native-ownership.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { field, networkApi, networkPlan } from "./authored-network-fixture.ts";
 
-const ctx = { providerId: "docker", remediation: "Retry." };
+const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
 const endpoints = {
   "lando-networks": { Aliases: ["web", "frontend"] },
   lando_bridge_network: { Aliases: ["web.networks.internal"] },
   "lando-networks_private": { Aliases: ["web.networks.internal", "private-web"] },
   "sibling net": { Aliases: ["web.networks.internal", "public-web"] },
 };
+
+test("leaves existing app bridges untouched", async () => {
+  // Given
+  const fake = networkApi();
+  // When
+  await Effect.runPromise(bringUp(networkPlan, { api: fake.api, ctx, dialect: libpodLifecycleDialect }));
+  // Then
+  expect(fake.requests.filter(({ path }) => path.endsWith("/networks/create"))).toEqual([]);
+});
 
 test("narrowed apply skips networks joined only by unselected services", async () => {
   // Given
@@ -25,12 +34,18 @@ test("narrowed apply skips networks joined only by unselected services", async (
   // When
   await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
   // Then
-  expect(fake.requests.filter((request) => request.path.startsWith("/networks/"))).toEqual([
+  expect(fake.requests.filter((request) => /\/(?:libpod\/)?networks\//u.test(request.path))).toEqual([
     { method: "GET", path: "/networks/lando-networks" },
     {
       method: "POST",
-      path: "/networks/create",
-      body: { Name: "lando-networks", Driver: "bridge", Labels: networkOwnershipLabels(plan) },
+      path: "/libpod/networks/create",
+      body: {
+        name: "lando-networks",
+        driver: "bridge",
+        dns_enabled: true,
+        options: { metric: "50" },
+        labels: networkOwnershipLabels(plan),
+      },
     },
     { method: "GET", path: "/networks/lando_bridge_network" },
     { method: "POST", path: "/networks/create", body: { Name: "lando_bridge_network", Driver: "bridge" } },
@@ -47,10 +62,12 @@ test.each([libpodLifecycleDialect, dockerLifecycleDialect])(
     // Then
     const creates = fake.requests.filter((request) => request.path.startsWith("/containers/create?"));
     expect(field(field(creates[0]?.body, "NetworkingConfig"), "EndpointsConfig")).toEqual(
-      dialect.engine === "docker" ? { "lando-networks": endpoints["lando-networks"] } : endpoints,
+      dialect.engine === "docker"
+        ? { "lando-networks": { ...endpoints["lando-networks"], GwPriority: 1 } }
+        : endpoints,
     );
     expect(field(field(creates[1]?.body, "NetworkingConfig"), "EndpointsConfig")).toEqual({
-      "lando-networks": { Aliases: ["worker"] },
+      "lando-networks": { Aliases: ["worker"], ...(dialect.engine === "docker" ? { GwPriority: 1 } : {}) },
       ...(dialect.engine === "docker"
         ? {}
         : { lando_bridge_network: { Aliases: ["worker.networks.internal"] } }),

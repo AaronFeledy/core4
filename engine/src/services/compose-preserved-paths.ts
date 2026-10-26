@@ -18,7 +18,7 @@ const compareUses = (left: ComposePreservedPathUse, right: ComposePreservedPathU
 };
 
 export const collectComposePreservedPaths = (
-  services: Readonly<Record<string, ServicePlan>>,
+  services: Readonly<Record<string, Pick<ServicePlan, "name" | "extensions">>>,
 ): ReadonlyArray<ComposePreservedPathUse> => {
   const uses: ComposePreservedPathUse[] = [];
 
@@ -39,17 +39,6 @@ export const collectComposePreservedPaths = (
     const healthcheck = compose.healthcheck;
     if (Predicate.isObject(healthcheck) && healthcheck.start_interval !== undefined) {
       uses.push({ service: servicePlan.name, key: "healthcheck.start_interval" });
-    }
-    if (Predicate.isObject(compose.networks)) {
-      const attachments = Object.values(compose.networks);
-      for (const key of ComposePreservedPathKey.literals) {
-        if (!key.startsWith("networks.*.")) continue;
-        const field = key.slice("networks.*.".length);
-        if (
-          attachments.some((attachment) => Predicate.isObject(attachment) && attachment[field] !== undefined)
-        )
-          uses.push({ service: servicePlan.name, key });
-      }
     }
   }
 

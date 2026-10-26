@@ -61,9 +61,8 @@ export const decodeProviderCapabilities = decodeProviderCapabilitiesFor(PROVIDER
  *
  * `configs` is declared: file-backed top-level entries plus service grants are
  * realized as read-only bind mounts. `external: true` fails closed at plan time.
- * `networks` adds attachments and aliases without removing app/shared membership.
- * Other attachment fields fail closed: this provider declares no exact-path
- * `composePreservedPaths` capabilities.
+ * Normalized `networks` uses authoredNetworks to add attachments and aliases
+ * without removing app/shared membership. Other attachment settings are rejected.
  *
  * Service-level `x-*` fields are outside the capability surface and remain
  * inert metadata preserved by core. `labels` is declared because both direct
@@ -90,7 +89,8 @@ export const providerLandoCapabilitiesForPlatform = (
     rootless,
     composeSpec: "native",
     composeKnobs: { supported: composeKnobsForDialect("libpod") },
-    composeServiceFields: { supported: ["labels", "configs", "networks"] },
+    composeServiceFields: { supported: ["labels", "configs"] },
+    authoredNetworks: true,
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(family, containerTargets, "host.containers.internal"),

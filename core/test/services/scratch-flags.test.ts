@@ -100,7 +100,7 @@ const makeCapabilities = (sharedCrossAppNetwork: boolean): ProviderCapabilities 
   privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "native",
-  composeServiceFields: { supported: ["networks"] },
+  authoredNetworks: true,
   providerExtensions: [],
 });
 

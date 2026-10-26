@@ -63,7 +63,6 @@ describe("BunDataMover.layer call-time provider", () => {
         provider: ProviderId.make("selected"),
         services: {},
         routes: [],
-        networks: [],
         stores: [],
         fileSync: [],
         metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },

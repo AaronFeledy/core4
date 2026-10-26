@@ -60,7 +60,6 @@ test("derived Dockerfiles contain only build-phase steps", async () => {
     provider: providerId,
     services: { [serviceName]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

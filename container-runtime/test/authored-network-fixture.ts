@@ -33,7 +33,6 @@ export const networkPlan = Schema.decodeUnknownSync(AppPlan)({
     ]),
   ),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},
@@ -88,7 +87,8 @@ export const networkApi = (
             }
           );
         }
-        if (request.path === "/networks/create") return { status: options.conflict ? 409 : 201, body: "{}" };
+        if (["/networks/create", "/libpod/networks/create"].includes(request.path))
+          return { status: options.conflict ? 409 : 201, body: "{}" };
         if (request.path.endsWith("/connect"))
           return { status: options.connectStatus ?? 200, body: '{"message":"already connected"}' };
         if (request.path.startsWith("/containers/create?")) {

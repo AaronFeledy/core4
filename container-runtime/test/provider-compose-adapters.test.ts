@@ -14,7 +14,6 @@ const plan = Schema.decodeSync(AppPlan)({
   provider: "lando",
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},

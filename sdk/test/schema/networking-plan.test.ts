@@ -75,11 +75,44 @@ describe("NetworkingPlan schema", () => {
       { name: "unnamed", aliases: ["web.shop.internal"] },
     ]);
   });
+  test("preserves shared-membership attachment bytes", () => {
+    // Given
+    const plan = {
+      slug: "shop",
+      networking: landoNetworkingPlan({
+        slug: "shop",
+        serviceNames: ["web"],
+        sharedCrossAppNetwork: true,
+      }),
+    };
+    // When
+    const bytes = JSON.stringify(landoServiceNetworkAttachments(plan, { name: ServiceName.make("web") }));
+    // Then
+    expect(bytes).toBe(
+      '[{"name":"lando-shop","aliases":["web"]},{"name":"lando_bridge_network","aliases":["web.shop.internal"]}]',
+    );
+  });
   test("keeps nonmembers on the app and shared networks only", () => {
     expect(landoServiceNetworkAttachments(authoredPlan(), { name: ServiceName.make("db") })).toEqual([
       { name: "lando-shop", aliases: ["db"] },
       { name: "lando_bridge_network", aliases: ["db.shop.internal"] },
     ]);
+  });
+  test("adds the qualified bridge alias before authored aliases without shared membership", () => {
+    // Given
+    const plan = {
+      slug: "shop",
+      networking: landoNetworkingPlan({
+        slug: "shop",
+        serviceNames: ["web"],
+        sharedCrossAppNetwork: false,
+        bridgeAliases: { web: ["frontend", "web.shop.internal", "web"] },
+      }),
+    };
+    // When
+    const attachments = landoServiceNetworkAttachments(plan, { name: ServiceName.make("web") });
+    // Then
+    expect(attachments).toEqual([{ name: "lando-shop", aliases: ["web", "web.shop.internal", "frontend"] }]);
   });
   test("inventories owned, external and all network names separately", () => {
     const plan = authoredPlan();

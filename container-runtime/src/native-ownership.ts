@@ -7,7 +7,7 @@ import {
   planAppIdentity,
 } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
-import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
+import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "./labels.ts";
 import { isOwnershipRoot } from "./ownership-root.ts";
 
@@ -134,13 +134,16 @@ export const verifiedNativeId = Effect.fnUntraced(function* (
   return id;
 });
 
-export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(function* (
-  api: EngineHttpApi,
+export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(function* <E>(
+  api: {
+    readonly request?: (request: EngineHttpRequest) => Effect.Effect<EngineHttpResponse, E>;
+  },
   target: (
     | { readonly kind: "container" }
     | {
         readonly kind: "network";
         readonly legacy: "accept" | "reject";
+        readonly exactName?: true;
       }
   ) & {
     readonly name: string;
@@ -182,6 +185,7 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
       );
       if (
         !id ||
+        (target.exactName === true && (observed?.Name ?? observed?.name) !== target.name) ||
         decision === "foreign" ||
         (decision === "legacy" &&
           (target.legacy === "reject" || (observed?.Name ?? observed?.name) !== target.name))

@@ -35,7 +35,6 @@ const plan: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: ["first", "second"].map((mountKey) => ({ engineId: "mutagen", session: spec(mountKey) })),
   metadata: {

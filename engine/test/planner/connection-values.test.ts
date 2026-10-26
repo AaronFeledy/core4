@@ -123,7 +123,6 @@ test("retains generated bound client environments through plan serialization and
     provider: service.provider,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: service.metadata,

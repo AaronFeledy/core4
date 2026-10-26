@@ -78,25 +78,15 @@ describe("Compose preserved path capabilities", () => {
     gw_priority: 1,
     interface_name: "eth1",
   }))
-    test(`fails closed on network attachment ${field}`, async () => {
-      const landofile = Schema.decodeUnknownSync(LandofileShape)({
-        name: "network-path",
-        runtime: 4,
-        networks: { frontend: {} },
-        services: { web: { image: "node:lts", home: false, networks: { frontend: { [field]: value } } } },
-      });
-      await withTempCwd(async () => {
-        const exit = await planExit(landofile, {
-          ...TestRuntimeProvider.capabilities,
-          composeServiceFields: { supported: ["networks"] },
-        });
-        expect(expectFailure(exit)).toMatchObject({
-          _tag: "CapabilityError",
-          service: "web",
-          key: `networks.*.${field}`,
-          feature: `compose preserved path networks.*.${field}`,
-        });
-      });
+    test(`rejects network attachment ${field} during schema validation`, () => {
+      expect(() =>
+        Schema.decodeUnknownSync(LandofileShape, { onExcessProperty: "error" })({
+          name: "network-path",
+          runtime: 4,
+          networks: { frontend: {} },
+          services: { web: { image: "node:lts", home: false, networks: { frontend: { [field]: value } } } },
+        }),
+      ).toThrow();
     });
   test("preserves both exact paths when the provider declares support", async () => {
     await withTempCwd(async () => {

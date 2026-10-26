@@ -61,7 +61,6 @@ const fixture = () => {
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

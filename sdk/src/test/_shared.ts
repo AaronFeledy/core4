@@ -116,7 +116,8 @@ export const testCapabilities: ProviderCapabilities = {
   architectureEmulation: true,
   composeSpec: "native",
   composeKnobs: { supported: ["restart", "cap_add", "shm_size", "extra_hosts"] },
-  composeServiceFields: { supported: ["labels", "configs", "networks"] },
+  composeServiceFields: { supported: ["labels", "configs"] },
+  authoredNetworks: true,
   composeProjectFields: { supported: ["configs"] },
   providerExtensions: [],
 };
@@ -168,7 +169,6 @@ export const makeTestAppPlan = (providerId: ProviderId): CurrentExecutableAppPla
     provider: providerId,
     services: { [TEST_SERVICE_NAME]: testServicePlan },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: planMetadata,

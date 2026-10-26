@@ -45,11 +45,11 @@ export const mergeLintFindings = (
 
 export const attributeEffectiveLintIssue = (
   landofile: LandofileShape,
-  issue: ValidationIssue & { readonly rule: string },
+  issue: ValidationIssue & { readonly rule: string; readonly severity?: "error" | "warning" },
 ): ConfigLintViolation => {
   const source = issue.source ?? getLandofileValueSource(landofile, issue.path);
   return attributeLintIssue(
-    { ...issue, severity: "error", ...(source === undefined ? {} : { source }) },
+    { ...issue, severity: issue.severity ?? "error", ...(source === undefined ? {} : { source }) },
     "effective",
     getSourceDocuments(landofile),
   );

@@ -192,7 +192,6 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   HostAliasPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceDependencyCondition: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DependencyPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
-  NetworkPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PerAppBridgePlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   SharedNetworkMembershipPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   AuthoredNetworkPlan: "sdk/test/schema/networking-plan.test.ts",

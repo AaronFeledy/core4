@@ -235,7 +235,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
     expect(whoami.appMount).toMatchObject({ target: "/app", readOnly: false });
     expect(whoami.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(false);
 
-    expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
+    expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-myapp", driver: "bridge" });
   });
 
   test("`lando whoami-probe` tooling alias routes a curl against the third-party service via provider.exec", async () => {
@@ -308,6 +308,6 @@ describe("compose passthrough — scenario: third-party image with default endpo
         publication: { hostPort: 9090 },
       },
     ]);
-    expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
+    expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-myapp", driver: "bridge" });
   });
 });

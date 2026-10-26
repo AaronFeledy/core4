@@ -20,7 +20,7 @@ const composeServiceFieldCapabilities: ProviderCapabilities = {
     supported: [...(TestRuntimeProvider.capabilities.composeKnobs?.supported ?? []), "shm_size"],
   },
   composeServiceFields: {
-    supported: ["networks", "configs", "secrets", "profiles", "labels"],
+    supported: ["configs", "secrets", "profiles", "labels"],
   },
 };
 
@@ -100,7 +100,6 @@ describe("Compose service field preservation", () => {
       // Then
       const expectedCompose = {
         labels: { "io.lando.role": "web" },
-        networks: { frontend: {} },
         configs: [
           { source: "app-config" },
           {

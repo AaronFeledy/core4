@@ -144,7 +144,6 @@ test.each([
         },
       },
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata,

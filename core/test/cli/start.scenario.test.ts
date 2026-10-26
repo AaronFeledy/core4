@@ -193,7 +193,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -785,7 +784,6 @@ const globalPlan = (serviceIds: ReadonlyArray<string>): AppPlan => {
     root: AbsolutePath.make("/tmp/global"),
     services,
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
   };

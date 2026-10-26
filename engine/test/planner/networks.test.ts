@@ -63,7 +63,7 @@ test("normalizes joined external and owned networks and default aliases without 
   });
 });
 
-test("the full planner carries canonical attachments into networking and preserves Compose records", async () => {
+test("the full planner normalizes attachments without preserving Compose records", async () => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "shop",
     runtime: 4,
@@ -81,7 +81,7 @@ test("the full planner carries canonical attachments into networking and preserv
     Effect.flatMap(AppPlanner, (planner) =>
       planner.plan(literalTestLandofile(landofile, process.cwd()), {
         ...TestRuntimeProvider.capabilities,
-        composeServiceFields: { supported: ["networks"] },
+        composeServiceFields: { supported: [] },
       }),
     ).pipe(Effect.provide(Planner.layer), Effect.provide(PluginRegistry.layer)),
   );
@@ -96,9 +96,7 @@ test("the full planner carries canonical attachments into networking and preserv
     },
   ]);
   expect(plan.networking?.perAppBridge?.aliases).toEqual({ [web]: ["www"] });
-  expect(plan.services[web]?.extensions.compose).toMatchObject({
-    networks: landofile.services?.[web]?.networks,
-  });
+  expect(plan.services[web]?.extensions.compose).toBeUndefined();
 });
 
 test("rejects default attachments without a per-app bridge", async () => {

@@ -39,7 +39,6 @@ test("nests provider inspection under the operation span when info runs against 
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

@@ -46,7 +46,6 @@ const plan: AppPlan = {
   provider: service.provider,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -62,6 +61,21 @@ describe("desired immutable create config", () => {
     // Given the original default plan without authored networks or bridge aliases.
     // When / Then its immutable fingerprint remains the pre-change value.
     expect(fingerprint(service)).toBe("v3:1fd6becca5308766a8d075bd92dc3ec46cea1f595ebd473eb0303c1e13706f7b");
+  });
+  test("keeps explicit shared membership attachments and fingerprint byte-identical to the legacy plan", () => {
+    // Given
+    const explicit = {
+      ...plan,
+      networking: landoNetworkingPlan({
+        slug: plan.slug,
+        serviceNames: [service.name],
+        sharedCrossAppNetwork: true,
+      }),
+    };
+    // When
+    const actual = fingerprint(service, explicit);
+    // Then
+    expect(actual).toBe("v3:1fd6becca5308766a8d075bd92dc3ec46cea1f595ebd473eb0303c1e13706f7b");
   });
 
   test.each(["membership", "bridge aliases", "authored aliases"])("fingerprints %s changes", (change) => {

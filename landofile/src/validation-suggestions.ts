@@ -1,5 +1,5 @@
 import { expressionInterpolationsTouchOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
-import { composeTopLevelDispositions, isPlainRecord } from "@lando/sdk/landofile";
+import { composeServiceDispositions, composeTopLevelDispositions, isPlainRecord } from "@lando/sdk/landofile";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
@@ -45,6 +45,18 @@ const plannerScopeSuggestion = (value: unknown, path: ValidationIssuePath): stri
 };
 
 const composeSuggestedFix = (issue: SchemaIssueLeaf): string | undefined => {
+  if (issue.path[0] === "services" && issue.path.length > 2) {
+    const servicePath = issue.path.slice(2).map(String);
+    const entry = Object.entries(composeServiceDispositions).find(([pattern, disposition]) => {
+      const segments = pattern.split(".");
+      return (
+        disposition.disposition === "rejected" &&
+        segments.length === servicePath.length &&
+        segments.every((segment, index) => segment === "*" || segment === servicePath[index])
+      );
+    });
+    return entry?.[1].remediation;
+  }
   if (issue.path.length !== 1) return undefined;
   const key = String(issue.path[0]);
   switch (issue._tag) {

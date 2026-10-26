@@ -81,6 +81,12 @@ const makePluginRegistry = (
   );
 
   const registry: Context.Service.Shape<typeof PluginRegistry> = PluginRegistry.of({
+    declaredProviderCapabilities: (id) => {
+      const platform = process.platform;
+      return platform === "linux" || platform === "darwin" || platform === "win32"
+        ? capabilities.runtimeProviders.get(id)?.declaredCapabilities?.(platform, process.arch)
+        : undefined;
+    },
     list: discover,
     load: Effect.fn("PluginRegistry.load")(function* (name) {
       const manifests = yield* discover;

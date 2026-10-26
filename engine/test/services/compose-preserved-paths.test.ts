@@ -43,7 +43,7 @@ const capabilities = (
   composePreservedPaths === undefined ? { composeSpec } : { composeSpec, composePreservedPaths };
 
 describe("Compose preserved paths", () => {
-  test("collects each network descendant once across multiple attachments", () => {
+  test("does not collect obsolete Compose network descendants", () => {
     const uses = collectComposePreservedPaths({
       web: servicePlan("web", {
         networks: {
@@ -61,20 +61,7 @@ describe("Compose preserved paths", () => {
         },
       }),
     });
-    expect(uses).toEqual(
-      (
-        [
-          "ipv4_address",
-          "ipv6_address",
-          "link_local_ips",
-          "mac_address",
-          "driver_opts",
-          "priority",
-          "gw_priority",
-          "interface_name",
-        ] as const
-      ).map((field) => ({ service: "web", key: `networks.*.${field}` as const })),
-    );
+    expect(uses).toEqual([]);
   });
   test("does not gate network aliases or inert extensions as exact paths", () => {
     const uses = collectComposePreservedPaths({

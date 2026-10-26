@@ -27,6 +27,7 @@ export class PluginRegistry extends Context.Service<
   PluginRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<PluginManifest>, PluginManifestError>;
+    readonly declaredProviderCapabilities?: (id: ProviderId) => ProviderCapabilities | undefined;
     readonly load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>;
     readonly loadServiceType: (
       id: string,

@@ -22,7 +22,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Scope | Normalized | Preserved | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | Top-level keys | 6 | 3 | 1 | 10 |
-| Service keys | 43 | 107 | 212 | 362 |
+| Service keys | 46 | 95 | 221 | 362 |
 | YAML tags | 2 | 0 | 0 | 2 |
 
 ## Top-level keys
@@ -109,7 +109,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `memswap_limit` | rejected | — | Translate memswap_limit with a Compose-to-Lando config translator. |
 | [`models`](#models) | rejected | 4 | Translate models with a Compose-to-Lando config translator. |
 | `network_mode` | rejected | — | Translate network_mode to Lando networks: configuration. |
-| [`networks`](#networks) | preserved | 12 | Preserved losslessly in ServicePlan.extensions.compose and realized additively through AppPlan.networking; services retain app and shared network membership. |
+| [`networks`](#networks) | normalized | 12 | Normalizes into `ServicePlan.networking` |
 | `oom_kill_disable` | rejected | — | Translate oom_kill_disable with a Compose-to-Lando config translator. |
 | `oom_score_adj` | rejected | — | Translate oom_score_adj with a Compose-to-Lando config translator. |
 | `pid` | rejected | — | Translate pid with a Compose-to-Lando config translator. |
@@ -445,19 +445,19 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 
 | Key path | Disposition | Detail |
 | --- | --- | --- |
-| `networks` | preserved | Preserved losslessly in ServicePlan.extensions.compose and realized additively through AppPlan.networking; services retain app and shared network membership. |
-| `networks.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `networks.*.aliases` | preserved | Preserved losslessly in ServicePlan.extensions.compose and realized additively through AppPlan.networking; services retain app and shared network membership. |
-| `networks.*.driver_opts` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
-| `networks.*.driver_opts.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose; covered by the networks.*.driver_opts exact-path capability in composePreservedPaths, not a separate capability. |
-| `networks.*.gw_priority` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
-| `networks.*.interface_name` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
-| `networks.*.ipv4_address` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
-| `networks.*.ipv6_address` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
-| `networks.*.link_local_ips` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
-| `networks.*.mac_address` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
-| `networks.*.priority` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
-| `networks.*.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose; inert and not capability-gated. |
+| `networks` | normalized | Normalizes into `ServicePlan.networking` |
+| `networks.*` | normalized | Normalizes into `ServicePlan.networking` |
+| `networks.*.aliases` | normalized | Normalizes into `ServicePlan.networking` |
+| `networks.*.driver_opts` | rejected | Lando doesn't pin network addresses or interface settings. Remove driver_opts and reach the service by its name or an alias. |
+| `networks.*.driver_opts.*` | rejected | Lando doesn't pin network addresses or interface settings. Remove driver_opts and reach the service by its name or an alias. |
+| `networks.*.gw_priority` | rejected | Lando doesn't pin network addresses or interface settings. Remove gw_priority and reach the service by its name or an alias. |
+| `networks.*.interface_name` | rejected | Lando doesn't pin network addresses or interface settings. Remove interface_name and reach the service by its name or an alias. |
+| `networks.*.ipv4_address` | rejected | Lando doesn't pin network addresses or interface settings. Remove ipv4_address and reach the service by its name or an alias. |
+| `networks.*.ipv6_address` | rejected | Lando doesn't pin network addresses or interface settings. Remove ipv6_address and reach the service by its name or an alias. |
+| `networks.*.link_local_ips` | rejected | Lando doesn't pin network addresses or interface settings. Remove link_local_ips and reach the service by its name or an alias. |
+| `networks.*.mac_address` | rejected | Lando doesn't pin network addresses or interface settings. Remove mac_address and reach the service by its name or an alias. |
+| `networks.*.priority` | rejected | Lando doesn't pin network addresses or interface settings. Remove priority and reach the service by its name or an alias. |
+| `networks.*.x-*` | preserved | Retained in the Landofile as inert metadata; never interpreted or capability-gated. |
 
 ### `ports`
 

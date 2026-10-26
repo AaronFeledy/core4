@@ -1621,10 +1621,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           yield* ensureEffect;
           const physicalPlan = yield* physicalNetworkPlan(plan);
           const previous = yield* appliedPlans.resolvePlan(plan.id);
-          yield* planState.ownership.prepare(
-            physicalPlan,
-            previous === undefined ? undefined : yield* physicalNetworkPlan(previous),
-          );
+          const previousPhysicalPlan =
+            previous === undefined ? undefined : yield* physicalNetworkPlan(previous);
+          yield* planState.ownership.prepare(physicalPlan, previousPhysicalPlan);
           const result = yield* withGlobalPublishedLifecycle(
             String(plan.id),
             "apply",
@@ -1652,6 +1651,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
               completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
             }).pipe(
+              Effect.tap(() => planState.removeOrphanedNetworks(physicalPlan, previousPhysicalPlan)),
               Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)),
               Effect.tap(() => reconcilePublishedServices(physicalPlan)),
             ),
@@ -1856,6 +1856,7 @@ export const plugin = definePlugin({
       ProviderId.make("lando"),
       {
         id: ProviderId.make("lando"),
+        declaredCapabilities: mvpProviderCapabilities,
         resourceOwnership: (ctx, root) => makeResourceOwnershipStore("lando", ctx.stateStore).summary(root),
         appliedPlans: (ctx) =>
           Effect.flatMap(PathsService, (paths) =>

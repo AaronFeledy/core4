@@ -57,7 +57,6 @@ const plan: AppPlan = {
     ["web", "db", "worker", "cache", "gone"].map((name) => [ServiceName.make(name), service(name)]),
   ),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

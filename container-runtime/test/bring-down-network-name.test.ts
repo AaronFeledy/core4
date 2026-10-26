@@ -17,7 +17,7 @@ test.each([false, true])(
     // When
     const result = await Effect.runPromise(
       bringDown(plan, {
-        ctx: { providerId: "docker", remediation: "Retry." },
+        ctx: { providerId: "docker", remediation: "Retry.", env: {} },
         api: {
           request: (request) =>
             Effect.sync(() => {
@@ -67,7 +67,7 @@ test("narrowed teardown retains authored networks with unselected members", asyn
   // When
   await Effect.runPromise(
     bringDown(plan, {
-      ctx: { providerId: "docker", remediation: "Retry." },
+      ctx: { providerId: "docker", remediation: "Retry.", env: {} },
       api: {
         request: (request) =>
           Effect.sync(() => {
@@ -91,7 +91,7 @@ test.each([{ Labels: {} }, { Labels: null }, {}])(
     // When
     const result = await Effect.runPromise(
       bringDown(networkPlan, {
-        ctx: { providerId: "docker", remediation: "Retry." },
+        ctx: { providerId: "docker", remediation: "Retry.", env: {} },
         api: {
           request: (request) =>
             Effect.sync(() => {
@@ -168,7 +168,6 @@ test.each([dockerLifecycleDialect, libpodLifecycleDialect])(
       provider: "docker",
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       extensions: {},

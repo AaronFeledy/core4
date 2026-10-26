@@ -131,7 +131,6 @@ export const scopedAgentRelayWorker = Effect.fn("AgentRelay.scopedWorker")(funct
           root: input.app.root,
           services: {},
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           extensions: {},

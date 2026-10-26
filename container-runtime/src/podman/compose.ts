@@ -289,8 +289,7 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
       if (authored !== undefined) {
         return [name, authored.external ? { external: true, name } : { driver: authored.driver ?? "bridge" }];
       }
-      const planned = plan.networks.find((network) => network.name === name && network.shared === false);
-      return [name, { driver: plan.networking?.perAppBridge?.driver ?? planned?.driver ?? "bridge" }];
+      return [name, { driver: plan.networking?.perAppBridge?.driver ?? "bridge" }];
     }),
   );
   const volumes = Object.fromEntries([

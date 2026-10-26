@@ -14,7 +14,6 @@ const plan: AppPlan = {
   identity: { appRoot: AbsolutePath.make("/owner"), ownerKey: appIdentityKey("owner", "/owner") },
   services: {},
   routes: [],
-  networks: [],
   stores: [{ name: "data", scope: "app", kind: "data" }],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"), source: "test", runtime: 4 },

@@ -24,7 +24,7 @@ import { networkPlan } from "./authored-network-fixture.ts";
 test("emits member-only authored networks, bridge aliases, external names and owned drivers", () => {
   // Given / When
   const document: unknown = Bun.YAML.parse(
-    renderCompose(networkPlan, { providerId: "docker", remediation: "Retry." }),
+    renderCompose(networkPlan, { providerId: "docker", remediation: "Retry.", env: {} }),
   );
   // Then
   expect(document).toMatchObject({
@@ -57,6 +57,20 @@ test("emits member-only authored networks, bridge aliases, external names and ow
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
+
+test.each(["macvlan", undefined])("emits the canonical bridge driver %s with a bridge default", (driver) => {
+  // Given a plan whose bridge driver exists only on NetworkingPlan.
+  const plan: AppPlan = {
+    ...networkPlan,
+    networking: {
+      perAppBridge: { name: "lando-networks", ...(driver === undefined ? {} : { driver }) },
+    },
+  };
+  // When the provider renders Compose.
+  const document: unknown = Bun.YAML.parse(renderCompose(plan, ctx));
+  // Then the provider uses the canonical driver or its default.
+  expect(document).toHaveProperty("networks.lando-networks.driver", driver ?? "bridge");
+});
 
 interface FileSystemCall {
   readonly operation: string;
@@ -207,7 +221,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [{ name: "myapp_default", shared: false, driver: "bridge" }],
   stores: [
     { name: "myapp_database_data", scope: "service", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },

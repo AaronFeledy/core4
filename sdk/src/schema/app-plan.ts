@@ -15,7 +15,6 @@ import {
   EndpointPlan,
   HealthcheckPlan,
   HostAliasPlan,
-  NetworkPlan,
   NetworkingPlan,
   RoutePlan,
   RouteRef,
@@ -269,15 +268,19 @@ export const landoServiceNetworkAttachments = (
 ): ReadonlyArray<ServiceNetworkAttachment> => {
   const attachments: ServiceNetworkAttachment[] = [];
   const bridge = landoAppNetworkName(plan);
+  const shared = landoSharedNetworkName(plan);
   if (bridge !== undefined) {
     attachments.push({
       name: bridge,
       aliases: Array.from(
-        new Set([service.name, ...(plan.networking?.perAppBridge?.aliases?.[service.name] ?? [])]),
+        new Set([
+          service.name,
+          ...(shared === undefined ? [`${service.name}.${plan.slug}.internal`] : []),
+          ...(plan.networking?.perAppBridge?.aliases?.[service.name] ?? []),
+        ]),
       ),
     });
   }
-  const shared = landoSharedNetworkName(plan);
   if (shared !== undefined)
     attachments.push({ name: shared, aliases: landoServiceNetworkAliases(plan, service) });
   for (const network of plan.networking?.authoredNetworks ?? []) {
@@ -358,9 +361,6 @@ export const AppPlan = Schema.Struct({
     description: "Service plans keyed by service name.",
   }),
   routes: Schema.Array(RoutePlan).annotate({ description: "Resolved application routes." }),
-  networks: Schema.Array(NetworkPlan).annotate({
-    description: "Provider-neutral networks owned by this application.",
-  }),
   /**
    * Typed per-app networking intent: the per-app bridge plus optional
    * shared cross-app network membership. Populated by the planner; omitted for

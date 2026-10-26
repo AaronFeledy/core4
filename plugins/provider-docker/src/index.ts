@@ -266,7 +266,8 @@ export const dockerCapabilitiesForHost = (
     architectureEmulation: platform === "darwin" || platform === "win32",
     composeSpec: "native",
     composeKnobs: { supported: composeKnobsForDialect("docker") },
-    composeServiceFields: { supported: ["labels", "configs", "networks"] },
+    composeServiceFields: { supported: ["labels", "configs"] },
+    authoredNetworks: true,
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.docker.internal"),
@@ -606,7 +607,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ),
       removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
-        yield* planState.ownership.prepare(plan, yield* appliedPlans.resolvePlan(plan.id));
+        const previous = yield* appliedPlans.resolvePlan(plan.id);
+        yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
           api: dockerApi,
           ctx: DOCKER_CTX,
@@ -625,7 +627,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
           ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
           completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-        }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
+        }).pipe(
+          Effect.tap(() => planState.removeOrphanedNetworks(plan, previous)),
+          Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)),
+        );
       }),
       ...resolvedOps,
       cleanupOwnedResources: planState.cleanupOwnedResources,
@@ -793,6 +798,7 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        declaredCapabilities: dockerCapabilitiesForPlatform,
         resourceOwnership: (ctx, root) =>
           makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
         appliedPlans: (ctx) =>
