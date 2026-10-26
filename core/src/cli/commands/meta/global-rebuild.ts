@@ -68,6 +68,7 @@ export type GlobalRebuildError =
   | SecretReferenceInvalidError;
 
 export type GlobalRebuildServices =
+  | import("@lando/sdk/services").StateStore
   | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
