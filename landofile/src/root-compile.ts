@@ -1,22 +1,17 @@
 import { LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { captureCompilationContext } from "./compilation.ts";
-import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { LANDOFILE_LAYER_POSITIONS, type PresentLandofileLayer, presentLandofileLayers } from "./layers.ts";
-import { type LandofileLoadContext, ensureConsistentRoot, loadContext } from "./load-context.ts";
+import { ensureConsistentRoot, loadContext } from "./load-context.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { classifyLoadFailure } from "./pipeline/legacy.ts";
 import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
-import { prepareLandofileContent, prepareLandofileSource, prepareLandofileValue } from "./source.ts";
+import { prepareLandofileSource, prepareLandofileValue } from "./source.ts";
 import { validationErrorFromCause } from "./validation.ts";
 
-export interface LandofileContentLayer extends PresentLandofileLayer {
-  readonly content: string;
-}
-export type LandofileCompileError = Effect.Error<ReturnType<typeof loadLandofileContentLayers>>;
 const sourceDocument = (
   source: Effect.Success<ReturnType<typeof prepareLandofileSource>>,
 ): SourceDocument => ({
@@ -107,41 +102,11 @@ export const composeLandofileRootLayers = Effect.fn("Landofile.composeLayers")(f
   return { ...prepared, merged, documents: getSourceDocuments(merged) };
 });
 
-export const loadLandofileContentLayers = Effect.fn("Landofile.loadContentLayers")(function* (
-  layers: readonly LandofileContentLayer[],
-  runtime: Omit<LandofileLoadContext, "layer">,
-  final: { readonly file: string; readonly forced?: Readonly<Record<string, unknown>> },
-) {
-  const pendingSites = runtime.pendingSites ?? [];
-  const compilationContext = runtime.compilationContext ?? captureCompilationContext(runtime.appRoot);
-  const prepared = yield* Effect.forEach(layers, (layer) =>
-    prepareLandofileContent(layer.filePath, layer.content, {
-      ...runtime,
-      compilationContext,
-      pendingSites,
-      layer: layer.layer,
-    }).pipe(Effect.map(({ value }) => ({ layer, landofile: value }))),
-  );
-  const document = yield* composePreparedLayers(prepared, { ...runtime, pendingSites });
-  return yield* finalizeLandofile(
-    final.file,
-    copyLandofileProvenance(document, { ...document, ...final.forced }),
-    {
-      appRoot: runtime.appRoot,
-      env: compilationContext.env,
-      pendingSites,
-      loadPolicy: runtime.policy,
-      logger: runtime.logger,
-    },
-  );
-});
-
 export const loadAuthoredDocuments = Effect.fn("Landofile.loadDocuments")(function* (
   sources: readonly { readonly file: string; readonly value: unknown; readonly content?: string }[],
   context: {
     readonly appRoot: string;
     readonly file: string;
-    readonly forced?: Readonly<Record<string, unknown>>;
   },
   inputs?: LandofileRuntimeInputs,
 ) {
@@ -178,9 +143,9 @@ export const loadAuthoredDocuments = Effect.fn("Landofile.loadDocuments")(functi
     },
     inputs,
   );
-  return yield* finalizeLandofile(
-    context.file,
-    copyLandofileProvenance(document, { ...document, ...context.forced }),
-    { ...context, env: compilationContext.env, pendingSites },
-  );
+  return yield* finalizeLandofile(context.file, document, {
+    ...context,
+    env: compilationContext.env,
+    pendingSites,
+  });
 });

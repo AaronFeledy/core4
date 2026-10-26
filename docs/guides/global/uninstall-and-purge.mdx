@@ -87,7 +87,7 @@ lando global:status
 lando global:config
 ```
 
-With no `--service`, `global:stop` tears down the whole global app's running provider resources and keeps named volumes. `global:restart` and `global:rebuild` always act on the whole global app. `lando poweroff` stops the global app after your apps unless you pass `--keep-global`. `global:config` prints the effective global Landofile, merged from the generated file and your canonical `.lando.yml` overrides, plus the paths behind it.
+With no `--service`, `global:stop` tears down the whole global app's running provider resources and keeps named volumes. `global:restart` and `global:rebuild` always act on the whole global app. `lando poweroff` stops the global app after your apps unless you pass `--keep-global`. `global:config` prints the effective global Landofile, merged from the generated file and your own layers (YAML or TypeScript, includes resolved), plus the paths behind it.
 
 Each `meta:global:*` command publishes a `global:*` alias.
 
