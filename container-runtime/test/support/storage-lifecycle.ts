@@ -27,6 +27,7 @@ export type StorageLifecycleInput = {
 const contextFor = (provider: StorageLifecycleInput["provider"]) => ({
   providerId: provider === "podman" ? "lando" : "docker",
   remediation: "Supply an explicit answering test socket and retry the storage lifecycle check.",
+  env: {},
 });
 
 export const storageLifecycleClient = (input: StorageLifecycleInput): EngineApiClient => {
@@ -81,7 +82,7 @@ export const runStorageLifecycle = async (
   await Effect.runPromise(
     requestContainerBuild({
       request: api.request,
-      options: { providerId: ctx.providerId, api },
+      options: { providerId: ctx.providerId, api, sourceEnv: {} },
       tag: image,
       path: `/build?t=${encodeURIComponent(image)}&dockerfile=Dockerfile&rm=true&forcerm=true`,
       stdin: tarStream([

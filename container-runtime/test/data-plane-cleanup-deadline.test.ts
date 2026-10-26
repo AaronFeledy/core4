@@ -2,8 +2,14 @@ import { expect, test } from "bun:test";
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Clock, Context, Deferred, Effect, Exit, Fiber, Stream } from "effect";
 import { TestClock } from "effect/testing";
+
+const passthroughRedactor = {
+  redactString: (value: string) => value,
+  redactValue: (value: unknown) => value,
+} satisfies Redactor;
 
 const spec = { image: "alpine:3.20", command: ["true"], remove: true } as const;
 const outcomes = ["success", "failed-body", "nonzero", "interrupted"] as const;
@@ -51,7 +57,7 @@ const recordedPlane = (
     providerId: "test",
     api,
     capabilities: { volumeSnapshot: "none" },
-    redactDetails: (value) => value,
+    redactor: passthroughRedactor,
   });
 };
 

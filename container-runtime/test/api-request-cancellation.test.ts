@@ -12,7 +12,7 @@ import {
 import { makePodmanApiClient } from "../src/podman/api-client.ts";
 import { connectSocket, socketHttpConnection } from "../src/transport.ts";
 
-const ctx = { providerId: "test", remediation: "Start the test engine." };
+const ctx = { providerId: "test", remediation: "Start the test engine.", env: {} };
 
 test.each(["podman", "docker-unix", "docker-http", "docker-npipe"] as const)(
   "%s destroys a stalled DELETE connection when its request effect is interrupted",

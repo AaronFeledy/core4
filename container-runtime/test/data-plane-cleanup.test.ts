@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Context, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect";
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
@@ -17,6 +18,15 @@ const multiplexedStderr = (payload: Uint8Array): Uint8Array => {
 type Cleanup =
   | { readonly kind: "status"; readonly status: number; readonly body?: string }
   | { readonly kind: "transport" };
+
+/** A non-string redaction result means the value could not be made safe, so it is fully masked. */
+const scriptRedactor = (redact: (value: unknown) => unknown): Redactor => ({
+  redactString: (value) => {
+    const redacted = redact(value);
+    return typeof redacted === "string" ? redacted : "[redacted]";
+  },
+  redactValue: redact,
+});
 
 interface Script {
   readonly cleanup: Cleanup;
@@ -73,7 +83,7 @@ const recordedPlane = (
     providerId: "test",
     api,
     capabilities: { volumeSnapshot: "none" },
-    redactDetails: script.redact ?? ((value) => value),
+    redactor: scriptRedactor(script.redact ?? ((value) => value)),
   });
 };
 

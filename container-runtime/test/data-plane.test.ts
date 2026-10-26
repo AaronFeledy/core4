@@ -814,7 +814,7 @@ describe("provider data plane", () => {
           const provider = makeProviderDataPlane({
             providerId: "test",
             capabilities: { volumeSnapshot: "none" },
-            redactDetails: (value) => value,
+            redactor: passthroughRedactor,
             api: {
               request: (request) => {
                 requests.push(request);
