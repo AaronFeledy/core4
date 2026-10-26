@@ -36,6 +36,7 @@ After expression materialization succeeds, lint collects independent findings fr
 | `landofile.service` | Service-type configuration: native port vars, reserved ports, unsupported versions, storage scopes, duplicate log source ids, `appMount`, `webroot` on a type without support | `services.db.environment.PGPORT` |
 | `landofile.hostname` | Each `services.<name>.hostnames:` entry is a plain DNS name after evaluation | `services.web.hostnames[0]` |
 | `landofile.route` | Route syntax and authored HTTP endpoint selection in service `routes:` and top-level `proxy:` after evaluation | `services.web.routes[1]`, `proxy.web[0]` |
+| `landofile.network` | Service `networks:` keys are declared at the top level, no `networks.default`, `name` only with `external: true`, no `driver` on an external network, valid keys | `services.web.networks.backend`, `networks.backend.name` |
 | `landofile.healthcheck` | Authored `kind: http` or `kind: tcp` | `services.web.healthcheck.kind` |
 | `landofile.event` | Each key under `events:` is a lifecycle event or the `pre-`/`post-` bracket of a tooling task | `events.pre-buidl` |
 | `landofile.tooling` | No tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-`/`post-` events are reserved, such as `start` or `pull` | `tooling.run` |
@@ -49,7 +50,7 @@ An include failure points at the entry that declared it: `path` is `["includes",
 
 When the resolve pass completes, `lando start` and `lando app:cache:refresh` run the same shared checks, event and tooling names included, and fail with one `LandofileValidationError` listing the same issues: same `rule`, `path`, `message`, `suggestion`, and `source`. Planning then goes further than lint can without a provider or an assembled plan:
 
-- provider capability checks and anything resolved from capabilities
+- provider capability checks and anything resolved from capabilities, including network attachment fields such as `networks.*.ipv4_address` that no bundled provider realizes
 - feature application
 - automatic route selection and route conflicts (`RouteInputError`)
 - `dependsOn` checks

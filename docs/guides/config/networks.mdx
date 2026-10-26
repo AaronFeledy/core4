@@ -1,0 +1,189 @@
+---
+id: networks
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 90000
+tags: [beta, docs, config, compose, networking]
+---
+
+# Join a service to another network
+
+Declare a network under top-level `networks:` and list it on a service to put that service on one more network. Use it to reach the containers of another Compose project that runs on the same engine, or to give a few of your own services a private network of their own. A service keeps its place on the app network either way, so the rest of the app still reaches it by its service key.
+
+Save this as `.lando.yml` in an app directory. It joins `web` to a network that a sibling Compose project already created, and gives `web` and `cache` a second, app-owned network:
+
+```yaml
+name: networks-demo
+networks:
+  backend: {}
+  shared:
+    name: mailstack_default
+    external: true
+services:
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    home: false
+    networks:
+      backend: {}
+      shared:
+        aliases: [api]
+  cache:
+    type: compose
+    image: valkey/valkey:8-alpine
+    home: false
+    networks: [backend]
+```
+
+Lint the file before you start anything:
+
+```sh
+lando app:config:lint --format=json
+```
+
+`result.valid` is `true` when every network a service lists is declared and every declaration is well formed. `lando app:cache:refresh` plans the app without starting it, which also checks that your provider supports every network field you used. Then run `lando start`. If `mailstack_default` doesn't exist on the engine yet, start fails before it creates anything, with `Network mailstack_default: this external network does not exist.` and the remediation `Start the project that owns this network or create it, then run lando start again.` Start that project first, or drop the `shared` network until you need it.
+
+Once the app is up, check name resolution from inside `web`. Replace `mail` with a service in the sibling project:
+
+```sh
+lando exec web -- getent hosts mail
+lando exec web -- getent hosts cache
+```
+
+The first line proves `web` sees the sibling project's network. The second proves the app network still works: `cache` resolves by its service key because membership is additive.
+
+## How the two spellings relate
+
+A service lists networks as a short list or as a mapping. The list form is the mapping form with no options, so `networks: [backend]` and `networks: { backend: {} }` mean the same thing. Use the mapping when you want `aliases`. `lando app:config --format=json` shows the resolved mapping either way.
+
+The key you list must exist under top-level `networks:`, with one exception: `default` always means the app network. `default: { aliases: [frontend] }` adds a DNS name on the app network without declaring anything at the top level. Declaring your own `networks.default` is a lint error, because Lando owns that network.
+
+Network keys start with a letter or digit and use only letters, digits, `_`, `.`, and `-`.
+
+## Membership is additive
+
+Every service is always on its app network and on Lando's shared proxy network. `networks:` adds memberships; it never removes one. This is different from Docker Compose, where listing networks on a service replaces `default`. It means `networks:` is not an isolation tool: you can't use it to hide one service from another in the same app.
+
+## Reach another project's containers
+
+Set `external: true` to join a network that already exists on the container engine. `name` is the network's real name; it defaults to the key when you leave it out. Compose names a project's default network `<project>_default`, so a stack started from `~/mailstack` is usually on `mailstack_default`:
+
+```yaml
+networks:
+  shared:
+    name: mailstack_default
+    external: true
+```
+
+Lando never creates, changes, or removes an external network. `lando destroy` leaves it alone. An external network can't declare a `driver`; the project that owns the network already decided that.
+
+### Which engine the other project is on
+
+Joining another project's network only works when that project runs on the same engine as Lando's provider. The default `lando` provider runs its own managed Podman, so a stack you start with `docker compose up` is not on it, and an `external: true` network pointing at that stack fails with the "does not exist" error above. Reach that kind of stack through its published ports and `host.lando.internal` instead; see [Reach your host from inside a service](../services/home-and-host.mdx#reach-your-host-from-inside-a-service).
+
+After `lando setup --provider=docker`, Lando's containers and `docker compose` projects share one engine and you can join a project's `<project>_default` network directly. The same holds for `--provider=podman` and `podman compose`. See [Pick a container provider](../setup/provider-selection.mdx).
+
+## Give services a private network
+
+A top-level entry without `external` is an app-owned network. Lando creates it as `lando-<app>_<key>` the first time a service joins it, so `backend` in `networks-demo` becomes `lando-networks-demo_backend`. An optional `driver` passes through to the engine. A declared network that no service lists is never created.
+
+```yaml
+networks:
+  backend: {}
+services:
+  web:
+    networks: [backend]
+  cache:
+    networks: [backend]
+```
+
+Lando names the networks it creates, so `name:` on an app-owned network is a lint error. Set `external: true` when you mean a network that already exists.
+
+`lando destroy` removes app-owned networks. Removing one from the Landofile does not remove it from the engine on the next start; it stays until the next `lando destroy`.
+
+## Names on an extra network
+
+On every extra network a member is reachable as `<service>.<app>.internal` plus whatever you put in `aliases`. Lando does not add the bare service key there, because other projects share that network and two of them may both have a `db`. In the example above, a container in the sibling project reaches `web` as `api` or `web.networks-demo.internal`, not as `web`. Your `web` reaches the sibling's containers by whatever names that project gave them, which for a Compose project includes bare service names.
+
+Prefer the qualified name when you write config that crosses projects. If a network you joined also has a service named like one of yours, a bare lookup can land on either one; `db.<app>.internal` always means yours. The full naming table is in [Reach services by name](../subsystems/service-dns.mdx).
+
+## What lint checks, and what only start checks
+
+`lando app:config:lint` reports every network problem it can see without a provider, under rule `landofile.network`:
+
+- a service lists a key that is not under top-level `networks:` (and is not `default`)
+- a top-level `networks.default`
+- `name` on a network without `external: true`
+- `driver` on a network with `external: true`
+- an external network whose name is one of Lando's own networks, such as the app network `lando-<app>` or the shared proxy network
+- an external network whose name starts with `lando-<app>_`, the prefix Lando uses for this app's own networks
+- two joined entries that resolve to the same network, for example two external entries with the same `name`
+- a key with characters outside letters, digits, `_`, `.`, and `-`
+
+Lint does not report the attachment fields that no bundled provider realizes: `ipv4_address`, `ipv6_address`, `mac_address`, `link_local_ips`, `driver_opts`, `priority`, `gw_priority`, and `interface_name`. Those pass lint and fail `lando start` with a `CapabilityError` naming the field, such as `networks.*.ipv4_address`. Remove the field; a static address on a Lando-managed network has no supported spelling today. Whether an external network exists is also a start-time check.
+
+<Guide>
+  <Scenario id="declared-networks-lint-clean" render>
+    <Step name="scaffold">
+      <UseFixture name="networks-demo" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect-resolved-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"networks\":\\s*\\{\\s*\"backend\":\\s*\\{\\s*\\},\\s*\"shared\":\\s*\\{\\s*\"name\":\\s*\"mailstack_default\",\\s*\"external\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"shared\":\\s*\\{\\s*\"aliases\":\\s*\\[\\s*\"api\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"networks\":\\s*\\{\\s*\"backend\":\\s*\\{\\s*\\}" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="undeclared-network-fails-lint" render>
+    <Step name="scaffold">
+      <UseFixture name="networks-undeclared" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.network\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"networks\",\\s*\"backend\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "Declare backend under top-level networks:" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="misdeclared-networks-fail-lint" render={false} reason="Regression for networks.default, name without external, and driver with external.">
+    <Step name="scaffold">
+      <UseFixture name="networks-misdeclared" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "Lando owns the default app network\\." } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "App-owned networks cannot declare a physical name\\." } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "External networks cannot declare a driver\\." } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Tear down
+
+`lando destroy -y` removes the app's containers and its app-owned networks, including `lando-networks-demo_backend`. The external `mailstack_default` network and the project that owns it are untouched.
+
+## Next
+
+- [Reach services by name](../subsystems/service-dns.mdx)
+- [Paste a Compose service into a Landofile](./compose-service-block.mdx)
+- [Use Compose keys in a Landofile](./compose-compatibility.mdx)

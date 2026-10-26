@@ -34,6 +34,7 @@ The default provider is `lando` (managed Podman).
 | --- | --- | --- |
 | Another service in this app | The service key | `database` |
 | Another app, or Traefik's backend | `<service>.<app>.internal` | `database.service-dns-demo.internal` |
+| A network you joined with `networks:` | `<service>.<app>.internal` or an authored alias | `api.service-dns-demo.internal` |
 | Host browser | `*.lndo.site` | `https://app.service-dns-demo.lndo.site` |
 
 Use the service key inside the app. Use `<service>.<app>.internal` across apps and for Traefik backends. Use `LANDO_MAIL_HOST` for Mailpit. Use `*.lndo.site` only in the host browser.
@@ -77,6 +78,10 @@ Global Mailpit is `mailpit.global.internal`. Non-global `type: lando` services g
 `lando info` does not list `.internal` names. Its `app`-scope connections use plain service keys on the app network; cross-app aliases live on the shared bridge and are not connections.
 
 Issued leaf certs list the service name and `<service>.<app>.internal` as SANs.
+
+## Join another network
+
+To reach the containers of another Compose project on the same engine, or to give a few services a private network, declare it under top-level `networks:` and list it on the service. The service stays on its app network. On the extra network it answers to `<service>.<app>.internal` and any `aliases` you set, not to its bare service key, because other projects share that network. See [Join a service to another network](../config/networks.mdx).
 
 Routes need shared cross-app networking and the same provider as the host router. The default `lando` provider advertises shared networking on Linux, macOS, and Windows. A routed app pinned to a different provider fails planning with `RouteProviderMismatchError`. See [Routing needs one provider](../setup/provider-selection.mdx#routing-needs-one-provider).
 

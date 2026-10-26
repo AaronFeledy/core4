@@ -18,4 +18,6 @@ Each disposition describes what happens during planning:
 
 Treat normalized and preserved entries as accepted only for the shapes the matrix documents. Use the matrix remediation for rejected input.
 
+Two keys change meaning on the way in. Top-level `networks:` and service `networks:` are normalized, but membership is additive: a service stays on its app network and the shared proxy network, and `networks:` adds more. In Compose, listing networks on a service replaces `default`. See [Join a service to another network](./networks.mdx). `network_mode` is rejected; translate it to `networks:`.
+
 For a runnable example, continue with [Paste a Compose service into a Landofile](./compose-service-block.mdx).
