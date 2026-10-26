@@ -8,13 +8,13 @@ tags: [beta, docs, subsystems, networking, host, compose]
 
 # Reach host services and sibling stacks
 
-Your app container needs something that runs outside Lando, such as an API on your host, a name from your host's `/etc/hosts`, or a service in another Compose project. `localhost` inside a container is the container itself, so point the app at the host gateway instead.
+Use `host.lando.internal` to call an API or other service running on your computer from a Lando container. `localhost` inside the container points back to that container.
 
-You need Lando 4 with a ready provider. Run these commands from a new app directory, then merge the keys into your own Landofile.
+You need a working Lando 4 setup and Python 3 for this example. Keep your current provider; Docker is not required. If you haven't set up Lando yet, follow [Pick a container provider](../setup/provider-selection.mdx). On Windows, run the host commands in PowerShell.
 
 ## Configure the app
 
-Save this as `.lando.yml`:
+Create an empty app directory and save this as `.lando.yml`:
 
 ```yaml
 name: host-reach-demo
@@ -29,26 +29,57 @@ services:
       - "api.test:host-gateway"
 ```
 
-- `web` is a small Alpine container with `wget`, standing in for your app service.
-- `extra_hosts` maps `api.test` to the host gateway for this service. The host's `/etc/hosts` doesn't apply inside containers, so each name your app expects on the host needs an entry here, on each service that uses it.
+`web` is an Alpine container with `wget`, standing in for your app service. The optional `extra_hosts` entry adds `api.test` for an application that expects that name.
 
-Lando adds `host.lando.internal` to every service and sets `LANDO_HOST_IP=host.lando.internal` when the provider can reach the host. You don't configure either one.
-
-[Reach your host from inside a service](../services/home-and-host.mdx#reach-your-host-from-inside-a-service) covers the alias and variable on their own.
+Start the app from this directory:
 
 ```sh
 lando start
+lando exec web -- sh -c 'echo "$LANDO_HOST_IP"'
 ```
+
+The second command should print `host.lando.internal`. Lando adds that alias and variable when the provider supports host access; you don't configure them yourself. See [Reach your host from inside a service](../services/home-and-host.mdx#reach-your-host-from-inside-a-service) for that behavior.
 
 ## Bind the host service to 0.0.0.0
 
-Start a demo HTTP server on the host, listening on all interfaces (on Windows, use `python` or `py` instead of `python3`):
+The demo server listens on all IPv4 interfaces. Other devices may reach it wherever your firewall allows access, so serve only a new, empty directory, not your project or home directory. For a real API or database, prefer a specific reachable host interface and restrict access before widening its bind address.
+
+In a second host terminal, create the empty directory and start the server. On Windows, replace `python3` with `py` or `python`:
 
 ```sh
-python3 -m http.server 8000 --bind 0.0.0.0 &
+mkdir host-service-demo
+cd host-service-demo
+python3 -m http.server 8000 --bind 0.0.0.0
 ```
 
-Check its bind address on the host:
+Leave this terminal running. Keeping the server in the foreground also lets you stop it with Ctrl+C on every platform.
+
+## Reach the host from the container
+
+Back in the app directory in your first terminal, request the server:
+
+```sh
+lando exec web -- wget -qO- http://host.lando.internal:8000/
+```
+
+The HTML directory listing confirms the container reached your host server. Use `http://host.lando.internal:8000` in your app's configuration, or read the hostname from `LANDO_HOST_IP` and supply the port separately.
+
+## Use a host name from extra_hosts
+
+The example maps `api.test` to the same host gateway. Check both names and make a request:
+
+```sh
+lando exec web -- getent hosts api.test host.lando.internal
+lando exec web -- wget -qO- http://api.test:8000/
+```
+
+Both names should resolve to the same address and return the same listing. Use `http://api.test:8000` when the host service expects `api.test` in the HTTP `Host` header.
+
+Don't rely on a name in your computer's hosts file being available or correct inside a container. Docker and Podman handle that file differently, and a copied `127.0.0.1` entry still points back to the container. Add `extra_hosts` to each service that needs the name.
+
+## Check a refused or timed-out connection
+
+Check where the server is listening on the host. Run the command for your operating system:
 
 ```sh
 ss -ltn 'sport = :8000'                # Linux
@@ -56,40 +87,19 @@ lsof -nP -iTCP:8000 -sTCP:LISTEN       # macOS
 netstat -an | findstr :8000            # Windows
 ```
 
-On native Linux, the local address must be `0.0.0.0:8000` or `*:8000`, not `127.0.0.1:8000`. A server bound only to `127.0.0.1` refuses connections from containers, because container traffic arrives on the host's bridge interface, not on loopback. Change the server's listen address to `0.0.0.0`, or to the host's bridge IP if you don't want it on the LAN. A host firewall such as ufw or firewalld can still drop traffic from the container bridge; if the request times out, allow the port from that interface.
+The demo should listen on `0.0.0.0:8000` or `*:8000`. On a native Linux bridge network, a service bound only to `127.0.0.1` cannot accept traffic sent to the host's bridge address. Bind to an appropriate host interface, or use `0.0.0.0` with the access restrictions described above.
 
-A `0.0.0.0` bind also exposes the server to your network wherever the host firewall allows it. Stop the demo server when you finish.
-
-## Reach the host from the container
-
-Wait for the server, then request it through the host alias:
-
-```sh
-lando exec web -- timeout 30 sh -c 'until wget -q -O /dev/null http://host.lando.internal:8000/; do sleep 1; done'
-lando exec web -- wget -qO- http://host.lando.internal:8000/
-lando exec web -- sh -c 'echo $LANDO_HOST_IP'
-```
-
-The first command returns once the container can connect to the host server. The second prints the directory listing the server returns, which proves the request crossed from the container to your host. The third prints `host.lando.internal`; read the variable in app config instead of hard-coding the name.
-
-## Use a host name from extra_hosts
-
-```sh
-lando exec web -- getent hosts api.test host.lando.internal
-lando exec web -- wget -qO- http://api.test:8000/
-```
-
-Both names resolve to the same gateway address, and the request to `api.test` reaches the same host server. Use `http://api.test:8000` as the base URL when the host service checks the `Host` header.
+Rootless runtimes and VM-backed providers can forward host traffic differently. Don't assume the gateway address printed inside a container is an address you can bind on your computer. If the server is listening but the request times out, check the host firewall and allow only the required port and source network. Don't disable the firewall to make the example work.
 
 ## Reach a sibling Compose stack
 
-Another Compose project, such as a shared mail catcher, runs on its own network that Lando services don't join. [Reach another project's services](../config/networks.mdx) covers the three ways in: [fold the stack into your app](../config/networks.mdx#fold-the-stack-into-your-app) with `include:`, [join the stack's network](../config/networks.mdx#join-the-stacks-network) on the `docker` or `podman` provider, or [reach the stack through your host](../config/networks.mdx#reach-the-stack-through-your-host).
+For another Compose project's database, mail catcher, or API, follow [Reach another project's services](../config/networks.mdx). It covers [including the stack in your app](../config/networks.mdx#fold-the-stack-into-your-app), [joining an existing network on the same engine](../config/networks.mdx#join-the-stacks-network), and [using a published host port](../config/networks.mdx#reach-the-stack-through-your-host). The default `lando` provider manages its own Podman runtime, separate from a system Docker or Podman stack.
 
-When you take the host route, the bind rules above apply to published ports too. Publish without a `127.0.0.1:` prefix, for example `"8025:8025"`, then call `http://host.lando.internal:8025` from the app. On native Linux a loopback-only publication is not reachable from Lando services. To keep the port off the LAN, prefix it with the host gateway IP that `lando exec web -- getent hosts host.lando.internal` prints, for example `"172.17.0.1:8025:8025"`.
+With the host-port route, point the app at `http://host.lando.internal:8025` for a service published on host port `8025`. A loopback-only publication may not be reachable from the container, especially over a native Linux bridge. Before changing it, check the exposure: `"0.0.0.0:8025:8025"` publishes on all IPv4 interfaces. Prefer a suitable host interface and firewall restrictions when the service must stay off the LAN. A gateway IP from inside a VM or rootless network is not necessarily a usable publish address.
 
 ## Check the Lando configuration
 
-These checks confirm the app starts and keeps the `extra_hosts` entry. They don't start a host server; use the steps above for that:
+These checks validate the Landofile and its configured host alias. They don't prove a connection to your host; use the requests above for that:
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -116,12 +126,11 @@ These checks confirm the app starts and keeps the `extra_hosts` entry. They don'
 
 ## Clean up
 
+Press Ctrl+C in the server terminal. Then remove the demo app's containers from the app directory:
+
 ```sh
 lando destroy -y
-kill %1
 ```
-
-`kill %1` stops the demo server, but only from the shell that started it. Otherwise, stop the process listening on port 8000.
 
 ## Next
 
