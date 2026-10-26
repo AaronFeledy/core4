@@ -230,93 +230,108 @@ test("explicit live symlink is accepted and relayed by authored path", async () 
   }
 });
 
-test("explicit socket owned by another user is socket-owner-mismatch", async () => {
-  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
-  // Given an explicit socket whose target is owned by another uid.
-  const foreignUid = (process.getuid?.() ?? 0) + 12_345;
-  // When discovery inspects that socket.
-  const result = await Effect.runPromise(
-    Effect.result(
-      discoverHostSshAgent({
-        platform: "linux",
-        home: "/home/test",
-        env: {},
-        explicitSocket: "/foreign.sock",
-        inspect: () => Effect.succeed({ kind: "socket", uid: foreignUid }),
-        probe: alive,
-      }),
-    ),
-  );
-  // Then host mode names the target owner and does not fall through.
-  expect(result).toMatchObject({
-    _tag: "Failure",
-    failure: {
-      _tag: "SshAgentUnavailableError",
-      reason: "socket-owner-mismatch",
-      socketPath: "/foreign.sock",
-    },
-  });
-  if (result._tag !== "Failure") throw new Error("expected failure");
-  expect(result.failure.message).toContain(`uid ${foreignUid}`);
-});
+test.skipIf(process.platform === "win32")(
+  "explicit socket owned by another user is socket-owner-mismatch",
+  async () => {
+    const { discoverHostSshAgent } = await import(
+      "../../../src/subsystems/ssh-agent/host-agent-discovery.ts"
+    );
+    // Given an explicit socket whose target is owned by another uid.
+    const foreignUid = (process.getuid?.() ?? 0) + 12_345;
+    // When discovery inspects that socket.
+    const result = await Effect.runPromise(
+      Effect.result(
+        discoverHostSshAgent({
+          platform: "linux",
+          home: "/home/test",
+          env: {},
+          explicitSocket: "/foreign.sock",
+          inspect: () => Effect.succeed({ kind: "socket", uid: foreignUid }),
+          probe: alive,
+        }),
+      ),
+    );
+    // Then host mode names the target owner and does not fall through.
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "SshAgentUnavailableError",
+        reason: "socket-owner-mismatch",
+        socketPath: "/foreign.sock",
+      },
+    });
+    if (result._tag !== "Failure") throw new Error("expected failure");
+    expect(result.failure.message).toContain(`uid ${foreignUid}`);
+  },
+);
 
-test("explicit symlink whose target is owned by another user is socket-owner-mismatch", async () => {
-  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
-  // Given a link we own that points at a socket owned by someone else.
-  const self = process.getuid?.() ?? 0;
-  const foreignUid = self + 12_345;
-  // When discovery inspects that explicit symlink.
-  const result = await Effect.runPromise(
-    Effect.result(
-      discoverHostSshAgent({
-        platform: "linux",
-        home: "/home/test",
-        env: {},
-        explicitSocket: "/link.sock",
-        inspect: () =>
-          Effect.succeed({ kind: "symlink", uid: self, targetUid: foreignUid, targetKind: "socket" }),
-        probe: alive,
-      }),
-    ),
-  );
-  // Then the target owner is named even though the link uid matches.
-  expect(result).toMatchObject({
-    _tag: "Failure",
-    failure: { reason: "socket-owner-mismatch", socketPath: "/link.sock" },
-  });
-  if (result._tag !== "Failure") throw new Error("expected failure");
-  expect(result.failure.message).toBe(
-    `The configured SSH agent socket is owned by uid ${foreignUid}, not the current user.`,
-  );
-});
+test.skipIf(process.platform === "win32")(
+  "explicit symlink whose target is owned by another user is socket-owner-mismatch",
+  async () => {
+    const { discoverHostSshAgent } = await import(
+      "../../../src/subsystems/ssh-agent/host-agent-discovery.ts"
+    );
+    // Given a link we own that points at a socket owned by someone else.
+    const self = process.getuid?.() ?? 0;
+    const foreignUid = self + 12_345;
+    // When discovery inspects that explicit symlink.
+    const result = await Effect.runPromise(
+      Effect.result(
+        discoverHostSshAgent({
+          platform: "linux",
+          home: "/home/test",
+          env: {},
+          explicitSocket: "/link.sock",
+          inspect: () =>
+            Effect.succeed({ kind: "symlink", uid: self, targetUid: foreignUid, targetKind: "socket" }),
+          probe: alive,
+        }),
+      ),
+    );
+    // Then the target owner is named even though the link uid matches.
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "socket-owner-mismatch", socketPath: "/link.sock" },
+    });
+    if (result._tag !== "Failure") throw new Error("expected failure");
+    expect(result.failure.message).toBe(
+      `The configured SSH agent socket is owned by uid ${foreignUid}, not the current user.`,
+    );
+  },
+);
 
-test("explicit symlink owned by another user is socket-owner-mismatch", async () => {
-  const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
-  // Given a foreign-owned link that points at a socket we own.
-  const self = process.getuid?.() ?? 0;
-  const foreignUid = self + 12_345;
-  // When discovery inspects that explicit symlink.
-  const result = await Effect.runPromise(
-    Effect.result(
-      discoverHostSshAgent({
-        platform: "linux",
-        home: "/home/test",
-        env: {},
-        explicitSocket: "/link.sock",
-        inspect: () =>
-          Effect.succeed({ kind: "symlink", uid: foreignUid, targetUid: self, targetKind: "socket" }),
-        probe: alive,
-      }),
-    ),
-  );
-  // Then the link owner is named even though the target uid matches.
-  expect(result).toMatchObject({
-    _tag: "Failure",
-    failure: { reason: "socket-owner-mismatch", socketPath: "/link.sock" },
-  });
-  if (result._tag !== "Failure") throw new Error("expected failure");
-  expect(result.failure.message).toContain(`uid ${foreignUid}`);
-});
+test.skipIf(process.platform === "win32")(
+  "explicit symlink owned by another user is socket-owner-mismatch",
+  async () => {
+    const { discoverHostSshAgent } = await import(
+      "../../../src/subsystems/ssh-agent/host-agent-discovery.ts"
+    );
+    // Given a foreign-owned link that points at a socket we own.
+    const self = process.getuid?.() ?? 0;
+    const foreignUid = self + 12_345;
+    // When discovery inspects that explicit symlink.
+    const result = await Effect.runPromise(
+      Effect.result(
+        discoverHostSshAgent({
+          platform: "linux",
+          home: "/home/test",
+          env: {},
+          explicitSocket: "/link.sock",
+          inspect: () =>
+            Effect.succeed({ kind: "symlink", uid: foreignUid, targetUid: self, targetKind: "socket" }),
+          probe: alive,
+        }),
+      ),
+    );
+    // Then the link owner is named even though the target uid matches.
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "socket-owner-mismatch", socketPath: "/link.sock" },
+    });
+    if (result._tag !== "Failure") throw new Error("expected failure");
+    expect(result.failure.message).toContain(`uid ${foreignUid}`);
+  },
+);
 
 test.skipIf(process.platform === "win32")(
   "explicit socket ownership is checked with real filesystem inspection",
