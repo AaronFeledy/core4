@@ -10,6 +10,9 @@ export const canonicalTarget = (target: string): string => posix.resolve("/", ta
 export const appMountTarget = (appMount: ServiceConfig["appMount"]): PortablePath =>
   PortablePath.make(canonicalTarget(typeof appMount === "object" ? appMount.target : "/app"));
 
+export const isAppRelativeSource = (source: string): boolean =>
+  !source.startsWith("~") && !isAbsolute(source) && !win32.isAbsolute(source) && !/^[A-Za-z]:/u.test(source);
+
 export const resolveBindSource = (source: string, appRoot: string): string => {
   if (DRIVE_LETTER_PREFIX.test(source)) return source;
   const expanded =
@@ -26,6 +29,12 @@ export const addServerConfigMount = (
 ): boolean => {
   const server = ctx.normalizedConfig.config?.server;
   if (server === undefined || server.length === 0) return false;
-  ctx.addMount({ type: "bind", source: resolveBindSource(server, ctx.appRoot), target, readOnly: true });
+  ctx.addMount({
+    type: "bind",
+    source: resolveBindSource(server, ctx.appRoot),
+    target,
+    readOnly: true,
+    ...(isAppRelativeSource(server) ? { relativeTo: "app" as const } : {}),
+  });
   return true;
 };

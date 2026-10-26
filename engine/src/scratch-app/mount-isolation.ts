@@ -2,7 +2,7 @@ import { lstat, realpath } from "node:fs/promises";
 import { posix, win32 } from "node:path";
 import { ScratchAppError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { type AppPlan, PortablePath, ServiceName, orderMounts, serviceAppMount } from "@lando/sdk/schema";
+import { type AppPlan, PortablePath, ServiceName, orderMounts } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 
@@ -28,11 +28,15 @@ export const applyMountCwd = (
   const primaryName = findPrimaryServiceName(plan);
   const primary = primaryName === undefined ? undefined : plan.services[primaryName];
   if (primary === undefined) return undefined;
-  const appMount = serviceAppMount(primary);
-  if (target !== undefined && target !== appMount?.target) {
+  if (target !== undefined) {
     const containerTarget = PortablePath.make(target);
+    const replaced = primary.mounts.find((mount) => mount.target === containerTarget);
+    const mountKey = replaced?.type === "bind" ? replaced.mountKey : undefined;
     return {
       ...plan,
+      fileSync: plan.fileSync.filter(
+        ({ session }) => !(session.service === primary.name && session.mountKey === mountKey),
+      ),
       services: {
         ...plan.services,
         [primary.name]: {
@@ -46,6 +50,7 @@ export const applyMountCwd = (
               target: containerTarget,
               readOnly: false,
               realization: "passthrough",
+              ...(replaced?.type === "bind" && replaced.role === "app" ? { role: "app" as const } : {}),
             },
           ]),
         },
@@ -112,7 +117,7 @@ export const isolateScratchMounts = Effect.fn("ScratchAppService.isolateMounts")
   for (const service of Object.values(plan.services)) {
     const removedTargets: string[] = [];
     for (const mount of service.mounts) {
-      if (mount.type !== "bind") continue;
+      if (mount.type !== "bind" || (suppressRelative && mount.origin === "derived")) continue;
       const relative = mount.relativeTo === "app";
       if (!(relative || (suppressRelative && mount.role === "app"))) continue;
       const keep =
@@ -138,11 +143,22 @@ export const isolateScratchMounts = Effect.fn("ScratchAppService.isolateMounts")
         );
     }
     const mounts = service.mounts.filter((mount) => {
+      const owner =
+        suppressRelative && mount.origin === "derived"
+          ? service.mounts.reduce<string | undefined>(
+              (deepest, candidate) =>
+                candidate.type === "bind" &&
+                candidate.origin !== "derived" &&
+                candidate.target !== mount.target &&
+                mount.target.startsWith(`${candidate.target.replace(/\/$/u, "")}/`) &&
+                (deepest === undefined || candidate.target.length > deepest.length)
+                  ? candidate.target
+                  : deepest,
+              undefined,
+            )
+          : undefined;
       const removed =
-        removedTargets.includes(mount.target) ||
-        (suppressRelative &&
-          mount.origin === "derived" &&
-          removedTargets.some((target) => mount.target.startsWith(`${target.replace(/\/$/u, "")}/`)));
+        removedTargets.includes(mount.target) || (owner !== undefined && removedTargets.includes(owner));
       if (removed && mount.type === "bind" && mount.mountKey !== undefined)
         removedSessions.add(`${service.name}/${mount.mountKey}`);
       return !removed;

@@ -356,13 +356,6 @@ const servicePathKey = (
   path: PortablePath,
 ): string => `${target.app}:${target.service}:${path}`;
 
-const firstDataStoreMount = (
-  mounts: Parameters<RuntimeProviderShape["run"]>[0]["mounts"],
-): VolumeMountPlan | undefined =>
-  Array.isArray(mounts)
-    ? mounts.find((mount): mount is VolumeMountPlan => mount.type === "volume")
-    : undefined;
-
 const storageScopeFromKey = (scope: string | undefined): StorageScope | undefined =>
   scope === "service" || scope === "app" || scope === "global" ? scope : undefined;
 
@@ -395,7 +388,7 @@ const collectAsyncBytes = (input: AsyncIterable<Uint8Array> | undefined): Effect
   });
 
 const mountedVolumeKeyForSpec = (spec: Parameters<RuntimeProviderShape["run"]>[0]): string | undefined => {
-  const mount = firstDataStoreMount(spec.mounts);
+  const mount = spec.mounts?.[0];
   return mount === undefined ? undefined : volumeKey({ app: TEST_APP_ID, store: mount.store });
 };
 

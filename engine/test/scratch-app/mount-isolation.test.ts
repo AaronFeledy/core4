@@ -165,3 +165,58 @@ test("fork baked removes relative binds and only derived descendants of their ta
     "/app/shared",
   ]);
 });
+
+test("fork baked retains derived mounts owned by a nested absolute bind", async () => {
+  // Given a removed app bind surrounding a retained absolute include and its derived mounts.
+  const include = absoluteBind("/absolute/sdk", "/app/vendor/acme/sdk");
+  const nested = bind("/absolute/sdk/src", "/app/vendor/acme/sdk/src", {
+    origin: "derived",
+  });
+  const mounts = [
+    bind("/original", "/app", { role: "app" }),
+    include,
+    nested,
+    {
+      type: "volume" as const,
+      origin: "derived" as const,
+      store: "node-modules",
+      target: PortablePath.make("/app/vendor/acme/sdk/node_modules"),
+      readOnly: false,
+    },
+    {
+      type: "tmpfs" as const,
+      origin: "derived" as const,
+      target: PortablePath.make("/app/cache"),
+      readOnly: false,
+    },
+  ];
+  const input: AppPlan = {
+    ...plan,
+    services: { [service.name]: { ...service, mounts } },
+    fileSync: [mounts[0], include, nested].flatMap((mount) =>
+      mount?.type === "bind"
+        ? [
+            {
+              engineId: "mutagen",
+              session: {
+                app: { kind: "user" as const, id: plan.id, root: plan.root },
+                service: service.name,
+                mountKey: mount.target,
+                source: AbsolutePath.make(mount.source),
+                target: { _tag: "volume" as const, name: "sync", path: mount.target },
+                mode: "two-way-safe" as const,
+                excludes: [],
+              },
+            },
+          ]
+        : [],
+    ),
+  };
+  // When baked isolation removes app-relative owners.
+  const result = await Effect.runPromise(
+    isolateScratchMounts(input, true).pipe(Effect.provide(Events.layer)),
+  );
+  // Then the deepest non-derived owner protects its includes, shadows, and sessions.
+  expect(result.services[service.name]?.mounts).toEqual(mounts.slice(1, 4));
+  expect(result.fileSync).toEqual(input.fileSync.slice(1));
+});

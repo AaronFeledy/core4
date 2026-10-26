@@ -192,6 +192,7 @@ describe("mysql ServiceType", () => {
         origin: "service",
         type: "bind",
         source: "/srv/apps/myapp/config/my.cnf",
+        relativeTo: "app",
         target: MYSQL_CONFIG_TARGET,
         readOnly: true,
         realization: "passthrough",

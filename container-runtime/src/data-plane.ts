@@ -62,7 +62,6 @@ import {
   type ServiceName,
   type StorageScope,
   type VolumeInfo,
-  type VolumeMountPlan,
   type VolumeSnapshotRef,
 } from "@lando/sdk/schema";
 import type {
@@ -256,12 +255,6 @@ const serviceContainerName = (target: {
   target.plan === undefined ? undefined : namedServiceContainer(target.plan, String(target.service));
 const ephemeralContainerName = (providerId: string): string =>
   `lando-${sanitize(providerId)}-data-${randomUUID()}`;
-
-const firstVolumeMount = (spec: EphemeralRunSpec): VolumeMountPlan | undefined =>
-  spec.mounts?.find((mount): mount is VolumeMountPlan => mount.type === "volume");
-
-const volumeMounts = (spec: EphemeralRunSpec): ReadonlyArray<VolumeMountPlan> =>
-  spec.mounts?.filter((mount): mount is VolumeMountPlan => mount.type === "volume") ?? [];
 
 const envList = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> | undefined =>
   env === undefined ? undefined : Object.entries(env).map(([key, value]) => `${key}=${value}`);
@@ -526,7 +519,7 @@ const ensureHelperImage = (
 };
 
 const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) => {
-  const mounts = volumeMounts(spec);
+  const mounts = spec.mounts ?? [];
   if (mounts.length === 0) return Effect.void;
   const owner = spec.owner;
   const plan = owner?.plan;
@@ -592,13 +585,13 @@ const createEphemeralContainer = (
   witnessSource?: WitnessMountSource,
 ) => {
   const name = ephemeralContainerName(options.providerId);
-  const mount = firstVolumeMount(spec);
-  const binds = volumeMounts(spec).flatMap((mount) =>
+  const mount = spec.mounts?.[0];
+  const binds = (spec.mounts ?? []).flatMap((mount) =>
     mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
       ? []
       : [`${volumeName(mount.store)}:${mount.target}${mount.readOnly ? ":ro" : ""}`],
   );
-  const mounts = volumeMounts(spec).flatMap((mount) =>
+  const mounts = (spec.mounts ?? []).flatMap((mount) =>
     mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
       ? [
           {
@@ -773,14 +766,14 @@ const waitForEphemeralContainer = (options: ProviderDataPlaneOptions, name: stri
   request(options, "run.wait", {
     method: "POST",
     path: `/containers/${encodeURIComponent(name)}/wait`,
-  }).pipe(Effect.tap((response) => ensure2xx(options, "run.wait", response, firstVolumeMount(spec)?.store)));
+  }).pipe(Effect.tap((response) => ensure2xx(options, "run.wait", response, spec.mounts?.[0]?.store)));
 
 const inspectEphemeralExitCode = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) =>
   request(options, "run.inspect", {
     method: "GET",
     path: `/containers/${encodeURIComponent(name)}/json`,
   }).pipe(
-    Effect.tap((response) => ensure2xx(options, "run.inspect", response, firstVolumeMount(spec)?.store)),
+    Effect.tap((response) => ensure2xx(options, "run.inspect", response, spec.mounts?.[0]?.store)),
     Effect.map((response) => {
       const parsed =
         response.body.length === 0 ? {} : (JSON.parse(response.body) as { State?: { ExitCode?: number } });
@@ -802,7 +795,7 @@ const runBytes = (
           method: "POST",
           path: `/containers/${encodeURIComponent(name)}/start`,
         });
-        yield* ensure2xx(options, "run.start", start, firstVolumeMount(spec)?.store);
+        yield* ensure2xx(options, "run.start", start, spec.mounts?.[0]?.store);
         if (spec.stdinStream !== undefined) {
           yield* Fiber.join(stdinFiber);
         }
@@ -830,7 +823,7 @@ const runBytes = (
               "Provider ephemeral run failed.",
               undefined,
               cause,
-              firstVolumeMount(spec)?.store,
+              spec.mounts?.[0]?.store,
             ),
           ),
         ),
@@ -877,7 +870,7 @@ const runByteStream = (
             method: "POST",
             path: `/containers/${encodeURIComponent(name)}/start`,
           });
-          yield* ensure2xx(options, "run.start", started, firstVolumeMount(spec)?.store);
+          yield* ensure2xx(options, "run.start", started, spec.mounts?.[0]?.store);
           const output = stream(options, "run.logs", {
             method: "GET",
             path: `/containers/${encodeURIComponent(name)}/logs?follow=true&stdout=true&stderr=true`,
@@ -909,7 +902,7 @@ const runByteStream = (
               "Provider ephemeral stream failed.",
               undefined,
               cause,
-              firstVolumeMount(spec)?.store,
+              spec.mounts?.[0]?.store,
             ),
           ),
         ),

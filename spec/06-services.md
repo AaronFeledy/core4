@@ -64,16 +64,16 @@ Artifact builds, including setup probes, MUST remove their temporary build conta
 | Mount type | Contract | Capability |
 |---|---|---|
 | `bind` | Live host path | `bindMounts` |
-| `copy` | Host path copied during artifact build | `copyMounts` |
-| `inline` | Literal content written at the destination | Always |
-| `template` | `TemplateEngine` output materialized as `inline` | Always |
-| `disabled` | Explicitly disables an inherited mount | No-op |
+| `volume` | Named store | `persistentStorage` |
+| `tmpfs` | Memory filesystem with container lifetime | Always |
+
+`MountInput` accepts only these three types. `copy` (host path copied during artifact build, `copyMounts`), `inline` (literal content), `template` (`TemplateEngine` output materialized as `inline`), and `disabled` (removes an inherited mount by target) are deferred (#1810); a Landofile using them fails validation.
 
 `ServicePlan.mounts` is the single ordered list of every container path a service gets: binds (the app mount, authored binds, certificate and configuration files, worktree Git directories), named stores (authored storage, exclude shadows, caches, home), and tmpfs. Targets are canonical and unique, and the list is ordered shallow to deep, so the deepest target wins: a bind nested inside an excluded directory or a store shows through. Precedence at one target is fixed: `mounts:`, `storage:`, and `tmpfs:` beat the Compose tier (`volumes:` and `configs:` grants); two Compose-tier entries at one target fail validation, as Compose rejects duplicate mount points; two of those Lando spellings at one target fail validation in both lint and planning; an authored entry replaces any service-type, feature, or app-feature entry, including the app mount and a type's own data store, and a replaced store's ownership preparation is dropped unless the winner is also a store; two non-authored entries at one target fail planning with `LandofileValidationError` naming the service and target, the same channel as other feature failures. Derived entries (exclude shadows, nested includes, worktree Git directories, home) fill only unoccupied targets. Providers render the list in order and refuse a plan with a duplicate target instead of deduplicating it.
 
 Every entry records its `origin`: `authored` (the Landofile), `service` (the service type, a feature, or an app feature, including the app mount), `derived` (exclude shadows, nested includes, Git directories, home), or `integration` (agent-forwarding and host-proxy overlays added at start). A bind whose source was resolved lexically from the app root also records `relativeTo: app`, which is what scratch isolation rebases or drops (§21.7). Provenance never enters build keys or create fingerprints, and plans recorded before it existed carry none rather than an inferred value. A bind with `fileMode` binds a private copy of its file source with those permission bits; the provider materializes the copy before create as an immutable, content-addressed file in a Lando-owned directory that survives host restarts, and the create fingerprint covers the logical source, content digest, and mode, never the copy's path. Bind and store entries are capability-checked (`bindMounts`, `persistentStorage`); tmpfs is a baseline every provider MUST realize, so it has no capability flag.
 
-Template mounts use app-root-relative `source`, optional `engine`, `vars`, and `mode`. Sources obey include containment (§7.7.6). Engine selection is explicit, then extension-based, then `lando`; values resolve through the standard expression context. Providers receive only rendered `inline` mounts. Rendered output uses the `<userCacheRoot>/templates/<engineId>/...` `template-render` cache (§12.1).
+When they ship, template mounts use app-root-relative `source`, optional `engine`, `vars`, and `mode`. Sources obey include containment (§7.7.6). Engine selection is explicit, then extension-based, then `lando`; values resolve through the standard expression context. Providers receive only rendered `inline` mounts. Rendered output uses the `<userCacheRoot>/templates/<engineId>/...` `template-render` cache (§12.1).
 
 An excluded path belongs to the service. Every bind accepts `excludes` and `includes`; the app mount additionally starts from the defaults `node_modules`, `vendor`, `tmp`, plus service-type presets. Each exclude gets a service-scoped storage shadow; a shadow overlays a directory, so an exclude whose host path exists as a non-directory gets no shadow and stays visible through passthrough binds. An `includes` entry that names an exclude exactly cancels it. An entry that is a literal relative path beneath a shadowed exclude of the same bind keeps that host path: planning binds it from the same source over the shadow, so the Lando 3 translation of `!vendor/acme` works. Includes that are absolute, contain `..`, or contain glob characters fail validation; `excludes` or `includes` on a store or tmpfs entry fail validation. A bare `!` entry in either list fails validation with remediation naming `includes`; the Lando 3 translator lowers `!x` to `includes: [x]`. VCS metadata is a fixed rule, not a key: `.git` is never shadowed, and accelerated engines never sync it unless `includes` names it. The exclusion patterns an accelerated engine receives are derived from the finalized plan, not from the authored list: every effective exclude, the relative target of every other entry mounted beneath that bind (storage shadows, authored and cache stores, tmpfs, and nested binds, which also hide that subtree), and `.git`, deduplicated. A `storage` entry under the app mount and an `excludes` entry for the same path therefore produce the same container layout and the same patterns. Copy includes become binds. Ordering preserves nested-path semantics.
 
@@ -82,7 +82,7 @@ When a passthrough app mount's `.git` is a gitfile (a Git worktree or submodule 
 Every bind entry has `realization: passthrough | accelerated`. The app mount's realization is selected from `bindMountPerformance` (§5.4); every other bind, including authored directory binds and configuration files, is `passthrough`:
 
 - `native` uses provider binds and no `FileSyncEngine` or `pre-file-sync-*` events.
-- `slow` uses a provider-managed `lando-sync-<app-id>-<service>-<mountKeyHash>` volume and a `FileSyncSessionSpec`; the bundled engine is `@lando/file-sync-mutagen` (§4.2).
+- `slow` uses a provider-managed `<app>-<service>-<mountKey>` volume (characters outside `[A-Za-z0-9_.-]` become `-`) and a `FileSyncSessionSpec`; the bundled engine is `@lando/file-sync-mutagen` (§4.2).
 - `none` fails with `CapabilityError`.
 
 The realization is invisible in canonical config and MUST NOT expose engine or session ids. Accelerated engines with `exclusionPatterns` receive the derived patterns, including non-directory paths; otherwise planning retains storage shadows. Exclude entries stay in mount intent and are never silently dropped.
@@ -91,7 +91,7 @@ The realization is invisible in canonical config and MUST NOT expose engine or s
 
 ### 6.5 Storage
 
-Storage declarations use `destination`, optional `source`, `scope`, `type`, `owner`, `permissions`, `kind`, and `key`.
+A storage entry is a target path or `{ store, target, readOnly?, scope?, kind?, key? }`; `store` names the volume and the rest match the mount list.
 
 `home: false | { path? }` controls planned-user home persistence and is enabled by default. Known catalog user/home metadata creates one idempotent service-scoped store. Unknown custom images fail with `HomePathCapabilityError` before provider action unless home storage is disabled or an explicit path is supplied. Equivalent authored storage is deduplicated. Home contents MUST NOT affect build keys. Legacy `/lando`, `/helpers`, and user-config-directory mounts MUST NOT return.
 
@@ -103,9 +103,9 @@ Storage declarations use `destination`, optional `source`, `scope`, `type`, `own
 
 `scope: project` is not accepted. A `ConfigTranslator` MAY rewrite it to `app` (§7.4.1).
 
-`kind: data` is the default. `kind: cache` defines a named cross-app dependency cache, auto-named `lando-cache-<key>` with `key` defaulted from the destination, labeled `dev.lando.storage-kind: "cache"`, and removed only by `lando destroy --purge-caches` or `meta:cache:*`. Cache kind is global by nature; combining it with `scope: service` is a planning error. It is distinct from data movement (§10.11).
+`kind: data` is the default. `kind: cache` defines a named cross-app dependency cache, auto-named `lando-cache-<key>` with `key` defaulted from the target, labeled `dev.lando.storage-kind: "cache"`, and removed only by `lando destroy --purge-caches` or `meta:cache:*`. Cache kind is global by nature; combining it with `scope: service` is a planning error. It is distinct from data movement (§10.11).
 
-Without `source`, names are `lando-<kebab(destination)>` for `global`, `<project>-<kebab(destination)>` for `app`, and `<project>-<service>-<kebab(destination)>` for `service`.
+Without `store`, names are `lando-<kebab(target)>` for `global`, `<project>-<kebab(target)>` for `app`, and `<project>-<service>-<kebab(target)>` for `service` (shipped naming and deferred `global` data storage are tracked in #1810).
 
 Every volume Lando creates carries one label set, written by the single volume-creation owner in `@lando/container-runtime`: `dev.lando.app` (app id), `dev.lando.store` (store name), `dev.lando.scope` (`service`, `app`, or `global`), `dev.lando.volume-instance` (a per-creation generation id that every volume-delete gate rechecks live before a name-addressed removal), the ownership pair below, the scratch labels when a scratch app planned the store, and `dev.lando.storage-kind: "cache"` for cache stores only, so its absence means a data volume. No other storage label exists; providers MUST NOT invent one. The `dev.lando.*` namespace is reserved. Teardown selects volumes through the ownership selector and the class table (§5.3.1), never by name or by a label subset: plain destroy retains data volumes, `--volumes` removes the app- and service-scoped data volumes the selector proves this app owns, `--purge-caches` removes caches, and `dev.lando.scope: "global"` data volumes stay.
 

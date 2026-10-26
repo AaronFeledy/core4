@@ -54,7 +54,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `exec` | Executes a short command and returns a collected `ExecResult`. |
 | `readAppEnvironment` | Required, read-only `(AppSelector, Readonly<Record<string, ReadonlyArray<string>>>)` to `ReadonlyArray<Redacted<string>>`; reads only requested names from existing containers identified by service. Missing containers, names, and empty values contribute nothing; MUST NOT start runtimes or mutate resources. Transport, permission, and malformed-response failures are sanitized typed `ProviderError`s without response bodies. |
 | `execStream` | Streams stdout/stderr and a terminal exit result for a command. |
-| `run` | Runs a scoped ephemeral workload, including declared mounts and input. |
+| `run` | Runs a scoped ephemeral workload with declared volume mounts and input; its spec carries only named-volume mounts, so binds and tmpfs are unrepresentable rather than dropped. |
 | `runStream` | Streaming sibling of `run`, used by generic data movement. |
 | `logs` | Streams raw, source-tagged service logs; redaction occurs at output boundaries. |
 | `inspect` | Returns `ServiceRuntimeInfo` for a selected service. Its required `publications` field is a `PublicationObservation`: `unknown` when evidence could not be established or is malformed, `missing` when the container is proven absent, or `present` with the actual `bindings` (container `port`, `transport`, real `bindAddress`, assigned `hostPort`), where an empty list proves there are none. Inspect MUST NOT merge planned endpoints into the observation or fall back to plan values, and missing or malformed evidence is never reported as known-empty. |
@@ -167,7 +167,7 @@ The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, 
 | `persistentStorage` | Supports persistent stores. |
 | `bindMounts` | Supports host bind mounts. |
 | `bindMountPerformance` | Bind IO is `native`, `slow`, or `none`. |
-| `copyMounts` | Supports copy-style mounts. |
+| `copyMounts` | Supports copy-style mounts; deferred with copy mounts (#1810), so every provider reports `false`. |
 | `hostPortPublish` | Publishing is `native`, `proxy`, `manual`, or `none`. |
 | `routeProvider` | Realizes host routes. |
 | `tlsCertificates` | TLS realization is `native`, `lando`, or `none`. |

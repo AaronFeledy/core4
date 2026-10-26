@@ -236,6 +236,7 @@ describe("mariadb ServiceType", () => {
         origin: "service",
         type: "bind",
         source: "/srv/apps/myapp/config/my.cnf",
+        relativeTo: "app",
         target: MARIADB_CONFIG_TARGET,
         readOnly: true,
         realization: "passthrough",
@@ -257,5 +258,25 @@ describe("mariadb ServiceType", () => {
     expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([]);
     expect(plan.command).toBeUndefined();
     expect(plan.entrypoint).toBeUndefined();
+  });
+
+  test.each([
+    ["./my.cnf", "/srv/apps/myapp/my.cnf", "app"],
+    ["/etc/my.cnf", "/etc/my.cnf", undefined],
+  ] as const)("plans config.server %s with lexical app relativity", async (server, source, relativeTo) => {
+    // Given a server config source in a MariaDB service.
+    const definition = { type: "mariadb", config: { server } };
+    // When service features are finalized into the plan.
+    const plan = await planMariadb(definition);
+    // Then only app-relative sources carry the marker used by scratch isolation.
+    expect(plan.mounts.find((mount) => mount.target === MARIADB_CONFIG_TARGET)).toEqual({
+      type: "bind",
+      origin: "service",
+      source,
+      target: MARIADB_CONFIG_TARGET,
+      readOnly: true,
+      realization: "passthrough",
+      ...(relativeTo === undefined ? {} : { relativeTo }),
+    });
   });
 });

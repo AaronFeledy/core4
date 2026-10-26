@@ -4,6 +4,7 @@ import {
   type AppPlan,
   type BindMountPlan,
   PortablePath,
+  ServiceName,
   serviceAppMount,
 } from "@lando/sdk/schema";
 import { applyMountCwd } from "../../src/scratch-app/service.ts";
@@ -20,6 +21,52 @@ const appBind: BindMountPlan = {
   realization: "accelerated",
   mountKey: "custom-app-key",
 };
+
+test.each(["/app", "/config"])(
+  "explicit mount cwd at %s replaces only its primary bind and session",
+  (target) => {
+    // Given two services sharing a mount key and an independent primary session.
+    const worker = ServiceName.make("worker");
+    const replaced = { ...appBind, target: PortablePath.make(target) };
+    const session = {
+      app: { kind: "user" as const, id: plan.id, root: plan.root },
+      service: web.name,
+      mountKey: appBind.mountKey ?? "custom-app-key",
+      source: AbsolutePath.make("/old"),
+      target: { _tag: "volume" as const, name: "sync", path: replaced.target },
+      mode: "two-way-safe" as const,
+      excludes: [],
+    };
+    const input: AppPlan = {
+      ...plan,
+      root: AbsolutePath.make("/old"),
+      services: {
+        [web.name]: { ...web, mounts: [replaced] },
+        [worker]: { ...web, name: worker, primary: false, mounts: [appBind] },
+      },
+      fileSync: [
+        { engineId: "mutagen", session },
+        { engineId: "mutagen", session: { ...session, service: worker } },
+        { engineId: "mutagen", session: { ...session, mountKey: "other-key" } },
+      ],
+    };
+    // When an explicit target replaces the primary app bind.
+    const result = applyMountCwd(input, target, "/cwd");
+    // Then only that bind and its session change, and app-role discovery still works.
+    const primary = result?.services[web.name];
+    expect(primary === undefined ? undefined : serviceAppMount(primary)).toEqual({
+      type: "bind",
+      origin: "authored",
+      role: "app",
+      source: "/cwd",
+      target: PortablePath.make(target),
+      readOnly: false,
+      realization: "passthrough",
+    });
+    expect(result?.services[worker]).toEqual(input.services[worker]);
+    expect(result?.fileSync).toEqual(input.fileSync.slice(1));
+  },
+);
 
 test("mount cwd removes only the rebound app bind's file-sync session", async () => {
   // Given an app bind with a nonliteral session key and an independent session.
