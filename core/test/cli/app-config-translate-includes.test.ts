@@ -48,7 +48,13 @@ const makeTranslators = (includes: IncludeEntries): readonly ConfigTranslatorSha
     summary: "Encode Landofile",
     inputKinds: ["lando-v4"],
     detect: () => Effect.succeed([]),
-    translate: () => Effect.fail(new ConfigTranslateError({ message: "encoder-only" })),
+    translate: () =>
+      Effect.fail(
+        new ConfigTranslateError({
+          message: "encoder-only",
+          remediation: "Use a translator that implements encode for this fixture.",
+        }),
+      ),
     encode: ({ fragment }) =>
       Effect.succeed({
         text: emitLandofileYaml(

@@ -89,7 +89,13 @@ test.each([
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "configured-default" });
   const load = Effect.succeed(config);
   const unsupported = (name: string) =>
-    Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
+    Effect.fail(
+      new PluginLoadError({
+        message: "unused",
+        pluginName: name,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    );
   const dependencies = Layer.mergeAll(
     Layer.succeed(ConfigLayer.GlobalConfigSources, {
       env: { LANDO_PROVIDER: "requested" },

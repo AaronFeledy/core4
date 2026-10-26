@@ -1,6 +1,6 @@
 import { basename, dirname } from "node:path";
 import { canonicalJson } from "@lando/sdk/digest";
-import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
+import type { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import {
   type ConfigLintResult,
   type ConfigLintViolation,
@@ -11,7 +11,6 @@ import {
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { analyzeComposeRejections } from "./compose/rejections.ts";
-import { findLandofilePath } from "./discovery.ts";
 import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
 import { healthcheckWarnings } from "./lint-healthcheck.ts";
 import { attributeLintIssue, sourceCoordinates } from "./lint-source.ts";
@@ -21,6 +20,7 @@ import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs, TemplateEngineInputs } from "./ports.ts";
 import { acquireLandofileRootLayers } from "./root-compile.ts";
+import { findDiscoveredLandofilePath } from "./service.ts";
 import { prepareLandofileValue } from "./source.ts";
 
 import { getLandofileValueSource } from "./validation.ts";
@@ -89,41 +89,8 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   options: LintLandofileOptions = {},
   inputs?: LandofileRuntimeInputs,
 ): Effect.fn.Return<LandofileLintSnapshot, LandofileNotFoundError | LandofileFormConflictError> {
-  const cwd = options.cwd ?? process.cwd();
   const templates = options.templates ?? inputs?.templates;
-  const discovered = yield* Effect.tryPromise({
-    try: () => findLandofilePath(cwd),
-    catch: (cause) => cause,
-  }).pipe(Effect.result);
-  if (Result.isFailure(discovered)) {
-    if (discovered.failure instanceof LandofileFormConflictError)
-      return yield* Effect.fail(discovered.failure);
-    return {
-      landofilePath: cwd,
-      result: {
-        app: "",
-        file: cwd,
-        valid: false,
-        violations: [
-          {
-            rule: "landofile.discovery",
-            severity: "error",
-            path: [],
-            scopes: ["fragment"],
-            message:
-              discovered.failure instanceof Error
-                ? discovered.failure.message
-                : "Failed to discover Landofile.",
-          },
-        ],
-      },
-    };
-  }
-  const file = discovered.success;
-  if (file === undefined)
-    return yield* Effect.fail(
-      new LandofileNotFoundError({ message: "No .lando.yml or .lando.ts found.", cwd }),
-    );
+  const { filePath: file } = yield* findDiscoveredLandofilePath(options.cwd);
   let documents: readonly SourceDocument[] = [];
   let scope: "fragment" | "effective" = "fragment";
   const violations: ConfigLintViolation[] = [];

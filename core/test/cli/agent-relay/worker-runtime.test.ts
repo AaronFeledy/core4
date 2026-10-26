@@ -196,7 +196,13 @@ describe("agent relay worker runtime", () => {
           }),
         );
         return yield* Effect.fail(
-          new ProviderInternalError({ providerId: "docker", operation: "bridge", message: "failed" }),
+          new ProviderInternalError({
+            providerId: "docker",
+            operation: "bridge",
+            message: "failed",
+            remediation:
+              "Re-run the command after checking `docker` logs for the `bridge` failure; if it persists, report the error with that operation name.",
+          }),
         );
       }),
     };

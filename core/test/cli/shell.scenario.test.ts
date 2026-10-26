@@ -558,6 +558,7 @@ describe("shellApp — shell modes", () => {
             providerId: "lando",
             operation: "execStream",
             message: "boom",
+            remediation: "Install or start the `lando` provider and confirm it can perform `execStream`.",
           }),
         ),
     });

@@ -83,6 +83,7 @@ const withProcessCwd = <A, E, R>(
           message: `Unable to enter the global app directory at ${cwd}.`,
           operation: "loadPlan",
           cause,
+          remediation: `Ensure the global app directory at ${cwd} exists and is accessible, then retry.`,
         }),
     }),
     () => use(),

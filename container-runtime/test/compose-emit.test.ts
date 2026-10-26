@@ -21,7 +21,7 @@ import { commonContainerLabels } from "../src/plan.ts";
 import { composePath, emitCompose, renderCompose } from "../src/podman/compose.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 
 interface FileSystemCall {
   readonly operation: string;
@@ -34,11 +34,26 @@ const makeFileSystemFake = () => {
   const files = new Map<string, string>();
   const directories = new Set<string>();
   const unsupported = (operation: string, path: string) =>
-    Effect.fail(new FileIoError({ message: `fake FileSystem does not support ${operation}`, path }));
+    Effect.fail(
+      new FileIoError({
+        message: `fake FileSystem does not support ${operation}`,
+        path,
+        remediation:
+          "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+      }),
+    );
   const layer = Layer.succeed(
     FileSystem,
     FileSystem.of({
-      read: (path: string) => Stream.fail(new FileIoError({ message: "fake read", path })),
+      read: (path: string) =>
+        Stream.fail(
+          new FileIoError({
+            message: "fake read",
+            path,
+            remediation:
+              "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+          }),
+        ),
       readText: (path: string) => unsupported("readText", path),
       write: (path: string, content: string | Uint8Array) => {
         calls.push({ operation: "write", path });

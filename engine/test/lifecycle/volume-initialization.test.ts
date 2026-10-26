@@ -87,6 +87,8 @@ test.each(["created", "existing", "adopted", "replaced", "identity-less", "sibli
                   providerId: "test",
                   operation: "locateVolume",
                   message: "Sibling lookup failed.",
+                  remediation:
+                    "Re-run the command after checking `test` logs for the `locateVolume` failure; if it persists, report the error with that operation name.",
                 }),
               )
             : Effect.sync(() => {

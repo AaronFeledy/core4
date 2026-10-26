@@ -190,6 +190,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
           filePath: entry.source,
           line: undefined,
           column: undefined,
+          remediation: `Edit the lando: field in ${entry.source} to a valid npm semver range such as ">=4.1 <5", "^4", or "4.x".`,
         }),
       );
     constraints.push({ ...entry, range });

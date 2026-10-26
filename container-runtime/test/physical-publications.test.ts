@@ -81,7 +81,7 @@ test("emits one Compose binding when aliases describe one physical publication",
   const compose = Bun.YAML.parse(
     renderCompose(
       { ...plan, services: { [service.name]: desired } },
-      { providerId: "podman", remediation: "Retry." },
+      { providerId: "podman", remediation: "Retry.", env: {} },
     ),
   );
   // Then

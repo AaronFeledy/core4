@@ -11,8 +11,19 @@ import { writeFileAtomicViaRename } from "../cache/atomic.ts";
 
 const emptyState: PluginTrustState = { trustedPlugins: [], trustedAuthoringRoots: [] };
 
-const configError = (path: string, message: string, cause?: unknown): ConfigError =>
-  new ConfigError({ message, path, ...(cause === undefined ? {} : { cause }) });
+const configError = (path: string, message: string, cause?: unknown): ConfigError => {
+  const remediation = message.includes("Malformed")
+    ? "Fix the YAML list entries under trustedPlugins/trustedAuthoringRoots, then retry."
+    : message.includes("read")
+      ? `Fix permissions on ${path} so Lando can read the plugin trust store.`
+      : `Fix permissions on ${path} so Lando can write the plugin trust store.`;
+  return new ConfigError({
+    message,
+    path,
+    remediation,
+    ...(cause === undefined ? {} : { cause }),
+  });
+};
 
 const quoted = (value: string): string => JSON.stringify(value);
 

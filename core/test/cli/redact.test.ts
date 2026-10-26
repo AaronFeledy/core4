@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { makeRedactionService } from "@lando/redaction/service";
+import { createStandaloneRedactor, makeRedactionService } from "@lando/redaction/service";
 import { Effect } from "effect";
 
 import { redactDetails, redactString } from "../../src/cli/redact.ts";
 
 let service = makeRedactionService();
+const patternRedactor = () => createStandaloneRedactor("secrets", { sourceEnv: {} });
 beforeEach(() => {
   service = makeRedactionService();
 });
@@ -34,20 +35,23 @@ describe("redactString", () => {
   });
 
   test("redacts env-style secrets", () => {
-    const out = redactString("setup failed HTTP_PROXY_PASSWORD=super-secret returned 1");
+    const out = redactString("setup failed HTTP_PROXY_PASSWORD=super-secret returned 1", patternRedactor());
     expect(out).toContain("HTTP_PROXY_PASSWORD=[redacted]");
     expect(out).not.toContain("super-secret");
   });
 
   test("redacts credentials embedded in a proxy URL authority", () => {
-    const out = redactString("proxy connect failed for http://corp-user:hunter2@proxy.example:3128");
+    const out = redactString(
+      "proxy connect failed for http://corp-user:hunter2@proxy.example:3128",
+      patternRedactor(),
+    );
     expect(out).toContain("http://[redacted]@proxy.example:3128");
     expect(out).not.toContain("hunter2");
     expect(out).not.toContain("corp-user");
   });
 
   test("redacts bearer tokens echoed in HTTP errors", () => {
-    const out = redactString("401 Unauthorized: Authorization: Bearer abc123.def456");
+    const out = redactString("401 Unauthorized: Authorization: Bearer abc123.def456", patternRedactor());
     expect(out).toContain("Bearer [redacted]");
     expect(out).not.toContain("abc123.def456");
   });
@@ -55,6 +59,7 @@ describe("redactString", () => {
   test("redacts secret-bearing query params in signed download URLs", () => {
     const out = redactString(
       "download failed https://github.com/lando/x/releases/download/v1/a.tgz?token=ABC123&X-Amz-Signature=deadbeef",
+      patternRedactor(),
     );
     expect(out).toContain("token=[redacted]");
     expect(out).toContain("Signature=[redacted]");
@@ -63,7 +68,10 @@ describe("redactString", () => {
   });
 
   test("does not redact innocuous query params that merely contain a secret substring", () => {
-    const out = redactString("request https://example.test/search?design=blue&keyword=token");
+    const out = redactString(
+      "request https://example.test/search?design=blue&keyword=token",
+      patternRedactor(),
+    );
     expect(out).toBe("request https://example.test/search?design=blue&keyword=token");
   });
 });

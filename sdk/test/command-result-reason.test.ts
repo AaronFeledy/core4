@@ -36,7 +36,7 @@ test.each(["", "socket-missing", undefined, null, 42, { code: "locked" }])(
   "error envelopes preserve reason only when it is a string: %j",
   (reason) => {
     // Given
-    const error = { _tag: "ExampleError", message: "Unavailable", reason };
+    const error = { _tag: "ExampleError", message: "Unavailable", remediation: "Repair the socket.", reason };
     // When
     const line = Effect.runSync(
       encodeCommandResult({
@@ -50,6 +50,7 @@ test.each(["", "socket-missing", undefined, null, 42, { code: "locked" }])(
     expect(Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line)).error).toEqual({
       _tag: error._tag,
       message: error.message,
+      remediation: error.remediation,
       ...(typeof reason === "string" ? { reason } : {}),
     });
   },

@@ -332,6 +332,7 @@ const makeHarness = async (
               providerId: "lando",
               operation: "destroy",
               message: "provider unavailable",
+              remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
             }),
           )
         : Effect.sync(() => {
@@ -348,6 +349,8 @@ const makeHarness = async (
             providerId: String(providerId),
             operation: "inspect",
             message: "provider unavailable",
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `inspect`.",
           }),
         );
       }
@@ -2088,7 +2091,7 @@ describe("meta:global command effects", () => {
     await withHarness(async (harness) => {
       const missingProvider = new NoProviderInstalledError({
         message: "No runtime provider is installed.",
-        suggestion: "Run lando setup.",
+        remediation: "Run lando setup.",
       });
       const layer = Layer.mergeAll(
         harness.layer,

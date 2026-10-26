@@ -19,7 +19,7 @@ import { bringUp } from "../src/podman/bring-up.ts";
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("lifecycle-dialect-app");
 const serviceName = ServiceName.make("web");
-const ctx = { providerId: "docker", remediation: "Repair Docker and retry." } as const;
+const ctx = { providerId: "docker", remediation: "Repair Docker and retry.", env: {} } as const;
 const service: ServicePlan = {
   name: serviceName,
   type: "generic",

@@ -16,7 +16,6 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `core-command` | embedded plus `<userCacheRoot>/command-cache.bin` | binary | Built-in command, alias, and docs metadata; invalidated by core version or clear. |
 | `plugin-command` | `<userCacheRoot>/plugin-command-cache.bin` | binary | Sole metadata owner for precedence-merged bundled/external plugin commands; invalidated by plugin graph changes or clear. External plugin commands contribute metadata only; executable dispatch of them is governed by §9.7. |
 | `app-command` | `<userCacheRoot>/apps/<app-id>/commands.bin` | binary | App tooling routing metadata and app-plan key; invalidated by relevant app inputs, rebuild, refresh, or clear. |
-| `cwd-app-map` | `<userCacheRoot>/cwd-app-map.bin` | binary | Bounded CWD-to-app-root index with Landofile freshness metadata; stale entries fall back to discovery. |
 | `plugin` | `<userCacheRoot>/plugin-cache.json` | JSON | Resolved manifests, dependency graph, and contribution index. |
 | `app-plugin` | `<userCacheRoot>/apps/<app-id>/plugins.json` | JSON | App plugin lock resolution and local install metadata. |
 | `app-plan` | `<userCacheRoot>/apps/<app-id>/plan.bin` | Effect Schema binary | Frozen `AppPlan`, provider id, compiled tooling graphs, expression ASTs, and fingerprints, plus the host-path shadow eligibility verdicts behind its storage shadows; a changed verdict invalidates the entry. The key includes the environment dependencies of app-feature `fromConfig` selectors, captured once for both key derivation and selector evaluation: statically referenced names, with unset values distinct from strings, or the complete captured environment when a selector reads it whole or by computed member. The key MUST also include §7.4.2 input/metadata/translator/context fingerprints and generated-output digests; changed fingerprints invalidate it. Environment and credential values are stored as `EnvironmentValue` descriptors (§7.3.1); the key and record hash descriptors, never resolved bytes. No session secrets or live endpoints. |
@@ -67,7 +66,6 @@ Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests
 | `<userConfRoot>/global.config.yml` | Global-service enablement map (§20.3.1). |
 | `<userCacheRoot>/logs/` | Core and file-sync logs under §10.9 retention. |
 | `<userCacheRoot>/logs/<label>-worker-<app-id>.log` | Detached host-proxy and agent-relay stderr. Owner-only `0600` on POSIX, verified private ACL on Windows; no symlink or non-regular target. Lando-created log directory `0700`; outer failures and error tails redacted (§10.4, §10.10.2). |
-| `<userCacheRoot>/cwd-app-map.bin` | Router-phase CWD index. |
 | `<userCacheRoot>/apps/<app-id>/` | User-app caches and provider workdir. |
 | `<userCacheRoot>/templates/<engineId>/`, `includes/`, `tool-downloads/<toolId>/` | Cross-app derived and verified content. |
 | `<userCacheRoot>/logs/file-sync/` | Retained file-sync daemon and engine logs. |
@@ -91,6 +89,7 @@ Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests
 | `<userDataRoot>/snapshots/<owner-key>/<store>/<id>.json` | Owner-keyed `SnapshotInfo` catalog sidecars, one fail-closed version-1 JSON `StateStore` bucket per snapshot; no separate index (§10.11.2). |
 | `<userDataRoot>/snapshots/<owner-key>/<store>/<id>.<format>` | Copy-mode snapshot archives beside their sidecars. Snapshots survive ordinary destroy; explicit purge and pruning, including automatic recovery retention, remove them (§10.11.2). |
 | `<userDataRoot>/managed-files/<app-id>/ledger.json` | `ManagedFileService` ownership ledger through `StateStore` (§10.13). |
+| `<userDataRoot>/operation-locks/` | Cross-process operation locks: app mutation, `StateStore.withLock`, and detached-worker lifecycle locks. Each lock file is removed on release; worker locks outlive their disposable run directories (§12.7). |
 | `<systemPluginRoot>/plugins/` | Read-only system-installed plugins. |
 | State-store transaction journal | Owner-only managed-file transaction plan and recovery state. |
 | `<target>.lando-stage.<transaction-id>` | Same-directory owner-only staged target with recorded digest and mode. |
@@ -141,7 +140,7 @@ Schema decoding on the CLI hot path uses ahead-of-time compiled decoders under t
 - The `compiled-decoders` derived codegen entry (§17.2) emits the gitignored generated module and its declaration. `runCompiledCli` installs them before any decode; `makeLandoRuntime` and other library entries never install them.
 - Compiled and interpreted decoding MUST agree on verdict, decoded value, and every issue path and message. The parity suite (§13.1) decodes the Landofile corpus in separate interpreted and compiled processes and fails on any difference.
 - Membership is earned and kept under §2.5: end-to-end measurement on compiled binaries against the §2.1 hot-path budgets, recorded with the change that adds the schema. Compiled decoders optimize the hot path; they are never a second source of truth for validity.
-- Binary hot-path caches (`core-command`, `plugin-command`, `app-command`, `cwd-app-map`) are V8-serialized behind header checks and perform no Schema decode, so they have nothing to compile. Effect Schema binary caches (`app-plan`, `global-app-plan`, `scratch-app-plan`) decode through the compiled `AppPlan` decoder when installed.
+- Binary hot-path caches (`core-command`, `plugin-command`, `app-command`) are V8-serialized behind header checks and perform no Schema decode, so they have nothing to compile. Effect Schema binary caches (`app-plan`, `global-app-plan`, `scratch-app-plan`) decode through the compiled `AppPlan` decoder when installed.
 
 ### 12.6 Disconnectable local-dev state
 
@@ -165,9 +164,13 @@ All mutations encode before atomic replace. Version mismatch either discards or 
 
 Hot-path caches remain under their existing readers and MAY adopt `StateStore` only while preserving §12.5 budgets.
 
+App mutation locks left by dead commands MUST be reclaimed without a contention warning. Reclaim and vanished-file attempts retain the normal acquire deadline and retry delay; only an observed live holder triggers the wait message. A lock path that can never be reclaimed (a symbolic link, not a regular file, hard-linked, or owned by another user) fails at once with a `StateStoreError` whose remediation names the path and why it is unusable, never with a contention message.
+
 #### 12.7.2 Reference consumers
 
 The scratch registry uses an advisory, quarantining bucket; the include lockfile uses an app-root custom YAML codec in an unlocked bucket, and its writers re-read and merge under a host-wide `StateStore.withLock` operation lock so no lock file lands beside it; snapshot sidecars use owner/store-scoped, version-1 JSON buckets that fail on corruption or version mismatch, with per-snapshot removal locks; and the managed-file ledger uses an advisory, quarantining bucket. The provider resource-ownership manifest uses an advisory, fail-closed bucket in the provider-private `resource-ownership` namespace (§12.4.2). The accelerated-start journal uses an advisory, fail-closed, version-migrating bucket in the user-data `accelerated-starts` namespace (§10.6.3). These subsystems MUST NOT implement bespoke persistence primitives.
+
+Detached host-proxy and agent-relay worker locks MUST live under the resolved user-data `operation-locks` namespace, outside disposable run directories. Their stable key combines worker kind with a SHA-256 digest of the absolute run-directory path. Ensure, replacement, shutdown, teardown, and root sweeping MUST use the same identity and injected private-file access and MUST NOT expire a live owner. Host-proxy root sweeping MUST acquire before inspecting or deleting worker state, including legacy and untrusted records, and MUST leave reserved agent-relay and tunnel directories to their owners. Release removes the individual lock file. Removing a worker run directory MUST NOT remove its operation lock; removing the user-data root also removes the operation-lock namespace.
 
 #### 12.7.3 Plugins and embedding hosts
 

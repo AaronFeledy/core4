@@ -107,6 +107,8 @@ Already-pulled images can still work without registry access; see
 
 Read-only commands (`info`, `logs`, `app:config:lint`) do not take the lock.
 
+Lando reclaims a lock left by a killed command without printing a wait message. You don't need to delete the lock file.
+
 The lock key is the stable app id plus the canonical (realpath) app root at acquire time. If you move the app directory while a mutate is running, a command against the new path sees a different key and does not wait on the first lock.
 
 A mutating command that shells out to another `lando` mutate on the same app reuses the lock it already holds. It does not deadlock.

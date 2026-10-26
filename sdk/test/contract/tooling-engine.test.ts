@@ -168,6 +168,7 @@ const syntheticEngine: ToolingEngineUnderTest = {
         new ToolingExecError({
           message: `Tooling task ${invocation.tool} has no commands.`,
           tool: invocation.tool,
+          remediation: `Add commands under tooling.${invocation.tool} for the contract fixture.`,
         }),
       );
     }

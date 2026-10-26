@@ -325,7 +325,7 @@ describe("desired immutable create config", () => {
     // Given one desired service consumed by both provider paths.
     const body = containerCreateBodyFragment(plan, service);
     // When Compose emits that same plan.
-    const content = renderCompose(plan, { providerId: "podman", remediation: "Retry." });
+    const content = renderCompose(plan, { providerId: "podman", remediation: "Retry.", env: {} });
     // Then both actual output surfaces carry the same opaque label.
     expect(body).toMatchObject({ Labels: { [CREATE_CONFIG_LABEL]: fingerprint(service) } });
     expect(content).toContain(`dev.lando.create-config: "${fingerprint(service)}"`);

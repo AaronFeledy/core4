@@ -120,6 +120,7 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
             },
           ],
           serviceType: id,
+          remediation: "Add backend: pointing at an existing service in this Landofile.",
         }),
       );
     }

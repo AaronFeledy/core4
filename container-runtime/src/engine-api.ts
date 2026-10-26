@@ -10,6 +10,8 @@ import type {
 export type ProviderErrorContext = {
   readonly providerId: string;
   readonly remediation: string;
+  /** Explicit host env snapshot for heuristic secret collection. Never read process.env here. */
+  readonly env: Readonly<Record<string, string | undefined>>;
   readonly redactor?: Redactor;
 };
 

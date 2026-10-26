@@ -57,7 +57,7 @@ export const runBuild = (input: {
         extensions: {},
       },
     },
-    { providerId, api: { request: input.request } },
+    { providerId, api: { request: input.request }, sourceEnv: {} },
   );
 };
 

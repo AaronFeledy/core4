@@ -126,7 +126,15 @@ export const runConfigTranslatorContractSuite = Effect.fnUntraced(function* (
   yield* resolve(
     Effect.fromResult(
       validateConfigTranslateResult(harness.translateInput, result).pipe(
-        Result.mapError((error) => new ConfigTranslateError({ ...error, translator: translator.id })),
+        Result.mapError(
+          (error) =>
+            new ConfigTranslateError({
+              message: error.message,
+              translator: translator.id,
+              remediation: error.remediation,
+              ...(error.cause === undefined ? {} : { cause: error.cause }),
+            }),
+        ),
       ),
     ),
   );

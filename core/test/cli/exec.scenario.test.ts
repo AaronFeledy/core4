@@ -133,9 +133,25 @@ const makeProvider = (
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "buildArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "buildArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
+        }),
+      ),
     pullArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "pullArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "pullArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `pullArtifact`.",
+        }),
+      ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
@@ -195,7 +211,14 @@ const makeProvider = (
     runStream: () => Stream.empty,
     logs: () => Stream.empty,
     inspect: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "inspect",
+          message: "n/a",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `inspect`.",
+        }),
+      ),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
     removeVolumeSnapshot: () => Effect.die("not used"),
@@ -640,7 +663,15 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () =>
-          Effect.fail(new ProviderUnavailableError({ providerId, operation: "select", message: "boom" })),
+          Effect.fail(
+            new ProviderUnavailableError({
+              providerId,
+              operation: "select",
+              message: "boom",
+              remediation:
+                "Install or start the selected runtime provider and confirm it can perform `select`.",
+            }),
+          ),
       }),
     );
     const layer = Layer.mergeAll(

@@ -191,6 +191,8 @@ describe("applied plan cache", () => {
             providerId: "podman",
             operation: "applied-state.remove",
             message: "Removal failed.",
+            remediation:
+              "Install or start the `podman` provider and confirm it can perform `applied-state.remove`.",
           }),
         ),
     });

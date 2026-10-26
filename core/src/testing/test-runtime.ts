@@ -269,7 +269,11 @@ const recordLoggerCall = (
 };
 
 const serviceNotRegistered = (id: string): PluginLoadError =>
-  new PluginLoadError({ message: `Plugin service ${id} is not registered in TestRuntime.`, pluginName: id });
+  new PluginLoadError({
+    message: `Plugin service ${id} is not registered in TestRuntime.`,
+    pluginName: id,
+    remediation: `Register service ${id} in the TestRuntime plugin registry before loading it.`,
+  });
 
 const scratchNotFound = (id: string): ScratchAppNotFoundError =>
   new ScratchAppNotFoundError({
@@ -369,7 +373,14 @@ const isExpiredCacheEntry = (entry: TestCacheEntry, nowMs: number): boolean =>
   entry.expiresAtMs !== undefined && entry.expiresAtMs <= nowMs;
 
 const eventError = (event: string, message: string, cause?: unknown): EventError =>
-  new EventError({ message, event, ...(cause === undefined ? {} : { cause }) });
+  new EventError({
+    message,
+    event,
+    ...(cause === undefined ? {} : { cause }),
+    remediation: event
+      ? `Fix the handler or emitter for event \`${event}\`, then re-run the operation that publishes it.`
+      : "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+  });
 
 const decodeCacheValue = <A, I>(key: string, value: unknown, schema?: Schema.Codec<A, I>) => {
   if (schema === undefined) {
@@ -383,6 +394,7 @@ const decodeCacheValue = <A, I>(key: string, value: unknown, schema?: Schema.Cod
           message: `Cached value for ${key} failed schema decode.`,
           key,
           decodeError,
+          remediation: `Delete the Lando cache entry \`${key}\` and re-run the command.`,
         }),
     ),
   );
@@ -496,6 +508,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
                     message: `Timed out waiting for event: ${label}`,
                     event: label,
                     reason: "timeout",
+                    remediation: `Increase the wait for event \`${label}\`, or fix whatever should emit that event before timing out.`,
                   }))(),
               ),
           }),

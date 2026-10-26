@@ -25,6 +25,7 @@ for (const operation of ["stop", "destroy"] as const) {
       providerId: "lando",
       operation: "apply",
       message: "Failure after private network creation.",
+      remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
     });
     const provider = {
       ...TestRuntimeProvider,
@@ -173,6 +174,7 @@ test("a retry can claim seed initialization after apply creates a volume then fa
               providerId: "lando",
               operation: "apply",
               message: "Web container creation failed after creating the database volume.",
+              remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
             }),
           );
         }

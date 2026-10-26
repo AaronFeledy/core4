@@ -91,6 +91,8 @@ const stableArtifactBuildInput = (service: ServicePlan, provider: RuntimeProvide
         operation: "buildKeyForService",
         message: "Unable to hash the artifact build context.",
         cause,
+        remediation:
+          "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
       }),
   }).pipe(Effect.map((contentDigest) => artifactBuildInput(artifact, contentDigest)));
 };

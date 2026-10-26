@@ -20,6 +20,8 @@ export const normalizeConnectionClients = Effect.fnUntraced(function* (
         serviceType: declaration.id,
         message:
           "A service type must publish either connection or nonSqlCreds, not both. Publish one canonical credential source.",
+        remediation:
+          "Correct the service type configuration in the Landofile (see the reported field path), then re-run.",
       }),
     );
   }
@@ -52,6 +54,8 @@ export const normalizeConnectionClients = Effect.fnUntraced(function* (
         new ServiceTypeError({
           serviceType: declaration.id,
           message: `Invalid connection-client claim ${key}: publish its task, a canonical connection, and supporting toolingForConnection output, or remove the claim.`,
+          remediation:
+            "Correct the service type configuration in the Landofile (see the reported field path), then re-run.",
         }),
       );
     }

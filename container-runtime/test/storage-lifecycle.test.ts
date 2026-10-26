@@ -205,6 +205,7 @@ test("does not touch resources when the explicitly selected API cannot answer", 
         providerId: "docker",
         operation: "info",
         message: "unreachable",
+        remediation: "Supply an answering test socket and retry.",
       }),
     ),
   };

@@ -114,7 +114,7 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
   let announced = false;
   for (;;) {
     const now = yield* Clock.currentTimeMillis;
-    const acquired = yield* Effect.tryPromise({
+    const attempt = yield* Effect.tryPromise({
       try: async () => {
         try {
           await mkdir(dirname(lockPath), { recursive: true });
@@ -140,18 +140,17 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
           } finally {
             await handle.close();
           }
-          return true;
+          return "acquired" as const;
         } catch (cause) {
           if (!isErrnoCode(cause, "EEXIST")) throw cause;
           const identity = await lockIdentity(lockPath);
-          if (identity === null) return false;
-          if (
-            !identity.isFile() ||
-            identity.isSymbolicLink() ||
-            identity.nlink !== 1 ||
-            (process.getuid !== undefined && identity.uid !== process.getuid())
-          )
-            return false;
+          if (identity === null) return "retry" as const;
+          // A lock path that is not a private regular file never becomes reclaimable, so waiting is pointless.
+          if (identity.isSymbolicLink()) return { _tag: "unsafe", detail: "a symbolic link" } as const;
+          if (!identity.isFile()) return { _tag: "unsafe", detail: "not a regular file" } as const;
+          if (identity.nlink !== 1) return { _tag: "unsafe", detail: "hard-linked to another file" } as const;
+          if (process.getuid !== undefined && identity.uid !== process.getuid())
+            return { _tag: "unsafe", detail: "owned by another user" } as const;
           await options.privateFileAccess.verify(lockPath);
           const staleByMtime = now - identity.mtimeMs > LOCK_STALE_MS;
           const current = await readLockRecord(lockPath).catch((error: unknown) => {
@@ -180,15 +179,24 @@ const acquire = Effect.fn("StateStore.acquireLock")(function* (
               });
             }
           }
-          return false;
+          return takeover || current === null ? ("retry" as const) : ("held" as const);
         }
       },
       catch: (cause) => lockError(options.operation, lockPath, cause),
     });
-    if (acquired) return;
+    if (attempt === "acquired") return;
+    if (typeof attempt === "object")
+      return yield* Effect.fail(
+        new StateStoreError({
+          reason: "path",
+          operation: options.operation,
+          path: lockPath,
+          remediation: `Lock path ${lockPath} is ${attempt.detail}, so Lando cannot use it. Make sure no Lando command is running, remove ${lockPath}, and retry.`,
+        }),
+      );
     if ((yield* Clock.currentTimeMillis) >= deadline)
       return yield* Effect.fail(lockError(options.operation, lockPath));
-    if (!announced && options.onWait !== undefined) {
+    if (attempt === "held" && !announced && options.onWait !== undefined) {
       announced = true;
       yield* options.onWait;
     }

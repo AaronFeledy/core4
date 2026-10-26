@@ -44,12 +44,14 @@ const providerExecUnsupported = (plan: HealthcheckPlan, service: ServiceName): H
   new HealthcheckError({
     message: `The provider-exec healthcheck runner only supports command healthchecks. Configure service ${String(service)} with a command healthcheck, or disable the ${plan.kind} healthcheck for this provider.`,
     service: String(service),
+    remediation: `Configure service ${String(service)} with a command healthcheck, or disable the ${plan.kind} healthcheck for this provider.`,
   });
 
 const missingCommand = (service: ServiceName): HealthcheckError =>
   new HealthcheckError({
     message: `Command healthcheck for service ${String(service)} requires a command. Add a command healthcheck or disable healthchecks for this service.`,
     service: String(service),
+    remediation: `Add a command to the healthcheck for service ${String(service)}, or disable healthchecks for this service.`,
   });
 
 const providerMessage = (error: ProviderError): string => error.message;
@@ -85,6 +87,7 @@ const toProbeError = (service: ServiceName, cause: unknown): HealthcheckError =>
   new HealthcheckError({
     message: `Healthcheck probe for service ${String(service)} could not run. Re-run the command healthcheck after checking the provider configuration.`,
     service: String(service),
+    remediation: `Inspect \`lando logs -s ${String(service)}\` and the healthcheck probe configuration for service ${String(service)}, then retry.`,
     cause,
   });
 
@@ -108,6 +111,9 @@ const timeoutError = (context: TimeoutContext): HealthcheckTimeoutError => {
         `timeout after ${context.timeoutSeconds}s; ${context.result.outcome}; attempts ${context.result.attempts}; elapsed ${context.result.elapsedMs}ms; ${context.renderedCommand}`,
       )
       .slice(0, 2048),
+    remediation: context.redactor.redactString(
+      `Inspect \`lando logs -s ${String(context.service)}\` for probe "${context.renderedCommand}", confirm the service is healthy, and increase the healthcheck timeout (currently ${context.timeoutSeconds}s) if needed.`,
+    ),
   });
 };
 

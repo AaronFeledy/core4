@@ -85,7 +85,12 @@ const makeRegistry = (observations: Readonly<Record<string, Observed>>, inspecte
       if (observed === "hangs") return Effect.never;
       if (observed === "fails")
         return Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "inspect", message: "down" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "inspect",
+            message: "down",
+            remediation: "Install or start the `lando` provider and confirm it can perform `inspect`.",
+          }),
         );
       return Effect.succeed(runtimeFor(name, observed));
     },

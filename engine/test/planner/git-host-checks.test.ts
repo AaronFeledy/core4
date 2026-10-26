@@ -19,7 +19,15 @@ test.each(["stat", "gitfile", "commondir"] as const)("ignores filesystem failure
     ...fs,
     stat:
       failure === "stat"
-        ? (path: string) => Effect.fail(new FileIoError({ path, message: "unavailable" }))
+        ? (path: string) =>
+            Effect.fail(
+              new FileIoError({
+                path,
+                message: "unavailable",
+                remediation:
+                  "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+              }),
+            )
         : () => Effect.succeed({ size: 20, mtimeMs: 0, isFile: true, isDirectory: false }),
     readText: (path: string) =>
       failure === "commondir" && path === "/app/.git"

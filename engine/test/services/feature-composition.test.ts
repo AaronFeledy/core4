@@ -154,7 +154,14 @@ describe("composeService", () => {
     const feature: ServiceFeatureDefinition = {
       id: "feature.fail",
       priority: 100,
-      apply: () => Effect.fail(new ServiceFeatureError({ message: "boom", feature: "feature.fail" })),
+      apply: () =>
+        Effect.fail(
+          new ServiceFeatureError({
+            message: "boom",
+            feature: "feature.fail",
+            remediation: "Correct the `feature.fail` feature configuration in the Landofile, then re-run.",
+          }),
+        ),
     };
 
     const exit = await Effect.runPromiseExit(composeService(inputFor([feature])));

@@ -52,7 +52,7 @@ test("publishes paired stop events for each service when containers are already 
   const result = await Effect.runPromise(
     bringDown(plan, {
       api,
-      ctx: { providerId: "lando", remediation: "retry" },
+      ctx: { providerId: "lando", remediation: "retry", env: {} },
       eventService: {
         publish: (event) =>
           Effect.sync(() => {

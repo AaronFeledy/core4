@@ -63,7 +63,7 @@ test.each([...cases])(
     const applied = { ...plan, services: { [selected.name]: selected } };
     // When
     const body = containerCreateBodyFragment(applied, selected);
-    const compose = renderCompose(applied, { providerId: "podman", remediation: "Retry." });
+    const compose = renderCompose(applied, { providerId: "podman", remediation: "Retry.", env: {} });
     // Then
     expect(body).toMatchObject({ Labels: { [label]: "true" } });
     expect(compose).toContain(`${label}: "true"`);

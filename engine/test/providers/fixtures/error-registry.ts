@@ -78,7 +78,13 @@ export const registryLayer = (provider: RuntimeProviderShape, options: RegistryO
   ];
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: id });
   const unsupported = (name: string) =>
-    Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
+    Effect.fail(
+      new PluginLoadError({
+        message: "unused",
+        pluginName: name,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    );
   const dependencies = Layer.mergeAll(
     Layer.succeed(ConfigService, { load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
     Layer.succeed(PluginRegistry, {

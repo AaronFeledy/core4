@@ -30,6 +30,7 @@ const serviceType: ServiceType = {
                 suggestion: "Choose another port.",
               },
             ],
+            remediation: "Choose another port.",
           }),
         )
       : Effect.succeed({

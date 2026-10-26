@@ -296,13 +296,13 @@ The full-envelope aliases are `--format json`, `--format=json`, `-j`, and
 The failure envelope has the shape `{ "ok": false, "error": <tagged-error> }`.
 A failing command keeps its non-zero exit code alongside the envelope so
 scripts can branch on both. The tagged error exposes a machine `_tag` plus
-human remediation, so an agent can react to the failure class without
+a required `message` and nonblank `remediation`, so an agent can react to the failure class without
 scraping prose.
 
 If rollback, cleanup, or another step also fails, `error` still describes the
 primary failure and determines the exit code. `error.additionalErrors` contains
 the other failures in cause order, each with its own `_tag`, `message`, required
-`role`, optional `remediation`, and JSON-safe fields. `role` is `rollback` for
+`role`, required `remediation`, and JSON-safe fields. `role` is `rollback` for
 undoing partial work, `cleanup` for release or bookkeeping, or `peer` for a
 sibling step. The array is absent when there are no
 additional failures, and its entries never contain another `additionalErrors`.
@@ -312,6 +312,16 @@ happens to appear first. Human reports show the primary message and remediation
 first, followed by `Rollback also failed (<tag>)`, `Cleanup also failed (<tag>)`,
 or `Also failed (<tag>)`. Each block includes its own remediation and distinct
 diagnostic fields, without stack traces or repeated command context.
+
+An unexpected Lando defect returns `LandoInternalError` and exits `1`, including
+failures during routing, startup, formatting, or cleanup. A known error that was
+raised as a defect keeps its own tag and remediation. Its remediation tells
+you how to collect diagnostics and report the problem. Normal reports contain
+no stack traces. Rerun with `--debug --trace` to collect redacted diagnostic
+records on stderr and invocation timings. Redirect stderr to a file if you need
+to attach those records to a bug report. Runtime worker logs are separate files
+under the report's `logsDir`; debug records are not automatically saved there.
+Review diagnostics for secrets before sharing them.
 
 A failed `lando start` does not undo established app resources, so its
 envelope does not carry app-wide `rollback` entries. Other commands still

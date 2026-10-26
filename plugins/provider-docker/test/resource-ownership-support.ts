@@ -70,7 +70,7 @@ const fixtureAt = (directory: string) => {
   const cleanup = makeOwnedResourcesCleanup({
     store,
     api,
-    ctx: { providerId: "docker", remediation: "Retry cleanup." },
+    ctx: { providerId: "docker", remediation: "Retry cleanup.", env: {} },
   });
   const path = join(stateRoot, "resource-ownership", `${plan.identity?.ownerKey}.json`);
   const network = (appId = plan.id) => ({

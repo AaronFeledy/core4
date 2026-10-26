@@ -7,9 +7,10 @@ import {
 import {
   awaitRuntimeSshAgent,
   runtimeSshAgentReady,
-  sidecarSocketState,
+  sidecarSocketCheck,
 } from "@lando/engine/subsystems/ssh-agent/session";
 import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
+import { causeMessage } from "@lando/sdk/errors";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
 import {
   ConfigService,
@@ -21,9 +22,9 @@ import {
 } from "@lando/sdk/services";
 import { type Context, Effect, Option, Result } from "effect";
 import { loadUserLandofile } from "../app-resolution";
-import { redactString } from "../redact";
 import { gpgAgentPostureDetail } from "./doctor-gpg-agent";
 import { type DoctorSubsystemCheck, SSH_SPEC, type SshAgentPostureDetails } from "./doctor-subsystem-checks";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 type Details = typeof SshAgentPostureDetails.Type;
 
@@ -65,6 +66,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
   let delivery: Details["delivery"] = capabilities?.agentSocket?.delivery ?? "none";
   let runtimeVolume: string | undefined;
   let waitAfterSetup = false;
+  let readinessDetail: string | undefined;
   const probeAgent = (upstream: Parameters<typeof probeSshAgent>[0]) =>
     Effect.tryPromise({
       try: () => (input.probe ?? probeSshAgent)(upstream, { timeoutMs: 1_000 }),
@@ -87,16 +89,19 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         ) {
           delivery = "runtime-volume";
           runtimeVolume = socket.runtimeVolume;
+          const readiness = waitAfterSetup ? yield* awaitRuntimeSshAgent() : undefined;
+          readinessDetail = readiness?.detail;
           return {
             source: "sidecar" as const,
-            reachable: waitAfterSetup
-              ? (yield* awaitRuntimeSshAgent()) === "ready"
-              : yield* runtimeSshAgentReady,
+            reachable: readiness === undefined ? yield* runtimeSshAgentReady : readiness.state === "ready",
           };
         }
         const upstream = { _tag: "unix" as const, path: socket.socketPath };
-        if (waitAfterSetup) yield* awaitRuntimeSshAgent(sidecarSocketState(upstream, input.probe));
+        if (waitAfterSetup)
+          readinessDetail = (yield* awaitRuntimeSshAgent(sidecarSocketCheck(upstream, input.probe))).detail;
         const probed = yield* Effect.result(probeAgent(upstream));
+        // After repair, the final socket probe decides reachability, so its failure is the reason to report.
+        if (waitAfterSetup && probed._tag === "Failure") readinessDetail = causeMessage(probed.failure);
         return {
           source: "sidecar" as const,
           reachable: probed._tag === "Success",
@@ -150,9 +155,12 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         fixContext.fixCommand = "ssh.setup";
         fixContext.fixExitCode = recovered ? "0" : "1";
         if (!recovered) {
-          fixContext.fixError = Result.isFailure(setup)
-            ? redactString(setup.failure.message)
-            : "SSH agent forwarding remains degraded after setup.";
+          const { redact } = yield* resolveSecretsRedactor({ sourceEnv: input.env ?? process.env });
+          fixContext.fixError = redact(
+            Result.isFailure(setup)
+              ? setup.failure.message
+              : `SSH agent forwarding remains degraded after setup.${readinessDetail === undefined ? "" : ` Last probe failure: ${readinessDetail}`}`,
+          );
         }
         break;
       }

@@ -18,7 +18,7 @@ import type {
 } from "../engine-api.ts";
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
 import { fingerprintInspectPublishPorts } from "../plan.ts";
-import { redactDetails, withApiReason } from "../redact.ts";
+import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import { inspectBindSources, inspectContainerLabels, inspectNetworkNames } from "./bring-up-recreate.ts";
 import { mountObservationFromInspect } from "./inspect-mounts.ts";
 
@@ -175,9 +175,9 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
           {
             body: response.body,
           },
-          ctx.redactor,
+          redactorFor(ctx),
         ),
-        details: redactDetails({ service: service.name, body: response.body }, ctx.redactor),
+        details: redactDetails({ service: service.name, body: response.body }, redactorFor(ctx)),
         remediation: ctx.remediation,
       }),
     );

@@ -29,12 +29,20 @@ export const resolveRecipeTimeoutMs = (): number => {
   return parsed;
 };
 
-const parseError = (filePath: string, message: string, cause?: unknown): RecipeManifestParseError =>
+const parseError = (
+  filePath: string,
+  message: string,
+  cause?: unknown,
+  remediation?: string,
+): RecipeManifestParseError =>
   new RecipeManifestParseError({
     message,
     source: filePath,
     line: undefined,
     column: undefined,
+    remediation:
+      remediation ??
+      `Fix the TypeScript, imports, and default export in ${filePath} so the recipe module evaluates successfully.`,
     ...(cause === undefined ? {} : { cause }),
   });
 
@@ -45,11 +53,21 @@ const buildContext = (filePath: string): RecipeContext => ({
 
 const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown> => {
   if (module === null || typeof module !== "object") {
-    throw parseError(filePath, `recipe.ts at ${filePath} did not export a module object.`);
+    throw parseError(
+      filePath,
+      `recipe.ts at ${filePath} did not export a module object.`,
+      undefined,
+      `Export a module object from ${filePath} with a default Recipe value or factory.`,
+    );
   }
   const exported = (module as { default?: unknown }).default;
   if (exported === undefined) {
-    throw parseError(filePath, `recipe.ts at ${filePath} is missing a default export.`);
+    throw parseError(
+      filePath,
+      `recipe.ts at ${filePath} is missing a default export.`,
+      undefined,
+      `Add a default export of a Recipe value or (ctx) => Recipe factory in ${filePath}.`,
+    );
   }
   if (typeof exported === "function") {
     const ctx = buildContext(filePath);
@@ -70,7 +88,12 @@ const evaluateImport = Effect.fnUntraced(function* (
     catch: (cause) =>
       cause instanceof RecipeManifestParseError
         ? cause
-        : parseError(filePath, `Failed to load recipe.ts at ${filePath}: ${causeMessage(cause)}`, cause),
+        : parseError(
+            filePath,
+            `Failed to load recipe.ts at ${filePath}: ${causeMessage(cause)}`,
+            cause,
+            `Fix the TypeScript, imports, and default export in ${filePath} so the recipe module evaluates successfully.`,
+          ),
   });
 });
 
@@ -91,11 +114,13 @@ export const loadRecipeTs = Effect.fnUntraced(function* (
             options.filePath,
             `recipe.ts at ${options.filePath} could not be parsed as TypeScript: ${causeMessage(cause.cause)}`,
             cause,
+            `Correct the TypeScript syntax in ${options.filePath}.`,
           )
         : parseError(
             options.filePath,
             `recipe.ts at ${options.filePath} has a disallowed import: ${cause.violation}. Programmatic recipes must not perform host shell-outs, remote module fetches, or filesystem access outside the recipe directory.`,
             cause,
+            `Remove the disallowed import from ${options.filePath} and keep recipe code inside the recipe directory.`,
           ),
     ),
   );
@@ -108,6 +133,8 @@ export const loadRecipeTs = Effect.fnUntraced(function* (
           parseError(
             options.filePath,
             `recipe.ts at ${options.filePath} did not produce a value within ${timeoutMs}ms.`,
+            undefined,
+            `Simplify ${options.filePath} or raise LANDO_RECIPE_TS_TIMEOUT_MS so evaluation finishes in time.`,
           ))(),
       ),
   });

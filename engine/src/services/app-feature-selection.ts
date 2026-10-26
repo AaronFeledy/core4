@@ -154,6 +154,7 @@ export const decodeAppFeatureConfig = (
     new AppFeatureSelectorMatchedNothingError({
       message: details.length > 0 ? `Invalid app feature config: ${details}` : "Invalid app feature config",
       feature: feature.definition.id,
+      remediation: "Correct the app feature configuration so selectors and options are valid.",
     }),
   );
 };

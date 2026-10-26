@@ -9,7 +9,11 @@ import type { AppPlan, CommandResultEnvelope } from "@lando/sdk/schema";
 import { CommandResultEnvelope as CommandResultEnvelopeSchema } from "@lando/sdk/schema";
 import type { EventService, RouterService, RuntimeProviderRegistry, ShellRunner } from "@lando/sdk/services";
 
-import { buildCommandResultEnvelope, failureOutcomeFromCause } from "@lando/sdk/command-result";
+import {
+  buildCommandResultEnvelope,
+  failureOutcomeFromCause,
+  normalizeDefect,
+} from "@lando/sdk/command-result";
 import { OpenAppResultSchema, openForPlan } from "../commands/open";
 import { collectOpenConnections } from "../commands/open-connections";
 import { parseOpenOptionsFromRunLandoArgv } from "./open-argv";
@@ -54,7 +58,7 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
                     message: Cause.pretty(outcome.cause),
                   },
                 }
-              : failureOutcomeFromCause(outcome.cause),
+              : failureOutcomeFromCause(outcome.cause, normalizeDefect),
             exitCode: 1,
           };
         });

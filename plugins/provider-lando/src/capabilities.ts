@@ -124,6 +124,8 @@ export const introspectProviderCapabilities = (
             requiredValue: "valid Podman API info response",
             actualValue: cause.details,
             cause,
+            remediation:
+              "Choose a provider that supports `podman-info`, or remove that requirement from the app.",
           })
         : cause,
     ),

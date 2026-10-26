@@ -15,12 +15,25 @@ interface ParsedLine {
   readonly text: string;
 }
 
+const syntaxRemediation = (source: string, line?: number): string =>
+  line === undefined
+    ? `Correct the YAML syntax in ${source}.`
+    : `Correct the YAML syntax in ${source} at line ${line}.`;
+
 const parseError = (
   source: string,
   message: string,
   line?: number,
   column?: number,
-): RecipeManifestParseError => new RecipeManifestParseError({ message, source, line, column });
+  remediation?: string,
+): RecipeManifestParseError =>
+  new RecipeManifestParseError({
+    message,
+    source,
+    line,
+    column,
+    remediation: remediation ?? syntaxRemediation(source, line),
+  });
 
 const stripComment = (line: string): string => {
   const prefix = line.match(/^ *(?:- )?(?:[A-Za-z0-9_-]+:\s*)?/)?.[0] ?? "";
@@ -53,6 +66,8 @@ const parseScalar = (value: string, source: string, line: number, parentKey?: st
       source,
       `Inline objects are not supported in recipe.yml at line ${line}. ${suggestion}`,
       line,
+      undefined,
+      suggestion,
     );
   }
   if (
@@ -264,6 +279,7 @@ export const parseRecipeYaml = (
             source: options.source,
             line: undefined,
             column: undefined,
+            remediation: `Inspect ${options.source} and correct the recipe manifest so it parses as valid YAML.`,
             cause,
           }),
   });

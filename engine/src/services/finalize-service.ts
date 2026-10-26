@@ -10,6 +10,7 @@ const destinationError = (target: string, reason: "not-absolute" | "root"): Serv
   new ServiceFeatureError({
     message: containerDestinationRefusalMessage(reason, target),
     feature: "destination",
+    remediation: "Correct the `destination` feature configuration in the Landofile, then re-run.",
   });
 
 export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFeatureError => {

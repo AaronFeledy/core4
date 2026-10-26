@@ -31,6 +31,7 @@ const plan = async (
               message: "Failed to launch the Lando runtime service.",
               providerId: "test",
               operation: "listVolumes",
+              remediation: "Install or start the `test` provider and confirm it can perform `listVolumes`.",
             }),
           );
         }
@@ -40,6 +41,8 @@ const plan = async (
               message: "Volume lookup failed",
               providerId: "test",
               operation: "listVolumes",
+              remediation:
+                "Re-run the command after checking `test` logs for the `listVolumes` failure; if it persists, report the error with that operation name.",
             }),
           );
         }

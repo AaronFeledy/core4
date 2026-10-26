@@ -73,7 +73,7 @@ const buildWithInspection = (
   };
   return buildContainerArtifact(
     { app: appId, service: serviceName, plan, buildKey: "privilege-key" },
-    { providerId, api: { request } },
+    { providerId, api: { request }, sourceEnv: {} },
   );
 };
 

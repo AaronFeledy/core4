@@ -33,7 +33,7 @@ test.each([204, 404])(
     const calls: EngineHttpRequest[] = [];
     const retired: OwnedResource[] = [];
     const cleanup = makeOwnedResourcesCleanup({
-      ctx: { providerId: "test", remediation: "Retry cleanup." },
+      ctx: { providerId: "test", remediation: "Retry cleanup.", env: {} },
       store: {
         ...makeResourceOwnershipStore("test"),
         load: () =>
@@ -128,7 +128,7 @@ const ownershipFixture = (input: {
   const retired: OwnedResource[] = [];
   let inspections = 0;
   const cleanup = makeOwnedResourcesCleanup({
-    ctx: { providerId: "test", remediation: "Retry cleanup." },
+    ctx: { providerId: "test", remediation: "Retry cleanup.", env: {} },
     store: {
       ...makeResourceOwnershipStore("test"),
       load: () =>
@@ -165,6 +165,7 @@ const ownershipFixture = (input: {
                 providerId: "test",
                 operation: "delete",
                 message: "unreachable",
+                remediation: "Retry cleanup.",
               }),
             )
           : Effect.succeed({ status: input.status ?? 204, body: "" });

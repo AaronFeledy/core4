@@ -78,7 +78,7 @@ test("derived Dockerfiles contain only build-phase steps", async () => {
   await Effect.runPromise(
     buildContainerArtifact(
       { app: appId, service: serviceName, plan, buildKey: "phase-key" },
-      { providerId, api },
+      { providerId, api, sourceEnv: {} },
     ),
   );
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ServiceStartError } from "@lando/sdk/errors";
+import { GlobalAppError, ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -74,7 +74,9 @@ const failure = (name: string, remediation?: string) =>
     providerId: "lando",
     operation: "apply",
     message: `Cannot start ${name}`,
-    ...(remediation === undefined ? {} : { remediation }),
+    remediation:
+      remediation ??
+      `Inspect \`lando logs -s ${name}\`, fix the service configuration or image, and start the app again.`,
   });
 const refs = (plan: AppPlan) => Object.values(plan.services).map((service) => service.artifact);
 
@@ -382,18 +384,19 @@ describe("global service groups", () => {
       "Fix the error above, then run `lando global:rebuild`. Run `lando doctor` if the failure persists.",
     ],
   ] as const)("partial %s errors use operation-specific fallback remediation", (operation, remediation) => {
-    // Given multiple failed services without tagged remediation and one running service.
-    const cause = failure("broken");
+    // Given multiple failed services whose cause has no tagged remediation, and one running service.
+    const cause = new Error("broken without tagged remediation");
     // When the aggregate is constructed for the selected operation.
     const error = globalServiceGroupError(operation, {
       services: [service("working")],
       failures: [{ names: ["broken", "dependent"], error: cause }],
     });
     // Then fallback instructions match the operation and grammar matches the service counts.
-    expect(error?.remediation).toBe(remediation);
-    expect(error?.message).toBe(
+    if (error === undefined || !(error instanceof GlobalAppError)) throw new Error("expected GlobalAppError");
+    expect(error.remediation).toBe(remediation);
+    expect(error.message).toBe(
       `Global services broken, dependent failed to ${operation}; working is running.`,
     );
-    expect(error?.cause).toBe(cause);
+    expect(error.cause).toBe(cause);
   });
 });

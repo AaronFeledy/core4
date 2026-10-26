@@ -283,6 +283,7 @@ describe("provider-lando applied state persistence", () => {
               providerId: "lando",
               operation: "listVolumes",
               message: "offline",
+              remediation: "Install or start the `lando` provider and confirm it can perform `listVolumes`.",
             }),
           ),
       };

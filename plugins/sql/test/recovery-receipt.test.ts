@@ -37,6 +37,7 @@ test.each(["transfer", "resume"] as const)(
             operation: "exec",
             exitCode: 3,
             stderrTail: "denied\n",
+            remediation: "Fix database load permissions, then retry import.",
           })
         : new SqlCommandFailedError({
             message: "Readiness failed.",
