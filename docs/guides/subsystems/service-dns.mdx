@@ -33,7 +33,7 @@ The default provider is `lando` (managed Podman).
 | Where you are | Name to use | Example |
 | --- | --- | --- |
 | Another service in this app | The service key | `database` |
-| Another app, or Traefik's backend | `<service>.<app>.internal` | `database.service-dns-demo.internal` |
+| Another app, Traefik's backend, or anywhere a bare key could be ambiguous | `<service>.<app>.internal` | `database.service-dns-demo.internal` |
 | A network you joined with `networks:` | `<service>.<app>.internal` or an authored alias | `api.service-dns-demo.internal` |
 | Host browser | `*.lndo.site` | `https://app.service-dns-demo.lndo.site` |
 
@@ -81,7 +81,7 @@ Issued leaf certs list the service name and `<service>.<app>.internal` as SANs.
 
 ## Join another network
 
-To reach the containers of another Compose project on the same engine, or to give a few services a private network, declare it under top-level `networks:` and list it on the service. The service stays on its app network. On the extra network it answers to `<service>.<app>.internal` and any `aliases` you set, not to its bare service key, because other projects share that network. See [Join a service to another network](../config/networks.mdx).
+To reach the containers of another Compose project on the same engine, or to give a few services a private network, declare it under top-level `networks:` and list it on the service. The service stays on its app network. On the extra network it answers to `<service>.<app>.internal` and any `aliases` you set, not to its bare service key, because other projects share that network. `<service>.<app>.internal` also resolves inside the app, so it's the safe name when a joined network has a service with the same bare name as one of yours. If the other stack is only used by this app, fold it in with `include:` instead and reach its services by key. See [Reach another project's services](../config/networks.mdx).
 
 Routes need shared cross-app networking and the same provider as the host router. The default `lando` provider advertises shared networking on Linux, macOS, and Windows. A routed app pinned to a different provider fails planning with `RouteProviderMismatchError`. See [Routing needs one provider](../setup/provider-selection.mdx#routing-needs-one-provider).
 

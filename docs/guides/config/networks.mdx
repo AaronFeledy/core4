@@ -6,11 +6,69 @@ timeout: 90000
 tags: [beta, docs, config, compose, networking]
 ---
 
-# Join a service to another network
+# Reach another project's services
 
-Declare a network under top-level `networks:` and list it on a service to put that service on one more network. Use it to reach the containers of another Compose project that runs on the same engine, or to give a few of your own services a private network of their own. A service keeps its place on the app network either way, so the rest of the app still reaches it by its service key.
+Your app needs a database, a mail catcher, or an API that lives in another Compose project. Where that project runs decides how you connect to it:
 
-Save this as `.lando.yml` in an app directory. It joins `web` to a network that a sibling Compose project already created, and gives `web` and `cache` a second, app-owned network:
+| The other stack... | Do this |
+| --- | --- |
+| Is only used by this app | Fold it in with `include:` and let Lando run it as part of the app. |
+| Runs on the same container engine as Lando's provider | Join its network with `external: true`. |
+| Runs on a different engine (every `docker compose` project when you use the default `lando` provider) | Publish its ports and reach them through `host.lando.internal`. |
+
+The first row is the recommended path. The other two are below it, followed by the rules every `networks:` declaration follows.
+
+## Fold the stack into your app
+
+Compose's top-level `include:` works in a Landofile. Point it at the stack's compose file and its services become services of your app:
+
+```yaml
+name: networks-include
+include:
+  - mailstack/compose.yaml
+services:
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    home: false
+```
+
+`mailstack/compose.yaml` is a stock compose file. It needs no edits:
+
+```yaml
+services:
+  mailpit:
+    image: axllent/mailpit:v1.21
+    env_file:
+      - .env.mail
+    volumes:
+      - ./data:/data
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: devpassword
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata: {}
+```
+
+Included services default to `type: compose`, `home: false`, and `appMount: false`, so Lando mounts nothing into them that the compose file didn't ask for. They join the app network and resolve by service key: `web` reaches the mail catcher as `mailpit`. Named volumes such as `pgdata` work as written.
+
+Relative paths in the included file resolve from that file's own directory, the way Docker Compose resolves them: `./data:/data` binds, `env_file`, `build` contexts, and `configs` or `secrets` `file:` entries. Only local compose files get this path handling; files pulled in through git or npm includes keep their paths as written.
+
+Lint, then look at what Lando made of the compose file:
+
+```sh
+lando app:config:lint --format=json
+lando app:config --format=json
+```
+
+In the resolved config, `mailpit` has `"type": "compose"`, its bind source is `./mailstack/data`, and `envFile` is `./mailstack/.env.mail`, both rebased onto the app root. Run `lando start` once for the whole app instead of a separate `docker compose up`.
+
+## Join the stack's network
+
+When the other project runs on the same engine as Lando, declare its network under top-level `networks:` with `external: true` and list it on the services that need it:
 
 ```yaml
 name: networks-demo
@@ -35,13 +93,18 @@ services:
     networks: [backend]
 ```
 
-Lint the file before you start anything:
+Compose names a project's default network `<project>_default`, so a stack started from `~/mailstack` is usually on `mailstack_default`. `name` is the network's real name on the engine and defaults to the key when you leave it out.
+
+This only works after `lando setup --provider=docker`, where Lando's containers and `docker compose` projects share one engine. The same holds for `--provider=podman` and `podman compose`. See [Pick a container provider](../setup/provider-selection.mdx). With the default `lando` provider, Lando runs its own managed Podman, so a `docker compose` project is never on it and the external network fails as "does not exist" below. Use the host route instead.
+
+Lint and plan before you start anything:
 
 ```sh
 lando app:config:lint --format=json
+lando app:cache:refresh --format=json
 ```
 
-`result.valid` is `true` when every network a service lists is declared and every declaration is well formed. `lando app:cache:refresh` plans the app without starting it, which also checks that your provider supports every network field you used. Then run `lando start`. If `mailstack_default` doesn't exist on the engine yet, start fails before it creates anything, with `Network mailstack_default: this external network does not exist.` and the remediation `Start the project that owns this network or create it, then run lando start again.` Start that project first, or drop the `shared` network until you need it.
+`result.valid` is `true` when every network a service lists is declared and every declaration is well formed. `lando app:cache:refresh` plans the app without starting it. Then run `lando start`. If `mailstack_default` doesn't exist on the engine, start fails before it creates anything, with `Network mailstack_default: this external network does not exist.` and the remediation `Start the project that owns this network or create it, then run lando start again.`
 
 Once the app is up, check name resolution from inside `web`. Replace `mail` with a service in the sibling project:
 
@@ -52,6 +115,12 @@ lando exec web -- getent hosts cache
 
 The first line proves `web` sees the sibling project's network. The second proves the app network still works: `cache` resolves by its service key because membership is additive.
 
+## Reach the stack through your host
+
+A stack on a different engine is only reachable through ports it publishes on your host. Publish them in that project (`ports: ["8025:8025"]`), then point your service at `host.lando.internal:8025`. See [Reach your host from inside a service](../services/home-and-host.mdx#reach-your-host-from-inside-a-service) for the alias and the `LANDO_HOST_IP` variable.
+
+A supported way to run `docker compose` projects on Lando's own engine is still an open question. Don't plan on it; fold the stack in or use the host route.
+
 ## How the two spellings relate
 
 A service lists networks as a short list or as a mapping. The list form is the mapping form with no options, so `networks: [backend]` and `networks: { backend: {} }` mean the same thing. Use the mapping when you want `aliases`. `lando app:config --format=json` shows the resolved mapping either way.
@@ -60,28 +129,17 @@ The key you list must exist under top-level `networks:`, with one exception: `de
 
 Network keys start with a letter or digit and use only letters, digits, `_`, `.`, and `-`.
 
+`aliases` is the only attachment option. `ipv4_address`, `ipv6_address`, `mac_address`, `link_local_ips`, `driver_opts`, `priority`, `gw_priority`, and `interface_name` fail lint with the remediation `Lando doesn't pin network addresses or interface settings. Remove <field> and reach the service by its name or an alias.`
+
 ## Membership is additive
 
 Every service is always on its app network and on Lando's shared proxy network. `networks:` adds memberships; it never removes one. This is different from Docker Compose, where listing networks on a service replaces `default`. It means `networks:` is not an isolation tool: you can't use it to hide one service from another in the same app.
 
-## Reach another project's containers
+Outbound traffic from a service on several networks leaves through its app network. Lando gives the app network the default route on Docker Engine 28 and newer and on Podman; on older Docker engines, the engine picks the route.
 
-Set `external: true` to join a network that already exists on the container engine. `name` is the network's real name; it defaults to the key when you leave it out. Compose names a project's default network `<project>_default`, so a stack started from `~/mailstack` is usually on `mailstack_default`:
+## External networks
 
-```yaml
-networks:
-  shared:
-    name: mailstack_default
-    external: true
-```
-
-Lando never creates, changes, or removes an external network. `lando destroy` leaves it alone. An external network can't declare a `driver`; the project that owns the network already decided that.
-
-### Which engine the other project is on
-
-Joining another project's network only works when that project runs on the same engine as Lando's provider. The default `lando` provider runs its own managed Podman, so a stack you start with `docker compose up` is not on it, and an `external: true` network pointing at that stack fails with the "does not exist" error above. Reach that kind of stack through its published ports and `host.lando.internal` instead; see [Reach your host from inside a service](../services/home-and-host.mdx#reach-your-host-from-inside-a-service).
-
-After `lando setup --provider=docker`, Lando's containers and `docker compose` projects share one engine and you can join a project's `<project>_default` network directly. The same holds for `--provider=podman` and `podman compose`. See [Pick a container provider](../setup/provider-selection.mdx).
+Lando never creates, changes, or removes an external network. `lando destroy` leaves it alone. An external network can't declare a `driver`; the project that owns the network already decided that. Its `name` can't be one of Lando's own networks or start with `lando-<app>_`; both are lint errors.
 
 ## Give services a private network
 
@@ -99,17 +157,17 @@ services:
 
 Lando names the networks it creates, so `name:` on an app-owned network is a lint error. Set `external: true` when you mean a network that already exists.
 
-`lando destroy` removes app-owned networks. Removing one from the Landofile does not remove it from the engine on the next start; it stays until the next `lando destroy`.
+`lando destroy` removes app-owned networks. Removing one from the Landofile removes it from the engine on the next successful `lando start`, unless a container outside the app is still attached to it, in which case Lando leaves it alone.
 
 ## Names on an extra network
 
 On every extra network a member is reachable as `<service>.<app>.internal` plus whatever you put in `aliases`. Lando does not add the bare service key there, because other projects share that network and two of them may both have a `db`. In the example above, a container in the sibling project reaches `web` as `api` or `web.networks-demo.internal`, not as `web`. Your `web` reaches the sibling's containers by whatever names that project gave them, which for a Compose project includes bare service names.
 
-Prefer the qualified name when you write config that crosses projects. If a network you joined also has a service named like one of yours, a bare lookup can land on either one; `db.<app>.internal` always means yours. The full naming table is in [Reach services by name](../subsystems/service-dns.mdx).
+`<service>.<app>.internal` also resolves inside the app on every provider, so the qualified name is always safe to use. Prefer it when you write config that crosses projects: if a network you joined also has a service named like one of yours, a bare `db` lookup can land on either one, while `db.<app>.internal` always means yours. The full naming table is in [Reach services by name](../subsystems/service-dns.mdx).
 
-## What lint checks, and what only start checks
+## What lint checks
 
-`lando app:config:lint` reports every network problem it can see without a provider, under rule `landofile.network`:
+`lando app:config:lint` reports every network problem under rule `landofile.network`:
 
 - a service lists a key that is not under top-level `networks:` (and is not `default`)
 - a top-level `networks.default`
@@ -120,9 +178,36 @@ Prefer the qualified name when you write config that crosses projects. If a netw
 - two joined entries that resolve to the same network, for example two external entries with the same `name`
 - a key with characters outside letters, digits, `_`, `.`, and `-`
 
-Lint does not report the attachment fields that no bundled provider realizes: `ipv4_address`, `ipv6_address`, `mac_address`, `link_local_ips`, `driver_opts`, `priority`, `gw_priority`, and `interface_name`. Those pass lint and fail `lando start` with a `CapabilityError` naming the field, such as `networks.*.ipv4_address`. Remove the field; a static address on a Lando-managed network has no supported spelling today. Whether an external network exists is also a start-time check.
+Attachment fields other than `aliases` are rejected Compose keys, reported under `landofile.compose-rejection` at the field's path with the remediation above.
+
+Lint also reports provider capability problems under `landofile.capability`, such as a Compose field the selected provider can't realize, without starting anything. When Lando can't determine the provider's capabilities offline, it adds one warning saying those checks run at `lando start`. Whether an external network exists is still a start-time check; lint has no engine to ask.
 
 <Guide>
+  <Scenario id="include-compose-file" render>
+    <Step name="scaffold">
+      <UseFixture name="networks-include" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect-resolved-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"mailpit\":\\s*\\{\\s*\"type\":\\s*\"compose\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"envFile\":\\s*\\[\\s*\"\\./mailstack/\\.env\\.mail\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"source\":\\s*\"\\./mailstack/data\",\\s*\"target\":\\s*\"/data\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"volume\",\\s*\"source\":\\s*\"pgdata\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appMount\":\\s*false,\\s*\"home\":\\s*false" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
   <Scenario id="declared-networks-lint-clean" render>
     <Step name="scaffold">
       <UseFixture name="networks-demo" />
@@ -176,6 +261,22 @@ Lint does not report the attachment fields that no bundled provider realizes: `i
       <Cleanup />
     </Step>
   </Scenario>
+
+  <Scenario id="pinned-address-fails-lint" render={false} reason="Regression: lint rejects ipv4_address at its path with the pinning remediation.">
+    <Step name="scaffold">
+      <UseFixture name="networks-pinned-address" />
+    </Step>
+    <Step name="lint">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.compose-rejection\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"networks\",\\s*\"backend\",\\s*\"ipv4_address\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "Lando doesn.t pin network addresses or interface settings\\. Remove ipv4_address and reach the service by its name or an alias\\." } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Tear down
@@ -185,5 +286,6 @@ Lint does not report the attachment fields that no bundled provider realizes: `i
 ## Next
 
 - [Reach services by name](../subsystems/service-dns.mdx)
+- [Include Landofile fragments](../landofile/includes-and-lockfile.mdx)
 - [Paste a Compose service into a Landofile](./compose-service-block.mdx)
 - [Use Compose keys in a Landofile](./compose-compatibility.mdx)

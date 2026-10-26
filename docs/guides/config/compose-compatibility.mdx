@@ -18,6 +18,6 @@ Each disposition describes what happens during planning:
 
 Treat normalized and preserved entries as accepted only for the shapes the matrix documents. Use the matrix remediation for rejected input.
 
-Two keys change meaning on the way in. Top-level `networks:` and service `networks:` are normalized, but membership is additive: a service stays on its app network and the shared proxy network, and `networks:` adds more. In Compose, listing networks on a service replaces `default`. See [Join a service to another network](./networks.mdx). `network_mode` is rejected; translate it to `networks:`.
+Two keys change meaning on the way in. Top-level `networks:` and service `networks:` are normalized, but membership is additive: a service stays on its app network and the shared proxy network, and `networks:` adds more. In Compose, listing networks on a service replaces `default`. Attachment options other than `aliases` (`ipv4_address`, `mac_address`, `priority`, and the rest) are rejected at lint. See [Reach another project's services](./networks.mdx). `network_mode` is rejected; translate it to `networks:`. Top-level `include:` is accepted: the included compose file's services become `type: compose` services of the app.
 
 For a runnable example, continue with [Paste a Compose service into a Landofile](./compose-service-block.mdx).
