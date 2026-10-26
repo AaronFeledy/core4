@@ -52,7 +52,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: servicePlan },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

@@ -45,11 +45,11 @@ export const mergeLintFindings = (
 
 export const attributeEffectiveLintIssue = (
   landofile: LandofileShape,
-  issue: ValidationIssue & { readonly rule: string },
+  issue: ValidationIssue & { readonly rule: string; readonly severity?: "error" | "warning" },
 ): ConfigLintViolation => {
   const source = issue.source ?? getLandofileValueSource(landofile, issue.path);
   return attributeLintIssue(
-    { ...issue, severity: "error", ...(source === undefined ? {} : { source }) },
+    { ...issue, severity: issue.severity ?? "error", ...(source === undefined ? {} : { source }) },
     "effective",
     getSourceDocuments(landofile),
   );
@@ -137,9 +137,13 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   if (Result.isFailure(finalized)) {
     const error = finalized.failure;
     if (error._tag === "LandofileFormConflictError") return yield* Effect.fail(error);
+    // A rejected Compose key already has a field-level finding; a pathless copy only repeats it.
+    const reportedRejection =
+      error._tag === "ComposeKeyRejectedError" &&
+      violations.some((violation) => violation.rule === "landofile.compose-rejection");
     if (error._tag === "LandofileValidationError")
       violations.push(...error.issues.map((issue) => attributeLintIssue(issue, "effective", documents)));
-    else {
+    else if (!reportedRejection) {
       const path =
         error._tag === "LandofileIncludeError"
           ? (error.path ?? [])

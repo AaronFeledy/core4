@@ -148,14 +148,23 @@ test("a mismatched cached plan cannot delete another app's snapshots", async () 
   });
 });
 
-test("explicit scratch destroy carries the cached plan on both bracket events", async () => {
-  // Given a registered scratch with a cached plan.
+test("explicit scratch destroy carries a historical cached plan without retired networks on both bracket events", async () => {
+  // Given a registered scratch whose cached wire plan still has the retired field.
   await withDestroyFixture({}, async (f) => {
+    await writeFile(
+      join(f.instanceRoot, "plan.bin"),
+      JSON.stringify({
+        ...Schema.encodeSync(AppPlan)(f.plan),
+        networks: [{ name: `lando-${f.plan.slug}`, shared: false, driver: "bridge" }],
+      }),
+    );
     // When explicit destroy completes.
     await runDestroy(f);
     // Then both boundary payloads carry that plan.
-    for (const _tag of ["pre-scratch-destroy", "post-scratch-destroy"])
+    for (const _tag of ["pre-scratch-destroy", "post-scratch-destroy"]) {
       expect(f.events.find((event) => event._tag === _tag)).toMatchObject({ plan: f.plan });
+      expect(f.events.find((event) => event._tag === _tag)).not.toHaveProperty("plan.networks");
+    }
   });
 });
 

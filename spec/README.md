@@ -213,6 +213,12 @@ If you are looking for a public surface or policy:
 
 ---
 
+## Plugin implementation plans
+
+- [GitHub Actions plugin](./github-actions-plugin-plan.md): a planned optional integration, evaluated against the completed execution-foundation contracts (§22). It is not a shipped feature, a new spec part, or a release commitment.
+
+---
+
 ## Conventions
 
 - Cross-references use stable `§N` section numbers, not file numbers; section numbers are independent of part numbers.

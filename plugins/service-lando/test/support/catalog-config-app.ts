@@ -52,7 +52,6 @@ export const composeCatalogConfigPlan = (args: {
       provider: ProviderId.make("lando"),
       services: { [servicePlan.name]: servicePlan },
       routes: [],
-      networks: [],
       // The named volumes the service asks for have to appear on the app plan
       // as well, or teardown has no store to remove and every run leaks the
       // data volume it created.

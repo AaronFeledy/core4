@@ -98,7 +98,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): CurrentExecutableAppPla
   provider: providerId,
   services: Object.fromEntries(services.map((service) => [String(service.name), service])),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

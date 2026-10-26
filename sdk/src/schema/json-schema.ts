@@ -155,7 +155,13 @@ import {
   TunnelStatusEvent,
 } from "../events/index.ts";
 import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
-import { AppPlan, CurrentExecutableAppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
+import {
+  AppPlan,
+  CurrentExecutableAppPlan,
+  FileSyncPlan,
+  ServiceNetworkAttachment,
+  ServicePlan,
+} from "./app-plan.ts";
 import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { CommandTrace, CommandTraceSpan } from "./command-trace.ts";
@@ -325,6 +331,7 @@ import { McpCatalog, McpCatalogOptions, McpServeOptions, McpToolDescriptor } fro
 import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan, StorageScope } from "./mounts.ts";
 import {
   AppRef,
+  AuthoredNetworkPlan,
   CertificatePlan,
   CheckResult,
   DependencyPlan,
@@ -332,7 +339,6 @@ import {
   HealthcheckPlan,
   HostAliasPlan,
   IsolateMode,
-  NetworkPlan,
   NetworkingPlan,
   PerAppBridgePlan,
   ProviderCapabilities,
@@ -655,9 +661,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   HostAliasPlan,
   ServiceDependencyCondition,
   DependencyPlan,
-  NetworkPlan,
   PerAppBridgePlan,
   SharedNetworkMembershipPlan,
+  AuthoredNetworkPlan,
+  ServiceNetworkAttachment,
   NetworkingPlan,
   IsolateMode,
   ProviderCapabilities,
@@ -1190,9 +1197,11 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   HostAliasPlan: "Public Lando schema contract for Host Alias Plan.",
   ServiceDependencyCondition: "How a service dependency must be satisfied before dependents start.",
   DependencyPlan: "Public Lando schema contract for Dependency Plan.",
-  NetworkPlan: "Public Lando schema contract for Network Plan.",
   PerAppBridgePlan: "Public Lando schema contract for Per App Bridge Plan.",
   SharedNetworkMembershipPlan: "Public Lando schema contract for Shared Network Membership Plan.",
+  AuthoredNetworkPlan:
+    "A top-level Landofile network that services join in addition to the app and shared networks.",
+  ServiceNetworkAttachment: "A service's physical network attachment and DNS aliases.",
   NetworkingPlan: "Public Lando schema contract for Networking Plan.",
   IsolateMode: "Public Lando schema contract for Isolate Mode.",
   ProviderCapabilities: "Public Lando schema contract for Provider Capabilities.",
@@ -1624,7 +1633,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "AppPlan.metadata",
   "AppPlan.name",
   "AppPlan.networking",
-  "AppPlan.networks",
   "AppPlan.provider",
   "AppPlan.requires",
   "AppPlan.root",
@@ -2126,9 +2134,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "NetworkCaConfig.trustHost",
   "NetworkConfig.ca",
   "NetworkConfig.proxy",
-  "NetworkPlan.driver",
-  "NetworkPlan.name",
-  "NetworkPlan.shared",
   "NetworkProxyConfig.http",
   "NetworkProxyConfig.https",
   "NetworkProxyConfig.injectIntoServices",

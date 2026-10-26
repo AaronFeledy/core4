@@ -106,9 +106,12 @@ const INEXPRESSIBLE = [
 const SKIPPED = [
   { suffix: ".lando.stop", reason: "Discovery stop marker, not a Landofile document." },
   { suffix: ".lando.ts", reason: "TypeScript program, not a YAML Landofile document." },
+  {
+    suffix: ".lando.local.ts",
+    reason: "TypeScript overlay program, not a canonical YAML Landofile document.",
+  },
   { suffix: ".lando.base.yml", reason: "Partial base layer, not a canonical Landofile document." },
   { suffix: ".lando.local.yml", reason: "Partial overlay layer, not a canonical Landofile document." },
-  { suffix: ".lando.local.ts", reason: "Partial TypeScript overlay layer, not a canonical Landofile document." },
   { suffix: ".lando.recipe.yml", reason: "Recipe overlay layer, not a canonical Landofile document." },
   { suffix: ".lando.tasks.yml", reason: "Tooling include fragment, not a canonical Landofile document." },
 ] as const;
@@ -196,6 +199,7 @@ const INVALID_INPUT_FIXTURES = new Map([
   ],
   ["expressions/fixtures/expressions-plan-time-typed-field", "Planner scopes cannot supply typed values."],
   ["scripting-with-json/fixtures/unknown-service-key", "Deliberate misspelled service property."],
+  ["networks/fixtures/networks-pinned-address", "Deliberately pins a network address Lando rejects."],
   ["config-translate/fixtures/lando3-compose-arguments", "Legacy Lando 3 source, not v4 input."],
   ["build-steps/fixtures/build-steps-invalid-user", "Deliberately malformed build user."],
   [

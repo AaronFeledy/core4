@@ -140,7 +140,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [{ kind: "data" as const, name: "test_stop_database_data", scope: "app" as const }],
   fileSync: [],
   metadata,

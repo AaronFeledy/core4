@@ -83,7 +83,6 @@ export const storageLifecycleFixture = (source: EngineHttpApi, provider: "docker
       },
     },
     networking: { perAppBridge: { name: network, driver: "bridge" } },
-    networks: [],
     routes: [],
     stores: [{ name: retained, scope: "app", kind: "data" }],
     fileSync: [],

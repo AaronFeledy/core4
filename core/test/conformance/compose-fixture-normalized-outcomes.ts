@@ -186,6 +186,23 @@ export const assertNormalizedMatch = (match: ComposeDispositionMatch, context: O
     service,
   };
   switch (planAssertion) {
+    case "networks":
+      for (const [key, attachment] of Object.entries(service.networks ?? {})) {
+        if (key === "default") {
+          expect(context.plan.networking?.perAppBridge).toBeDefined();
+          if (attachment.aliases !== undefined)
+            expect(context.plan.networking?.perAppBridge?.aliases?.[planService.name]).toEqual(
+              attachment.aliases,
+            );
+        } else {
+          const network = context.plan.networking?.authoredNetworks?.find((entry) => entry.key === key);
+          expect(network?.members[planService.name]?.aliases).toEqual([
+            `${planService.name}.${context.plan.slug}.internal`,
+            ...(attachment.aliases ?? []),
+          ]);
+        }
+      }
+      return true;
     case "artifact-build":
     case "artifact-ref":
       assertArtifact(planAssertion, serviceContext);

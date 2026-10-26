@@ -26,7 +26,6 @@ for (const kind of ["cmd", "task"] as const) {
         provider: ProviderId.make("test"),
         services: {},
         routes: [],
-        networks: [],
         fileSync: [],
         stores: [],
         extensions: {},

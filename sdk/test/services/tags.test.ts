@@ -252,7 +252,6 @@ describe("Effect service tags", () => {
       provider: ProviderId.make("test"),
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: {

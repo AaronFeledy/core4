@@ -107,7 +107,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database, [node.name]: node },
   routes: [],
-  networks: [],
   stores: [
     { name: "bringdownapp_database_data", scope: "app", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
@@ -157,8 +156,22 @@ const makeFakeApi = () => {
         const name = [...containers].find(([, container]) => container.Id === reference)?.[0] ?? reference;
         const action = containerMatch?.[2];
 
-        if (request.path === "/networks/create") {
-          const body = decodeCreateBody(request.body);
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+          const payload =
+            request.path === "/libpod/networks/create"
+              ? Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    name: Schema.String,
+                    driver: Schema.Literal("bridge"),
+                    dns_enabled: Schema.Literal(true),
+                    options: Schema.Struct({ metric: Schema.Literal("50") }),
+                    labels: Schema.Record(Schema.String, Schema.String),
+                  }),
+                )(request.body)
+              : undefined;
+          const body = decodeCreateBody(
+            payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels },
+          );
           const requestedName = body.Name ?? "";
           networks.add(requestedName);
           const network = { Id: `${requestedName}-id`, Labels: body.Labels ?? {} };

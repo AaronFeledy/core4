@@ -26,7 +26,6 @@ const plan: AppPlan = {
       backend: { service: mail, protocol: "http", port: 8025 },
     },
   ],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

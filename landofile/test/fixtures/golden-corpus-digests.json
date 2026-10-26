@@ -526,6 +526,29 @@
       "digest": "7a9fb91ab0023bac0648956ec7bd5c08d1694319d34e3f417038362492b516c2"
     },
     {
+      "fixture": "docs/guides/networks/fixtures/networks-demo",
+      "digest": "1a0e8d66f3e73cef88f44002d918e0522172dd2a39c25f9e5c6785545e0aed6f"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-include",
+      "digest": "cb069536a4627ca18f8601c497293d1b3ebb4802c1e70aae98184c0ee4ac6d1c"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-misdeclared",
+      "digest": "5c6f4865559c80cd10d6e618c2a948e35cfdaf784fe10c98c014e08ae3655eae"
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-pinned-address",
+      "invalid": {
+        "status": "invalid",
+        "tag": "ComposeKeyRejectedError"
+      }
+    },
+    {
+      "fixture": "docs/guides/networks/fixtures/networks-undeclared",
+      "digest": "1043e09b1fcfa6be384fb3bc16839209bc9df7e8b03a365c6d5655b236beaf93"
+    },
+    {
       "fixture": "docs/guides/nginx/fixtures/nginx-demo",
       "digest": "e155261b86dca3423e48c1a886d0bb5ff225b0afc4f34211d60e87cb5503f75a"
     },

@@ -63,7 +63,6 @@ test("keeps copy-in tar framing valid when the source grows before upload", asyn
     provider: ProviderId.make("test"),
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: {
@@ -120,7 +119,6 @@ test("fails copy-in when the source shrinks before upload", async () => {
     provider: ProviderId.make("test"),
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: {

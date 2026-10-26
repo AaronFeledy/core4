@@ -180,7 +180,6 @@ const plan = {
   provider: providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

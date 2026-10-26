@@ -65,7 +65,6 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     provider: ProviderId.make("lando"),
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: {

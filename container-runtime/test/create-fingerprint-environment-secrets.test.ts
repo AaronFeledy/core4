@@ -40,7 +40,6 @@ const plan = (value: ServicePlan): AppPlan => ({
   provider: value.provider,
   services: { [value.name]: value },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

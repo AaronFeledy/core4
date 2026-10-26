@@ -69,7 +69,6 @@ describe("Tomcat authored HTTP port", () => {
       provider: service.provider,
       services: { [service.name]: service },
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: service.metadata,

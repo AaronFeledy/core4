@@ -23,7 +23,6 @@ const plannedPlan: AppPlan = {
   identity: { appRoot, ownerKey: appIdentityKey("owner", appRoot) },
   services: {},
   routes: [],
-  networks: [],
   stores: [dataStore, cacheStore],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"), source: "test", runtime: 4 },

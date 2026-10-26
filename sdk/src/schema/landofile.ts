@@ -324,16 +324,6 @@ const ExtensionRecord = Schema.Record(Schema.TemplateLiteral(["x-", Schema.Strin
 const ComposeNetworkAttachment = Schema.StructWithRest(
   Schema.Struct({
     aliases: Schema.optionalKey(Schema.Array(Schema.String)),
-    interface_name: Schema.optionalKey(Schema.String),
-    ipv4_address: Schema.optionalKey(Schema.String),
-    ipv6_address: Schema.optionalKey(Schema.String),
-    link_local_ips: Schema.optionalKey(Schema.Array(Schema.String)),
-    mac_address: Schema.optionalKey(Schema.String),
-    driver_opts: Schema.optionalKey(
-      Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Number])),
-    ),
-    priority: Schema.optionalKey(Schema.Number),
-    gw_priority: Schema.optionalKey(Schema.Number),
   }),
   [ExtensionRecord],
 );
@@ -341,7 +331,7 @@ const ComposeNetworkAttachment = Schema.StructWithRest(
 const ComposeNetworkAttachmentRecord = Schema.Record(Schema.String, ComposeNetworkAttachment);
 
 const COMPOSE_NETWORKS_DESCRIPTION =
-  "Service network attachments as a name list or long mapping; canonicalized to a long mapping and carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
+  "Extra networks this service joins, as a name list or long mapping keyed by a top-level networks: entry or default (the app network). Membership is additive: the service always stays on its app network. aliases add DNS names on that network; address and interface settings are rejected. Normalized into AppPlan.networking, with no preserved Compose copy. Attachment x-* keys remain inert metadata.";
 
 const ComposeNetworksInput = Schema.Union([
   Schema.Array(Schema.String),

@@ -114,7 +114,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [postgres.name]: postgres },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
