@@ -41,6 +41,7 @@ const LITERAL_FIELDS = {
 const ARRAY_FIELDS = ["providerExtensions"] as const;
 
 const OPTIONAL_FIELDS = [
+  "authoredNetworks",
   "agentSocket",
   "architectureEmulation",
   "composeKnobs",
@@ -54,7 +55,7 @@ const COMPOSE_PRESERVED_PATH_KEYS = ["depends_on.*.restart", "healthcheck.start_
 
 const COMPOSE_PROJECT_FIELD_KEYS = ["configs", "secrets"] as const;
 
-const COMPOSE_SERVICE_FIELD_KEYS = ["networks", "configs", "secrets", "profiles", "labels"] as const;
+const COMPOSE_SERVICE_FIELD_KEYS = ["configs", "secrets", "profiles", "labels"] as const;
 
 const COMPOSE_SERVICE_KNOB_KEYS = [
   "restart",
@@ -166,7 +167,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the documented capability fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(35);
+    expect(actual).toHaveLength(36);
   });
 
   test("defaults architectureEmulation to false when omitted", () => {

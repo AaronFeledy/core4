@@ -1,19 +1,19 @@
 import { expect, test } from "bun:test";
 import { DateTime, Effect, Schema } from "effect";
 
-import { makeRuntimeProvider } from "@lando/provider-docker";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("creation"),
   name: "creation",
   slug: "creation",
   root: AbsolutePath.make("/owner"),
   provider: ProviderId.make("docker"),
-  identity: { appRoot: AbsolutePath.make("/owner"), ownerKey: "owner" },
+  identity: { appRoot: AbsolutePath.make("/owner"), ownerKey: appIdentityKey("owner", "/owner") },
   services: {},
   routes: [],
-  networks: [],
   stores: [{ name: "data", scope: "app", kind: "data" }],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"), source: "test", runtime: 4 },

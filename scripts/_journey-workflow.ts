@@ -1,3 +1,5 @@
+import { containerHelperDownloadStep } from "./_container-helper-workflow.ts";
+import { isolateLandoRootsStep as isolateRootsStep } from "./_lando-roots-workflow.ts";
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import {
   CI_PLATFORMS,
@@ -7,14 +9,10 @@ import {
 } from "./ci-platforms.ts";
 import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 
-const SCHEDULE_IF = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'";
+const SCHEDULE_IF =
+  "github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')";
 
-export const runtimeHelperBuilds = `          bun run --filter='@lando/core' build:host-proxy-shim
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
-`;
-
-export const createJourneyWorkflowBuilder = (workflow: string, buildCommands: string) => {
+export const createJourneyWorkflowBuilder = (workflow: string) => {
   const assertNever = (value: never): never => {
     throw new Error(`Unexpected ${workflow} value: ${String(value)}`);
   };
@@ -32,8 +30,6 @@ export const createJourneyWorkflowBuilder = (workflow: string, buildCommands: st
 
   const renderCadenceIf = (cadence: PlatformReadinessCell["cadence"]): string => {
     switch (cadence) {
-      case "pr+evidence":
-        return "";
       case "evidence":
         return `    if: ${SCHEDULE_IF}\n`;
       default:
@@ -51,15 +47,6 @@ export const createJourneyWorkflowBuilder = (workflow: string, buildCommands: st
     return isWindowsCiPlatform(cell) ? `${flags} --no-interactive` : flags;
   };
 
-  // GitHub does not expose the `runner` context to job-level `env:`, so these
-  // roots are exported from the first step instead. Declaring them at job level
-  // makes GitHub reject the entire workflow file.
-  const isolateRootsStep = `      - name: Isolate Lando roots
-        run: |
-          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
-          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
-          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"`;
-
   const setupBunSteps = `      - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -71,13 +58,15 @@ export const createJourneyWorkflowBuilder = (workflow: string, buildCommands: st
   const derivedSourcesSteps = `      - name: Regenerate derived sources
         run: bun run codegen
 
+${containerHelperDownloadStep}
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest`;
 
   const renderCompileStep = (platform: CiPlatform): string => `      - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
-${buildCommands}          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --version "$VERSION" --minify --sourcemap=external`;
 
   const renderLinuxSourceBuildPrereqs = (): string => `

@@ -55,7 +55,6 @@ const makePlan = (): AppPlan => ({
   provider: providerId,
   services: { [serviceName]: makeService() },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -63,6 +62,15 @@ const makePlan = (): AppPlan => ({
 });
 
 const rawConsole = (line: string): Uint8Array => textEncoder.encode(`2026-05-17T12:00:00.000Z ${line}\n`);
+
+const consoleFrame = (stream: 1 | 2, text: string): Uint8Array => {
+  const payload = textEncoder.encode(text);
+  const frame = new Uint8Array(8 + payload.length);
+  frame[0] = stream;
+  new DataView(frame.buffer).setUint32(4, payload.length);
+  frame.set(payload, 8);
+  return frame;
+};
 
 const collectLogs = (stream: Stream.Stream<LogChunk, unknown>): Promise<ReadonlyArray<LogChunk>> =>
   Effect.runPromise(Stream.runCollect(stream).pipe(Effect.map((chunks) => [...chunks])));
@@ -74,6 +82,7 @@ const makeFakeApi = (
       readonly labels: Readonly<Record<string, string>>;
     }>;
     readonly logLine?: string;
+    readonly logFrames?: ReadonlyArray<Uint8Array>;
   } = {},
 ): {
   readonly api: DockerApiClient;
@@ -105,7 +114,7 @@ const makeFakeApi = (
     stream: (request) => {
       calls.push(request);
       if (request.path.includes("/logs?")) {
-        return Stream.fromIterable([rawConsole(logLine)]);
+        return Stream.fromIterable(options.logFrames ?? [rawConsole(logLine)]);
       }
       return Stream.empty;
     },
@@ -114,6 +123,35 @@ const makeFakeApi = (
 };
 
 describe("provider-docker logs", () => {
+  test.each([true, false])("reassembles multiplexed lines and flushes EOF with plan=%s", async (withPlan) => {
+    const fake = makeFakeApi({
+      containers: [
+        { name: "lando-myapp-web", labels: { "dev.lando.app": appId, "dev.lando.service": serviceName } },
+      ],
+      logFrames: [
+        consoleFrame(1, "2026-05-17T12:00:00.000Z is"),
+        consoleFrame(2, "2026-05-17T12:00:01.000Z err-"),
+        consoleFrame(1, "2026-05-17T12:00:02.000Z  ready\n    indented\ntail"),
+        consoleFrame(2, "2026-05-17T12:00:03.000Z part\n"),
+      ],
+    });
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+    const logs = await collectLogs(
+      provider.logs(
+        { app: appId, service: serviceName, ...(withPlan ? { plan: makePlan() } : {}) },
+        { follow: false },
+      ),
+    );
+    expect(
+      logs.map(({ service, stream, line, timestamp }) => [service, stream, line, timestamp?.toISOString()]),
+    ).toEqual([
+      [serviceName, "stdout", "is ready", "2026-05-17T12:00:00.000Z"],
+      [serviceName, "stdout", "    indented", "2026-05-17T12:00:02.000Z"],
+      [serviceName, "stderr", "err-part", "2026-05-17T12:00:01.000Z"],
+      [serviceName, "stdout", "tail", "2026-05-17T12:00:02.000Z"],
+    ]);
+  });
+
   test("streams Docker Engine logs when the app plan is passed in the target", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(

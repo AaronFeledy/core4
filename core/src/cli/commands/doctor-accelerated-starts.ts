@@ -19,8 +19,8 @@ export const acceleratedStartsDoctor = Effect.fnUntraced(function* (redact: (tex
   return records.map(
     (record): DoctorSubsystemCheck => ({
       name: "accelerated-start",
-      status: "fail",
-      severity: "error",
+      status: "warn",
+      severity: "warn",
       recovery: "manual",
       context: Object.fromEntries(
         Object.entries({
@@ -28,12 +28,6 @@ export const acceleratedStartsDoctor = Effect.fnUntraced(function* (redact: (tex
           appRoot: record.appRoot,
           phase: record.phase,
           attemptId: record.attemptId,
-          ...(record.recoveredFrom === undefined
-            ? {}
-            : {
-                recoveredFrom: record.recoveredFrom,
-                recoveryState: "interrupted recovery",
-              }),
           providerId: record.providerId,
           engineId: record.engineId,
           journalPath: record.path,

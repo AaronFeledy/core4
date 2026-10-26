@@ -6,7 +6,7 @@ import { NEXTJS_SCAFFOLD_COMMAND } from "./scaffold-command.ts";
 
 export const NEXTJS_RECIPE_VERSION = "0.1.0";
 export const NEXTJS_CONTENT_DIGEST =
-  "sha256:7c5f2ae9767abdb59d083f3fd4f89270bc615442f969c10279c363ae72d730f9";
+  "sha256:b57459a49d467a39199b960f6b20a1181e1d4d4f70ba29c51cba47408277860f";
 export const nextjsProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-nextjs",

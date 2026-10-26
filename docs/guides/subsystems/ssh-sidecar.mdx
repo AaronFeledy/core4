@@ -8,7 +8,7 @@ tags: [beta, docs, subsystems, ssh, sidecar]
 
 # Deliver the sidecar SSH agent inside the runtime
 
-The default SSH sidecar delivers its socket through a runtime volume when the app uses the managed `lando` provider. This contributor explanation covers `SshService` and delivery. To forward a 1Password, YubiKey, or gpg-agent instead, see [Use your host SSH agent](./ssh-host-agent.mdx).
+The default SSH sidecar delivers its socket through a runtime volume when the app runs on the same provider as the global app. This contributor explanation covers `SshService` and delivery. To forward a 1Password, YubiKey, or gpg-agent instead, see [Use your host SSH agent](./ssh-host-agent.mdx).
 
 The Landofile knob is top-level `sshAgent`. Leaving it out is the same as this:
 
@@ -18,9 +18,9 @@ sshAgent:
   sidecar: true
 ```
 
-`sidecar: true` selects the Lando-managed `ssh-agent` global service. It runs `ssh-agent` and loads your `~/.ssh` keys through `ssh-add` when the global app starts. The managed `lando` provider hosts it even when the app itself runs on Docker or user-owned Podman. `sidecar: false` switches the app to host mode; that page is linked above. There is no per-service `sshAgent` key.
+`sidecar: true` selects the Lando-managed `ssh-agent` global service. It runs `ssh-agent` and loads your `~/.ssh` keys through `ssh-add` when the global app starts. It lives on the host provider with the rest of the global app, even when a Landofile pins the app itself somewhere else; see [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs). `sidecar: false` switches the app to host mode; that page is linked above. There is no per-service `sshAgent` key.
 
-That `~/.ssh` resolves against your current host home when the global app is planned, so a changed home reaches the next plan without manual cleanup. A sidecar that is already running keeps its old bind until `lando global:rebuild`.
+That `~/.ssh` resolves against your current host home when the global app is planned, so a changed home reaches the next plan without manual cleanup. A sidecar that is already running keeps its old bind until `lando global:start`.
 
 The global app builds the sidecar's image from Alpine with `openssh-client` and `socat` baked in. The first build needs network access to fetch the base image and packages. Later starts reuse the built image and cached build layers without downloading packages, so the sidecar can start offline after that first build.
 
@@ -34,11 +34,11 @@ Every `type: lando` service gets the `lando.ssh-agent` feature (priority 1200) i
 SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock
 ```
 
-On the managed provider, the plugin publishes `runtimeVolume: "lando-ssh-agent"` through `SshService.getAgentSocket`. The global service declares `storage: [{ store: "lando-ssh-agent", target: "/run/lando/ssh-agent", scope: "app" }]`. The planner preserves that native name and puts the store on the global plan, never on consuming app plans. Apps mount the volume directly: no host socket probe, detached relay worker, or VM bridge. Readiness checks the global service on the managed provider and runs `ssh-add -l` inside it; an empty but reachable agent is ready.
+When the app runs on the same provider as the global app, the plugin publishes `runtimeVolume: "lando-ssh-agent"` through `SshService.getAgentSocket`. The global service declares `storage: [{ store: "lando-ssh-agent", target: "/run/lando/ssh-agent", scope: "app" }]`. The planner preserves that native name and puts the store on the global plan, never on consuming app plans. Apps mount the volume directly: no host socket probe, detached relay worker, or VM bridge. Readiness checks the global service on its own provider and runs `ssh-add -l` inside it; an empty but reachable agent is ready.
 
 The sidecar publishes `agent.sock` at the volume root with mode `0666` and a traversable directory. A socat listener connects to the private agent socket as the agent's owner, allowing non-root service users through OpenSSH's peer-UID check. This local forwarding stays inside the runtime on Linux, macOS, and Windows.
 
-Apps on Docker or user-owned Podman keep the host-relay path. A second sidecar listener preserves `<userDataRoot>/ssh/ssh-agent.sock`; the per-app worker probes and relays it through the selected provider's existing delivery mechanism. A plugin without `runtimeVolume` also uses that path. Cross-provider delivery still depends on the host being able to connect to the sidecar's host-facing socket.
+Apps pinned to a different provider than the global app keep the host-relay path. A second sidecar listener preserves `<userDataRoot>/ssh/ssh-agent.sock`; the per-app worker probes and relays it through the selected provider's existing delivery mechanism. A plugin without `runtimeVolume` also uses that path. Cross-provider delivery still depends on the host being able to connect to the sidecar's host-facing socket.
 
 The planner records only the eligible services and the selected mode under the plan extension `@lando/core/ssh-agent` (`{ mode: "sidecar" | "host" }`). The mount and `SSH_AUTH_SOCK` are a start-time overlay applied by start, restart, and rebuild; they never enter the plan cache. Runtime-volume sessions need no per-app cleanup. App stop, destroy, and volume pruning leave the globally owned store alone. Global destroy or uninstall may remove it. Host-relay sessions retain their existing cleanup on stop or destroy.
 
@@ -50,7 +50,11 @@ Sidecar mode is best-effort. If the provider does not advertise `agentSocket`, n
 - It stopped, or its agent did not answer within the wait: run `lando global:logs --service ssh-agent` to see why, fix the cause, then run `lando restart`.
 - No SSH agent sidecar service is installed: install and select the bundled SSH agent plugin, then restart the app.
 
-Every later start retries on its own. `lando doctor` reports `runtime-volume` delivery and the volume name on the managed provider, using in-runtime readiness rather than host socket reachability. A failed check reports degraded with `lando setup` or `lando doctor --fix` as remediation.
+Readiness failures include `Last probe failure:` with the redacted reason from the last completed check: a provider inspect or exec failure, a socket request failure, a probe timeout, or the readiness shell probe's exit code. That probe exit code is not the agent process's exit code. An observed stopped container reports its status and container exit code when available. `SshAgentUnavailableError` also carries the redacted reason in `detail`; setup includes it in the `shell` step's evidence, and `lando doctor --fix` includes it in `fixError` when repair fails.
+
+For a detached SSH or gpg relay startup failure, inspect the log path named in the error: `<userCacheRoot>/logs/agent-relay-worker-<appId>.log`. Startup failures that come from the worker name that path: an exit before readiness, a failed payload write, a readiness timeout, closed stdout, or an invalid readiness frame. An observed exit includes its exit code and redacted stderr tail; a worker still alive after a bounded wait has no reported exit code. Logs are owner-only (`0600` on POSIX, a private ACL on Windows). Outer-failure output and error tails are redacted, and an invalid readiness frame is never printed.
+
+Every later start retries on its own. `lando doctor` reports `runtime-volume` delivery and the volume name when the app shares the global app's provider, using in-runtime readiness rather than host socket reachability. A failed check reports degraded with `lando setup` or `lando doctor --fix` as remediation.
 
 Setup and the global app follow the same rule. `lando setup` waits up to about 30 seconds for the sidecar's agent to answer before recording the `shell` step as ready. An empty agent counts as ready: `ssh-add -l` may exit 0 or 1. If the sidecar cannot start, stops before answering, or never answers within that wait, setup prints a warning with the redacted cause and remediation, finishes its other steps, and records `shell` as unavailable without failing setup by itself. `lando doctor` keeps reporting that setup record until the next `lando setup` run, even after an app start brings the sidecar up. `lando doctor --fix` can restart the sidecar and waits for its agent before reporting the `ssh` check recovered or failed, but it does not rewrite the setup record. `lando global:start`, `lando global:restart`, and `lando global:rebuild` start global services that do not depend on each other separately, so a broken sidecar does not stop Traefik or the other global services from starting. Those commands still exit non-zero and name the service that failed.
 
@@ -60,7 +64,7 @@ Host mode does the opposite and fails closed. That difference is deliberate: nob
 
 The sidecar is a Lando-managed `ssh-agent` container. At global-app start it runs `ssh-add` against a read-only bind of your `~/.ssh`, so every default key it can load without a passphrase ends up unencrypted in that agent's memory for as long as the global app runs. Passphrase-protected keys are skipped. Hardware-backed keys and 1Password keys never load here; they need [host mode](./ssh-host-agent.mdx), which keeps signing on the host.
 
-Any opted-in service can request signatures from the shared sidecar. A read-only socket-volume mount prevents filesystem changes, not signing requests. The host-facing listener is mode `0666` inside the private `0700` SSH directory. The host relay uses a mode `0666` socket inside a per-user `0700` run directory. Managed-provider sidecar delivery does not open a host TCP broker. Host mode and cross-provider delivery retain their existing transport restrictions.
+Any opted-in service can request signatures from the shared sidecar. A read-only socket-volume mount prevents filesystem changes, not signing requests. The host-facing listener is mode `0666` inside the private `0700` SSH directory. The host relay uses a mode `0666` socket inside a per-user `0700` run directory. Runtime-volume sidecar delivery does not open a host TCP broker. Host mode and cross-provider delivery retain their existing transport restrictions.
 
 This is not a user how-to. For a shell inside a service, see [Open a shell in a service](../cli/ssh.mdx).
 

@@ -3,7 +3,7 @@ import { Effect, Result } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { inspectEngineResourceNames } from "../src/resource-names.ts";
 
-const ctx = { providerId: "test", remediation: "Start the test engine." };
+const ctx = { providerId: "test", remediation: "Start the test engine.", env: {} };
 
 test("filters volume names strictly when the engine returns substring matches", async () => {
   // Given

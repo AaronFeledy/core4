@@ -90,7 +90,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     provider: providerId,
     services: map as AppPlan["services"],
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -132,6 +131,7 @@ const makeRecordingProvider = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: (_target, command) => {
       const index = calls.length;
       calls.push(command.command);
@@ -144,6 +144,7 @@ const makeRecordingProvider = (
     inspect: () => Effect.die("not used"),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
+    removeVolumeSnapshot: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
     locateVolume: () => Effect.die("not used"),
     listVolumes: () => Effect.succeed([]),
@@ -167,6 +168,7 @@ const syntheticEngine: ToolingEngineUnderTest = {
         new ToolingExecError({
           message: `Tooling task ${invocation.tool} has no commands.`,
           tool: invocation.tool,
+          remediation: `Add commands under tooling.${invocation.tool} for the contract fixture.`,
         }),
       );
     }

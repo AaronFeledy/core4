@@ -32,7 +32,7 @@ snapshot:
     packageName: "@lando/recipe-rails"
     recipeId: "rails"
     manifestVersion: "0.1.0"
-    contentDigest: "sha256:69ccb9f104fce3c49f12c08c7e2b2abe6bcc9ba28755e92f5aae9dbfc41cee1d"
+    contentDigest: "sha256:dfdcaac443cabe74d0f0f5b3d8b8cf8711495be0ea3a0cee2f01a68921b16903"
   optionTypes:
   defaults:
   template:
@@ -82,7 +82,7 @@ snapshot:
                           - key: "DATABASE_URL"
                             value:
                               kind: "Literal"
-                              value: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
+                              value: "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}"
                           - key: "REDIS_URL"
                             value:
                               kind: "Literal"

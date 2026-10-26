@@ -98,6 +98,7 @@ export interface InitAppOptions {
   readonly recipe?: string;
   readonly source?: "git" | "tarball" | "npm" | "registry";
   readonly url?: string;
+  readonly ref?: string;
   readonly package?: string;
   readonly id?: string;
   readonly path?: string;
@@ -178,8 +179,13 @@ const loadGitRecipe = async (options: InitAppOptions) => {
     url: options.url,
     path: options.path,
   });
+  const onWarn = options.onWarn ?? options.postInitIO?.err;
+  const ref = options.ref ?? sourceOptions.ref;
   const resolved = await resolveGitRecipeSource({
     url: sourceOptions.url ?? "",
+    ...(ref === undefined ? {} : { ref }),
+    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
+    ...(onWarn === undefined ? {} : { onWarn }),
     ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
     ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
   });

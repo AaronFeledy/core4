@@ -8,7 +8,7 @@ import { drupalScaffoldCommand } from "./scaffold-command.ts";
 
 export const DRUPAL_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CONTENT_DIGEST =
-  "sha256:7cbb3ec383cb13f76defc11dba2a8aecfadcc5af1160e84a58529a1d32f08b25";
+  "sha256:7946313c249bfc4481fb871396cdd4fc68965ef964ebd00fa8386063d5bf6a84";
 export const drupalProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-drupal",

@@ -622,6 +622,7 @@ describe("provider-lando setup", () => {
       providerId: "lando",
       operation: "setup",
       message: "Runtime did not become ready.",
+      remediation: "Install or start the `lando` provider and confirm it can perform `setup`.",
     });
 
     try {

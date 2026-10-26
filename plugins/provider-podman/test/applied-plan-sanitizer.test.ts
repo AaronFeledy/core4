@@ -3,6 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
+import { makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
 import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import * as AppPlanSanitizerLayer from "@lando/engine/subsystems/host-proxy/plan-sanitizer-live";
@@ -16,11 +18,14 @@ import {
   AppId,
   type AppPlan,
   GPG_AGENT_SOCKET_NAME,
+  PortNumber,
   PortablePath,
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
+import { AppPlanSanitizer } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect } from "effect";
 
@@ -44,6 +49,11 @@ const service: ServicePlan = {
   primary: true,
   artifact: { kind: "ref", ref: "node:22-alpine" },
   environment: { KEEP_ME: "yes" },
+  connection: {
+    family: "mysql",
+    port: PortNumber.make(3306),
+    creds: { user: "user", database: "app", password: { _tag: "SecretRef", reference: "DB_PASSWORD" } },
+  },
   mounts: [],
   storage: [],
   endpoints: [],
@@ -54,19 +64,49 @@ const service: ServicePlan = {
   extensions: { [SSH_AGENT_PLAN_EXTENSION_KEY]: { mode: "host" } },
 };
 
+const toolingSite = {
+  id: "tooling-site",
+  path: ["tooling", "cleanup", "cmd"],
+  source: { file: "/tmp/overlay-app/.lando.yml", layer: "base", path: ["tooling", "cleanup", "cmd"] },
+  template: {
+    whole: true,
+    segments: [
+      {
+        kind: "InterpolationSegment",
+        expression: { kind: "Path", head: "vars", segments: [{ type: "prop", name: "value" }] },
+        trimLeft: false,
+        trimRight: false,
+      },
+    ],
+  },
+  expression: "{{ vars.value }}",
+  captures: {},
+};
 const basePlan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Overlay App",
   slug: "overlay-app",
   root: AbsolutePath.make("/tmp/overlay-app"),
+  identity: {
+    appRoot: AbsolutePath.make("/tmp/overlay-app"),
+    ownerKey: appIdentityKey("owner", "/tmp/overlay-app"),
+  },
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
-  extensions: {},
+  extensions: {
+    "@lando/core/effective-tooling": {
+      tasks: {
+        cleanup: { cmd: "{{ vars.value }}", env: { TOKEN: { _tag: "SecretRef", reference: "TOKEN" } } },
+      },
+      internalNames: [],
+    },
+    "@lando/core/invocation-authority": { sites: [toolingSite] },
+  },
 };
 
 const overlaidPlan = (): AppPlan => {
@@ -77,9 +117,20 @@ const overlaidPlan = (): AppPlan => {
   });
   return {
     ...ssh,
+    events: { "pre-stop": [{ step: "stale-hook", source: "project", sourceIndex: 0, status: "active" }] },
+    extensions: {
+      ...ssh.extensions,
+      "@lando/core/invocation-authority": {
+        sites: [
+          toolingSite,
+          { ...toolingSite, id: "project-site", path: ["events", "pre-stop", 0] },
+          { ...toolingSite, id: "host-site", path: ["hostEvents", "pre-stop", 0] },
+        ],
+      },
+    },
     services: Object.fromEntries(
       Object.values(ssh.services).map((planned) => {
-        const environment: Record<string, string> = { ...planned.environment };
+        const environment: Record<string, ServicePlan["environment"][string]> = { ...planned.environment };
         const mounts = [...planned.mounts];
         const extensions = { ...planned.extensions };
         hostProxyRunLandoFeature({
@@ -188,3 +239,48 @@ test("an overlaid plan applied through provider-podman is persisted without the 
   expect(overlaid.services[serviceName]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
   expect(persisted).toEqual(basePlan);
 });
+
+test.each(["per-app", "record", "memory"] as const)(
+  "%s projection removes hooks but retains typed tooling and connection authority",
+  async (layout) => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-event-projection-"));
+    temporaryDirectories.push(stateDir);
+    const state = makePluginStateStore(
+      makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+      AbsolutePath.make(stateDir),
+      ownerOnlyFileAccess,
+    );
+    const desired = overlaidPlan();
+    const projected = await Effect.runPromise(
+      Effect.gen(function* () {
+        const sanitizer = yield* AppPlanSanitizer;
+        if (layout === "memory") {
+          const cache = makeAppliedPlanCache({
+            providerId,
+            providerName: "podman",
+            sanitizeAppliedPlan: sanitizer.sanitizeForPersistence,
+            load: () => Effect.succeed(undefined),
+            persist: () => Effect.void,
+            remove: () => Effect.void,
+          });
+          yield* cache.rememberPlan(desired, true);
+          return yield* cache.resolvePlan(desired.id);
+        }
+        const store =
+          layout === "per-app"
+            ? makeAppliedPlanStore({ providerId: "lando", layout })
+            : makeAppliedPlanStore({ providerId: "podman", layout });
+        yield* store.persistAppliedPlan(state, desired);
+        return yield* store.loadAppliedPlan(state, desired.id);
+      }).pipe(Effect.provide(AppPlanSanitizerLayer.layer)),
+    );
+    expect(projected).toEqual(basePlan);
+    expect(desired.events?.["pre-stop"]).toHaveLength(1);
+    expect(desired.extensions["@lando/core/invocation-authority"]).toMatchObject({
+      sites: expect.arrayContaining([
+        expect.objectContaining({ id: "project-site" }),
+        expect.objectContaining({ id: "host-site" }),
+      ]),
+    });
+  },
+);

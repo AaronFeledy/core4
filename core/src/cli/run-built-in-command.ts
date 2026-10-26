@@ -12,14 +12,13 @@ import { runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtim
 import type { LandoCommandSpec } from "./spec/command-base";
 
 export const compiledCommandOptionsFromSpec = (spec: LandoCommandSpec, input: unknown) => {
+  const completion = spec.completion;
   const streamingMode =
     typeof spec.streamingMode === "function" ? spec.streamingMode(input) : spec.streamingMode;
   return {
     ...(streamingMode === undefined ? {} : { streamingMode }),
     suppressDeprecationDiagnostics: spec.suppressDeprecationDiagnostics?.(input) === true,
-    ...(spec.successExitCode === undefined
-      ? {}
-      : { successExitCode: (result: unknown) => spec.successExitCode?.(result, input) }),
+    ...(completion === undefined ? {} : { completion: (result: unknown) => completion(result, input) }),
   };
 };
 
@@ -42,7 +41,7 @@ export const runBuiltInCommand = (entry: BuiltInCommandEntry, argv: ReadonlyArra
 
   return runWithProcessAbortSignal((signal) => {
     const input = compiledCommandInputFromArgv(entry.spec.id, argv, { signal });
-    if (entry.spec.id === "meta:mcp") return runMetaMcp(argv);
+    if (entry.spec.id === "meta:mcp") return runMetaMcp(argv, signal);
 
     const runtime = makeLandoRuntime(
       cliRuntimeOptions({ bootstrap: entry.spec.bootstrap, plugins: { policy: "discovery" } }),
@@ -51,7 +50,7 @@ export const runBuiltInCommand = (entry: BuiltInCommandEntry, argv: ReadonlyArra
       entry.spec.run(input),
       runtime,
       (result, context) => entry.spec.render?.(result, input, context),
-      compiledCommandOptionsFromSpec(entry.spec, input),
+      { ...compiledCommandOptionsFromSpec(entry.spec, input), signal },
     );
   });
 };

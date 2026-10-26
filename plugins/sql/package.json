@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
-  "homepage": "https://github.com/lando-community/core4",
+  "homepage": "https://github.com/AaronFeledy/core4",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lando-community/core4.git",
+    "url": "git+https://github.com/AaronFeledy/core4.git",
     "directory": "plugins/sql"
   },
   "type": "module",
@@ -17,10 +17,6 @@
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts",
-    "./compression": "./src/compression.ts"
-  },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml"],
   "keywords": ["lando", "lando-plugin", "database", "sql"],
   "lando": {
@@ -28,6 +24,7 @@
   },
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
+    "@lando/redaction": "workspace:*",
     "@lando/sdk": "workspace:*",
     "effect": "catalog:"
   },
@@ -40,5 +37,9 @@
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",
     "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./compression": "./src/compression.ts"
   }
 }

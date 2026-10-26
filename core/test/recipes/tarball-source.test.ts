@@ -6,7 +6,8 @@ import { gzipSync } from "node:zlib";
 import { Cause, Effect, Exit } from "effect";
 
 import { DownloadFetchError, RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
-import { RecipeManifestService } from "@lando/sdk/services";
+import { Downloader, RecipeManifestService } from "@lando/sdk/services";
+import { makeLandoRuntime } from "../../src/runtime/layer";
 
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import * as RecipeManifestServiceLayer from "../../src/recipes/manifest/service.ts";
@@ -15,6 +16,7 @@ import {
   defaultTarballRecipeExtractor,
   defaultTarballRecipeFetcher,
   makeTarballRecipeExtractor,
+  makeTarballRecipeFetcher,
   resolveTarballRecipeSource,
 } from "../../src/recipes/tarball-source.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
@@ -595,7 +597,10 @@ describe("resolveTarballRecipeSource", () => {
         message: `recipe.yml not found at ${manifestPath}.`,
         source: manifestPath,
       });
-      expect(expectFailure(exit)).not.toHaveProperty("remediation");
+      expect(expectFailure(exit)).toHaveProperty(
+        "remediation",
+        "Point the recipe source at a directory containing recipe.yml or recipe.ts.",
+      );
     });
   });
 
@@ -747,15 +752,39 @@ describe("initApp tarball source boundary", () => {
 
   describe("defaultTarballRecipeFetcher", () => {
     test("applies ConfigService-backed network trust to archive downloads", async () => {
+      // Given host trust that differs from the live environment.
       await withTempRoot(async (dir) => {
         const missingCa = join(dir, "missing-ca.pem");
-        await withEnv("LANDO_NETWORK_CA_CERTS", JSON.stringify([missingCa]), async () => {
+        await withEnv("LANDO_NETWORK_CA_CERTS", JSON.stringify([join(dir, "ambient-ca.pem")]), async () => {
           let caught: unknown;
           try {
-            await defaultTarballRecipeFetcher.fetch("https://example.test/archive.tgz");
+            // When downloading with the caller's retained downloader.
+            await Effect.runPromise(
+              Effect.gen(function* () {
+                const fetcher = makeTarballRecipeFetcher(yield* Downloader);
+                return yield* Effect.tryPromise({
+                  try: () => fetcher.fetch("https://example.test/archive.tgz"),
+                  catch: (cause) => cause,
+                });
+              }).pipe(
+                Effect.provide(
+                  makeLandoRuntime({
+                    bootstrap: "minimal",
+                    configSources: { user: false, env: false },
+                    config: {
+                      userConfRoot: dir,
+                      userDataRoot: join(dir, "data"),
+                      userCacheRoot: join(dir, "cache"),
+                      network: { ca: { certs: [missingCa] } },
+                    },
+                  }),
+                ),
+              ),
+            );
           } catch (error) {
             caught = error;
           }
+          // Then the error names only the runtime's CA, not the ambient override.
           expect(caught).toBeInstanceOf(DownloadFetchError);
           if (!(caught instanceof DownloadFetchError)) throw new Error("expected download fetch failure");
           expect(caught._tag).toBe("DownloadFetchError");

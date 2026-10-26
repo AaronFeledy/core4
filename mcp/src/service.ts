@@ -78,7 +78,11 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           closeIdleSockets: () => {},
         });
       const serve = Effect.fn("McpService.serve")(function* (options: McpServeOptions) {
-        const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+        const sourceEnv = { ...process.env };
+        const resultRedactor = (tokens: ReadonlyArray<string>) =>
+          redaction.forProfile("secrets", { sourceEnv, authoritativeTokens: tokens });
+        const redactor = yield* resultRedactor([]);
+        const payloadValues = yield* redaction.payloadValues({ sourceEnv });
         const allowlist = effective(options);
         const entries =
           options.tooling === true
@@ -90,12 +94,14 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           catalog: yield* catalog(options),
           executor,
           redactor,
+          payloadValues,
           handleMemoryPressure: onMemoryPressure,
           deps: {
             registry: new Map(entries.map((entry) => [entry.spec.id, entry])),
             effective: allowlist.ids,
             allowlistSource: options.tooling === true ? `${allowlist.source}+tooling` : allowlist.source,
             redactor,
+            resultRedactor,
             ...(publish === undefined ? {} : { publish }),
           },
         });

@@ -1,395 +1,212 @@
-/**
- * Validates discovered Landofile layers against `LandofileShape` without
- * running translators, provider probes, or runtime capability scanners.
- * Unknown keys remain structured lint violations rather than runtime errors.
- */
-import { dirname } from "node:path";
-import { SchemaIssue } from "effect";
-
-import { Effect, Predicate, Result, Schema } from "effect";
-
-import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
-import { composeTopLevelDispositions, decodeLandofileLayer, mergeValues } from "@lando/sdk/landofile";
+import { basename, dirname } from "node:path";
+import { canonicalJson } from "@lando/sdk/digest";
+import type { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import {
-  COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
-  COMPOSE_TOP_LEVEL_KEYS,
   type ConfigLintResult,
   type ConfigLintViolation,
-  LandofileShape,
-  ServiceConfig,
-  type ValidationIssuePath,
-  formatValidationIssuePath,
-  parseValidationIssuePath,
-  validationIssuesFromSchemaIssue,
+  LandofileAuthoringFragmentNative,
+  type LandofileShape,
+  type LoadScopedLandofile,
+  type ValidationIssue,
 } from "@lando/sdk/schema";
-import { type ComposeRejectionMatch, analyzeComposeRejections } from "./compose/rejections.ts";
-import { LANDOFILE_NAME, LANDOFILE_TS_NAME, findLandofilePath } from "./discovery.ts";
-import { presentLandofileLayers } from "./layers.ts";
-import { parseLandofile } from "./parser.ts";
-import type { TemplateEngineInputs } from "./ports.ts";
-import { normalizeRoutes } from "./route-normalize.ts";
-import { buildTemplateEngineRegistry, renderLandofileTemplate } from "./template-render.ts";
-import { loadLandofileTs } from "./ts-loader.ts";
+import { Effect, Result, Schema } from "effect";
+import { analyzeComposeRejections } from "./compose/rejections.ts";
+import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
+import { healthcheckWarnings } from "./lint-healthcheck.ts";
+import { routerBindWarnings } from "./lint-router.ts";
+import { attributeLintIssue, sourceCoordinates } from "./lint-source.ts";
+import { appNameOf, rejectionViolation, violationsFromSchema } from "./lint-violations.ts";
+import { composePreparedLayers } from "./pipeline/compose.ts";
+import { finalizeLandofile } from "./pipeline/finalize.ts";
+import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
+import type { LandofileRuntimeInputs, TemplateEngineInputs } from "./ports.ts";
+import { acquireLandofileRootLayers } from "./root-compile.ts";
+import { findDiscoveredLandofilePath } from "./service.ts";
+import { prepareLandofileValue } from "./source.ts";
+
+import { getLandofileValueSource } from "./validation.ts";
+
+export const mergeLintFindings = (
+  findings: ReadonlyArray<ConfigLintViolation>,
+): ReadonlyArray<ConfigLintViolation> => {
+  const merged = new Map<string, ConfigLintViolation>();
+  for (const { scopes, ...finding } of findings) {
+    const key = canonicalJson(finding);
+    const previous = merged.get(key);
+    const combined = new Set([...(previous?.scopes ?? []), ...(scopes ?? [])]);
+    merged.set(key, {
+      ...finding,
+      ...(previous?.scopes === undefined && scopes === undefined
+        ? {}
+        : { scopes: (["fragment", "effective"] as const).filter((scope) => combined.has(scope)) }),
+    });
+  }
+  return [...merged.values()];
+};
+
+export const attributeEffectiveLintIssue = (
+  landofile: LandofileShape,
+  issue: ValidationIssue & { readonly rule: string; readonly severity?: "error" | "warning" },
+): ConfigLintViolation => {
+  const source = issue.source ?? getLandofileValueSource(landofile, issue.path);
+  return attributeLintIssue(
+    { ...issue, severity: issue.severity ?? "error", ...(source === undefined ? {} : { source }) },
+    "effective",
+    getSourceDocuments(landofile),
+  );
+};
 
 export interface LintLandofileOptions {
-  /** Directory to search upward from for a Landofile. Defaults to `process.cwd()`. */
   readonly cwd?: string;
   readonly templates?: TemplateEngineInputs;
 }
+export interface LandofileLintSnapshot {
+  readonly result: ConfigLintResult;
+  readonly landofilePath: string;
+  readonly resolved?: LoadScopedLandofile;
+}
 
-const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
-
-type LintIssue = {
-  readonly _tag: string;
-  readonly path: ReadonlyArray<PropertyKey>;
-  readonly message: string;
-};
-
-const lintIssues = (
-  issue: SchemaIssue.Issue,
-  path: ReadonlyArray<PropertyKey> = [],
-): ReadonlyArray<LintIssue> => {
-  switch (issue._tag) {
-    case "Pointer":
-      return lintIssues(issue.issue, [...path, ...issue.path]);
-    case "Encoding":
-      return lintIssues(issue.issue, path);
-    case "Composite":
-      return issue.issues.flatMap((child) => lintIssues(child, path));
-    case "AnyOf":
-      if (issue.issues.length > 0) return issue.issues.flatMap((child) => lintIssues(child, path));
-      break;
-    case "Filter":
-      if (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue") {
-        return lintIssues(issue.issue, path);
-      }
-      break;
-    case "UnexpectedKey":
-    case "MissingKey":
-    case "InvalidType":
-    case "InvalidValue":
-    case "Forbidden":
-    case "OneOf":
-      break;
-  }
-  return SchemaIssue.makeFormatterStandardSchemaV1()(issue).issues.map((formatted) => ({
-    _tag: issue._tag === "UnexpectedKey" ? "Unexpected" : issue._tag === "MissingKey" ? "Missing" : "Type",
-    path,
-    message: formatted.message,
-  }));
-};
-
-const lastKey = (path: ReadonlyArray<PropertyKey>): string | undefined =>
-  path.length === 0 ? undefined : String(path[path.length - 1]);
-
-const MISPLACED_COMPOSE_SURFACE_REMEDIATION = {
-  profiles:
-    'The top-level key "profiles" is not a Compose top-level key; profiles is a service-level key. Split profile-specific config into separate Landofile fragments and select them with includes: instead.',
-  extensions:
-    'The top-level key "extensions" is not a Compose key. Use an x-* top-level extension or move provider-specific data under providers.<provider-id>.',
-} as const;
-
-const isAcceptedComposeTopLevelKey = (key: string): boolean =>
-  (COMPOSE_TOP_LEVEL_KEYS as ReadonlyArray<string>).includes(key) || key.startsWith("x-");
-
-const isDeprecatedComposeTopLevelKey = (key: string): boolean =>
-  (COMPOSE_DEPRECATED_TOP_LEVEL_KEYS as ReadonlyArray<string>).includes(key);
-
-const isMisplacedComposeSurfaceKey = (
-  key: string,
-): key is keyof typeof MISPLACED_COMPOSE_SURFACE_REMEDIATION =>
-  Object.prototype.hasOwnProperty.call(MISPLACED_COMPOSE_SURFACE_REMEDIATION, key);
-
-const composeSuggestedFix = (issue: LintIssue): string | undefined => {
-  // Compose dispositions apply only to top-level schema issues.
-  if (issue.path.length !== 1) return undefined;
-  const key = String(issue.path[0]);
-  if (issue._tag === "Unexpected") {
-    const disposition = composeTopLevelDispositions[key];
-    if (disposition?.disposition === "rejected") return disposition.remediation;
-    return isMisplacedComposeSurfaceKey(key) ? MISPLACED_COMPOSE_SURFACE_REMEDIATION[key] : undefined;
-  }
-  if (issue._tag !== "Type" || issue.message.startsWith("Expected undefined")) return undefined;
-  if (isAcceptedComposeTopLevelKey(key)) {
-    return `The top-level Compose key "${key}" is accepted, but this value does not match Lando's supported schema-backed subset. Use only the supported shape for ${key}.`;
-  }
-  if (isDeprecatedComposeTopLevelKey(key)) {
-    return `The top-level Compose key "${key}" is accepted only for compatibility and is ignored by Lando. Remove it from new Landofiles.`;
-  }
-  return undefined;
-};
-
-const toIssuePath = (path: ReadonlyArray<PropertyKey>): ValidationIssuePath =>
-  path.map((segment) => (typeof segment === "number" ? segment : String(segment)));
-
-const pathFromText = (text: string): ValidationIssuePath => parseValidationIssuePath(text) ?? [];
-
-const SERVICE_CONFIG_KEYS = [...Object.keys(ServiceConfig.fields), "working_dir", "env_file", "depends_on"];
-
-const closestKeySuggestions = (issue: SchemaIssue.Issue): ReadonlyMap<string, string> =>
-  new Map(
-    validationIssuesFromSchemaIssue(issue, {
-      extraAllowedKeys: (path) => (path[0] === "services" && path.length >= 3 ? SERVICE_CONFIG_KEYS : []),
-    }).flatMap((entry) =>
-      entry.suggestion === undefined
-        ? []
-        : [[formatValidationIssuePath(entry.path), entry.suggestion] as const],
+const fragmentIssues = (source: SourceDocument): readonly ConfigLintViolation[] => {
+  const decoded = Schema.decodeUnknownResult(LandofileAuthoringFragmentNative)(source.document, {
+    onExcessProperty: "error",
+    errors: "all",
+  });
+  if (Result.isSuccess(decoded)) return [];
+  const rejections = analyzeComposeRejections(source.document);
+  const issues = [
+    ...rejections.map(rejectionViolation),
+    ...violationsFromSchema(decoded.failure.issue, source.document, rejections),
+  ];
+  return issues.map((issue) =>
+    attributeLintIssue(
+      { ...issue, source: { file: source.file, layer: source.layer, path: issue.path } },
+      "fragment",
+      [source],
     ),
   );
-
-const violationFromIssue = (
-  issue: LintIssue,
-  suggestions: ReadonlyMap<string, string>,
-): ConfigLintViolation => {
-  const path = toIssuePath(issue.path);
-  const formatted = formatValidationIssuePath(path);
-  const key = lastKey(issue.path);
-  const suggestion =
-    (issue._tag === "Type" && formatted === "sshAgent.socket"
-      ? "Set sshAgent.socket to a string containing the host SSH-agent socket path, or omit it for automatic discovery."
-      : undefined) ??
-    composeSuggestedFix(issue) ??
-    (issue._tag === "Unexpected"
-      ? (suggestions.get(formatted) ??
-        `Remove the unknown key${key === undefined ? "" : ` "${key}"`}; it is not part of the canonical Landofile schema.`)
-      : issue._tag === "Missing"
-        ? `Add the required "${key ?? formatted}" field.`
-        : undefined);
-  return suggestion === undefined
-    ? { path, message: issue.message }
-    : { path, message: issue.message, suggestion };
 };
 
-const rejectionViolation = (match: ComposeRejectionMatch): ConfigLintViolation => ({
-  path: pathFromText(match.documentPath),
-  message: `Compose key "${match.matrixPath}" is rejected: ${match.rationale}`,
-  suggestion: match.remediation,
-});
-
-const fallsWithinRejectedPath = (path: string, rejectedPath: string): boolean =>
-  path === rejectedPath || path.startsWith(`${rejectedPath}.`) || path.startsWith(`${rejectedPath}[`);
-
-const violationsFor = (
-  parsed: unknown,
-  rejections: ReadonlyArray<ComposeRejectionMatch> = [],
-): ReadonlyArray<ConfigLintViolation> => {
-  const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
-  return Result.isSuccess(decoded)
-    ? [
-        ...Object.entries(decoded.success.services ?? {}).map(([name, service]) =>
-          normalizeRoutes(service.routes ?? [], { keyPath: `services.${name}.routes` }),
-        ),
-        ...Object.entries(decoded.success.proxy ?? {}).map(([name, routes]) =>
-          normalizeRoutes(routes, { keyPath: `proxy.${name}` }),
-        ),
-      ].flatMap((result) =>
-        Result.match(result, {
-          onFailure: (error) => [
-            { path: pathFromText(error.key), message: error.message, suggestion: error.remediation },
-          ],
-          onSuccess: () => [],
-        }),
-      )
-    : lintIssues(decoded.failure.issue)
-        .map((issue) => violationFromIssue(issue, closestKeySuggestions(decoded.failure.issue)))
-        .filter(
-          (violation) =>
-            !rejections.some((rejection) =>
-              fallsWithinRejectedPath(formatValidationIssuePath(violation.path), rejection.documentPath),
-            ),
-        );
-};
-
-const appNameOf = (parsed: unknown): string => {
-  if (!Predicate.isObjectOrArray(parsed)) return "";
-  const name = (parsed as { readonly name?: unknown }).name;
-  return typeof name === "string" ? name : "";
-};
-
-const singleViolationResult = (
-  file: string,
-  message: string,
-  details: {
-    readonly line: number | undefined;
-    readonly column: number | undefined;
-    readonly suggestion?: string | undefined;
-  } = {
-    line: undefined,
-    column: undefined,
-  },
-): ConfigLintResult => ({
-  app: "",
-  file,
-  valid: false,
-  violations: [
-    {
-      path: [],
-      message,
-      ...(details.line === undefined ? {} : { line: details.line }),
-      ...(details.column === undefined ? {} : { column: details.column }),
-      ...(details.suggestion === undefined ? {} : { suggestion: details.suggestion }),
-    },
-  ],
-});
-
-/**
- * Lint the Landofile discovered upward from `cwd` against the canonical
- * schema. Resolves with a structured `ConfigLintResult` for any reachable,
- * parseable-or-not file. Fails only when no Landofile exists at all.
- */
-export const lintLandofile = Effect.fn("Landofile.lint")(function* (
+export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(function* (
   options: LintLandofileOptions = {},
-): Effect.fn.Return<ConfigLintResult, LandofileNotFoundError | LandofileFormConflictError> {
-  const cwd = options.cwd ?? process.cwd();
-  const discovery = yield* Effect.tryPromise({
-    try: () => findLandofilePath(cwd),
-    catch: (cause) => cause,
-  }).pipe(Effect.result);
-  if (Result.isFailure(discovery)) {
-    if (discovery.failure instanceof LandofileFormConflictError) return yield* Effect.fail(discovery.failure);
-    const message =
-      discovery.failure instanceof Error ? discovery.failure.message : "Failed to discover Landofile.";
-    return singleViolationResult(cwd, message);
-  }
-  const filePath = discovery.success;
-  if (filePath === undefined) {
-    return yield* Effect.fail(
-      new LandofileNotFoundError({
-        message: `No ${LANDOFILE_NAME} or ${LANDOFILE_TS_NAME} found. Searched from ${cwd} upward.`,
-        cwd,
-      }),
+  inputs?: LandofileRuntimeInputs,
+): Effect.fn.Return<LandofileLintSnapshot, LandofileNotFoundError | LandofileFormConflictError> {
+  const templates = options.templates ?? inputs?.templates;
+  const { filePath: file } = yield* findDiscoveredLandofilePath(options.cwd);
+  let documents: readonly SourceDocument[] = [];
+  let scope: "fragment" | "effective" = "fragment";
+  const violations: ConfigLintViolation[] = [];
+  const finalized = yield* Effect.gen(function* () {
+    const acquired = yield* acquireLandofileRootLayers(
+      dirname(file),
+      templates === undefined ? inputs : { ...inputs, templates },
     );
-  }
-
-  const layersDiscovery = yield* Effect.tryPromise({
-    try: () => presentLandofileLayers(dirname(filePath)),
-    catch: (cause) => cause,
+    documents = acquired.sources.map(({ source, layer }) => ({
+      file: source.file,
+      form: source.form,
+      layer: layer.layer,
+      document: source.value,
+      content: source.content,
+      digest: source.digest,
+    }));
+    violations.push(...documents.flatMap(fragmentIssues));
+    scope = "effective";
+    const prepared = yield* Effect.forEach(acquired.sources, ({ source, layer }) =>
+      prepareLandofileValue(source).pipe(Effect.map(({ value }) => ({ layer, landofile: value }))),
+    );
+    const merged = yield* composePreparedLayers(prepared, acquired.runtime, inputs);
+    const roots = new Set(documents.map((document) => document.file));
+    const retained = getSourceDocuments(merged);
+    violations.push(...retained.filter((document) => !roots.has(document.file)).flatMap(fragmentIssues));
+    documents = retained;
+    violations.push(...healthcheckWarnings(merged, documents), ...routerBindWarnings(merged, documents));
+    const effective = yield* finalizeLandofile(file, merged, {
+      appRoot: dirname(file),
+      pendingSites: acquired.runtime.pendingSites,
+      loadPolicy: acquired.runtime.policy,
+      logger: acquired.runtime.logger,
+      ...(templates?.context?.env === undefined ? {} : { env: templates.context.env }),
+    }).pipe(Effect.result);
+    const knownDocuments = new Set(documents);
+    const finalizedDocuments = getSourceDocuments(merged);
+    violations.push(
+      ...finalizedDocuments.filter((document) => !knownDocuments.has(document)).flatMap(fragmentIssues),
+    );
+    documents = finalizedDocuments;
+    if (Result.isFailure(effective)) return yield* Effect.fail(effective.failure);
+    return effective.success;
   }).pipe(Effect.result);
-  if (Result.isFailure(layersDiscovery)) {
-    if (layersDiscovery.failure instanceof LandofileFormConflictError) {
-      return yield* Effect.fail(layersDiscovery.failure);
-    }
-    const message =
-      layersDiscovery.failure instanceof Error
-        ? layersDiscovery.failure.message
-        : "Failed to discover Landofile layers.";
-    return singleViolationResult(filePath, message);
-  }
-
-  const parsedLayers: unknown[] = [];
-  const layerRejections: Array<ReadonlyArray<ComposeRejectionMatch>> = [];
-  for (const layer of layersDiscovery.success) {
-    const contentEither = yield* Effect.tryPromise(() => Bun.file(layer.filePath).text()).pipe(Effect.result);
-    if (Result.isFailure(contentEither)) {
-      const cause = contentEither.failure;
-      const message = cause instanceof Error ? cause.message : `Failed to read ${layer.filePath}.`;
-      return singleViolationResult(layer.filePath, message);
-    }
-
-    if (layer.filePath.endsWith(".ts")) {
-      const loadedEither = yield* loadLandofileTs({
-        filePath: layer.filePath,
-        appRoot: dirname(filePath),
-        content: contentEither.success,
-      }).pipe(Effect.result);
-      if (Result.isFailure(loadedEither)) {
-        return singleViolationResult(layer.filePath, loadedEither.failure.message);
+  if (Result.isFailure(finalized)) {
+    const error = finalized.failure;
+    if (error._tag === "LandofileFormConflictError") return yield* Effect.fail(error);
+    // A rejected Compose key already has a field-level finding; a pathless copy only repeats it.
+    const reportedRejection =
+      error._tag === "ComposeKeyRejectedError" &&
+      violations.some((violation) => violation.rule === "landofile.compose-rejection");
+    if (error._tag === "LandofileValidationError")
+      violations.push(...error.issues.map((issue) => attributeLintIssue(issue, "effective", documents)));
+    else if (!reportedRejection) {
+      const path =
+        error._tag === "LandofileIncludeError"
+          ? (error.path ?? [])
+          : error._tag === "ConfigExpressionError"
+            ? error.path
+                .split(".")
+                .filter(Boolean)
+                .map((key) => (/^\d+$/.test(key) ? Number(key) : key))
+            : [];
+      let errorFile = file;
+      if (error._tag === "LandofileIncludeError" && error.file !== undefined) {
+        errorFile = error.file;
+      } else if ("filePath" in error) {
+        errorFile = error.filePath;
+      } else if ("sourceFile" in error) {
+        errorFile = error.sourceFile;
       }
-      parsedLayers.push(loadedEither.success);
-      layerRejections.push(analyzeComposeRejections(loadedEither.success));
-      continue;
-    }
-
-    const renderedEither = yield* renderLandofileTemplate({
-      filePath: layer.filePath,
-      content: contentEither.success,
-      registry: buildTemplateEngineRegistry(options.templates?.modules ?? []),
-      ...(options.templates?.context === undefined ? {} : { context: options.templates.context }),
-    }).pipe(Effect.result);
-    if (Result.isFailure(renderedEither)) {
-      const error = renderedEither.failure;
-      return singleViolationResult(layer.filePath, error.message, {
-        line: error.line,
-        column: error.column,
+      const retained = documents.find((document) => document.file === errorFile);
+      const layer =
+        (error._tag === "LandofileIncludeError" ? error.layer : undefined) ??
+        retained?.layer ??
+        LANDOFILE_LAYER_POSITIONS.find((position) => basename(errorFile).startsWith(`${position.basename}.`))
+          ?.layer ??
+        "canonical";
+      violations.push({
+        rule: "landofile.load",
+        severity: "error",
+        path,
+        scopes: [scope],
+        source: { file: errorFile, layer, path },
+        message: error.message,
+        ...(error._tag === "LandofileParseError"
+          ? {
+              ...(error.line === undefined ? {} : { line: error.line }),
+              ...(error.column === undefined ? {} : { column: error.column }),
+            }
+          : retained === undefined || path.length === 0
+            ? {}
+            : sourceCoordinates(retained, path)),
+        ...("remediation" in error && error.remediation !== undefined
+          ? { suggestion: error.remediation }
+          : {}),
       });
     }
-
-    const parsedEither = yield* parseLandofile({
-      file: layer.filePath,
-      content: renderedEither.success,
-      cwd: dirname(filePath),
-    }).pipe(Effect.result);
-    if (Result.isFailure(parsedEither)) {
-      const error = parsedEither.failure;
-      return singleViolationResult(layer.filePath, error.message, {
-        line: error.line,
-        column: error.column,
-        suggestion: error.remediation,
-      });
-    }
-    parsedLayers.push(parsedEither.success);
-    layerRejections.push(analyzeComposeRejections(parsedEither.success));
   }
-
-  const decodedLayers: unknown[] = [];
-  for (const [index, value] of parsedLayers.entries()) {
-    const decoded = yield* decodeLandofileLayer(
-      layersDiscovery.success[index]?.filePath ?? filePath,
-      value,
-    ).pipe(Effect.result);
-    if (Result.isFailure(decoded)) {
-      if (decoded.failure._tag === "LandofileValidationError")
-        return {
-          app: appNameOf(value),
-          file: layersDiscovery.success[index]?.filePath ?? filePath,
-          valid: false,
-          violations: decoded.failure.message.startsWith("Invalid Landofile layer.")
-            ? [
-                ...(layerRejections[index] ?? []).map(rejectionViolation),
-                ...violationsFor(value, layerRejections[index] ?? []),
-              ]
-            : decoded.failure.issues.map((issue) => ({ ...issue })),
-        };
-      return singleViolationResult(filePath, decoded.failure.message, {
-        line: decoded.failure.line,
-        column: decoded.failure.column,
-        suggestion: decoded.failure.remediation,
-      });
-    }
-    decodedLayers.push(decoded.success);
-  }
-
-  const parsed = decodedLayers.reduce<unknown>(
-    (merged, layer) => mergeValues(LandofileShape, merged, layer),
-    {},
-  );
-  const rejections = layerRejections.flat();
-  const rejectionViolations = rejections.map(rejectionViolation);
-  const mergedViolations = violationsFor(parsed, rejections);
-  const violations: Array<ConfigLintViolation> = [];
-  const violationKeys = new Set<string>();
-  for (const violation of [...rejectionViolations, ...mergedViolations]) {
-    const key = JSON.stringify(violation);
-    if (violationKeys.has(key)) continue;
-    violationKeys.add(key);
-    violations.push(violation);
-  }
-  for (const [index, layer] of decodedLayers.entries()) {
-    for (const violation of violationsFor(
-      mergeValues(LandofileShape, {}, layer),
-      layerRejections[index] ?? [],
-    )) {
-      const key = JSON.stringify(violation);
-      if (violationKeys.has(key)) continue;
-      violationKeys.add(key);
-      violations.push(violation);
-    }
-  }
-
+  const unique = mergeLintFindings(violations);
+  const app = Result.isSuccess(finalized)
+    ? (finalized.success.document.name ?? "")
+    : (documents.map((source) => appNameOf(source.document)).find((name) => name !== "") ?? "");
+  const primarySource = unique[0]?.source;
+  const primary = primarySource !== undefined && "file" in primarySource ? primarySource.file : file;
   return {
-    app: appNameOf(parsed),
-    file: filePath,
-    valid: violations.length === 0,
-    violations,
+    landofilePath: file,
+    result: {
+      app,
+      file: primary,
+      valid: !unique.some((issue) => issue.severity === "error"),
+      violations: unique,
+    },
+    ...(Result.isSuccess(finalized) ? { resolved: finalized.success } : {}),
   };
 });
+
+export const lintLandofile = (options: LintLandofileOptions = {}, inputs?: LandofileRuntimeInputs) =>
+  lintLandofileSnapshot(options, inputs).pipe(Effect.map(({ result }) => result));

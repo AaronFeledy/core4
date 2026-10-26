@@ -7,7 +7,7 @@ tags: [beta, docs, services, database, mysql, postgres]
 
 # Switch the database engine
 
-Change `type:` from one database engine to another, then `lando rebuild`. That does not move your data.
+Change the database service's `type:` in `.lando.yml` to use another engine. Export any data you need before applying the change with `lando start`; Lando does not convert or move it.
 
 ## Start from MySQL
 
@@ -39,10 +39,25 @@ services:
     </Step>
   </Scenario>
 
-## Rebuild as Postgres
+## Export before you switch
+
+`start` recreates the container; it does not convert your data. Swapping
+`type: mysql` for `type: postgres` and starting gets you a fresh, empty
+Postgres volume. Your old MySQL data stays in the old MySQL volume and is
+not converted or copied. `lando db:export` and `lando db:import` move dumps for the same engine. They do not convert MySQL SQL into Postgres.
+
+Export from the old engine while it is still running, before changing `type:` or starting the new service.
+
+Export a plain SQL file from MySQL before changing the service type:
+
+```sh
+lando db:export dump.sql
+```
+
+## Start as Postgres
 
 Edit the Landofile: change `services.db.type` from `mysql` to `postgres`,
-then run `lando rebuild` to recreate the container against the new
+then run `lando start` to recreate the container against the new
 engine:
 
 ```yaml
@@ -70,21 +85,7 @@ services:
     </Step>
   </Scenario>
 
-## Export before you rebuild
-
-`rebuild` recreates the container; it does not convert your data. Swapping
-`type: mysql` for `type: postgres` and rebuilding gets you a fresh, empty
-Postgres volume. Your old MySQL data stays in the old MySQL volume and is
-not converted or copied. `lando db:export` and `lando db:import` move dumps for the same engine. They do not convert MySQL SQL into Postgres.
-
-Always export your data from the old engine before you change `type:` and
-rebuild, or you'll be staring at an empty database.
-
-Export a plain SQL file from MySQL before changing the service type:
-
-```sh
-lando db:export dump.sql
-```
+## Load converted data
 
 MySQL and PostgreSQL speak different SQL dialects. A raw `mysqldump` file
 isn't valid input for `psql` or `pg_restore`. Schema types, quoting, and dialect-specific syntax need conversion (tools like `pgloader` exist for this) before you load it into Postgres.

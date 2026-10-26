@@ -17,6 +17,7 @@ import { buildGlobalStatusSummary } from "../../src/cli/commands/meta/global-sta
 import { buildScratchListSummary } from "../../src/cli/commands/scratch.ts";
 import { buildUninstallSummary } from "../../src/cli/commands/uninstall.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
+import { connections } from "./connection-fixtures";
 
 const nonEmptyLines = (text: string): ReadonlyArray<string> =>
   text.split("\n").filter((line) => line.length > 0);
@@ -89,7 +90,10 @@ describe("app:info summary", () => {
         provider: "lando",
         primary: true,
         status: "running",
-        endpoints: ["postgresql://lando@localhost:5432/postgres"],
+        connections: [
+          ...connections(["postgresql://lando@localhost:5432/postgres"]),
+          ...connections(["tcp://你好世界-database-service:5432"], "app"),
+        ],
       },
       {
         app: "my-app",
@@ -99,7 +103,7 @@ describe("app:info summary", () => {
         provider: "lando",
         primary: false,
         status: "stopped",
-        endpoints: [],
+        connections: [],
       },
     ],
   };
@@ -112,6 +116,21 @@ describe("app:info summary", () => {
     expect(plain).toContain("데이터베이스");
     expect(plain).toContain("[OK]");
     expect(plain).toContain("[SKIP]");
+  });
+
+  test("lists the app-network address as its own field after the host endpoints", () => {
+    const fields = buildInfoSummary(result).sections[0]?.rows.map((row) =>
+      row.fields?.map((field) => `${field.label}=${field.value}`),
+    );
+    expect(fields).toEqual([
+      [
+        "type=postgres",
+        "provider=lando",
+        "Host=postgresql://lando@localhost:5432/postgres",
+        "App Network=tcp://你好世界-database-service:5432",
+      ],
+      ["type=valkey", "provider=lando", "Host=not published", "App Network=-"],
+    ]);
   });
 
   test("summarizes log-source availability without repeating provider details", () => {
@@ -218,7 +237,7 @@ describe("global status summary", () => {
             provider: "lando",
             primary: true,
             status: "running",
-            endpoints: ["http://localhost:80"],
+            connections: connections(["http://localhost:80"]),
           },
         ],
       }),
@@ -241,7 +260,7 @@ describe("global status summary", () => {
           provider: "lando",
           primary: true,
           status: "stopped",
-          endpoints: [],
+          connections: [],
         },
       ],
     });
@@ -534,6 +553,7 @@ describe("doctor summary", () => {
 
   test("counts app config lint in doctor footer when it contributes a failure", () => {
     const summary = buildDoctorReportSummary({
+      version: "4.0.0-dev",
       provider: { checks: [] },
       subsystems: { checks: [] },
       globalApp: { checks: [] },
@@ -542,9 +562,11 @@ describe("doctor summary", () => {
         app: "demo",
         file: "/tmp/demo/.lando.yml",
         valid: false,
-        violations: [{ path: "bogusKey", message: "unexpected key" }],
+        violations: [
+          { rule: "landofile.validation", severity: "error", path: ["bogusKey"], message: "unexpected key" },
+        ],
       },
-    } as unknown as DoctorReport);
+    });
     expect(summary.footer).toBe("1 checks · 1 failed");
     expect(summary.tone).toBe("error");
   });

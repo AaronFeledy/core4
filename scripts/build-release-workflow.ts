@@ -26,6 +26,7 @@ const stageBinaryBlock = (): string =>
       `gh run download "\${{ github.event.workflow_run.id }}" --name lando-${platform.id} --dir ${artifactDir}`,
       `test -f ${source}`,
       `mv ${source} ${staged}`,
+      `${platform.id === CI_PLATFORMS[0]?.id ? "cp" : "cmp"} ${artifactDir}/THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md`,
       ...(isWindowsCiPlatform(platform) ? [] : [`chmod +x ${staged}`]),
       `test -f ${staged}`,
     ];
@@ -44,8 +45,10 @@ const releaseAssetArgs = (): string =>
   [
     ...CI_PLATFORMS.map((platform) => `dist/${releaseBinaryFileName(platform)}`),
     "dist/SHA256SUMS",
+    "dist/THIRD_PARTY_NOTICES.md",
     "plugins/service-lando/tomcat/LICENSE",
     "plugins/service-lando/tomcat/NOTICE",
+    '"\u0024{go_notices[@]}"',
   ].join(" ");
 
 export const renderReleaseWorkflow = (): string => `${GENERATED_HEADER}
@@ -66,6 +69,9 @@ jobs:
   dev-prerelease:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
+    concurrency:
+      group: dev-prerelease-\${{ github.run_number }}
+      cancel-in-progress: false
     steps:
       - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v5.0.0
         with:
@@ -85,6 +91,18 @@ jobs:
         run: |
           set -euo pipefail
           ${stageBinaryBlock()}
+
+      - name: Download Go toolchain notices
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download "\${{ github.event.workflow_run.id }}" --name container-helper --dir dist/container-helper
+          test -s dist/container-helper/licenses/go/LICENSE
+          bun -e 'const files = await Bun.file("dist/container-helper/licenses/go/files.json").json(); if (!files.includes("licenses/go/LICENSE")) throw new Error("Go LICENSE missing; download the complete container-helper artifact"); for (const file of files) { if (!["licenses/go/LICENSE", "licenses/go/PATENTS"].includes(file) || (await Bun.file("dist/container-helper/" + file).bytes()).length === 0) throw new Error("Invalid Go notice: " + file); }'
+          for notice in dist/container-helper/licenses/go/LICENSE dist/container-helper/licenses/go/PATENTS; do
+            if [ -f "$notice" ]; then cp "$notice" "dist/container-helper-go-$(basename "$notice")"; fi
+          done
 
       - name: Install first-launch sandbox tools
         run: |
@@ -114,8 +132,33 @@ jobs:
           GH_TOKEN: \${{ github.token }}
           RELEASE_TAG: v4.0.0-dev.\${{ github.run_number }}
         run: |
-          gh release delete "$RELEASE_TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$RELEASE_TAG" ${releaseAssetArgs()} --prerelease --target "\${{ github.event.workflow_run.head_sha }}" --title "Lando v4 dev \${{ github.run_number }}" --notes "Unsigned six-target dev prerelease from successful ci run \${{ github.event.workflow_run.id }}."
+          set -euo pipefail
+          go_notices=(dist/container-helper-go-*)
+          existing_tags=$(gh api --paginate repos/{owner}/{repo}/releases --jq '.[].tag_name')
+          if grep -Fxq "$RELEASE_TAG" <<< "$existing_tags"; then
+            echo "Release $RELEASE_TAG already exists; inspect it before rerunning." >&2
+            exit 1
+          fi
+          release_id=$(gh api --method POST repos/{owner}/{repo}/releases -f tag_name="$RELEASE_TAG" -F draft=true -F prerelease=true -f target_commitish="\${{ github.event.workflow_run.head_sha }}" -f name="Lando v4 dev \${{ github.run_number }}" -f body="Unsigned six-target dev prerelease from successful ci run \${{ github.event.workflow_run.id }}." --jq .id)
+          case "$release_id" in
+            ''|*[!0-9]*) echo "Release creation returned no usable ID; preserve any created draft for inspection." >&2; exit 1 ;;
+          esac
+          release_api="repos/{owner}/{repo}/releases/$release_id"
+          if gh release upload "$RELEASE_TAG" ${releaseAssetArgs()}; then
+            :
+          else
+            upload_status=$?
+            echo "Upload failed for release $release_id; preserving it for inspection before rerunning." >&2
+            exit "$upload_status"
+          fi
+          # No cleanup after publication starts: a failed response may follow a successful publish.
+          if gh api --method PATCH "$release_api" -F draft=false; then
+            :
+          else
+            publish_status=$?
+            echo "Publication outcome is uncertain for release $release_id; preserving it for inspection." >&2
+            exit "$publish_status"
+          fi
 `;
 
 const main = async (): Promise<void> => {

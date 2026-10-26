@@ -1,6 +1,6 @@
 /**
- * Signal handling. Bridge SIGINT, SIGTERM, SIGHUP on POSIX, and SIGBREAK on
- * Windows, to `Effect.interrupt` on the running fiber.
+ * Signal handling — bridge `SIGINT` (and `SIGTERM` where appropriate) to
+ * `Effect.interrupt` on the running fiber.
  *
  * The native CLI dispatcher installs a signal handler that calls
  * `Effect.interrupt` on the running fiber. Providers' resource scopes
@@ -9,15 +9,10 @@
  * Embedding hosts opt into this via `installSignalHandlers: true`. Off by
  * default in library mode so the host owns its own signal model.
  *
- * Default SIGHUP is omitted when neither stdin nor stdout is a TTY, and on
- * Linux when SigIgn bit 0 is set, so `nohup` keeps its inherited ignore.
- * SIGINT is omitted when it is already ignored (background jobs).
  */
 import { Effect, type Fiber, type Scope } from "effect";
 
 import { defaultInterruptSignals } from "./process-signals.ts";
-
-export { defaultInterruptSignals } from "./process-signals.ts";
 
 export interface InstallSignalHandlersOptions {
   readonly fiber: Fiber.Fiber<unknown, unknown>;
@@ -36,7 +31,7 @@ export const installSignalHandlers = Effect.fnUntraced(function* (
     const handler = () => {
       options.fiber.interruptUnsafe(interruptor);
     };
-    (process as NodeJS.EventEmitter).once(signal, handler);
+    (process as NodeJS.EventEmitter).on(signal, handler);
     return { signal, handler };
   });
 

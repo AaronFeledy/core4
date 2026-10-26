@@ -210,6 +210,12 @@ describe("ci workflow codegen", () => {
       const firstWorkflow = await readFile(providerMatrixWorkflowPath, "utf8");
       expect(firstWorkflow.startsWith(`${generatedProviderMatrixHeader}\n`)).toBe(true);
       expect(firstWorkflow).toContain("name: provider-matrix");
+      expect(firstWorkflow).toContain("  docker-fallback-smoke:");
+      expect(firstWorkflow).toContain("bun core/bin/lando.ts setup --provider=docker --yes --no-interactive");
+      expect(firstWorkflow).toContain('info --format=json > "$RUNNER_TEMP/docker-fallback-info.json"');
+      expect(firstWorkflow).toContain('--resolve "docker-fallback.lndo.site:$PORT:127.0.0.1" "$URL"');
+      expect(firstWorkflow).toContain("destroy --provider=docker --yes");
+      expect(firstWorkflow).toContain("global:destroy --provider=docker --yes");
       expect(firstWorkflow).toContain("- cron: '0 8 * * 1'");
       expect(firstWorkflow).toContain("workflow_dispatch:");
       expect(firstWorkflow).toContain("contents: read");
@@ -226,10 +232,9 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("setup: managed-lando");
       expect(firstWorkflow).toContain("setup: homebrew-podman");
       expect(firstWorkflow).toContain("Build Linux x64 binary for managed Lando provider");
-      expect(firstWorkflow).toContain("bun run --filter='@lando/core' build:log-file-helper");
-      expect(firstWorkflow).toContain(
-        "await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });",
-      );
+      expect(firstWorkflow).not.toContain("build:log-file-helper");
+      expect(firstWorkflow).not.toContain("dist/log-file-access");
+      expect(firstWorkflow).not.toContain("build:host-proxy-shim");
       expect(firstWorkflow).toContain("Prepare managed Lando provider from committed manifest");
       expect(firstWorkflow).toContain('test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
       expect(firstWorkflow).toContain('test -z "${LANDO_RUNTIME_BUNDLE_URL:-}"');
@@ -238,7 +243,7 @@ describe("ci workflow codegen", () => {
         "dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync",
       );
       expect(firstWorkflow).toContain(
-        "LANDO_TEST_PODMAN_SOCKET=$RUNNER_TEMP/lando-data/runtime/run/podman.sock",
+        "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock",
       );
       expect(firstWorkflow).toContain("if: ${{ matrix.cell == 'podman-podman6-linux' }}");
       expect(firstWorkflow).toContain("Teardown managed Lando runtime");
@@ -306,13 +311,13 @@ describe("ci workflow codegen", () => {
       const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(30);
+      expect(versionFileMatches).toBe(40);
       expect(workflow).not.toContain("bun-version: ");
-      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(11);
+      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(12);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(releaseWorkflow).not.toContain("bun-version: ");
-      expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
+      expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(3);
       expect(providerMatrixWorkflow).not.toContain("bun-version: ");
       expect((runtimeBundleWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(3);
       expect(runtimeBundleWorkflow).not.toContain("bun-version: ");
@@ -393,15 +398,16 @@ describe("ci workflow codegen", () => {
       expect(fixtureVerification).not.toContain("docs/reference/schemas");
       expect(fixtureVerification).toContain('if [[ -n "$schema_changes" ]]; then');
       expect(fixtureVerification).toContain('printf "%s\\n" "$schema_changes"');
-      expect(workflow).toContain(`  schema-snapshot:
-    runs-on: ubuntu-24.04
+      expect(workflow).toContain(`    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0`);
       expect(workflow).toContain("- name: Check schema compatibility");
-      expect(workflow).toContain("LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main");
+      expect(workflow).toContain(
+        "LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}",
+      );
       expect(workflow).toContain("run: bun run check:schema-compatibility");
       expect(fixtureVerificationStart).toBeLessThan(fixtureVerificationEnd);
       expect(workflow).toContain("- name: Regenerate Compose key matrix");
@@ -431,7 +437,7 @@ describe("ci workflow codegen", () => {
         "git diff --exit-code -- core/src/plugins/generated core/src/recipes/bundled.ts",
       );
       expect(workflow).toContain(
-        "needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+        "needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
       );
     },
     codegenTestTimeout,
@@ -454,7 +460,7 @@ describe("ci workflow codegen", () => {
         "run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
       );
       expect(workflow).toContain(
-        "needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+        "needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]",
       );
     },
     codegenTestTimeout,
@@ -479,15 +485,16 @@ describe("ci workflow codegen", () => {
         "windows-x64",
         "windows-arm64",
       ]) {
-        expect(workflow).toContain(`- platform: ${platform}`);
+        expect(staticChecksPlatform).toContain(`"platform":"${platform}"`);
       }
       expect(staticChecksPlatform).toContain("- name: Regenerate and verify codegen catalog");
       expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
-      expect(staticChecksPlatform).not.toContain("- name: Typecheck");
+      expect(staticChecksPlatform).toContain("- name: Typecheck");
+      expect(staticChecksPlatform).toContain("if: matrix.platform == 'linux-x64'");
       expect(workflow).toContain("- name: Lint");
       expect(workflow).toContain("run: bun run lint");
-      expect(staticChecksPlatform).toContain("- name: Audit dependencies");
-      expect(staticChecksPlatform).toContain("run: bun run audit");
+      expect(staticChecksPlatform).not.toContain("- name: Audit dependencies");
+      expect(staticChecksPlatform).not.toContain("run: bun run audit");
       expect(staticChecksPlatform).not.toContain("bun audit fix");
       expect(workflow).toContain("bun-install-isolated-experiment:");
       expect(workflow).toContain("continue-on-error: true");
@@ -546,8 +553,10 @@ describe("ci workflow codegen", () => {
       const workflow = await readFile(workflowPath, "utf8");
 
       expect(workflow).toContain("guide-scenarios-linux-x64:");
-      expect(workflow).toContain("needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]");
-      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(24);
+      expect(workflow).toContain(
+        "needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
+      );
+      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(26);
       expect(workflow).not.toContain("run: bun run codegen:guide-scenarios");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");
@@ -583,11 +592,6 @@ describe("ci workflow codegen", () => {
       ).toBeLessThan(workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")));
       expect(
         workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")),
-      ).toBeLessThan(
-        workflow.indexOf("run: bun run typecheck", workflow.indexOf("guide-scenarios-linux-x64")),
-      );
-      expect(
-        workflow.indexOf("run: bun run typecheck", workflow.indexOf("guide-scenarios-linux-x64")),
       ).toBeLessThan(
         workflow.indexOf("run: bun run lint:guides", workflow.indexOf("guide-scenarios-linux-x64")),
       );
@@ -651,9 +655,16 @@ describe("ci workflow codegen", () => {
         expect(workflow).toContain(releaseBinaryFileName(platform));
       }
       expect(workflow).toContain("RELEASE_TAG: v4.0.0-dev.${{ github.run_number }}");
-      expect(workflow).toContain("gh release create");
+      expect(workflow).toContain("gh api --method POST repos/{owner}/{repo}/releases");
+      expect(workflow).toContain("gh release upload");
       expect(workflow).toContain("dist/SHA256SUMS");
-      expect(workflow).toContain("--prerelease");
+      expect(workflow).toContain("-F prerelease=true");
+      expect(workflow).toContain("-F draft=true");
+      expect(workflow).toContain("set -euo pipefail");
+      expect(workflow).not.toContain("trap ");
+      expect(workflow).not.toContain("--cleanup-tag");
+      expect(workflow).not.toContain("--method DELETE");
+      expect(workflow).toContain('gh api --method PATCH "$release_api" -F draft=false');
       expect(workflow).not.toContain("cosign");
       expect(workflow).not.toContain("gpg");
       expect(workflow).not.toContain("sbom");
@@ -689,7 +700,7 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "generates the six-platform PR CI matrix with timing and timeout instrumentation",
+    "generates the six-platform broad CI matrix with timing and timeout instrumentation",
     async () => {
       await runCodegen();
 
@@ -711,7 +722,9 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("static-checks:");
       expect(workflow).toContain("static-checks-platform:");
       expect(workflow).toContain("unit-tests-linux-x64:");
-      expect(workflow).toContain("needs: [static-checks-platform]");
+      expect(workflow).toContain("needs: [selection, static-checks-platform, container-helper-arm64]");
+      expect(workflow).toContain("container-helper-arm64:");
+      expect(workflow).toContain("run: bun run scripts/validate-ci.ts");
       for (const platform of [
         "darwin-arm64",
         "darwin-x64",
@@ -720,7 +733,7 @@ describe("ci workflow codegen", () => {
         "windows-x64",
         "windows-arm64",
       ]) {
-        expect(workflow).toContain(`- platform: ${platform}`);
+        expect(workflow).toContain(`"platform":"${platform}"`);
       }
       expect(workflow).toContain(
         "run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
@@ -768,9 +781,16 @@ describe("ci workflow codegen", () => {
         expect(workflow).toContain(`dist/${releaseBinaryFileName(platform)}`);
         expect(workflow).toContain(`test -f dist/${releaseBinaryFileName(platform)}`);
       }
-      expect(workflow).toContain("gh release create");
+      expect(workflow).toContain("gh api --method POST repos/{owner}/{repo}/releases");
+      expect(workflow).toContain("gh release upload");
       expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
       expect(workflow).toContain("dist/SHA256SUMS");
+      expect(workflow).toContain("-F draft=true");
+      expect(workflow).toContain("set -euo pipefail");
+      expect(workflow).not.toContain("trap ");
+      expect(workflow).not.toContain("--cleanup-tag");
+      expect(workflow).not.toContain("--method DELETE");
+      expect(workflow).toContain('gh api --method PATCH "$release_api" -F draft=false');
       expect(workflow).not.toContain("sha256sum lando > SHA256SUMS");
       expect(workflow).not.toContain("if-no-files-found");
     },

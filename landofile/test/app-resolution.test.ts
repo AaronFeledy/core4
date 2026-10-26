@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect } from "effect";
 
-import type { LandofileShape } from "@lando/sdk/schema";
+import { AbsolutePath, type LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
 import type { LandofileService } from "@lando/sdk/services";
 
 import { makeUserAppResolution } from "@lando/landofile/app-resolution";
@@ -15,8 +15,15 @@ const makeResolution = () =>
     assertVersionConstraint: () => Effect.void,
   });
 
+const compiled = (document: LandofileShape) =>
+  LoadScopedLandofile.make({
+    stage: "load-scoped",
+    document,
+    pendingSites: [],
+    context: { appRoot: AbsolutePath.make(process.cwd()), env: {} },
+  });
 const serviceFor = (shape: LandofileShape): Context.Service.Shape<typeof LandofileService> => ({
-  discover: Effect.succeed(shape),
+  discover: Effect.succeed(compiled(shape)),
 });
 
 describe("user app resolution seam", () => {
@@ -52,7 +59,7 @@ describe("user app resolution seam", () => {
       const result = await Effect.runPromise(resolution.loadUserLandofileFile(filePath));
 
       // Then
-      const appserver = result.services === undefined ? undefined : Object.values(result.services)[0];
+      const appserver = Object.values(result.document.services ?? {})[0];
       expect(appserver?.type).toBe("php:8.4");
     } finally {
       await rm(appRoot, { recursive: true, force: true });
@@ -68,7 +75,7 @@ describe("user app resolution seam", () => {
     const result = await Effect.runPromise(resolution.loadUserLandofile(service));
 
     // Then
-    expect(result.name).toBe("myapp");
+    expect(result.document.name).toBe("myapp");
   });
 
   test("loadUserLandofileAt serializes concurrent root resolution and restores cwd", async () => {
@@ -90,14 +97,14 @@ describe("user app resolution seam", () => {
         discover: Effect.promise(async () => {
           firstInDiscover.resolve();
           await firstCanRestore.promise;
-          return { name: "first" };
+          return compiled({ name: "first" });
         }),
       } satisfies Context.Service.Shape<typeof LandofileService>;
       const secondService = {
         discover: Effect.promise(async () => {
           await secondMayObserve.promise;
           secondObserved = process.cwd();
-          return { name: "second" };
+          return compiled({ name: "second" });
         }),
       } satisfies Context.Service.Shape<typeof LandofileService>;
 
@@ -117,7 +124,7 @@ describe("user app resolution seam", () => {
       const secondResult = await second;
 
       // Then
-      expect(secondResult.name).toBe("second");
+      expect(secondResult.document.name).toBe("second");
       expect(secondObserved).toBe(right);
       expect(process.cwd()).toBe(left);
     } finally {

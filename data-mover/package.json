@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
-  "homepage": "https://github.com/lando-community/core4",
+  "homepage": "https://github.com/AaronFeledy/core4",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lando-community/core4.git",
+    "url": "git+https://github.com/AaronFeledy/core4.git",
     "directory": "data-mover"
   },
   "type": "module",
@@ -19,9 +19,9 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./orphaned-snapshots": "./src/orphaned-snapshots.ts",
     "./service": "./src/service.ts",
-    "./testing": "./src/testing.ts",
-    "./provider-images": "./src/generated/provider-images.ts"
+    "./testing": "./src/testing.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "data-mover", "volume-snapshot"],

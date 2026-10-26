@@ -19,7 +19,7 @@ const configCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
   composeProjectFields: { supported: ["configs"] },
   composeServiceFields: {
-    supported: ["networks", "configs", "secrets", "profiles", "labels"],
+    supported: ["configs", "secrets", "profiles", "labels"],
   },
 };
 
@@ -45,18 +45,20 @@ const plannerLayer = AppPlannerLayer.layer.pipe(
   Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
 );
 
+import { literalLandofile } from "../_support/value-contracts.ts";
+
 const plan = (landofile: typeof LandofileShape.Type) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, configCapabilities)).pipe(
-      Effect.provide(plannerLayer),
-    ),
+    Effect.flatMap(AppPlanner, (planner) =>
+      planner.plan(literalLandofile(landofile, process.cwd()), configCapabilities),
+    ).pipe(Effect.provide(plannerLayer)),
   );
 
 const planExit = (landofile: typeof LandofileShape.Type) =>
   Effect.runPromiseExit(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, configCapabilities)).pipe(
-      Effect.provide(plannerLayer),
-    ),
+    Effect.flatMap(AppPlanner, (planner) =>
+      planner.plan(literalLandofile(landofile, process.cwd()), configCapabilities),
+    ).pipe(Effect.provide(plannerLayer)),
   );
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {

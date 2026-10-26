@@ -6,7 +6,17 @@ import {
   fileSyncVolumeName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
-import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "./labels.ts";
+import { ContainerPlanError } from "./container-plan-error.ts";
+import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
+import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
+import { literalServiceEnvironment, requireCurrentCreationPlan } from "./environment-values.ts";
+import {
+  APP_LABEL,
+  APP_ROOT_LABEL,
+  SERVICE_LABEL,
+  containerIntegrationLabels,
+  scratchLabelsForPlan,
+} from "./labels.ts";
 
 import {
   bindSourceForComposeConfig,
@@ -14,83 +24,40 @@ import {
   composeConfigMounts,
 } from "./compose-configs.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
+import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 
 export { composeConfigBindStrings };
+export { ContainerPlanError, normalizeCommand, normalizeEntrypoint };
 
 /** Retain earlier service metadata when a provider applies only a subset without reconciliation. */
 export const mergeAppliedPlan = (
   previous: AppPlan | undefined,
   incoming: AppPlan,
   reconcile: boolean,
-): AppPlan =>
-  previous === undefined || reconcile || previous.id !== incoming.id
-    ? incoming
-    : { ...incoming, services: { ...previous.services, ...incoming.services } };
+): AppPlan => {
+  if (previous === undefined || reconcile || previous.id !== incoming.id) return incoming;
+  const merged = { ...incoming, services: { ...previous.services, ...incoming.services } };
+  if (
+    previous.valueModel !== 1 &&
+    Object.keys(previous.services).some((name) => !(name in incoming.services))
+  ) {
+    const { valueModel: _valueModel, ...observed } = merged;
+    return observed;
+  }
+  return merged;
+};
 
 /** Container name shared by every provider. `-` is in the allowed class, so sanitizing the joined name matches sanitizing slug and service separately. */
 export const serviceContainerName = (plan: Pick<AppPlan, "slug">, service: string): string =>
   `lando-${plan.slug}-${service}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
-export class ContainerPlanError extends Error {
-  readonly _tag = "ContainerPlanError";
-  readonly details?: unknown;
-
-  constructor(message: string, details?: unknown) {
-    super(message);
-    this.name = "ContainerPlanError";
-    if (details !== undefined) this.details = details;
-  }
-}
-
 export const envArrayFromRecord = (environment: Readonly<Record<string, string>>): ReadonlyArray<string> =>
   Object.entries(environment).map(([key, value]) => `${key}=${value}`);
 
 export const serviceEnv = (service: ServicePlan): ReadonlyArray<string> =>
-  envArrayFromRecord(service.environment);
+  envArrayFromRecord(literalServiceEnvironment(service));
 
 export const mountSuffix = (readOnly: boolean): string => (readOnly ? ":ro" : "");
-
-export const normalizeCommand = (
-  command: ReadonlyArray<string> | string | undefined,
-): Array<string> | undefined => {
-  if (command === undefined) return undefined;
-  if (typeof command === "string") return ["sh", "-lc", command];
-  return [...command];
-};
-
-export const normalizeEntrypoint = (
-  entrypoint: ReadonlyArray<string> | string | undefined,
-): Array<string> | undefined => {
-  if (entrypoint === undefined) return undefined;
-  if (typeof entrypoint === "string") return [entrypoint];
-  return [...entrypoint];
-};
-
-const containerHealthcheck = (
-  healthcheck: ServicePlan["healthcheck"],
-): Record<string, unknown> | undefined => {
-  if (healthcheck === undefined) return undefined;
-  switch (healthcheck.kind) {
-    case "none":
-      return { Test: ["NONE"] };
-    case "command": {
-      const command = healthcheck.command;
-      if (command === undefined) return undefined;
-      return {
-        Test: typeof command === "string" ? ["CMD-SHELL", command] : ["CMD", ...command],
-        Interval: healthcheck.intervalSeconds * 1_000_000_000,
-        Timeout: healthcheck.timeoutSeconds * 1_000_000_000,
-        Retries: healthcheck.retries,
-        ...(healthcheck.startPeriodSeconds === undefined
-          ? {}
-          : { StartPeriod: healthcheck.startPeriodSeconds * 1_000_000_000 }),
-      };
-    }
-    case "http":
-    case "tcp":
-      return undefined;
-  }
-};
 
 export const commonContainerLabels = (
   plan: AppPlan,
@@ -108,13 +75,15 @@ export const commonContainerLabels = (
           Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
         )
       : {};
-  return {
+  const baseLabels = containerIntegrationLabels(service.environment, {
     ...userLabels,
     [APP_LABEL]: plan.id,
     [APP_ROOT_LABEL]: plan.root,
     [SERVICE_LABEL]: service.name,
+    ...scratchLabelsForPlan(plan),
     ...extra,
-  };
+  });
+  return { ...baseLabels, [CREATE_CONFIG_LABEL]: createConfigFingerprint(plan, service, baseLabels) };
 };
 
 export interface ContainerHostConfigOptions {
@@ -261,11 +230,11 @@ export const containerPortBindings = (
   endpoints: ReadonlyArray<PublishedEndpoint>,
 ): Record<string, ReadonlyArray<Record<string, string>>> => {
   const grouped = new Map<string, Array<Record<string, string>>>();
-  for (const endpoint of endpoints) {
-    const key = `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`;
+  for (const endpoint of physicalPublications(endpoints)) {
+    const key = `${endpoint.port}/${endpoint.transport}`;
     const binding = {
-      HostIp: endpoint.publication.bindAddress ?? "127.0.0.1",
-      HostPort: endpoint.publication.hostPort === undefined ? "" : String(endpoint.publication.hostPort),
+      HostIp: endpoint.bindAddress,
+      HostPort: endpoint.hostPort === undefined ? "" : String(endpoint.hostPort),
     };
     const existing = grouped.get(key);
     if (existing === undefined) grouped.set(key, [binding]);
@@ -283,7 +252,7 @@ export const fingerprintPortBindings = (
       parts.push(`${key}@${item.HostIp ?? ""}:${item.HostPort ?? ""}`);
     }
   }
-  return parts.sort().join("|");
+  return [...new Set(parts)].sort().join("|");
 };
 
 export const fingerprintPlannedPublishPorts = (endpoints: ReadonlyArray<PublishedEndpoint>): string => {
@@ -313,13 +282,7 @@ export const fingerprintInspectPublishPorts = (inspect: unknown): string => {
 export const containerExposedPorts = (
   endpoints: ReadonlyArray<PublishedEndpoint | InternalEndpoint>,
 ): Record<string, Record<string, never>> => {
-  const ports: Record<string, Record<string, never>> = {};
-  for (const endpoint of endpoints) {
-    if (endpoint.protocol === "unix") continue;
-    const key = `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`;
-    ports[key] = {};
-  }
-  return ports;
+  return Object.fromEntries(physicalListenerPorts(endpoints).map((key) => [key, {}]));
 };
 
 export const containerHostConfigFragment = (
@@ -361,17 +324,18 @@ export const containerCreateBodyFragment = (
   service: ServicePlan,
   options: ContainerCreateBodyOptions = {},
 ): Record<string, unknown> => {
+  requireCurrentCreationPlan(plan);
   const artifact = service.artifact;
   if (artifact?.kind !== "ref") {
     return (options.onMissingArtifact ?? missingArtifact)(artifact);
   }
-  const healthcheck = containerHealthcheck(service.healthcheck);
+  const healthcheck = containerHealthcheck(service.healthcheck, plan, service);
   const exposedPorts = containerExposedPorts(service.endpoints);
 
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
     Image: artifact.ref,
-    Env: envArrayFromRecord(options.environment ?? service.environment),
+    Env: envArrayFromRecord(options.environment ?? literalServiceEnvironment(service)),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,

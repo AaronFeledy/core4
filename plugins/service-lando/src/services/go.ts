@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { makeLanguageRuntime } from "./_language-runtime.ts";
 
@@ -22,7 +22,8 @@ const GoFeatureConfigSchema = Schema.Struct({
   port: Schema.Number,
 });
 type GoFeatureConfig = typeof GoFeatureConfigSchema.Type;
-const configFor = (ctx: ServiceFeatureContext): GoFeatureConfig => ctx.config as GoFeatureConfig;
+const configFor = (ctx: { readonly config: Readonly<Record<string, unknown>> }): GoFeatureConfig =>
+  ctx.config as GoFeatureConfig;
 
 const runtime = makeLanguageRuntime({
   language: "go",

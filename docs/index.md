@@ -9,7 +9,7 @@ hero:
   image:
     file: ./src/assets/lando-logo.svg
     alt: Lando logo
-  tagline: Describe your stack in one file. Lando builds and runs it in containers, so local setup stops being a project of its own.
+  tagline: Define your local development stack in one file. Lando builds and runs its services in containers.
   actions:
     - text: Install the Alpha
       link: ./alpha-install-and-bug-reports/
@@ -23,7 +23,9 @@ hero:
 
 ## What Lando is
 
-Put the stack in a `.lando.yml` Landofile: appserver, database, cache, everyday tooling. Run `lando start`. Everyone on the project gets the same environment.
+Lando runs your app services and everyday tooling from a `.lando.yml` config file, called a Landofile. Keep the appserver, database, cache, and their configuration together so your team can share the same stack definition.
+
+Lando 4 is a pre-release rewrite, and this Alpha is not production-ready. Start with [the Alpha install instructions](./alpha-install-and-bug-reports/) before running the tutorial.
 
 Those services run in containers on a runtime you control: Lando-managed Podman by default, or a system Docker or Podman install you already have. You configure your app. Lando deals with the containers.
 
@@ -33,12 +35,12 @@ Those services run in containers on a runtime you control: Lando-managed Podman 
 | --- | --- |
 | [Install the Alpha](./alpha-install-and-bug-reports/) | Install paths, checksum verification, and what to attach to a bug report. |
 | [Tutorial](./guides/tutorial/app-lifecycle/) | Start here: learn the everyday commands for starting, inspecting, and tearing down apps. |
-| [Recipes](./recipes/wordpress/) | Ready-made stacks for Drupal, Drupal CMS, LAMP, LEMP, and WordPress. |
+| [Recipes](./recipes/wordpress/) | Start with WordPress, or choose another ready-made app stack. |
 | [Reference](./reference/commands/) | Generated command and schema reference, down to individual flags. |
 | [Embedding](./embedding/) | Drive the `@lando/core` library API from your own application. |
 
 ## Before you start
 
-Lando 4 is a pre-release rewrite, and this Alpha is not production-ready. Commands, the Landofile format, and the plugin API can still change between builds, and some command surfaces are not implemented yet.
+Commands, the Landofile format, and the plugin API can still change between Alpha builds. Check the install page for current support limits.
 
-When something breaks, and it will, the [Alpha install and bug reports](./alpha-install-and-bug-reports/) page lists the diagnostics worth attaching.
+If you hit a problem, follow [Alpha install and bug reports](./alpha-install-and-bug-reports/) to collect the diagnostics maintainers need.

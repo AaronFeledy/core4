@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
 
+import { CONTAINER_HELPER_JOB_ID, renderContainerHelperJob } from "./_container-helper-workflow.ts";
 import { createJourneyWorkflowBuilder } from "./_journey-workflow.ts";
 import { PLATFORM_READINESS_CELLS, type PlatformReadinessCell } from "./ci-platforms.ts";
 
@@ -19,13 +20,14 @@ const {
   renderBundleSteps,
   renderLinuxLandoPrereqs,
   renderSetupStep,
-} = createJourneyWorkflowBuilder("platform-readiness", "");
+} = createJourneyWorkflowBuilder("platform-readiness");
 
 const renderJob = (cell: PlatformReadinessCell): string => {
   const platform = ciPlatformFor(cell.id);
   const binary = `dist/${platform.binaryName}`;
   return `  platform-readiness-${cell.id}:
-${renderCadenceIf(cell.cadence)}    runs-on: ${renderRunsOn(cell.runsOn)}
+${renderCadenceIf(cell.cadence)}    needs: [${CONTAINER_HELPER_JOB_ID}]
+    runs-on: ${renderRunsOn(cell.runsOn)}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
@@ -62,7 +64,6 @@ export const renderPlatformReadinessWorkflow = (): string => `${GENERATED_HEADER
 name: platform-readiness
 
 on:
-  pull_request:
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
@@ -75,6 +76,7 @@ permissions:
   contents: read
 
 jobs:
+${renderContainerHelperJob()}
 ${PLATFORM_READINESS_CELLS.map(renderJob).join("\n")}
 `;
 

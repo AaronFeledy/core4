@@ -1,19 +1,28 @@
-/**
- * `@lando/sdk/database-creds`: pure database-family environment credential resolution.
- *
- * This contracts-tier helper reads only the supplied environment, with no Effect
- * or host IO. Consumers own defaults, authored overrides, and outbound env keys.
- */
-export type DatabaseFamily = "mysql" | "mariadb" | "postgres" | "mongodb" | "mssql";
+import type { DatabaseConnection, ServiceCreds } from "../schema/database-connection.ts";
 
-export type DatabaseEnvCreds = {
-  readonly user: string | undefined;
-  readonly password: string | undefined;
-  readonly database: string | undefined;
-  readonly rootPassword: string | undefined;
-};
+export type DatabaseFamily = DatabaseConnection["family"];
 
-/** Keys are ordered by precedence; SQL Server supplies only a root password. */
+/** Service environment key carrying a database service's planned container listen port. */
+export const DATABASE_PORT_ENV_KEY = "LANDO_DB_PORT";
+
+/** Published credential tuple shared by database services and their consumers. */
+export const LANDO_DB_ENV_KEYS = {
+  user: "LANDO_DB_USER",
+  password: "LANDO_DB_PASSWORD",
+  database: "LANDO_DB_NAME",
+  rootPassword: "LANDO_DB_ROOT_PASSWORD",
+} as const;
+
+/** Each family's published listen port, used when a service declares no planned port. */
+export const DATABASE_FAMILY_DEFAULT_PORTS = {
+  mysql: 3306,
+  mariadb: 3306,
+  postgres: 5432,
+  mongodb: 27017,
+  mssql: 1433,
+} as const satisfies Record<DatabaseFamily, number>;
+
+/** Native aliases must agree, not override each other; only the service type reads them. */
 export const DATABASE_FAMILY_ENV_KEYS = {
   mysql: {
     user: ["MYSQL_USER"],
@@ -47,30 +56,5 @@ export const DATABASE_FAMILY_ENV_KEYS = {
   },
 } as const satisfies Record<
   DatabaseFamily,
-  { readonly [Field in keyof DatabaseEnvCreds]: readonly string[] }
+  { readonly [Field in keyof Required<ServiceCreds>]: readonly string[] }
 >;
-
-/** Return the first defined value in key order, including an empty string. */
-export const firstEnv = (
-  environment: Readonly<Record<string, string>>,
-  keys: ReadonlyArray<string>,
-): string | undefined => {
-  for (const key of keys) {
-    const value = environment[key];
-    if (value !== undefined) return value;
-  }
-  return undefined;
-};
-
-export const databaseEnvCreds = (
-  family: DatabaseFamily,
-  environment: Readonly<Record<string, string>>,
-): DatabaseEnvCreds => {
-  const keys = DATABASE_FAMILY_ENV_KEYS[family];
-  return {
-    user: firstEnv(environment, keys.user),
-    password: firstEnv(environment, keys.password),
-    database: firstEnv(environment, keys.database),
-    rootPassword: firstEnv(environment, keys.rootPassword),
-  };
-};

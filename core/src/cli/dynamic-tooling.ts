@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Effect, Layer, Schema } from "effect";
 
 import {
@@ -6,6 +7,7 @@ import {
   type CacheError,
   type CommandAliasConflictError,
   type CommandAliasTargetError,
+  type LandofileFormConflictError,
   type NotImplementedError,
   ToolingCompileError,
   ToolingExecError,
@@ -48,7 +50,7 @@ const ToolingResultSchema = Schema.Struct({
 const dynamicToolingOptions = {
   resultSchema: ToolingResultSchema,
   redactionTokens: runToolingRedactionTokens,
-  successExitCode: (result: RunToolingResult) => result.exitCode,
+  completion: (result: RunToolingResult) => commandCompletionFromExitCode(result.exitCode),
   failureExitCode: (error: unknown) => (error instanceof ToolingExecError ? error.exitCode : undefined),
 } as const;
 
@@ -108,6 +110,7 @@ export const runDynamicTooling = async (argv: ReadonlyArray<string>): Promise<vo
       renderRunToolingResult,
       {
         ...dynamicToolingOptions,
+        signal,
         ...dynamicToolingStreaming(),
       },
     ),
@@ -162,6 +165,7 @@ const runDynamicBunShellTooling = async (
       renderRunToolingResult,
       {
         ...dynamicToolingOptions,
+        signal,
         ...dynamicToolingStreaming(),
       },
     );
@@ -174,6 +178,7 @@ const runDynamicToolingFailure = (
   error:
     | ToolingCompileError
     | CacheError
+    | LandofileFormConflictError
     | CommandAliasConflictError
     | CommandAliasTargetError
     | BunShellScriptEmptyError

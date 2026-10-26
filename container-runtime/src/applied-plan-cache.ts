@@ -24,13 +24,17 @@ const LOCK_REMEDIATION = "Retry after the concurrent app operation completes.";
 export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
   const plans = new Map<AppId, AppPlan>();
   const state = options.appliedPlanState;
-  const sanitize = options.sanitizeAppliedPlan ?? ((plan: AppPlan) => plan);
+  const sanitize = (plan: AppPlan): AppPlan => {
+    const { events: _events, ...applied } = options.sanitizeAppliedPlan?.(plan) ?? plan;
+    return applied;
+  };
 
   const resolvePlan = (appId: AppId): Effect.Effect<AppPlan | undefined, never> => {
     const cached = plans.get(appId);
     if (cached !== undefined) return Effect.succeed(cached);
     if (state === undefined) return Effect.succeed(undefined);
     return options.load(state, appId).pipe(
+      Effect.map((loaded) => (loaded === undefined ? undefined : sanitize(loaded))),
       Effect.tap((loaded) =>
         Effect.sync(() => {
           if (loaded !== undefined) plans.set(appId, loaded);

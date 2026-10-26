@@ -9,6 +9,7 @@ import {
   assembleBundle,
   parseRuntimeBundleSources,
 } from "../../../scripts/assemble-runtime-bundle.ts";
+import { fixtureLicense } from "./runtime-bundle-license-fixture.ts";
 
 const realisticPortableLdd = `
 	linux-vdso.so.1 (0x00007ffc00000000)
@@ -43,6 +44,7 @@ const sourceBuildSources = (sourceArchive: Uint8Array) =>
         components: [
           {
             name: "podman",
+            license: fixtureLicense("6.0.1", sourceArchive),
             version: "6.0.1",
             url: "https://example.test/podman-source.tar.gz",
             sha256: sha256(sourceArchive),
@@ -61,7 +63,7 @@ describe("Linux Podman source build", () => {
     const sources = parseRuntimeBundleSources(
       JSON.parse(await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8")),
     );
-    expect(sources.runtimeVersion).toBe("0.1.6");
+    expect(sources.runtimeVersion).toBe("0.1.7");
 
     for (const hostKey of ["linux-x64", "linux-arm64"]) {
       const podman = sources.bundles[hostKey]?.components.find((component) => component.name === "podman");
@@ -108,6 +110,7 @@ describe("Linux Podman source build", () => {
       };
 
       await assembleBundle({
+        repository: "AaronFeledy/core4",
         hostKey: "linux-x64",
         sources: sourceBuildSources(sourceArchive),
         outDir: dir,
@@ -147,6 +150,7 @@ describe("Linux Podman source build", () => {
       let failure: unknown;
       try {
         await assembleBundle({
+          repository: "AaronFeledy/core4",
           hostKey: "linux-x64",
           sources: sourceBuildSources(sourceArchive),
           outDir: dir,
@@ -174,6 +178,7 @@ describe("Linux Podman source build", () => {
       let failure: unknown;
       try {
         await assembleBundle({
+          repository: "AaronFeledy/core4",
           hostKey: "linux-x64",
           sources: sourceBuildSources(sourceArchive),
           outDir: dir,
@@ -199,6 +204,7 @@ describe("Linux Podman source build", () => {
       let failure: unknown;
       try {
         await assembleBundle({
+          repository: "AaronFeledy/core4",
           hostKey: "linux-x64",
           sources: sourceBuildSources(sourceArchive),
           outDir: dir,

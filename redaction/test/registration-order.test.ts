@@ -1,35 +1,10 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { Effect } from "effect";
-import {
-  createStandaloneRedactor,
-  makeRedactionService,
-  registerRedactionValues,
-  resetRegisteredRedactionValuesForTesting,
-} from "../src/service.ts";
-
-const emptyStore = {
-  id: "empty",
-  get: () => Effect.succeed(""),
-  has: () => Effect.succeed(false),
-  list: Effect.succeed([]),
-};
-
-beforeEach(() => {
-  resetRegisteredRedactionValuesForTesting();
-});
-
-afterEach(() => {
-  resetRegisteredRedactionValuesForTesting();
-});
+import { createStandaloneRedactor, makeRedactionOwner, makeRedactionService } from "../src/service.ts";
 
 test("a value registered after construction is redacted in later output", async () => {
   // Given: an already retained redactor and a store that never lists values.
-  const service = makeRedactionService({
-    id: "empty",
-    get: () => Effect.succeed(""),
-    has: () => Effect.succeed(false),
-    list: Effect.succeed([]),
-  });
+  const service = makeRedactionService();
   const redactor = await Effect.runPromise(service.forProfile("secrets"));
   // When
   await Effect.runPromise(service.registerValues(["late-registration-canary", "☃"]));
@@ -38,33 +13,33 @@ test("a value registered after construction is redacted in later output", async 
   expect(redactor.redactValue({ value: "☃" })).toEqual({ value: "[redacted]" });
 });
 
-test("standalone redactor redacts a registered value", async () => {
+test("standalone redactor does not inherit another runtime's registered value", async () => {
   // Given
   const secret = "standalone-registered-canary";
-  await Effect.runPromise(registerRedactionValues([secret]));
+  await Effect.runPromise(makeRedactionService().registerValues([secret]));
   // When
   const redactor = createStandaloneRedactor("secrets");
   // Then
-  expect(redactor.redactString(secret)).toBe("[redacted]");
+  expect(redactor.redactString(secret)).toBe(secret);
 });
 
-test("retained standalone redactor observes later registration", async () => {
+test("retained standalone redactor remains pure after later registration", async () => {
   // Given
-  const service = makeRedactionService(emptyStore);
+  const service = makeRedactionService();
   const redactor = createStandaloneRedactor("secrets");
   const secret = "standalone-late-canary";
   // When
   await Effect.runPromise(service.registerValues([secret]));
   // Then
-  expect(redactor.redactString(secret)).toBe("[redacted]");
-  expect(redactor.redactValue({ value: secret })).toEqual({ value: "[redacted]" });
+  expect(redactor.redactString(secret)).toBe(secret);
+  expect(redactor.redactValue({ value: secret })).toEqual({ value: secret });
 });
 
 test.each(["service", "standalone"] as const)(
   "%s redactor reuses prepared tokens until a new value is registered",
   async (mode) => {
     // Given
-    const service = makeRedactionService(emptyStore);
+    const service = makeRedactionService();
     const secret = `cache-registration-${mode}`;
     let preparations = 0;
     const options = {
@@ -88,29 +63,28 @@ test.each(["service", "standalone"] as const)(
     expect(preparations).toBe(prepared);
 
     await Effect.runPromise(service.registerValues([secret]));
-    expect(redactor.redactString(secret)).toBe("[redacted]");
-    expect(preparations).toBe(prepared + 1);
+    expect(redactor.redactString(secret)).toBe(mode === "service" ? "[redacted]" : secret);
+    expect(preparations).toBe(prepared + (mode === "service" ? 1 : 0));
     await Effect.runPromise(service.registerValues([secret, ""]));
-    expect(redactor.redactString(secret)).toBe("[redacted]");
-    expect(preparations).toBe(prepared + 1);
+    expect(redactor.redactString(secret)).toBe(mode === "service" ? "[redacted]" : secret);
+    expect(preparations).toBe(prepared + (mode === "service" ? 1 : 0));
   },
 );
 
-test("whitespace-only and unsafe registrations are not redacted", async () => {
-  // Given: a retained redactor and values the exact-value layer must ignore.
-  const redactor = createStandaloneRedactor("secrets");
+test("nonempty unsafe registrations authoritatively suppress containing details", async () => {
+  const service = makeRedactionService();
+  const redactor = await Effect.runPromise(service.forProfile("secrets"));
   const ansi = "\u001b[32mvisible text\u001b[0m";
   // When
-  await Effect.runPromise(registerRedactionValues([" ", "\t", "32", "0;1", "1234", ""]));
-  // Then: those values are not registered, so they neither mask text nor suppress ANSI.
-  expect(redactor.redactString("visible text")).toBe("visible text");
-  expect(redactor.redactString(ansi)).toBe(ansi);
-  expect(redactor.redactString("1234")).toBe("1234");
+  await Effect.runPromise(service.registerValues([" ", "\t", "32", "0;1", "1234", ""]));
+  expect(redactor.redactString("visible text")).toBe("[redacted]");
+  expect(redactor.redactString(ansi)).toBe("[redacted]");
+  expect(redactor.redactString("1234")).toBe("[redacted]");
 });
 
-test("unsafe registrations do not rebuild a retained redactor", async () => {
+test("unsafe registrations rebuild a retained redactor but empty registrations do not", async () => {
   // Given
-  const service = makeRedactionService(emptyStore);
+  const service = makeRedactionService();
   let preparations = 0;
   const options = {
     redactionTokens: {
@@ -124,27 +98,34 @@ test("unsafe registrations do not rebuild a retained redactor", async () => {
   redactor.redactString("rebuild-filter-canary");
   const prepared = preparations;
   // When
-  await Effect.runPromise(service.registerValues([" ", "32", "0;1", "1234", ""]));
+  await Effect.runPromise(service.registerValues(["32", "0;1", "1234", ""]));
   redactor.redactString("rebuild-filter-canary");
   // Then
-  expect(preparations).toBe(prepared);
-  expect(redactor.redactString("\u001b[32mvisible text\u001b[0m")).toBe("\u001b[32mvisible text\u001b[0m");
+  expect(preparations).toBe(prepared + 1);
+  expect(redactor.redactString("\u001b[32mvisible text\u001b[0m")).toBe("[redacted]");
+  await Effect.runPromise(service.registerValues([""]));
+  redactor.redactString("rebuild-filter-canary");
+  expect(preparations).toBe(prepared + 1);
 });
 
-test("reset drops registered values and a replacement still rebuilds the retained redactor", async () => {
+test("disposing one owner clears only its registrations and retained redactor", async () => {
   // Given: one registered value, so a size-keyed cache would collide with the next one.
   const first = "generation-first-canary";
   const second = "generation-second-canary";
-  await Effect.runPromise(registerRedactionValues([first]));
-  const retained = createStandaloneRedactor("secrets");
+  const owner = makeRedactionOwner();
+  const other = makeRedactionService();
+  await Effect.runPromise(owner.service.registerValues([first]));
+  await Effect.runPromise(other.registerValues([second]));
+  const retained = await Effect.runPromise(owner.service.forProfile("secrets"));
+  const otherRedactor = await Effect.runPromise(other.forProfile("secrets"));
   expect(retained.redactString(first)).toBe("[redacted]");
   // When
-  resetRegisteredRedactionValuesForTesting();
+  owner.dispose();
   const cleared = retained.redactString(first);
-  await Effect.runPromise(registerRedactionValues([second]));
   // Then
   expect(cleared).toBe(first);
   expect(retained.redactString(first)).toBe(first);
-  expect(retained.redactString(second)).toBe("[redacted]");
+  expect(retained.redactString(second)).toBe(second);
+  expect(otherRedactor.redactString(second)).toBe("[redacted]");
   expect(createStandaloneRedactor("secrets").redactString(first)).toBe(first);
 });

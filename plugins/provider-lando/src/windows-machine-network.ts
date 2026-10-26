@@ -29,7 +29,17 @@ export const windowsMachineNetworkPlan = (plan: AppPlan, createdAt: string): App
     ...plan,
     networking: {
       ...networking,
-      perAppBridge: { ...networking.perAppBridge, name: physical(networking.perAppBridge.name) },
+      ...(networking.authoredNetworks === undefined
+        ? {}
+        : {
+            authoredNetworks: networking.authoredNetworks.map((network) =>
+              network.external ? network : { ...network, name: physical(network.name) },
+            ),
+          }),
+      perAppBridge:
+        networking.perAppBridge === null
+          ? null
+          : { ...networking.perAppBridge, name: physical(networking.perAppBridge.name) },
       ...(networking.sharedNetworkMembership === undefined
         ? {}
         : {

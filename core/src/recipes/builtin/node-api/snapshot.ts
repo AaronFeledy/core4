@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const NODE_API_RECIPE_VERSION = "0.1.0";
 export const NODE_API_CONTENT_DIGEST =
-  "sha256:5c74d22226cad678d271f9e1c9fe2a158fa1592da46a341f7bbcfc2f6cb51ef9";
+  "sha256:d5212f35f982bed13330b4022bab136bf231b5f1969a763e2d0e04b67d31e205";
 export const nodeApiProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-node-api",
@@ -30,7 +30,7 @@ const apiService = (hasDatabase: boolean): ExpressionNode =>
               [
                 "DATABASE_URL",
                 lit(
-                  "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+                  "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
                 ),
               ] as const,
             ]

@@ -1,3 +1,4 @@
+import { internalErrorRemediation } from "@lando/sdk/command-result";
 import { Effect, Schema } from "effect";
 
 export class ShellFailure extends Schema.TaggedError<ShellFailure>()("ShellFailure", {
@@ -46,9 +47,13 @@ export const shellFailureCases = [
   {
     kind: "defect",
     effect: () => Effect.die(defect("unexpected defect")),
-    failureTag: "Defect",
-    text: "unexpected defect\ncode: Error",
-    error: { _tag: "Error", message: "unexpected defect" },
+    failureTag: "LandoInternalError",
+    text: `unexpected defect\n  ↳ ${internalErrorRemediation}\ncode: LandoInternalError`,
+    error: {
+      _tag: "LandoInternalError",
+      message: "unexpected defect",
+      remediation: internalErrorRemediation,
+    },
     rejectionName: "Error",
     rejectionMessage: "unexpected defect",
     rejectionText: "Error: unexpected defect",
@@ -60,8 +65,12 @@ export const shellFailureCases = [
     kind: "interrupt",
     effect: () => Effect.interrupt,
     failureTag: "Interrupted",
-    text: "All fibers interrupted without errors.\ncode: Error",
-    error: { _tag: "UnknownError", message: "All fibers interrupted without errors." },
+    text: `All fibers interrupted without errors.\n  ↳ ${internalErrorRemediation}\ncode: LandoInternalError`,
+    error: {
+      _tag: "LandoInternalError",
+      message: "All fibers interrupted without errors.",
+      remediation: internalErrorRemediation,
+    },
     rejectionName: "Error",
     rejectionMessage: "All fibers interrupted without error",
     rejectionText: "Error: All fibers interrupted without error",

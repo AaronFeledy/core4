@@ -1,15 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
+import type { Redactor } from "@lando/sdk/secrets";
+import { boundedDiagnostic, makeCompletionDiagnosticContext } from "./completion-diagnostic.ts";
+import { removeRuntimeContainer } from "./container-removal.ts";
 import { tryParseJson } from "./engine-json.ts";
-import {
-  ephemeralDataHelperLabels,
-  isVolumeInUse,
-  listVolumeHolders,
-  namedHolders,
-  releaseVolumeHolders,
-  volumeInUseMessage,
-  volumeInUseRemediation,
-} from "./ephemeral-data-helpers.ts";
+import { type PinnedHelperImage, dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
+import type { PulledImage } from "./image-pull.ts";
 import {
   APP_LABEL,
   PROVIDER_LABEL,
@@ -23,6 +19,7 @@ import {
 } from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { serviceContainerName as namedServiceContainer } from "./plan.ts";
+import { redactDetails, redactString, withApiReason } from "./redact.ts";
 import { listNativeSnapshots } from "./snapshot-images.ts";
 import { makeAttachDecoder } from "./streams.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
@@ -35,23 +32,24 @@ import {
   observeMountedVolume,
   resolveNativeVolumeIdentity,
 } from "./volume-observation.ts";
-import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_IMAGE, VOLUME_WITNESS_MOUNT } from "./volume-witness-helper.ts";
+import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_MOUNT } from "./volume-witness-helper.ts";
 export {
   VOLUME_OWNER_LABEL,
   VOLUME_SELECTOR_LABEL,
-  planVolumeOwnership,
   volumeOwnershipLabels,
 } from "./volume-ownership.ts";
 import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creation.ts";
 export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
-export { VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
-export { isVolumeInUse, volumeInUseRemediation } from "./ephemeral-data-helpers.ts";
+export { dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
 
-import { Effect, Fiber, type Scope, Stream } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, type Scope, Stream } from "effect";
+
+import { annotateFailureRole, failureDefectCause, mergeFailure } from "@lando/sdk/command-result";
 
 import {
   ArtifactTransferError,
   ProviderCapabilityError,
+  ProviderUnavailableError,
   ServiceCopyError,
   VolumeOperationError,
 } from "@lando/sdk/errors";
@@ -98,10 +96,15 @@ export interface DataPlaneApiClient {
 export interface ProviderDataPlaneOptions {
   readonly providerId: string;
   readonly endpointNamespace?: string;
-  readonly prepareWitnessImage?: Effect.Effect<unknown, ProviderError>;
+  /**
+   * Acquires a pinned helper image with the `missing` pull policy and reports
+   * the digest it observed locally. The data plane refuses to create a helper
+   * container unless that digest equals the pin.
+   */
+  readonly pullHelperImage?: (ref: string) => Effect.Effect<PulledImage, ProviderError>;
   readonly api: DataPlaneApiClient;
   readonly capabilities: Pick<ProviderCapabilities, "volumeSnapshot">;
-  readonly redactDetails: (value: unknown) => unknown;
+  readonly redactor: Redactor;
   readonly volumeCreationLabels?: (
     plan: AppPlan,
     store: AppPlan["stores"][number],
@@ -263,12 +266,19 @@ const dataStoreMounts = (spec: EphemeralRunSpec): ReadonlyArray<DataStoreMountPl
 const envList = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> | undefined =>
   env === undefined ? undefined : Object.entries(env).map(([key, value]) => `${key}=${value}`);
 
-const snapshotHelperImage = "alpine:3.20";
 const preserveWitness = `! -name '${VOLUME_WITNESS_FILE}' ! -name '.lando-witness-stage-*'`;
 const snapshotDataMountTarget = PortablePath.make("/lando-data");
 const nativeSnapshotRepo = "localhost/lando-volume-snapshot";
 
 const nativeSnapshotImage = (id: string): string => `${nativeSnapshotRepo}:${sanitize(id).toLowerCase()}`;
+
+const isVolumeInUse = (details: unknown): details is { readonly body: string } => {
+  if (typeof details !== "object" || details === null) return false;
+  if (!("body" in details) || typeof details.body !== "string") return false;
+  return (
+    ("status" in details && details.status === 409) || /\b(?:in use|being used by)\b/i.test(details.body)
+  );
+};
 
 const volumeError = (
   options: ProviderDataPlaneOptions,
@@ -283,7 +293,7 @@ const volumeError = (
     operation,
     message,
     remediation: "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
-    ...(details === undefined ? {} : { details: options.redactDetails(details) }),
+    ...(details === undefined ? {} : { details: redactDetails(details, options.redactor) }),
     ...(cause === undefined ? {} : { cause }),
     ...(store === undefined ? {} : { store }),
   });
@@ -301,7 +311,7 @@ const copyError = (
     operation,
     message,
     remediation: "Retry the copy operation after verifying the target service is running.",
-    ...(details === undefined ? {} : { details: options.redactDetails(details) }),
+    ...(details === undefined ? {} : { details: redactDetails(details, options.redactor) }),
     ...(cause === undefined ? {} : { cause }),
     ...(service === undefined ? {} : { service }),
   });
@@ -319,7 +329,7 @@ const artifactError = (
     operation,
     message,
     remediation: "Retry the artifact transfer after checking provider runtime health with `lando doctor`.",
-    ...(details === undefined ? {} : { details: options.redactDetails(details) }),
+    ...(details === undefined ? {} : { details: redactDetails(details, options.redactor) }),
     ...(cause === undefined ? {} : { cause }),
     ...(artifactRef === undefined ? {} : { artifactRef }),
   });
@@ -465,6 +475,56 @@ const ensure2xx = (
         ),
       );
 
+/**
+ * Acquire a pinned helper image and prove it is the pinned content before any
+ * container is created from it. The provider's `missing` pull reuses a cached
+ * image without a registry request; every other failure, and any digest other
+ * than the pin, fails closed. There is no mutable-tag fallback.
+ */
+const ensureHelperImage = (
+  options: ProviderDataPlaneOptions,
+  operation: string,
+  helper: PinnedHelperImage,
+  store?: string,
+): Effect.Effect<void, VolumeOperationError> => {
+  const pull = options.pullHelperImage;
+  const remediation =
+    "Check network and registry access, then retry. Lando only runs data-plane helpers from pinned image digests; run `lando doctor` if the problem persists.";
+  const fail = (message: string, details: Readonly<Record<string, unknown>>, cause?: unknown) =>
+    new VolumeOperationError({
+      providerId: options.providerId,
+      operation,
+      message,
+      remediation,
+      details: redactDetails(details, options.redactor),
+      ...(cause === undefined ? {} : { cause }),
+      ...(store === undefined ? {} : { store }),
+    });
+  if (pull === undefined) {
+    return Effect.fail(
+      fail("Provider cannot acquire the pinned data-plane helper image.", {
+        reference: helper.ref,
+      }),
+    );
+  }
+  return pull(helper.ref).pipe(
+    Effect.mapError((cause) =>
+      fail("Pinned data-plane helper image could not be acquired.", { reference: helper.ref }, cause),
+    ),
+    Effect.flatMap((pulled) =>
+      pulled.digest === helper.digest
+        ? Effect.void
+        : Effect.fail(
+            fail("Pinned data-plane helper image digest did not match the pin.", {
+              reference: helper.ref,
+              expectedDigest: helper.digest,
+              ...(pulled.digest === undefined ? {} : { actualDigest: pulled.digest }),
+            }),
+          ),
+    ),
+  );
+};
+
 const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) => {
   const mounts = dataStoreMounts(spec);
   if (mounts.length === 0) return Effect.void;
@@ -533,12 +593,6 @@ const createEphemeralContainer = (
 ) => {
   const name = ephemeralContainerName(options.providerId);
   const mount = firstDataStoreMount(spec);
-  const app = spec.owner === undefined ? undefined : String(spec.owner.app);
-  const labels = ephemeralDataHelperLabels({
-    providerId: options.providerId,
-    ...(app === undefined ? {} : { app }),
-    ...(mount === undefined ? {} : { store: mount.store }),
-  });
   const binds = dataStoreMounts(spec).flatMap((mount) =>
     requiresLongMountSyntax(mount.target)
       ? []
@@ -563,7 +617,6 @@ const createEphemeralContainer = (
     body: {
       Image: spec.image,
       Cmd: spec.command,
-      Labels: labels,
       ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
       ...(witnessSource === undefined
         ? { HostConfig: { Binds: binds, ...(mounts.length === 0 ? {} : { Mounts: mounts }) } }
@@ -588,16 +641,112 @@ const createEphemeralContainer = (
   );
 };
 
-const removeEphemeralContainer = (options: ProviderDataPlaneOptions, name: string, remove: boolean) =>
-  remove
-    ? request(options, "run.remove", {
-        method: "DELETE",
-        path: `/containers/${encodeURIComponent(name)}?force=true`,
-      }).pipe(
-        Effect.catch(() => Effect.void),
-        Effect.asVoid,
-      )
-    : Effect.void;
+const commandOutcome = (
+  value: unknown,
+): { readonly exitCode: number; readonly stderr: string } | undefined => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("exitCode" in value) ||
+    typeof value.exitCode !== "number"
+  ) {
+    return undefined;
+  }
+  const stderr = "stderr" in value && typeof value.stderr === "string" ? value.stderr : "";
+  return { exitCode: value.exitCode, stderr };
+};
+
+const ephemeralCompletionFailure = (
+  options: ProviderDataPlaneOptions,
+  operation: string,
+  outcome: { readonly exitCode: number; readonly stderr: string },
+) => {
+  const stderrTail = boundedDiagnostic(outcome.stderr, (value) => options.redactor.redactValue(value));
+  return new VolumeOperationError({
+    providerId: options.providerId,
+    operation,
+    message: "Provider ephemeral command completed but container cleanup failed.",
+    remediation: "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+    details:
+      stderrTail === undefined ? { exitCode: outcome.exitCode } : { exitCode: outcome.exitCode, stderrTail },
+  });
+};
+
+const completedCommandFailure = (
+  exit: Exit.Exit<unknown, unknown>,
+  observed: { readonly exitCode?: number; readonly stderr: string } | undefined,
+): { readonly exitCode: number; readonly stderr: string } | undefined => {
+  if (!Exit.isSuccess(exit)) return undefined;
+  if (observed?.exitCode !== undefined) {
+    return observed.exitCode === 0 ? undefined : { exitCode: observed.exitCode, stderr: observed.stderr };
+  }
+  const outcome = commandOutcome(exit.value);
+  return outcome === undefined || outcome.exitCode === 0 ? undefined : outcome;
+};
+
+interface EphemeralRelease {
+  readonly options: ProviderDataPlaneOptions;
+  readonly name: string;
+  readonly remove: boolean;
+  readonly exit: Exit.Exit<unknown, unknown>;
+  readonly operation: string;
+  readonly observed?: { readonly exitCode?: number; readonly stderr: string };
+}
+
+/** Fixed bound so a hung engine DELETE cannot hold scope close open. */
+const EPHEMERAL_CLEANUP_DEADLINE = Duration.seconds(10);
+
+const releaseEphemeralContainer = (release: EphemeralRelease) => {
+  const { options, name, remove, exit, operation, observed } = release;
+  if (!remove) return Effect.void;
+  // Finalizers are uninterruptible. The removal stays interruptible so this
+  // deadline can stop it; the finalizer stays masked so parent cancellation
+  // still waits for that bounded attempt instead of abandoning cleanup.
+  const removal = Effect.interruptible(
+    removeRuntimeContainer(options.api, name, {
+      providerId: options.providerId,
+      operation: `${operation}.remove`,
+      remediation:
+        "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+      // The retained redactor was built from the host environment, so no env snapshot is needed here.
+      env: {},
+      redactor: options.redactor,
+    }),
+  ).pipe(
+    Effect.timeoutOrElse({
+      duration: EPHEMERAL_CLEANUP_DEADLINE,
+      orElse: () =>
+        Effect.fail(
+          new ProviderUnavailableError({
+            providerId: options.providerId,
+            operation: `${operation}.remove`,
+            message: "Provider ephemeral container cleanup timed out.",
+            remediation:
+              "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+          }),
+        ),
+    }),
+  );
+  return removal.pipe(
+    Effect.asVoid,
+    Effect.catchCause((cause) => {
+      const failedCommand = completedCommandFailure(exit, observed);
+      const annotated =
+        failedCommand === undefined
+          ? annotateFailureRole(cause, "cleanup")
+          : mergeFailure(
+              Cause.fail(ephemeralCompletionFailure(options, operation, failedCommand)),
+              cause,
+              "cleanup",
+            );
+      return Effect.failCause(annotated);
+    }),
+  );
+};
+
+/** acquireRelease finalizers cannot fail in the typed channel; keep the tagged error as a defect. */
+const defectCleanup = <E, R>(effect: Effect.Effect<void, E, R>): Effect.Effect<void, never, R> =>
+  effect.pipe(Effect.catchCause((cause) => Effect.failCause(failureDefectCause(cause))));
 
 const attachEphemeralStdin = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) => {
   const stdin = spec.stdinStream;
@@ -610,25 +759,14 @@ const attachEphemeralStdin = (options: ProviderDataPlaneOptions, name: string, s
           method: "POST",
           path: `/containers/${encodeURIComponent(name)}/attach?stream=true&stdin=true&stdout=false&stderr=false`,
           signal: controller.signal,
-          stdin: closeAfterStdin(stdin, controller),
+          // The transport half-closes the upgraded connection once stdin is exhausted, which is
+          // the container's EOF. Aborting here instead would race that flush and fail the attach.
+          stdin,
         }),
       ).pipe(Effect.asVoid),
     (controller) => Effect.sync(() => controller.abort()),
   );
 };
-
-const closeAfterStdin = (
-  stdin: AsyncIterable<Uint8Array>,
-  controller: AbortController,
-): AsyncIterable<Uint8Array> => ({
-  async *[Symbol.asyncIterator]() {
-    try {
-      yield* stdin;
-    } finally {
-      controller.abort();
-    }
-  },
-});
 
 const waitForEphemeralContainer = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) =>
   request(options, "run.wait", {
@@ -698,7 +836,8 @@ const runBytes = (
           ),
         ),
       ),
-    (name) => removeEphemeralContainer(options, name, spec.remove !== false),
+    (name, exit) =>
+      releaseEphemeralContainer({ options, name, remove: spec.remove !== false, exit, operation: "run" }),
   );
 
 const runByteStream = (
@@ -706,10 +845,28 @@ const runByteStream = (
   spec: EphemeralRunSpec,
 ): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> => {
   const decode = makeAttachDecoder();
+  const diagnostic = makeCompletionDiagnosticContext();
+  // The stream fiber records the command outcome; the finalizer reads it after that fiber finishes.
+  const observed: { exitCode?: number; readonly stderr: string } = {
+    get stderr() {
+      return diagnostic.text();
+    },
+  };
   return Stream.scoped(
     Stream.fromEffect(
-      Effect.acquireRelease(createEphemeralContainer(options, { ...spec, captureStdout: true }), (name) =>
-        removeEphemeralContainer(options, name, spec.remove !== false),
+      Effect.acquireRelease(
+        createEphemeralContainer(options, { ...spec, captureStdout: true }),
+        (name, exit) =>
+          defectCleanup(
+            releaseEphemeralContainer({
+              options,
+              name,
+              remove: spec.remove !== false,
+              exit,
+              operation: "runStream",
+              observed,
+            }),
+          ),
       ),
     ),
   ).pipe(
@@ -728,9 +885,10 @@ const runByteStream = (
           }).pipe((self) =>
             Stream.flattenIterable(
               Stream.map(self, (chunk) =>
-                decode(chunk).map(
-                  (frame): ExecChunk => ({ kind: frame.stream, chunk: new Uint8Array(frame.payload) }),
-                ),
+                decode(chunk).map((frame): ExecChunk => {
+                  if (frame.stream === "stderr") diagnostic.write(frame.payload);
+                  return { kind: frame.stream, chunk: new Uint8Array(frame.payload) };
+                }),
               ),
             ),
           );
@@ -738,7 +896,9 @@ const runByteStream = (
             Effect.gen(function* () {
               if (spec.stdinStream !== undefined) yield* Fiber.join(stdinFiber);
               yield* waitForEphemeralContainer(options, name, spec);
-              return { exitCode: yield* inspectEphemeralExitCode(options, name, spec) } satisfies ExecChunk;
+              const exitCode = yield* inspectEphemeralExitCode(options, name, spec);
+              observed.exitCode = exitCode;
+              return { exitCode } satisfies ExecChunk;
             }),
           );
           return Stream.concat(output, completed);
@@ -776,19 +936,17 @@ const commitNativeSnapshot = (
   );
 };
 
-const snapshotVolumeWithCommit = (
-  options: ProviderDataPlaneOptions,
-  spec: {
-    readonly store: string;
-    readonly id: string;
-    readonly labels: Readonly<Record<string, string>>;
-    readonly owner: { readonly app: AppId };
-  },
-) =>
+interface NativeSnapshotCommit {
+  readonly store: string;
+  readonly id: string;
+  readonly labels: Readonly<Record<string, string>>;
+  readonly rollbackOnFailure: boolean;
+}
+
+const snapshotCommitHelper = (options: ProviderDataPlaneOptions, spec: NativeSnapshotCommit) =>
   Effect.acquireUseRelease(
     createEphemeralContainer(options, {
-      owner: spec.owner,
-      image: snapshotHelperImage,
+      image: dataHelperImage.ref,
       command: [
         "sh",
         "-c",
@@ -822,9 +980,35 @@ const snapshotVolumeWithCommit = (
             ),
           );
         }
+        if (spec.rollbackOnFailure) {
+          // Register before issuing commit: interruption can hide a successful daemon-side commit.
+          yield* Effect.addFinalizer((exit) =>
+            Exit.match(exit, {
+              onSuccess: () => Effect.void,
+              onFailure: () =>
+                request(options, "snapshotVolume.rollback", {
+                  method: "DELETE",
+                  path: `/images/${encodeURIComponent(nativeSnapshotImage(spec.id))}`,
+                }).pipe(
+                  Effect.flatMap((response) =>
+                    response.status === 404
+                      ? Effect.void
+                      : ensure2xx(options, "snapshotVolume.rollback", response, spec.store),
+                  ),
+                  Effect.ignoreCause,
+                ),
+            }),
+          );
+        }
         return yield* commitNativeSnapshot(options, name, spec.id, spec);
       }),
-    (name) => removeEphemeralContainer(options, name, true),
+    (name, exit) =>
+      releaseEphemeralContainer({ options, name, remove: true, exit, operation: "snapshotVolume" }),
+  );
+
+const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, spec: NativeSnapshotCommit) =>
+  ensureHelperImage(options, "snapshotVolume", dataHelperImage, spec.store).pipe(
+    Effect.andThen(() => snapshotCommitHelper(options, spec)),
   );
 
 export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
@@ -841,16 +1025,8 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         "Use a provider with native snapshot support and a native snapshot reference, or use DataMover host archives.",
     });
   const executeWitness = (spec: EphemeralRunSpec, witnessSource?: WitnessMountSource) =>
-    request(options, "witness.image", {
-      method: "GET",
-      path: `/images/${encodeURIComponent(VOLUME_WITNESS_IMAGE)}/json`,
-    }).pipe(
-      Effect.flatMap((image) =>
-        image.status === 404 && options.prepareWitnessImage !== undefined
-          ? options.prepareWitnessImage
-          : ensure2xx(options, "witness.image", image),
-      ),
-      Effect.andThen(Effect.scoped(runBytes(options, spec, witnessSource))),
+    ensureHelperImage(options, "witness.image", volumeWitnessImage).pipe(
+      Effect.andThen(() => Effect.scoped(runBytes(options, spec, witnessSource))),
       Effect.map((result) => ({
         exitCode: result.exitCode,
         stdout: textDecoder.decode(result.stdout),
@@ -861,12 +1037,12 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
     ...options,
     runWitness: (target: MountedVolumeTarget, command: readonly string[], readOnly: boolean) =>
       executeWitness(
-        { image: VOLUME_WITNESS_IMAGE, command, captureStdout: true, remove: true },
+        { image: volumeWitnessImage.ref, command, captureStdout: true, remove: true },
         { containerId: target.containerId, readOnly },
       ),
     runVolumeWitness: (nativeName: string, command: readonly string[]) =>
       executeWitness({
-        image: VOLUME_WITNESS_IMAGE,
+        image: volumeWitnessImage.ref,
         command,
         captureStdout: true,
         mounts: [
@@ -956,7 +1132,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       return snapshotVolumeWithCommit(options, {
         store,
         id,
-        owner: { app: spec.volume.app },
+        rollbackOnFailure: spec.snapshotId !== undefined,
         labels: {
           // Volume ownership labels prove a live volume's owner; they must never appear on an image.
           ...Object.fromEntries(
@@ -1013,11 +1189,13 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         Effect.mapError((cause) =>
           volumeError(options, "snapshotVolume", "Provider volume snapshot failed.", undefined, cause, store),
         ),
+        Effect.scoped,
       );
     }) satisfies RuntimeProviderShape["snapshotVolume"],
     listVolumeSnapshots: () => listNativeSnapshots(options),
     removeVolumeSnapshot: Effect.fn("ProviderDataPlane.removeVolumeSnapshot")(function* (
       snapshot: VolumeSnapshotRef,
+      _options?: Parameters<RuntimeProviderShape["removeVolumeSnapshot"]>[1],
     ): Effect.fn.Return<void, ProviderError, Scope.Scope> {
       if (options.capabilities.volumeSnapshot !== "native") {
         return yield* Effect.fail(unsupportedSnapshot("removeVolumeSnapshot"));
@@ -1112,7 +1290,6 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         ),
         Effect.andThen(
           runBytes(options, {
-            owner: { app: spec.target.app },
             image: nativeSnapshotImage(spec.snapshot.id),
             command: ["sh", "-c", command],
             mounts: [{ store: name, target: snapshotDataMountTarget, readOnly: false }],
@@ -1181,64 +1358,41 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
     removeVolume: ((ref, expectedGeneration) =>
       verifyExpectedIdentity({ ref, expectedGeneration, operation: "removeVolume" }).pipe(
         Effect.andThen(
-          Effect.gen(function* () {
-            const requester = options.api.request;
-            if (requester !== undefined) {
-              yield* releaseVolumeHolders((input) => requester(input), {
-                appId: String(ref.app),
-                providerId: options.providerId,
-                volumeName: volumeName(ref.store),
-              }).pipe(Effect.catch(() => Effect.succeed([])));
-            }
-            const response = yield* request(options, "removeVolume", {
-              method: "DELETE",
-              path: `/volumes/${encodeURIComponent(volumeName(ref.store))}`,
-            });
-            if (response.status >= 200 && response.status < 300) return;
-            if (isVolumeInUse(response)) {
-              const holders =
-                requester === undefined
-                  ? []
-                  : yield* listVolumeHolders((input) => requester(input), volumeName(ref.store)).pipe(
-                      Effect.catch(() => Effect.succeed([])),
-                    );
-              const names = holders.map((holder) => holder.name);
-              return yield* Effect.fail(
-                new VolumeOperationError({
-                  providerId: options.providerId,
-                  operation: "removeVolume",
-                  store: ref.store,
-                  message: volumeInUseMessage("Provider volume remove failed.", names, response),
-                  remediation: volumeInUseRemediation(namedHolders(holders, options.providerId)),
-                  details: options.redactDetails(response),
-                }),
-              );
-            }
-            return yield* Effect.fail(
-              volumeError(
-                options,
-                "removeVolume",
-                "Provider volume remove failed.",
-                response,
-                undefined,
-                ref.store,
-              ),
-            );
+          request(options, "removeVolume", {
+            method: "DELETE",
+            path: `/volumes/${encodeURIComponent(volumeName(ref.store))}`,
           }),
         ),
+        Effect.tap((response) => ensure2xx(options, "removeVolume", response, ref.store)),
         Effect.asVoid,
-        Effect.mapError((cause) =>
-          cause instanceof VolumeOperationError
-            ? cause
-            : volumeError(
-                options,
-                "removeVolume",
-                "Provider volume remove failed.",
-                undefined,
-                cause,
-                ref.store,
-              ),
-        ),
+        Effect.mapError((cause) => {
+          const details = cause instanceof VolumeOperationError ? cause.details : undefined;
+          if (isVolumeInUse(details)) {
+            const base = "Provider volume remove failed.";
+            const message = withApiReason(base, details, options.redactor);
+            return new VolumeOperationError({
+              providerId: options.providerId,
+              operation: "removeVolume",
+              store: ref.store,
+              message:
+                message === base && details.body.trim().length > 0
+                  ? `${base} ${redactString(details.body.trim(), options.redactor)}`
+                  : message,
+              remediation:
+                "A container still uses this volume. Remove that container first (for a Lando app, run lando destroy for it; lando doctor lists leftovers), then retry.",
+              details: redactDetails(details, options.redactor),
+              cause,
+            });
+          }
+          return volumeError(
+            options,
+            "removeVolume",
+            "Provider volume remove failed.",
+            undefined,
+            cause,
+            ref.store,
+          );
+        }),
       )) satisfies RuntimeProviderShape["removeVolume"],
     copyToService: ((target, spec) =>
       Effect.tryPromise({

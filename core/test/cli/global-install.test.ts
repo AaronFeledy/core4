@@ -73,6 +73,9 @@ const layerWithFakeGlobalService = (modulePath: string) => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -98,7 +101,7 @@ describe("global:install command operation", () => {
       expect(result.userLandofileCreated).toBe(true);
       const distContent = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
       expect(distContent).toContain("name: global");
-      expect(distContent).toContain("provider: lando");
+      expect(distContent).not.toContain("provider:");
       expect(result.dist.serviceIds).toContain("mailpit");
       expect(result.dist.serviceIds).toContain("traefik");
       expect(distContent).toContain("mailpit:");
@@ -133,7 +136,6 @@ describe("global:install command operation", () => {
         expect(parsed).toEqual({
           name: "global",
           runtime: 4,
-          provider: ProviderId.make("lando"),
           services: {
             [ServiceName.make("fakegs")]: { api: 4, type: "lando" },
           },
@@ -167,8 +169,12 @@ describe("global:install command operation", () => {
     });
   });
 
-  test("selects the Lando-managed provider even when leftover config would pick docker", async () => {
+  test("selects the Docker host provider from configuration", async () => {
     await withTempRoots(async (dataRoot) => {
+      await writeFile(
+        join(String(process.env.LANDO_USER_CONF_ROOT), "config.yml"),
+        "defaultProviderId: docker\n",
+      );
       const selected: Array<string | undefined> = [];
       const dockerProvider = { ...TestRuntimeProvider, id: "docker" };
       const landoProvider = {
@@ -193,6 +199,9 @@ describe("global:install command operation", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
             capabilities: Effect.succeed(dockerProvider.capabilities),
             select: (plan) => {
@@ -204,13 +213,14 @@ describe("global:install command operation", () => {
         ),
       );
 
-      await Effect.runPromise(globalInstall({}).pipe(Effect.provide(layer)));
+      await Effect.runPromise(
+        globalInstall({}).pipe(Effect.provide(layer), Effect.provide(LandoConfigService.layer)),
+      );
 
-      expect(selected).toContain("lando");
+      expect(selected).toContain("docker");
       expect(selected).not.toContain(undefined);
       const dist = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
-      expect(dist).toContain("provider: lando");
-      expect(dist).not.toContain("provider: docker");
+      expect(dist).not.toContain("provider:");
     });
   });
 });

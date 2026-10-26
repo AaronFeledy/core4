@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { Effect, Exit } from "effect";
 
@@ -40,6 +41,14 @@ const podmanApiForArch = (arch: string) => ({
 });
 
 describe("provider-lando capabilities", () => {
+  test.each(["linux", "darwin", "win32"] as const)(
+    "%s declares only its dialect realizations",
+    (platform) => {
+      expect(mvpProviderCapabilities(platform).composeKnobs?.supported).toEqual(
+        composeKnobsForDialect("libpod"),
+      );
+    },
+  );
   test("advertises agentSocket bind-directory on linux and guest-bridge on darwin and win32", () => {
     // Given: native and managed-machine host platforms.
     const platforms = ["linux", "darwin", "win32", "wsl"] as const;
@@ -164,7 +173,7 @@ describe("provider-lando capabilities", () => {
     const runtimeProvider = await resolveRuntimeProvider({
       platform: "linux",
       podmanApi: podmanApiForArch("x86_64"),
-      logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+      resolveContainerHelper: () => Effect.die("provider construction resolved helper bytes"),
     });
 
     expect(runtimeProvider.capabilities.serviceLogSources).toBe(true);
@@ -173,8 +182,8 @@ describe("provider-lando capabilities", () => {
   test("does not advertise service log source following when Podman info architecture has no helper payload", async () => {
     const runtimeProvider = await resolveRuntimeProvider({
       platform: "linux",
-      podmanApi: podmanApiForArch("aarch64"),
-      logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+      podmanApi: podmanApiForArch("riscv64"),
+      resolveContainerHelper: () => Effect.die("provider construction resolved helper bytes"),
     });
 
     expect(runtimeProvider.capabilities.serviceLogSources).toBe(false);

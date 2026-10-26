@@ -7,6 +7,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import {
   LandofileFormConflictError,
+  LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
   LandofileValidationError,
@@ -57,6 +58,7 @@ const withEnv = async <T>(
 const discover = () =>
   Effect.runPromise(
     Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
@@ -64,6 +66,7 @@ const discover = () =>
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
@@ -75,6 +78,38 @@ const failureFromExit = <A, E>(exit: Exit.Exit<A, E>): E | undefined => {
 };
 
 describe("LandofileService layer — TS form value export", () => {
+  test("loads SDK helpers and Effect from an external app", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.ts"),
+        `
+        import { defineLandofile, override } from "@lando/sdk";
+        import { Effect } from "effect";
+        export default () => Effect.succeed(defineLandofile({ name: "host-sdk", services: { web: { image: "nginx", environment: override({ EXTRA: "1" }) } } }));
+      `,
+      );
+      process.chdir(dir);
+      const result = await discover();
+      expect(result.services?.[ServiceName.make("web")]?.environment).toEqual({ EXTRA: "1" });
+    });
+  });
+
+  test("missing bare packages retain parse failure with installation guidance", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.ts"),
+        'import "lando-missing-author-package"; export default { name: "missing" };',
+      );
+      process.chdir(dir);
+      const failure = failureFromExit(await discoverExit());
+      expect(failure).toBeInstanceOf(LandofileParseError);
+      if (!(failure instanceof LandofileParseError)) throw new Error("expected parse failure");
+      expect(failure.message).toContain("lando-missing-author-package");
+      expect(failure.remediation).toContain("lando-missing-author-package");
+      expect(failure.remediation).toContain("node_modules");
+      expect(failure.remediation).toContain("@lando/sdk");
+    });
+  });
   test("loads a `.lando.ts` value-form export and matches an equivalent YAML Landofile", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -347,6 +382,20 @@ describe("LandofileService layer — TS form sandbox violations", () => {
   });
 });
 
+describe("LandofileService layer — TS form syntax errors", () => {
+  test("a TypeScript syntax error surfaces LandofileParseError, not a sandbox violation", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.ts"), "export default {;\n");
+      process.chdir(dir);
+      const failure = failureFromExit(await discoverExit());
+      expect(failure).toBeInstanceOf(LandofileParseError);
+      if (!(failure instanceof LandofileParseError)) throw new Error("expected parse failure");
+      expect(failure.filePath).toBe(join(dir, ".lando.ts"));
+      expect(failure.remediation).toContain("syntax");
+    });
+  });
+});
+
 describe("LandofileService layer — TS form schema validation", () => {
   test("returned value with wrong-typed field surfaces LandofileValidationError", async () => {
     await withTempCwd(async (dir) => {
@@ -366,7 +415,7 @@ describe("LandofileService layer — TS form schema validation", () => {
     });
   });
 
-  test("returned value with unsupported MVP keys surfaces LandofileValidationError", async () => {
+  test("returned value with unknown keys surfaces LandofileValidationError", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.ts"),

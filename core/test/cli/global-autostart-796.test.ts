@@ -58,6 +58,7 @@ describe("issue 796 global autostart", () => {
           providerId: "docker",
           operation: "docker-api",
           message: "Docker API request failed with exit code 7.",
+          remediation: "Install or start the `docker` provider and confirm it can perform `docker-api`.",
         }),
       }),
       context: { commandId: "app:start", cacheRoot: "/tmp/lando-test-cache" },

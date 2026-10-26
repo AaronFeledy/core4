@@ -7,8 +7,7 @@ tags: [beta, docs, tutorial, lifecycle]
 
 # Start, inspect, and tear down an app
 
-Start the app, work inside it, inspect it, then tear it down. This tutorial uses a small two-service app: a `node:22` service marked `primary: true` and a `postgres`
-service it depends on:
+Start a Node and Postgres environment, inspect it, run a command inside Node, then stop or remove it. First [install Lando](../install/path-and-setup.mdx) and complete `lando setup` for your platform. Create a separate app directory and save the following as `.lando.yml` in it:
 
 ```yaml
 name: app-lifecycle-demo
@@ -25,24 +24,11 @@ The primary service is the default target whenever a command omits
 
 ## Run the everyday loop
 
-Start the app, check its resolved configuration, and destroy it when you're
-done:
+From the directory containing `.lando.yml`, run `lando start`, then `lando info`. Check that both `app` and `db` appear before continuing. The Node service supplies a development environment; this example does not launch a web application.
+
+Keep the app running for the inspection and shell commands below. Use `lando stop` when you finish working, or follow [Tear down](#tear-down) when you want to remove its containers and networks.
 
 <Guide>
-  <Scenario id="everyday-loop" render>
-    <Step name="start">
-      <UseFixture name="app-lifecycle-demo" />
-      <Run command="lando start" />
-      <Verify event="post-start" />
-    </Step>
-    <Step name="inspect">
-      <Run command="lando app:config --format=json" />
-    </Step>
-    <Step name="cleanup">
-      <Cleanup />
-      <Run command="lando destroy -y" />
-    </Step>
-  </Scenario>
 
 ## Inspect a running app
 
@@ -53,7 +39,7 @@ These commands are read-only. Run them as often as you like:
 lando info
 
 # The same data as machine-readable JSON
-lando info --json
+lando info --format=json
 
 # Show a bounded snapshot of the combined logs from every service
 lando logs
@@ -90,34 +76,73 @@ Tooling aliases declared under `tooling:` run inside their target service.
 
 `lando rebuild` and `lando destroy` ask for confirmation first. Pass `-y` to skip the prompt in scripts.
 
-`restart` cycles the running processes; `rebuild` recreates the containers.
-Reach for `rebuild` when configuration changed, `restart` when only the
-running process needs cycling:
+Bare `restart` stops then starts, so it removes and recreates containers. It is not an in-place process restart. `lando start` applies Landofile changes such as command, environment, image, and mounts, and keeps unchanged containers and named volumes. Reach for `rebuild` when you need a forced image pull or a forced rerun of build steps whose command text did not change. `start` does not take `-y`.
 
 ```sh
-# Stop the app's containers but keep volumes and state
+# Stop the app's containers but keep named volumes and state
 lando stop
 
-# Bring a stopped app back up using the existing plan and volumes
+# Bring the app up and apply create-config changes. Named volumes stay
 lando start
 
 # Stop then start in one step
 lando restart
 
-# Recreate containers from the current Landofile. Use after changing
-# service types, images, or build steps
+# Force a pull and build refresh, then recreate containers
 lando rebuild
 ```
 
+## Keep data across stop, restart, and destroy
+
+Database data stores, persistent homes, `node_modules` and `vendor` shadows, and caches use named volumes. The app lifecycle commands retain that storage unless you request its removal with `--volumes`, `--purge`, or `--purge-caches`. Bind mounts keep their files on the host instead.
+
+An image that declares a `VOLUME` path you never mapped gets an anonymous volume instead. The runtime creates it with the container, and Lando asks the runtime to drop it whenever it removes that container: `lando stop`, `lando destroy`, bare `lando restart`, `lando rebuild`, and a `lando start` that recreates a changed container. The runtime keeps one that another live container still uses. `lando restart --service <name>` restarts in place and keeps the container's volumes. A failed start retains established resources for inspection rather than rolling them back.
+
+To keep data at such a path, name it. A bare container path under `volumes:` becomes a named store Lando owns:
+
+```yaml
+services:
+  search:
+    type: compose
+    image: getmeili/meilisearch:v1.12
+    home: false
+    volumes:
+      - /meili_data
+```
+
+`lando app:config:lint` confirms the Landofile is valid, and from then on only `--volumes` or `--purge` removes that store. Declaring the store does not migrate existing data: the next `lando start` recreates the container on the named store, and whatever the anonymous volume held leaves with the old container. Export anything you need first, for example with [Import and export app databases](../tooling/db-import-export.mdx). Lando only drops the anonymous volumes of the container it is removing; it never prunes unlabeled volumes left behind by anything else.
+
+### Check what a service mounts
+
+`lando info --format=json` lists each service's mounts under `services[].mounts` and its application source mount under `services[].appMount`. Ordinary `info` reads the one container inspection it already performs per service; it does not query images or volumes, so it reports evidence rather than guesses:
+
+| Field | Values | Meaning |
+| --- | --- | --- |
+| `type` | `bind`, `volume`, `tmpfs`, `unknown` | Mount kind as the runtime reports it. |
+| `target`, `source`, `readOnly` | path, host path or volume name, boolean | Where it mounts, what backs it, and whether it is read-only. `source` and `readOnly` appear only when known. |
+| `origin` | `planned`, `runtime` | Whether the mount matches your resolved plan or only appeared on the running container. |
+| `observation` | `present`, `missing`, `unknown` | Whether the container's mount table confirmed it, the container is absent, or evidence was unavailable. |
+| `lifetime` | `retained`, `container`, `unknown` | Bind mounts and declared stores are `retained`; `tmpfs` is `container`; a runtime-only volume is `unknown`. |
+
+A runtime-only volume with `lifetime: unknown` is unverified, not proven anonymous. Lando does not infer lifetime from a volume name, so decide from the image: if the path is an image `VOLUME` you have not declared, declare it as above. The agent-forwarding and host-proxy mounts Lando adds for its own SSH, GPG, and `lando` integration are not user data and need no declaration.
+
 ## Tear down
 
-`destroy` removes the app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`. The `-y` flag is required in non-interactive contexts:
+`destroy` removes the app's containers and networks. Named volumes stay unless you pass `--volumes` or `--purge`. The `-y` flag is required in non-interactive contexts:
 
 ```sh
 lando destroy -y
 ```
 
-Snapshots survive plain `destroy` and `--volumes`. `lando destroy --purge -y` also deletes this folder's snapshots, including provider-stored snapshot data. Snapshots from other app folders stay untouched.
+Snapshots survive plain `destroy` and `--volumes`. **`lando destroy --purge -y` also deletes this folder's catalogued snapshots**, including native data through the provider that recorded each snapshot. It works when an earlier destroy left only ownership inventory. Snapshots belong to the source volume's canonical owner root, so other app folders keep theirs even if they share this app's name. See [Import and export app databases](../tooling/db-import-export.mdx) before moving a database between apps or providers.
+
+Changing providers doesn't move an applied app. If `lando start` fails with `AppPlacementError`, retire the old copy explicitly:
+
+```sh
+lando destroy --provider=lando --yes
+```
+
+Only the selected provider's state and resources are touched. See [Recover an app left on another provider](../setup/provider-selection.mdx#recover-an-app-left-on-another-provider).
 
 `stop` and `destroy` use the provider's last applied plan when the Landofile is
 missing or invalid. That means you can still tear down an app after deleting its
@@ -126,10 +151,10 @@ provider before it touches anything.
 
 Teardown looks at what is actually running before it reads your config. An app
 that was never started reports `unchanged` and exits 0, even when its Landofile
-does not validate. If a plain `destroy` kept your data volumes, a later
+does not validate. If a plain `destroy` kept your named data volumes, a later
 `lando destroy -y --volumes` still removes them and tells you what it removed.
 
-To see or stop everything Lando is running on this host:
+The next commands affect the whole host, not just this tutorial app. Poweroff also removes scratch apps and their disposable data unless you pass `--keep-scratch`. Run it only when you mean to stop all targeted apps:
 
 ```sh
 # List every Lando app known on this host and its status
@@ -138,6 +163,21 @@ lando apps:list
 # Stop every running Lando app and the shared services at once
 lando apps:poweroff
 ```
+
+  <Scenario id="everyday-loop" render>
+    <Step name="start">
+      <UseFixture name="app-lifecycle-demo" />
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
 
 ## Run the whole loop on the real provider
 
@@ -151,7 +191,7 @@ it stopped. Results stay on stdout; progress goes to stderr:
       <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: { regex: "complete" } }} />
     </Step>
     <Step name="inspect">
-      <Verify command="lando info" expect={{ stdout: { regex: "(^|\\n)app\\trunning\\t[\\s\\S]*\\ndb\\trunning\\t" }, stderr: "" }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"app\"[^}]*\"status\":\\s*\"running\"[\\s\\S]*\"service\":\\s*\"db\"[^}]*\"status\":\\s*\"running\"" }, stderr: "" }} />
     </Step>
     <Step name="stop">
       <Verify command="lando stop" expect={{ stdout: { regex: "stopped: app-lifecycle-demo" }, stderr: "" }} />

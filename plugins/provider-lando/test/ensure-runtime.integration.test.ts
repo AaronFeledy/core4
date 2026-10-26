@@ -3,16 +3,15 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { DateTime, Duration, Effect, Stream } from "effect";
+import { DateTime, Duration, Effect, Schema, Stream } from "effect";
 
 import type { RetryPolicy } from "@lando/sdk/probe";
 
-import {
-  type PodmanApiClient,
-  type PodmanHttpRequest,
-  type PodmanHttpResponse,
-  type PodmanServiceRunner,
-  makeRuntimeProvider,
+import type {
+  PodmanApiClient,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+  PodmanServiceRunner,
 } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -25,6 +24,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 import { runScoped, runScopedExit } from "./scope-helpers.ts";
 
 const fastReadinessPolicy: RetryPolicy = {
@@ -70,6 +70,7 @@ const service: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Ensure Runtime App",
   slug: "ensureapp",
@@ -77,7 +78,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -145,8 +145,11 @@ const makeFakePodmanApi = (
             }),
           };
         }
-        if (request.path === "/networks/create") {
-          networks.add((request.body as { Name?: string }).Name ?? "");
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Union([Schema.Struct({ Name: Schema.String }), Schema.Struct({ name: Schema.String })]),
+          )(request.body);
+          networks.add("name" in body ? body.name : body.Name);
           return { status: 201, body: "{}" };
         }
         if (request.path === "/volumes/create") {

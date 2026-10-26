@@ -1,14 +1,14 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { loadLogFileHelperPayloads } from "@lando/engine/providers/log-file-helper-payloads";
+import { join, resolve } from "node:path";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { ContainerHelperUnavailableError, causeMessage } from "@lando/sdk/errors";
 
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
-import { makePodmanApiClient, makeRuntimeProvider } from "@lando/provider-lando";
+import { makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -21,10 +21,25 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { LogChunk, RuntimeProviderShape } from "@lando/sdk/services";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
 
 const liveSocket = resolveLiveProviderSocket();
+const helperPath = (arch: "x64" | "arm64") =>
+  resolve(
+    process.env.LANDO_CONTAINER_HELPER_DIR ?? resolve(import.meta.dir, "../../../core/container-helper/dist"),
+    `linux-${arch}`,
+    "lando-container-helper",
+  );
+const helperArch = process.arch === "arm64" ? "arm64" : "x64";
+const helperAvailable = await Bun.file(helperPath(helperArch)).exists();
+const skipReason =
+  liveSocket === undefined
+    ? "no live provider socket"
+    : !helperAvailable
+      ? `helper absent at ${helperPath(helperArch)}; build it or set LANDO_CONTAINER_HELPER_DIR`
+      : undefined;
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("livefilelogsapp");
 const serviceName = ServiceName.make("node");
@@ -96,13 +111,13 @@ const makePlan = (appRoot: string): AppPlan => {
   const node = service(appRoot);
   return {
     id: appId,
+    valueModel: 1,
     name: "File Logs App",
     slug: "livefilelogsapp",
     root: AbsolutePath.make(appRoot),
     provider: providerId,
     services: { [node.name]: node },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -171,24 +186,80 @@ const fileLogs = (
 
 const containerName = "lando-livefilelogsapp-node";
 
+const realContainerHelper = (target: { readonly os: "linux"; readonly arch: "x64" | "arm64" }) =>
+  Effect.tryPromise({
+    try: async () => {
+      const path = AbsolutePath.make(helperPath(target.arch));
+      const hash = new Bun.CryptoHasher("sha256");
+      hash.update(await Bun.file(path).bytes());
+      return { target, path, digest: hash.digest("hex") };
+    },
+    catch: (cause) =>
+      new ContainerHelperUnavailableError({
+        target,
+        message: causeMessage(cause),
+        remediation:
+          "Build the static container helper or set LANDO_CONTAINER_HELPER_DIR before running live log tests.",
+      }),
+  });
+
+const alpineServiceName = ServiceName.make("alpine");
+const alpineSource = source({ id: "applog", path: "/tmp/lando-live/app.log", stream: "stdout" });
+
+/** Alpine ships musl and no C++ runtime, so only a static helper can read its files. */
+const makeAlpinePlan = (appRoot: string): AppPlan => {
+  const base = service(appRoot);
+  const alpine: ServicePlan = {
+    ...base,
+    name: alpineServiceName,
+    type: "compose",
+    artifact: { kind: "ref", ref: "alpine:3.20" },
+    command: ["sh", "-c", "mkdir -p /tmp/lando-live && echo alpine-ready && exec sleep infinity"],
+    logSources: [alpineSource],
+  };
+  return {
+    ...makePlan(appRoot),
+    id: AppId.make("livealpinelogsapp"),
+    name: "Alpine File Logs App",
+    slug: "livealpinelogsapp",
+    services: { [alpine.name]: alpine },
+  };
+};
+
+const alpineShell = async (
+  provider: RuntimeProviderShape,
+  plan: AppPlan,
+  command: string,
+): Promise<string> => {
+  const result = await Effect.runPromise(
+    provider.exec(
+      { app: plan.id, service: alpineServiceName, plan },
+      { command: ["sh", "-c", command], stdin: "ignore" },
+    ),
+  );
+  expect(result.exitCode, result.stderr).toBe(0);
+  return result.stdout;
+};
+
 describe("provider-lando live container-file logs", () => {
-  test.skipIf(liveSocket === undefined)(
-    "uses packaged helper payloads against real container files without fake log access",
+  test("resolves the real helper executable path without depending on core", () => {
+    const directory =
+      process.env.LANDO_CONTAINER_HELPER_DIR ?? join(import.meta.dir, "../../../core/container-helper/dist");
+    expect(helperPath(helperArch)).toBe(resolve(directory, `linux-${helperArch}/lando-container-helper`));
+  });
+  test.skipIf(skipReason !== undefined)(
+    `uses a real static helper against container files${skipReason === undefined ? "" : ` (skipped: ${skipReason})`}`,
     async () => {
       const appRoot = await mkdtemp(join(tmpdir(), "lando-live-file-logs-app-"));
       const plan = makePlan(appRoot);
       const socketPath = liveSocket?.socketPath;
       expect(socketPath).toBeTruthy();
-      const logFileHelperPayloads = await Effect.runPromise(
-        loadLogFileHelperPayloads({ distRoot: join(process.cwd(), "dist") }),
-      );
-      expect(Object.keys(logFileHelperPayloads).length).toBeGreaterThan(0);
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
           socketPath: socketPath ?? "",
-          logFileHelperPayloads,
+          resolveContainerHelper: realContainerHelper,
         }),
       );
       const api = makePodmanApiClient(socketPath ?? "");
@@ -331,7 +402,7 @@ describe("provider-lando live container-file logs", () => {
         const helperProcesses = await execShellOk(
           provider,
           plan,
-          "ps | grep lando-log-file-helper | grep -v grep || true",
+          "ps | grep lando-container-helper | grep -v grep || true",
         );
         expect(helperProcesses.trim()).toBe("");
       } finally {
@@ -349,6 +420,56 @@ describe("provider-lando live container-file logs", () => {
       console.log(
         `[live-container-file-logs] teardown receipt: ${containerName} inspect returned ${inspectAfterDestroy.status}; helper ps was empty before destroy`,
       );
+    },
+    120_000,
+  );
+
+  test.skipIf(skipReason !== undefined)(
+    `follows a file in an Alpine (musl) container${skipReason === undefined ? "" : ` (skipped: ${skipReason})`}`,
+    async () => {
+      const appRoot = await mkdtemp(join(tmpdir(), "lando-live-alpine-logs-app-"));
+      const plan = makeAlpinePlan(appRoot);
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
+          platform: "linux",
+          socketPath: liveSocket?.socketPath ?? "",
+          resolveContainerHelper: realContainerHelper,
+        }),
+      );
+      const logs = (options: { readonly follow: boolean; readonly tail?: number }) =>
+        provider.logs(
+          { app: plan.id, service: alpineServiceName, plan },
+          { sources: [alpineSource], source: alpineSource.id, ...options },
+        );
+      await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: false })));
+      try {
+        await alpineShell(provider, plan, `printf 'line-1\\nline-2\\nline-3\\n' > ${alpineSource.path}`);
+        const tail = await collectStage("alpine tail", logs({ follow: false, tail: 2 }));
+        expect(tail.map((chunk) => [chunk.source, chunk.line])).toEqual([
+          [alpineSource.id, "line-2"],
+          [alpineSource.id, "line-3"],
+        ]);
+
+        const followed = withTimeout(
+          "alpine follow",
+          collect(logs({ follow: true, tail: 0 }).pipe(Stream.take(1))),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        await alpineShell(provider, plan, `printf 'line-4\\n' >> ${alpineSource.path}`);
+        expect((await followed).map((chunk) => chunk.line)).toEqual(["line-4"]);
+
+        expect(
+          (
+            await alpineShell(provider, plan, "ls -d /tmp/lando-log-file-helper-* 2>/dev/null || true")
+          ).trim(),
+        ).toBe("");
+      } finally {
+        await Effect.runPromise(
+          provider.destroy({ app: plan.id, plan }, { volumes: true, removeState: false }),
+        );
+        await rm(appRoot, { recursive: true, force: true });
+      }
     },
     120_000,
   );

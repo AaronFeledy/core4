@@ -28,10 +28,16 @@ import {
   evaluateHostVar as evaluateHostVarEffect,
   resolveScriptPath,
   runHostScript as runHostScriptEffect,
-  runHostToolingWith,
+  runHostToolingWith as runHostToolingWithEffect,
 } from "../../src/services/host-tooling-engine";
 
-const hostToolingEngineLayer = HostToolingEngine.layer.pipe(Layer.provide(PrivateFileAccessService.layer));
+import { testEnvironmentResolverLayer } from "../environment-values.ts";
+
+const runHostToolingWith = (...args: Parameters<typeof runHostToolingWithEffect>) =>
+  runHostToolingWithEffect(...args).pipe(Effect.provide(testEnvironmentResolverLayer));
+const hostToolingEngineLayer = HostToolingEngine.layer.pipe(
+  Layer.provide(Layer.mergeAll(PrivateFileAccessService.layer, testEnvironmentResolverLayer)),
+);
 const runHostScript = (...args: Parameters<typeof runHostScriptEffect>) =>
   runHostScriptEffect(...args).pipe(Effect.provide(PrivateFileAccessService.layer));
 const evaluateHostVar = (...args: Parameters<typeof evaluateHostVarEffect>) =>
@@ -104,7 +110,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     provider: providerId,
     services: map as AppPlan["services"],
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

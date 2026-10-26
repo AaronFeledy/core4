@@ -1,12 +1,29 @@
 import { Effect } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
-import type { HealthcheckPlan } from "@lando/sdk/schema";
+import {
+  type Environment,
+  type EnvironmentValue,
+  type HealthcheckPlan,
+  type ValidationIssuePath,
+  formatValidationIssuePath,
+} from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
   ServiceFeatureDefinition,
   ServiceImageIdentity,
 } from "@lando/sdk/services";
+
+export class ServiceConfigIssue extends Error {
+  constructor(
+    readonly path: ValidationIssuePath,
+    message: string,
+    readonly suggestion?: string,
+  ) {
+    super(message);
+    this.name = "ServiceConfigIssue";
+  }
+}
 
 export const serviceFeatureApply =
   (
@@ -19,9 +36,18 @@ export const serviceFeatureApply =
       try: () => apply(ctx),
       catch: (cause) =>
         new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : fallbackMessage,
+          message:
+            cause instanceof ServiceConfigIssue
+              ? `${formatValidationIssuePath(["services", ctx.serviceName, ...cause.path])}: ${cause.message}${cause.suggestion ? ` ${cause.suggestion}` : ""}`
+              : cause instanceof Error
+                ? cause.message
+                : fallbackMessage,
           feature: featureId,
           cause,
+          remediation:
+            cause instanceof ServiceConfigIssue && cause.suggestion
+              ? cause.suggestion
+              : `Correct the ${featureId} feature configuration in the Landofile, then re-run.`,
         }),
     });
 
@@ -37,11 +63,37 @@ export const serviceTypeResolve = <A>(
         message: cause instanceof Error ? cause.message : fallbackMessage,
         serviceType,
         cause,
+        ...(cause instanceof ServiceConfigIssue
+          ? {
+              issues: [
+                {
+                  path: cause.path,
+                  message: cause.message,
+                  ...(cause.suggestion ? { suggestion: cause.suggestion } : {}),
+                },
+              ],
+            }
+          : {}),
+        remediation:
+          cause instanceof ServiceConfigIssue && cause.suggestion
+            ? cause.suggestion
+            : `Correct the ${serviceType} service configuration in the Landofile (see the reported field path), then re-run.`,
       }),
   });
 
-export const addEnvRecord = (ctx: ServiceFeatureContext, env: Readonly<Record<string, string>>): void => {
+export const addEnvRecord = (ctx: ServiceFeatureContext, env: Environment): void => {
   for (const [key, value] of Object.entries(env)) ctx.addEnv(key, value);
+};
+
+export const literalEnvironmentValue = (value: EnvironmentValue, path: ValidationIssuePath): string => {
+  if (typeof value !== "string") {
+    throw new ServiceConfigIssue(
+      path,
+      "This setting requires literal text at plan time.",
+      "Use a literal value rather than a secret binding.",
+    );
+  }
+  return value;
 };
 
 export const commandHealthcheck = (

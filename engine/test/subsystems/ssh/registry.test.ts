@@ -44,7 +44,16 @@ test.each([
       registry.select(explicit === undefined ? {} : { explicit }),
     ).pipe(Effect.provide(SshServiceRegistry.layerWith([])), Effect.result),
   );
-  expect(result).toEqual(Result.fail(new SshError({ message, sshId })));
+  expect(result).toEqual(
+    Result.fail(
+      new SshError({
+        message,
+        sshId,
+        remediation:
+          "Install or repair the SSH service plugin and confirm the agent socket is available, then re-run.",
+      }),
+    ),
+  );
 });
 
 test("SSH discards the duplicate-index cause in its discovery error", async () => {
@@ -55,6 +64,13 @@ test("SSH discards the duplicate-index cause in its discovery error", async () =
     ),
   );
   expect(result).toEqual(
-    Result.fail(new SshError({ message: "Unable to discover SshService contributions.", sshId: "unknown" })),
+    Result.fail(
+      new SshError({
+        message: "Unable to discover SshService contributions.",
+        sshId: "unknown",
+        remediation:
+          "Install or repair the SSH service plugin and confirm the agent socket is available, then re-run.",
+      }),
+    ),
   );
 });

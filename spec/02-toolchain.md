@@ -1,6 +1,6 @@
 # Lando v4: Toolchain
 
-> **Part 2 of 19** · [Index](./README.md)
+> **Part 2 of 20** · [Index](./README.md)
 > **Read next:** [03 Architecture](./03-architecture.md)
 
 This part defines the technology stack and the architectural rules each component imposes.
@@ -33,6 +33,8 @@ This spec states capability requirements for Bun, not a numeric version. The sel
 
 The default binary uses `bun build --compile` with bytecode enabled. `--bytecode` is REQUIRED and is part of the cold-start budget. The compile matrix is `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-x64`, `bun-darwin-arm64`, `bun-windows-x64`, and `bun-windows-arm64`; every release ships all six. Release-shaped main binaries use the build wrapper required by §17.3; bare compilation is allowed only for helper binaries without OpenTUI.
 
+One deliberate exception to Bun-only code: the in-container helper (§10.10.2, §17.3) is a small statically linked Go program. It runs inside arbitrary user images, where neither a Bun runtime nor a particular libc can be assumed, and a Bun-compiled executable needs glibc or a musl C++ runtime that many images lack. Go is never a host prerequisite: the toolchain is a pinned builder image, and the helper is built with Lando itself (`build:container-helper`); CI builds it once that way and hands it to every compile. Go code is limited to that helper, and its forwarded-environment policy is injected at link time from the TypeScript tables so the policy keeps one source.
+
 Build-visible code and data MUST be statically imported or explicitly embedded. Bundled plugins are statically imported, external plugins load only from validated locked stores or trusted `pluginDirs:`, and the native command-registry manifest is generated and embedded (§8.4.1, §17.2–§17.3). Asset ownership remains in §17.3.
 
 **Performance commitments:**
@@ -55,6 +57,8 @@ Build-visible code and data MUST be statically imported or explicitly embedded. 
 TTY renderers enforce the perceived-performance budget (§8.9). Non-TTY output is exempt from spinner/progress but MUST emit its first line within 80 ms when the end-to-end budget exceeds 100 ms. Level-`none` commands have no separate first-paint budget; the pre-dispatch fast-path shape (§3.2) MUST NOT construct an Effect runtime or import `@oclif/core`, while dispatcher-routed `none` commands build any runtime inside their own body.
 
 Per-PR performance tests and the §13.4 merge gate enforce both budget tables.
+
+Execution bookkeeping (§22.10) MUST preserve these budgets and provider request counts. Test both deterministic request counts and same-toolchain compiled timings; skipped live measurements do not establish support. The execution facade MUST stay out of the CLI cold import graph.
 
 ### 2.2 TypeScript
 
@@ -140,6 +144,7 @@ Effect plus a small set of YAML/CA primitives are the only target runtime depend
 | `@lando/core/landofile` | canonical parser and serializer (§7.8.1) |
 | `@lando/core/testing` | supported test wiring and fixtures |
 | `@lando/core/cli` | programmatic native CLI invocation |
+| `@lando/core/execution` | opt-in scoped execution facade on the retained runtime (§22); not a separate runtime or workflow language |
 | `@lando/core/docs/components` | executable-guide runtime and AST helpers (§19.3) |
 | `@lando/core/docs/redactions` | transcript redaction list (§19.6) |
 

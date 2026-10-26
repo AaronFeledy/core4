@@ -1,6 +1,10 @@
 import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
+import { canonicalJson } from "../digest/index.ts";
 
 import {
+  type DatabaseConnection,
+  type Environment,
+  type EnvironmentValue,
   LandofileShape,
   LogSource,
   type ProviderId,
@@ -23,6 +27,7 @@ import type {
   ServiceTypeResolution,
 } from "../services/index.ts";
 import { ContractFailure, isNonEmptyString } from "./_shared.ts";
+import { appEndpointDeclarations, serviceEndpointDeclarations } from "./endpoint-declaration-contract.ts";
 
 export const TestServiceType: ServiceType = {
   id: "test",
@@ -294,12 +299,13 @@ export interface ServiceFeatureContractHarness {
   readonly appName?: string;
   readonly appRoot?: string;
   readonly normalizedConfig?: ServiceConfig;
+  readonly connection?: DatabaseConnection;
   readonly config?: Readonly<Record<string, unknown>>;
 }
 
 const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness) => {
   const recorded = {
-    env: new Map<string, string>(),
+    env: new Map<string, EnvironmentValue>(),
     mounts: [] as ServiceMountIntent[],
     appMounts: [] as ServiceAppMountIntent[],
     buildSteps: [] as ServiceBuildStepIntent[],
@@ -320,6 +326,7 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     ...(input.appName === undefined ? {} : { appName: input.appName }),
     appRoot: input.appRoot ?? "/srv/apps/myapp",
     normalizedConfig: input.normalizedConfig ?? { type: "test" },
+    ...(input.connection === undefined ? {} : { connection: input.connection }),
     config: input.config ?? {},
     addEnv(name, value) {
       recorded.env.set(name, value);
@@ -339,9 +346,6 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     addStorage(storage) {
       recorded.storage.push(storage);
     },
-    addEndpoint(endpoint) {
-      recorded.endpoints.push(endpoint);
-    },
     addDependency(dependency) {
       recorded.dependencies.push(dependency);
     },
@@ -350,6 +354,9 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     },
     setHealthcheck(healthcheck) {
       recorded.settings.healthcheck = healthcheck;
+    },
+    setReadiness(readiness) {
+      recorded.settings.readiness = readiness;
     },
     setCerts(certs) {
       recorded.settings.certs = certs;
@@ -423,6 +430,7 @@ export const runServiceFeatureContract = Effect.fnUntraced(function* (
   );
 
   const { context, recorded } = makeRecordingServiceFeatureContext(input);
+  recorded.endpoints.push(...(yield* serviceEndpointDeclarations(feature, context)));
   const applyEffect = yield* Effect.try({
     try: () => feature.apply(context),
     catch: (cause) => serviceFeatureFailure("feature apply succeeds", String(cause)),
@@ -468,6 +476,7 @@ export const runServiceFeatureContract = Effect.fnUntraced(function* (
   );
 
   const second = makeRecordingServiceFeatureContext(input);
+  second.recorded.endpoints.push(...(yield* serviceEndpointDeclarations(feature, second.context)));
   const secondApplyEffect = yield* Effect.try({
     try: () => feature.apply(second.context),
     catch: (cause) => serviceFeatureFailure("feature apply succeeds", String(cause)),
@@ -505,7 +514,8 @@ export interface AppFeatureContractService {
   readonly framework?: string;
   readonly primary?: boolean;
   readonly featureIds?: ReadonlyArray<string>;
-  readonly environment?: Readonly<Record<string, string>>;
+  readonly environment?: Environment;
+  readonly connection?: DatabaseConnection;
 }
 
 /** Input the app-feature contract uses to execute a single app feature. */
@@ -520,7 +530,7 @@ export interface AppFeatureContractHarness {
 
 interface RecordedAppFeatureService {
   readonly view: AppFeatureServiceView;
-  readonly env: Map<string, string>;
+  readonly env: Map<string, EnvironmentValue>;
   mutated: boolean;
 }
 
@@ -565,6 +575,7 @@ const makeRecordingAppFeatureContext = (
       primary: service.primary ?? false,
       featureIds: service.featureIds ?? [],
       normalizedConfig: { type: service.serviceType },
+      ...(service.connection === undefined ? {} : { connection: service.connection }),
     };
     records.set(service.serviceName, {
       view,
@@ -573,7 +584,7 @@ const makeRecordingAppFeatureContext = (
     });
   }
 
-  const ledger = new Map<string, string>();
+  const ledger = new Map<string, EnvironmentValue>();
   const conflicts: Array<{ readonly service: string; readonly key: string }> = [];
 
   const mutatorsFor = (serviceName: string): AppFeatureServiceMutators => {
@@ -594,7 +605,8 @@ const makeRecordingAppFeatureContext = (
       addEnv: (name, value) => {
         const ledgerKey = `${serviceName}\u0000${name}`;
         const existing = ledger.get(ledgerKey);
-        if (existing !== undefined && existing !== value) conflicts.push({ service: serviceName, key: name });
+        if (existing !== undefined && canonicalJson(existing) !== canonicalJson(value))
+          conflicts.push({ service: serviceName, key: name });
         ledger.set(ledgerKey, value);
         record?.env.set(name, value);
         recordMutation();
@@ -603,10 +615,10 @@ const makeRecordingAppFeatureContext = (
       setAppMount: recordMutation,
       addBuildStep: recordMutation,
       addStorage: recordMutation,
-      addEndpoint: recordMutation,
       addDependency: recordMutation,
       addHostAlias: recordMutation,
       setHealthcheck: recordMutation,
+      setReadiness: recordMutation,
       setCerts: recordMutation,
       setEntrypoint: recordMutation,
       setCommand: recordMutation,
@@ -709,6 +721,7 @@ export const runAppFeatureContract = Effect.fnUntraced(function* (
 
   const { context, records, selectedNames, conflicts, forbiddenReads } =
     makeRecordingAppFeatureContext(input);
+  const declarations = yield* appEndpointDeclarations(feature, context);
 
   yield* requireAppFeature(
     selectedNames.length > 0,
@@ -743,7 +756,9 @@ export const runAppFeatureContract = Effect.fnUntraced(function* (
 
   const mutatedSelected = selectedNames.some((name) => records.get(name)?.mutated === true);
   yield* requireAppFeature(
-    selectedNames.length === 0 || mutatedSelected,
+    selectedNames.length === 0 ||
+      mutatedSelected ||
+      Object.values(declarations).some((endpoints) => endpoints.length > 0),
     "app feature mutates at least one selected service draft",
     { selectedNames },
   );

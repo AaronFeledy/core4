@@ -1,8 +1,11 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
+import { ValidationIssue } from "../schema/validation-issue";
 
 export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError", {
   message: Schema.String,
   path: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  issues: Schema.optional(Schema.Array(ValidationIssue)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -15,7 +18,7 @@ export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError"
 export class ConfigTranslateError extends Schema.TaggedError<ConfigTranslateError>()("ConfigTranslateError", {
   message: Schema.String,
   translator: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -31,7 +34,11 @@ export class ConfigTranslatorConflictError extends Schema.TaggedError<ConfigTran
     message: Schema.String,
     id: Schema.String,
     translators: Schema.Array(Schema.String),
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+      Schema.withConstructorDefault(
+        Effect.succeed("Remove or rename one of the listed translators so each translator id is unique."),
+      ),
+    ),
   },
 ) {}
 
@@ -45,7 +52,13 @@ export class ConfigTranslateNoTranslatorsError extends Schema.TaggedError<Config
   "ConfigTranslateNoTranslatorsError",
   {
     message: Schema.String,
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+      Schema.withConstructorDefault(
+        Effect.succeed(
+          "Install a config-translator plugin with `lando plugin:add <translator-plugin>`, then re-run the translation.",
+        ),
+      ),
+    ),
   },
 ) {}
 
@@ -58,7 +71,11 @@ export class ConfigTranslateNoTranslatorsError extends Schema.TaggedError<Config
 export class AgentEnvPatternError extends Schema.TaggedError<AgentEnvPatternError>()("AgentEnvPatternError", {
   message: Schema.String,
   patterns: Schema.Array(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
+    Schema.withConstructorDefault(
+      Effect.succeed("Replace wildcard or pattern entries in agentEnv.allow/deny with exact env-var names."),
+    ),
+  ),
 }) {}
 
 /**
@@ -72,6 +89,6 @@ export class ConfigExpressionError extends Schema.TaggedError<ConfigExpressionEr
     expression: Schema.String,
     path: Schema.String,
     filePath: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

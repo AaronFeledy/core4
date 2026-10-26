@@ -42,7 +42,7 @@ export const HOST_IP_ENV_KEY = "LANDO_HOST_IP" as const;
  */
 export const applyHostReachability = <
   T extends {
-    readonly environment: Readonly<Record<string, string>>;
+    readonly environment: import("@lando/sdk/schema").Environment;
     readonly hostAliases: ReadonlyArray<{ readonly hostname: string; readonly ip: string }>;
   },
 >(

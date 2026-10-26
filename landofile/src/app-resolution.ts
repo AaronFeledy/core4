@@ -7,15 +7,16 @@ import {
   LandofileParseError,
   type LandofileVersionConstraintError,
 } from "@lando/sdk/errors";
-import type { AbsolutePath, AppPlan, AppRef, LandofileShape } from "@lando/sdk/schema";
+import type { AbsolutePath, AppPlan, AppRef, LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
 import type { LandofileService, UserLandofileError } from "@lando/sdk/services";
 
 export type { UserLandofileError };
 
-import { hasResolvableIncludes, resolveLandofileIncludes } from "./includes.ts";
-import { landofileLayerPaths } from "./layers.ts";
+import { compileLandofileFile } from "./file-compile.ts";
+import { landofileLayerPaths, presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
+import { withDiscoveryCwd } from "./operation-discovery.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
-import { findDiscoveredLandofilePath, loadLandofileFile, loadLandofileLayers } from "./service.ts";
+import { loadLandofileLayers } from "./service.ts";
 
 const RESERVED_APP_IDS: ReadonlySet<string> = new Set(["global"]);
 
@@ -23,13 +24,13 @@ export interface ResolvedAppTarget {
   readonly plan: AppPlan;
   readonly root: AbsolutePath;
   readonly app: AppRef;
-  readonly landofile?: LandofileShape;
+  readonly landofile?: LoadScopedLandofile;
 }
 
 export const userAppRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
 export const assertUserAppIdNotReserved = (
-  landofile: LandofileShape,
+  landofile: Pick<LandofileShape, "name">,
 ): Effect.Effect<void, AppIdReservedError> => {
   const resolved = landofile.name ?? "app";
   return RESERVED_APP_IDS.has(resolved)
@@ -50,6 +51,7 @@ const enterDir = (root: string): Effect.Effect<string, LandofileParseError> =>
         filePath: root,
         line: undefined,
         column: undefined,
+        remediation: `Ensure the app directory ${root} exists and is accessible.`,
         cause,
       }),
   });
@@ -63,25 +65,28 @@ export const withResolvedCwd = <A, E, R>(
   root: string,
   use: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | LandofileParseError, R> =>
-  Effect.flatMap(Effect.fiberId, (fiberId) =>
-    CwdResolutionOwner.pipe(
-      Effect.flatMap((owner) => {
-        const useAtRoot = Effect.suspend(() =>
-          root === process.cwd()
-            ? use
-            : Effect.acquireUseRelease(
-                enterDir(root),
-                () => use,
-                (original) => Effect.sync(() => process.chdir(original)),
-              ),
-        );
-        const ownsLock = owner === fiberId;
-        return ownsLock
-          ? useAtRoot
-          : cwdResolutionLock.withPermits(1)(
-              useAtRoot.pipe(Effect.provideService(CwdResolutionOwner, fiberId)),
-            );
-      }),
+  withDiscoveryCwd(
+    root,
+    Effect.flatMap(Effect.fiberId, (fiberId) =>
+      CwdResolutionOwner.pipe(
+        Effect.flatMap((owner) => {
+          const useAtRoot = Effect.suspend(() =>
+            root === process.cwd()
+              ? use
+              : Effect.acquireUseRelease(
+                  enterDir(root),
+                  () => use,
+                  (original) => Effect.sync(() => process.chdir(original)),
+                ),
+          );
+          const ownsLock = owner === fiberId;
+          return ownsLock
+            ? useAtRoot
+            : cwdResolutionLock.withPermits(1)(
+                useAtRoot.pipe(Effect.provideService(CwdResolutionOwner, fiberId)),
+              );
+        }),
+      ),
     ),
   );
 
@@ -96,91 +101,48 @@ export interface UserAppResolutionOptions {
 export interface UserAppResolution {
   readonly loadUserLandofile: (
     landofileService: Context.Service.Shape<typeof LandofileService>,
-  ) => Effect.Effect<LandofileShape, UserLandofileError>;
+  ) => Effect.Effect<LoadScopedLandofile, UserLandofileError>;
   readonly loadUserLandofileAt: (
     landofileService: Context.Service.Shape<typeof LandofileService>,
     root: string,
-  ) => Effect.Effect<LandofileShape, UserLandofileError>;
-  readonly loadUserLandofileFile: (filePath: string) => Effect.Effect<LandofileShape, UserLandofileError>;
+  ) => Effect.Effect<LoadScopedLandofile, UserLandofileError>;
+  readonly loadUserLandofileFile: (
+    filePath: string,
+  ) => Effect.Effect<LoadScopedLandofile, UserLandofileError>;
 }
 
 export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAppResolution => {
-  const discoveredLandofilePath = (): Effect.Effect<
-    { readonly filePath: string; readonly appRoot: string } | undefined
-  > =>
-    Effect.promise(() =>
-      findDiscoveredLandofilePath(process.cwd()).then(
-        (result) => result,
-        () => undefined,
-      ),
-    );
-
   const loadUserLandofile = (
     landofileService: Context.Service.Shape<typeof LandofileService>,
-  ): Effect.Effect<LandofileShape, UserLandofileError> =>
+  ): Effect.Effect<LoadScopedLandofile, UserLandofileError> =>
     landofileService.discover.pipe(
       Effect.flatMap((landofile) => {
-        if (!hasResolvableIncludes(landofile)) {
-          return discoveredLandofilePath().pipe(
-            Effect.map((discovered) => ({ landofile, sourcePath: discovered?.filePath })),
-          );
-        }
-        return Effect.tryPromise({
-          try: () => findDiscoveredLandofilePath(process.cwd()),
-          catch: (cause) =>
-            cause instanceof LandofileParseError
-              ? cause
-              : new LandofileParseError({
-                  message:
-                    cause instanceof Error
-                      ? cause.message
-                      : "Failed to locate the discovered Landofile root.",
-                  filePath: process.cwd(),
-                  line: undefined,
-                  column: undefined,
-                  cause,
-                }),
-        }).pipe(
-          Effect.flatMap(({ appRoot, filePath }) =>
-            resolveLandofileIncludes({
-              landofile,
-              appRoot,
-              sourcePath: filePath,
-              ...(options.inputs?.ports === undefined ? {} : { ports: options.inputs.ports }),
-              ...(options.inputs?.stateStore === undefined ? {} : { stateStore: options.inputs.stateStore }),
-            }),
-          ),
-          Effect.map((resolved) => ({ landofile: resolved, sourcePath: undefined })),
+        return presentLandofileLayers(landofile.context.appRoot).pipe(
+          Effect.map((layers) => ({ landofile, sourcePath: representativeLandofileLayer(layers)?.filePath })),
         );
       }),
-      Effect.tap(({ landofile }) => assertUserAppIdNotReserved(landofile)),
-      Effect.tap(({ landofile, sourcePath }) => options.assertVersionConstraint(landofile, sourcePath)),
+      Effect.tap(({ landofile }) => assertUserAppIdNotReserved(landofile.document)),
+      Effect.tap(({ landofile, sourcePath }) =>
+        options.assertVersionConstraint(landofile.document, sourcePath),
+      ),
       Effect.map(({ landofile }) => landofile),
     );
 
-  const loadUserLandofileFile = (filePath: string): Effect.Effect<LandofileShape, UserLandofileError> => {
+  const loadUserLandofileFile = (
+    filePath: string,
+  ): Effect.Effect<LoadScopedLandofile, UserLandofileError> => {
     const appRoot = dirname(filePath);
     return (
       landofileLayerPaths(appRoot).some(
         ({ yamlPath, typescriptPath }) => filePath === yamlPath || filePath === typescriptPath,
       )
         ? loadLandofileLayers(appRoot, filePath, options.inputs)
-        : loadLandofileFile(filePath, undefined, options.inputs).pipe(
-            Effect.flatMap((landofile) =>
-              resolveLandofileIncludes({
-                landofile,
-                appRoot,
-                sourcePath: filePath,
-                ...(options.inputs?.ports === undefined ? {} : { ports: options.inputs.ports }),
-                ...(options.inputs?.stateStore === undefined
-                  ? {}
-                  : { stateStore: options.inputs.stateStore }),
-              }),
-            ),
+        : compileLandofileFile(filePath, undefined, options.inputs).pipe(
+            Effect.map(({ landofile }) => landofile),
           )
     ).pipe(
-      Effect.tap(assertUserAppIdNotReserved),
-      Effect.tap((landofile) => options.assertVersionConstraint(landofile, filePath)),
+      Effect.tap((landofile) => assertUserAppIdNotReserved(landofile.document)),
+      Effect.tap((landofile) => options.assertVersionConstraint(landofile.document, filePath)),
     );
   };
 

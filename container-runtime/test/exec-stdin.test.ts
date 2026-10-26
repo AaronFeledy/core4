@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 import { DateTime, Duration, Effect, Stream } from "effect";
 
 import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
@@ -17,10 +17,19 @@ import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../sr
 import { exec, execStream } from "../src/podman/exec.ts";
 import { ContainerTransportError } from "../src/transport.ts";
 
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = {
+  providerId: "podman",
+  remediation: "Run `lando setup` and retry.",
+  env: {},
+  get redactor() {
+    return Effect.runSync(fixtureRedaction.forProfile("secrets"));
+  },
+} as const;
 
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
+let fixtureRedaction = makeRedactionService();
+beforeEach(() => {
+  fixtureRedaction = makeRedactionService();
+});
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("exec-stdin-app");
 const serviceName = ServiceName.make("web");
@@ -57,7 +66,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -129,7 +137,7 @@ describe("podman exec start errors", () => {
   test("redacts runtime-registered values in a failed exec create response", async () => {
     // Given
     const canary = "opaque-exec-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
+    Effect.runSync(fixtureRedaction.registerValues([canary]));
     const api: EngineHttpApi = {
       request: () =>
         Effect.succeed({ status: 500, body: JSON.stringify({ message: `engine said ${canary}` }) }),
@@ -241,6 +249,7 @@ describe("podman exec early stdin exit", () => {
       message: "attach reset",
       systemCode: "ECONNRESET",
     }),
+    remediation: "Install or start the `lando` provider and confirm it can perform `podman-api`.",
   });
   const makeResetApi = (options: {
     readonly head?: boolean;
@@ -259,6 +268,7 @@ describe("podman exec early stdin exit", () => {
                 providerId: "lando",
                 operation: "exec",
                 message: "inspect failed",
+                remediation: "Install or start the `lando` provider and confirm it can perform `exec`.",
               }),
             )
           : Effect.succeed({
@@ -291,6 +301,7 @@ describe("podman exec early stdin exit", () => {
           message: "attach closed",
           systemCode,
         }),
+        remediation: "Install or start the `lando` provider and confirm it can perform `podman-api`.",
       });
       const api = makeResetApi({ error });
       // When
@@ -415,7 +426,7 @@ describe("podman exec error context", () => {
 
     // Then
     expect(error).toBeInstanceOf(ProviderUnavailableError);
-    expect(error.providerId).toBe("podman");
+    expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
     expect(error.message).toContain("provider-podman");
     expect(error.remediation).toBe(ctx.remediation);
   });
@@ -525,6 +536,7 @@ describe("podman exec delayed output", () => {
       providerId: "podman",
       operation: "exec",
       message: "attach stream failed",
+      remediation: "Install or start the `podman` provider and confirm it can perform `exec`.",
     });
     const attached = Stream.make(attachFrame(1, "first")).pipe(
       Stream.concat(

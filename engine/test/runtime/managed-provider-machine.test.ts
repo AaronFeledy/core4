@@ -139,6 +139,7 @@ describe("teardownManagedProviderMachine", () => {
               providerId: "lando",
               operation: "setup",
               message: "simulated machine start failure",
+              remediation: "Install or start the `lando` provider and confirm it can perform `setup`.",
             }),
           );
         }

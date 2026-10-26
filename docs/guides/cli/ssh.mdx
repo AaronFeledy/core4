@@ -8,13 +8,15 @@ tags: [beta, docs, cli, ssh]
 
 # Open a shell in a service
 
-`lando ssh` opens an interactive login shell (`sh -l`) in a running service. It is `app:exec` with a TTY whenever your stdin is a terminal.
+Run `lando ssh` from your app directory to open a login shell in the primary running service:
 
 ```sh
 lando ssh
 ```
 
-It is a shell, not a remote login ceremony.
+Lando starts `bash -l` if bash is on the container's `PATH`; otherwise, it starts `sh -l`. It runs the shell through `app:exec` and allocates a TTY when your stdin is a terminal.
+
+Commands you type in that shell run inside the service, not on your host.
 
 ## Pick a service or user
 

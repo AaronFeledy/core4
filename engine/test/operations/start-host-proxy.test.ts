@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { Cause, DateTime, Effect, Exit, Layer, Option, Scope } from "effect";
 
-import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
+import { ContainerHelperUnavailableError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -20,11 +20,7 @@ import { PathsService, ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { installEngineComposition } from "../../src/composition.ts";
 import {
   startHostProxyRunLandoSession,
@@ -34,7 +30,6 @@ import { withStartedSshAgent } from "../../src/operations/start-ssh-agent.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import type { HostProxyShimTarget } from "../../src/subsystems/host-proxy/transport-shim.ts";
 
-const PREPARE_SPY_SOCKET = "prepare-spy";
 const X64_TARGET = { os: "linux", arch: "x64" } as const satisfies HostProxyShimTarget;
 const ARM64_TARGET = { os: "linux", arch: "arm64" } as const satisfies HostProxyShimTarget;
 const unusedPort = async () => {
@@ -53,6 +48,7 @@ const landofileRuntimeInputs = {
 };
 
 const prepareCalls: HostProxyShimTarget[] = [];
+const prepareCacheRoots: string[] = [];
 const tempDirs: string[] = [];
 const previousComposition = globalThis.__landoEngineCompositionInputs;
 
@@ -98,7 +94,6 @@ const planFor = (eligible: boolean): AppPlan => {
     provider: ProviderId.make("lando"),
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -121,9 +116,7 @@ const runtimeLayer = Layer.mergeAll(
   Layer.succeed(
     RedactionService,
     RedactionService.of({
-      registerValues: registerRedactionValues,
-      payloadValues: () => Effect.succeed(() => []),
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+      ...makeRedactionService(),
     }),
   ),
   Layer.succeed(
@@ -139,24 +132,22 @@ const runtimeLayer = Layer.mergeAll(
 
 beforeEach(() => {
   prepareCalls.length = 0;
+  prepareCacheRoots.length = 0;
   const composition = {
     bundledPluginModules: [],
     builtInCommandIds: [],
     landofileRuntimeInputs,
+    landofileSourcePorts: () => landofileRuntimeInputs.ports,
     hostProxyWorkerEntry: () => ({
       execPath: "/tmp/lando-start-host-proxy-missing-exec",
       entryPath: undefined,
       bunSourceEntryPath: "/tmp/lando-start-host-proxy-missing-entry.ts",
     }),
-    bunDevDistRoot: () => "/tmp/lando-start-host-proxy-empty-dist",
-    prepareHostProxyShimArtifact: (target: HostProxyShimTarget) => {
+    resolveContainerHelper: (target: HostProxyShimTarget, options: { readonly cacheRoot: string }) => {
       prepareCalls.push(target);
+      prepareCacheRoots.push(options.cacheRoot);
       return Effect.fail(
-        new HostProxyTransportUnavailableError({
-          message: "prepare-spy",
-          socketPath: PREPARE_SPY_SOCKET,
-          remediation: "prepare-spy",
-        }),
+        new ContainerHelperUnavailableError({ target, message: "prepare-spy", remediation: "prepare-spy" }),
       );
     },
   };
@@ -197,7 +188,7 @@ const expectPrepareSpy = (exit: Exit.Exit<unknown, unknown>, target: HostProxySh
   expect(error.value).toBeInstanceOf(HostProxyTransportUnavailableError);
   if (!(error.value instanceof HostProxyTransportUnavailableError)) return;
   expect(error.value._tag).toBe("HostProxyTransportUnavailableError");
-  expect(error.value.socketPath).toBe(PREPARE_SPY_SOCKET);
+  expect(error.value.socketPath).toBe(`container-helper:${target.os}-${target.arch}`);
 };
 
 describe("startHostProxyRunLandoSession prepare port", () => {
@@ -256,6 +247,7 @@ describe("startHostProxyRunLandoSession prepare port", () => {
 
     // Then
     expectPrepareSpy(exit, X64_TARGET);
+    expect(prepareCacheRoots).toEqual([join(roots.userCacheRoot, "tool-downloads", "container-helper")]);
   });
 
   test("invokes the composition preparer with linux-arm64 before worker spawn", async () => {
@@ -269,6 +261,7 @@ describe("startHostProxyRunLandoSession prepare port", () => {
 
     // Then
     expectPrepareSpy(exit, ARM64_TARGET);
+    expect(prepareCacheRoots).toEqual([join(roots.userCacheRoot, "tool-downloads", "container-helper")]);
   });
 
   test("skips the preparer when hostReachability is none", async () => {

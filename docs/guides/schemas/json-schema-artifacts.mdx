@@ -8,8 +8,12 @@ tags: [beta, docs, schemas]
 
 # JSON Schema artifacts
 
-Regenerate the published schema artifact set: public SDK schemas, command
-result schemas, metadata indexes, bundled manifests, editor schemas, and
+Use the public draft 2020-12 artifacts for SDK and command-result validation,
+and the draft-07 editor artifacts for authored Landofiles and global config.
+The authoring and resolved-runtime views differ, especially around expressions.
+
+Contributors can regenerate the artifact set from the repository root. This
+includes schemas, metadata indexes, bundled manifests, editor schemas, and
 reference docs:
 
 ```sh
@@ -45,6 +49,27 @@ Both are closed objects (an unknown key is an error, matching
 `lando app:config:lint`) and carry generated descriptions, so hover text in
 your editor reads the same as the schema reference.
 
+`landofile.schema.json` describes the file as authored, not as resolved. At a
+boolean, number, list, or object field it accepts the literal type or one
+whole-value `{{ ... }}` string, so `primary: "{{ recipe.primary }}"` and
+`httpPort: "{{ number(env.PORT) }}"` are valid; `primary: maybe` is not.
+That whole value is one interpolation and nothing else. Surrounding text,
+including spaces and a trailing newline, is rejected, so
+`"  {{ recipe.flag }}  "` fails at a typed field. `{{-` / `-}}` trim markers
+inside the braces stay allowed. Text fields take plain or interpolated text.
+The expression arm is the pattern `^\{\{-?(?:(?!\{\{|\}\})[\s\S])+?-?\}\}(?![\s\S])`. It
+doesn't parse the body, so it can't reject a plan-time scope like
+`{{ app.name }}` at a boolean field or a wrong helper type. A valid body that
+contains a quoted `}}` or adjacent object-closing braces, for example
+`{{ length({a:{b:1}}) }}`, is accepted by the loader and the
+[Standard Schema view](./standard-schema.mdx), but this pattern can't match
+it. Lint and Standard Schema catch the scope and helper gaps.
+
+`dist/schemas/landofile-shape.json` is the other side: the strict runtime
+shape with every expression already resolved. Validate authored YAML against
+`landofile.schema.json`; validate `lando app:config --format=json` output
+against `landofile-shape.json`.
+
 The docs build publishes the Landofile editor schema at
 `https://aaronfeledy.github.io/core4/schemas/landofile.schema.json`. The
 SDK exports that URL as `LANDOFILE_EDITOR_SCHEMA_URL` from
@@ -60,11 +85,66 @@ start with a `# yaml-language-server: $schema=<that url>` modeline. Existing
 files are never rewritten to add it. To wire the schema into your editor,
 see [Validate a Landofile in your editor](../landofile/editor-validation.mdx).
 
-## One decoder, three surfaces
+## One contract, two views
 
 The published documents, the editor documents, and the
 [Standard Schema views](./standard-schema.mdx) are all projections of the
-same Effect Schema that `lando` itself decodes with. A parity test loads
-every valid guide and recipe fixture plus a curated invalid set through all
-three and requires the same accept-or-reject answer, so your editor, your
-CI validator, and `lando start` cannot disagree about what a Landofile is.
+same Effect Schema contracts that `lando` itself decodes with. The authoring
+view (`landofile.schema.json`, `LandofileStandardSchema`,
+`LandofileStandardJSONSchema`) checks what you typed and allows expressions
+where they're legal. The runtime view (`landofile-shape.json`,
+`LandofileShape`) checks resolved values. A parity test loads every guide and
+recipe fixture plus curated valid and invalid inputs through each pair and
+requires the same accept-or-reject answer, with the pattern-only gaps above
+listed by name. This checks agreement within the tested cases without hiding
+the editor pattern's limits; use lint or Standard Schema when you need expression
+scope and helper-type validation.
+
+<Guide>
+  <Scenario id="editor-pattern-matches-whole-values" render={false} reason="Editor pattern rejects surrounding text">
+    <Step name="check-editor-pattern">
+      <Run
+        runtime="library"
+        code={`const { getEditorJsonSchema } = yield* Effect.promise(() => import("@lando/sdk/schema"));
+const { LandofileStandardSchema } = yield* Effect.promise(() => import("@lando/sdk/schema/standard"));
+const text = JSON.stringify(getEditorJsonSchema("LandofileShape"));
+const bs = String.fromCharCode(92);
+const needle = "^" + bs + "{" + bs + "{";
+const encoded = JSON.stringify(needle).slice(1, -1);
+const start = text.indexOf(encoded);
+expect(start).toBeGreaterThan(-1);
+const end = text.indexOf('"', start);
+const source = JSON.parse('"' + text.slice(start, end) + '"');
+const pattern = new RegExp(source);
+expect(pattern.test("{{ number(env.PORT) }}")).toBe(true);
+expect(pattern.test("  {{ recipe.flag }}  ")).toBe(false);
+expect(pattern.test("{{ length({a:{b:1}}) }}")).toBe(false);
+const accepted = yield* Effect.promise(async () =>
+  LandofileStandardSchema["~standard"].validate({
+    name: "demo",
+    router: { httpPort: "{{ length({a:{b:1}}) }}" },
+  }),
+);
+expect("issues" in accepted && accepted.issues).toBeFalsy();
+const spaced = yield* Effect.promise(async () =>
+  LandofileStandardSchema["~standard"].validate({
+    name: "demo",
+    router: { httpPort: "  {{ number(env.PORT) }}  " },
+  }),
+);
+expect("issues" in spaced && spaced.issues).toBeTruthy();`}
+        displayCode={`import { LandofileStandardSchema } from "@lando/sdk/schema/standard";
+
+await LandofileStandardSchema["~standard"].validate({
+  name: "demo",
+  router: { httpPort: "{{ length({a:{b:1}}) }}" },
+});
+
+await LandofileStandardSchema["~standard"].validate({
+  name: "demo",
+  router: { httpPort: "  {{ number(env.PORT) }}  " },
+});`}
+      />
+    </Step>
+  </Scenario>
+</Guide>

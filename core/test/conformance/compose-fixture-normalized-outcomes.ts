@@ -31,18 +31,23 @@ type ServiceOutcomeContext = {
   readonly service: ServiceConfig;
 };
 
-const expectedHealthcheck = (healthcheck: NonNullable<ServiceConfig["healthcheck"]>) => ({
-  kind: healthcheck.kind ?? "command",
-  intervalSeconds: healthcheck.intervalSeconds ?? 10,
-  timeoutSeconds: healthcheck.timeoutSeconds ?? 5,
-  retries: healthcheck.retries ?? 5,
-  ...(healthcheck.command === undefined ? {} : { command: healthcheck.command }),
-  ...(healthcheck.url === undefined ? {} : { url: healthcheck.url }),
-  ...(healthcheck.port === undefined ? {} : { port: healthcheck.port }),
-  ...(healthcheck.startPeriodSeconds === undefined
-    ? {}
-    : { startPeriodSeconds: healthcheck.startPeriodSeconds }),
-});
+const expectedHealthcheck = (
+  healthcheck: NonNullable<ServiceConfig["healthcheck"]>,
+): ServicePlan["healthcheck"] =>
+  healthcheck === false
+    ? { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 5 }
+    : {
+        kind: healthcheck.kind ?? "command",
+        intervalSeconds: healthcheck.intervalSeconds ?? 10,
+        timeoutSeconds: healthcheck.timeoutSeconds ?? 5,
+        retries: healthcheck.retries ?? 5,
+        ...(healthcheck.command === undefined ? {} : { command: healthcheck.command }),
+        ...(healthcheck.url === undefined ? {} : { url: healthcheck.url }),
+        ...(healthcheck.port === undefined ? {} : { port: healthcheck.port }),
+        ...(healthcheck.startPeriodSeconds === undefined
+          ? {}
+          : { startPeriodSeconds: healthcheck.startPeriodSeconds }),
+      };
 
 const expectedEnvironment = (serviceName: string, service: ServiceConfig) => ({
   // Host reachability is realized for every service from the provider's declared
@@ -181,6 +186,23 @@ export const assertNormalizedMatch = (match: ComposeDispositionMatch, context: O
     service,
   };
   switch (planAssertion) {
+    case "networks":
+      for (const [key, attachment] of Object.entries(service.networks ?? {})) {
+        if (key === "default") {
+          expect(context.plan.networking?.perAppBridge).toBeDefined();
+          if (attachment.aliases !== undefined)
+            expect(context.plan.networking?.perAppBridge?.aliases?.[planService.name]).toEqual(
+              attachment.aliases,
+            );
+        } else {
+          const network = context.plan.networking?.authoredNetworks?.find((entry) => entry.key === key);
+          expect(network?.members[planService.name]?.aliases).toEqual([
+            `${planService.name}.${context.plan.slug}.internal`,
+            ...(attachment.aliases ?? []),
+          ]);
+        }
+      }
+      return true;
     case "artifact-build":
     case "artifact-ref":
       assertArtifact(planAssertion, serviceContext);

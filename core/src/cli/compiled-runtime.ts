@@ -1,3 +1,5 @@
+import type { CompletedCommandResult } from "@lando/sdk/command-result";
+import type { CommandCompletion } from "@lando/sdk/schema";
 import type { Effect, Layer, Schema, Tracer } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
@@ -21,7 +23,6 @@ import {
   commandErrorMessage,
   getActiveCommandInvocation,
 } from "./compiled-session";
-import { setActiveProcessAbortSignal } from "./process-abort-signal";
 import { type RenderContext, runWithRendererHandling } from "./renderer-boundary";
 import { activeRendererMode } from "./renderer-mode-state";
 import { EmptyResultSchema } from "./spec/command-base";
@@ -94,8 +95,8 @@ export const runCompiledCommand = <A, E, R, RE>(
   options: {
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
-    readonly suppressInterruptionDiagnostics?: boolean;
-    readonly successExitCode?: (value: A) => number | undefined;
+    readonly completion?: (value: A) => CommandCompletion;
+    readonly renderEffect?: (completed: CompletedCommandResult<A>) => Effect.Effect<void, unknown, R>;
     readonly failureExitCode?: (error: unknown) => number | undefined;
     readonly resultSchema?: Schema.Codec<unknown, unknown>;
     readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
@@ -109,15 +110,19 @@ export const runCompiledCommand = <A, E, R, RE>(
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
   const effectiveRuntime =
-    spec?.bootstrap === undefined
+    spec?.bootstrap === undefined ||
+    activeCommandId === "meta:config" ||
+    activeCommandId === "meta:doctor" ||
+    activeCommandId === "meta:uninstall"
       ? runtime
       : resolveCompiledCommandRuntime(activeCommandId, spec.bootstrap, runtime, options.runtimeForBootstrap);
   const redactionTokens = options.redactionTokens ?? spec?.redactionTokens;
-  const successExitCode =
-    options.successExitCode ??
-    (spec?.successExitCode === undefined
+  const specCompletion = spec?.completion;
+  const completion =
+    options.completion ??
+    (specCompletion === undefined
       ? undefined
-      : (value: A) => spec.successExitCode?.(value, getActiveCommandInvocation()));
+      : (value: A) => specCompletion(value, getActiveCommandInvocation()));
   const invocation = getActiveCommandInvocation();
   const projectResultKeys = activeProjectResultKeys();
   const jqExpression = activeJq;
@@ -151,14 +156,16 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(documentOutput ? { documentOutput: true } : {}),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
-    ...(options.suppressInterruptionDiagnostics === true ? { suppressInterruptionDiagnostics: true } : {}),
-    ...(successExitCode === undefined ? {} : { successExitCode }),
+    ...(completion === undefined ? {} : { completion }),
+    ...(options.renderEffect === undefined ? {} : { renderEffect: options.renderEffect }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     ...(options.io === undefined ? {} : { io: options.io }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     render,
-    formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) =>
-      commandErrorMessage(failure, activeCommandId),
+    formatError: (
+      failure: import("@lando/sdk/command-result").ProjectedFailure,
+      redactor: import("@lando/sdk/secrets").Redactor,
+    ) => commandErrorMessage(failure, activeCommandId, redactor),
     ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
   const selection = activeTrace();
@@ -182,17 +189,16 @@ export const runCompiledCommand = <A, E, R, RE>(
 
 export const runWithProcessAbortSignal = async (
   run: (signal: AbortSignal) => Promise<void>,
-  options: { readonly signals?: ReadonlyArray<NodeJS.Signals> } = {},
 ): Promise<void> => {
   const controller = new AbortController();
-  const abort = () => controller.abort();
-  const previous = setActiveProcessAbortSignal(controller.signal);
-  const signals = options.signals ?? defaultInterruptSignals();
-  for (const signal of signals) (process as NodeJS.EventEmitter).once(signal, abort);
+  const handlers = defaultInterruptSignals().map((signal) => {
+    const abort = () => controller.abort(signal);
+    (process as NodeJS.EventEmitter).on(signal, abort);
+    return { signal, abort };
+  });
   try {
     await run(controller.signal);
   } finally {
-    setActiveProcessAbortSignal(previous);
-    for (const signal of signals) (process as NodeJS.EventEmitter).off(signal, abort);
+    for (const { signal, abort } of handlers) (process as NodeJS.EventEmitter).off(signal, abort);
   }
 };
