@@ -87,6 +87,8 @@ export const bindResolvedProviderOps = (
 ) =>
   makeResolvedProviderOps({
     ...input,
+    beforeMutation:
+      input.beforeMutation ?? ((app) => state.appliedPlans.resolveMutationPlan(app).pipe(Effect.asVoid)),
     resolvePlan: state.appliedPlans.resolvePlan,
     ...(state.dataPlane === undefined ? {} : { dataPlane: state.dataPlane }),
   });

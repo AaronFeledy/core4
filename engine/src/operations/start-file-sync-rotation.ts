@@ -34,12 +34,13 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
     return;
 
   // Never clean targets using a desired/selected-service plan: users and ownership are old-plan data.
-  const old = yield* registry.resolveAppliedPlan(target.plan.identity?.appRoot ?? target.root);
+  const appRoot = target.plan.identity?.appRoot ?? target.root;
+  const old = yield* registry.resolveAppliedPlan(appRoot);
   if (
     old === undefined ||
     old.id !== target.plan.id ||
     old.provider !== target.plan.provider ||
-    !sameRealpath(old.identity?.appRoot ?? old.root, target.plan.identity?.appRoot ?? target.root) ||
+    !sameRealpath(old.identity?.appRoot ?? old.root, appRoot) ||
     !hasCompleteFileSyncCoverage(old) ||
     !hasCompleteFileSyncCoverage(old, prior.sessions) ||
     old.fileSync.some(({ engineId }) => engineId !== prior.engineId)

@@ -530,7 +530,6 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       target.plan === undefined ? appliedPlans.resolvePlan(target.app) : Effect.succeed(target.plan);
 
     const resolvedOps = bindResolvedProviderOps(planState, {
-      beforeMutation: (app) => appliedPlans.resolveMutationPlan(app).pipe(Effect.asVoid),
       ctx: DOCKER_CTX,
       readAppEnvironment: (target, names) =>
         readAppEnvironment(target, names, { api: dockerApi, ctx: DOCKER_CTX }),
@@ -646,8 +645,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ...resolvedOps,
       cleanupOwnedResources: planState.cleanupOwnedResources,
       destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
-        const previous = yield* appliedPlans.resolveMutationPlan(target.app);
-        return yield* Effect.succeed(target.plan ?? previous).pipe(
+        return yield* appliedPlans.resolveMutationPlan(target.app).pipe(
+          Effect.map((previous) => target.plan ?? previous),
           Effect.flatMap((plan) =>
             plan === undefined
               ? Effect.succeed(DESTROY_NO_OP)

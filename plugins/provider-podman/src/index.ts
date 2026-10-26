@@ -740,7 +740,6 @@ const assembleRuntimeProvider = (
     const resolvePlan = appliedPlans.resolvePlan;
 
     const resolvedOps = bindResolvedProviderOps(planState, {
-      beforeMutation: (app) => appliedPlans.resolveMutationPlan(app).pipe(Effect.asVoid),
       readAppEnvironment: (target, names) =>
         readAppEnvironment(target, names, { api: podmanApi, ctx: PODMAN_CTX }),
       ctx: PODMAN_CTX,

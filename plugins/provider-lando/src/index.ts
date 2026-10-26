@@ -962,7 +962,6 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
       target: Parameters<typeof runtimePostServiceLifecycle>[1],
     ) => Effect.Effect<void, ProviderError> = () => Effect.void;
     const resolvedOps = bindResolvedProviderOps(planState, {
-      beforeMutation: (app) => appliedPlans.resolveMutationPlan(app).pipe(Effect.asVoid),
       readAppEnvironment: (target, names) =>
         readAppEnvironment(target, names, { api: podmanApi, ctx: LANDO_CTX }),
       ctx: LANDO_CTX,

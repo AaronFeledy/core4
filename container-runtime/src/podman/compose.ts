@@ -93,11 +93,10 @@ const serviceMountLists = (
   ctx: ProviderErrorContext,
   plan: AppPlan,
   service: ServicePlan,
-): { readonly volumes: ReadonlyArray<ComposeVolumeEntry>; readonly tmpfs: ReadonlyArray<string> } => {
-  return serviceComposeMounts(plan, service, (message, details) => {
+): { readonly volumes: ReadonlyArray<ComposeVolumeEntry>; readonly tmpfs: ReadonlyArray<string> } =>
+  serviceComposeMounts(plan, service, (message, details) => {
     throw composeError(ctx, message, details);
   });
-};
 
 const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
   physicalPublications(service.endpoints).map((endpoint) => {

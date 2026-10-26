@@ -120,12 +120,10 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
         ...(evidence.ownership === undefined ? {} : { ownership: evidence.ownership }),
       };
     case "orphans":
-      yield* Effect.forEach(
-        evidence.groups,
-        (group) =>
-          registry.assertAppliedStateReadable?.({ id: group.appId, provider: group.providerId }) ??
-          Effect.void,
-      );
+      for (const group of evidence.groups) {
+        yield* registry.assertAppliedStateReadable?.({ id: group.appId, provider: group.providerId }) ??
+          Effect.void;
+      }
       return {
         kind: "orphans",
         root,
@@ -134,12 +132,11 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
         ...(evidence.ownership === undefined ? {} : { ownership: evidence.ownership }),
       };
     case "owned":
-      yield* Effect.forEach(evidence.ownership, (hints) =>
-        Effect.forEach(
-          hints.appIds,
-          (id) => registry.assertAppliedStateReadable?.({ id, provider: hints.providerId }) ?? Effect.void,
-        ),
-      );
+      for (const hints of evidence.ownership) {
+        for (const id of hints.appIds) {
+          yield* registry.assertAppliedStateReadable?.({ id, provider: hints.providerId }) ?? Effect.void;
+        }
+      }
       return { kind: "owned", root, ownership: evidence.ownership, landofilePresent };
     case "absent":
       return { kind: "absent", root, landofilePresent };

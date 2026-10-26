@@ -52,14 +52,7 @@ export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
   const resolvePlan = (appId: AppId): Effect.Effect<AppPlan | undefined> => {
     const cached = plans.get(appId);
     if (cached !== undefined) return Effect.succeed(cached);
-    return resolveMutationPlan(appId).pipe(
-      Effect.catch(() =>
-        Effect.sync(() => {
-          plans.delete(appId);
-          return undefined;
-        }),
-      ),
-    );
+    return resolveMutationPlan(appId).pipe(Effect.catch(() => Effect.succeed(undefined)));
   };
 
   const rememberPlan = (plan: AppPlan, reconcile: boolean): Effect.Effect<void, ProviderUnavailableError> => {

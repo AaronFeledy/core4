@@ -79,10 +79,9 @@ export const prepareFileModeMounts = Effect.fn("RuntimeProvider.prepareFileModeM
             const staging = join(directory, `.${key}.${crypto.randomUUID()}`);
             await mkdir(staging, { mode: 0o700 });
             try {
-              const temporary = join(staging, "file.tmp");
+              const temporary = join(staging, key);
               await writeFile(temporary, contents, { flag: "wx", mode: 0o600 });
               await chmod(temporary, mode);
-              await rename(temporary, join(staging, key));
               try {
                 await rename(staging, published);
               } catch (cause) {

@@ -57,8 +57,13 @@ export const compileAuthoredMounts = (
 ): readonly MountPlan[] | LandofileValidationError => {
   const lando = new Map<string, { readonly mount: MountPlan; readonly path: ValidationIssuePath }>();
   const compose = new Map<string, { readonly mount: MountPlan; readonly path: ValidationIssuePath }>();
-  const add = (mount: MountPlan, path: ValidationIssuePath): LandofileValidationError | undefined => {
-    const tier = path[2] === "volumes" || path[2] === "configs" ? compose : lando;
+  // Lando spellings (mounts, storage, tmpfs) outrank the Compose tier (volumes, configs).
+  const add = (
+    mount: MountPlan,
+    path: ValidationIssuePath,
+    spelling: "lando" | "compose" = "lando",
+  ): LandofileValidationError | undefined => {
+    const tier = spelling === "compose" ? compose : lando;
     const previous = tier.get(mount.target);
     if (previous !== undefined)
       return mountInputError(
@@ -99,7 +104,7 @@ export const compileAuthoredMounts = (
       const path = ["services", context.serviceName, key, index];
       const mount = classifyMount(entry, context, path);
       if (mount instanceof LandofileValidationError) return mount;
-      const error = add(mount, path);
+      const error = add(mount, path, key === "volumes" ? "compose" : "lando");
       if (error !== undefined) return error;
     }
   }
@@ -124,7 +129,7 @@ export const compileAuthoredMounts = (
   const configs = compileConfigMounts(context, normalized.configs);
   if (configs instanceof LandofileValidationError) return configs;
   for (const { mount, path } of configs) {
-    const error = add(mount, path);
+    const error = add(mount, path, "compose");
     if (error !== undefined) return error;
   }
   return [

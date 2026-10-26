@@ -55,22 +55,19 @@ export const applyMountCwd = (
   const path = rootPathApi(plan.root);
   const removedSessions = new Set<string>();
   const services = Object.fromEntries(
-    Object.values(plan.services).map((service) => [
-      service.name,
-      {
-        ...service,
-        mounts: service.mounts.map((mount) => {
-          if (mount.type !== "bind" || mount.relativeTo !== "app") return mount;
-          const { mountKey, ...bind } = mount;
-          if (mountKey !== undefined) removedSessions.add(`${service.name}/${mountKey}`);
-          return {
-            ...bind,
-            source: path.resolve(hostCwd, path.relative(plan.root, mount.source)),
-            realization: "passthrough" as const,
-          };
-        }),
-      },
-    ]),
+    Object.values(plan.services).map((service) => {
+      const mounts = service.mounts.map((mount) => {
+        if (mount.type !== "bind" || mount.relativeTo !== "app") return mount;
+        const { mountKey, ...bind } = mount;
+        if (mountKey !== undefined) removedSessions.add(`${service.name}/${mountKey}`);
+        return {
+          ...bind,
+          source: path.resolve(hostCwd, path.relative(plan.root, mount.source)),
+          realization: "passthrough" as const,
+        };
+      });
+      return [service.name, { ...service, mounts }];
+    }),
   );
   return {
     ...plan,
