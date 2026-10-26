@@ -1,3 +1,4 @@
+import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 
 import { Effect } from "effect";
@@ -97,6 +98,14 @@ const groupOrphans = (
 };
 
 type RuntimeEvidence = Effect.Success<ReturnType<typeof runtimeEvidence>>;
+
+const canonicalPath = (path: string): Effect.Effect<string> =>
+  Effect.tryPromise(() => realpath(path)).pipe(Effect.orElseSucceed(() => path));
+
+const isSameOrDescendantPath = (ancestor: string, candidate: string): boolean => {
+  const child = relative(ancestor, candidate);
+  return child === "" || (!child.startsWith("..") && !isAbsolute(child));
+};
 
 const gatherAppliedPlans = (provider: AppliedStateProvider) =>
   (provider.appliedPlans ?? Effect.succeed([])).pipe(
@@ -200,15 +209,18 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     return ownershipHints;
   });
   const teardownOwnership = ownership === "exact" ? yield* readOwnership : [];
-  const matches = plans
-    .filter((plan) => {
-      if (!matchesAppPlanIdentity(plan, app)) return false;
+  const lookupRoot = yield* canonicalPath(root);
+  const matches = (yield* Effect.forEach(plans, (plan) =>
+    Effect.gen(function* () {
+      if (!matchesAppPlanIdentity(plan, app)) return undefined;
       const appRoot = plan.identity?.appRoot;
-      if (appRoot === undefined) return false;
-      if (ownership === "exact") return appRoot === root;
-      const child = relative(appRoot, root);
-      return child === "" || (!child.startsWith("..") && !isAbsolute(child));
-    })
+      if (appRoot === undefined) return undefined;
+      const canonicalAppRoot = yield* canonicalPath(appRoot);
+      if (ownership === "exact") return canonicalAppRoot === lookupRoot ? plan : undefined;
+      return isSameOrDescendantPath(canonicalAppRoot, lookupRoot) ? plan : undefined;
+    }),
+  ))
+    .filter((plan): plan is AppPlan => plan !== undefined)
     .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
   const selected = matches[0];
   const selectedRoot = selected?.identity?.appRoot;

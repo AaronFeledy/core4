@@ -49,6 +49,31 @@ test("observes the scenario's applied plan after its desired Landofile becomes i
   expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, result: { app: "exec-demo" } });
 });
 
+test("resolves the applied plan when later commands use a symlink alias of the root", async () => {
+  await Effect.runPromise(
+    withScenarioContext({ guideId: "exec", scenarioId: "alias-applied-plan" }, (context) =>
+      Effect.gen(function* () {
+        // Given: applied state stored under the planner's canonical root.
+        const root = yield* context.fixtures.use("exec-demo");
+        const alias = join(context.testDir, "linked-app");
+        yield* Effect.tryPromise(() => symlink(root, alias, "dir"));
+        const provider = makeScenarioProvider();
+        yield* Effect.tryPromise(() => provider.remember(root));
+
+        // When: a later command resolves applied state through the alias path.
+        const planned = yield* Effect.gen(function* () {
+          const registry = yield* RuntimeProviderRegistry;
+          return yield* registry.resolveAppliedPlan(AbsolutePath.make(alias));
+        }).pipe(Effect.provide(provider.layer));
+
+        // Then: the alias still finds the realization, the way production ancestor matching does.
+        expect(planned?.root).toBeDefined();
+        expect(planned?.id).toBe("exec-demo");
+      }),
+    ),
+  );
+});
+
 test("forgets the applied plan when destroy uses a symlink to its root", async () => {
   await Effect.runPromise(
     withScenarioContext({ guideId: "exec", scenarioId: "symlink-destroy" }, (context) =>

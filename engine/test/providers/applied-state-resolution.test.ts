@@ -1,3 +1,7 @@
+import { mkdtemp, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 
 import { Cause, DateTime, Effect, Exit } from "effect";
@@ -515,6 +519,29 @@ describe("resolveTeardownEvidence", () => {
     );
 
     expect(result).toEqual({ kind: "absent" });
+  });
+
+  test("resolves applied state when the lookup root is a symlink alias of identity.appRoot", async () => {
+    const realRoot = await mkdtemp(join(tmpdir(), "lando-applied-alias-"));
+    const alias = join(dirname(realRoot), `alias-${basename(realRoot)}`);
+    try {
+      await symlink(realRoot, alias, "dir");
+      const canonical = AbsolutePath.make(realRoot);
+      const planned = {
+        ...planFor("lando"),
+        root: canonical,
+        identity: { appRoot: canonical, ownerKey: appIdentityKey("owner", canonical) },
+      };
+      const result = await Effect.runPromise(
+        resolveAppliedPlanEvidence(AbsolutePath.make(alias), [
+          provider("lando", { appliedPlans: Effect.succeed([planned]) }),
+        ]),
+      );
+      expect(result).toEqual(planned);
+    } finally {
+      await rm(alias, { recursive: true, force: true });
+      await rm(realRoot, { recursive: true, force: true });
+    }
   });
 
   test("never adopts an ancestor app root's applied plan for a nested root", async () => {
