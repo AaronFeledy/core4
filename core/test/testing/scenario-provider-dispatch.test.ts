@@ -87,7 +87,7 @@ test("resolves the applied plan when later commands use a symlink alias of the r
 
         // Then: the alias still finds the realization, the way production ancestor matching does.
         expect(planned?.root).toBeDefined();
-        expect(planned?.id).toBe("exec-demo");
+        expect(planned?.id).toBe(AppId.make("exec-demo"));
       }),
     ),
   );
@@ -97,8 +97,8 @@ test("prefers the longest matching applied plan the way production ancestor matc
   const provider = makeScenarioProvider();
   const parent = planAt("parent-app", AbsolutePath.make("/tmp/scenario-parent"));
   const child = planAt("child-app", AbsolutePath.make("/tmp/scenario-parent/child"));
-  await Effect.runPromise(provider.provider.apply(parent, {}));
-  await Effect.runPromise(provider.provider.apply(child, {}));
+  await Effect.runPromise(Effect.scoped(provider.provider.apply(parent, { reconcile: false })));
+  await Effect.runPromise(Effect.scoped(provider.provider.apply(child, { reconcile: false })));
 
   const planned = await Effect.runPromise(
     Effect.gen(function* () {
@@ -107,7 +107,7 @@ test("prefers the longest matching applied plan the way production ancestor matc
     }).pipe(Effect.provide(provider.layer)),
   );
 
-  expect(planned?.id).toBe("child-app");
+  expect(planned?.id).toBe(AppId.make("child-app"));
 });
 
 test("forgets the applied plan when destroy uses a symlink to its root", async () => {
