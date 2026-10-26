@@ -8,9 +8,14 @@ tags: [beta, docs, global, setup]
 
 # Install the global app
 
-Do not name a project `global`. That id is reserved. A Landofile that resolves to `name: global` fails with `AppIdReservedError` before any plan is built.
+The global app provides shared services such as Traefik, Mailpit, and the SSH
+agent sidecar. Lando provisions it when an app needs those services; use
+`lando global:install` if you want to create its configuration ahead of time.
 
-The global app lives under `<userDataRoot>/global`. It is not picked up from your cwd. Use `lando global:*` (aliases of `lando meta:global:*`).
+It lives under `<userDataRoot>/global`, not in your current directory. Manage it
+with `lando global:*` (aliases of `lando meta:global:*`). The name `global` is
+reserved: a project Landofile with `name: global` fails with `AppIdReservedError`
+before Lando builds a plan.
 
 ## Materialize the stack
 
@@ -22,11 +27,18 @@ lando global:install
 
 `--yes` is accepted for consistency with `lando setup --yes`. Global install does not prompt.
 
-Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts Traefik and the SSH agent sidecar when an app start needs them, including after `lando poweroff` or a reboot. You do not start them by hand.
+Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts Traefik and the SSH agent sidecar when an app start needs them, including after `lando poweroff` or a reboot. You do not start them by hand. An app with no routes never starts the router, so a database-only or worker app comes up on a host where the router cannot.
+
+## Where the global app runs
+
+Traefik, Mailpit, and the ssh-agent sidecar run on the host provider that `lando setup` selected. A Landofile `provider:` never moves them, and routed apps must share that provider. Only `lando setup --provider=<new>` switches an existing global app. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs), [Routing needs one provider](../setup/provider-selection.mdx#routing-needs-one-provider), and [Switch providers](../setup/provider-selection.mdx#switch-providers).
 
 ## Override a bundled service
 
-Plugin defaults land in the generated `<userDataRoot>/global/.lando.dist.yml`. Your overrides go in the canonical `<userDataRoot>/global/.lando.yml`, which merges on top of the generated file, so your value wins:
+After running `lando global:install`, use `lando global:config set` to change a
+bundled service. Plugin defaults are in the generated
+`<userDataRoot>/global/.lando.dist.yml`; your overrides go in
+`<userDataRoot>/global/.lando.yml` and take precedence. For example:
 
 ```sh
 lando global:config set services.mailpit.environment.MP_MAX_MESSAGES 1000
@@ -34,11 +46,20 @@ lando global:config --format=json
 lando global:start
 ```
 
-Run this after `lando global:install`. `lando global:config --format=json` prints the effective merged Landofile under `result.landofile`; before install it reports `materialized: false` with an empty Landofile. Check your new value there before you run `lando global:start` to apply it. Don't edit `.lando.dist.yml`, because Lando regenerates it. See [Read and write global config](../config/global-config.mdx) for the full layer order.
+`lando global:config --format=json` prints the effective merged Landofile under `result.landofile`; before install it reports `materialized: false` with an empty Landofile. Check your new value there before you run `lando global:start` to apply it. Don't edit `.lando.dist.yml`, because Lando regenerates it. The global root takes the same layers an app root does, in YAML or TypeScript form, with `includes:` resolved per layer; a canonical `.lando.ts` is read by `global:config` but not written by `set`, `unset`, or `edit`. See [Read and write global config](../config/global-config.mdx#read-the-effective-global-config) for the full layer order.
 
 ## When one global service fails
 
-`lando global:start`, `lando global:restart`, and `lando global:rebuild` start global services that do not depend on each other separately, then wait for each group's readiness. If one fails its healthcheck or exits without an applicable restart policy, the others still start. The command exits non-zero, naming failed and running services. A failed or interrupted group keeps the services it established, and the ones that succeeded stay running. If any group fails, the previously published global routes stay unchanged. Lando does not publish a partial set. A later start that succeeds for every group it selected publishes the current routes. A failed user-app start never undoes shared global services. Exhausted checks fail even supervised services. Restart and rebuild still revalidate the router after a readiness failure. Diagnose with `lando global:logs -s <service>`, or `lando doctor` for an `inspect-failed` provider observation. Fix the cause, then start that service to converge on its retained resources:
+`lando global:start`, `lando global:restart`, and `lando global:rebuild` start global services that do not depend on each other separately, then wait for each group's readiness. If one fails its healthcheck or exits without an applicable restart policy, the others still start. The command exits non-zero, naming failed and running services.
+
+A failed or interrupted group keeps the services it established, and successful
+groups stay running. If any group fails, Lando leaves the previously published
+global routes unchanged rather than publishing a partial set. A later start that
+succeeds for every selected group publishes the current routes. A failed user-app
+start never undoes shared global services.
+
+Exhausted readiness checks fail even supervised services. Restart and rebuild
+still revalidate the router after a readiness failure. Diagnose with `lando global:logs -s <service>`, or `lando doctor` for an `inspect-failed` provider observation. Fix the cause, then start that service to converge on its retained resources:
 
 ```sh
 lando global:start --service ssh-agent

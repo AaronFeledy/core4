@@ -90,6 +90,7 @@ const withRepository = async (
           Effect.flatMap((loadScope) =>
             resolveLandofileIncludes({ loadScope, landofile, appRoot, cacheRoot, ports, stateStore }),
           ),
+          Effect.map((compiled) => compiled.document),
         ),
       );
     };

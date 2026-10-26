@@ -7,7 +7,6 @@ import { Effect, Layer, Schema } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
-import { writeCwdAppMapEntry } from "@lando/engine/cache/cwd-app-map";
 import {
   AppsListResultSchema,
   appliedPlansDirectory,
@@ -42,7 +41,6 @@ const makeAppliedPlanEnvelope = (id: string, name: string, root: string, service
       services.map((s) => [s, { name: s, type: "lando.app", primary: false, env: {} }]),
     ),
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: { source: "apps-list.scenario.test", runtime: 4 },
@@ -154,67 +152,5 @@ describe("apps:list command", () => {
     const encoded = Schema.encodeSync(AppsListResultSchema)(result);
     expect(encoded.apps.length).toBe(3);
     expect(encoded).toEqual(result);
-  });
-
-  test("falls back to the resolved user cache root via LANDO_USER_CACHE_ROOT", async () => {
-    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-apps-list-default-cache-"));
-    await Effect.runPromise(
-      writeCwdAppMapEntry({
-        cacheRoot,
-        entry: {
-          cwd: "/srv/default-cache/web",
-          appRoot: "/srv/default-cache",
-          primaryLandofilePath: "/srv/default-cache/.lando.yml",
-          mtimeNs: 1,
-          sizeBytes: 2,
-          lastUsedAt: 3,
-        },
-      }),
-    );
-    const previous = process.env.LANDO_USER_CACHE_ROOT;
-    process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
-    try {
-      const result = await Effect.runPromise(
-        listServices({ userDataRoot, discoverContainers: noDiscover }).pipe(
-          Effect.provide(fakeConfigService(userDataRoot)),
-        ),
-      );
-      const cached = result.apps.find((app) => app.appRoot === "/srv/default-cache");
-      expect(cached?.providerId).toBe("cache");
-    } finally {
-      // biome-ignore lint/performance/noDelete: delete is required to avoid exposing the string "undefined"
-      if (previous === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
-      else process.env.LANDO_USER_CACHE_ROOT = previous;
-      await rm(cacheRoot, { recursive: true, force: true });
-    }
-  });
-
-  test("includes apps discovered from the persistent cwd-app-map cache", async () => {
-    const userCacheRoot = await mkdtemp(join(tmpdir(), "lando-apps-list-cache-"));
-    await Effect.runPromise(
-      writeCwdAppMapEntry({
-        cacheRoot: userCacheRoot,
-        entry: {
-          cwd: "/srv/cached/web",
-          appRoot: "/srv/cached",
-          primaryLandofilePath: "/srv/cached/.lando.yml",
-          mtimeNs: 1,
-          sizeBytes: 2,
-          lastUsedAt: 3,
-        },
-      }),
-    );
-
-    try {
-      const result = await Effect.runPromise(
-        listServices({ userDataRoot, userCacheRoot, discoverContainers: noDiscover }).pipe(
-          Effect.provide(fakeConfigService(userDataRoot)),
-        ),
-      );
-      const cached = result.apps.find((app) => app.appRoot === "/srv/cached");
-      expect(cached).toMatchObject({ appName: "cached", providerId: "cache", services: [] });
-    } finally {
-      await rm(userCacheRoot, { recursive: true, force: true });
-    }
   });
 });

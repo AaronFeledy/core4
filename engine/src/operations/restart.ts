@@ -16,7 +16,7 @@ import {
   PreRestartEvent,
   PreServiceStopEvent,
 } from "@lando/sdk/events";
-import { type AppPlan, ServiceName } from "@lando/sdk/schema";
+import type { AppPlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildOrchestrator,
@@ -27,7 +27,7 @@ import {
   type ManagedFileTransactionGuard,
   type PathsService,
   type PluginRegistry,
-  RouterService,
+  type RouterService,
   RuntimeProviderRegistry,
   type ShellRunner,
   StateStore,
@@ -38,19 +38,22 @@ import {
   makeServiceRestartWouldRecreateError,
 } from "@lando/container-runtime/podman/bring-up-recreate";
 import type { RedactionService } from "@lando/redaction/service";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { routeUrlsForPlan } from "../lifecycle/routes.ts";
+import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
+import { ensureAppPlacement } from "../providers/app-placement.ts";
+import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
-import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
+import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
-import { startFileSyncSessions } from "./start-file-sync.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import { StartAppResultSchema, type StartManagedScope, startApp } from "./start.ts";
@@ -67,6 +70,7 @@ export const RestartAppResultSchema = Schema.Struct({
 });
 
 type RestartAppServices =
+  | EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -91,9 +95,8 @@ const restartSelectedServices = Effect.fnUntraced(function* (
   const { signal } = options;
   const events = yield* EventService;
   const registry = yield* RuntimeProviderRegistry;
-  const proxy = yield* RouterService;
   const provider = yield* registry.select(target.plan);
-  const appliedPlan = yield* registry.resolveAppliedPlan?.(target.plan.root) ?? Effect.succeed(undefined);
+  const appliedPlan = yield* registry.resolveAppliedPlan(target.plan.root);
   if (
     appliedPlan === undefined ||
     appliedPlan.root !== target.plan.root ||
@@ -109,14 +112,40 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       }),
     );
   }
-  const runtimePlan = yield* withRetainedAgentOverlays(selectedPlan, target.app);
+  const projectedServices = yield* Effect.forEach(Object.values(selectedPlan.services), (service) =>
+    Effect.gen(function* () {
+      const artifact = appliedPlan.services[service.name]?.artifact;
+      if (artifact?.kind !== "ref" || artifact.ref.length === 0) {
+        return yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId: String(target.plan.provider),
+            operation: "restart",
+            message: `Selected restart requires a concrete applied artifact for ${service.name}.`,
+            remediation: `Run \`lando rebuild -s ${service.name}\` to create this service.`,
+          }),
+        );
+      }
+      return [
+        service.name,
+        serviceWithArtifact(service, { providerId: appliedPlan.provider, ...artifact }),
+      ] as const;
+    }),
+  );
+  const runtimePlan = yield* withRetainedAgentOverlays(
+    { ...selectedPlan, services: Object.fromEntries(projectedServices) },
+    target.app,
+  );
+  const inspectionPlan: AppPlan = {
+    ...target.plan,
+    services: { ...target.plan.services, ...runtimePlan.services },
+  };
   const services = Object.values(runtimePlan.services);
 
   for (const service of services) {
     const runtime = yield* provider.inspect({
       app: target.plan.id,
       service: service.name,
-      plan: target.plan,
+      plan: inspectionPlan,
     });
     if (runtime.status === "stopped" && runtime.containerId === undefined) {
       return yield* Effect.fail(
@@ -128,7 +157,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
         }),
       );
     }
-    const reasons = bringUpRecreateReasons(target.plan, service, runtime, { skipAbsentFields: true });
+    const reasons = bringUpRecreateReasons(inspectionPlan, service, runtime, { skipAbsentFields: true });
     if (reasons[0] !== undefined) {
       return yield* Effect.fail(
         makeServiceRestartWouldRecreateError({
@@ -167,9 +196,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
             timestamp: DateTime.nowUnsafe(),
           }),
         );
-        yield* provider
-          .stop({ app: target.plan.id, service: service.name, plan: target.plan })
-          .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void));
+        yield* provider.stop({ app: target.plan.id, service: service.name, plan: target.plan });
         yield* events.publish(
           PostServiceStopEvent.make({
             eventName: "post-service-stop",
@@ -199,20 +226,17 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       Effect.map((runtime) => [String(service.name), runtime] as const),
     ),
   );
-  yield* startFileSyncSessions(selectedPlan, events);
-
-  const routedUrls = yield* routeUrlsForPlan(proxy, target.plan);
-  const ready = yield* waitForServiceReadiness({
+  const ready = yield* completeStartup({
+    policy: "selected-restart",
+    selectedPlan,
+    events,
     provider,
     plan: target.plan,
     services: selected,
     initial: new Map(initial),
     ...(signal === undefined ? {} : { signal }),
   });
-  const started = ready.map((row) => ({
-    ...row,
-    endpoints: [...(routedUrls.get(ServiceName.make(row.name)) ?? []), ...row.endpoints],
-  }));
+  const started = startedServices(yield* collectPlanConnections(target.plan, ready));
 
   const postRestart = PostRestartEvent.make({
     _tag: "post-restart",
@@ -234,6 +258,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
   ): Effect.fn.Return<RestartAppResult, RestartAppError, RestartAppServices> {
     if (options.signal?.aborted === true) return yield* Effect.interrupt;
     const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
+    yield* ensureAppPlacement(resolvedTarget.app, resolvedTarget.plan.provider);
     const registry = yield* RuntimeProviderRegistry;
     const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
     const plan = mysqlResolvedTarget.plan;

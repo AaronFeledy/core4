@@ -8,7 +8,7 @@ tags: [beta, docs, agent-native, info, json]
 
 # Inspect a running app
 
-`lando app:info --format=json` reports every service, its status, and its reachable endpoints. You do not need a shell inside a service to read that state:
+`lando app:info --format=json` reports every service, its status, and its connections: the addresses you reach from the host and the addresses other services in the app use. You do not need a shell inside a service to read that state:
 
 <Guide>
   <Scenario id="read-info-as-json" render>
@@ -24,6 +24,9 @@ tags: [beta, docs, agent-native, info, json]
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"in-container-context-demo\"" } }} />
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"services\":\\s*\\[" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"connections\":\\s*\\[" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"scope\":\\s*\"app\"" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"url\":\\s*\"http://app:3000\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -40,25 +43,84 @@ The result carries `app` (the app name, matching the Landofile) and `services`,
 an array with one entry per service defined in the Landofile.
 
 Each `services[]` entry names the service and its type and provider, whether
-it's primary, its current status, and its reachable endpoints:
+it's primary, its current status, and its connections:
 
 ```
-{ app, service, api, type, provider, primary, status, endpoints, logSources? }
+{ app, service, api, type, provider, primary, status, connections, logSources?, creds? }
 ```
 
 `status` is one of a fixed set of values, safe to branch on directly instead of
-parsing prose: `unknown | stopped | starting | running | healthy | unhealthy | error`.
-`endpoints` lists the URLs this service answers on; an empty array means no
-endpoints, not a missing field.
+parsing prose: `unknown | stopped | starting | running | healthy | unhealthy |
+ready | completed | restarting | paused | error`.
+
+`connections` is a required array. It includes configured addresses and any host
+port bindings the provider observed that don't match a planned publication.
+An empty array means Lando has no connection addresses to report, not a missing
+field.
+Every connection carries:
+
+| Field | Meaning |
+| --- | --- |
+| `scope` | `app` for an address other services in this app dial, `host` for an address you reach from this machine |
+| `source` | `listener` (the service's own port on the app network), `publication` (a port published on the host), or `route` (a router hostname) |
+| `protocol` | `http`, `https`, `tcp`, or `udp`. Routes use the router's external scheme; other connections use the declared listener protocol, or `tcp`/`udp` for an unmatched observed host port. Lando never guesses HTTP |
+| `host` | Hostname or unbracketed IP address: the service key for `app` scope, `localhost`, a bind address, or a route hostname for `host` scope |
+| `endpoint` | The logical listener this connection comes from: `port`, `transport` (`tcp` or `udp`), its sorted `names`, and whether it is marked `primary` |
+| `binding` | `assigned` when the address has a port, `pending` when it doesn't have one yet |
+| `state` | `active`, `inactive`, or `unknown`. `active` means the service is running and, for a `host` address, Lando saw the port or route actually published. It never means the service is healthy |
+
+An `assigned` connection also carries `port`, a copyable `url` without any
+password, and `alternateUrls` for the same address under another scheme. A
+`pending` connection has none of those. It's a configured host port that the
+provider hasn't assigned, or a route that no router is serving yet. Lando doesn't
+invent a port for it, and its `state` is only ever `inactive` or `unknown`. A
+`route` connection adds `pathPrefix`, which its `url` keeps.
+
+The demo's Node service listens on `3000`, and the Node type marks that listener
+primary, so its `endpoint` is `{ port: 3000, transport: "tcp", names: ["app"],
+primary: true }`. Its `app`-scope listener URL is `http://app:3000`, and its
+default route is a `host`-scope `route` connection for
+`app.in-container-context-demo.lndo.site`. Unix sockets are not listed, and
+cross-app `<service>.<app>.internal` aliases are not connections.
+
+Only `host` connections that are `assigned`, `active`, and `http` or `https` on
+a non-wildcard hostname are hyperlinked by `lando info`, opened by `lando open`,
+or probed by the post-start scanner. `app`-scope addresses are never treated as
+clickable from the host.
+
+A stopped service keeps its configured connections with `state: inactive`, so
+the addresses stay readable and copyable. `unknown` means Lando could not
+observe the binding; it is not a failure and not a promise. No connection `state`
+proves the service is ready; use its healthcheck or a protocol probe for that.
+
+When the app has been started, `app:info` describes the plan Lando last applied,
+not an edited Landofile you have not started yet. Run `lando start` to apply
+edits before reading them back.
+
+`creds` appears only for services that publish database credentials, with
+password fields redacted. Build connection strings from the resolved credential
+expressions in your Landofile instead of copying them from `app:info`.
 
 The optional `agentEnv` block matches `lando info --deep`: `enabled` reports
 the app's forwarding policy, and `forwarded` lists host-present names that
 pass the allowlist and value guards, never their values. Service and explicit
 command env still take precedence. See [the built-in markers](../tooling/lando-shell.mdx).
 
-CLI invocations load current app configuration. A retained library App handle keeps its captured plan and Landofile for exec, deep info, and tooling; even an omitted `agentEnv` uses that snapshot's default policy. A later app `agentEnv: false` edit is invisible to the old handle. Re-resolve with `runtime.app(originalSelector)` or `resolveApp(originalSelector)` to capture it, supplying an updated object for shape selectors. Provider status stays live and shallow info performs no Landofile load for a supplied target.
+CLI invocations load current app configuration. A retained library App handle
+instead keeps the plan and Landofile it captured for exec, deep info, and tooling.
+This includes the default policy when `agentEnv` is omitted: changing the app to
+`agentEnv: false` later does not update the old handle.
 
-Invocation-time global policy through `ConfigService.get("agentEnv")` and current `LANDO_AGENT_ENV=0` still veto automatic forwarding. Global-config disk reload is not promised. A veto does not scrub explicit service/command env or revoke a running command.
+To capture the change, resolve the app again with `runtime.app(originalSelector)`
+or `resolveApp(originalSelector)`. If the selector is an object, supply the updated
+object. Provider status remains live; shallow info does not load a Landofile when
+you supply a target.
+
+Automatic forwarding also checks `ConfigService.get("agentEnv")` and the current
+`LANDO_AGENT_ENV=0` setting at invocation time. Either can veto forwarding.
+The global configuration itself is a snapshot: a CLI command reads it at startup,
+while an embedded runtime keeps its initial configuration. A veto does not remove
+explicit service or command environment variables, or revoke a running command.
 
 ## How context reaches a container
 

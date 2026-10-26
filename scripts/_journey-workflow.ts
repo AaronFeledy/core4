@@ -1,4 +1,5 @@
 import { containerHelperDownloadStep } from "./_container-helper-workflow.ts";
+import { isolateLandoRootsStep as isolateRootsStep } from "./_lando-roots-workflow.ts";
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import {
   CI_PLATFORMS,
@@ -8,7 +9,8 @@ import {
 } from "./ci-platforms.ts";
 import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 
-const SCHEDULE_IF = "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'";
+const SCHEDULE_IF =
+  "github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')";
 
 export const createJourneyWorkflowBuilder = (workflow: string) => {
   const assertNever = (value: never): never => {
@@ -28,8 +30,6 @@ export const createJourneyWorkflowBuilder = (workflow: string) => {
 
   const renderCadenceIf = (cadence: PlatformReadinessCell["cadence"]): string => {
     switch (cadence) {
-      case "pr+evidence":
-        return "";
       case "evidence":
         return `    if: ${SCHEDULE_IF}\n`;
       default:
@@ -46,15 +46,6 @@ export const createJourneyWorkflowBuilder = (workflow: string) => {
     const flags = `--yes --provider=${cell.provider} --skip-install-ca --skip-shell-integration --skip-file-sync`;
     return isWindowsCiPlatform(cell) ? `${flags} --no-interactive` : flags;
   };
-
-  // GitHub does not expose the `runner` context to job-level `env:`, so these
-  // roots are exported from the first step instead. Declaring them at job level
-  // makes GitHub reject the entire workflow file.
-  const isolateRootsStep = `      - name: Isolate Lando roots
-        run: |
-          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
-          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
-          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"`;
 
   const setupBunSteps = `      - name: Setup Bun
         uses: oven-sh/setup-bun@v2

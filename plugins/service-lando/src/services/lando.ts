@@ -3,7 +3,6 @@ import { Schema } from "effect";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { ServiceConfigIssue, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
-import { publishedEndpointsFromPorts } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const LANDO_FEATURE_ID = "service-lando.lando" as const;
@@ -23,10 +22,6 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
 
   if (hasImage) ctx.setArtifact({ kind: "ref", ref: service.image });
   applyAuthoredProcessFields(ctx, ["command", "entrypoint", "user"]);
-
-  for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
-    ctx.addEndpoint(endpoint);
-  }
 };
 
 export const landoServiceFeature: ServiceFeatureDefinition = {

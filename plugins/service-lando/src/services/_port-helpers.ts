@@ -1,14 +1,7 @@
 import { Schema } from "effect";
 
-import {
-  type ComposePortEntry,
-  type EndpointPublication,
-  type InternalEndpointInput,
-  PortNumber,
-  type PublishedEndpointInput,
-  type ServiceConfig,
-} from "@lando/sdk/schema";
-import type { ServiceFeatureContext } from "@lando/sdk/services";
+import { type EndpointPlan, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
+import type { ServiceEndpointContext } from "@lando/sdk/services";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
 interface Listener {
@@ -18,19 +11,21 @@ interface Listener {
   readonly reserved?: readonly { readonly port: number; readonly use: string }[];
 }
 
-export const plannedPort = (service: ServiceConfig, listener: Listener): number =>
-  service.port ?? listener.port;
+export const plannedPort = (service: ServiceConfig, listener: Listener): PortNumber =>
+  PortNumber.make(service.port ?? listener.port);
 
 export const assertListenerConfig = (service: ServiceConfig, listener: Listener): void => {
   const port = plannedPort(service, listener);
   const variable = listener.variable;
   const authored = variable === undefined ? undefined : service.environment?.[variable];
   if (authored !== undefined && variable !== undefined) {
-    const value = /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
+    const value = typeof authored === "string" && /^[0-9]+$/.test(authored) ? Number(authored) : Number.NaN;
     if (!Number.isInteger(value) || value < 1 || value > 65_535) {
       throw new ServiceConfigIssue(
         ["environment", variable],
-        `${variable} is ${JSON.stringify(authored)}, which is not a TCP port number.`,
+        typeof authored === "string"
+          ? `${variable} is ${JSON.stringify(authored)}, which is not a TCP port number.`
+          : `${variable} requires a literal TCP port number.`,
         `Remove it and set port: instead; Lando sets ${variable} from port:.`,
       );
     }
@@ -57,45 +52,16 @@ export const assertListenerConfig = (service: ServiceConfig, listener: Listener)
   }
 };
 
-const publicationFor = (entry: ComposePortEntry): typeof EndpointPublication.Type => ({
-  ...(entry.hostIp === undefined ? {} : { bindAddress: entry.hostIp }),
-  ...(entry.published === undefined ? {} : { hostPort: entry.published }),
-});
-
-export const publishedEndpointsFromPorts = (
-  entries: readonly ComposePortEntry[],
-  fallbackProtocol?: "http" | "https" | "tcp",
-): readonly PublishedEndpointInput[] =>
-  entries.map((entry) => ({
-    _tag: "published",
-    port: entry.target,
-    protocol: entry.protocol === "udp" ? "udp" : (fallbackProtocol ?? "tcp"),
-    publication: publicationFor(entry),
-    ...(entry.name === undefined ? {} : { name: entry.name }),
-    ...(entry.appProtocol === undefined ? {} : { appProtocol: entry.appProtocol }),
-  }));
-
-export const internalEndpointsFromExpose = (
-  targets: readonly PortNumber[],
-  protocol: "http" | "https" | "tcp",
-): readonly InternalEndpointInput[] => targets.map((port) => ({ _tag: "internal", port, protocol }));
-
-export const addServicePortEndpoints = (
-  ctx: ServiceFeatureContext,
+/** Pure primary internal endpoint list from immutable service facts. */
+export const servicePortEndpoints = (
+  ctx: Pick<ServiceEndpointContext, "serviceName">,
   fallback: { readonly port: number; readonly protocol: "http" | "https" | "tcp" },
-): void => {
-  const configured = ctx.normalizedConfig.ports;
-  if (configured === undefined) {
-    ctx.addEndpoint({
-      _tag: "internal",
-      port: Schema.decodeUnknownSync(PortNumber)(fallback.port),
-      protocol: fallback.protocol,
-      name: ctx.serviceName,
-    });
-    return;
-  }
-
-  for (const endpoint of publishedEndpointsFromPorts(configured, fallback.protocol)) {
-    ctx.addEndpoint(endpoint);
-  }
-};
+): readonly EndpointPlan[] => [
+  {
+    _tag: "internal",
+    port: Schema.decodeUnknownSync(PortNumber)(fallback.port),
+    protocol: fallback.protocol,
+    name: ctx.serviceName,
+    primary: true,
+  },
+];

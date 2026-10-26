@@ -24,9 +24,10 @@ import type {
 } from "@lando/sdk/app";
 import { LogSourceId, ServiceName } from "@lando/sdk/schema";
 import type { BuildOrchestrator, LogChunk, RouterService, ShellRunner } from "@lando/sdk/services";
-import { EventService, Renderer } from "@lando/sdk/services";
+import { type EnvironmentValueResolver, EventService, Renderer } from "@lando/sdk/services";
 
-import type { RedactionService } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
+import { createPayloadRedactor } from "@lando/sdk/secrets";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import type { LogsAppLine } from "../operations/logs.ts";
@@ -46,6 +47,7 @@ const toLogChunk = (line: LogsAppLine): LogChunk => ({
 });
 
 export type AppHandleRuntimeServices =
+  | EnvironmentValueResolver
   | LandoRuntimeServices
   | BuildOrchestrator
   | PrivateFileAccessService
@@ -145,7 +147,13 @@ export const makeAppHandle = (
         Effect.tap((result) =>
           result.stderr.length === 0
             ? Effect.void
-            : Renderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(result.stderr))),
+            : Effect.gen(function* () {
+                const redaction = yield* RedactionService;
+                const payload = createPayloadRedactor(yield* redaction.payloadValues());
+                const bytes = payload.write(new TextEncoder().encode(result.stderr));
+                const text = new TextDecoder().decode(Buffer.concat([bytes, payload.flush()]));
+                yield* Renderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(text)));
+              }),
         ),
         provide,
       ),

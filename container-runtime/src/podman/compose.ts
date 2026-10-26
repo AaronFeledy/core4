@@ -14,7 +14,7 @@ import {
   type AppPlan,
   type ServicePlan,
   fileSyncVolumeName,
-  landoServiceNetworkAliases,
+  landoServiceNetworkAttachments,
   landoSharedNetworkName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
@@ -23,10 +23,13 @@ import { quoteYamlScalar, yamlMappingKeyText } from "@lando/sdk/yaml";
 
 import { bindSourceForComposeConfig, composeConfigMounts } from "../compose-configs.ts";
 import type { ProviderErrorContext } from "../engine-api.ts";
+import { previewEnvironmentValue } from "../environment-values.ts";
 import { type HostAliasMap, serviceHostAliases, writeHostAliases } from "../host-aliases.ts";
 import { requiresLongMountSyntax } from "../mount-syntax.ts";
+import { physicalListenerPorts, physicalPublications } from "../physical-publications.ts";
 import { commonContainerLabels, composeConfigBindStrings, mountSuffix } from "../plan.ts";
 import { volumeOwnershipLabels } from "../volume-ownership.ts";
+import { composeHealthcheck } from "./compose-healthcheck.ts";
 import { podmanNetworkNames } from "./networks.ts";
 
 export interface EmitComposeOptions {
@@ -206,19 +209,18 @@ const serviceTmpfs = (service: ServicePlan): ReadonlyArray<string> =>
   );
 
 const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
-  service.endpoints.flatMap((endpoint) => {
-    if (endpoint._tag === "internal") return [];
-    const suffix = endpoint.protocol === "udp" ? "/udp" : "";
-    const bindAddress = endpoint.publication.bindAddress ?? "127.0.0.1";
-    const hostPort = endpoint.publication.hostPort ?? "";
-    return [`${bindAddress}:${hostPort}:${endpoint.port}${suffix}`];
+  physicalPublications(service.endpoints).map((endpoint) => {
+    const suffix = endpoint.transport === "udp" ? "/udp" : "";
+    const bindAddress = endpoint.bindAddress.includes(":")
+      ? `[${endpoint.bindAddress}]`
+      : endpoint.bindAddress;
+    const hostPort = endpoint.hostPort ?? "";
+    return `${bindAddress}:${hostPort}:${endpoint.port}${suffix}`;
   });
 
 const serviceExpose = (service: ServicePlan): ReadonlyArray<string> =>
-  service.endpoints.flatMap((endpoint) =>
-    endpoint._tag === "internal" && endpoint.protocol !== "unix"
-      ? [`${endpoint.port}${endpoint.protocol === "udp" ? "/udp" : ""}`]
-      : [],
+  physicalListenerPorts(service.endpoints.filter((endpoint) => endpoint._tag === "internal")).map((port) =>
+    port.endsWith("/tcp") ? port.slice(0, -4) : port,
   );
 
 const serviceDependsOn = (service: ServicePlan): Readonly<Record<string, DependsOnEntry>> =>
@@ -259,7 +261,9 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
         image: serviceImage(ctx, service),
         ports: servicePorts(service),
         expose: serviceExpose(service),
-        environment: service.environment,
+        environment: Object.fromEntries(
+          Object.entries(service.environment).map(([key, value]) => [key, previewEnvironmentValue(value)]),
+        ),
         extra_hosts: serviceHostAliases(service, (message, details) => {
           throw composeError(ctx, message, details);
         }),
@@ -268,11 +272,10 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
         depends_on: serviceDependsOn(service),
         labels: commonContainerLabels(plan, service),
         networks: Object.fromEntries(
-          networkNames.map((networkName) => {
-            const aliases =
-              networkName === sharedName ? landoServiceNetworkAliases(plan, service) : [service.name];
-            return [networkName, aliases.length > 0 ? { aliases } : {}];
-          }),
+          landoServiceNetworkAttachments(plan, service).map(({ name, aliases }) => [
+            name,
+            aliases.length > 0 ? { aliases } : {},
+          ]),
         ),
       }),
     ]),
@@ -282,8 +285,11 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
       if (name === sharedName) {
         return [name, { external: true, name }];
       }
-      const planned = plan.networks.find((network) => network.name === name && network.shared === false);
-      return [name, { driver: planned?.driver ?? "bridge" }];
+      const authored = plan.networking?.authoredNetworks?.find((network) => network.name === name);
+      if (authored !== undefined) {
+        return [name, authored.external ? { external: true, name } : { driver: authored.driver ?? "bridge" }];
+      }
+      return [name, { driver: plan.networking?.perAppBridge?.driver ?? "bridge" }];
     }),
   );
   const volumes = Object.fromEntries([
@@ -373,6 +379,8 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
 
   for (const [serviceName, service] of Object.entries(document.services)) {
     lines.push(`  ${yamlMappingKeyText(serviceName)}:`, `    image: ${quoteYamlScalar(service.image)}`);
+    const plannedService = Object.values(plan.services).find((candidate) => candidate.name === serviceName);
+    if (plannedService !== undefined) lines.push(...composeHealthcheck(plan, plannedService));
 
     if (service.ports !== undefined) {
       lines.push("    ports:");

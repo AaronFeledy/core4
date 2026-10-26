@@ -19,26 +19,29 @@ import {
   BuildOrchestrator,
   type EventService,
   type LandofileService,
-  RouterService,
+  type RouterService,
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
 import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
-import { type AppPlan, type AppRef, ServiceName } from "@lando/sdk/schema";
+import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
-import { routeUrlsForPlan } from "../lifecycle/routes.ts";
+import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
+import { ensureAppPlacement } from "../providers/app-placement.ts";
+import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
-import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
+import { inspectAppliedService } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
@@ -62,6 +65,7 @@ export const RebuildAppResultSchema = Schema.Struct({
 });
 
 type RebuildAppServices =
+  | EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -87,6 +91,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   RebuildAppError,
   | BuildOrchestrator
   | RouterService
+  | EnvironmentValueResolver
   | RuntimeProviderRegistry
   | EventService
   | PathsService
@@ -97,16 +102,12 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   const { signal, managed } = options;
   const registry = yield* RuntimeProviderRegistry;
   const builds = yield* BuildOrchestrator;
-  const proxy = yield* RouterService;
   const provider = yield* registry.select(plan);
   const services = Object.values(plan.services);
 
   const stopSelected = Effect.forEach(
     [...services].reverse(),
-    (service) =>
-      provider
-        .stop({ app: plan.id, service: service.name, plan })
-        .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void)),
+    (service) => provider.stop({ app: plan.id, service: service.name, plan }),
     { discard: true },
   );
   yield* markStartMutation(target.plan);
@@ -130,9 +131,8 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
             reusePolicy: "adopt",
             ...(managed === undefined ? {} : { managed }),
             use: Effect.fnUntraced(function* (applyPlan) {
-              const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(applyPlan);
               yield* Effect.scoped(
-                provider.apply(applyPlan, {
+                applyWithResolvedEnvironment(provider, applyPlan, {
                   reconcile: true,
                   completionPlan: readinessPlan,
                   recordedPlan: {
@@ -140,7 +140,6 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
                     services: { ...target.plan.services, ...builtPlan.services },
                   },
                   ...(signal === undefined ? {} : { signal }),
-                  serviceEnvironment,
                   onVolumeCreated: yield* volumeCreationRecorder(provider, applyPlan),
                 }),
               );
@@ -154,23 +153,17 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
           }),
       }),
   });
-  yield* withBuildProvider(
-    builds.buildApp(builtPlan, { force: true, ...(signal === undefined ? {} : { signal }) }),
-    provider,
-  );
-
-  const routedUrls = yield* routeUrlsForPlan(proxy, builtPlan);
-  const ready = yield* waitForServiceReadiness({
+  const ready = yield* completeStartup({
+    policy: "selected-rebuild",
+    builds,
+    selectedPlan: builtPlan,
     provider,
     plan: readinessPlan,
     services: services.map((service) => service.name),
     initial,
     ...(signal === undefined ? {} : { signal }),
   });
-  return ready.map((row) => ({
-    ...row,
-    endpoints: [...(routedUrls.get(ServiceName.make(row.name)) ?? []), ...row.endpoints],
-  }));
+  return startedServices(yield* collectPlanConnections(readinessPlan, ready));
 });
 
 export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
@@ -179,6 +172,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
   managed?: StartManagedScope,
 ): Effect.fn.Return<RebuildAppResult, RebuildAppError, RebuildAppServices> {
   const plannedTarget = target ?? (yield* resolveDesiredAppTarget);
+  yield* ensureAppPlacement(plannedTarget.app, plannedTarget.plan.provider);
   const registry = yield* RuntimeProviderRegistry;
   const resolvedTarget = yield* resolveMysqlVolumeTarget(plannedTarget, registry);
   const plan = resolvedTarget.plan;

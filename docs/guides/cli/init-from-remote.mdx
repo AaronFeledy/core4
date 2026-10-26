@@ -15,35 +15,7 @@ rendering only works for bundled recipes so far. Each source requires the flag t
 `recipe.yml`, and each fails fast, before any clone or download, when that
 flag is missing:
 
-<Guide>
-  <Scenario id="missing-url-fails-fast" render>
-    <Step name="git-without-url">
-      <Run command="lando init --source=git --yes --no-interactive" expectExit={1} />
-      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --url" }} />
-    </Step>
-  </Scenario>
 
-  <Scenario id="missing-package-fails-fast" render>
-    <Step name="npm-without-package">
-      <Run command="lando init --source=npm --yes --no-interactive" expectExit={1} />
-      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --package" }} />
-    </Step>
-  </Scenario>
-
-  <Scenario id="missing-id-fails-fast" render>
-    <Step name="registry-without-id">
-      <Run command="lando init --source=registry --yes --no-interactive" expectExit={1} />
-      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --id" }} />
-    </Step>
-  </Scenario>
-
-  <Scenario id="unsupported-source-fails-fast" render>
-    <Step name="unknown-source-value">
-      <Run command="lando init --source=bogus --yes --no-interactive" expectExit={1} />
-      <Verify errorTag="RecipeSourceError" expect={{ regex: "Unsupported init source" }} />
-    </Step>
-  </Scenario>
-</Guide>
 
 `--source` only accepts `git`, `tarball`, `npm`, and `registry`; any other
 value is rejected outright.
@@ -120,3 +92,33 @@ lando init --source=registry --id=<recipe-id> --registry-url=<url>
 See [remote recipe sources](../recipes/remote-sources.mdx) for cache
 location, verification behavior, and every `RecipeSourceError` kind each
 source can raise.
+
+<Guide>
+  <Scenario id="missing-url-fails-fast" render>
+    <Step name="git-without-url">
+      <Run command="lando init --source=git --yes --no-interactive" expectExit={1} />
+      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --url" }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="missing-package-fails-fast" render>
+    <Step name="npm-without-package">
+      <Run command="lando init --source=npm --yes --no-interactive" expectExit={1} />
+      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --package" }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="missing-id-fails-fast" render>
+    <Step name="registry-without-id">
+      <Run command="lando init --source=registry --yes --no-interactive" expectExit={1} />
+      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --id" }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="unsupported-source-fails-fast" render>
+    <Step name="unknown-source-value">
+      <Run command="lando init --source=bogus --yes --no-interactive" expectExit={1} />
+      <Verify errorTag="RecipeSourceError" expect={{ regex: "Unsupported init source" }} />
+    </Step>
+  </Scenario>
+</Guide>

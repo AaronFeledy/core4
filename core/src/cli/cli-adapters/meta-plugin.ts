@@ -1,11 +1,15 @@
 import { Layer } from "effect";
 
 import type { RedactionService } from "@lando/redaction/service";
-import type { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
+import { bundledPluginModules } from "@lando/engine/composition";
 import { uninstall } from "@lando/engine/operations/uninstall";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { makeHostMaintenanceRegistryLayer } from "@lando/engine/runtime/host-maintenance";
+import * as HostPrivilegeService from "@lando/engine/services/privilege";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeLandoRuntime } from "../../runtime/layer";
 import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
 import { shellenvSpec } from "../command-specs/meta/shellenv";
@@ -32,12 +36,16 @@ export const runMetaUninstall = async (argv: ReadonlyArray<string>): Promise<voi
   const input = compiledCommandInputFromArgv("meta:uninstall", argv);
   return runCompiledCommand(
     uninstall(uninstallOptionsFromInput(input)),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    Layer.mergeAll(
+      PrivateFileAccessService.layer,
+      HostPrivilegeService.layer,
+      makeHostMaintenanceRegistryLayer(bundledPluginModules()),
+    ),
     renderUninstallResult,
   );
 };
 
-export const runMetaMcp = async (argv: ReadonlyArray<string>): Promise<void> => {
+export const runMetaMcp = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
   if (await rejectInvalidInvocation("meta:mcp", argv)) return;
   const input = compiledCommandInputFromArgv("meta:mcp", argv);
   const flags = mcpFlagsFromParsed(input.flags);
@@ -45,12 +53,16 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>): Promise<void> => 
     "meta:mcp",
     "plugins",
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
-  ) as Layer.Layer<ConfigService | RedactionService | BuiltInCommandCatalog, LandoRuntimeBootstrapError>;
+  ) as Layer.Layer<
+    ConfigService | RedactionService | BuiltInCommandCatalog,
+    ConfigError | LandoRuntimeBootstrapError
+  >;
   const retainedRuntime = makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }),
   ).pipe(Layer.orDie) as Layer.Layer<unknown>;
   return dispatchMcpCommand({
     flags,
+    ...(signal === undefined ? {} : { signal }),
     commandRuntime,
     retainedRuntime,
     rendererMode: activeRendererMode,
@@ -62,7 +74,7 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>): Promise<void> => 
       flags: input.flags,
       cwd: process.cwd(),
     },
-    formatError: (failure) => commandErrorMessage(failure, "meta:mcp"),
+    formatError: (failure, redactor) => commandErrorMessage(failure, "meta:mcp", redactor),
   });
 };
 

@@ -17,6 +17,7 @@ import type {
   ContainerHelperAssets,
   DataMover,
   Downloader,
+  EnvironmentValueResolver,
   EventService,
   FileSyncEngine,
   FileSystem,
@@ -32,7 +33,6 @@ import type {
   PrivilegeService,
   ProcessRunner,
   Renderer,
-  RootOverrides,
   RouterService,
   RuntimeProvider,
   RuntimeProviderRegistry,
@@ -72,6 +72,7 @@ import {
   rootOverridesFromConfig,
 } from "@lando/engine/runtime/runtime-options";
 import type { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
+import type { GlobalConfigSnapshot, GlobalConfigSources } from "@lando/engine/services/config";
 import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
 import type { ManagedFileServiceFactory } from "@lando/managed-file/service";
@@ -98,8 +99,9 @@ export const withRuntimeProviderRegistryOverride = <A>(
   thunk: () => Promise<A>,
 ): Promise<A> => runtimeProviderRegistryOverrideStorage.run(layer, thunk);
 
-type NoneRuntimeServices = RuntimeLayerFactory;
+type NoneRuntimeServices = RuntimeLayerFactory | GlobalConfigSources;
 type MinimalRuntimeServices =
+  | GlobalConfigSnapshot
   | NoneRuntimeServices
   | Logger
   | Renderer
@@ -120,6 +122,7 @@ type MinimalRuntimeServices =
   | PrivateFileAccessService
   | RedactionService
   | SecretStore
+  | EnvironmentValueResolver
   | StateStore
   | HttpClient.HttpClient
   | Downloader
@@ -168,9 +171,9 @@ type RuntimeLayer =
   | Layer.Layer<never, LandoRuntimeBootstrapError>
   | Layer.Layer<NoneRuntimeServices>
   | Layer.Layer<MinimalRuntimeServices>
-  | Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<MinimalRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<PluginRuntimeServices>
-  | Layer.Layer<PluginRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<PluginRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<CommandRuntimeServices>
   | Layer.Layer<CommandRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<ProviderRuntimeServices>
@@ -191,10 +194,10 @@ const runtimeLayerFor = (
   rendererMode: LibraryRendererMode,
   telemetryEnabled: boolean,
   pluginPolicy: NormalizedPluginPolicy,
-  rootOverrides: RootOverrides,
   lifecycle: BootstrapLifecycleTracker,
   pluginLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>,
   cwd: string,
+  configInputs: GlobalConfigSources["Service"],
 ): RuntimeLayer =>
   makeGeneratedBootstrapLayer(bootstrap, {
     runtimeLayerFactory: { make: makeLandoRuntime },
@@ -211,7 +214,7 @@ const runtimeLayerFor = (
     pluginManifests: pluginPolicy.manifests,
     externalImports: pluginPolicy.externalImports,
     cwd,
-    rootOverrides,
+    configInputs,
   }) as RuntimeLayer;
 
 const signalHandlersLayer = Layer.effectDiscard(
@@ -225,10 +228,10 @@ type LandoRuntimeOptionsFor<TBootstrap extends BootstrapLevel> = LandoRuntimeOpt
 export function makeLandoRuntime(options: LandoRuntimeOptionsFor<"none">): Layer.Layer<NoneRuntimeServices>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"minimal">,
-): Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>;
+): Layer.Layer<MinimalRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"plugins">,
-): Layer.Layer<PluginRuntimeServices, LandoRuntimeBootstrapError>;
+): Layer.Layer<PluginRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"commands">,
 ): Layer.Layer<CommandRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
@@ -237,6 +240,7 @@ export function makeLandoRuntime(
 ): Layer.Layer<ToolingRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"provider">,
+  snapshot?: GlobalConfigSnapshot["Service"],
 ): Layer.Layer<ProviderRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"global">,
@@ -249,7 +253,7 @@ export function makeLandoRuntime(
 ): Layer.Layer<AppRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(options: LandoRuntimeOptions): EngineRuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer;
-export function makeLandoRuntime(options: unknown): RuntimeLayer {
+export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapshot["Service"]): RuntimeLayer {
   const decoded = Schema.decodeUnknownResult(LandoRuntimeOptions)(options);
 
   if (Result.isFailure(decoded)) {
@@ -266,6 +270,8 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
           message:
             "Bundled plugin discovery requires importing @lando/core/bundled-plugins before constructing the runtime.",
           stage: "plugins",
+          remediation:
+            "Import `@lando/core/bundled-plugins` before constructing the runtime (or use the CLI entrypoint that loads bundled plugins).",
         }),
       ),
     );
@@ -292,10 +298,19 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
     normalizeLibraryRendererMode(decoded.success.renderer ?? decoded.success.config?.renderer),
     decoded.success.telemetry ?? decoded.success.config?.telemetry?.enabled ?? false,
     pluginPolicy,
-    rootOverridesFromConfig(decoded.success.config),
     lifecycle,
     hostLayersResult.success,
     capturedCwd,
+    {
+      env: { ...process.env },
+      host: decoded.success.config,
+      sources: {
+        user: decoded.success.configSources?.user ?? true,
+        env: decoded.success.configSources?.env ?? true,
+      },
+      rootOverrides: rootOverridesFromConfig(decoded.success.config),
+      ...(snapshot === undefined ? {} : { ...snapshot.inputs, snapshot }),
+    },
   );
 
   // Library mode defaults prompts to non-interactive; the option overrides the

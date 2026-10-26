@@ -22,11 +22,14 @@ const context = {
   remediation:
     "Inspect the retained app's containers and sync volumes, restore their ownership records, and retry destroy.",
 } as const;
-const failure = (message: string) =>
+const failure = (message: string, cause?: unknown) =>
   new ProviderUnavailableError({
     ...context,
     operation: "quiesceRetainedFileSync",
     message,
+    cause,
+    remediation:
+      "Install or start the selected runtime provider and confirm it can perform `quiesceRetainedFileSync`.",
   });
 
 const Inventory = Schema.Array(Schema.Struct({ Id: Schema.String }));
@@ -56,6 +59,7 @@ export const quiesceRetainedWindowsSyncWriters = Effect.fn("ProviderLando.quiesc
     plan: AppPlan,
     targets: ReadonlyArray<RetainedWindowsSyncTarget>,
   ): Effect.fn.Return<void, ProviderError> {
+    const ctx = { ...context, env: { ...process.env } };
     const sessions = verifiedFileSyncSessions(plan);
     if (plan.provider !== "lando" || sessions === undefined)
       return yield* Effect.fail(failure("The retained accelerated mount plan cannot be verified."));
@@ -78,7 +82,9 @@ export const quiesceRetainedWindowsSyncWriters = Effect.fn("ProviderLando.quiesc
     if (request === undefined)
       return yield* Effect.fail(failure("The managed Podman API cannot inspect retained app writers."));
     const read = (input: EngineHttpRequest) =>
-      request(input).pipe(Effect.mapError(() => failure("Podman could not inspect retained app writers.")));
+      request(input).pipe(
+        Effect.mapError((cause) => failure("Podman could not inspect retained app writers.", cause)),
+      );
     const inspect = (id: string) =>
       read({ method: "GET", path: `/containers/${encodeURIComponent(id)}/json` }).pipe(
         Effect.flatMap((response) => {
@@ -154,6 +160,7 @@ export const quiesceRetainedWindowsSyncWriters = Effect.fn("ProviderLando.quiesc
             service: ServiceName.make(service),
             containerId: container.Id,
             status: "stopped",
+            publications: { status: "unknown" },
             labels,
           });
         }
@@ -162,7 +169,7 @@ export const quiesceRetainedWindowsSyncWriters = Effect.fn("ProviderLando.quiesc
     });
     const writers = yield* inventory;
     for (const writer of writers) {
-      yield* removeObservedContainer(writer, { api, ctx: context });
+      yield* removeObservedContainer(writer, { api, ctx });
     }
     const remaining = yield* inventory;
     if (remaining.length !== 0)

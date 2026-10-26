@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import { AppPlanSanitizer, ContainerHelperAssets, EventService, PathsService } from "@lando/sdk/services";
 import { Effect, Layer, Schema, Stream } from "effect";
+import { dataHelperImage } from "../src/data-plane.ts";
 import {
   bindResolvedProviderOps,
   forgetAppliedPlanUnlessKept,
@@ -12,6 +14,11 @@ import {
   rememberAppliedPlan,
 } from "../src/provider-assembly.ts";
 
+const passthroughRedactor = {
+  redactString: (value: string) => value,
+  redactValue: (value: unknown) => value,
+} satisfies Redactor;
+
 const plan = Schema.decodeSync(AppPlan)({
   id: "app",
   name: "app",
@@ -20,19 +27,18 @@ const plan = Schema.decodeSync(AppPlan)({
   provider: "lando",
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},
   metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
 });
-const ctx = { providerId: "lando", remediation: "Retry." };
+const ctx = { providerId: "lando", remediation: "Retry.", env: {} };
 const stateOptions = {
   ctx,
   providerId: ProviderId.make("lando"),
   providerName: "provider-lando",
   capabilities: { volumeSnapshot: "native" as const },
-  redactDetails: (value: unknown) => value,
+  redactor: passthroughRedactor,
   load: () => Effect.succeed(undefined),
   persist: () => Effect.void,
   remove: () => Effect.void,
@@ -66,7 +72,7 @@ const paths = PathsService.of({
   providerPidPath: "",
   globalAppRoot: "",
   snapshotsDir: "",
-  appSnapshotsDir: () => "",
+  ownerSnapshotsDir: () => "",
   managedFileLedger: () => "",
   toolDownloadsDir: () => "",
   logsDir: "",
@@ -164,12 +170,14 @@ describe("provider assembly", () => {
         "Run `lando start` (or `lando app:start`) to start the app, then retry. Alternatively, pass an AppPlan directly via `target.plan`.",
     });
   });
-  test("preserves the unavailable error without adding optional fields", () => {
+  test("preserves the unavailable error fields with a concrete remediation", () => {
     const error = notImplementedError("lando", "exec");
     expect(error.message).toBe("provider-lando does not implement exec yet.");
     expect(error.providerId).toBe("lando");
     expect(error.operation).toBe("exec");
-    expect(Object.hasOwn(error, "remediation")).toBe(false);
+    expect(error.remediation).toBe(
+      "Install or start the selected runtime provider, then re-run the failed command.",
+    );
     expect(Object.hasOwn(error, "details")).toBe(false);
   });
   test("omits EventService when the host does not provide it", async () => {
@@ -200,6 +208,40 @@ describe("provider assembly", () => {
     expect(Object.hasOwn(state, "dataPlane")).toBe(false);
     expect(state.appliedPlans.plans.size).toBe(0);
   });
+  test("hands the provider's helper acquisition hook to the data plane", async () => {
+    // Given: a provider that supplies an API and a pinned-helper acquisition hook.
+    const pulled: string[] = [];
+    const requests: string[] = [];
+    const state = makeProviderPlanState({
+      ...stateOptions,
+      api: {
+        request: (request) => {
+          requests.push(request.path);
+          return Effect.succeed({ status: 201, body: "{}" });
+        },
+      },
+      pullHelperImage: (ref) =>
+        Effect.sync(() => {
+          pulled.push(ref);
+          return { ref };
+        }),
+    });
+
+    // When: a native snapshot needs its commit helper.
+    const dataPlane = state.dataPlane;
+    if (dataPlane === undefined) return expect(dataPlane).toBeDefined();
+    const result = await Effect.runPromise(
+      Effect.scoped(dataPlane.snapshotVolume({ volume: { app: plan.id, store: "data" } })).pipe(
+        Effect.result,
+      ),
+    );
+
+    // Then: the hook is asked for the digest ref, and its unverified answer blocks the helper.
+    expect(pulled).toEqual([dataHelperImage.ref]);
+    expect(result._tag).toBe("Failure");
+    expect(requests.some((path) => path.startsWith("/containers/create"))).toBe(false);
+  });
+
   test("binds execution-specific before callbacks to shared plan state", async () => {
     const state = makeProviderPlanState(stateOptions);
     await Effect.runPromise(rememberAppliedPlan(state.appliedPlans, plan, { reconcile: true }));
@@ -215,6 +257,7 @@ describe("provider assembly", () => {
       inspect: () => Effect.die("unused"),
     };
     const first = bindResolvedProviderOps(state, {
+      readAppEnvironment: () => Effect.succeed([]),
       ctx,
       service,
       noPlanError: (_app, op) => notImplementedError("lando", op),
@@ -223,6 +266,7 @@ describe("provider assembly", () => {
       }),
     });
     const second = bindResolvedProviderOps(state, {
+      readAppEnvironment: () => Effect.succeed([]),
       ctx,
       service,
       noPlanError: (_app, op) => notImplementedError("lando", op),

@@ -9,6 +9,8 @@ defaultLayer: scenario
 
 # Read service logs
 
+Read a service’s console output and declared log files from your app directory on the host. Replace `appserver` with the service you want to inspect:
+
 ```sh
 lando logs --service appserver
 ```
@@ -17,7 +19,7 @@ That prints a snapshot for the service, merging console output with any declared
 
 Every line prints whole, however the container writes it. A service that writes a line in pieces, the way SQL Server does, still gets one line stamped with the time its first piece arrived. A last line with no trailing newline prints when the output ends. While following, a partial line waits for its newline. Lines longer than 64 KiB are cut there and end in `…[truncated]`. A known secret that straddles the cut is still masked.
 
-Declare extra in-container log files on the service that owns them:
+To include an in-container log file, add `logs:` to the service that owns it in your Landofile. This fragment uses a service named `myapp`:
 
 ```yaml
 services:
@@ -74,7 +76,7 @@ Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Foll
 
 When the provider cannot apply a service, Lando tries to capture its console logs for the failure report, including in non-interactive runs. Containers stay in place so you can inspect any available logs afterward with `lando logs -s <service>`. A container that was created but never started may have no logs. The snapshot keeps the last 50 whole lines within 4,000 characters; an oversized line keeps its end.
 
-After apply succeeds, `lando start`, `lando restart`, and `lando rebuild` wait for services to stay running and pass their enabled healthchecks. Longer waits show per-service readiness progress. Selected-service operations follow the same rule. An unsupervised exited service or exhausted check fails non-zero with `ServiceNotReadyError`, naming the service and reason, with the stopped container's exit code and log tail when available. Running containers do not report an exit code. A failed start at any phase leaves the app, routes, and volumes in place so you can inspect the failure; the next `lando start` picks up where it stopped:
+After apply succeeds, `lando start`, `lando restart`, and `lando rebuild` wait for services to stay running and pass their startup checks: the enabled healthcheck, or the stronger startup probe a service type such as MongoDB declares in front of it. Longer waits show per-service readiness progress. Selected-service operations follow the same rule. An unsupervised exited service or exhausted check fails non-zero with `ServiceNotReadyError`, naming the service and reason, with the stopped container's exit code and log tail when available. Running containers do not report an exit code. A failed start at any phase leaves the app, routes, and volumes in place so you can inspect the failure; the next `lando start` picks up where it stopped:
 
 ```sh
 lando logs -s appserver --tail 50

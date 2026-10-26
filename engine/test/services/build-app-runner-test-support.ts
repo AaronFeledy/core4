@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -66,7 +66,6 @@ export const planWith = (
     }),
   ),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -78,6 +77,9 @@ export const makeLayer = (provider: RuntimeProviderShape) => {
   const registry = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      appliedPlansFor: () => Effect.succeed([]),
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -86,7 +88,7 @@ export const makeLayer = (provider: RuntimeProviderShape) => {
   const redaction = Layer.succeed(
     RedactionService,
     RedactionService.of({
-      registerValues: registerRedactionValues,
+      ...makeRedactionService(),
       payloadValues: () => Effect.succeed(() => []),
       forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
     }),

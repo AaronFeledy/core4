@@ -35,6 +35,7 @@ test.each(["always", "unless-stopped", "on-failure"])(
           service: web.name,
           providerId: plan.provider,
           status: "stopped",
+          publications: { status: "unknown" as const },
           exitCode: 7,
         }),
     };
@@ -55,6 +56,7 @@ test.each(["always", "unless-stopped", "on-failure"])(
           service: web.name,
           providerId: plan.provider,
           status: "stopped",
+          publications: { status: "unknown" as const },
           exitCode: 0,
         }),
     };

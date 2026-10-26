@@ -24,7 +24,10 @@ export interface PullDialect {
   };
 }
 
+export type EngineDialect = "libpod" | "docker";
+
 export interface LifecycleDialect {
+  readonly engine: EngineDialect;
   readonly wait: WaitDialect;
   /**
    * How service containers join the shared Lando network.
@@ -101,10 +104,8 @@ const objectString = (value: unknown, key: "error" | "message"): string | undefi
   return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined;
 };
 
-const sha256Digest = (value: unknown): string | undefined =>
-  typeof value === "string" && value.startsWith("sha256:") && value.length > "sha256:".length
-    ? value
-    : undefined;
+const registryDigest = (value: unknown): string | undefined =>
+  typeof value === "string" && /^[a-zA-Z][a-zA-Z0-9_+.-]*:[a-zA-Z0-9=_-]+$/.test(value) ? value : undefined;
 
 const normalizeImageRepo = (repo: string): string => {
   const slash = repo.indexOf("/");
@@ -119,14 +120,15 @@ const reposMatch = (requested: string, candidate: string): boolean =>
 
 const digestForRequestedRepo = (entries: readonly unknown[], reference: string): string | undefined => {
   const requested = parseImageReference(reference).fromImage;
-  for (const entry of entries) {
-    if (typeof entry !== "string") continue;
-    const separator = entry.indexOf("@");
-    if (separator === -1) continue;
-    const candidate = parseImageReference(entry.slice(0, separator)).fromImage;
-    if (reposMatch(requested, candidate)) return sha256Digest(entry.slice(separator + 1));
-  }
-  return undefined;
+  const digests = entries.flatMap((entry) => {
+    if (typeof entry !== "string") return [];
+    const match = /^([^@\s]+)@([a-zA-Z][a-zA-Z0-9_+.-]*:[a-zA-Z0-9=_-]+)$/.exec(entry);
+    if (match?.[1] === undefined || match[2] === undefined) return [];
+    const candidate = parseImageReference(match[1]).fromImage;
+    return reposMatch(requested, candidate) ? [match[2]] : [];
+  });
+  const pinned = reference.includes("@") ? reference.slice(reference.lastIndexOf("@") + 1) : undefined;
+  return pinned !== undefined && digests.includes(pinned) ? pinned : digests[0];
 };
 
 /** Registry digest for the requested repo. Local image ids are not registry digests. */
@@ -135,7 +137,7 @@ export const decodeImageInspectDigest = (json: unknown, reference: string): stri
   if ("RepoDigests" in json && Array.isArray(json.RepoDigests)) {
     const fromRepo = digestForRequestedRepo(json.RepoDigests, reference);
     if (fromRepo !== undefined) return fromRepo;
-    if (json.RepoDigests.length > 0 && "Digest" in json) return sha256Digest(json.Digest);
+    if (json.RepoDigests.length > 0 && "Digest" in json) return registryDigest(json.Digest);
   }
   return undefined;
 };
@@ -162,12 +164,14 @@ export const libpodWaitDialect: WaitDialect = {
 };
 
 export const libpodLifecycleDialect: LifecycleDialect = {
+  engine: "libpod",
   wait: libpodWaitDialect,
   sharedNetworkAttachment: "create-body",
   volumePrune: { enabled: true },
 };
 
 export const dockerLifecycleDialect: LifecycleDialect = {
+  engine: "docker",
   wait: dockerWaitDialect,
   sharedNetworkAttachment: "connect-after-create",
 };

@@ -1,6 +1,6 @@
 # Lando v4: Embedding and Library Use
 
-> **Part 9 of 19** · [Index](./README.md)
+> **Part 9 of 20** · [Index](./README.md)
 > **Read next:** [10 Plugins](./10-plugins.md)
 
 An embedding host is a Bun program that uses the same Effect runtime, planner, providers, plugins, and lifecycle bus as the CLI (§3.6), with resource lifetime owned by `Scope`.
@@ -22,6 +22,7 @@ Embedding is first-class for:
 | Custom CLIs and wrappers | Pair core with curated plugins and host-owned UX. |
 | Monorepo orchestrators | Drive multiple apps within one fiber tree. |
 | Config translation tools | Explicitly invoke contributed translators and emit canonical authoring fragments. |
+| Programmable local tooling | Compose typed operations in borrowed or owned environments, retain interactive processes, and collect private artifacts without an external automation service (§22). |
 
 Hosts MUST use core’s provider registry rather than wrapping Docker or Podman directly. They MAY replace abstractions declared pluggable in §4, but non-pluggable service contracts remain private. Parsing CLI output is not an embedding API.
 
@@ -36,10 +37,11 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | `@lando/core/paths` | `resolveLandoRoots`, `makeLandoPaths`, `normalizeHostPlatform`, `LandoRoots`, `LandoPaths`, and `RootOverrides` (§7.5.1). |
 | `@lando/core/schema` | Published schemas from §7.8. |
 | `@lando/core/landofile` | `emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, and `LandofileEmitError` (§7.8.1). |
-| `@lando/core/secrets` | `createRedactor`, `createSecretRedactor`, `RedactionProfile`, the canonical pattern catalog, `REDACTED`, and the published default credentials (`DEFAULT_PASSWORD`, `MINIO_DEFAULT_PASSWORD`, `PUBLIC_DEFAULT_CREDENTIALS`, `isPublicDefaultCredential`) (§3.7). |
+| `@lando/core/secrets` | `createRedactor`, `createSecretRedactor`, `RedactionProfile`, the canonical pattern catalog, `REDACTED`, the secret-name recognizers (`isSecretFieldName`, `isSecretEnvName`, `isSecretStructuralName`), and the published default credentials (`DEFAULT_PASSWORD`, `MINIO_DEFAULT_PASSWORD`, `PUBLIC_DEFAULT_CREDENTIALS`, `isPublicDefaultCredential`) (§3.7). |
 | `@lando/core/errors` | Published tagged errors. |
 | `@lando/core/events` | `EventService`, event schemas, priority bands, and standard sequences. |
 | `@lando/core/cli` | Programmatic built-in command operations (§16.7). |
+| `@lando/core/execution` | `openExecutionSession` and opaque session/environment/process contracts (§22); thin Effect-native facade over `ExecutionSessionService`, not another runtime. |
 | `@lando/core/testing` | Supported deterministic test fixtures (§16.8). |
 | `@lando/core/docs/components` | Executable-guide JSX/Astro runtime and AST helpers (§19.3); unstable, outside the semver-stable set. |
 | `@lando/core/docs/redactions` | Canonical transcript redactions (§19.6); unstable, outside the semver-stable set. |
@@ -48,11 +50,11 @@ The removed `@lando/core/oclif` adapter is not public. Anything not listed above
 
 ### 16.3 The `LandoRuntime` factory
 
-`makeLandoRuntime(options)` returns one scoped Layer satisfying the requested runtime services. Its options name `bootstrap`, `cwd`, `plugins`, `config`, `overrides`, `logger`, `renderer`, `interaction`, `telemetry`, `cacheRoot`, `installSignalHandlers`, and optional `scratch` acquisition (§21).
+`makeLandoRuntime(options)` returns one scoped Layer satisfying the requested runtime services. Its options name `bootstrap`, `cwd`, `plugins`, `config`, `configSources`, `overrides`, `logger`, `renderer`, `interaction`, `telemetry`, `cacheRoot`, `installSignalHandlers`, and optional `scratch` acquisition (§21).
 
 Required behavior:
 
-- Options MUST be schema-validated, and bootstrap failures MUST remain tagged by stage.
+- Options MUST be schema-validated, and bootstrap failures MUST remain tagged by stage. A global-config `ConfigError` (§7.5) raised while the `ConfigService` layer builds keeps its own tag and is never wrapped in `LandoRuntimeBootstrapError`.
 - Each call MUST create an independent cache, plugin registry, and event bus.
 - Construction MUST NOT mutate environment variables, current working directory, or signal handlers unless `installSignalHandlers` is true.
 - Bootstrap MUST follow §3.2 through the selected level and emit the same lifecycle events as the CLI.
@@ -61,6 +63,10 @@ Required behavior:
 - Library defaults are `bootstrap: app`, `silent` logging, `json` rendering, non-interactive prompts, host-provided plugins only, telemetry enabled unless disabled, and no signal handlers. App bootstrap requires an authoritative cwd. Unanswered non-interactive prompts fail fast (§8.10.3).
 
 `openLandoRuntime(options)` acquires one runtime in the caller’s scope and returns retained methods `app`, `scratch`, and `run`. It MUST NOT reacquire the runtime per call.
+
+Construction and requirement types MUST reflect the requested tier (§22.2). Hosts invoke `openExecutionSession` through `runtime.run`, whose existing Effect-provision meaning is unchanged.
+
+The host modules in §7.1.1 are process-owned: lazy `Bun.plugin` registration outlives runtime scopes. Multiple runtimes using the same loaded Lando library share SDK and Effect module identities, not caches, plugin registries, event buses, or scopes. Per-runtime selection of independent SDK or Effect versions is unsupported. Runtime teardown MUST NOT clear the process-wide plugin registry.
 
 `resolveApp(selector)` is the Layer-native equivalent of `runtime.app(selector)`. Selector precedence is `id` > `landofile` > `root` > `cwd`; lower-precedence fields MAY accompany a selector only when they validate against it. Unknown ids and mismatches fail with `AppResolveError`. A decoded Landofile MUST include an authoritative root. Resolution MUST use retained roots and cwd, never a later ambient `process.cwd()`. With no selector, resolution uses the runtime cwd or its configured scratch app.
 
@@ -80,7 +86,7 @@ Inputs are option objects. One-shot methods require no runtime services after bi
 
 Remote methods MUST enforce §10.12.8 and retain applied-data/code side effects on failure. General approval MUST NOT assert protected typed confirmation. Non-interactive hosts MUST fail protected operations requiring that confirmation. Tether MUST NOT be exposed as a library method or through programmatic CLI dispatch, even with a custom interactive renderer. Session credentials and named overrides MUST remain with their owning scope; config pull MUST use the private file landing rules, not promise an overlay for a later start (§10.12.7).
 
-**Runtime reuse is the required performance shape for long-lived hosts.** Hosts SHOULD acquire one runtime at the lowest sufficient bootstrap level, reuse it across sequential programs, and close it only at host shutdown. Reuse avoids repeated bootstrap, discovery, and cache loading and is the basis of the §2.1 hot-path budgets. Isolation-sensitive tenants or tests use separate roots and runtimes. Hosts driving many scratch apps SHOULD reuse one non-scratch runtime and call `runtime.scratch` (§21.12).
+**Runtime reuse is the required performance shape for long-lived hosts.** Hosts SHOULD acquire one runtime at the lowest sufficient bootstrap level, reuse it across sequential programs, and close it only at host shutdown. Reuse avoids repeated bootstrap, plugin contribution-graph construction, and cache loading; Landofile app-root discovery stays operation-owned (§7.1) and is the basis of the §2.1 hot-path budgets. Isolation-sensitive tenants or tests use separate roots and runtimes. Hosts driving many scratch apps SHOULD reuse one non-scratch runtime and call `runtime.scratch` (§21.12).
 
 ### 16.4 Plugin behavior in library mode
 
@@ -95,9 +101,9 @@ Library runtimes discover no plugins by default. Hosts explicitly contribute dir
 
 ### 16.5 Configuration in library mode
 
-Configuration precedence is built-in defaults, optional user configuration, optional environment overrides, host `config`, then the Landofile at app bootstrap. Host configuration is schema-validated and invalid values fail with `ConfigError`.
+Configuration precedence is the §7.5 stack: built-in defaults, optional user configuration (`config.yml`, `config.d/*.yml`), optional environment overrides, host `config`, then the Landofile at app bootstrap. Host `config` accepts any `GlobalConfig` field. The merged stack is decoded once per `makeLandoRuntime` build; an invalid value in any layer, including the host layer, fails the layer with `ConfigError` whose issues carry `source: { layer: "host", path }` for host-authored values. The resulting snapshot is fixed for the runtime's lifetime, `ConfigService.load`/`get` are infallible, and a host MUST build a new runtime to observe changed files or environment.
 
-Hosts MAY skip user configuration and environment input for hermetic operation. Multiple runtimes in one process MUST use distinct environment prefixes and SHOULD use isolated cache, configuration, data, and plugin roots.
+Hosts MAY skip user configuration and environment input for hermetic operation through `configSources: { user?: boolean, env?: boolean }`; `user: false` reads no config files and `env: false` reads no configuration overrides, root variables, `LANDO_PROVIDER` selection, or proxy/CA variables, while platform identity (`HOME`, XDG, `APPDATA`) MAY still establish defaults. The decoded config and resolved roots are fixed for the runtime lifetime and feed that runtime's `StateStore`, plugin trust, and HTTP egress. Isolated runtimes MUST NOT inherit another runtime's snapshot. Multiple runtimes in one process MUST use distinct environment prefixes and SHOULD use isolated cache, configuration, data, and plugin roots.
 
 ### 16.6 Lifecycle and scopes
 
@@ -108,6 +114,9 @@ Bootstrap, event order, payload schemas, subscriber priorities, and subscriber f
 - Interruption MUST propagate through provider operations and finalize acquisition-local work. Interrupting an individual `App` operation MUST NOT close its owning runtime or current managed scope; closing the outer runtime scope finalizes the resources it owns.
 - An `App` handle owns a child scope for managed start-state resources. `stop`, `restart`, `destroy`, or outer runtime closure ends it. Repeated managed starts converge resources, but init and lifecycle hooks run on every invocation (§6.15). A failed or interrupted managed start keeps the current managed scope and the resources it established (§6.7); the handle retries by converging on them. Only unused staged scopes are discarded before ownership transfer; acquisition-local incomplete resources finalize without releasing app-owned resources.
 - Configured scratch apps are materialized in runtime scope and destroyed when it closes (§21). Imperatively acquired scratches retain their returned scope contract.
+- Session closure leaves borrowed App ownership unchanged; owned environments and processes follow §22.3 and §22.5.
+
+Captured-handle delegation preserves invocation-local admission without changing the App's retained configuration, provenance, or hook policy (§22.6).
 
 Hosts MAY register programmatic event subscribers, but manifest-declared subscribers are the recommended extension path. `EventService` itself is not replaceable.
 

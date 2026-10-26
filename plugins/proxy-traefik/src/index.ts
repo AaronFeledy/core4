@@ -6,7 +6,8 @@
  * importing the manifest `module:` path (which cannot resolve in a
  * `bun build --compile` binary).
  */
-import { Schema } from "effect";
+import { Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import {
   type GlobalServiceContributionEffect,
@@ -49,7 +50,13 @@ export {
   renderTraefikFallbackConfig,
 } from "./diagnostics.ts";
 export const routerServices = new Map([
-  ["traefik", { make: (ctx: LandoPluginContext) => layer(ctx.stateStore) }],
+  [
+    "traefik",
+    {
+      make: (ctx: LandoPluginContext) =>
+        layer(ctx.stateStore).pipe(Layer.provide(Layer.succeed(HttpClient.HttpClient, ctx.httpClient))),
+    },
+  ],
 ]);
 
 export const globalServices: ReadonlyMap<string, GlobalServiceContributionEffect> = new Map([

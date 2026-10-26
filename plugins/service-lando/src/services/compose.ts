@@ -6,7 +6,6 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { ServiceConfigIssue, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { internalEndpointsFromExpose, publishedEndpointsFromPorts } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import {
   type ClassifiedComposeVolume,
@@ -61,25 +60,6 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
         const exhaustive: never = volume;
         throw new Error(`Unsupported classified Compose volume: ${exhaustive}`);
       }
-    }
-  }
-
-  for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
-    ctx.addEndpoint(endpoint);
-  }
-  for (const endpoint of internalEndpointsFromExpose(service.expose ?? [], "tcp")) {
-    switch (endpoint.protocol) {
-      case "unix":
-        ctx.addEndpoint({ ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) });
-        break;
-      case "http":
-      case "https":
-      case "tcp":
-      case "udp":
-        ctx.addEndpoint(endpoint);
-        break;
-      default:
-        endpoint satisfies never;
     }
   }
 

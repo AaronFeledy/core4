@@ -1,3 +1,4 @@
+import { concatenateEnvironmentValues, encodeEnvironmentComponent } from "@lando/sdk/expressions";
 import { Effect, Schema } from "effect";
 
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
@@ -38,7 +39,13 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("MINIO_BUCKET", bucket);
   ctx.addEnv(
     "MC_HOST_local",
-    `http://${encodeURIComponent(rootUser)}:${encodeURIComponent(rootPassword)}@127.0.0.1:${apiPort}`,
+    concatenateEnvironmentValues([
+      "http://",
+      encodeEnvironmentComponent(rootUser),
+      ":",
+      encodeEnvironmentComponent(rootPassword),
+      `@127.0.0.1:${apiPort}`,
+    ]),
   );
   ctx.addStorage(
     {
@@ -51,18 +58,6 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
     // planned user needs the tree prepared before the bucket mkdir can work.
     { seededOwners: ["root", "0"] },
   );
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(apiPort),
-    protocol: "tcp",
-    name: ctx.serviceName,
-  });
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(CONSOLE_PORT),
-    protocol: "http",
-    name: "console",
-  });
   ctx.setHealthcheck(commandHealthcheck(["mc", "ready", "local"], 30));
 
   if (service.command === undefined && service.entrypoint === undefined) {
@@ -88,6 +83,25 @@ export const minioServiceFeature: ServiceFeatureDefinition = {
   id: MINIO_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => {
+      const apiPort = ctx.normalizedConfig.port ?? DEFAULT_API_PORT;
+      return [
+        {
+          _tag: "internal" as const,
+          port: Schema.decodeUnknownSync(PortNumber)(apiPort),
+          protocol: "http" as const,
+          name: ctx.serviceName,
+          primary: true as const,
+        },
+        {
+          _tag: "internal" as const,
+          port: Schema.decodeUnknownSync(PortNumber)(CONSOLE_PORT),
+          protocol: "http" as const,
+          name: "console",
+        },
+      ];
+    }),
   apply: serviceFeatureApply(MINIO_FEATURE_ID, "minio service feature failed to apply", applyMinioFeature),
 };
 

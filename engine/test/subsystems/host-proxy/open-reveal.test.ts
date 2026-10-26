@@ -2,11 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProcessExecError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, ProcessRunner, type ProcessSpawnOptions } from "@lando/sdk/services";
@@ -114,7 +110,15 @@ test("Windows reveal spawn failure is a tagged opener error, not a transport fai
       revealHostPath("C:\\app\\evil.exe", false, { platform: "win32" }).pipe(
         Effect.provideService(ProcessRunner, {
           ...runner.service,
-          run: () => Effect.fail(new ProcessExecError({ message: "missing", cmd: "explorer.exe" })),
+          run: () =>
+            Effect.fail(
+              new ProcessExecError({
+                message: "missing",
+                cmd: "explorer.exe",
+                remediation:
+                  "Install `explorer.exe` on this host or fix its executable path, then re-run the command.",
+              }),
+            ),
         }),
       ),
     ),
@@ -138,9 +142,7 @@ test("opener failure retains its remediation and classification over the host-pr
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+        ...makeRedactionService(),
       }),
     ),
     Layer.succeed(

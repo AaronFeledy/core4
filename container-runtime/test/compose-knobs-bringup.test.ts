@@ -15,7 +15,7 @@ import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("compose-knob-bringup");
 const serviceName = ServiceName.make("web");
 const metadata = {
@@ -76,13 +76,13 @@ const planWithCompose = (
   };
   return {
     id: appId,
+    valueModel: 1,
     name: "Compose Knob Bringup",
     slug: "compose-knob-bringup",
     root: AbsolutePath.make("/tmp/lando-compose-knob-bringup"),
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     networking: { perAppBridge: { name: "compose-knob-network", driver: "bridge" } },
     stores: [],
     fileSync: [],
@@ -107,7 +107,10 @@ const makeFakeApi = () => {
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: 404, body: "{}" };
         }
-        if (request.method === "POST" && request.path === "/networks/create") {
+        if (
+          request.method === "POST" &&
+          ["/networks/create", "/libpod/networks/create"].includes(request.path)
+        ) {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && action === "json") {
@@ -142,7 +145,7 @@ const field = (value: unknown, key: string): unknown =>
 const hostConfig = (request: EngineHttpRequest | undefined): unknown => field(request?.body, "HostConfig");
 
 const BASELINE_CREATE_BODY_JSON =
-  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v1:333c903efe2030e5cb2ebc7221e338b3587e9371a002744665fc885092352240"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
+  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v3:e510fbbf2091071e041a4987eb801cee90367bae0bedcf57805ec1dc4c27120d"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web","web.compose-knob-bringup.internal"]}}}}';
 
 describe("Podman Compose knob bring-up realization", () => {
   test("detects a colon target collision through API Mounts", async () => {
@@ -325,8 +328,8 @@ describe("Podman Compose knob bring-up realization", () => {
     if (typeof baselineLabels !== "object" || baselineLabels === null)
       throw new TypeError("Expected baseline labels");
     if (typeof knobLabels !== "object" || knobLabels === null) throw new TypeError("Expected knob labels");
-    expect(field(baselineLabels, CREATE_CONFIG_LABEL)).toMatch(/^v1:[a-f0-9]{64}$/u);
-    expect(field(knobLabels, CREATE_CONFIG_LABEL)).toMatch(/^v1:[a-f0-9]{64}$/u);
+    expect(field(baselineLabels, CREATE_CONFIG_LABEL)).toMatch(/^v3:[a-f0-9]{64}$/u);
+    expect(field(knobLabels, CREATE_CONFIG_LABEL)).toMatch(/^v3:[a-f0-9]{64}$/u);
     expect(field(knobLabels, CREATE_CONFIG_LABEL)).not.toBe(field(baselineLabels, CREATE_CONFIG_LABEL));
     expect({
       Env: field(withKnobs, "Env"),

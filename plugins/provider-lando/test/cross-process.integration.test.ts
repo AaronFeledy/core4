@@ -83,6 +83,7 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
 const web = servicePlan("web");
 const database = servicePlan("database");
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Cross Process App",
   slug: "crossprocessapp",
@@ -90,7 +91,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database, [web.name]: web },
   routes: [],
-  networks: [],
   stores: [{ name: "crossprocessapp_database_data", scope: "app", kind: "data" }],
   fileSync: [],
   metadata,
@@ -246,13 +246,25 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
             }),
           };
         }
-        if (request.path === "/networks/create") {
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+          const payload =
+            request.path === "/libpod/networks/create"
+              ? Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    name: Schema.String,
+                    driver: Schema.Literal("bridge"),
+                    dns_enabled: Schema.Literal(true),
+                    options: Schema.Struct({ metric: Schema.Literal("50") }),
+                    labels: Schema.Record(Schema.String, Schema.String),
+                  }),
+                )(request.body)
+              : undefined;
           const body = Schema.decodeUnknownSync(
             Schema.Struct({
               Name: Schema.String,
               Labels: Schema.optional(Schema.Record(Schema.String, Schema.String)),
             }),
-          )(request.body);
+          )(payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels });
           networks.add(body.Name);
           networkLabels.set(body.Name, body.Labels ?? {});
           return { status: 201, body: JSON.stringify({ Id: `${body.Name}-id` }) };

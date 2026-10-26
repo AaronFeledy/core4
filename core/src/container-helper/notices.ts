@@ -8,7 +8,11 @@ const CONTAINER_HELPER_NOTICE_MANIFEST = "licenses/go/files.json";
 
 export class ContainerHelperNoticeError extends Schema.TaggedError<ContainerHelperNoticeError>()(
   "ContainerHelperNoticeError",
-  { message: Schema.String, remediation: Schema.String, cause: Schema.optional(Schema.Unknown) },
+  {
+    message: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+    cause: Schema.optional(Schema.Unknown),
+  },
 ) {}
 
 const noticeFiles = Schema.Array(Schema.Literals([CONTAINER_HELPER_GO_LICENSE, CONTAINER_HELPER_GO_PATENTS]));

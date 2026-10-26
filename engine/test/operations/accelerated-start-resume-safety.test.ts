@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { type ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { AppId, FileSyncSessionRef, ProviderId } from "@lando/sdk/schema";
 import { Cause, Effect, Exit } from "effect";
 import { type StartAppError, startApp } from "../../src/operations/start.ts";
@@ -32,7 +32,7 @@ test.each(
         break;
     }
     // When the lifecycle operation preflights the pending attempt.
-    const result: Exit.Exit<void, StartAppError | StopAppError> =
+    const result: Exit.Exit<void, StartAppError | StopAppError | ConfigError> =
       operation === "start"
         ? await Effect.runPromiseExit(startApp({}, target).pipe(Effect.asVoid, Effect.provide(harness.layer)))
         : await Effect.runPromiseExit(stopApp({}, target).pipe(Effect.asVoid, Effect.provide(harness.layer)));
@@ -62,6 +62,8 @@ test.each(["provider", "app", "corrupt"] as const)(
                     providerId: "lando",
                     operation: "ownership",
                     message: "corrupt manifest",
+                    remediation:
+                      "Install or start the `lando` provider and confirm it can perform `ownership`.",
                   }),
                 )
               : Effect.succeed({

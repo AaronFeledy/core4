@@ -30,11 +30,13 @@ const serviceType: ServiceType = {
                 suggestion: "Choose another port.",
               },
             ],
+            remediation: "Choose another port.",
           }),
         )
       : Effect.succeed({
           base: "l337",
-          normalizedConfig: { ...service, creds: { user: "valid", password: "secret", database: "test" } },
+          normalizedConfig: { ...service },
+          nonSqlCreds: { user: "valid", password: "secret", database: "test" },
           features: [],
         }),
 };
@@ -91,9 +93,64 @@ const compareIssues = async (root: string, paths: readonly (readonly (string | n
       .sort(),
   ).toEqual(expectedPaths);
   expect(planned.failure.issues.map((issue) => key(issue.path)).sort()).toEqual(expectedPaths);
-  for (const issue of planned.failure.issues) expect(issue.source?.file).toBe(join(root, ".lando.yml"));
+  for (const issue of planned.failure.issues)
+    expect(issue.source !== undefined && "file" in issue.source ? issue.source.file : undefined).toBe(
+      join(root, ".lando.yml"),
+    );
   return { lint };
 };
+
+for (const [yaml, path, count] of [
+  ["services: {web: {type: validation, networks: [ghost]}}", ["services", "web", "networks", "ghost"], 1],
+  ["networks: {default: {}}", ["networks", "default"], 1],
+  ["networks: {peer: {external: true, driver: bridge}}", ["networks", "peer", "driver"], 1],
+  ["networks: {peer: {name: chosen}}", ["networks", "peer", "name"], 1],
+  ["networks: {'bad/key': {}}", ["networks", "bad/key"], 1],
+  ["networks: {peer: {external: true, name: lando_bridge_network}}", ["networks", "peer"], 1],
+  ["networks: {peer: {external: true, name: lando-validation}}", ["networks", "peer"], 1],
+  ["networks: {peer: {external: true, name: lando-validation_former-owned}}", ["networks", "peer"], 1],
+  [
+    "networks: {lando-validation_former-owned: {external: true}}",
+    ["networks", "lando-validation_former-owned"],
+    1,
+  ],
+  [
+    "networks: {first: {external: true, name: sibling_net}, second: {external: true, name: sibling_net}}\nservices: {web: {type: validation, networks: [first, second]}}",
+    ["networks", "second"],
+    1,
+  ],
+  [
+    "networks: {extra: {}, peer: {external: true, name: lando-validation_extra}}\nservices: {web: {type: validation, networks: [extra, peer]}}",
+    ["networks", "peer"],
+    2,
+  ],
+] as const)
+  test(`lint and planning reject invalid network at ${path.join(".")} (${yaml})`, async () => {
+    await withApp(yaml, async (root) => {
+      const { lint } = await compareIssues(
+        root,
+        Array.from({ length: count }, () => path),
+      );
+      expect(lint.violations[0]).toMatchObject({
+        rule: "landofile.network",
+        path,
+        message: expect.any(String),
+        suggestion: expect.any(String),
+      });
+    });
+  });
+
+test("lint permits service default membership and declared external networks", async () => {
+  await withApp(
+    "networks: {peer: {external: true}}\nservices: {web: {type: validation, networks: [default, peer]}}",
+    async (root) => {
+      const lint = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer), Effect.provide(BunFileSystem.layer)),
+      );
+      expect(lint.valid).toBe(true);
+    },
+  );
+});
 
 test("top-level env file failures aggregate with independent service and route issues", async () => {
   await withApp(
@@ -143,7 +200,7 @@ test("lint and planning aggregate service, hostname and materialized route field
         "landofile.hostname",
       ]);
       for (const issue of lint.violations)
-        expect(issue).toMatchObject({ line: expect.any(Number), scope: "effective" });
+        expect(issue).toMatchObject({ line: expect.any(Number), scopes: ["effective"] });
     },
   );
 });
@@ -210,6 +267,63 @@ test("blocked route fields are skipped while sibling fields and static routes st
         ["services", "db", "port"],
         ["services", "web", "routes", 0, "pathPrefix"],
         ["services", "web", "routes", 1, "hostname"],
+      ]);
+    },
+  );
+});
+
+test("blocked routes preserve later binding indexes while independent failures accumulate", async () => {
+  // Given
+  await withApp(
+    `services:
+  db:
+    type: validation
+    environment: {FAIL: yes}
+  web:
+    type: validation
+    routes:
+      - hostname: static.lndo.site
+proxy:
+  web:
+    - hostname: "{{ services.db.creds.user }}.lndo.site"
+    - proxy.lndo.site
+`,
+    async (root) => {
+      // When / Then
+      await compareIssues(root, [
+        ["services", "db", "port"],
+        ["services", "web", "routes", 0],
+        ["proxy", "web", 1],
+      ]);
+    },
+  );
+});
+
+test("undeclared proxy targets retain indexed findings beside invalid and unavailable services", async () => {
+  // Given
+  await withApp(
+    `services:
+  web:
+    type: validation
+    routes: []
+  unavailable:
+    type: validation
+    environment: {FAIL: yes}
+proxy:
+  typo:
+    - bad_host!
+    - first.lndo.site
+    - second.lndo.site
+  unavailable:
+    - unavailable.lndo.site
+`,
+    async (root) => {
+      // When / Then
+      await compareIssues(root, [
+        ["services", "unavailable", "port"],
+        ["proxy", "typo", 0],
+        ["proxy", "typo", 1],
+        ["proxy", "typo", 2],
       ]);
     },
   );

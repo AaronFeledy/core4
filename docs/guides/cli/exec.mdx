@@ -10,7 +10,7 @@ tags: [beta, docs, cli, exec]
 
 `lando exec` runs a one-off command inside a running service. At a terminal it doesn't attach your keyboard, so commands finish without waiting for input. Add `-i` when you want to type into the command. Piped or redirected input always reaches the command.
 
-A service name before `--` selects that service; otherwise the primary service is used. Everything after `--` is the exact argv handed to the service. The command spec is non-strict, so it parses no flags of its own past that point.
+Run these commands from your app directory on the host. A service name before `--` selects that service; otherwise Lando uses the primary service. Everything after `--` belongs to the command inside the service, including its flags. Replace `appserver`, the user, and the working directory with values from your app.
 
 ```sh
 lando exec -- echo hello world
@@ -39,6 +39,8 @@ Redirected stdout is not a terminal, so `lando exec` allocates no PTY and stream
 
 These one-liners are for a POSIX shell (bash or zsh). PowerShell and cmd.exe are unverified.
 
+Warning: restoring into a non-empty target merges files and overwrites matching names. Files absent from the archive remain in the target. Move or empty the target first if you need an exact copy, and preserve any files you still need.
+
 ```sh
 lando exec appserver -- tar -czf - -C /app/web/sites/default/files . > files.tgz
 lando exec appserver -- tar -xzf - -C /app/web/sites/default/files < files.tgz
@@ -59,8 +61,6 @@ Unverified: if the service image has `zstd`:
 lando exec appserver -- tar -c -I zstd -f - -C /app/web/sites/default/files . > files.tar.zst
 lando exec appserver -- tar -x -I zstd -f - -C /app/web/sites/default/files < files.tar.zst
 ```
-
-Warning: restore into a non-empty target merges and overwrites same-named files. Leftover files stay. Empty or move the target first when you want an exact copy.
 
 <Guide>
   <Scenario id="scaffold-and-start" render>
@@ -108,7 +108,9 @@ The fixture's `app` service is `node:22` and marked `primary: true`, so it is th
 
 Human modes for `lando exec`, tooling, and `lando run` mask only known secret values on the live byte stream. Pattern classes stay off that path so binary dumps keep their shape. `lando logs` and other structured surfaces still use the full secrets profile. The service itself still gets the real value.
 
-Lando's published default credentials, `lando` and `landolando`, are not collected as secrets just because an environment key looks sensitive. Explicit registration or resolution from a [secret store](../config/secret-stores.mdx) still masks them.
+Lando does not add its published defaults, `lando` and `landolando`, to the list of known secret values just because they appear under a sensitive configuration key. The same exception applies to a database password or root password that exactly matches its own user or database name. For example, with `creds: { user: magento, password: magento, database: magento }`, the word `magento` remains readable in package names and paths.
+
+These exceptions apply to values discovered from configuration, not values explicitly registered as secrets or resolved from a [secret store](../config/secret-stores.mdx). Those remain masked. Password fields in structured output, such as `lando info --format=json`, also remain masked.
 
 ## Machine-readable output
 

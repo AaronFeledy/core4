@@ -3,7 +3,7 @@ import { DateTime, Effect, Schema, Stream } from "effect";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   type PlanMetadata,
   PortablePath,
   ProviderCapabilities,
@@ -117,6 +117,7 @@ export const testCapabilities: ProviderCapabilities = {
   composeSpec: "native",
   composeKnobs: { supported: ["restart", "cap_add", "shm_size", "extra_hosts"] },
   composeServiceFields: { supported: ["labels", "configs"] },
+  authoredNetworks: true,
   composeProjectFields: { supported: ["configs"] },
   providerExtensions: [],
 };
@@ -156,10 +157,11 @@ export const makeTestServicePlan = (providerId: ProviderId): ServicePlan => ({
   extensions: {},
 });
 
-export const makeTestAppPlan = (providerId: ProviderId): AppPlan => {
+export const makeTestAppPlan = (providerId: ProviderId): CurrentExecutableAppPlan => {
   const testServicePlan = makeTestServicePlan(providerId);
 
   return {
+    valueModel: 1,
     id: TEST_APP_ID,
     name: "My App",
     slug: "myapp",
@@ -167,7 +169,6 @@ export const makeTestAppPlan = (providerId: ProviderId): AppPlan => {
     provider: providerId,
     services: { [TEST_SERVICE_NAME]: testServicePlan },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: planMetadata,

@@ -11,11 +11,7 @@ import type { ScannerError } from "@lando/sdk/errors";
 import { AppId, type PublishedEndpoint, type ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import {
-  RedactionService,
-  type RedactionServiceShape,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, type RedactionServiceShape, makeRedactionService } from "@lando/redaction/service";
 import type { ScanSourceEndpoint } from "../../../src/subsystems/scanner/live.ts";
 
 export const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
@@ -64,11 +60,17 @@ export const publishedEndpoint = (
   protocol: PublishedEndpoint["protocol"],
   port: number,
 ): ScanSourceEndpoint => ({
-  _tag: "published",
+  scope: "host",
+  source: "publication",
+  binding: "assigned",
+  state: "active",
+  host: "localhost",
+  endpoint: { port, transport: protocol === "udp" ? "udp" : "tcp", names: [], primary: false },
+  url: `${protocol}://localhost:${port}`,
+  alternateUrls: [],
   service,
   protocol,
   port,
-  publication: { hostPort: port },
 });
 
 export const endpointsOf = (
@@ -183,8 +185,8 @@ const fakeRedactValue = (value: unknown): unknown => {
 const fakeRedactor: Redactor = { redactString: fakeRedactString, redactValue: fakeRedactValue };
 
 const fakeRedactionService = {
+  ...makeRedactionService(),
   forProfile: () => Effect.succeed(fakeRedactor),
-  registerValues: registerRedactionValues,
   payloadValues: () => Effect.succeed(() => [secret]),
 } satisfies RedactionServiceShape;
 

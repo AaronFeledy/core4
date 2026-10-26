@@ -27,11 +27,11 @@ export const resolveScanPlan = (
   service: ScannerConfig | undefined,
 ): ScanPlan => overlay(overlay(defaults, global), service);
 
-export const attachScanPlans = (
-  plan: AppPlan,
+export const attachScanPlans = <Plan extends AppPlan>(
+  plan: Plan,
   global: ScannerConfig | undefined,
   resolvedServices: ReadonlyArray<ResolvedService>,
-): AppPlan => {
+): Plan => {
   const configs = new Map(
     resolvedServices.map(({ name, resolution }) => [name, resolution.normalizedConfig.scanner]),
   );

@@ -24,13 +24,22 @@ export const SETUP_BUILTIN_FLAGS = {
   provider: Flags.string({
     description: "Choose a provider (e.g. lando, docker, podman). Overrides Landofile/env/config selection.",
   }),
-  "skip-provider": Flags.boolean({ default: false }),
+  "skip-provider": Flags.boolean({
+    description: "Skip provider setup; continue the other setup steps.",
+    default: false,
+  }),
   "skip-proxy": Flags.boolean({
     description: "Skip router setup.",
     default: false,
   }),
-  "skip-install-ca": Flags.boolean({ default: false }),
-  "skip-shell-integration": Flags.boolean({ default: false }),
+  "skip-install-ca": Flags.boolean({
+    description: "Skip installing certificate authority trust on the host.",
+    default: false,
+  }),
+  "skip-shell-integration": Flags.boolean({
+    description: "Skip SSH service setup and shell profile integration.",
+    default: false,
+  }),
   "skip-file-sync": Flags.boolean({
     description: "Skip Mutagen binary download during setup on a slow-mount host.",
     default: false,

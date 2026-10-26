@@ -72,11 +72,11 @@ test.each(["sidecar", "host"] as const)(
                 plan: selected,
                 root: selected.root,
                 app: { kind: "user", id: selected.id, root: selected.root },
-                landofile: {
+                landofile: literalTestLandofile({
                   name: selected.name,
                   services: {},
                   sshAgent: { sidecar: mode === "sidecar", socket: socketPath },
-                },
+                }),
               },
               { scope },
             );
@@ -104,7 +104,7 @@ test.each(["sidecar", "host"] as const)(
       expect(applied[0]?.services[web.name]?.environment.SSH_AUTH_SOCK).toBe(
         "/run/lando/ssh-agent/agent.sock",
       );
-      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.SSH_AUTH_SOCK).toBeUndefined();
+      expect(applyOptions[0]).not.toHaveProperty(["serviceEnvironment", web.name, "SSH_AUTH_SOCK"]);
       expect(applyOptions[0]?.recordedPlan?.services[web.name]?.environment.SSH_AUTH_SOCK).toBeUndefined();
       expect(applied[0]?.services[web.name]?.mounts).toContainEqual({
         type: "bind",
@@ -149,7 +149,11 @@ test.each(["sidecar", "host"] as const)(
             plan: selected,
             root: selected.root,
             app: { kind: "user", id: selected.id, root: selected.root },
-            landofile: { name: selected.name, services: {}, sshAgent: { sidecar: mode === "sidecar" } },
+            landofile: literalTestLandofile({
+              name: selected.name,
+              services: {},
+              sshAgent: { sidecar: mode === "sidecar" },
+            }),
           },
         ).pipe(Effect.result, Effect.provide(harness.layer)),
       );
@@ -172,3 +176,4 @@ test.each(["sidecar", "host"] as const)(
     }
   },
 );
+import { literalTestLandofile } from "../compiled-landofile.ts";

@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, database, planetscale, mysql]
 
 # Develop against PlanetScale
 
-Run a local MySQL service as your day-to-day stand-in, inject `DATABASE_URL` into the app service, and swap that URL for a PlanetScale Vitess branch when you have credentials.
+Run a local MySQL service as your day-to-day stand-in, inject `DATABASE_URL` into the app service, and swap that URL for a PlanetScale Vitess branch when you have credentials. After completing `lando setup`, save the following as `.lando.yml` in your Node project directory:
 
 ```yaml
 name: planetscale-demo
@@ -41,6 +41,8 @@ DATABASE_URL=mysql://lando:lando@db:3306/planetscale_demo
 `db` is the service hostname on the app network. Service-level `env_file` keeps `DATABASE_URL` in `app`; the local database service does not receive it. Keep `.env` out of git when it holds real PlanetScale passwords.
 
 ## Start the local stand-in
+
+Run these commands from the project directory on your host:
 
 ```sh
 lando start

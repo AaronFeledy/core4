@@ -125,6 +125,7 @@ const makeService = (overrides: Partial<Pick<ServicePlan, "command" | "entrypoin
 });
 
 const makePlan = (service = makeService()): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "My App",
   slug: "myapp",
@@ -132,7 +133,6 @@ const makePlan = (service = makeService()): AppPlan => ({
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -140,6 +140,7 @@ const makePlan = (service = makeService()): AppPlan => ({
 });
 
 const makeAliasProbePlan = (): AppPlan => ({
+  valueModel: 1,
   id: AppId.make("windows-host-alias-docker"),
   name: "Windows Host Alias Docker",
   slug: "windows-host-alias-docker",
@@ -165,7 +166,6 @@ const makeAliasProbePlan = (): AppPlan => ({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -431,16 +431,17 @@ const makeFakeApi = () => {
           const wasRunning = running.delete(name);
           return { status: wasRunning ? 204 : 304, body: "" };
         }
-        if (request.path.endsWith("?force=true") && request.method === "DELETE") {
+        if (request.path.endsWith("?force=true&v=true") && request.method === "DELETE") {
           const name = decodeURIComponent(
-            request.path.slice("/containers/".length, -"?force=true".length),
+            request.path.slice("/containers/".length, -"?force=true&v=true".length),
           ).replace(/-id$/u, "");
           const existed = existing.delete(name);
           running.delete(name);
           return { status: existed ? 204 : 404, body: "" };
         }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const key = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          const name = existing.has(key) ? key : key.replace(/-id$/u, "");
           if (!existing.has(name)) {
             return { status: 404, body: "" };
           }
@@ -612,10 +613,12 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         }
         if (
           request.path.startsWith("/containers/") &&
-          request.path.endsWith("?force=true") &&
+          request.path.endsWith("?force=true&v=true") &&
           request.method === "DELETE"
         ) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length));
+          const name = decodeURIComponent(
+            request.path.slice("/containers/".length, -"?force=true&v=true".length),
+          );
           containers.delete(name);
           return { status: 204, body: "" };
         }
@@ -925,9 +928,9 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
           running.delete(name);
           return { status: 204, body: "" };
         }
-        if (request.path.endsWith("?force=true") && request.method === "DELETE") {
+        if (request.path.endsWith("?force=true&v=true") && request.method === "DELETE") {
           const name = resolveContainerName(
-            decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length)),
+            decodeURIComponent(request.path.slice("/containers/".length, -"?force=true&v=true".length)),
           );
           const id = containerIds.get(name);
           const existed = existing.delete(name);
@@ -1010,6 +1013,7 @@ const makeDbService = (): ServicePlan => ({
 });
 
 const makeMultiServicePlan = (opts: { includeStores?: boolean } = {}): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "My App",
   slug: "myapp",
@@ -1017,7 +1021,6 @@ const makeMultiServicePlan = (opts: { includeStores?: boolean } = {}): AppPlan =
   provider: providerId,
   services: { [dbServiceName]: makeDbService(), [serviceName]: makeService() },
   routes: [],
-  networks: [],
   stores: opts.includeStores
     ? [
         { name: "myapp_db_data", scope: "app" as const, kind: "data" as const },
@@ -1243,16 +1246,11 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
 
     expect(inspected.status).toBe("running");
-    expect(inspected.endpoints).toEqual([
-      {
-        _tag: "published",
-        port: 31080,
-        protocol: "http",
-        name: "http",
-        publication: { bindAddress: "127.0.0.1", hostPort: 31080 },
-        materialization: { bindAddress: "0.0.0.0", hostPort: 32768 },
-      },
-    ]);
+    // Actual daemon bindings are reported as observed, never decorated with the planned HTTP endpoint.
+    expect(inspected.publications).toEqual({
+      status: "present",
+      bindings: [{ port: 31080, transport: "tcp", bindAddress: "0.0.0.0", hostPort: 32768 }],
+    });
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
     expect(logs).toEqual(
       ["ready", "lando-contract-split-line", "L".repeat(20_000)].map((line) => ({
@@ -1295,6 +1293,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       { Name: "lando_bridge_network", Driver: "bridge" },
     ]);
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "GET /containers/lando-myapp-web/json",
       "GET /networks/lando-myapp",
       "POST /networks/create",
       "GET /networks/lando_bridge_network",
@@ -1314,7 +1313,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "GET /containers/lando-myapp-web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/lando-myapp-web-id/stop",
-      "DELETE /containers/lando-myapp-web-id?force=true",
+      "DELETE /containers/lando-myapp-web-id?force=true&v=true",
       "GET /networks/lando-myapp",
       "DELETE /networks/lando-myapp",
     ]);
@@ -1736,7 +1735,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(compose).toContain("      custom-app-net:");
     expect(compose).toContain(
-      '      custom-shared-net:\n        aliases:\n          - "web.custom.internal"',
+      '      custom-shared-net:\n        aliases:\n          - "web.myapp.internal"\n          - "web.custom.internal"',
     );
     expect(compose).toContain('  custom-app-net:\n    driver: "bridge"');
     expect(compose).toContain('  custom-shared-net:\n    external: true\n    name: "custom-shared-net"');
@@ -1806,16 +1805,10 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
 
     expect(inspected.status).toBe("running");
-    expect(inspected.endpoints).toEqual([
-      {
-        _tag: "published",
-        port: 31080,
-        protocol: "http",
-        name: "http",
-        publication: { bindAddress: "127.0.0.1", hostPort: 31080 },
-        materialization: { bindAddress: "0.0.0.0", hostPort: 32768 },
-      },
-    ]);
+    expect(inspected.publications).toEqual({
+      status: "present",
+      bindings: [{ port: 31080, transport: "tcp", bindAddress: "0.0.0.0", hostPort: 32768 }],
+    });
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
     expect(logs).toEqual(
       ["ready", "lando-contract-split-line", "L".repeat(20_000)].map((line) => ({
@@ -1826,6 +1819,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       })),
     );
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "GET /containers/lando-myapp-web/json",
       "GET /networks/lando-myapp",
       "POST /networks/create",
       "GET /networks/lando_bridge_network",
@@ -1845,7 +1839,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "GET /containers/lando-myapp-web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/lando-myapp-web-id/stop",
-      "DELETE /containers/lando-myapp-web-id?force=true",
+      "DELETE /containers/lando-myapp-web-id?force=true&v=true",
       "GET /networks/lando-myapp",
       "DELETE /networks/lando-myapp",
     ]);

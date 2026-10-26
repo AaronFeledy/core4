@@ -3,13 +3,12 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
-import { CapabilityError, LandofileValidationError, causeMessage } from "@lando/sdk/errors";
+import { LandofileValidationError, RouteProviderMismatchError, causeMessage } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
-  type LandofileShape,
-  type NetworkPlan,
+  type CurrentExecutableAppPlan,
+  type LoadScopedLandofile,
   type NetworkingPlan,
   type ProviderCapabilities,
   type ServicePlan,
@@ -35,12 +34,9 @@ import {
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { routerEnabledFrom } from "../config/router-config.ts";
 import type { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
-import {
-  type ComposeAppFeature,
-  composeAppFeatures,
-  snapshotAppFeatureEnv,
-} from "../services/app-feature.ts";
+import { applyPreparedAppFeatures } from "../services/app-feature.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
+import type { ApplicationConfig } from "../services/feature-preparation.ts";
 import { loadGlobalSecurityCas, resolveSecurityFeature } from "../services/network-inject.ts";
 import { resolveCertsFeature } from "../services/service-certs.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY, resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
@@ -59,32 +55,30 @@ import * as AppDefaults from "./app-defaults.ts";
 import { planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
+  assertAuthoredNetworksSupported,
   assertComposeKnobsSupported,
   assertComposePreservedPathsSupported,
   assertComposeProjectFieldsSupported,
   assertComposeServiceFieldsSupported,
-  missingCapability,
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
 import { loadComposeConfigFiles } from "./config-files.ts";
-import { attachEffectiveEvents, compileEffectiveEvents } from "./effective-events.ts";
+import { validateConnectionValues } from "./connection-values.ts";
+import { compileEffectiveEvents } from "./effective-events.ts";
 import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
+import { environmentCacheInput } from "./environment-cache-input.ts";
 import { resolveKnownEventSet } from "./event-set.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
-import { attachServiceCredsScope } from "./landofile-scopes.ts";
-import { appNetworkName } from "./naming.ts";
+import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
+import { normalizeNetworks } from "./networks.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
+import { agentSocketCapabilityErrors, assertRouteNetworkingSupported } from "./resource-capabilities.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
-import {
-  type ResolvedService,
-  appFeatureError,
-  baseDefaultFeatureIds,
-  contributionId,
-  resolvedServiceCacheInput,
-} from "./service-types.ts";
+import { validateServiceProbes } from "./service-probes.ts";
+import { type ResolvedService, appFeatureError, resolvedServiceCacheInput } from "./service-types.ts";
 import { authoredStorageScopes } from "./storage.ts";
 
 export const planApp = Effect.fn("AppPlanner.assemble")(function* (
@@ -94,28 +88,31 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   fileSystem: Context.Service.Shape<typeof FileSystem> | undefined,
   pathsService: Context.Service.Shape<typeof PathsService> | undefined,
   certificateAuthorityResolver: Context.Service.Shape<typeof CertificateAuthorityResolver> | undefined,
-  authoredLandofile: LandofileShape,
+  authoredLandofile: LoadScopedLandofile,
   providerCapabilities: ProviderCapabilities,
   knownAppRoot?: string,
-): Effect.fn.Return<AppPlan, AppPlannerError> {
+): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError> {
   const {
     landofile,
     appSlug,
     defaultDomain,
     services: seeds,
     effectiveTooling,
+    connectionClients,
+    disabledToolingSources,
+    invocationSites,
     appRoot,
     appName,
     landofilePath,
-    host,
     encodedMetadata,
     globalConfig,
     appDefaults,
     provider,
+    hostProvider,
     manifests,
     topLevelEnvFiles,
-    serviceCredsScope,
     routes: resolvedRoutes,
+    endpointProjection,
   } = yield* resolveKnownEventSet({
     pluginRegistry,
     configService,
@@ -156,36 +153,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
     Effect.catch(() => Effect.succeed(undefined)),
   );
-  const appFeatureRefs: Array<{ readonly id: string; readonly pluginId: string }> = [];
-  const seenAppFeatureIds = new Set<string>();
-  for (const manifest of manifests) {
-    for (const entry of manifest.contributes?.appFeatures ?? []) {
-      const id = contributionId(entry);
-      if (seenAppFeatureIds.has(id)) continue;
-      seenAppFeatureIds.add(id);
-      appFeatureRefs.push({ id, pluginId: manifest.name });
-    }
-  }
-  const appFeatures: ComposeAppFeature[] = [];
-  for (const ref of appFeatureRefs) {
-    const definition = yield* pluginRegistry.loadAppFeature(ref.id).pipe(
-      Effect.mapError(
-        (error) =>
-          new LandofileValidationError({
-            message: error instanceof Error ? error.message : `App feature ${ref.id} is not registered.`,
-            remediation: `Install or repair the plugin that provides app feature ${ref.id}.`,
-            file: landofilePath,
-            issues: [
-              validationIssue(
-                ["plugins", ref.pluginId, "appFeatures", ref.id],
-                error instanceof Error ? error.message : `App feature ${ref.id} is not registered.`,
-              ),
-            ],
-          }),
-      ),
-    );
-    appFeatures.push({ id: ref.id, definition, pluginId: ref.pluginId });
-  }
+  const preparedApp = endpointProjection.preparedApp;
+  const appFeatures = preparedApp.features;
 
   const composeConfigFileInputs = yield* loadComposeConfigFiles({
     appRoot,
@@ -204,6 +173,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       resolvedArtifactTag,
       projectFiles,
       envFileInputs,
+      prepared,
+      endpointContributions,
     } = seed;
     const service = seed.authoredService;
     const routes = resolvedRoutes.get(name);
@@ -218,10 +189,6 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     const storageAuthored = { ...authored, byStore: authoredStores };
     const logSources = seed.logSources;
     const seededFeatureIds = plannerSeededFeatureIds(resolution.base);
-    const resolutionFeatureIds = new Set(resolution.features.map((feature) => feature.id));
-    const baseDefaultIds = baseDefaultFeatureIds(resolution.base).filter(
-      (id) => !resolutionFeatureIds.has(id),
-    );
     const securityFeature =
       resolution.base === "lando"
         ? yield* resolveSecurityFeature({
@@ -255,48 +222,21 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       certsFeature,
       { id: SSH_AGENT_FEATURE_ID, config: sshAgentExtension },
     ].filter((feature): feature is NonNullable<typeof feature> => feature !== undefined);
-    const featureRefs = [
-      ...(resolution.base === "lando" && gpgAgentIntent.forward ? [{ id: "lando.gpg-agent" }] : []),
-      ...baseDefaultIds.map((id) => ({ id })),
-      ...resolution.features.map((featureRef) => ({
-        id: featureRef.id,
-        ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
-      })),
-    ].map((featureRef) =>
-      seededFeatureIds.has(featureRef.id)
-        ? (plannerSeededFeatures.find((seeded) => seeded.id === featureRef.id) ?? featureRef)
-        : featureRef,
-    );
-    if (
-      sshAgentIntent.mode === "host" &&
-      featureRefs.some((feature) => feature.id === SSH_AGENT_FEATURE_ID) &&
-      !providerSatisfiesCapability(providerCapabilities, "agentSocket")
-    ) {
-      yield* Effect.fail(
-        missingCapability(
-          provider,
-          name,
-          SSH_AGENT_FEATURE_ID,
-          "agentSocket",
-          "Select a provider that advertises agentSocket delivery or set sshAgent.sidecar to true to use best-effort sidecar forwarding.",
-        ),
-      );
+    const applicationConfigs = new Map<number, ApplicationConfig>();
+    for (const feature of prepared.features) {
+      if (!seededFeatureIds.has(feature.id)) continue;
+      const replacement = plannerSeededFeatures.find((seeded) => seeded.id === feature.id);
+      if (replacement !== undefined)
+        applicationConfigs.set(feature.index, { _tag: "Materialized", config: replacement.config ?? {} });
     }
-    if (
-      gpgAgentIntent.forward &&
-      resolution.base === "lando" &&
-      providerSatisfiesCapability(providerCapabilities, "agentSocket") === false
-    ) {
-      yield* Effect.fail(
-        missingCapability(
-          provider,
-          name,
-          "lando.gpg-agent",
-          "agentSocket",
-          "Select a provider with agentSocket delivery or disable gpgAgent.forward.",
-        ),
-      );
-    }
+    for (const error of agentSocketCapabilityErrors(provider, providerCapabilities, {
+      name,
+      hostSsh:
+        sshAgentIntent.mode === "host" &&
+        prepared.features.some((feature) => feature.id === SSH_AGENT_FEATURE_ID),
+      gpgForward: gpgAgentIntent.forward && resolution.base === "lando",
+    }))
+      yield* Effect.fail(error);
     resolvedServices.push({
       routes,
       name,
@@ -305,8 +245,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       serviceType,
       resolution,
       logSources,
-      baseDefaultIds,
-      featureRefs,
+      prepared,
+      applicationConfigs,
+      endpointContributions,
       resolvedArtifactTag,
       envFileInputs,
       projectFiles,
@@ -324,8 +265,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...(hostEvents === undefined ? {} : { hostEvents }),
     skipHostEvents: process.env[LANDO_HOST_EVENT_ENV] === "1",
   };
+  const executableSites = yield* compilePlanInvocationSites({
+    sites: invocationSites,
+    hostEvents,
+    env: authoredLandofile.context.env,
+  });
   const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
-    compileEffectiveEvents({ ...hostEventCompileBase, services });
+    compileEffectiveEvents({ ...hostEventCompileBase, services, invocationSites: executableSites });
   const planServices = (services: Readonly<Record<string, unknown>>) =>
     Object.fromEntries(
       Object.entries(services).map(([name, service]) => [
@@ -334,13 +280,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       ]),
     );
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
-  const appFeatureEnv = snapshotAppFeatureEnv(appFeatures);
   const cacheKey = deriveAppPlanCacheKey({
+    hostProvider,
     appRoot,
     landofile: { ...cacheLandofile, provider },
     providerCapabilities,
     pluginManifests: manifests,
-    appFeatureEnv: appFeatureEnv.bindings,
+    appFeatureEnv: preparedApp.environment.bindings,
     config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, {
       ...appDefaults,
       defaultDomain,
@@ -350,6 +296,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
     versionConstraints,
     serviceInputs: {
+      pendingSites: authoredLandofile.pendingSites,
+      environment: environmentCacheInput(authoredLandofile),
+      invocationSites: executableSites,
       landofile: landofile.services ?? {},
       composition: {
         topLevelEnvFileInputs: topLevelEnvFiles.inputs,
@@ -378,36 +327,32 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       fileSystem,
     }).pipe(Effect.catch(() => Effect.succeed(null)));
     if (cached !== null) {
+      yield* assertAuthoredNetworksSupported(provider, providerCapabilities, cached.networking);
       yield* validateServiceDependencies(appRoot, cached.services);
       yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
-      return attachServiceCredsScope(
-        attachEffectiveEvents(
-          attachEffectiveTooling(cached, effectiveTooling),
-          effectiveEventsFor(planServices(cached.services)),
-        ),
-        serviceCredsScope,
+      return attachCompiledInvocationPlan(
+        attachEffectiveTooling(cached, effectiveTooling, connectionClients, disabledToolingSources),
+        executableSites,
+        effectiveEventsFor(planServices(cached.services)),
       );
     }
   }
 
   const plannedServiceDrafts = yield* planServiceDrafts({
-    pluginRegistry,
     resolvedServices,
-    provider,
-    appName,
     appRoot,
-    host,
   });
-  const appFeatureResult = yield* composeAppFeatures({
-    appName,
-    appRoot,
-    services: plannedServiceDrafts.map((entry) => entry.draft),
-    features: appFeatures,
-    env: appFeatureEnv.env,
-  }).pipe(Effect.mapError((error) => appFeatureError(appRoot, error)));
+  const appFeatureResult = yield* applyPreparedAppFeatures(
+    {
+      appName,
+      appRoot,
+      services: plannedServiceDrafts.map((entry) => entry.draft),
+    },
+    preparedApp,
+  ).pipe(Effect.mapError((error) => appFeatureError(appRoot, error)));
   const activatedFeatureIds = new Set(appFeatureResult.activatedFeatures.map((entry) => entry.id));
   for (const capability of appFeatureResult.requires.providerCapabilities) {
     if (providerSatisfiesCapability(providerCapabilities, capability)) continue;
@@ -431,28 +376,42 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     fileSyncEngineId,
     fileSystem,
   });
-  if (routerEnabled && finalized.routes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
-    yield* Effect.fail(
-      new CapabilityError({
-        message: "Routes require provider capability sharedCrossAppNetwork.",
-        feature: "routes",
-        capability: "sharedCrossAppNetwork",
-        providerId: String(provider),
-        remediation: "Choose a provider with shared cross-app networking or remove the authored routes.",
+  if (routerEnabled && finalized.routes.length > 0 && provider !== hostProvider) {
+    return yield* Effect.fail(
+      new RouteProviderMismatchError({
+        message: `App provider ${provider} differs from host router provider ${hostProvider}.`,
+        providerId: provider,
+        hostProviderId: hostProvider,
+        remediation: `Run lando setup --provider=${provider} to move the global app and router there; remove provider: from the Landofile so the app follows the host provider; or set router.enabled: false and use published host ports.`,
       }),
     );
   }
+  yield* assertRouteNetworkingSupported(
+    provider,
+    providerCapabilities,
+    routerEnabled && finalized.routes.length > 0,
+  );
   const serviceNames = Object.keys(finalized.services);
   const hasServices = serviceNames.length > 0;
-  const networks: ReadonlyArray<NetworkPlan> = hasServices
-    ? [{ name: appNetworkName(appSlug), shared: false, driver: "bridge" }]
-    : [];
+  const perAppBridge = appId !== "global";
+  const authoredNetworking = yield* normalizeNetworks({
+    landofile,
+    services: Object.fromEntries(
+      resolvedServices
+        .filter(({ name }) => serviceNames.includes(name))
+        .map(({ name, service }) => [name, service]),
+    ),
+    appRoot,
+    perAppBridge,
+  });
   const networking: NetworkingPlan | undefined = hasServices
     ? landoNetworkingPlan({
         slug: appSlug,
+        perAppBridge,
         serviceNames,
         sharedCrossAppNetwork: providerCapabilities.sharedCrossAppNetwork,
         serviceHostnames: finalized.serviceHostnames,
+        ...authoredNetworking,
       })
     : undefined;
   const hostProxyExtension = hostProxyExtensionForCapabilities(providerCapabilities);
@@ -467,10 +426,11 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ...(finalized.routes.length > 0 && routerEnabled ? ["traefik"] : []),
     ...appFeatureResult.requires.globalServices,
   ];
-  const plan = attachEffectiveEvents(
+  const plan = attachCompiledInvocationPlan(
     attachEffectiveTooling(
       yield* decodeAppPlan(appRoot, {
         id: appId,
+        valueModel: 1,
         name: appName,
         slug: appSlug,
         root: AbsolutePath.make(appRoot),
@@ -478,7 +438,6 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         router: { enabled: routerEnabled },
         services: finalized.services,
         routes: finalized.routes,
-        networks,
         ...(networking !== undefined ? { networking } : {}),
         stores: finalized.stores,
         fileSync: finalized.fileSync,
@@ -494,13 +453,20 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         ...(requiredGlobalServices.length === 0
           ? {}
           : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
-      }).pipe(Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices))),
+      }).pipe(
+        Effect.tap((decoded) => validateConnectionValues(appRoot, decoded.services)),
+        Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices)),
+      ),
       effectiveTooling,
+      connectionClients,
+      disabledToolingSources,
     ),
+    executableSites,
     effectiveEventsFor(planServices(finalized.services)),
   );
-  attachServiceCredsScope(plan, serviceCredsScope);
   yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
+  yield* assertAuthoredNetworksSupported(provider, providerCapabilities, plan.networking);
+  yield* validateServiceProbes(plan);
   yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, plan.extensions);

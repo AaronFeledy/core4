@@ -13,6 +13,7 @@ import {
   redactDetails,
   redactResponseDetails,
   redactString,
+  redactorFor,
   withApiReason,
 } from "./redact.ts";
 
@@ -161,10 +162,11 @@ type PullFailureInput = {
 const pullFailureFields = (input: PullFailureInput) => {
   const failureKind = classifyPullFailure(input.message);
   const signature = input.signature ?? classifyPullFailureSignature(input.message);
+  const redactor = redactorFor(input.ctx);
   return {
     providerId: input.ctx.providerId,
     operation: "pullArtifact",
-    message: redactString(`Container image pull failed: ${input.message}`),
+    message: redactString(`Container image pull failed: ${input.message}`, redactor),
     details: redactDetails(
       input.source === undefined
         ? {
@@ -178,6 +180,7 @@ const pullFailureFields = (input: PullFailureInput) => {
             source: input.source,
             ...(input.signature === undefined ? {} : { signature: input.signature }),
           },
+      redactor,
     ),
     remediation:
       failureKind === "registry-auth"
@@ -207,6 +210,7 @@ const pullFailureFromTransport = (
   ctx: ProviderErrorContext,
   reference: string,
   error: ProviderUnavailableError | ProviderInternalError,
+  redactor: ReturnType<typeof redactorFor>,
 ): ProviderUnavailableError | ProviderInternalError => {
   const status = httpStatusOf(error.details);
   // Reclassified HTTP failures keep the transport cause, not generic runtime-repair advice.
@@ -214,7 +218,7 @@ const pullFailureFromTransport = (
   const input = {
     ctx,
     reference,
-    message: status === undefined ? error.message : withApiReason(`HTTP ${status}.`, error.details),
+    message: status === undefined ? error.message : withApiReason(`HTTP ${status}.`, error.details, redactor),
     ...(status === undefined ? {} : { details: error.details }),
     ...(cause === undefined ? {} : { cause }),
   };
@@ -228,6 +232,8 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
   reference: string,
   options: PullImageOptions<E>,
 ): Effect.fn.Return<PulledImage, ProviderUnavailableError | ProviderInternalError | E> {
+  // Cache once per pull; never construct a redactor per progress/error line.
+  const redactor = redactorFor(options.ctx);
   if (options.policy === "missing" || options.policy === "never") {
     const request = api.request;
     if (request === undefined) {
@@ -245,7 +251,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
       if (inspect === undefined) return { ref: reference };
       const decoded = yield* parseEngineJson(response, options.ctx, "pullArtifact", {
         message: "Container engine API returned malformed JSON.",
-        details: redactResponseDetails(response),
+        details: redactResponseDetails(response, redactor),
       });
       const digest = inspect.decodeDigest(decoded, reference);
       return { ref: reference, ...(digest === undefined ? {} : { digest }) };
@@ -255,7 +261,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
         pullFailure({
           ctx: options.ctx,
           reference,
-          message: withApiReason(`pre-pull inspect HTTP ${response.status}.`, response),
+          message: withApiReason(`pre-pull inspect HTTP ${response.status}.`, response, redactor),
           details: httpResponseDetails(response),
         }),
       );
@@ -293,8 +299,8 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
         return yield* options.publish(
           ImagePullProgressEvent.make({
             eventName: "image-pull-progress" as const,
-            reference: redactString(reference),
-            ...(frame.stream === undefined ? {} : { stream: redactString(frame.stream) }),
+            reference: redactString(reference, redactor),
+            ...(frame.stream === undefined ? {} : { stream: redactString(frame.stream, redactor) }),
             ...(frame.current === undefined ? {} : { current: frame.current }),
             ...(frame.total === undefined ? {} : { total: frame.total }),
             timestamp: yield* DateTime.now,
@@ -307,7 +313,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
     const decoder = new TextDecoder();
     const buffer = yield* Ref.make("");
     yield* api.stream(buildImagePullRequest(reference, options.dialect, options)).pipe(
-      Stream.mapError((error) => pullFailureFromTransport(options.ctx, reference, error)),
+      Stream.mapError((error) => pullFailureFromTransport(options.ctx, reference, error, redactor)),
       Stream.runForEach(
         Effect.fnUntraced(function* (chunk) {
           const text = (yield* Ref.get(buffer)) + decoder.decode(chunk, { stream: true });
@@ -326,7 +332,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
         pullFailure({
           ctx: options.ctx,
           reference,
-          message: withApiReason(`HTTP ${response.status}.`, response),
+          message: withApiReason(`HTTP ${response.status}.`, response, redactor),
           details: httpResponseDetails(response),
         }),
       );
@@ -359,7 +365,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
   }
   const decoded = yield* parseEngineJson(response, options.ctx, "pullArtifact", {
     message: "Container engine API returned malformed JSON.",
-    details: redactResponseDetails(response),
+    details: redactResponseDetails(response, redactor),
   });
   const digest = inspect.decodeDigest(decoded, reference);
   return { ref: reference, ...(digest === undefined ? {} : { digest }) };

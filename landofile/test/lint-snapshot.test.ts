@@ -32,6 +32,18 @@ const lint = () =>
   );
 
 describe("retained lint snapshot", () => {
+  test("reports a rejected Compose key once, at its field", async () => {
+    await write(
+      ".lando.yml",
+      "name: snapshot\nservices:\n  web:\n    type: compose\n    image: alpine:3.20\n    container_name: fixed\n",
+    );
+    const snapshot = await lint();
+    expect(snapshot.result.valid).toBe(false);
+    expect(snapshot.result.violations.map((violation) => [violation.rule, violation.path])).toEqual([
+      ["landofile.compose-rejection", ["services", "web", "container_name"]],
+    ]);
+  });
+
   test("retains a successful resolved object alongside masked fragment findings from includes", async () => {
     await write(
       ".lando.yml",
@@ -42,10 +54,10 @@ describe("retained lint snapshot", () => {
     expect(snapshot.result.valid).toBe(false);
     expect(snapshot.landofilePath).toBe(join(root, ".lando.yml"));
     expect(snapshot.result.file).toBe(join(root, "fragment.yml"));
-    expect(snapshot.resolved?.services?.[ServiceName.make("web")]?.primary).toBe(true);
+    expect(snapshot.resolved?.document.services?.[ServiceName.make("web")]?.primary).toBe(true);
     expect(snapshot.result.violations).toEqual([
       expect.objectContaining({
-        scope: "fragment",
+        scopes: ["fragment"],
         path: ["services", "web", "primary"],
         source: {
           file: join(root, "fragment.yml"),
@@ -70,7 +82,7 @@ describe("retained lint snapshot", () => {
     expect(snapshot.result.violations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          scope: "fragment",
+          scopes: ["fragment"],
           path: ["services", "web", "working_dir"],
           source: {
             file: join(root, ".lando.base.yml"),
@@ -81,7 +93,7 @@ describe("retained lint snapshot", () => {
           column: 5,
         }),
         expect.objectContaining({
-          scope: "effective",
+          scopes: ["effective"],
           path: ["services", "web", "workingDirectory"],
           source: {
             file: join(root, ".lando.base.yml"),
@@ -95,13 +107,22 @@ describe("retained lint snapshot", () => {
     );
   });
 
-  test("does not collapse identical findings from distinct physical layers or scopes", async () => {
+  test("keeps physical layers distinct while merging the unchanged effective defect", async () => {
     await write(".lando.base.yml", "runtime: wrong\n");
     await write(".lando.yml", "name: snapshot\nruntime: wrong\n");
     const snapshot = await lint();
     const issues = snapshot.result.violations.filter((issue) => issue.path[0] === "runtime");
-    expect(issues.filter((issue) => issue.scope === "fragment")).toHaveLength(2);
-    expect(issues.filter((issue) => issue.scope === "effective")).toHaveLength(1);
+    expect(issues).toHaveLength(2);
+    expect(
+      issues.map(({ source, scopes, message }) => ({
+        file: source !== undefined && "file" in source ? source.file : undefined,
+        scopes,
+        message,
+      })),
+    ).toEqual([
+      { file: join(root, ".lando.base.yml"), scopes: ["fragment"], message: "Expected 4" },
+      { file: join(root, ".lando.yml"), scopes: ["fragment", "effective"], message: "Expected 4" },
+    ]);
   });
 
   test("evaluates TypeScript and strictly finalizes only once", async () => {
@@ -111,7 +132,7 @@ describe("retained lint snapshot", () => {
     try {
       const snapshot = await lint();
       expect(snapshot.result.valid).toBe(true);
-      expect(snapshot.resolved?.name).toBe("snapshot");
+      expect(snapshot.resolved?.document.name).toBe("snapshot");
       expect(evaluate).toHaveBeenCalledTimes(1);
       expect(finalize).toHaveBeenCalledTimes(1);
     } finally {
@@ -156,7 +177,7 @@ describe("retained lint snapshot", () => {
 
       // Then explicit options win; otherwise the supplied runtime environment wins.
       expect(snapshot.result.valid).toBe(true);
-      expect(snapshot.resolved?.services?.[ServiceName.make("web")]?.primary).toBe(scenario.primary);
+      expect(snapshot.resolved?.document.services?.[ServiceName.make("web")]?.primary).toBe(scenario.primary);
     });
   }
 });

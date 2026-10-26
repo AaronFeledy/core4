@@ -8,8 +8,11 @@ import type { ServiceType } from "@lando/sdk/services";
 
 import {
   NODE_FEATURE_ID,
+  SUPPORTED_NODE_MAJORS,
   SUPPORTED_NODE_VERSIONS,
   node22ServiceType,
+  node24ServiceType,
+  node26ServiceType,
   nodeLtsServiceType,
   nodeServiceFeature,
 } from "../src/services/node.ts";
@@ -70,8 +73,9 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 };
 
 describe("node ServiceType — supported versions", () => {
-  test("exposes lts and 22 as supported versions", () => {
-    expect([...SUPPORTED_NODE_VERSIONS]).toEqual(["lts", "22"]);
+  test("exposes lts plus every table major as supported versions", () => {
+    expect([...SUPPORTED_NODE_VERSIONS]).toEqual(["lts", "22", "24", "26"]);
+    expect(SUPPORTED_NODE_MAJORS.map((entry) => String(entry.major))).toEqual(["22", "24", "26"]);
   });
 });
 
@@ -80,7 +84,7 @@ describe("node:lts ServiceType", () => {
     const plan = await composeNodePlan(nodeLtsServiceType, { type: "node:lts" });
 
     expect(plan.type).toBe("node:lts");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "node:lts" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "node:24" });
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(String(plan.appMount?.source)).toBe(APP_ROOT);
     expect(String(plan.appMount?.target)).toBe("/app");
@@ -90,7 +94,9 @@ describe("node:lts ServiceType", () => {
     expect(plan.appMount?.realization).toBe("passthrough");
     expect(plan.mounts).toEqual([]);
     expect(plan.command).toEqual(idleCommand);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.environment).toMatchObject({
       LANDO_APP_ROOT: "/app",
@@ -115,7 +121,15 @@ describe("node:lts ServiceType", () => {
     expect(plan.command).toBe("npm start");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([
-      { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3001 } },
+      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+      {
+        _tag: "published",
+        port: 3000,
+        protocol: "http",
+        name: "web",
+        primary: true,
+        publication: { hostPort: 3001 },
+      },
     ]);
   });
 
@@ -128,7 +142,9 @@ describe("node:lts ServiceType", () => {
     });
 
     // Then
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5173, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 5173, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.environment.PORT).toBe("5173");
     expect(plan.command).toEqual(["npm", "run", "dev"]);
     expect(plan.healthcheck).toBeUndefined();
@@ -209,7 +225,9 @@ describe("node:22 ServiceType", () => {
     expect(plan.appMount?.realization).toBe("passthrough");
     expect(plan.mounts).toEqual([]);
     expect(plan.command).toEqual(idleCommand);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.environment).toMatchObject({
       LANDO_APP_ROOT: "/app",
@@ -235,7 +253,15 @@ describe("node:22 ServiceType", () => {
     expect(plan.command).toBe("npm run dev");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([
-      { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3001 } },
+      { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
+      {
+        _tag: "published",
+        port: 3000,
+        protocol: "http",
+        name: "web",
+        primary: true,
+        publication: { hostPort: 3001 },
+      },
     ]);
   });
 
@@ -253,7 +279,7 @@ describe("node:22 ServiceType", () => {
   test("rejects unsupported node versions with remediation", async () => {
     await expectRejectsToThrow(
       composeNodePlan(node22ServiceType, { type: "node:18" }),
-      /Unsupported Node version "18".*Set type to one of: node:lts, node:22/,
+      /Unsupported Node version "18".*Set type to one of: node:lts, node:22, node:24, node:26/,
     );
   });
 
@@ -264,5 +290,31 @@ describe("node:22 ServiceType", () => {
     expect(plan.name).toBe(ServiceName.make("web"));
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(String(plan.appMount?.target)).toBe("/app");
+  });
+});
+
+describe("node:24 ServiceType", () => {
+  test("plans a default Node 24 service", async () => {
+    const plan = await composeNodePlan(node24ServiceType, { type: "node:24" });
+
+    expect(plan.type).toBe("node:24");
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "node:24" });
+    expect(plan.environment).toMatchObject({
+      LANDO_SERVICE_TYPE: "node:24",
+      PORT: "3000",
+    });
+  });
+});
+
+describe("node:26 ServiceType", () => {
+  test("plans a default Node 26 service", async () => {
+    const plan = await composeNodePlan(node26ServiceType, { type: "node:26" });
+
+    expect(plan.type).toBe("node:26");
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "node:26" });
+    expect(plan.environment).toMatchObject({
+      LANDO_SERVICE_TYPE: "node:26",
+      PORT: "3000",
+    });
   });
 });

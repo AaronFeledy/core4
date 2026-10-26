@@ -11,11 +11,10 @@ import { Layer, Result, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import {
-  AbsolutePath,
   EmbeddingPluginPolicy,
+  type GlobalConfig,
   LOG_LEVELS,
   type LogLevel,
-  ProviderId,
   ResolvedPluginInput,
   type ResolvedPluginInput as ResolvedPluginInputType,
 } from "@lando/sdk/schema";
@@ -50,20 +49,10 @@ const RuntimePluginOptions = Schema.Struct({
 });
 type RuntimePluginOptions = typeof RuntimePluginOptions.Type;
 
-const GlobalConfigOverrides = Schema.Struct({
-  userDataRoot: Schema.optionalKey(AbsolutePath),
-  userConfRoot: Schema.optionalKey(AbsolutePath),
-  userCacheRoot: Schema.optionalKey(AbsolutePath),
-  systemPluginRoot: Schema.optionalKey(AbsolutePath),
-  defaultProviderId: Schema.optionalKey(Schema.Union([ProviderId, Schema.Null])),
-  telemetry: Schema.optionalKey(
-    Schema.Struct({
-      enabled: Schema.optionalKey(Schema.Boolean),
-    }),
-  ),
-  renderer: Schema.optionalKey(Schema.String),
-  logLevel: Schema.optionalKey(Schema.String),
-});
+const GlobalConfigOverrides = Schema.declare<Partial<typeof GlobalConfig.Encoded>>(
+  (input): input is Partial<typeof GlobalConfig.Encoded> =>
+    typeof input === "object" && input !== null && !Array.isArray(input),
+);
 
 const LIBRARY_RENDERER_MODES = ["json", "plain", "verbose", "lando"] as const;
 export type LibraryRendererMode = (typeof LIBRARY_RENDERER_MODES)[number];
@@ -118,6 +107,12 @@ export const LandoRuntimeOptions = Schema.Struct({
   plugins: Schema.optionalKey(RuntimePluginOptions),
   /** Inline overrides applied after global config + env, before Landofile. */
   config: Schema.optionalKey(GlobalConfigOverrides),
+  configSources: Schema.optionalKey(
+    Schema.Struct({
+      user: Schema.optionalKey(Schema.Boolean),
+      env: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
   /** Renderer/logger preset shortcuts. */
   logger: Schema.optionalKey(Schema.String),
   renderer: Schema.optionalKey(Schema.String),
@@ -138,6 +133,8 @@ export const bootstrapError = (message: string, cause: unknown): LandoRuntimeBoo
     message,
     stage: "minimal",
     cause,
+    remediation:
+      "Fix the minimal runtime bootstrap failure (paths, permissions, or install layout) and re-run the command.",
   });
 
 export const collectEmbeddingPluginLayers = (

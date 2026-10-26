@@ -34,6 +34,7 @@ const RegistryEntrySchema = Schema.Struct({
   source: ScratchSourceSchema,
   isolate: Schema.Literals(["full", "baked", "cwd"]),
   detached: Schema.Boolean,
+  shareGlobalStorage: Schema.optionalKey(Schema.Boolean),
   ownerPid: Schema.optionalKey(Schema.Number),
   rootPath: Schema.String,
   status: Schema.Literals(["acquiring", "running", "stopping", "destroyed-pending-cleanup"]),
@@ -96,12 +97,13 @@ const scratchRegistryError = (operation: string, message: string, cause: unknown
     operation,
     message,
     cause,
-    ...(typeof cause === "object" &&
-    cause !== null &&
-    "remediation" in cause &&
-    typeof cause.remediation === "string"
-      ? { remediation: cause.remediation }
-      : {}),
+    remediation:
+      typeof cause === "object" &&
+      cause !== null &&
+      "remediation" in cause &&
+      typeof cause.remediation === "string"
+        ? cause.remediation
+        : "Repair the scratch registry state under the user data root, then retry.",
   });
 
 const sortById = (entries: RegistryEntries): RegistryEntries =>

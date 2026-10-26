@@ -21,7 +21,10 @@ export const normalizeBuildScripts = (value: BuildScript | undefined): ReadonlyA
   return value.map(normalizeBuildStep);
 };
 
-export const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+export const mergeComposeExtension = <S extends Pick<ServicePlan, "extensions">>(
+  servicePlan: S,
+  service: ServiceConfig,
+): S => {
   const startInterval = service.healthcheck === false ? undefined : service.healthcheck?.startInterval;
   const hasDependencyRestart =
     service.dependsOn?.some((dependency) => dependency.restart !== undefined) ?? false;
@@ -30,7 +33,6 @@ export const mergeComposeExtension = (servicePlan: ServicePlan, service: Service
     service.labels === undefined &&
     startInterval === undefined &&
     !hasDependencyRestart &&
-    service.networks === undefined &&
     service.configs === undefined &&
     service.secrets === undefined &&
     service.profiles === undefined &&
@@ -61,7 +63,6 @@ export const mergeComposeExtension = (servicePlan: ServicePlan, service: Service
     }
     compose.depends_on = dependsOn;
   }
-  if (service.networks !== undefined) compose.networks = service.networks;
   if (service.configs !== undefined) compose.configs = service.configs;
   if (service.secrets !== undefined) compose.secrets = service.secrets;
   if (service.profiles !== undefined) compose.profiles = service.profiles;
@@ -102,22 +103,25 @@ export const toAppFeatureDraft = (
   name: string,
   servicePlan: ServicePlan,
   serviceResolution: ServiceTypeResolution,
-  baseDefaultIds: ReadonlyArray<string>,
+  featureIds: ReadonlyArray<string>,
 ): AppFeatureServiceDraft => ({
   name: servicePlan.name,
   serviceName: name,
   type: servicePlan.type,
+  ...(servicePlan.serviceTypeId === undefined ? {} : { serviceTypeId: servicePlan.serviceTypeId }),
   serviceType: servicePlan.type,
   provider: servicePlan.provider,
   primary: servicePlan.primary,
   base: serviceResolution.base,
   framework: serviceResolution.normalizedConfig.framework,
-  featureIds: [...baseDefaultIds, ...serviceResolution.features.map((feature) => feature.id)],
+  featureIds,
   normalizedConfig: serviceResolution.normalizedConfig,
   ...(servicePlan.artifact === undefined ? {} : { artifact: servicePlan.artifact }),
   ...(servicePlan.command === undefined ? {} : { command: servicePlan.command }),
   ...(servicePlan.entrypoint === undefined ? {} : { entrypoint: servicePlan.entrypoint }),
   environment: { ...servicePlan.environment },
+  ...(servicePlan.connection === undefined ? {} : { connection: servicePlan.connection }),
+  ...(servicePlan.nonSqlCreds === undefined ? {} : { nonSqlCreds: servicePlan.nonSqlCreds }),
   ...(servicePlan.user === undefined ? {} : { user: servicePlan.user }),
   ...(servicePlan.workingDirectory === undefined ? {} : { workingDirectory: servicePlan.workingDirectory }),
   ...(servicePlan.appMount === undefined
@@ -141,6 +145,7 @@ export const toAppFeatureDraft = (
   endpoints: servicePlan.endpoints.map((endpoint) => ({ ...endpoint })),
   dependsOn: servicePlan.dependsOn.map((dependency) => ({ ...dependency })),
   ...(servicePlan.healthcheck === undefined ? {} : { healthcheck: servicePlan.healthcheck }),
+  ...(servicePlan.readiness === undefined ? {} : { readiness: servicePlan.readiness }),
   ...(servicePlan.certs === undefined ? {} : { certs: servicePlan.certs }),
   hostAliases: servicePlan.hostAliases.map((alias) => ({ ...alias })),
   ...(serviceResolution.metadata === undefined ? {} : { provenance: serviceResolution.metadata }),
@@ -154,12 +159,18 @@ export const servicePlanFromDraft = (
 ): ServicePlan => ({
   name: draft.name,
   type: draft.type,
+  ...(draft.serviceTypeId === undefined ? {} : { serviceTypeId: draft.serviceTypeId }),
   provider: draft.provider,
   primary: draft.primary,
   ...(draft.artifact === undefined ? {} : { artifact: draft.artifact }),
   ...(draft.command === undefined ? {} : { command: draft.command }),
   ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
   environment: sortRecord(draft.environment),
+  ...(draft.connection !== undefined
+    ? { connection: draft.connection }
+    : draft.nonSqlCreds === undefined
+      ? {}
+      : { nonSqlCreds: draft.nonSqlCreds }),
   ...(draft.user === undefined ? {} : { user: draft.user }),
   ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
   ...(draft.appMount === undefined ? {} : { appMount: { ...draft.appMount, realization: "passthrough" } }),
@@ -169,6 +180,7 @@ export const servicePlanFromDraft = (
   routes: routes.map((route) => ({ ...route })),
   dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),
   ...(draft.healthcheck === undefined ? {} : { healthcheck: draft.healthcheck }),
+  ...(draft.readiness === undefined ? {} : { readiness: draft.readiness }),
   ...(draft.certs === undefined ? {} : { certs: draft.certs }),
   hostAliases: draft.hostAliases.map((alias) => ({ ...alias })),
   metadata,

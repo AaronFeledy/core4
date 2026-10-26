@@ -6,7 +6,7 @@ import { makeDockerApiClient, resetDockerApiPrefixCache } from "../src/docker/ap
 import { dockerApiEndpointKey, peekDockerApiPrefix } from "../src/docker/api-prefix.ts";
 import { isDockerApiVersionError } from "../src/docker/api-version.ts";
 
-const ctx = { providerId: "docker", remediation: "Start Docker." } as const;
+const ctx = { providerId: "docker", remediation: "Start Docker.", env: {} } as const;
 
 beforeEach(resetDockerApiPrefixCache);
 afterEach(resetDockerApiPrefixCache);

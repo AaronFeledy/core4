@@ -27,6 +27,7 @@ test("service type field issues are prefixed without losing their suggestions", 
       { path: ["environment", "PGPORT"], message: "Use port", suggestion: "Set port: 5433" },
       { path: ["port"], message: "Reserved port" },
     ],
+    remediation: "Set port: 5433",
   });
   expect(servicePlanError("/app", "db", error).issues).toEqual([
     { path: ["services", "db", "environment", "PGPORT"], message: "Use port", suggestion: "Set port: 5433" },
@@ -41,6 +42,8 @@ test.each([{ issues: undefined }, { issues: [] }])(
       serviceType: "synthetic",
       message: "Bad service",
       ...(issues === undefined ? {} : { issues }),
+      remediation:
+        "Correct the `synthetic` service configuration in the Landofile (see the reported field path), then re-run.",
     });
     expect(servicePlanError("/app", "db", error).issues).toEqual([
       { path: ["services", "db"], message: "Bad service" },

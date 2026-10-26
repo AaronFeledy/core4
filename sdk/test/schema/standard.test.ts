@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { override } from "@lando/sdk/landofile";
 import {
   GlobalConfig,
   LandofileShape,
@@ -60,11 +61,35 @@ describe("Standard Schema views", () => {
     }
   });
 
+  test("returns Standard Schema issue objects for every wrapper", async () => {
+    // Given an excess property on each otherwise valid contract.
+    for (const { schema, input } of contracts) {
+      // When a Standard Schema consumer validates it.
+      const result = await schema["~standard"].validate({ ...input, typo: true });
+      // Then diagnostics retain the V1 path/message shape without Lando-only metadata.
+      expect(result).toEqual({ issues: [{ path: ["typo"], message: "Expected no excess property" }] });
+    }
+  });
+
   test("collects every issue when multiple fields are invalid", async () => {
     // Given independent invalid fields, when validation runs.
     const result = await LandofileStandardSchema["~standard"].validate({ name: 5, typo: true });
     // Then errors are accumulated rather than short-circuited.
     expect(result.issues?.map((issue) => issue.path)).toEqual(expect.arrayContaining([["name"], ["typo"]]));
+  });
+
+  test.each([
+    ["plain text", "maybe"],
+    ["native override", override("maybe")],
+  ])("normalizes a wrong-type boolean supplied as %s", async (_name, primary) => {
+    // Given a wrong-type value at a boolean authoring site.
+    const input = { services: { api: { primary } } };
+    // When a Standard Schema consumer validates it.
+    const result = await LandofileStandardSchema["~standard"].validate(input);
+    // Then the issue describes the contract, not authoring alternatives or wrapper paths.
+    expect(result).toEqual({
+      issues: [{ path: ["services", "api", "primary"], message: "Expected boolean" }],
+    });
   });
 
   test("exposes input and output JSON Schema", () => {
@@ -112,7 +137,7 @@ describe("Standard Schema views", () => {
     expect(input.additionalProperties).toBe(false);
   });
 
-  test("imports only the four direct schema modules rather than the barrel", async () => {
+  test("imports concrete schema and diagnostic modules rather than the barrel", async () => {
     // Given the subpath source, when collecting its module dependencies.
     const source = await Bun.file(new URL("../../src/schema/standard.ts", import.meta.url)).text();
     const imports = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((match) => match[1]);
@@ -123,6 +148,7 @@ describe("Standard Schema views", () => {
       "./landofile-authoring.ts",
       "./plugin.ts",
       "./recipe.ts",
+      "./validation-issue.ts",
       "effect",
     ]);
   });

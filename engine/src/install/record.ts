@@ -24,18 +24,21 @@ export class InstallRecordError extends Schema.TaggedError<InstallRecordError>()
   reason: Schema.Literals(["invalid-json", "schema", "unsupported-version", "not-regular-file", "io"]),
   file: Schema.String,
   detail: Schema.String,
-  remediation: Schema.String,
+  cause: Schema.optional(Schema.Unknown),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
-const recordError = (
-  reason: InstallRecordError["reason"],
-  file: string,
-  detail: string,
-): InstallRecordError =>
+const recordError = ({
+  reason,
+  file,
+  detail,
+  cause,
+}: Pick<InstallRecordError, "reason" | "file" | "detail" | "cause">): InstallRecordError =>
   new InstallRecordError({
     reason,
     file,
     detail,
+    cause,
     remediation:
       "Check the install record and executable permissions; rerun the Lando 4 installer to repair the record. Do not adopt an unrecognized executable.",
   });
@@ -45,13 +48,21 @@ export const decodeInstallRecord = Effect.fnUntraced(function* (
   file: string,
 ): Effect.fn.Return<InstallRecord, InstallRecordError> {
   const value: unknown = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(json).pipe(
-    Effect.mapError(() => recordError("invalid-json", file, "Install record is not valid JSON.")),
+    Effect.mapError(() =>
+      recordError({ reason: "invalid-json", file, detail: "Install record is not valid JSON." }),
+    ),
   );
   if (typeof value === "object" && value !== null && "version" in value && value.version !== 1) {
-    return yield* recordError("unsupported-version", file, "Only install record version 1 is supported.");
+    return yield* recordError({
+      reason: "unsupported-version",
+      file,
+      detail: "Only install record version 1 is supported.",
+    });
   }
   return yield* Schema.decodeUnknownEffect(InstallRecord)(value, { onExcessProperty: "error" }).pipe(
-    Effect.mapError(() => recordError("schema", file, "Install record does not match the version 1 schema.")),
+    Effect.mapError(() =>
+      recordError({ reason: "schema", file, detail: "Install record does not match the version 1 schema." }),
+    ),
   );
 });
 
@@ -97,19 +108,25 @@ export const readInstallRecord = Effect.fnUntraced(function* (
   const stat = yield* fs.lstat(file).pipe(
     Effect.map(Option.some),
     Effect.catchTag("FileNotFoundError", () => Effect.succeed(Option.none())),
-    Effect.mapError(() => recordError("io", file, "Cannot inspect install record.")),
+    Effect.mapError((cause) =>
+      recordError({ reason: "io", file, detail: "Cannot inspect install record.", cause }),
+    ),
   );
   if (Option.isNone(stat)) return Option.none();
   if (!stat.value.isFile || stat.value.isSymbolicLink || stat.value.isDirectory) {
-    return yield* recordError(
-      "not-regular-file",
+    return yield* recordError({
+      reason: "not-regular-file",
       file,
-      "Install record must be a regular file, not a symlink or directory.",
-    );
+      detail: "Install record must be a regular file, not a symlink or directory.",
+    });
   }
   const json = yield* fs
     .readText(file)
-    .pipe(Effect.mapError(() => recordError("io", file, "Cannot read install record.")));
+    .pipe(
+      Effect.mapError((cause) =>
+        recordError({ reason: "io", file, detail: "Cannot read install record.", cause }),
+      ),
+    );
   return Option.some(yield* decodeInstallRecord(json, file));
 });
 
@@ -123,9 +140,16 @@ export const verifyInstallRecordOwnership = Effect.fnUntraced(function* (
     return { owned: false, reason: "path-mismatch" };
   }
   const fs = yield* FileSystem;
-  const stat = yield* fs
-    .lstat(destination)
-    .pipe(Effect.mapError(() => recordError("io", destination, "Cannot inspect installed executable.")));
+  const stat = yield* fs.lstat(destination).pipe(
+    Effect.mapError((cause) =>
+      recordError({
+        reason: "io",
+        file: destination,
+        detail: "Cannot inspect installed executable.",
+        cause,
+      }),
+    ),
+  );
   if (!stat.isFile || stat.isSymbolicLink || stat.isDirectory) {
     return { owned: false, reason: "not-regular-file" };
   }
@@ -134,7 +158,9 @@ export const verifyInstallRecordOwnership = Effect.fnUntraced(function* (
       () => new Bun.CryptoHasher("sha256"),
       (hasher, chunk) => hasher.update(chunk),
     ),
-    Effect.mapError(() => recordError("io", destination, "Cannot read installed executable.")),
+    Effect.mapError((cause) =>
+      recordError({ reason: "io", file: destination, detail: "Cannot read installed executable.", cause }),
+    ),
   );
   return installRecordOwnsDestination(
     record.value,

@@ -117,7 +117,7 @@ describe("tomcat ServiceType", () => {
         expect(plan.type).toBe("tomcat");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 8080, protocol: "http", name: "appserver" },
+          { _tag: "internal", port: 8080, protocol: "http", name: "appserver", primary: true },
         ]);
         expect(String(plan.appMount?.target)).toBe("/app");
         expect(plan.mounts).toEqual([]);
@@ -161,7 +161,7 @@ describe("tomcat ServiceType", () => {
 
         expect(plan.artifact).toEqual({ kind: "ref", ref: "tomcat:custom" });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 8888, protocol: "http", name: "appserver" },
+          { _tag: "internal", port: 8888, protocol: "http", name: "appserver", primary: true },
         ]);
         expect(String(plan.appMount?.target)).toBe("/app");
         expect(plan.command).toEqual(["catalina.sh", "run"]);

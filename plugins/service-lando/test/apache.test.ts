@@ -100,7 +100,9 @@ describe("apache ServiceType", () => {
 
     expect(plan.mounts).toEqual([]);
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck).toEqual({
       kind: "command",
       command: ["sh", "-c", "nc -z 127.0.0.1 80"],
@@ -114,7 +116,9 @@ describe("apache ServiceType", () => {
   test("uses serviceName for endpoints and LANDO env", async () => {
     const plan = await composeApachePlan({ type: "apache", port: 8080 }, "backend");
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "backend" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8080, protocol: "http", name: "backend", primary: true },
+    ]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 8080"]);
     expect(apacheDirectives(plan.command)).toContain("Listen 8080");

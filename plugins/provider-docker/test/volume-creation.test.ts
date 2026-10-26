@@ -5,6 +5,7 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("creation"),
   name: "creation",
   slug: "creation",
@@ -13,7 +14,6 @@ const plan: AppPlan = {
   identity: { appRoot: AbsolutePath.make("/owner"), ownerKey: appIdentityKey("owner", "/owner") },
   services: {},
   routes: [],
-  networks: [],
   stores: [{ name: "data", scope: "app", kind: "data" }],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"), source: "test", runtime: 4 },

@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
-import { publishedEndpointsFromInspect } from "@lando/container-runtime/podman/inspect";
+import { publicationObservationFromInspect } from "@lando/container-runtime/podman/inspect";
+import { invokeOperation } from "@lando/core/cli/operations";
 import {
   GlobalAppError,
   GlobalDestroyConfirmationError,
@@ -49,16 +50,20 @@ import {
   type ServiceSelector,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
+import { RedactionService } from "@lando/redaction/service";
 import { PreAppStartEvent } from "@lando/sdk/events";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -70,14 +75,15 @@ import { globalDestroy, renderGlobalDestroyResult } from "../../src/cli/commands
 import { globalInfo } from "../../src/cli/commands/meta/global-info.ts";
 import { globalList } from "../../src/cli/commands/meta/global-list.ts";
 import { followGlobalLogs, globalLogs } from "../../src/cli/commands/meta/global-logs.ts";
-import { globalRebuild } from "../../src/cli/commands/meta/global-rebuild.ts";
+import { GlobalRebuildResultSchema, globalRebuild } from "../../src/cli/commands/meta/global-rebuild.ts";
 import { globalRestart } from "../../src/cli/commands/meta/global-restart.ts";
-import { globalStart } from "../../src/cli/commands/meta/global-start.ts";
+import { GlobalStartResultSchema, globalStart } from "../../src/cli/commands/meta/global-start.ts";
 import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
 import { globalStop, renderGlobalStopResult } from "../../src/cli/commands/meta/global-stop.ts";
 import { globalUninstall } from "../../src/cli/commands/meta/global-uninstall.ts";
 
 interface ApplyCall {
+  readonly environments: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly plan: AppPlan;
   readonly options: ApplyOptions;
 }
@@ -104,6 +110,8 @@ interface ProviderCalls {
 }
 
 type HarnessLayer = Layer.Layer<
+  | import("@lando/sdk/services").StateStore
+  | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | CacheService
@@ -116,15 +124,19 @@ type HarnessLayer = Layer.Layer<
   | PrivateFileAccessService
   | RouterService
   | RuntimeProviderRegistry
-  | SecretStore
+  | SecretStore,
+  import("@lando/sdk/errors").ConfigError
 >;
 
 interface HarnessOptions {
+  readonly providerId?: ProviderId;
   readonly failDestroy?: boolean;
   readonly failInspect?: boolean;
   readonly exitedServices?: ReadonlyArray<string>;
+  readonly completedServices?: ReadonlyArray<string>;
   readonly failRouterSetup?: boolean;
   readonly failRoutes?: boolean;
+  readonly missingRouteObservation?: boolean;
   readonly failApply?: ReadonlyArray<string>;
   readonly serviceNames?: ReadonlyArray<string>;
   readonly routerId?: string;
@@ -167,14 +179,21 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
 
 const fakeServiceType = makeLegacyServiceTypeFake({
   id: "lando",
-  toServicePlan: ({ name, appRoot, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+  toServicePlan: ({
+    name,
+    service,
+    appRoot,
+    provider = ProviderId.make("lando"),
+    primary = false,
+    metadata,
+  }) =>
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "lando",
       provider,
       primary,
       artifact: { kind: "ref", ref: "lando-global-service:test" },
-      environment: { TOKEN: "${secret:GLOBAL_TOKEN}" },
+      environment: service.environment ?? {},
       workingDirectory: PortablePath.make("/app"),
       appMount: {
         source: AbsolutePath.make(appRoot),
@@ -243,7 +262,7 @@ const makeHarness = async (
   const events: Array<LandoEvent> = [];
   let appliedPlan: AppPlan | undefined;
   const runningServices = new Set<ServiceName>();
-  const providerId = ProviderId.make("lando");
+  const providerId = options.providerId ?? ProviderId.make("lando");
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: String(providerId),
@@ -262,13 +281,24 @@ const makeHarness = async (
               containerId: `test-${service}`,
               status: "running" as const,
               state: "running",
-              endpoints: [],
+              publications: { status: "unknown" as const },
             }));
       }),
     apply: (plan, applyOptions) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         calls.actions.push("apply");
-        calls.apply.push({ plan, options: applyOptions });
+        const resolve = applyOptions.resolveServiceEnvironment;
+        const environments = Object.fromEntries(
+          yield* Effect.forEach(Object.values(plan.services), (service) =>
+            (resolve === undefined
+              ? Effect.sync(() =>
+                  Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String))(service.environment),
+                )
+              : resolve(service)
+            ).pipe(Effect.map((env) => [service.name, env] as const)),
+          ),
+        );
+        calls.apply.push({ plan, options: applyOptions, environments });
         return { changed: true };
       }).pipe(
         Effect.flatMap((result) => {
@@ -302,6 +332,7 @@ const makeHarness = async (
               providerId: "lando",
               operation: "destroy",
               message: "provider unavailable",
+              remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
             }),
           )
         : Effect.sync(() => {
@@ -318,21 +349,27 @@ const makeHarness = async (
             providerId: String(providerId),
             operation: "inspect",
             message: "provider unavailable",
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `inspect`.",
           }),
         );
       }
+      const exitCode = options.completedServices?.includes(String(target.service))
+        ? 0
+        : options.exitedServices?.includes(String(target.service))
+          ? 17
+          : undefined;
       return Effect.succeed({
         app: target.app,
         service: target.service,
         providerId,
-        status: options.exitedServices?.includes(String(target.service)) ? "stopped" : "running",
-        state: options.exitedServices?.includes(String(target.service)) ? "stopped" : "running",
-        ...(options.exitedServices?.includes(String(target.service)) ? { exitCode: 17 } : {}),
+        status: exitCode === undefined ? "running" : "stopped",
+        state: exitCode === undefined ? "running" : "stopped",
+        ...(exitCode === undefined ? {} : { exitCode }),
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
-        endpoints: publishedEndpointsFromInspect(
-          { NetworkSettings: { Ports: { "443/tcp": [{ HostIp: "127.0.0.1", HostPort: "8443" }] } } },
-          [{ _tag: "published", protocol: "https", port: 443, name: "websecure", publication: {} }],
-        ),
+        publications: publicationObservationFromInspect({
+          NetworkSettings: { Ports: { "443/tcp": [{ HostIp: "127.0.0.1", HostPort: "8443" }] } },
+        }),
       });
     },
   };
@@ -365,6 +402,7 @@ const makeHarness = async (
     buildApp: () => Effect.void,
   });
   const layer = Layer.mergeAll(
+    testStateStoreLayer,
     PrivateFileAccessService.layer,
     Layer.succeed(PathsService, makeLandoPaths()),
     LandoConfigService.layer,
@@ -396,6 +434,29 @@ const makeHarness = async (
         id: options.routerId ?? "test",
         prepare: () => Effect.die("Global lifecycle must not prepare the router"),
         revalidateStartup: options.revalidateStartup ?? Effect.void,
+        observeRoutes: (_app, routes) =>
+          Effect.sync(() => {
+            options.timeline?.push("routes-observed");
+            const published = new Set(calls.routes.at(-1)?.hostnames ?? []);
+            return {
+              configuredAuthorities: routes.map((route) => ({
+                hostname: route.hostname,
+                scheme: "https" as const,
+                port: 444,
+              })),
+              observation: options.missingRouteObservation
+                ? { status: "missing" as const }
+                : {
+                    status: "present" as const,
+                    publications: routes
+                      .filter((route) => published.has(route.hostname))
+                      .map((route) => ({
+                        route,
+                        authority: { hostname: route.hostname, scheme: "https" as const, port: 444 },
+                      })),
+                  },
+            };
+          }),
         setup: () =>
           Effect.sync(() => {
             calls.routerSetups.push(1);
@@ -414,6 +475,7 @@ const makeHarness = async (
           ),
         applyRoutes: (routes, app) =>
           Effect.sync(() => {
+            options.timeline?.push("routes-applied");
             calls.routes.push({ app: String(app), hostnames: routes.map((route) => route.hostname) });
             return {
               app,
@@ -448,6 +510,9 @@ const makeHarness = async (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -472,7 +537,21 @@ const makeHarness = async (
       ),
     ),
   );
-  return { dataRoot, layer, calls, events };
+  const resolvedLayer = Layer.mergeAll(
+    layer,
+    EnvironmentValueResolverLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(layer, RedactionService.layer.pipe(Layer.provide(layer)))),
+    ),
+  );
+  return { dataRoot, layer: resolvedLayer, calls, events };
+};
+
+const authorGlobalSecretBindings = async (dataRoot: string, services: ReadonlyArray<string>) => {
+  await mkdir(join(dataRoot, "global"), { recursive: true });
+  await writeFile(
+    join(dataRoot, "global", ".lando.local.yml"),
+    `services:\n${services.map((name) => `  ${name}:\n    environment:\n      TOKEN: "\${secret:GLOBAL_TOKEN}"\n`).join("")}`,
+  );
 };
 
 const withHarness = async <T>(
@@ -586,6 +665,107 @@ const expectPartialFailure = (exit: Exit.Exit<unknown, unknown>, operation: "sta
 };
 
 describe("meta:global command effects", () => {
+  test.each(["start", "rebuild"] as const)(
+    "%s observes routes after publication without treating apply as liveness",
+    async (command) => {
+      const timeline: string[] = [];
+      await withHarness(
+        async (harness) => {
+          const result =
+            command === "start"
+              ? await Effect.runPromise(invokeOperation(globalStart()).pipe(Effect.provide(harness.layer)))
+              : await Effect.runPromise(invokeOperation(globalRebuild()).pipe(Effect.provide(harness.layer)));
+          if (!result.ok) throw result.error;
+          const value = result.value;
+          const rows =
+            "servicesStarted" in value
+              ? Schema.decodeUnknownSync(GlobalStartResultSchema)(value).servicesStarted
+              : Schema.decodeUnknownSync(GlobalRebuildResultSchema)(value).servicesRebuilt;
+          expect(harness.calls.routes).toHaveLength(1);
+          expect(timeline).toContain("routes-observed");
+          expect(timeline.indexOf("routes-applied")).toBeLessThan(timeline.indexOf("routes-observed"));
+          expect(
+            rows.flatMap((row) => row.connections).filter((connection) => connection.source === "route"),
+          ).toEqual([
+            expect.objectContaining({ host: "mail.global.lndo.site", state: "inactive" }),
+            expect.objectContaining({ host: "proxy.global.lndo.site", state: "inactive" }),
+          ]);
+        },
+        { missingRouteObservation: true, timeline },
+      );
+    },
+  );
+  test("starts and applies the global plan on the Docker host", async () => {
+    await withHarness(
+      async (harness) => {
+        await Effect.runPromise(
+          globalStart({}).pipe(
+            Effect.provide(harness.layer),
+            Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+          ),
+        );
+        expect(harness.calls.apply.length).toBeGreaterThan(0);
+        expect(harness.calls.apply.every(({ plan }) => plan.provider === "docker")).toBe(true);
+      },
+      { providerId: ProviderId.make("docker") },
+    );
+  });
+  test("changed host refuses apply while observation and teardown follow realized placement", async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart({}).pipe(Effect.provide(harness.layer)));
+      const before = harness.calls.apply.length;
+      const result = await Effect.runPromise(
+        globalStart({}).pipe(
+          Effect.provide(harness.layer),
+          Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+          Effect.result,
+        ),
+      );
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "AppPlacementError",
+          desiredProviderId: "docker",
+          realizedProviderId: "lando",
+        },
+      });
+      expect(harness.calls.apply).toHaveLength(before);
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          yield* globalStatus({});
+          yield* globalLogs({});
+          yield* globalStop({});
+          yield* globalDestroy({ yes: true });
+        }).pipe(
+          Effect.provide(harness.layer),
+          Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+        ),
+      );
+      expect(harness.calls.destroy.at(-1)?.target.plan?.provider).toBe(ProviderId.make("lando"));
+    });
+  });
+  test("restart refuses a placement mismatch before stopping the realized global app", async () => {
+    await withHarness(async (harness) => {
+      // Given: the global app is realized on lando.
+      await Effect.runPromise(globalStart({}).pipe(Effect.provide(harness.layer)));
+      const stopsBefore = harness.calls.destroy.length;
+      // When: the host provider changed to docker.
+      const result = await Effect.runPromise(
+        globalRestart().pipe(
+          Effect.provide(harness.layer),
+          Effect.provideService(HostProviderOverride, ProviderId.make("docker")),
+          Effect.result,
+        ),
+      );
+      // Then: placement fails and nothing was torn down.
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "AppPlacementError", realizedProviderId: "lando" },
+      });
+      expect(harness.calls.destroy).toHaveLength(stopsBefore);
+      expect(harness.calls.routesRemoved).toEqual([]);
+    });
+  });
   test.each(["start", "rebuild", "restart"] as const)(
     "%s aggregates readiness failure without publishing routes",
     async (command) => {
@@ -686,8 +866,12 @@ describe("meta:global command effects", () => {
               removeState: command === "destroy",
             });
             expect(harness.calls.routesRemoved).toEqual(["global"]);
-            expect(harness.events.map((event) => event._tag)).toEqual(
-              command === "stop" ? ["pre-global-stop", "post-global-stop"] : [],
+            expect(
+              harness.events.filter((event) => !event._tag.startsWith("task.")).map((event) => event._tag),
+            ).toEqual(
+              command === "stop"
+                ? ["pre-global-stop", "post-global-stop"]
+                : ["pre-global-destroy", "post-global-destroy"],
             );
           });
         });
@@ -982,6 +1166,7 @@ describe("meta:global command effects", () => {
 
   test("start materializes the global app, applies the global-rooted plan, and inspects each service", async () => {
     await withHarness(async (harness) => {
+      await authorGlobalSecretBindings(harness.dataRoot, ["mail", "proxy"]);
       const result = await Effect.runPromise(globalStart({}).pipe(Effect.provide(harness.layer)));
 
       expect(harness.calls.apply).toHaveLength(2);
@@ -992,15 +1177,15 @@ describe("meta:global command effects", () => {
       expect(harness.calls.apply[0]?.plan.name).toBe("global");
       expect(harness.calls.apply[0]?.plan.root).toBe(AbsolutePath.make(join(harness.dataRoot, "global")));
       expect(harness.calls.apply[0]?.options.reconcile).toBe(false);
-      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("mail")]).toEqual({
+      expect(harness.calls.apply[0]?.environments[ServiceName.make("mail")]).toMatchObject({
         TOKEN: "resolved-global-token",
       });
-      expect(harness.calls.apply[1]?.options.serviceEnvironment?.[ServiceName.make("proxy")]).toEqual({
+      expect(harness.calls.apply[1]?.environments[ServiceName.make("proxy")]).toMatchObject({
         TOKEN: "resolved-global-token",
       });
       expect(harness.calls.apply[1]?.plan.services[ServiceName.make("proxy")]?.environment).toEqual({
         LANDO_HOST_IP: "host.lando.internal",
-        TOKEN: "${secret:GLOBAL_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "GLOBAL_TOKEN" },
       });
       expect(harness.calls.apply.map(({ plan }) => Object.keys(plan.services))).toEqual([
         ["mail"],
@@ -1077,9 +1262,52 @@ describe("meta:global command effects", () => {
       expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {})).toEqual(["mail"]);
       expect(harness.calls.routerSetups).toEqual([]);
       expect(harness.calls.routes).toEqual([{ app: "global", hostnames: ["mail.global.lndo.site"] }]);
-      expect(result.servicesStarted[0]?.endpoints).toContain("https://mail.global.lndo.site:444");
+      expect(result.servicesStarted[0]?.connections).toContainEqual(
+        expect.objectContaining({
+          source: "route",
+          binding: "assigned",
+          state: "active",
+          url: "https://mail.global.lndo.site:444",
+        }),
+      );
     });
   });
+
+  test.each(["start", "rebuild"] as const)(
+    "%s retains configured connections as inactive for completed global jobs",
+    async (command) => {
+      await withHarness(
+        async (harness) => {
+          // Given a routed job whose successful completion gates the running proxy.
+          await materializeDist(harness);
+          await writeFile(
+            join(harness.dataRoot, "global", ".lando.yml"),
+            "services:\n  proxy:\n    dependsOn:\n      - service: mail\n        condition: service_completed_successfully\n",
+          );
+          // When the real global operation applies, waits, and decorates its result.
+          const rows =
+            command === "start"
+              ? (await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)))).servicesStarted
+              : (await Effect.runPromise(globalRebuild().pipe(Effect.provide(harness.layer))))
+                  .servicesRebuilt;
+          // Then configured addresses survive completion but cannot be active.
+          expect(harness.calls.routes.flatMap((call) => call.hostnames)).toContain("mail.global.lndo.site");
+          const job = rows.find((row) => row.name === "mail");
+          expect(job?.state).toBe("completed");
+          expect(job?.connections.length).toBeGreaterThan(0);
+          expect(job?.connections.every((connection) => connection.state === "inactive")).toBe(true);
+          expect(rows.find((row) => row.name === "proxy")?.connections).toContainEqual(
+            expect.objectContaining({
+              source: "route",
+              state: "active",
+              url: "https://proxy.global.lndo.site:444",
+            }),
+          );
+        },
+        { completedServices: ["mail"] },
+      );
+    },
+  );
 
   test("stop-all then start-one publishes only the selected service routes", async () => {
     await withHarness(async (harness) => {
@@ -1302,7 +1530,14 @@ describe("meta:global command effects", () => {
       expect(harness.calls.inspect.map((call) => String(call.target.service))).toEqual(["mail"]);
       expect(result.materialized).toBe(true);
       expect(result.services.map((service) => service.service)).toEqual(["mail"]);
-      expect(result.services.flatMap((service) => service.endpoints)).toEqual(["https://localhost:8443"]);
+      expect(result.services.flatMap((service) => service.connections)).toContainEqual(
+        expect.objectContaining({
+          source: "publication",
+          state: "active",
+          protocol: "tcp",
+          url: "tcp://localhost:8443",
+        }),
+      );
     });
   });
 
@@ -1349,7 +1584,7 @@ describe("meta:global command effects", () => {
         expect(result.materialized).toBe(true);
         expect(result.services.map((service) => service.service).sort()).toEqual(["mail", "proxy"]);
         expect(result.services.every((service) => service.status === "unknown")).toBe(true);
-        expect(result.services.every((service) => service.endpoints.length > 0)).toBe(true);
+        expect(result.services.every((service) => service.connections.length > 0)).toBe(true);
       },
       { failInspect: true },
     );
@@ -1454,6 +1689,19 @@ describe("meta:global command effects", () => {
     });
   });
 
+  test("config reports a canonical TypeScript Landofile as the overlay path", async () => {
+    await withHarness(async (harness) => {
+      await materializeDist(harness);
+      const root = join(harness.dataRoot, "global");
+      await rm(join(root, ".lando.yml"), { force: true });
+      await writeFile(join(root, ".lando.ts"), "export default { runtime: 4 };\n");
+
+      const result = await Effect.runPromise(globalConfig().pipe(Effect.provide(harness.layer)));
+
+      expect(result.userLandofile).toBe(join(root, ".lando.ts"));
+    });
+  });
+
   test("config displays authored overrides consistently with global planning", async () => {
     // Given generated services and a canonical override written through the config command.
     await withHarness(async (harness) => {
@@ -1476,7 +1724,7 @@ describe("meta:global command effects", () => {
         ISSUE1250: "authored",
       });
       if (!loaded.materialized) throw new Error("expected global plan");
-      expect(result.landofile).toEqual(loaded.landofile);
+      expect(result.landofile).toEqual(loaded.landofile.document);
     });
   });
 
@@ -1558,7 +1806,7 @@ describe("meta:global command effects", () => {
       expect(result.app).toBe("global");
       expect(result.services.map((service) => service.service).sort()).toEqual(["mail", "proxy"]);
       expect(result.services.every((service) => service.status === "running")).toBe(true);
-      expect(result.services.every((service) => service.endpoints.length > 0)).toBe(true);
+      expect(result.services.every((service) => service.connections.length > 0)).toBe(true);
     });
   });
 
@@ -1703,6 +1951,7 @@ describe("meta:global command effects", () => {
 
   test("rebuild publishes rebuilt routes and reports route URLs without router setup", async () => {
     await withHarness(async (harness) => {
+      await authorGlobalSecretBindings(harness.dataRoot, ["mail", "proxy"]);
       const result = await Effect.runPromise(globalRebuild({}).pipe(Effect.provide(harness.layer)));
 
       expect(harness.calls.buildOptions).toEqual([{ refresh: true }, { refresh: true }]);
@@ -1712,15 +1961,15 @@ describe("meta:global command effects", () => {
       expect(harness.calls.build).toHaveLength(2);
       expect(harness.calls.apply).toHaveLength(2);
       expect(harness.calls.apply[0]?.options.reconcile).toBe(true);
-      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("mail")]).toEqual({
+      expect(harness.calls.apply[0]?.environments[ServiceName.make("mail")]).toMatchObject({
         TOKEN: "resolved-global-token",
       });
-      expect(harness.calls.apply[1]?.options.serviceEnvironment?.[ServiceName.make("proxy")]).toEqual({
+      expect(harness.calls.apply[1]?.environments[ServiceName.make("proxy")]).toMatchObject({
         TOKEN: "resolved-global-token",
       });
       expect(harness.calls.apply[1]?.plan.services[ServiceName.make("proxy")]?.environment).toEqual({
         LANDO_HOST_IP: "host.lando.internal",
-        TOKEN: "${secret:GLOBAL_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "GLOBAL_TOKEN" },
       });
       expect(
         Object.values(harness.calls.apply[1]?.plan.services ?? {}).find(
@@ -1740,10 +1989,14 @@ describe("meta:global command effects", () => {
       expect(harness.calls.routes).toEqual([
         { app: "global", hostnames: ["mail.global.lndo.site", "proxy.global.lndo.site"] },
       ]);
-      expect(result.servicesRebuilt.find((service) => service.name === "mail")?.endpoints).toEqual([
-        "https://localhost:8443",
-        "https://mail.global.lndo.site:444",
-      ]);
+      expect(result.servicesRebuilt.find((service) => service.name === "mail")?.connections).toContainEqual(
+        expect.objectContaining({
+          source: "route",
+          binding: "assigned",
+          state: "active",
+          url: "https://mail.global.lndo.site:444",
+        }),
+      );
     });
   });
 
@@ -1766,8 +2019,12 @@ describe("meta:global command effects", () => {
       expect(harness.calls.routes).toEqual([
         { app: "global", hostnames: ["changed.lndo.site", "proxy.global.lndo.site"] },
       ]);
-      expect(result.servicesRebuilt.find((service) => service.name === "mail")?.endpoints).toContain(
-        "https://changed.lndo.site:444",
+      expect(result.servicesRebuilt.find((service) => service.name === "mail")?.connections).toContainEqual(
+        expect.objectContaining({
+          source: "route",
+          state: "active",
+          url: "https://changed.lndo.site:444",
+        }),
       );
       expect(harness.calls.routerSetups).toEqual([]);
     });
@@ -1848,13 +2105,16 @@ describe("meta:global command effects", () => {
     await withHarness(async (harness) => {
       const missingProvider = new NoProviderInstalledError({
         message: "No runtime provider is installed.",
-        suggestion: "Run lando setup.",
+        remediation: "Run lando setup.",
       });
       const layer = Layer.mergeAll(
         harness.layer,
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([]),
             capabilities: Effect.fail(missingProvider),
             select: () => Effect.fail(missingProvider),

@@ -17,13 +17,15 @@ import {
 import {
   GlobalAppService,
   PathsService,
+  RouterService,
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { executeGlobalTeardown, resolveGlobalTeardown } from "../../src/operations/global-teardown.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 
 const providerId = ProviderId.make("lando");
@@ -37,7 +39,6 @@ const planAt = (root: AbsolutePath): AppPlan => ({
   provider: providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-01T00:00:00Z"), source: "applied-state", runtime: 4 },
@@ -61,6 +62,7 @@ const serviceAt = (root: AbsolutePath): ServiceRuntimeInfo => ({
   providerId,
   service: ServiceName.make("orphan"),
   status: "running",
+  publications: { status: "unknown" as const },
   containerId: "observed-container",
 });
 
@@ -111,13 +113,26 @@ const harnessAt = (
       }),
   };
   const layer = Layer.mergeAll(
+    LandoEventService.layer,
+    Layer.succeed(RouterService, makeTestRouterService()),
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
-    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" })),
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({
+        userDataRoot: dataRoot,
+        userCacheRoot: join(dataRoot, "cache"),
+        userConfRoot: join(dataRoot, "conf"),
+        systemPluginRoot: join(dataRoot, "sys"),
+        env: {},
+        platform: "linux",
+      }),
+    ),
     Layer.succeed(
       GlobalAppService,
       GlobalAppService.of({
         id: "global",
+        providerId: Effect.succeed(providerId),
         root: Effect.succeed(root),
         ensureRoot: Effect.die("no desired root mutation"),
         paths: Effect.succeed({
@@ -133,6 +148,9 @@ const harnessAt = (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        appliedPlansFor: () =>
+          Effect.map(provider.appliedPlans, (plans) => plans.filter((plan) => plan.provider === providerId)),
         list: Effect.succeed([providerId, ProviderId.make("docker")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: (target) => {
@@ -203,7 +221,7 @@ for (const volumes of [false, true]) {
       const receipt = await Effect.runPromise(
         Effect.gen(function* () {
           const resolved = yield* resolveGlobalTeardown();
-          return yield* executeGlobalTeardown(resolved, { volumes, removeState: volumes });
+          return yield* executeGlobalTeardown(resolved, { intent: "stop", volumes, removeState: volumes });
         }).pipe(Effect.provide(harness.layer)),
       );
       // Then only owned containers and requested app-scoped data are removed.

@@ -77,6 +77,7 @@ export const sidebar = [
           { label: "Run the Joomla recipe", slug: "guides/recipes/joomla-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
+          { label: "Run Drupal tests with PHPUnit and Chrome", slug: "guides/recipes/drupal-testing" },
           { label: "Extend a recipe", slug: "guides/recipes/extending-recipes" },
           { label: "Declare a recipe runs allowlist", slug: "guides/recipes/authoring-runs-allowlist" },
           { label: "Declare a recipe fetch allowlist", slug: "guides/recipes/authoring-fetch-allowlist" },
@@ -213,6 +214,7 @@ export const sidebar = [
   {
     label: "Contributing",
     items: [
+      { label: "Source map", slug: "contributing/repository" },
       { label: "CI", slug: "contributing/ci" },
       { label: "Release", slug: "contributing/release" },
       { label: "Decisions", slug: "contributing/decisions" },

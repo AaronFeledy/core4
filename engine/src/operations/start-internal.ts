@@ -2,6 +2,7 @@ import { DateTime, Effect, Option, Schema } from "effect";
 
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import {
+  AppPlacementError,
   type ComposeKeyRejectedError,
   FileSyncStartError,
   GlobalAutoStartError,
@@ -15,7 +16,7 @@ import {
   PreAppStartEvent,
   PreStartEvent,
 } from "@lando/sdk/events";
-import { CheckResult, type PreparedFileSyncTarget, ServiceName } from "@lando/sdk/schema";
+import { CheckResult, type PreparedFileSyncTarget, StartedService } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildOptions,
@@ -37,25 +38,21 @@ import {
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp } from "../config/router-config.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import {
-  publishedTargetsFromEndpoints,
-  rewriteCrossEngineProxyRoutes,
-} from "../lifecycle/cross-engine-routes.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
-import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
-import { applyAppRoutes } from "../lifecycle/routes.ts";
+import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { verifyPendingStartResume } from "./accelerated-start-resume.ts";
-import { startedServiceRow } from "./authority-url.ts";
+import { collectPlanConnections, observeService, startedServices } from "./connection-collector.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent } from "./events.ts";
 import {
@@ -66,7 +63,7 @@ import {
 import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
-import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
+import { inspectAppliedService } from "./service-readiness.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
@@ -76,19 +73,11 @@ import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
 import { withStartedSshAgent } from "./start-ssh-agent.ts";
 import type { StopAppPreflight } from "./stop-internal.ts";
 
-import {
-  withApplyProgress,
-  withGlobalStartProgress,
-  withRoutesStartProgress,
-} from "./start-progress-phases.ts";
+import { withApplyProgress, withGlobalStartProgress } from "./start-progress-phases.ts";
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
-export const StartedServiceResultSchema = Schema.Struct({
-  name: Schema.String,
-  state: Schema.String,
-  endpoints: Schema.Array(Schema.String),
-});
+export const StartedServiceResultSchema = StartedService;
 
 export const StartAppResultSchema = Schema.Struct({
   app: Schema.String,
@@ -97,6 +86,7 @@ export const StartAppResultSchema = Schema.Struct({
 });
 
 type StartAppServices =
+  | EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -265,7 +255,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
   const neededGlobalServices = requiredGlobalServicesForPlan(plan);
   if (plan.routes.length > 0 && neededGlobalServices.includes(proxy.id) && proxy.prepare !== undefined) {
     const defaultDomain = yield* resolveProxyDefaultDomain;
-    const { router, routerPin } = yield* resolveRouterConfigForApp(target.landofile?.router);
+    const { router, routerPin } = yield* resolveRouterConfigForApp(target.landofile?.document.router);
     yield* proxy.prepare({ defaultDomain, router, routerPin });
   }
   if (neededGlobalServices.length > 0) {
@@ -274,7 +264,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
       ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
     }).pipe(
       mapFailureErrors((cause) =>
-        cause instanceof ServiceNotReadyError
+        cause instanceof ServiceNotReadyError || cause instanceof AppPlacementError
           ? cause
           : new GlobalAutoStartError({
               message: `Failed to auto-start global services (${neededGlobalServices.join(", ")}) required by ${plan.name}.`,
@@ -311,7 +301,6 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 builds.build(applyPlan, execution.buildOptions),
                 provider,
               );
-              const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
               const serviceList = Object.values(builtPlan.services);
               const { pendingStart } = yield* prepareAcceleratedStart(builtPlan, provider, {
                 app: ref,
@@ -328,9 +317,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 yield* verifyActiveVolumeCoordination(provider);
                 if (pendingStart !== undefined) yield* pendingStart.advance("apply-intent");
                 yield* Effect.scoped(
-                  provider.apply(builtPlan, {
+                  applyWithResolvedEnvironment(provider, builtPlan, {
                     reconcile: resolvedOptions.reconcile ?? false,
-                    serviceEnvironment,
                     onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
                     ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
                   }),
@@ -341,53 +329,36 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                   inspectAppliedService({ provider, plan: builtPlan, service: service.name }).pipe(
                     Effect.map((runtime) => {
                       initialRuntime.set(String(service.name), runtime);
-                      const sourceEndpoints = runtime.endpoints ?? service.endpoints;
-                      return {
-                        ...startedServiceRow(service, runtime),
-                        published: publishedTargetsFromEndpoints(String(service.name), sourceEndpoints),
-                      };
+                      return observeService(builtPlan, runtime);
                     }),
                   ),
                 );
               });
-              const inspectedServices = yield* withApplyProgress({
+              yield* withApplyProgress({
                 events,
                 plan,
                 services: serviceList,
                 work: applyAndInspect,
               });
 
-              yield* withBuildProvider(
-                builds.buildApp(builtPlan, {
-                  ...(execution.forceAppBuild === true ? { force: true } : {}),
-                  ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-                }),
-                provider,
-              );
-
-              const routedPlan = {
-                ...builtPlan,
-                routes: rewriteCrossEngineProxyRoutes({
-                  plan: builtPlan,
-                  published: inspectedServices.flatMap((service) => service.published),
-                }),
-              };
-              const applyRoutes = applyAppRoutes(proxy, routedPlan, target.landofile?.router);
-              const proxyResult = yield* routedPlan.routes.length === 0
-                ? applyRoutes
-                : withRoutesStartProgress({ events, plan, work: applyRoutes });
-              const readyServices = yield* waitForServiceReadiness({
+              const readyServices = yield* completeStartup({
+                policy: "user-start",
+                builds,
+                router: proxy,
+                events,
+                ...(target.landofile?.document.router === undefined
+                  ? {}
+                  : { landofileRouter: target.landofile.document.router }),
+                ...(execution.forceAppBuild === undefined ? {} : { forceAppBuild: execution.forceAppBuild }),
                 provider,
                 plan: builtPlan,
                 services: serviceList.map((service) => service.name),
                 initial: initialRuntime,
                 ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
               });
-              const proxyUrls = appliedProxyUrlsByService(proxyResult);
-              const servicesStarted = readyServices.map((service) => ({
-                ...service,
-                endpoints: [...(proxyUrls.get(ServiceName.make(service.name)) ?? []), ...service.endpoints],
-              }));
+              const servicesStarted = startedServices(
+                yield* collectPlanConnections(builtPlan, readyServices),
+              );
 
               yield* events.publish(
                 PostAppStartEvent.make({

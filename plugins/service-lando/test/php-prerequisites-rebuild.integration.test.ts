@@ -191,7 +191,6 @@ const appPlan = (service: ServicePlan): AppPlan => ({
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -206,7 +205,7 @@ const providerLayer = (engine: ReturnType<typeof makeEngine>) => {
     capabilities: { ...TestRuntimeProvider.capabilities, artifactBuild: true, artifactPull: true },
     pullArtifact: (spec: { readonly ref: string; readonly policy?: "always" | "missing" | "never" }) =>
       pullImage(engine, spec.ref, {
-        ctx: { providerId, remediation: "Retry the rebuild." },
+        ctx: { providerId, remediation: "Retry the rebuild.", env: {} },
         dialect: libpodPullDialect,
         ...(spec.policy === undefined ? {} : { policy: spec.policy }),
       }).pipe(
@@ -217,11 +216,14 @@ const providerLayer = (engine: ReturnType<typeof makeEngine>) => {
         })),
       ),
     buildArtifact: (spec: Parameters<typeof buildContainerArtifact>[0]) =>
-      Effect.scoped(buildContainerArtifact(spec, { providerId, api: engine })),
+      Effect.scoped(buildContainerArtifact(spec, { providerId, api: engine, sourceEnv: {} })),
   };
   return Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      appliedPlansFor: () => Effect.succeed([]),
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),

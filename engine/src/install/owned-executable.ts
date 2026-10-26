@@ -52,7 +52,7 @@ export class InstallOwnershipError extends Schema.TaggedError<InstallOwnershipEr
     recordFile: Schema.String,
     destination: Schema.optionalKey(Schema.String),
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 

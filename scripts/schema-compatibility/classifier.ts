@@ -270,7 +270,9 @@ export const classifySchemaChange = (
   after: JsonSchema,
   polarity: SchemaPolarity,
 ): ReadonlyArray<CompatibilityFinding> =>
-  compareNode(normalizeJsonSchema(before), normalizeJsonSchema(after), { polarity, path: "$" });
+  jsonEquals(before, after)
+    ? []
+    : compareNode(normalizeJsonSchema(before), normalizeJsonSchema(after), { polarity, path: "$" });
 
 export const acceptCompatibilityExceptions = (
   surface: string,

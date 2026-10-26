@@ -57,7 +57,6 @@ const plan: AppPlan = {
     ["web", "db", "worker", "cache", "gone"].map((name) => [ServiceName.make(name), service(name)]),
   ),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -71,6 +70,7 @@ const runtimeFor = (name: string, observed: Partial<ServiceRuntimeInfo>): Servic
   service: ServiceName.make(name),
   providerId,
   status: "stopped",
+  publications: { status: "unknown" },
   ...observed,
 });
 
@@ -85,12 +85,20 @@ const makeRegistry = (observations: Readonly<Record<string, Observed>>, inspecte
       if (observed === "hangs") return Effect.never;
       if (observed === "fails")
         return Effect.fail(
-          new ProviderUnavailableError({ providerId: "lando", operation: "inspect", message: "down" }),
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "inspect",
+            message: "down",
+            remediation: "Install or start the `lando` provider and confirm it can perform `inspect`.",
+          }),
         );
       return Effect.succeed(runtimeFor(name, observed));
     },
   };
   return RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
@@ -158,7 +166,7 @@ describe("incomplete start notice", () => {
       // Then: the failure is unchanged and one notice lists what was left in place.
       expect(Exit.isFailure(exit)).toBe(true);
       expect(notices).toEqual([
-        "Start did not complete. Resources were left in place. Running: web; created/stopped: db, worker; unverified: cache. Agent forwarding/file sync remain active where established. Inspect `lando info` and `lando logs`; fix the reported error, then run `lando start`. Run `lando stop` to shut down or `lando destroy` to remove resources; volumes require `--volumes`.",
+        "Start did not complete. Resources were left in place. Running: web; created/stopped: db, worker; unverified: cache. Agent forwarding/file sync remain active where established. Inspect `lando info` and `lando logs`; fix the reported error, then run `lando start`. Run `lando stop` to shut down or `lando destroy` to remove resources; named volumes require `--volumes`.",
       ]);
     },
   );

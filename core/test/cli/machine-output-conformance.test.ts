@@ -7,7 +7,7 @@ import { Arbitrary, Effect, Option, Schema } from "effect";
 import { makeTestRuntime } from "@lando/core/testing";
 import type { AppConfigResult } from "@lando/engine/operations/app-config-result";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { RedactionService, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { ScratchRunTargetError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, LandofileShape, StreamFrame, TunnelSession } from "@lando/sdk/schema";
 
@@ -302,7 +302,12 @@ describe("machine-output conformance", () => {
         ...(spec.streamingMode === "live" ? { streamingMode: "live" as const } : {}),
         ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
         ...(spec.redactionTokens === undefined ? {} : { redactionTokens: spec.redactionTokens }),
-        ...(spec.successExitCode === undefined ? {} : { successExitCode: spec.successExitCode }),
+        ...(spec.completion === undefined
+          ? {}
+          : {
+              completion: (value: unknown) =>
+                spec.completion?.(value, {}) ?? { ok: true as const, exitCode: 0 },
+            }),
         io,
         render: () => undefined,
         formatError: ({ error }) => `diagnostic: ${String(error)}`,
@@ -328,13 +333,11 @@ describe("machine-output conformance", () => {
         if (Option.isSome(redaction)) yield* redaction.value.registerValues(value.redactionTokens ?? []);
         const sink = yield* Effect.serviceOption(StreamFrameSink);
         if (Option.isSome(sink)) {
-          yield* sink.value.emit({ _tag: "stdout", chunk: value.stdout, raw: true });
-          yield* sink.value.emit({ _tag: "stderr", chunk: value.stderr, raw: true });
+          yield* sink.value.emit({ _tag: "stdout", chunk: value.stdout, kind: "bytes" });
+          yield* sink.value.emit({ _tag: "stderr", chunk: value.stderr, kind: "bytes" });
         }
         return value;
       });
-
-    afterEach(resetRegisteredRedactionValuesForTesting);
 
     test("success emits stdout/stderr frames terminated by a result frame with scratch id and exit code", async () => {
       const io = await runScratchRunSpec(streamedResult(successValue(0)));
@@ -379,7 +382,7 @@ describe("machine-output conformance", () => {
       expect(exitCode).toBe(1);
     });
 
-    test("a non-zero tool exit stays ok:true in the result frame and propagates the exit code", async () => {
+    test("a non-zero tool exit retains the failed result and propagates the exit code", async () => {
       let exitCode: number | undefined;
       const io = await runScratchRunSpec(streamedResult(successValue(7)), (code) => {
         exitCode = code;
@@ -387,7 +390,7 @@ describe("machine-output conformance", () => {
       const frames = io.stdoutLines().map(decodeFrame);
       const result = frames.at(-1);
       if (result?._tag !== "result") throw new Error("expected a terminal result frame");
-      expect(result.envelope.ok).toBe(true);
+      expect(result.envelope.ok).toBe(false);
       const payload = result.envelope.result as { exitCode: number };
       expect(payload.exitCode).toBe(7);
       expect(exitCode).toBe(7);

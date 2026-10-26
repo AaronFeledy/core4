@@ -19,9 +19,58 @@ import { yamlRoundTripRecord } from "@lando/sdk/test";
 
 import { commonContainerLabels } from "../src/plan.ts";
 import { composePath, emitCompose, renderCompose } from "../src/podman/compose.ts";
+import { networkPlan } from "./authored-network-fixture.ts";
+
+test("emits member-only authored networks, bridge aliases, external names and owned drivers", () => {
+  // Given / When
+  const document: unknown = Bun.YAML.parse(
+    renderCompose(networkPlan, { providerId: "docker", remediation: "Retry.", env: {} }),
+  );
+  // Then
+  expect(document).toMatchObject({
+    services: {
+      web: {
+        networks: {
+          "lando-networks": { aliases: ["web", "frontend"] },
+          lando_bridge_network: { aliases: ["web.networks.internal"] },
+          "lando-networks_private": { aliases: ["web.networks.internal", "private-web"] },
+          "sibling net": { aliases: ["web.networks.internal", "public-web"] },
+        },
+      },
+      worker: {
+        networks: {
+          "lando-networks": { aliases: ["worker"] },
+          lando_bridge_network: { aliases: ["worker.networks.internal"] },
+        },
+      },
+    },
+    networks: {
+      "lando-networks_private": { driver: "macvlan" },
+      "sibling net": { external: true, name: "sibling net" },
+    },
+  });
+  expect(document).toHaveProperty("services.worker.networks", {
+    "lando-networks": { aliases: ["worker"] },
+    lando_bridge_network: { aliases: ["worker.networks.internal"] },
+  });
+});
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
+
+test.each(["macvlan", undefined])("emits the canonical bridge driver %s with a bridge default", (driver) => {
+  // Given a plan whose bridge driver exists only on NetworkingPlan.
+  const plan: AppPlan = {
+    ...networkPlan,
+    networking: {
+      perAppBridge: { name: "lando-networks", ...(driver === undefined ? {} : { driver }) },
+    },
+  };
+  // When the provider renders Compose.
+  const document: unknown = Bun.YAML.parse(renderCompose(plan, ctx));
+  // Then the provider uses the canonical driver or its default.
+  expect(document).toHaveProperty("networks.lando-networks.driver", driver ?? "bridge");
+});
 
 interface FileSystemCall {
   readonly operation: string;
@@ -34,11 +83,26 @@ const makeFileSystemFake = () => {
   const files = new Map<string, string>();
   const directories = new Set<string>();
   const unsupported = (operation: string, path: string) =>
-    Effect.fail(new FileIoError({ message: `fake FileSystem does not support ${operation}`, path }));
+    Effect.fail(
+      new FileIoError({
+        message: `fake FileSystem does not support ${operation}`,
+        path,
+        remediation:
+          "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+      }),
+    );
   const layer = Layer.succeed(
     FileSystem,
     FileSystem.of({
-      read: (path: string) => Stream.fail(new FileIoError({ message: "fake read", path })),
+      read: (path: string) =>
+        Stream.fail(
+          new FileIoError({
+            message: "fake read",
+            path,
+            remediation:
+              "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+          }),
+        ),
       readText: (path: string) => unsupported("readText", path),
       write: (path: string, content: string | Uint8Array) => {
         calls.push({ operation: "write", path });
@@ -157,7 +221,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [{ name: "myapp_default", shared: false, driver: "bridge" }],
   stores: [
     { name: "myapp_database_data", scope: "service", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
@@ -563,7 +626,7 @@ describe("Podman Compose emission", () => {
 
     expect(content).toContain("      custom-app-net:\n");
     expect(content).toContain(
-      '      custom-shared-net:\n        aliases:\n          - "web.custom.internal"',
+      '      custom-shared-net:\n        aliases:\n          - "web.myapp.internal"\n          - "web.custom.internal"',
     );
     expect(content).toContain('  custom-app-net:\n    driver: "bridge"');
     expect(content).toContain('  custom-shared-net:\n    external: true\n    name: "custom-shared-net"');
@@ -741,7 +804,7 @@ describe("Compose mapping-key quoting", () => {
           labels: {
             "dev.lando.app": "myapp",
             "dev.lando.app-root": "/srv/apps/myapp",
-            "dev.lando.create-config": expect.stringMatching(/^v1:[a-f0-9]{64}$/u),
+            "dev.lando.create-config": expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
             "dev.lando.service": "web",
           },
           networks: {
@@ -757,7 +820,7 @@ describe("Compose mapping-key quoting", () => {
           labels: {
             "dev.lando.app": "myapp",
             "dev.lando.app-root": "/srv/apps/myapp",
-            "dev.lando.create-config": expect.stringMatching(/^v1:[a-f0-9]{64}$/u),
+            "dev.lando.create-config": expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
             "dev.lando.service": "database",
           },
           networks: {

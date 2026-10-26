@@ -12,11 +12,11 @@ real provider. The harness then spawns the compiled `lando` binary instead of
 the in-process test provider, so `start` boots containers, `info` reports
 what is actually running, and `destroy` tears real resources down.
 
-The everyday loop in the
-[app lifecycle tutorial](/guides/tutorial/app-lifecycle/) is the reference
-example. Its `real-provider-loop` scenario starts a two-service app, checks
-`lando info` for `running` rows, stops it, and destroys it, all through the
-binary.
+Use a fixture-owned app and include cleanup: these scenarios create real
+provider resources. The `real-provider-loop` scenario in the
+[app lifecycle tutorial](/guides/tutorial/app-lifecycle/) starts a two-service
+app, checks `lando info` for `running` rows, stops it, and destroys it through
+the binary.
 
 ## Write one
 

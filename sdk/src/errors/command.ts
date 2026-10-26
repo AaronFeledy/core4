@@ -18,7 +18,7 @@ export class CommandAliasConflictError extends Schema.TaggedError<CommandAliasCo
     claimedBy: Schema.String,
     /** Canonical built-in command id the alias is reserved for. */
     reservedFor: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -30,7 +30,7 @@ export class CommandAliasTargetError extends Schema.TaggedError<CommandAliasTarg
     alias: Schema.String,
     target: Schema.String,
     closeMatches: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -50,7 +50,7 @@ export class CommandInputValidationError extends Schema.TaggedError<CommandInput
     kind: Schema.Literals(["flag", "arg"]),
     /** Machine-readable validation reason (e.g. unknown, required, type). */
     reason: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -65,13 +65,13 @@ export class JsonProjectionError extends Schema.TaggedError<JsonProjectionError>
   keys: Schema.Array(Schema.String),
   available: Schema.Array(Schema.String),
   reason: Schema.Literals(["unknown_key", "duplicate_key", "non_object_result", "format_conflict"]),
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 /** `--jq` cannot be combined with bare `--json`. */
 export class JsonJqConflictError extends Schema.TaggedError<JsonJqConflictError>()("JsonJqConflictError", {
   message: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 /** A `--jq` expression failed to evaluate, timed out, or exceeded size limits. */
@@ -79,6 +79,6 @@ export class JqExpressionError extends Schema.TaggedError<JqExpressionError>()("
   message: Schema.String,
   expression: Schema.String,
   reason: Schema.Literals(["eval", "timeout", "too_large", "missing_value"]),
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   detail: Schema.optional(Schema.String),
 }) {}

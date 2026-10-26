@@ -55,13 +55,13 @@ const makePlan = (id: string): AppPlan => {
   };
   return {
     id: appId,
+    valueModel: 1,
     name: id,
     slug: id,
     root: AbsolutePath.make(`/tmp/${id}`),
     provider: providerId,
     services: { [serviceName]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -119,6 +119,7 @@ describe("managed Windows published lifecycle", () => {
           providerId,
           status: "running",
           containerId: "exact-global-id",
+          publications: { status: "unknown" },
         }),
       ),
     );
@@ -287,7 +288,11 @@ describe("managed Windows published lifecycle", () => {
               status: 200,
               body: JSON.stringify({ Os: "linux", Architecture: "amd64", RepoDigests: ["img@sha256:test"] }),
             };
-          if (request.method === "POST" && path === "/networks/create") return { status: 201, body: "{}" };
+          if (
+            request.method === "POST" &&
+            (path === "/networks/create" || path === "/libpod/networks/create")
+          )
+            return { status: 201, body: "{}" };
           if (request.method === "DELETE" && path.startsWith("/networks/")) return { status: 204, body: "" };
           if (request.method === "GET" && path === "/containers/router-id/json")
             return {
