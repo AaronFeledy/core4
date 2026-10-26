@@ -159,6 +159,7 @@ import {
   AppPlan,
   CurrentExecutableAppPlan,
   FileSyncPlan,
+  ServiceHomePlan,
   ServiceNetworkAttachment,
   ServicePlan,
 } from "./app-plan.ts";
@@ -619,6 +620,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   AppPlan,
   ProviderSetupPlan,
   ServicePlan,
+  ServiceHomePlan,
   AppMountInput,
   AppMountPlan,
   MountObservation,
@@ -1152,6 +1154,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   AppPlan: "Public Lando schema contract for App Plan.",
   ProviderSetupPlan: "Inspectable provider setup plan authorized by core before host mutation.",
   ServicePlan: "Public Lando schema contract for Service Plan.",
+  ServiceHomePlan: "Resolved service home persistence status.",
   AppMountInput: "Application source mount destination, options, or false to disable it.",
   AppMountPlan: "Public Lando schema contract for App Mount Plan.",
   MountObservation: "Runtime container mount observation evidence.",

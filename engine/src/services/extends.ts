@@ -210,6 +210,13 @@ const mergeIdentity = (chain: ReadonlyArray<ServiceType>): ServiceImageIdentity 
     merged = {
       defaultUser: type.identity.defaultUser,
       homes: { ...merged.homes, ...type.identity.homes },
+      ...(merged.preparedHomes === undefined && type.identity.preparedHomes === undefined
+        ? {}
+        : {
+            preparedHomes: Array.from(
+              new Set([...(merged.preparedHomes ?? []), ...(type.identity.preparedHomes ?? [])]),
+            ),
+          }),
     };
   }
   return merged;

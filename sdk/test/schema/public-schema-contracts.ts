@@ -150,6 +150,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   AppPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ProviderSetupPlan: "sdk/test/schema/provider-setup-plan.test.ts",
   ServicePlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ServiceHomePlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   AppMountInput: "sdk/test/schema/named-contract-examples.test.ts",
   AppMountPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   MountObservation: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

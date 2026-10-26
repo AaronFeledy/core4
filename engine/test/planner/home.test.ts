@@ -175,7 +175,11 @@ describe("applyServiceHome", () => {
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage).toEqual([
-      { store: "lando-myapp-web-home", target: PortablePath.make("/home/node"), readOnly: false },
+      {
+        store: homeStoreName("myapp", "web", "node"),
+        target: PortablePath.make("/home/node"),
+        readOnly: false,
+      },
     ]);
   });
 

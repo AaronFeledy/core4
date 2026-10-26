@@ -216,8 +216,8 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   // configs sha256:8a992dacb2cb44f327c2f353176b825f52dec230383f37131db1c6cb9dda68a5
   // and sha256:7d56462eb335f178afb9536578454ea1bc7d30136ac2153df2632b86e420dd12.
   // www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin; image User and HOME are unset.
-  // /var/www is 0755 root:root (only html is www-data-owned), so declare no www-data home.
-  identity: rootIdentity(),
+  // /var/www is 0755 root:root, so Lando prepares the passwd home for www-data in its derived image.
+  identity: { ...rootIdentity({ "www-data": "/var/www" }), preparedHomes: ["www-data"] },
   schema: PhpServiceConfig,
   resolve: (input) =>
     serviceTypeResolve(`php:${version}`, `Failed to resolve php:${version}`, () => {

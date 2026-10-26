@@ -18,7 +18,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 
-const capabilities = TestRuntimeProvider.capabilities;
+const capabilities = { ...TestRuntimeProvider.capabilities, artifactBuild: true };
 
 const planEffect = (appRoot: string, landofile: LandofileShape) => {
   const planner = AppPlannerLayer.layer.pipe(

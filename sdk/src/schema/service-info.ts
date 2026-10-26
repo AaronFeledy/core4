@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { ServiceHomePlan } from "./app-plan.ts";
 
 import { ServiceCredsDisplay } from "./database-connection.ts";
 import { AppMountPlan } from "./mounts.ts";
@@ -44,6 +45,9 @@ export const ServiceInfo = Schema.Struct({
   type: Schema.String,
   provider: Schema.String,
   primary: Schema.Boolean,
+  home: Schema.optionalKey(ServiceHomePlan).annotate({
+    description: "Planned service home persistence status.",
+  }),
   status: ServiceState.annotate({ description: "Latest observed or supervised service state." }),
   ...connectionAddressFields,
   logSources: Schema.optionalKey(Schema.Array(ServiceInfoLogSource)).annotate({

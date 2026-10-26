@@ -137,6 +137,14 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
             },
           };
     const redirectSteps = redirectLogSourceBuildSteps({ logSources, base: draft.base });
+    const homePlan = applyServiceHome({
+      servicePlan: servicePlanFromDraft(draft, [], input.metadata, extensionsForPlan),
+      serviceName: name,
+      appSlug: input.appSlug,
+      appRoot: input.appRoot,
+      intent: homeIntent,
+    });
+    if (homePlan instanceof LandofileValidationError) return yield* Effect.fail(homePlan);
     // Data-tree ownership resolves here, where the composed `draft.user` and
     // the service type's image identity are both final. The step it produces
     // prepares the tree during the image build, so the planned user owns the
@@ -152,12 +160,34 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     if (ownedTrees instanceof DataTreeOwnershipCapabilityError) {
       return yield* Effect.fail(ownedTrees);
     }
-    const ownershipStep = dataTreeOwnershipStep(ownedTrees);
+    const ownershipTrees = [...ownedTrees];
+    const home = homePlan.home;
+    if (
+      home?.state === "persisted" &&
+      home.user !== undefined &&
+      home.user !== "root" &&
+      home.user !== "0" &&
+      !homeIntent.customImage &&
+      homeIntent.identity?.preparedHomes?.includes(home.user)
+    ) {
+      const preparedHome = resolveDataTreeOwnership({
+        serviceName: name,
+        serviceType: homeIntent.serviceType,
+        identity: homeIntent.identity,
+        hasCustomImage: false,
+        trees: [{ target: home.target, seededOwners: [] }],
+        plannedUser: home.user,
+      });
+      if (preparedHome instanceof DataTreeOwnershipCapabilityError) return yield* Effect.fail(preparedHome);
+      ownershipTrees.push(...preparedHome);
+    }
+    const ownershipStep = dataTreeOwnershipStep(ownershipTrees);
     const draftForPlan =
       ownershipStep === undefined && redirectSteps.length === 0
-        ? draft
+        ? { ...draft, storage: [...homePlan.storage] }
         : {
             ...draft,
+            storage: [...homePlan.storage],
             buildSteps: [
               ...(ownershipStep === undefined ? [] : [ownershipStep]),
               ...draft.buildSteps,
@@ -188,7 +218,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       authoredArtifact === undefined ? servicePlan : { ...servicePlan, artifact: authoredArtifact };
     for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
       name,
-      artifactBuild: withArtifact.artifact?.kind === "build",
+      artifactBuild: withArtifact.artifact?.kind === "build" || ownershipStep !== undefined,
     }))
       yield* Effect.fail(error);
 
@@ -225,23 +255,14 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       gitDirectories = yield* readGitDirectories(gitPath, appMount.target, input.fileSystem);
       gitHostChecks.push({ path: gitPath, target: appMount.target, directories: gitDirectories });
     }
-    const withHome = applyServiceHome({
-      servicePlan: {
-        ...servicePlanWithCapabilityRealization,
-        mounts: [
-          ...servicePlanWithCapabilityRealization.mounts,
-          ...worktreeGitMounts(servicePlanWithCapabilityRealization, gitDirectories),
-        ],
-      },
-      serviceName: name,
-      appSlug: input.appSlug,
-      appRoot: input.appRoot,
-      intent: homeIntent,
-    });
-    if (withHome instanceof LandofileValidationError) {
-      return yield* Effect.fail(withHome);
-    }
-    const servicePlanWithHome = withHome;
+    const servicePlanWithHome: ServicePlan = {
+      ...servicePlanWithCapabilityRealization,
+      home: homePlan.home,
+      mounts: [
+        ...servicePlanWithCapabilityRealization.mounts,
+        ...worktreeGitMounts(servicePlanWithCapabilityRealization, gitDirectories),
+      ],
+    };
 
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {

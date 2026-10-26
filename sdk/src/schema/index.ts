@@ -1,5 +1,6 @@
 export * from "./agent-forwarding.ts";
 export * from "./app-plan.ts";
+export * from "./image-reference.ts";
 export * from "./service-probe.ts";
 export * from "./environment-value.ts";
 export * from "./compiled-landofile.ts";
