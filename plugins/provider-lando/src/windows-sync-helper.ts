@@ -8,7 +8,11 @@ import { sha256Hex } from "@lando/sdk/digest";
 
 import { Duration, Effect, Predicate, Schema } from "effect";
 
-import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
+import {
+  type EngineHttpRequest,
+  type PodmanApiClient,
+  buildContainerRemoveRequest,
+} from "@lando/container-runtime/engine-api";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { runProbe } from "@lando/sdk/probe";
@@ -751,10 +755,7 @@ export const removeWindowsSyncHelper = (
           labelsFor(spec, digest, "helper", receipt.helperNonce),
           receipt.containerId,
         );
-        const removed = yield* request(api, {
-          method: "DELETE",
-          path: `/containers/${encodeURIComponent(id)}?force=true`,
-        });
+        const removed = yield* request(api, buildContainerRemoveRequest(id));
         if (removed.status !== 200 && removed.status !== 204 && removed.status !== 404) {
           return yield* Effect.fail(
             failure(

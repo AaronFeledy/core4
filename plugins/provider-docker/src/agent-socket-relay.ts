@@ -5,9 +5,14 @@ import {
   volumeCreationLabels,
 } from "@lando/container-runtime/data-plane";
 import { dockerPullDialect } from "@lando/container-runtime/dialect";
-import type { EngineApiClient, EngineHttpRequest } from "@lando/container-runtime/engine-api";
+import {
+  type EngineApiClient,
+  type EngineHttpRequest,
+  buildContainerRemoveRequest,
+} from "@lando/container-runtime/engine-api";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { AGENT_SESSION_LABEL } from "@lando/container-runtime/labels";
+import { annotateFailureRole, failureDefectCause } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import { type AgentSocketBridgeInput, type AgentSocketBridgeResult, ProviderId } from "@lando/sdk/schema";
@@ -147,10 +152,7 @@ export const makeDockerDesktopAgentSocketBridge = (options: {
       );
     }
     if (containerState === "owned") {
-      yield* checked({
-        method: "DELETE",
-        path: `/containers/${encodeURIComponent(containerName)}?force=true`,
-      });
+      yield* checked(buildContainerRemoveRequest(containerName));
     }
     if (volumeState === "owned") {
       yield* checked({ method: "DELETE", path: `/volumes/${encodeURIComponent(volume)}` });
@@ -164,7 +166,17 @@ export const makeDockerDesktopAgentSocketBridge = (options: {
             : Effect.fail(failure("The agent relay volume already exists or ownership could not be proven.")),
         ),
       ),
-      () => checked({ method: "DELETE", path: `/volumes/${encodeURIComponent(volume)}` }).pipe(Effect.orDie),
+      () =>
+        request({ method: "DELETE", path: `/volumes/${encodeURIComponent(volume)}` }).pipe(
+          Effect.flatMap((response) =>
+            response.status === 200 || response.status === 204 || response.status === 404
+              ? Effect.void
+              : Effect.fail(failure("Could not remove the Docker agent relay volume.")),
+          ),
+          Effect.catchCause((cause) =>
+            Effect.failCause(failureDefectCause(annotateFailureRole(cause, "cleanup"))),
+          ),
+        ),
     );
     const createRequest: EngineHttpRequest = {
       method: "POST",
@@ -198,24 +210,35 @@ export const makeDockerDesktopAgentSocketBridge = (options: {
         if (response.status !== 201)
           return yield* Effect.fail(failure("Could not create the Docker agent relay container."));
         return yield* Schema.decodeUnknownEffect(Identifier)(response.body).pipe(
-          Effect.map((value) => encodeURIComponent(value.Id)),
+          Effect.map((value) => value.Id),
           Effect.mapError(() => failure("Docker returned an invalid relay container identifier.")),
         );
       }),
       (id) =>
-        request({ method: "POST", path: `/containers/${id}/stop?t=1` }).pipe(
+        request({ method: "POST", path: `/containers/${encodeURIComponent(id)}/stop?t=1` }).pipe(
           Effect.flatMap((response) =>
             response.status === 204 || response.status === 304 || response.status === 404
               ? Effect.void
               : Effect.fail(failure("Could not stop the Docker agent relay container.")),
           ),
-          Effect.orDie,
+          Effect.catchCause((cause) =>
+            Effect.failCause(failureDefectCause(annotateFailureRole(cause, "cleanup"))),
+          ),
           Effect.ensuring(
-            checked({ method: "DELETE", path: `/containers/${id}?force=true` }).pipe(Effect.orDie),
+            request(buildContainerRemoveRequest(id)).pipe(
+              Effect.flatMap((response) =>
+                response.status === 200 || response.status === 204 || response.status === 404
+                  ? Effect.void
+                  : Effect.fail(failure("Could not remove the Docker agent relay container.")),
+              ),
+              Effect.catchCause((cause) =>
+                Effect.failCause(failureDefectCause(annotateFailureRole(cause, "cleanup"))),
+              ),
+            ),
           ),
         ),
     );
-    yield* checked({ method: "POST", path: `/containers/${container}/start` });
+    yield* checked({ method: "POST", path: `/containers/${encodeURIComponent(container)}/start` });
     const ready = yield* runProbe(
       {
         id: "docker-agent-socket",
@@ -224,7 +247,7 @@ export const makeDockerDesktopAgentSocketBridge = (options: {
       Effect.gen(function* () {
         const created = yield* checked({
           method: "POST",
-          path: `/containers/${container}/exec`,
+          path: `/containers/${encodeURIComponent(container)}/exec`,
           body: { Cmd: ["test", "-S", socket], AttachStdout: false, AttachStderr: false },
         });
         const exec = yield* Schema.decodeUnknownEffect(Identifier)(created.body);

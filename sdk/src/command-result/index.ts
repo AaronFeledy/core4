@@ -7,8 +7,12 @@ export {
 } from "./completion.ts";
 export {
   FailureRoleAnnotation,
-  failureOutcomeFromCause,
+  annotateFailureRole,
   commandFailureCause,
+  failureDefectCause,
+  failureOutcomeFromCause,
+  mapFailureCause,
+  mergeFailure,
   primaryFailureReason,
   type ProjectedFailure,
 } from "./failure.ts";

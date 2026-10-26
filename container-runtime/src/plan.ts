@@ -1,4 +1,3 @@
-import { sha256Hex } from "@lando/sdk/digest";
 import {
   type AppPlan,
   type InternalEndpoint,
@@ -14,8 +13,8 @@ import { literalServiceEnvironment, requireCurrentCreationPlan } from "./environ
 import {
   APP_LABEL,
   APP_ROOT_LABEL,
-  HOST_PROXY_SESSION_LABEL,
   SERVICE_LABEL,
+  containerIntegrationLabels,
   scratchLabelsForPlan,
 } from "./labels.ts";
 
@@ -76,17 +75,14 @@ export const commonContainerLabels = (
           Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
         )
       : {};
-  const baseLabels: Record<string, string> = {
+  const baseLabels = containerIntegrationLabels(service.environment, {
     ...userLabels,
     [APP_LABEL]: plan.id,
     [APP_ROOT_LABEL]: plan.root,
     [SERVICE_LABEL]: service.name,
     ...scratchLabelsForPlan(plan),
     ...extra,
-  };
-  const session = service.environment.LANDO_HOST_PROXY_SESSION;
-  if (typeof session !== "string") delete baseLabels[HOST_PROXY_SESSION_LABEL];
-  else baseLabels[HOST_PROXY_SESSION_LABEL] = sha256Hex(session).slice(0, 16);
+  });
   return { ...baseLabels, [CREATE_CONFIG_LABEL]: createConfigFingerprint(plan, service, baseLabels) };
 };
 

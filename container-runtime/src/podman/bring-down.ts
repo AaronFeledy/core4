@@ -12,6 +12,7 @@ import {
 } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
+import { removeRuntimeContainer } from "../container-removal.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
   EngineHttpApi,
@@ -127,24 +128,11 @@ const stopContainer = (deps: BringDownDeps, name: string): Effect.Effect<boolean
   );
 
 const removeContainer = (deps: BringDownDeps, name: string): Effect.Effect<boolean, BringDownError> =>
-  request(deps, { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }).pipe(
-    Effect.flatMap((response) => {
-      if (response.status === 200 || response.status === 204) {
-        return Effect.succeed(true);
-      }
-      if (response.status === 404) {
-        return Effect.succeed(false);
-      }
-      return Effect.fail(
-        podmanFailure(
-          deps,
-          "bringDown.remove",
-          `provider-${deps.options.ctx.providerId} container remove failed with HTTP ${response.status}.`,
-          { name, body: response.body },
-        ),
-      );
-    }),
-  );
+  removeRuntimeContainer(deps.api, name, {
+    ...deps.options.ctx,
+    remediation: deps.remediation,
+    operation: "bringDown.remove",
+  });
 
 const removeNetwork = Effect.fnUntraced(function* (
   deps: BringDownDeps,

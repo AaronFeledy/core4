@@ -522,6 +522,9 @@ describe("provider data plane", () => {
           request: (request) =>
             Effect.suspend(() => {
               requests.push(`${request.method} ${request.path}`);
+              if (request.method === "DELETE" && request.path.startsWith("/containers/")) {
+                return Effect.succeed({ status: 204, body: "" });
+              }
               if (request.path.startsWith("/images/")) {
                 if (request.method === "GET") return Effect.fail(inspectError);
                 return deleteResult === "transport failure"
@@ -728,7 +731,7 @@ describe("provider data plane", () => {
 
   test("creates owned data-store volumes before ephemeral containers", async () => {
     // Given: an app-owned store and a provider API that records creation order and payloads.
-    const requests: Array<{ readonly path: string; readonly body?: unknown }> = [];
+    const requests: Array<{ readonly method: string; readonly path: string; readonly body?: unknown }> = [];
     const api: DataPlaneApiClient = {
       request: (request) => {
         requests.push(request);
@@ -779,7 +782,68 @@ describe("provider data plane", () => {
         "dev.lando.volume-owner": "/canonical/app",
       },
     });
+    expect(requests[containerCreateIndex]?.body).toMatchObject({ HostConfig: { Binds: ["data:/data"] } });
+    expect(requests.filter(({ method }) => method === "DELETE")).toEqual([
+      { method: "DELETE", path: expect.stringMatching(/^\/containers\/[^/?]+\?force=true&v=true$/u) },
+    ]);
   });
+
+  for (const streaming of [false, true]) {
+    for (const outcome of ["success", "failure", "interruption"] as const) {
+      test.each([false, true])(
+        `ephemeral cleanup after ${outcome} (streaming=${streaming}, remove=%s)`,
+        async (remove) => {
+          const requests: Array<{ readonly method: string; readonly path: string }> = [];
+          const entered = Deferred.makeUnsafe<void>();
+          const provider = makeProviderDataPlane({
+            providerId: "test",
+            capabilities: { volumeSnapshot: "none" },
+            redactDetails: (value) => value,
+            api: {
+              request: (request) => {
+                requests.push(request);
+                if (request.path.endsWith("/start")) {
+                  if (outcome === "interruption")
+                    return Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never));
+                  if (outcome === "failure") return Effect.succeed({ status: 500, body: "start failed" });
+                }
+                return Effect.succeed({
+                  status: 200,
+                  body: request.path.endsWith("/json") ? '{"State":{"ExitCode":0}}' : "{}",
+                });
+              },
+              stream: () => Stream.empty,
+            },
+          });
+          const spec = { image: "alpine:3.20", command: ["true"], remove };
+          const run = Effect.scoped(
+            streaming ? provider.runStream(spec).pipe(Stream.runDrain) : provider.run(spec),
+          );
+          const exit = await Effect.runPromise(
+            outcome === "interruption"
+              ? Effect.gen(function* () {
+                  const fiber = yield* Effect.forkChild(run);
+                  yield* Deferred.await(entered);
+                  yield* Fiber.interrupt(fiber);
+                  return yield* Fiber.await(fiber);
+                })
+              : Effect.exit(run),
+          );
+          expect(Exit.isSuccess(exit)).toBe(outcome === "success");
+          expect(requests.filter(({ method }) => method === "DELETE")).toEqual(
+            remove
+              ? [
+                  {
+                    method: "DELETE",
+                    path: expect.stringMatching(/^\/containers\/[^/?]+\?force=true&v=true$/u),
+                  },
+                ]
+              : [],
+          );
+        },
+      );
+    }
+  }
 
   test("preserves colon targets in ephemeral API Mounts", async () => {
     // Given

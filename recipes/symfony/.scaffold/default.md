@@ -33,7 +33,7 @@ lando init --recipe symfony --name=my-symfony-app --yes \
 
 `appserver` starts with `DATABASE_URL` pointing at the `database` service (Postgres or MariaDB, matching your answer, with `serverVersion` and charset set) and `REDIS_URL` pointing at `cache`. Doctrine reads `DATABASE_URL` directly, and Symfony's Dotenv never overrides a real environment variable, so the injected value wins over `.env`. The password comes from the database service's resolved credentials; `lando info` shows the user and database name and redacts the rest.
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 ## 1. scaffold
 

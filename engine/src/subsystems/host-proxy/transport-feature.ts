@@ -60,7 +60,7 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
   },
 });
 
-const HOST_PROXY_MOUNT_TARGETS: ReadonlySet<string> = new Set([
+export const HOST_PROXY_MOUNT_TARGETS: ReadonlySet<string> = new Set([
   HOST_PROXY_CONTAINER_SOCKET,
   HOST_PROXY_CONTAINER_LANDO,
   "/usr/local/bin/xdg-open",

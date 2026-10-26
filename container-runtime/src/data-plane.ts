@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
+import {
+  boundedDiagnostic,
+  makeCompletionDiagnosticContext,
+  redactCompletionString,
+} from "./completion-diagnostic.ts";
+import { removeRuntimeContainer } from "./container-removal.ts";
 import { tryParseJson } from "./engine-json.ts";
 import { type PinnedHelperImage, dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
 import type { PulledImage } from "./image-pull.ts";
@@ -39,11 +45,14 @@ import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creat
 export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
 export { dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
 
-import { Effect, Exit, Fiber, type Scope, Stream } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, type Scope, Stream } from "effect";
+
+import { annotateFailureRole, failureDefectCause, mergeFailure } from "@lando/sdk/command-result";
 
 import {
   ArtifactTransferError,
   ProviderCapabilityError,
+  ProviderUnavailableError,
   ServiceCopyError,
   VolumeOperationError,
 } from "@lando/sdk/errors";
@@ -635,16 +644,113 @@ const createEphemeralContainer = (
   );
 };
 
-const removeEphemeralContainer = (options: ProviderDataPlaneOptions, name: string, remove: boolean) =>
-  remove
-    ? request(options, "run.remove", {
-        method: "DELETE",
-        path: `/containers/${encodeURIComponent(name)}?force=true`,
-      }).pipe(
-        Effect.catch(() => Effect.void),
-        Effect.asVoid,
-      )
-    : Effect.void;
+const commandOutcome = (
+  value: unknown,
+): { readonly exitCode: number; readonly stderr: string } | undefined => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("exitCode" in value) ||
+    typeof value.exitCode !== "number"
+  ) {
+    return undefined;
+  }
+  const stderr = "stderr" in value && typeof value.stderr === "string" ? value.stderr : "";
+  return { exitCode: value.exitCode, stderr };
+};
+
+const ephemeralCompletionFailure = (
+  options: ProviderDataPlaneOptions,
+  operation: string,
+  outcome: { readonly exitCode: number; readonly stderr: string },
+) => {
+  const stderrTail = boundedDiagnostic(outcome.stderr, options.redactDetails);
+  return new VolumeOperationError({
+    providerId: options.providerId,
+    operation,
+    message: "Provider ephemeral command completed but container cleanup failed.",
+    remediation: "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+    details:
+      stderrTail === undefined ? { exitCode: outcome.exitCode } : { exitCode: outcome.exitCode, stderrTail },
+  });
+};
+
+const completedCommandFailure = (
+  exit: Exit.Exit<unknown, unknown>,
+  observed: { readonly exitCode?: number; readonly stderr: string } | undefined,
+): { readonly exitCode: number; readonly stderr: string } | undefined => {
+  if (!Exit.isSuccess(exit)) return undefined;
+  if (observed?.exitCode !== undefined) {
+    return observed.exitCode === 0 ? undefined : { exitCode: observed.exitCode, stderr: observed.stderr };
+  }
+  const outcome = commandOutcome(exit.value);
+  return outcome === undefined || outcome.exitCode === 0 ? undefined : outcome;
+};
+
+interface EphemeralRelease {
+  readonly options: ProviderDataPlaneOptions;
+  readonly name: string;
+  readonly remove: boolean;
+  readonly exit: Exit.Exit<unknown, unknown>;
+  readonly operation: string;
+  readonly observed?: { readonly exitCode?: number; readonly stderr: string };
+}
+
+/** Fixed bound so a hung engine DELETE cannot hold scope close open. */
+const EPHEMERAL_CLEANUP_DEADLINE = Duration.seconds(10);
+
+const releaseEphemeralContainer = (release: EphemeralRelease) => {
+  const { options, name, remove, exit, operation, observed } = release;
+  if (!remove) return Effect.void;
+  // Finalizers are uninterruptible. The removal stays interruptible so this
+  // deadline can stop it; the finalizer stays masked so parent cancellation
+  // still waits for that bounded attempt instead of abandoning cleanup.
+  const removal = Effect.interruptible(
+    removeRuntimeContainer(options.api, name, {
+      providerId: options.providerId,
+      operation: `${operation}.remove`,
+      remediation:
+        "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+      redactor: {
+        redactString: (value) => redactCompletionString(value, options.redactDetails),
+        redactValue: options.redactDetails,
+      },
+    }),
+  ).pipe(
+    Effect.timeoutOrElse({
+      duration: EPHEMERAL_CLEANUP_DEADLINE,
+      orElse: () =>
+        Effect.fail(
+          new ProviderUnavailableError({
+            providerId: options.providerId,
+            operation: `${operation}.remove`,
+            message: "Provider ephemeral container cleanup timed out.",
+            remediation:
+              "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+          }),
+        ),
+    }),
+  );
+  return removal.pipe(
+    Effect.asVoid,
+    Effect.catchCause((cause) => {
+      const failedCommand = completedCommandFailure(exit, observed);
+      const annotated =
+        failedCommand === undefined
+          ? annotateFailureRole(cause, "cleanup")
+          : mergeFailure(
+              Cause.fail(ephemeralCompletionFailure(options, operation, failedCommand)),
+              cause,
+              "cleanup",
+            );
+      return Effect.failCause(annotated);
+    }),
+  );
+};
+
+/** acquireRelease finalizers cannot fail in the typed channel; keep the tagged error as a defect. */
+const defectCleanup = <E, R>(effect: Effect.Effect<void, E, R>): Effect.Effect<void, never, R> =>
+  effect.pipe(Effect.catchCause((cause) => Effect.failCause(failureDefectCause(cause))));
 
 const attachEphemeralStdin = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) => {
   const stdin = spec.stdinStream;
@@ -734,7 +840,8 @@ const runBytes = (
           ),
         ),
       ),
-    (name) => removeEphemeralContainer(options, name, spec.remove !== false),
+    (name, exit) =>
+      releaseEphemeralContainer({ options, name, remove: spec.remove !== false, exit, operation: "run" }),
   );
 
 const runByteStream = (
@@ -742,10 +849,28 @@ const runByteStream = (
   spec: EphemeralRunSpec,
 ): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> => {
   const decode = makeAttachDecoder();
+  const diagnostic = makeCompletionDiagnosticContext();
+  // The stream fiber records the command outcome; the finalizer reads it after that fiber finishes.
+  const observed: { exitCode?: number; readonly stderr: string } = {
+    get stderr() {
+      return diagnostic.text();
+    },
+  };
   return Stream.scoped(
     Stream.fromEffect(
-      Effect.acquireRelease(createEphemeralContainer(options, { ...spec, captureStdout: true }), (name) =>
-        removeEphemeralContainer(options, name, spec.remove !== false),
+      Effect.acquireRelease(
+        createEphemeralContainer(options, { ...spec, captureStdout: true }),
+        (name, exit) =>
+          defectCleanup(
+            releaseEphemeralContainer({
+              options,
+              name,
+              remove: spec.remove !== false,
+              exit,
+              operation: "runStream",
+              observed,
+            }),
+          ),
       ),
     ),
   ).pipe(
@@ -764,9 +889,10 @@ const runByteStream = (
           }).pipe((self) =>
             Stream.flattenIterable(
               Stream.map(self, (chunk) =>
-                decode(chunk).map(
-                  (frame): ExecChunk => ({ kind: frame.stream, chunk: new Uint8Array(frame.payload) }),
-                ),
+                decode(chunk).map((frame): ExecChunk => {
+                  if (frame.stream === "stderr") diagnostic.write(frame.payload);
+                  return { kind: frame.stream, chunk: new Uint8Array(frame.payload) };
+                }),
               ),
             ),
           );
@@ -774,7 +900,9 @@ const runByteStream = (
             Effect.gen(function* () {
               if (spec.stdinStream !== undefined) yield* Fiber.join(stdinFiber);
               yield* waitForEphemeralContainer(options, name, spec);
-              return { exitCode: yield* inspectEphemeralExitCode(options, name, spec) } satisfies ExecChunk;
+              const exitCode = yield* inspectEphemeralExitCode(options, name, spec);
+              observed.exitCode = exitCode;
+              return { exitCode } satisfies ExecChunk;
             }),
           );
           return Stream.concat(output, completed);
@@ -878,7 +1006,8 @@ const snapshotCommitHelper = (options: ProviderDataPlaneOptions, spec: NativeSna
         }
         return yield* commitNativeSnapshot(options, name, spec.id, spec);
       }),
-    (name) => removeEphemeralContainer(options, name, true),
+    (name, exit) =>
+      releaseEphemeralContainer({ options, name, remove: true, exit, operation: "snapshotVolume" }),
   );
 
 const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, spec: NativeSnapshotCommit) =>

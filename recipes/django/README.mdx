@@ -61,7 +61,7 @@ The generated Landofile writes `DJANGO_SETTINGS_MODULE: config.settings` into `e
 
 `lando start` keeps the web container running for project setup; it does not start Django's server. The route from `lando info` reaches your app only while the server is running.
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For the day-to-day path (`django-admin`, `DATABASE_URL` in settings, `runserver` bind), see [Run the Django recipe](/guides/recipes/django-workflow/).
 

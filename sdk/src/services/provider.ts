@@ -62,6 +62,7 @@ import type {
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "../schema/index.ts";
+import type { MountObservation } from "../schema/service-mount.ts";
 import type { PrivilegeService } from "./process.ts";
 
 export type ProviderError =
@@ -259,6 +260,8 @@ export interface ServiceRuntimeInfo {
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
   readonly publications: PublicationObservation;
+  /** Mount table from the same container inspection, absent when unsupported. */
+  readonly mounts?: MountObservation;
   readonly lastStartedAt?: Date;
   /** Inspect fingerprint of published host ports. Absent when the container is missing. */
   readonly publishFingerprint?: string;
