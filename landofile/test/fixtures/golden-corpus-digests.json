@@ -1047,6 +1047,10 @@
       "digest": "4c084b4b9d168141c77cf669e80c2ee93bf0990725783b5d481bf6c12adfc937"
     },
     {
+      "fixture": "docs/guides/your-landofile/fixtures/typescript-local-layer",
+      "digest": "51d6daed4c54038988d6f35c326d769d1e8c1ba1e8389f548ac163abcb5be4bc"
+    },
+    {
       "fixture": "docs/guides/your-landofile/fixtures/your-landofile-demo",
       "digest": "f1b3be8f4f993aa3e9c5d2b22e87a6e48210303d5395e6ecc9a4ce722637b91c"
     },

@@ -4,13 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Result } from "effect";
 
+import type { StateStore } from "@lando/sdk/services";
 import {
   globalConfigEdit,
   globalConfigSet,
   globalConfigUnset,
   globalConfigValidate,
 } from "../../../src/cli/commands/meta/global-config.ts";
+import { testStateStoreLayer } from "../../_support/landofile-layer.ts";
 import { withEnvVar } from "../../_support/temp-cwd.ts";
+
+const run = <A, E>(effect: Effect.Effect<A, E, StateStore>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(testStateStoreLayer)));
 
 let root = "";
 const file = (): string => join(root, ".lando.yml");
@@ -43,9 +48,7 @@ describe("global config content-layer compilation", () => {
     await writeFile(join(root, ".lando.dist.yml"), recipe);
     await writeFile(file(), typedService);
     // When
-    const result = await Effect.runPromise(
-      globalConfigSet({ key: "router.httpPort", value: "8080" }, file()),
-    );
+    const result = await run(globalConfigSet({ key: "router.httpPort", value: "8080" }, file()));
     // Then
     expect(result.value).toBe(8080);
     expect(Bun.YAML.parse(await readFile(file(), "utf8"))).toEqual({
@@ -61,7 +64,7 @@ describe("global config content-layer compilation", () => {
       await writeFile(file(), typedService);
       await writeFile(join(root, recipeLayer), recipeLayer === ".lando.yml" ? recipe + typedService : recipe);
       // When
-      const result = await Effect.runPromise(globalConfigValidate(file()));
+      const result = await run(globalConfigValidate(file()));
       // Then
       expect(result).toEqual({ subcommand: "validate", valid: true, issues: [], filePath: file() });
     },
@@ -71,9 +74,7 @@ describe("global config content-layer compilation", () => {
     // Given
     await writeFile(file(), `services:\n  web:\n    primary: '{{ eq(env.LANDO_GLOBAL_FLAG, "false") }}'\n`);
     // When
-    const result = await withEnvVar("LANDO_GLOBAL_FLAG", "false", () =>
-      Effect.runPromise(globalConfigValidate(file())),
-    );
+    const result = await withEnvVar("LANDO_GLOBAL_FLAG", "false", () => run(globalConfigValidate(file())));
     // Then
     expect(result.valid).toBe(true);
   });
@@ -85,7 +86,7 @@ describe("global config content-layer compilation", () => {
       await writeFile(file(), "name: global\nruntime: 4\n");
       await writeFile(join(root, layer), "services:\n  web:\n    primary: maybe\n");
       // When
-      const result = await Effect.runPromise(globalConfigValidate(file()).pipe(Effect.result));
+      const result = await run(globalConfigValidate(file()).pipe(Effect.result));
       // Then
       expect(Result.isFailure(result)).toBe(true);
       if (Result.isFailure(result)) {
@@ -106,8 +107,8 @@ describe("global config content-layer compilation", () => {
     await writeFile(join(root, ".lando.dist.yml"), recipe);
     await writeFile(file(), typedService);
     // When an unrelated value is set and then unset.
-    const set = await Effect.runPromise(globalConfigSet({ key: "services.web.type", value: "php" }, file()));
-    const unset = await Effect.runPromise(globalConfigUnset({ key: "services.web.type" }, file()));
+    const set = await run(globalConfigSet({ key: "services.web.type", value: "php" }, file()));
+    const unset = await run(globalConfigUnset({ key: "services.web.type" }, file()));
     // Then the expression remains authoring data, not a baked boolean.
     expect(set).toMatchObject({ subcommand: "set", value: "php", changed: true });
     expect(unset).toMatchObject({ subcommand: "unset", changed: true });
@@ -122,7 +123,7 @@ describe("global config content-layer compilation", () => {
     await writeFile(file(), recipe);
     const before = await readFile(file(), "utf8");
     // When the option would materialize an invalid boolean in the base layer.
-    const result = await Effect.runPromise(
+    const result = await run(
       globalConfigSet({ key: "recipe.options.flag", value: "maybe" }, file()).pipe(Effect.result),
     );
     // Then
@@ -136,7 +137,7 @@ describe("global config content-layer compilation", () => {
     await writeFile(join(root, ".lando.dist.yml"), recipe);
     await writeFile(file(), typedService);
     // When
-    const result = await Effect.runPromise(
+    const result = await run(
       globalConfigSet({ key: "services.web.primary", value: "{{ recipe.flag }}", dryRun: true }, file()),
     );
     // Then
@@ -149,7 +150,7 @@ describe("global config content-layer compilation", () => {
     await writeFile(join(root, ".lando.dist.yml"), recipe);
     await writeFile(file(), "name: global\n");
     // When
-    const result = await Effect.runPromise(
+    const result = await run(
       globalConfigEdit({ editorRunner: async () => ({ kind: "edited", content: typedService }) }, file()),
     );
     // Then
@@ -162,7 +163,7 @@ describe("global config content-layer compilation", () => {
     await writeFile(file(), recipe + typedService);
     const before = await readFile(file(), "utf8");
     // When
-    const result = await Effect.runPromise(
+    const result = await run(
       globalConfigEdit(
         {
           editorRunner: async () => ({ kind: "edited", content: "services:\n  web:\n    primary: maybe\n" }),

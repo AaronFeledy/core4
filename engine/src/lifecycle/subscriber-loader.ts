@@ -1,4 +1,5 @@
-import { Effect } from "effect";
+import { importAuthorModule } from "@lando/landofile/author-modules";
+import { Effect, Predicate } from "effect";
 import type { Scope } from "effect";
 
 import { type EventError, PluginLoadError } from "@lando/sdk/errors";
@@ -12,8 +13,6 @@ export type RuntimeSubscriberFactory = (
   context: LandoPluginContext,
   config: unknown,
 ) => RuntimeSubscriberHandler;
-
-type SubscriberModule = { readonly default?: unknown };
 
 const loadError = (
   subscriber: IndexedSubscriber,
@@ -34,7 +33,7 @@ export const loadExternalSubscriberFactory = (
   subscriber: IndexedSubscriber,
 ): Effect.Effect<RuntimeSubscriberFactory, PluginLoadError> =>
   Effect.tryPromise({
-    try: () => import(subscriber.entry.module).then((module: SubscriberModule) => module),
+    try: () => importAuthorModule(subscriber.entry.module),
     catch: (cause) =>
       loadError(
         subscriber,
@@ -44,7 +43,7 @@ export const loadExternalSubscriberFactory = (
       ),
   }).pipe(
     Effect.flatMap((module) =>
-      isRuntimeSubscriberFactory(module.default)
+      Predicate.hasProperty(module, "default") && isRuntimeSubscriberFactory(module.default)
         ? Effect.succeed(module.default)
         : Effect.fail(
             loadError(

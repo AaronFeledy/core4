@@ -228,7 +228,7 @@ lando app:config --format=json
 
 `services.web.routes` is exactly `["web.local.test"]`, and `environment` holds only `APP_ENV`. A plain `routes:` list would have merged by hostname and kept both inherited routes. The directives themselves never show up in `app:config`, plans, or containers; layer merging consumes them.
 
-A `.lando.*.ts` layer uses the same operations through helpers:
+A `.lando.*.ts` layer uses the same operations through helpers. Save this as `.lando.local.ts` next to the `.lando.yml` above and inspect the same merged result:
 
 ```ts
 import { defineLandofile, override, reset } from "@lando/sdk";
@@ -242,6 +242,12 @@ export default defineLandofile({
   },
 });
 ```
+
+```sh
+lando app:config --format=json
+```
+
+Lando supplies `@lando/sdk` and `effect` to every `.lando.*.ts` layer when it loads the file, from the compiled binary too, so the app needs no `node_modules` and no install step. That covers the `@lando/sdk` root and its public subpaths (`@lando/sdk/schema`, `@lando/sdk/landofile`, and the rest; `@lando/sdk/test` and `@lando/sdk/docs/components` are not provided), plus `effect`, `effect/http`, and the module subpaths those two entrypoints export, such as `effect/Effect`, `effect/Schema`, and `effect/http/HttpClient`. Other Effect subpaths are not supplied. Lando's own copies always win at load time, so a locally installed `@lando/sdk` or `effect` only helps your editor with types. Any other bare import resolves from a `node_modules` directory at or above the file; a package that isn't there fails the load with a remediation naming the package.
 
 Where they go:
 
@@ -313,6 +319,22 @@ lando info
       <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "DEBUG" } } }} />
     </Step>
     <Step name="cleanup-directive-layers">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="typescript-local-layer" render>
+    <Step name="scaffold-typescript-layer">
+      <UseFixture name="typescript-local-layer" />
+    </Step>
+    <Step name="inspect-typescript-merge">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"typescript-local-layer\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"routes\":\\s*\\[\\s*\"web\\.local\\.test\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "web\\.(a|b)\\.test" } } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"environment\":\\s*\\{\\s*\"APP_ENV\":\\s*\"dev\"\\s*\\}" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "DEBUG" } } }} />
+    </Step>
+    <Step name="cleanup-typescript-layer">
       <Cleanup />
     </Step>
   </Scenario>
