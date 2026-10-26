@@ -170,11 +170,11 @@ Library hosts and tests can lower the cap for deterministic boundary coverage wi
 
 ## Runtime overrides
 
-withService(tag, impl) lets hosts replace one service tag.
+`withService(tag, impl)` lets hosts replace one service tag.
 
-with: { RuntimeProvider } swaps the provider implementation for a test host.
+`with: { RuntimeProvider }` swaps the provider implementation for a test host.
 
-makeLandoRuntime({ config }) relocates userConfRoot, userCacheRoot, userDataRoot, and systemPluginRoot for an isolated PathsService.
+`makeLandoRuntime({ config })` relocates `userConfRoot`, `userCacheRoot`, `userDataRoot`, and `systemPluginRoot` for an isolated `PathsService`.
 
 @lando/core/testing is stable on the next channel for Beta 1.
 
@@ -190,9 +190,9 @@ a prompt transcript for your assertions.
 
 ## Event service test helpers
 
-EventService.waitFor(name, { filter, timeout }) waits for the first typed event match and reports EventError reason timeout when the test clock reaches the deadline.
+`EventService.waitFor(name, { filter, timeout })` waits for the first typed event match and reports EventError reason timeout when the test clock reaches the deadline.
 
-EventService.waitForAny([{ name, filter }], { timeout }) waits for the first matching event across several event names under one timeout.
+`EventService.waitForAny([{ name, filter }], { timeout })` waits for the first matching event across several event names under one timeout.
 
 EventService.query(name, filter?) snapshots matching events from the bounded redacted in-memory history without blocking.
 
