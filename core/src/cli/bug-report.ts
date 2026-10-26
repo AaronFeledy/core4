@@ -1,9 +1,15 @@
+import { types } from "node:util";
 import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
-import type { ProjectedFailure } from "@lando/sdk/command-result";
-import type { FailureRole } from "@lando/sdk/schema";
-import { escapeDiagnosticText } from "./diagnostic-text";
-import { redactDetails, redactString } from "./redact";
+import { createStandaloneRedactor } from "@lando/redaction/service";
+import { type ProjectedFailure, taggedErrorJson } from "@lando/sdk/command-result";
+import { type FailureRole, ValidationIssue } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
+import { Schema } from "effect";
+import { diagnosticFields } from "./bug-report-fields";
+import { renderJsonBugReport, renderPlainBugReport } from "./bug-report-render";
+import { redactDetails } from "./redact";
 
+export { renderJsonBugReport, renderPlainBugReport } from "./bug-report-render";
 export type RendererMode = "lando" | "plain" | "json" | "verbose";
 
 export interface BugReportContext {
@@ -17,17 +23,19 @@ export interface BugReportEnvelope {
   readonly code: string;
   readonly commandId: string;
   readonly body: string;
-  readonly remediation: string | undefined;
+  readonly remediation: string;
   readonly appId: string | undefined;
   readonly providerId: string | undefined;
   readonly logsDir: string;
   readonly cacheDir: string;
+  readonly issues?: ReadonlyArray<ValidationIssue>;
   readonly extra: ReadonlyArray<readonly [string, string]>;
   readonly additionalErrors?: ReadonlyArray<{
     readonly role: FailureRole;
     readonly code: string;
     readonly body: string;
-    readonly remediation?: string;
+    readonly remediation: string;
+    readonly issues?: ReadonlyArray<ValidationIssue>;
     readonly extra: ReadonlyArray<readonly [string, string]>;
   }>;
 }
@@ -35,285 +43,10 @@ export interface BugReportEnvelope {
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined;
 
-const asTaggedRecord = (value: unknown): Record<string, unknown> | undefined => {
-  if (value === null || typeof value !== "object") return undefined;
-  return value as Record<string, unknown>;
-};
-
-const extractCode = (record: Record<string, unknown> | undefined): string => {
-  if (record === undefined) return "Error";
-  const tag = asString(record._tag);
-  if (tag !== undefined) return tag;
-  const name = asString(record.name);
-  if (name !== undefined) return name;
-  return "Error";
-};
-
-const appIdReservedMessage = (record: Record<string, unknown>): string => {
-  const reserved = asString(record.reserved) ?? "global";
-  return `The app id "${reserved}" is reserved for the global Lando app and cannot be used as a project name.`;
-};
-
-const extractMessage = (record: Record<string, unknown> | undefined, error: unknown): string => {
-  if (record !== undefined) {
-    if (asString(record._tag) === "AppIdReservedError") return appIdReservedMessage(record);
-    const message = asString(record.message);
-    if (message !== undefined) return message;
-  }
-  return String(error);
-};
-
-const extractAppId = (record: Record<string, unknown> | undefined): string | undefined => {
-  if (record === undefined) return undefined;
-  const direct = asString(record.appId);
-  if (direct !== undefined) return direct;
-  const appName = asString(record.appName);
-  if (appName !== undefined) return appName;
-  const app = asTaggedRecord(record.app);
-  if (app !== undefined) {
-    const id = asString(app.id);
-    if (id !== undefined) return id;
-    const name = asString(app.name);
-    if (name !== undefined) return name;
-  }
-  return undefined;
-};
-
-const extractProviderId = (record: Record<string, unknown> | undefined): string | undefined => {
-  if (record === undefined) return undefined;
-  return asString(record.providerId) ?? asString(record.provider);
-};
-
-const extractExtraTagFields = (
-  record: Record<string, unknown> | undefined,
-): ReadonlyArray<readonly [string, string]> => {
-  if (record === undefined) return [];
-  const out: Array<[string, string]> = [];
-  const tag = asString(record._tag);
-  if (tag === "LandofileParseError") {
-    const filePath = asString(record.filePath);
-    if (filePath !== undefined) out.push(["filePath", filePath]);
-    const line = record.line;
-    if (typeof line === "number") out.push(["line", String(line)]);
-  }
-  if (tag === "SqlDumpNotFoundError") {
-    for (const field of ["path", "appRoot"] as const) {
-      const value = asString(record[field]);
-      if (value !== undefined) out.push([field, value]);
-    }
-  }
-  if (tag === "DataTransferError") {
-    const fromEndpoint = asString(record.fromEndpoint);
-    if (fromEndpoint !== undefined) out.push(["fromEndpoint", fromEndpoint]);
-  }
-  if (tag === "AppIdReservedError") {
-    const reserved = asString(record.reserved);
-    if (reserved !== undefined) out.push(["reserved", reserved]);
-    const suggested = asString(record.suggested);
-    if (suggested !== undefined) out.push(["suggested", suggested]);
-  }
-  if (tag === "RendererSelectionError") {
-    const value = asString(record.value);
-    if (value !== undefined) out.push(["value", value]);
-    const source = asString(record.source);
-    if (source !== undefined) out.push(["source", source]);
-  }
-  if (tag === "RecipePromptValidationError") {
-    const promptName = asString(record.promptName);
-    if (promptName !== undefined) out.push(["promptName", promptName]);
-  }
-  if (tag === "UpdateLaunchProbeError") {
-    for (const key of [
-      "platform",
-      "attemptedVersion",
-      "probeCommand",
-      "outputSummary",
-      "rollbackFailure",
-    ] as const) {
-      const value = asString(record[key]);
-      if (value !== undefined) out.push([key, value]);
-    }
-    const exitCode = record.exitCode;
-    if (typeof exitCode === "number") out.push(["exitCode", String(exitCode)]);
-  }
-  const isStartupFailure = tag === "ServiceStartError" || tag === "ServiceNotReadyError";
-  if (isStartupFailure || tag === "ServiceExecError" || tag === "ServiceNotFoundError") {
-    const service = asString(record.service);
-    if (service !== undefined) out.push(["service", service]);
-  }
-  if (isStartupFailure) {
-    const logTail = formatServiceStartLogTail(record.logTail);
-    if (logTail !== undefined) out.push([logTail.label, logTail.text]);
-  }
-  if (tag === "CapabilityError") {
-    for (const field of ["service", "key", "capability"] as const) {
-      const value = asString(record[field]);
-      if (value !== undefined) out.push([field, value]);
-    }
-  }
-  if (tag === "LandofileEventStepFailedError") {
-    const event = asString(record.event);
-    if (event !== undefined) out.push(["event", event]);
-    const index = record.index;
-    if (typeof index === "number") out.push(["step", String(index + 1)]);
-    const kind = asString(record.kind);
-    if (kind !== undefined) out.push(["kind", kind]);
-    const service = asString(record.service);
-    if (service !== undefined) out.push(["service", service]);
-    const outputTail = asString(record.outputTail);
-    if (outputTail !== undefined) out.push(["outputTail", outputTail]);
-  }
-  if (tag === "ComposeKeyRejectedError") {
-    for (const field of ["source", "service", "keyPath"] as const) {
-      const value = asString(record[field]);
-      if (value !== undefined) out.push([field, value]);
-    }
-  }
-  if (tag === "RecipePostInitError") {
-    const recipe = asString(record.recipe);
-    if (recipe !== undefined) out.push(["recipe", recipe]);
-    const exitCode = record.exitCode;
-    if (typeof exitCode === "number") out.push(["exitCode", String(exitCode)]);
-  }
-  if (
-    tag === "RecipeManifestValidationError" ||
-    tag === "LandofileValidationError" ||
-    tag === "LandofileWriteValidationError"
-  ) {
-    const issues = record.issues;
-    if (Array.isArray(issues) && issues.length > 0) {
-      const flat = issues
-        .flatMap((issue) => {
-          const line = formatStructuredIssue(issue);
-          return line === undefined ? [] : [line];
-        })
-        .join("\n");
-      if (flat.length > 0) out.push(["issues", `\n${flat}`]);
-    }
-  }
-  const op = asString(record.operation);
-  if (op !== undefined) out.push(["operation", op]);
-  const consumed = new Set([
-    "_tag",
-    "name",
-    "message",
-    "stack",
-    "cause",
-    "remediation",
-    "issues",
-    "appId",
-    "appName",
-    "app",
-    "providerId",
-    "provider",
-    "redactionTokens",
-    "additionalErrors",
-    "role",
-    "commandId",
-    "code",
-    "body",
-    "logsDir",
-    "cacheDir",
-    "timestamp",
-    ...out.map(([key]) => key),
-    ...(tag === "LandofileEventStepFailedError" ? ["index", "outputTail", "service"] : []),
-    ...(isStartupFailure ? ["logTail"] : []),
-  ]);
-  const scalar = (value: unknown): value is string | number | boolean =>
-    typeof value === "string" ||
-    typeof value === "boolean" ||
-    (typeof value === "number" && Number.isFinite(value));
-  for (const [key, value] of Object.entries(record)) {
-    if (consumed.has(key)) continue;
-    if (scalar(value)) out.push([key, escapeDiagnosticText(String(value))]);
-    else if (Array.isArray(value) && Array.from(value).every(scalar))
-      out.push([key, escapeDiagnosticText(value.join(", "))]);
-  }
-  return out;
-};
-
-const formatServiceStartLogTail = (
-  value: unknown,
-): { readonly label: string; readonly text: string } | undefined => {
-  if (value === null || typeof value !== "object") return undefined;
-  const lines = Reflect.get(value, "lines");
-  if (!Array.isArray(lines) || lines.length === 0) return undefined;
-  const text = lines.filter((line): line is string => typeof line === "string").join("\n");
-  if (text.length === 0) return undefined;
-  const parts: string[] = [];
-  const service = Reflect.get(value, "service");
-  if (typeof service === "string" && service.length > 0) parts.push(service);
-  const exitCode = Reflect.get(value, "exitCode");
-  if (typeof exitCode === "number" && Number.isFinite(exitCode)) parts.push(`exit ${exitCode}`);
-  if (Reflect.get(value, "timedOut") === true) parts.push("timed out");
-  if (Reflect.get(value, "truncated") === true) parts.push("truncated");
-  return { label: parts.length === 0 ? "logTail" : `logTail (${parts.join(", ")})`, text };
-};
-
-const formatIssuePath = (path: readonly (string | number)[]): string => {
-  let formatted = "";
-  for (const segment of path) {
-    formatted =
-      typeof segment === "number"
-        ? `${formatted}[${segment}]`
-        : formatted.length === 0
-          ? segment
-          : `${formatted}.${segment}`;
-  }
-  return formatted;
-};
-
-const formatStructuredIssue = (issue: unknown): string | undefined => {
-  if (typeof issue !== "object" || issue === null) return undefined;
-  const path = Reflect.get(issue, "path");
-  const message = Reflect.get(issue, "message");
-  const suggestion = Reflect.get(issue, "suggestion");
-  if (typeof message !== "string" || !Array.isArray(path)) return undefined;
-  const segments: Array<string | number> = [];
-  for (const segment of path) {
-    if (typeof segment !== "string" && typeof segment !== "number") return undefined;
-    segments.push(segment);
-  }
-  const where = formatIssuePath(segments);
-  const hint = typeof suggestion === "string" ? ` ${suggestion}` : "";
-  return where.length === 0 ? `${message}${hint}` : `${where}: ${message}${hint}`;
-};
-
-const landofileNotFoundHint = (record: Record<string, unknown> | undefined): string | undefined =>
-  asString(record?._tag) === "LandofileNotFoundError"
-    ? "Run `lando init --full --name=<name>` to scaffold an app."
-    : undefined;
-
-const appIdReservedHint = (record: Record<string, unknown> | undefined): string | undefined => {
-  if (asString(record?._tag) !== "AppIdReservedError") return undefined;
-  const suggested = asString(record?.suggested);
-  return suggested !== undefined
-    ? `Rename the project in your Landofile, e.g. name: ${suggested}.`
-    : 'Choose a different project name in your Landofile; "global" is reserved.';
-};
-
-const REDACTED_REMEDIATION_FALLBACK = (record: Record<string, unknown> | undefined): string | undefined => {
-  const remediation = asString(record?.remediation);
-  if (remediation !== undefined) return remediation;
-  return landofileNotFoundHint(record) ?? appIdReservedHint(record);
-};
-
-const extractTaggedCauses = (
-  record: Record<string, unknown> | undefined,
-): ReadonlyArray<Record<string, unknown>> => {
-  // Traverse only tagged Lando errors. Raw Error causes may contain unredacted
-  // host paths, and a bounded walk protects diagnostics from cyclic causes.
-  const causes: Array<Record<string, unknown>> = [];
-  const seen = new Set<object>();
-  let current = record;
-  for (let depth = 0; depth < 4 && current !== undefined; depth++) {
-    const cause = asTaggedRecord(current.cause);
-    if (cause === undefined || asString(cause._tag) === undefined || seen.has(cause)) break;
-    causes.push(cause);
-    seen.add(cause);
-    current = cause;
-  }
-  return causes;
+const ownCause = (value: unknown): unknown => {
+  if (value === null || typeof value !== "object" || types.isProxy(value)) return undefined;
+  const descriptor = Object.getOwnPropertyDescriptor(value, "cause");
+  return descriptor !== undefined && "value" in descriptor ? descriptor.value : undefined;
 };
 
 const mergeExtraFields = (
@@ -321,83 +54,101 @@ const mergeExtraFields = (
   nested: ReadonlyArray<readonly [string, string]>,
 ): ReadonlyArray<readonly [string, string]> => {
   const seen = new Set(primary.map(([key]) => key));
-  const out: Array<readonly [string, string]> = [...primary];
-  for (const pair of nested) {
-    if (seen.has(pair[0])) continue;
-    seen.add(pair[0]);
-    out.push(pair);
-  }
-  return out;
+  return [
+    ...primary,
+    ...nested.filter(([key]) => {
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }),
+  ];
 };
-
-const logsDirFor = (cacheRoot: string): string => `${cacheRoot.replace(/\/+$/u, "")}/logs`;
 
 export const buildBugReport = (input: {
   readonly error: unknown;
   readonly additionalErrors?: ProjectedFailure["additionalErrors"];
   readonly context: BugReportContext;
+  readonly redactor?: Redactor;
+  readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
 }): BugReportEnvelope => {
-  const record = asTaggedRecord(input.error);
-  const causes = extractTaggedCauses(record);
-  const deepestCause = causes.at(-1);
+  const redactor =
+    input.redactor ??
+    createStandaloneRedactor("secrets", {
+      sourceEnv: { ...(input.sourceEnv ?? process.env) },
+    });
+  const error = taggedErrorJson(input.error);
+  const causes: Array<ReturnType<typeof taggedErrorJson>> = [];
+  const seen = new Set<unknown>([input.error]);
+  let current = ownCause(input.error);
+  for (let depth = 0; depth < 4 && current !== undefined && !seen.has(current); depth++) {
+    if (current === null || typeof current !== "object" || types.isProxy(current)) break;
+    const tag = Object.getOwnPropertyDescriptor(current, "_tag");
+    if (tag === undefined || !("value" in tag) || typeof tag.value !== "string") break;
+    seen.add(current);
+    causes.push(taggedErrorJson(current));
+    current = ownCause(current);
+  }
   const ctx = input.context;
   const cacheDir = ctx.cacheRoot ?? resolveUserCacheRoot();
-  const wrapperBody = extractMessage(record, input.error);
-  const messages = [wrapperBody, ...causes.map((cause) => asString(cause.message))].filter(
-    (message): message is string => message !== undefined,
-  );
-  const bodyRaw = [...new Set(messages)].join("\n");
-  const nestedRemediation = causes
-    .toReversed()
-    .map(REDACTED_REMEDIATION_FALLBACK)
-    .find((value) => value !== undefined);
-  const remediationParts = [REDACTED_REMEDIATION_FALLBACK(record), nestedRemediation].filter(
-    (value): value is string => value !== undefined,
-  );
-  const remediationRaw = [...new Set(remediationParts)].join(" ");
-  const code = extractCode(record);
-  const appId = ctx.appId ?? extractAppId(record);
+  const diagnostics = [error, ...causes];
+  const app = error.app;
+  const appId =
+    ctx.appId ??
+    asString(error.appId) ??
+    asString(error.appName) ??
+    (app !== null && typeof app === "object"
+      ? (asString(Reflect.get(app, "id")) ?? asString(Reflect.get(app, "name")))
+      : undefined);
   const providerId =
     ctx.providerId ??
-    extractProviderId(record) ??
-    causes.map(extractProviderId).find((value) => value !== undefined);
-  const causeTag = asString(deepestCause?._tag);
+    diagnostics
+      .map((item) => asString(item.providerId) ?? asString(item.provider))
+      .find((value) => value !== undefined);
   const causeFields = causes
     .toReversed()
     .reduce<ReadonlyArray<readonly [string, string]>>(
-      (fields, cause) => mergeExtraFields(fields, extractExtraTagFields(cause)),
+      (fields, cause) => mergeExtraFields(fields, diagnosticFields(cause)),
       [],
     );
+  const deepest = causes.at(-1);
   const extra = mergeExtraFields(
-    [...(causeTag === undefined ? [] : ([["cause", causeTag]] as const)), ...causeFields],
-    extractExtraTagFields(record),
-  ).map(([key, value]) => {
-    const sanitized = key === "issues" ? value : redactString(value);
-    return [key, sanitized] as readonly [string, string];
-  });
+    [...(deepest === undefined ? [] : [["cause", deepest._tag] as const]), ...causeFields],
+    diagnosticFields(error),
+  ).map(([key, value]) => [key, redactor.redactString(value)] as const);
+  const issues = diagnostics.flatMap((item) => item.issues ?? []);
   return {
-    code,
+    code: redactor.redactString(error._tag),
     commandId: ctx.commandId,
-    body: redactString(bodyRaw),
-    remediation: remediationRaw.length === 0 ? undefined : redactString(remediationRaw),
+    body: redactor.redactString([...new Set(diagnostics.map((item) => item.message))].join("\n")),
+    remediation: redactor.redactString([...new Set(diagnostics.map((item) => item.remediation))].join(" ")),
     appId,
     providerId,
-    logsDir: logsDirFor(cacheDir),
+    logsDir: `${cacheDir.replace(/\/+$/u, "")}/logs`,
     cacheDir,
+    ...(issues.length === 0
+      ? {}
+      : { issues: Schema.decodeUnknownSync(Schema.Array(ValidationIssue))(redactor.redactValue(issues)) }),
     extra,
     ...(input.additionalErrors === undefined || input.additionalErrors.length === 0
       ? {}
       : {
-          additionalErrors: input.additionalErrors.map(({ role, error }) => {
-            const additional = buildBugReport({ error, context: ctx });
+          additionalErrors: input.additionalErrors.map(({ role, error: additionalError }) => {
+            const additional = buildBugReport({
+              ...input,
+              redactor,
+              error: additionalError,
+              additionalErrors: [],
+            });
             const identity = [
               ["appId", additional.appId, appId],
               ["providerId", additional.providerId, providerId],
             ] as const;
             return {
               role,
-              code: redactString(additional.code),
+              code: additional.code,
               body: additional.body,
+              remediation: additional.remediation,
+              ...(additional.issues === undefined ? {} : { issues: additional.issues }),
               extra: [
                 ...identity.flatMap(([key, value, primary]) =>
                   value === undefined || value === primary ? [] : [[key, value] as const],
@@ -407,102 +158,22 @@ export const buildBugReport = (input: {
                     !extra.some(([primaryKey, primaryValue]) => primaryKey === key && primaryValue === value),
                 ),
               ],
-              ...(additional.remediation === undefined ? {} : { remediation: additional.remediation }),
             };
           }),
         }),
   };
 };
 
-export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
-  const renderText =
-    envelope.code === "ComposeKeyRejectedError" ? escapeDiagnosticText : (text: string) => text;
-  const lines: Array<string> = [renderText(envelope.body)];
-  if (envelope.remediation !== undefined) {
-    lines.push(`  ↳ ${renderText(envelope.remediation)}`);
-  }
-  for (const error of envelope.additionalErrors ?? []) {
-    const label = { rollback: "Rollback also failed", cleanup: "Cleanup also failed", peer: "Also failed" }[
-      error.role
-    ];
-    lines.push(`${label} (${renderText(error.code)}): ${renderText(error.body).replaceAll("\n", "\n  ")}`);
-    if (error.remediation !== undefined) {
-      lines.push(
-        ...renderText(error.remediation)
-          .split("\n")
-          .map((line) => `  ↳ ${line}`),
-      );
-    }
-    for (const [key, value] of error.extra)
-      lines.push(`  ${key}: ${renderText(value).replaceAll("\n", "\n  ")}`);
-  }
-  const details: Array<string> = [
-    `code: ${envelope.code}`,
-    `commandId: ${escapeDiagnosticText(envelope.commandId)}`,
-  ];
-  if (envelope.appId !== undefined) details.push(`appId: ${envelope.appId}`);
-  if (envelope.providerId !== undefined) details.push(`providerId: ${envelope.providerId}`);
-  for (const [key, value] of envelope.extra) {
-    details.push(`${key}: ${renderText(value)}`);
-  }
-  details.push(`logsDir: ${envelope.logsDir}`);
-  details.push(`cacheDir: ${envelope.cacheDir}`);
-  lines.push(...details);
-  return lines.join("\n");
-};
-
-const orderedJsonKeys: ReadonlyArray<keyof BugReportEnvelope | "_tag"> = [
-  "_tag",
-  "code",
-  "commandId",
-  "appId",
-  "providerId",
-  "body",
-  "remediation",
-  "additionalErrors",
-  "logsDir",
-  "cacheDir",
-];
-
-export const renderJsonBugReport = (envelope: BugReportEnvelope): string => {
-  const record: Record<string, unknown> = { _tag: "message.error" };
-  record.code = envelope.code;
-  record.commandId = envelope.commandId;
-  if (envelope.appId !== undefined) record.appId = envelope.appId;
-  if (envelope.providerId !== undefined) record.providerId = envelope.providerId;
-  record.body = envelope.body;
-  if (envelope.remediation !== undefined) record.remediation = envelope.remediation;
-  if (envelope.additionalErrors !== undefined)
-    record.additionalErrors = envelope.additionalErrors.map(({ extra, ...error }) => ({
-      ...error,
-      ...Object.fromEntries(extra),
-    }));
-  record.logsDir = envelope.logsDir;
-  record.cacheDir = envelope.cacheDir;
-  for (const [key, value] of envelope.extra) {
-    if (key !== "issues") record[key] = value;
-  }
-  record.timestamp = new Date().toISOString();
-
-  const ordered: Record<string, unknown> = {};
-  for (const key of orderedJsonKeys) {
-    if (Object.hasOwn(record, key)) ordered[key as string] = record[key as string];
-  }
-  for (const key of Object.keys(record)) {
-    if (!Object.hasOwn(ordered, key)) ordered[key] = record[key];
-  }
-  return JSON.stringify(ordered);
-};
-
 export const formatBugReport = (
   input: ProjectedFailure & {
     readonly context: BugReportContext;
     readonly rendererMode: RendererMode;
+    readonly redactor?: Redactor;
+    readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
   },
 ): string => {
   const envelope = buildBugReport(input);
-  if (input.rendererMode === "json") return renderJsonBugReport(envelope);
-  return renderPlainBugReport(envelope);
+  return input.rendererMode === "json" ? renderJsonBugReport(envelope) : renderPlainBugReport(envelope);
 };
 
 export const redactedErrorDetails = redactDetails;

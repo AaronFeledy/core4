@@ -13,7 +13,6 @@ import {
   getVersionConstraintEntries,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
-import { createStandaloneRedactor } from "@lando/redaction/service";
 import * as StateStoreLayer from "@lando/state-store/service";
 import {
   DoctorSeveritySchema,
@@ -23,6 +22,7 @@ import {
   warnCheck,
 } from "./doctor-check-builders";
 import type { DoctorSeverity, DoctorStatus } from "./doctor-contract";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 export interface AppVersionConstraintDoctorCheck {
   readonly name: "app-version-constraint";
@@ -110,14 +110,9 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
   never
 > {
   const cwd = process.cwd();
-  const redactor = createStandaloneRedactor("secrets", { sourceEnv: { ...process.env } });
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
   const redact = redactor.redactString;
-  const discovery = yield* Effect.result(
-    Effect.tryPromise({
-      try: () => findDiscoveredLandofilePath(cwd),
-      catch: (cause) => cause,
-    }),
-  );
+  const discovery = yield* Effect.result(findDiscoveredLandofilePath(cwd));
   if (Result.isFailure(discovery)) {
     if (Schema.is(LandofileNotFoundError)(discovery.failure)) return undefined;
     if (Schema.is(LandofileFormConflictError)(discovery.failure)) {
@@ -171,7 +166,7 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
     }
     return undefined;
   }
-  const landofile = resolved.success;
+  const landofile = resolved.success.document;
   const entries = getVersionConstraintEntries(landofile, filePath);
   const skipped = isVersionConstraintSkipped(process.env);
   if (entries.length === 0 && !skipped) return undefined;

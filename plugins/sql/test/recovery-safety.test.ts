@@ -1,12 +1,42 @@
 import { afterEach, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 
-import { ServiceName } from "@lando/sdk/schema";
+import { SqlCommandFailedError } from "@lando/sdk/errors";
+import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 
 import { executeDbCommand } from "../src/execute.ts";
 import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
 afterEach(cleanupSqlTestDeps);
+
+test.each([true, false])("preserves version failure diagnostics (running=%s)", async (initiallyRunning) => {
+  // Given: the version command fails with payload stdout and a password in stderr.
+  const harness = makeSqlTestDeps({ password: "private-password", initiallyRunning });
+  const deps = {
+    ...harness.deps,
+    exec: (...args: Parameters<typeof harness.deps.exec>) =>
+      args[1].includes("SELECT VERSION()")
+        ? Effect.succeed({
+            exitCode: 7,
+            stdout: "PRIVATE PAYLOAD",
+            stderr: "version denied for private-password\n",
+          })
+        : harness.deps.exec(...args),
+  };
+
+  // When: snapshot capture needs the observed database version.
+  const exit = await Effect.runPromiseExit(executeDbCommand(deps, { action: "snapshot", yes: false }));
+
+  // Then: actionable command diagnostics survive, and a resumed runtime is stopped again.
+  if (!Exit.isFailure(exit)) throw new Error("expected version failure");
+  const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+  expect(error).toBeInstanceOf(SqlCommandFailedError);
+  expect(error).toMatchObject({ exitCode: 7, stderrTail: "version denied for [redacted]\n" });
+  expect(JSON.stringify(error)).not.toContain("PRIVATE PAYLOAD");
+  expect(JSON.stringify(error)).not.toContain("private-password");
+  expect(harness.lifecycle()).toEqual(initiallyRunning ? ["lock"] : ["lock", "resume", "suspend"]);
+  expect(harness.snapshots()).toEqual([]);
+});
 
 test("rejects restore when a stopped target has no observed image identity", async () => {
   // Given: snapshot metadata exists but the target runtime cannot prove its image.
@@ -159,7 +189,7 @@ test("rejects a replaced volume when replacement occurs while waiting for its lo
   expect(harness.lifecycle()).toEqual([]);
 });
 
-for (const mismatch of ["owner", "service"] as const) {
+for (const mismatch of ["owner", "appRoot", "service"] as const) {
   test(`rejects physical restore when snapshot ${mismatch} differs`, async () => {
     // Given: a snapshot matches the volume, root, and runtime but not its owner or service.
     const harness = makeSqlTestDeps({ password: "test-password" });
@@ -170,12 +200,16 @@ for (const mismatch of ["owner", "service"] as const) {
           Effect.map((snapshots) =>
             snapshots.map((snapshot) => ({
               ...snapshot,
+              owner: {
+                ...snapshot.owner,
+                ownerKey: mismatch === "owner" ? "foreign-owner" : snapshot.owner.ownerKey,
+                appRoot: mismatch === "appRoot" ? AbsolutePath.make("/foreign-root") : snapshot.owner.appRoot,
+              },
               ...(snapshot.metadata === undefined
                 ? {}
                 : {
                     metadata: {
                       ...snapshot.metadata,
-                      ownerKey: mismatch === "owner" ? "foreign-owner" : "owner:sql-app",
                       service: ServiceName.make(mismatch === "service" ? "foreign-service" : "database"),
                     },
                   }),
@@ -213,7 +247,5 @@ test("binds physical ownership to canonical appRoot when plan.root differs", asy
 
   // Then: provenance matches the labeled owner root, not the unresolved plan path.
   expect(Exit.isSuccess(exit)).toBe(true);
-  expect(String(harness.snapshots()[0]?.metadata?.sourceRoot)).toBe(
-    String(harness.deps.plan.identity?.appRoot),
-  );
+  expect(String(harness.snapshots()[0]?.owner.appRoot)).toBe(String(harness.deps.plan.identity?.appRoot));
 });

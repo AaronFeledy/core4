@@ -176,7 +176,6 @@ export const startErrorPageStack = async ({
     provider: providerId,
     services: Object.fromEntries(services.map((service) => [service.name, service])),
     routes: [],
-    networks: [],
     networking: landoNetworkingPlan({
       slug,
       serviceNames: services.map((service) => service.name),

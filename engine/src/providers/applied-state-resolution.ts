@@ -2,8 +2,15 @@ import { isAbsolute, relative } from "node:path";
 
 import { Effect } from "effect";
 
-import { AppResolveError } from "@lando/sdk/errors";
-import { type AbsolutePath, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
+import {
+  type AbsolutePath,
+  type AppPlan,
+  type AppRef,
+  ProviderId,
+  type ResourceOwnership,
+  appIdentityKey,
+} from "@lando/sdk/schema";
 import type {
   AppliedOrphanGroup,
   AppliedTeardownEvidence,
@@ -12,11 +19,17 @@ import type {
   ProviderRuntimeSnapshot,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
 
 export type AppliedStateProvider = Pick<
   RuntimeProviderShape,
   "id" | "appliedPlans" | "isAvailable" | "list" | "listVolumes"
->;
+> & {
+  readonly resourceOwnership?: (
+    root: AbsolutePath,
+  ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError>;
+  readonly canCleanupOwnedResources?: Effect.Effect<boolean, ProviderError>;
+};
 
 const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter) =>
   provider.isAvailable.pipe(
@@ -122,6 +135,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
   root: AbsolutePath,
   providers: ReadonlyArray<AppliedStateProvider>,
   ownership: "exact" | "ancestor",
+  app: Pick<AppRef, "kind" | "id"> = { kind: "user", id: "" },
 ): Effect.fn.Return<AppliedTeardownEvidence, AppResolveError | ProviderError> {
   if (providers.length === 0) {
     return yield* Effect.fail(
@@ -134,8 +148,61 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     );
   }
   const plans = (yield* Effect.forEach(providers, gatherAppliedPlans)).flat();
+  const belongsToApp = (providerId: string, appId: string) => {
+    const plan = plans.find(
+      (candidate) =>
+        candidate.provider === providerId && candidate.id === appId && candidate.identity?.appRoot === root,
+    );
+    return plan === undefined
+      ? app.kind !== "scratch" || app.id === appId
+      : matchesAppPlanIdentity(plan, app);
+  };
+  const readOwnership = Effect.gen(function* () {
+    const rawInventories = yield* Effect.forEach(
+      providers,
+      (provider) => provider.resourceOwnership?.(root) ?? Effect.succeed(undefined),
+    );
+    for (const [index, hints] of rawInventories.entries()) {
+      if (hints === undefined) continue;
+      const provider = providers[index];
+      if (
+        provider === undefined ||
+        hints.appRoot !== root ||
+        hints.ownerKey !== appIdentityKey("owner", root) ||
+        hints.providerId !== provider.id
+      )
+        return yield* Effect.fail(orphanRefusal);
+    }
+    const inventories = rawInventories.map((hints): ResourceOwnership | undefined => {
+      if (hints === undefined) return undefined;
+      const appIds = hints.appIds.filter((id) => belongsToApp(hints.providerId, id));
+      return appIds.length === 0 ? undefined : { ...hints, appIds };
+    });
+    const ownershipHints = inventories.filter((item): item is ResourceOwnership => item !== undefined);
+    if (ownership === "exact")
+      for (const [index, hints] of inventories.entries()) {
+        if (hints === undefined) continue;
+        const provider = providers[index];
+        if (
+          provider === undefined ||
+          !(yield* provider.isAvailable) ||
+          !(yield* provider.canCleanupOwnedResources ?? Effect.succeed(false))
+        )
+          return yield* Effect.fail(
+            new ProviderUnavailableError({
+              providerId: hints.providerId,
+              operation: "resource-ownership",
+              message: "Owned resource cleanup requires an available, cleanup-capable provider.",
+              remediation: "Restore the provider runtime and cleanup capability, then retry teardown.",
+            }),
+          );
+      }
+    return ownershipHints;
+  });
+  const teardownOwnership = ownership === "exact" ? yield* readOwnership : [];
   const matches = plans
     .filter((plan) => {
+      if (!matchesAppPlanIdentity(plan, app)) return false;
       const appRoot = plan.identity?.appRoot;
       if (appRoot === undefined) return false;
       if (ownership === "exact") return appRoot === root;
@@ -144,25 +211,37 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     })
     .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
   const selected = matches[0];
-  if (selected === undefined) {
-    const evidence = yield* Effect.forEach(providers, (provider) =>
-      runtimeEvidence(provider, ownership === "exact" ? { includeUnplanned: true } : {}),
-    );
-    const groups = groupOrphans(root, providers, evidence);
-    return groups.length > 0 ? { kind: "orphans" as const, groups } : { kind: "absent" as const };
-  }
-  const selectedRoot = selected.identity?.appRoot;
-  if (matches.some((candidate) => candidate !== selected && candidate.identity?.appRoot === selectedRoot)) {
+  const selectedRoot = selected?.identity?.appRoot;
+  if (
+    selected !== undefined &&
+    matches.some((candidate) => candidate !== selected && candidate.identity?.appRoot === selectedRoot)
+  ) {
     return yield* Effect.fail(
       new AppResolveError({
         message: `Multiple providers claim applied state for ${selectedRoot}.`,
         reason: "ambiguous",
         detail: "applied-state",
-        remediation: "Remove the conflicting provider state before retrying teardown.",
+        remediation: `From ${selectedRoot}, remove unwanted realizations with ${[...new Set(matches.map((plan) => plan.provider))].map((id) => `\`lando destroy --provider=${id} --yes\``).join(" or ")}, then retry.`,
       }),
     );
   }
-  return { kind: "applied" as const, plan: selected };
+  if (ownership === "ancestor" && selected !== undefined) return { kind: "applied", plan: selected };
+  const ownershipHints = ownership === "ancestor" ? yield* readOwnership : teardownOwnership;
+  const owned = ownershipHints.length === 0 ? {} : { ownership: ownershipHints };
+  if (selected === undefined) {
+    const evidence = yield* Effect.forEach(providers, (provider) =>
+      runtimeEvidence(provider, ownership === "exact" ? { includeUnplanned: true } : {}),
+    );
+    const groups = groupOrphans(root, providers, evidence).filter((group) =>
+      belongsToApp(group.providerId, group.appId),
+    );
+    return groups.length > 0
+      ? { kind: "orphans" as const, groups, ...owned }
+      : ownershipHints.length > 0
+        ? { kind: "owned", ownership: ownershipHints }
+        : { kind: "absent" as const };
+  }
+  return { kind: "applied" as const, plan: selected, ...owned };
 });
 
 /**
@@ -172,8 +251,9 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
 export const resolveTeardownEvidence = (
   root: AbsolutePath,
   providers: ReadonlyArray<AppliedStateProvider>,
+  app?: Pick<AppRef, "kind" | "id">,
 ): Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError> =>
-  collectEvidence(root, providers, "exact");
+  collectEvidence(root, providers, "exact", app);
 
 /**
  * Fail-closed applied-state resolution for every non-teardown caller: orphaned runtime resources
@@ -183,13 +263,15 @@ export const resolveTeardownEvidence = (
 export const resolveAppliedPlanEvidence = (
   root: AbsolutePath,
   providers: ReadonlyArray<AppliedStateProvider>,
+  app?: Pick<AppRef, "kind" | "id">,
 ): Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError> =>
-  collectEvidence(root, providers, "ancestor").pipe(
+  collectEvidence(root, providers, "ancestor", app).pipe(
     Effect.flatMap((evidence) => {
       switch (evidence.kind) {
         case "applied":
           return Effect.succeed(evidence.plan);
         case "orphans":
+        case "owned":
           return Effect.fail(orphanRefusal);
         case "absent":
           return Effect.succeed(undefined);

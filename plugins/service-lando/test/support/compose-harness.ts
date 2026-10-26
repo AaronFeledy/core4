@@ -18,6 +18,7 @@ import {
   validateAuthoredAppMount,
 } from "@lando/engine/services/planner";
 import { serviceFeatures } from "../../src/features/index.ts";
+import { assertConnectionProjections } from "../../src/services/_connection-helpers.ts";
 
 export interface ComposeServicePlanArgs {
   readonly serviceType: ServiceType;
@@ -77,13 +78,17 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
   const features = resolution.features.map((featureRef) =>
     composeFeatureFor(featureRef, args.featureOverrides),
   );
+
   const rawPlan = await Effect.runPromise(
     composeService({
       base: {
         name: ServiceName.make(serviceName),
         type: resolution.normalizedConfig.type ?? args.serviceType.id,
+        serviceTypeId: args.serviceType.id,
         provider,
         primary: resolution.normalizedConfig.primary ?? serviceName === "web",
+        ...(resolution.connection === undefined ? {} : { connection: resolution.connection }),
+        ...(resolution.nonSqlCreds === undefined ? {} : { nonSqlCreds: resolution.nonSqlCreds }),
         ...(resolution.normalizedConfig.environment === undefined
           ? {}
           : { environment: resolution.normalizedConfig.environment }),
@@ -98,6 +103,8 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
     }),
   );
 
+  if (resolution.connection !== undefined)
+    assertConnectionProjections(resolution.connection, rawPlan.environment);
   if (args.applyAuthoredWrappers === false) return rawPlan;
   const appMountError = validateAuthoredAppMount(args.service, args.appRoot, serviceName);
   if (appMountError !== undefined) throw appMountError;

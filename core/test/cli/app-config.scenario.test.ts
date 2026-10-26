@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import * as ConfigLayer from "@lando/engine/services/config";
+import { ServiceName } from "@lando/sdk/schema";
 import { Effect, Exit, Layer, Schema } from "effect";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 import {
   type AppConfigResult,
@@ -70,17 +73,24 @@ describe("lando app:config", () => {
       },
       [{ id: "user:corp.yml", sha256: "a".repeat(64) }],
     );
+    const compiled = literalLandofile(landofile, process.cwd());
+    rememberLandofileIncludeSources(compiled.document, [{ id: "user:corp.yml", sha256: "a".repeat(64) }]);
     const layer = Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed(landofile),
+        discover: Effect.succeed(compiled),
       }),
     );
 
     const result = await Effect.runPromise(
-      appConfig().pipe(Effect.provide(Layer.merge(layer, testStateStoreLayer))),
+      appConfig().pipe(
+        Effect.provide(Layer.merge(layer, testStateStoreLayer)),
+        Effect.provide(ConfigLayer.layer),
+      ),
     );
 
+    if (!("landofile" in result) || result.source !== "resolved")
+      throw new Error("Expected full resolved config");
     expect(result.app).toBe("test-app-config");
     expect(result.source).toBe("resolved");
     expect(result.landofile?.name).toBe("test-app-config");
@@ -121,13 +131,17 @@ describe("lando app:config", () => {
       const layer = Layer.succeed(
         LandofileService,
         LandofileService.of({
-          discover: Effect.succeed(landofile),
+          discover: Effect.succeed(literalLandofile(landofile, dir)),
         }),
       );
       try {
         const result = await Effect.runPromise(
-          appConfig({ cwd: dir }).pipe(Effect.provide(Layer.merge(layer, testStateStoreLayer))),
+          appConfig({ cwd: dir }).pipe(
+            Effect.provide(Layer.merge(layer, testStateStoreLayer)),
+            Effect.provide(ConfigLayer.layer),
+          ),
         );
+        if (!("hostEvents" in result)) throw new Error("Expected resolved host-event status");
         expect(result.hostEvents).toEqual([
           { event: "post-start", index: 0, step: "echo web", status: "active" },
         ]);
@@ -171,13 +185,17 @@ describe("lando app:config", () => {
       const layer = Layer.succeed(
         LandofileService,
         LandofileService.of({
-          discover: Effect.succeed(landofile),
+          discover: Effect.succeed(literalLandofile(landofile, process.cwd())),
         }),
       );
       try {
         const result = await Effect.runPromise(
-          appConfig().pipe(Effect.provide(Layer.merge(layer, testStateStoreLayer))),
+          appConfig().pipe(
+            Effect.provide(Layer.merge(layer, testStateStoreLayer)),
+            Effect.provide(ConfigLayer.layer),
+          ),
         );
+        if (!("hostEvents" in result)) throw new Error("Expected resolved host-event status");
         expect(result.hostEvents).toEqual([
           { event: "post-start", index: 0, step: "echo shared", status: "deduped" },
           {
@@ -204,17 +222,23 @@ describe("lando app:config", () => {
     const layer = Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({
-          name: "test-app-config-get",
-          recipe: "node",
-          services: { web: { type: "node" } },
-        }),
+        discover: Effect.succeed(
+          literalLandofile(
+            {
+              name: "test-app-config-get",
+              recipe: "node",
+              services: { [ServiceName.make("web")]: { type: "node" } },
+            },
+            process.cwd(),
+          ),
+        ),
       }),
     );
 
     const result = await Effect.runPromise(
       appConfig({ subcommand: "get", key: "services.web.type" }).pipe(
         Effect.provide(Layer.merge(layer, testStateStoreLayer)),
+        Effect.provide(ConfigLayer.layer),
       ),
     );
 
@@ -234,6 +258,7 @@ describe("lando app:config", () => {
 
   test("renders a get scalar as the selected value only", () => {
     const result: AppConfigResult = {
+      source: "resolved",
       subcommand: "get",
       key: "services.web.type",
       value: "node",
@@ -244,6 +269,7 @@ describe("lando app:config", () => {
 
   test("renders a missing get value as an empty string", () => {
     const result: AppConfigResult = {
+      source: "resolved",
       subcommand: "get",
       key: "services.web.missing",
     };
@@ -255,13 +281,16 @@ describe("lando app:config", () => {
     const layer = Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({ name: "test-app-config", recipe: "node", services: {} }),
+        discover: Effect.succeed(
+          literalLandofile({ name: "test-app-config", recipe: "node", services: {} }, process.cwd()),
+        ),
       }),
     );
 
     const exit = await Effect.runPromiseExit(
       appConfig({ subcommand: "bogus" as never }).pipe(
         Effect.provide(Layer.merge(layer, testStateStoreLayer)),
+        Effect.provide(ConfigLayer.layer),
       ),
     );
 

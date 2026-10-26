@@ -36,6 +36,22 @@ export const makeLegacyServiceTypeFake = (options: MakeLegacyServiceTypeFakeOpti
   const testFeature: ServiceFeatureDefinition = {
     id: featureId,
     priority: 100,
+    declareEndpoints: (ctx) =>
+      Effect.sync(
+        () =>
+          options.toServicePlan({
+            name: ctx.serviceName,
+            service: ctx.normalizedConfig,
+            appRoot: ctx.appRoot,
+            primary: ctx.primary,
+            ...(ctx.appName === undefined ? {} : { appName: ctx.appName }),
+            metadata: {
+              resolvedAt: "2026-05-18T08:00:00Z",
+              source: "@lando/core/test/service-type-fake",
+              runtime: 4,
+            },
+          }).endpoints,
+      ),
     apply: (ctx) =>
       Effect.sync(() => {
         const plan = options.toServicePlan({
@@ -55,7 +71,6 @@ export const makeLegacyServiceTypeFake = (options: MakeLegacyServiceTypeFakeOpti
         for (const mount of plan.mounts) ctx.addMount(mount);
         if (plan.appMount !== undefined) ctx.setAppMount(plan.appMount);
         for (const storage of plan.storage) ctx.addStorage(storage);
-        for (const endpoint of plan.endpoints) ctx.addEndpoint(endpoint);
         for (const dependency of plan.dependsOn) ctx.addDependency(dependency);
         for (const alias of plan.hostAliases) ctx.addHostAlias(alias);
         if (plan.healthcheck !== undefined) ctx.setHealthcheck(plan.healthcheck);

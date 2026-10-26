@@ -13,11 +13,7 @@ import type {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import {
-  RedactionService,
-  type RedactionServiceShape,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, type RedactionServiceShape, makeRedactionService } from "@lando/redaction/service";
 
 export type HealthcheckExec = {
   readonly exec: (
@@ -99,7 +95,14 @@ export const execSequence = (exitCodes: readonly [number, ...number[]]): FakeExe
 };
 
 const providerFailure = (message: string): ServiceExecError =>
-  new ServiceExecError({ providerId: TestRuntimeProvider.id, operation: "exec", service, message });
+  new ServiceExecError({
+    providerId: TestRuntimeProvider.id,
+    operation: "exec",
+    service,
+    message,
+    remediation:
+      "Confirm the target service is running and the exec command is valid inside that container, then retry.",
+  });
 
 export const execFailing = (message: string): FakeExec =>
   makeExec(() => Effect.fail(providerFailure(message)));
@@ -146,8 +149,8 @@ const fakeRedactValue = (value: unknown): unknown => {
 const fakeRedactor: Redactor = { redactString: fakeRedactString, redactValue: fakeRedactValue };
 
 const fakeRedactionService = {
+  ...makeRedactionService(),
   forProfile: () => Effect.succeed(fakeRedactor),
-  registerValues: registerRedactionValues,
   payloadValues: () => Effect.succeed(() => [secret]),
 } satisfies RedactionServiceShape;
 

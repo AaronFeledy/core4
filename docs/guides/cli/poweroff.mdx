@@ -15,6 +15,14 @@ Warning: this command reaches beyond the current app. Run it only when you
 mean to stop everything. It removes scratch apps and their disposable data
 unless you pass `--keep-scratch`.
 
+Run this from any directory on your host:
+
+```sh
+lando poweroff -y
+```
+
+The command reports when apps have powered off or when there are none to stop. If an app fails to stop, follow the reported remediation and retry; Lando keeps the runtime available for recovery.
+
 <Guide>
   <Scenario id="stop-every-app" render>
     <Step name="scaffold">

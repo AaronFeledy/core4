@@ -7,7 +7,7 @@ tags: [beta, docs, solr, service]
 
 # Add Solr
 
-Put `type: solr` in your services block. That resolves to `solr:9`. Lando pulls it and listens on `8983`:
+Add `type: solr` under `services` in `.lando.yml`. That resolves to `solr:9`. Lando pulls it and listens on `8983`:
 
 ```yaml
 name: solr-demo
@@ -52,10 +52,10 @@ services:
 
 `precreate-core` runs for each declared core before `solr-foreground`, so every core exists before the server accepts queries. When you declare cores, Lando selects user-managed (standalone) mode on Solr versions that offer it, including Solr 10. Older images keep their standalone default.
 
-A core name has to name exactly one directory under `/var/solr/data`. Use letters, numbers, dots, underscores, and dashes. `.` and `..` are reserved, and `/` and `\` are rejected, so no core can precreate or overlay config outside its own directory. Dots inside a name are fine: `a.b` and `a...b` both work. Lando refuses a bad name while it plans the app, before it builds the startup command and before it starts a provider, and the error names the offending entry:
+A core name has to name exactly one directory under `/var/solr/data`. Use letters, numbers, dots, underscores, and dashes. `.` and `..` are reserved, and `/` and `\` are rejected, so no core can precreate or overlay config outside its own directory. Dots inside a name are fine: `a.b` and `a...b` both work. `lando app:config:lint` reports a bad name at `["services", "search", "cores", 0]`, and `lando start` refuses it while it plans the app, before it builds the startup command and before it starts a provider. The error names the offending entry:
 
 ```
-services.search.cores[0] "../escape" is not a usable Solr core directory name. Use letters, numbers, dots, underscores, and dashes. "." and ".." are reserved, and "/" and "\" are not allowed. Rename the core to a plain directory name.
+services.search.cores[0]: "../escape" is not a usable Solr core directory name. Use letters, numbers, dots, underscores, and dashes. "." and ".." are reserved, and "/" and "\" are not allowed. Rename the core to a plain directory name.
 ```
 
 ### Run Solr as another user
@@ -76,7 +76,7 @@ services:
 
 Two things to know:
 
-- It only applies to a **new** volume. A volume created by an earlier start keeps the ownership it already has. Remove the volume (`lando destroy` with volume purge) to get a fresh one that is seeded again.
+- It only applies to a **new** volume. A volume created by an earlier start keeps the ownership it already has. Purging that volume deletes its Solr data. Back up anything you need before using `lando destroy` with volume purge to create a fresh volume with the new ownership.
 - Lando has to know your user exists in the image. A numeric uid always works, because a uid can always be given ownership, even when you supply your own `image:` or `build:`. A name the `solr` type doesn't declare (`solr` and `root` are the only two) is refused. A named `user:` on a service that supplies its own `image:` or `build:` is refused too, because that image is no longer the one the type described. The refusal is a `DataTreeOwnershipCapabilityError` that names the service, the data tree (`/var/solr`), and the Landofile option to change. Fix it with a numeric uid, or use `root`.
 
 ## Hit the admin API

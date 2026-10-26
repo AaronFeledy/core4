@@ -16,7 +16,12 @@ import { meilisearchServiceType } from "../src/services/meilisearch.ts";
 import { memcachedServiceType } from "../src/services/memcached.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
-import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
+import {
+  node22ServiceType,
+  node24ServiceType,
+  node26ServiceType,
+  nodeLtsServiceType,
+} from "../src/services/node.ts";
 import { opensearchServiceType } from "../src/services/opensearch.ts";
 import { php82ServiceType, php83ServiceType } from "../src/services/php.ts";
 import { postgresServiceType } from "../src/services/postgres.ts";
@@ -266,6 +271,22 @@ const cases: ReadonlyArray<CatalogCase> = [
     expectsWebroot: null,
   },
   {
+    id: "node:24",
+    serviceType: node24ServiceType,
+    landofileService: { type: "node:24" },
+    expectedType: "node:24",
+    expectsAppPaths: true,
+    expectsWebroot: null,
+  },
+  {
+    id: "node:26",
+    serviceType: node26ServiceType,
+    landofileService: { type: "node:26" },
+    expectedType: "node:26",
+    expectsAppPaths: true,
+    expectsWebroot: null,
+  },
+  {
     id: "php:8.2",
     serviceType: php82ServiceType,
     landofileService: { type: "php:8.2" },
@@ -403,7 +424,7 @@ const cases: ReadonlyArray<CatalogCase> = [
   },
 ];
 
-const landoEnvKeys = (environment: Readonly<Record<string, string>>): ReadonlyArray<string> =>
+const landoEnvKeys = (environment: import("@lando/sdk/schema").Environment): ReadonlyArray<string> =>
   Object.keys(environment).filter((key) => key === "LANDO" || key.startsWith("LANDO_"));
 
 const planFor = async (item: CatalogCase, serviceName: string, appName: string) => {

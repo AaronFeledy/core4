@@ -1,6 +1,7 @@
 import { DateTime, Duration, Effect } from "effect";
 
 import {
+  AppPlacementError,
   GlobalAppError,
   ProxySetupError,
   RouterPortPinMismatch,
@@ -19,7 +20,13 @@ const TRAEFIK_PROXY_ID = "traefik";
 
 export const mapSetupError = (
   cause: unknown,
-): ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError => {
+):
+  | AppPlacementError
+  | ProxySetupError
+  | RouterPortsExhausted
+  | RouterPortPinMismatch
+  | RouterWatcherError => {
+  if (cause instanceof AppPlacementError) return cause;
   if (cause instanceof RouterPortsExhausted || cause instanceof RouterPortPinMismatch) {
     return cause;
   }

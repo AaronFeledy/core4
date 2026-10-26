@@ -31,7 +31,7 @@ export class SetupNetworkTrustError extends Schema.TaggedError<SetupNetworkTrust
       "blocked-registry",
     ]),
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}

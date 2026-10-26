@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 export class ProxydBinaryNotFound extends Schema.TaggedError<ProxydBinaryNotFound>()("ProxydBinaryNotFound", {
   message: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 export class ProxyElevationRefused extends Schema.TaggedError<ProxyElevationRefused>()(
@@ -11,6 +11,6 @@ export class ProxyElevationRefused extends Schema.TaggedError<ProxyElevationRefu
     message: Schema.String,
     exitCode: Schema.Number,
     stderr: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

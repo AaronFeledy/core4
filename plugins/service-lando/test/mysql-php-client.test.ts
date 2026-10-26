@@ -26,7 +26,16 @@ const expectRejects = async (promise: Promise<unknown>, pattern: RegExp): Promis
     () => undefined,
     (error: unknown) => {
       rejected = true;
-      expect(error instanceof Error ? error.message : String(error)).toMatch(pattern);
+      const issue = Schema.decodeUnknownSync(
+        Schema.Struct({
+          name: Schema.Literal("ServiceConfigIssue"),
+          path: Schema.Array(Schema.String),
+          message: Schema.String,
+          suggestion: Schema.String,
+        }),
+      )(error);
+      expect(issue.path).toEqual(["db_client"]);
+      expect(`${issue.message} ${issue.suggestion}`).toMatch(pattern);
     },
   );
   expect(rejected).toBe(true);

@@ -3,12 +3,7 @@ import { DateTime, Effect } from "effect";
 
 import { dockerPullDialect } from "@lando/container-runtime/dialect";
 import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
-import {
-  type DockerApiClient,
-  type DockerHttpRequest,
-  type DockerHttpResponse,
-  makeRuntimeProvider,
-} from "@lando/provider-docker";
+import type { DockerApiClient, DockerHttpRequest, DockerHttpResponse } from "@lando/provider-docker";
 import { ProviderUnavailableError, type ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -18,6 +13,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("mailpit-app");
@@ -47,6 +43,7 @@ const makeService = (name: string, ref: string, compose?: Record<string, unknown
 });
 
 const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "Mailpit App",
   slug: "mailpit-app",
@@ -54,7 +51,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
   provider: providerId,
   services: Object.fromEntries(services.map((entry) => [entry.name, entry])),
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "lando-mailpit-app", driver: "bridge" } },
   stores: [],
   fileSync: [],
@@ -173,13 +169,36 @@ const applyFailure = async (plan: AppPlan, api: DockerApiClient) => {
 };
 
 describe("provider-docker pullArtifact", () => {
-  test("apply forwards secret-only overrides without dropping planned environment", async () => {
+  test.each(["always", "missing", "never"] as const)(
+    "reports the observed pinned digest for %s",
+    async (policy) => {
+      // Given
+      const ref = `team/helper@sha256:${"a".repeat(64)}`;
+      const fake = makeFakeApi({
+        images: new Set([ref]),
+        inspectBody: { RepoDigests: ["team/helper@sha256:other", ref] },
+      });
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }),
+      );
+      // When
+      const artifact = await Effect.runPromise(provider.pullArtifact({ ref, policy }));
+      // Then
+      expect(artifact).toEqual({ providerId, ref, digest: `sha256:${"a".repeat(64)}` });
+      expect(fake.requests).toEqual([
+        ...(policy === "always" ? [`POST ${buildImagePullRequest(ref, dockerPullDialect).path}`] : []),
+        `GET /images/${encodeURIComponent(ref)}/json`,
+      ]);
+    },
+  );
+
+  test("apply forwards the complete resolved environment callback", async () => {
     // Given
     const service = {
       ...makeService("mailpit", mailpitRef),
       environment: {
         PLAIN: "visible",
-        TOKEN: "${secret:API_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "API_TOKEN" } as const,
         SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
       },
     };
@@ -202,7 +221,8 @@ describe("provider-docker pullArtifact", () => {
       Effect.scoped(
         provider.apply(makePlan([service]), {
           reconcile: false,
-          serviceEnvironment: { [service.name]: { TOKEN: "resolved-canary" } },
+          resolveServiceEnvironment: () =>
+            Effect.succeed({ ...service.environment, TOKEN: "resolved-canary" }),
         }),
       ),
     );

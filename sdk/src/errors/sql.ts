@@ -6,7 +6,7 @@ export class SqlServiceNotFoundError extends Schema.TaggedError<SqlServiceNotFou
     message: Schema.String,
     service: Schema.optional(Schema.String),
     available: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -15,7 +15,7 @@ export class SqlServiceAmbiguousError extends Schema.TaggedError<SqlServiceAmbig
   {
     message: Schema.String,
     available: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -32,7 +32,7 @@ export class SqlConfirmRequiredError extends Schema.TaggedError<SqlConfirmRequir
         destructive: Schema.Boolean,
       }),
     ),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -42,7 +42,10 @@ export class SqlCommandFailedError extends Schema.TaggedError<SqlCommandFailedEr
     message: Schema.String,
     service: Schema.String,
     command: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    exitCode: Schema.optional(Schema.Number),
+    stderrTail: Schema.optional(Schema.String),
+    recoverySnapshotId: Schema.optional(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -50,7 +53,7 @@ export class SqlDumpNotFoundError extends Schema.TaggedError<SqlDumpNotFoundErro
   message: Schema.String,
   path: Schema.String,
   appRoot: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 export class SqlDumpCompressionError extends Schema.TaggedError<SqlDumpCompressionError>()(
@@ -60,7 +63,7 @@ export class SqlDumpCompressionError extends Schema.TaggedError<SqlDumpCompressi
     path: Schema.String,
     compression: Schema.Literals(["gzip", "zstd"]),
     operation: Schema.Literals(["compress", "decompress"]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -70,7 +73,7 @@ export class SqlRecoveryUnavailableError extends Schema.TaggedError<SqlRecoveryU
     message: Schema.String,
     service: Schema.String,
     reason: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -79,10 +82,10 @@ export class SqlRecoveryOperationError extends Schema.TaggedError<SqlRecoveryOpe
   {
     message: Schema.String,
     service: Schema.String,
-    operation: Schema.Literals(["reset", "restore", "import"]),
+    operation: Schema.Literals(["reset", "restore", "import", "snapshot"]),
     recoverySnapshotId: Schema.String,
     cause: Schema.Unknown,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -90,7 +93,7 @@ export class SqlSeedStateError extends Schema.TaggedError<SqlSeedStateError>()("
   message: Schema.String,
   service: Schema.String,
   status: Schema.Literals(["unknown", "fresh", "in-progress", "seeded", "failed"]),
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 export class SqlSeedSourceError extends Schema.TaggedError<SqlSeedSourceError>()("SqlSeedSourceError", {
@@ -118,5 +121,5 @@ export class SqlSeedSourceError extends Schema.TaggedError<SqlSeedSourceError>()
   targetFamily: Schema.optional(
     Schema.String.annotate({ description: "Database family of the target service being seeded." }),
   ),
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}

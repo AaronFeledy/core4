@@ -42,7 +42,6 @@ export const setupProviderPlan = (provider: ProviderId): AppPlan => ({
   provider,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -65,8 +64,11 @@ export const maybeSelectSetupProvider = (params: {
   readonly nonInteractive: boolean;
   readonly skipProvider: boolean;
   readonly interaction?: InteractionServiceShape;
-}): Effect.Effect<ProviderId, Exclude<InteractionError, InteractionUnavailableError>> => {
-  const fallback = params.resolution.providerId;
+}): Effect.Effect<
+  { readonly providerId: ProviderId; readonly source: ProviderSelectionResolution["source"] | "prompt" },
+  Exclude<InteractionError, InteractionUnavailableError>
+> => {
+  const fallback = { providerId: params.resolution.providerId, source: params.resolution.source };
   if (params.resolution.source !== "default") return Effect.succeed(fallback);
   if (params.yes || params.nonInteractive || params.skipProvider || params.interaction === undefined) {
     return Effect.succeed(fallback);
@@ -75,12 +77,14 @@ export const maybeSelectSetupProvider = (params: {
     params.interaction.select({
       message: "Select the container runtime provider for Lando",
       name: "provider",
-      default: String(fallback),
+      default: String(fallback.providerId),
       choices: SETUP_PROVIDER_CHOICES,
       yes: params.yes,
     }),
   ).pipe(
-    Effect.map((chosen) => (chosen === "" ? fallback : ProviderId.make(chosen))),
+    Effect.map((chosen) =>
+      chosen === "" ? fallback : { providerId: ProviderId.make(chosen), source: "prompt" as const },
+    ),
     Effect.catchTag("InteractionUnavailableError", () => Effect.succeed(fallback)),
   );
 };

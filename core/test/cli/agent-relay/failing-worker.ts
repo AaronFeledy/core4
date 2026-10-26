@@ -12,6 +12,8 @@ const provider = {
         providerId: "docker",
         operation: "bridge",
         message: "sensitive-provider-diagnostic",
+        remediation:
+          "Re-run the command after checking `docker` logs for the `bridge` failure; if it persists, report the error with that operation name.",
       }),
     ),
 };
@@ -19,6 +21,9 @@ void runAgentRelayWorkerProcess({
   runtime: Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),

@@ -142,6 +142,9 @@ describe("build-guide-scenarios MDX walker", () => {
     } catch (error) {
       expect(error instanceof GuideFrontmatterValidationError ? error.field : "").toBe("id");
       expect(error instanceof GuideFrontmatterValidationError ? error.rejectedValue : undefined).toBe("Bad");
+      expect(error instanceof GuideFrontmatterValidationError ? error.issues : []).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path: ["id"], message: expect.any(String) })]),
+      );
     }
   });
 
@@ -259,14 +262,12 @@ describe("build-guide-scenarios MDX walker", () => {
       expect(content).toContain(
         'import { ScenarioContextFactory, hasLiveProviderSocket } from "@lando/core/testing";',
       );
-      expect(content).toContain(
-        'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined && hasLiveProviderSocket();',
-      );
+      expect(content).toContain('const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1";');
       expect(content).toContain(
         '(e2eGateEnabled ? test : test.skip)((e2eGateEnabled ? "@smoke e2e-smoke:provider-path [e2e]"',
       );
       expect(content).toContain(
-        '"@smoke e2e-smoke:provider-path [e2e] (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and a live provider socket via lando setup or LANDO_TEST_PODMAN_SOCKET)"',
+        '"@smoke e2e-smoke:provider-path [e2e] (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to a live provider socket)"',
       );
       expect(content).toContain(
         'ScenarioContextFactory.e2e({ guideId: "e2e-smoke", scenarioId: "provider-path", render: true }',

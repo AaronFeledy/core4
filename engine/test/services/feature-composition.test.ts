@@ -133,11 +133,12 @@ describe("composeService", () => {
     const feature: ServiceFeatureDefinition = {
       id: "feature.deterministic",
       priority: 100,
+      declareEndpoints: () =>
+        Effect.succeed([{ _tag: "internal", name: "http", protocol: "http", port: 80 }]),
       apply: (ctx) =>
         Effect.sync(() => {
           ctx.addEnv("B", "2");
           ctx.addEnv("A", "1");
-          ctx.addEndpoint({ _tag: "internal", name: "http", protocol: "http", port: 80 });
         }),
     };
 
@@ -151,7 +152,14 @@ describe("composeService", () => {
     const feature: ServiceFeatureDefinition = {
       id: "feature.fail",
       priority: 100,
-      apply: () => Effect.fail(new ServiceFeatureError({ message: "boom", feature: "feature.fail" })),
+      apply: () =>
+        Effect.fail(
+          new ServiceFeatureError({
+            message: "boom",
+            feature: "feature.fail",
+            remediation: "Correct the `feature.fail` feature configuration in the Landofile, then re-run.",
+          }),
+        ),
     };
 
     const exit = await Effect.runPromiseExit(composeService(inputFor([feature])));

@@ -8,10 +8,11 @@ import {
   type AppRef,
   ProviderId,
   type ServicePlan,
-  landoAppNetworkName,
+  landoOwnedNetworkNames,
 } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
+import { removeRuntimeContainer } from "../container-removal.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
   EngineHttpApi,
@@ -24,13 +25,16 @@ import { parseJsonOrUndefined } from "../engine-json.ts";
 import {
   isVolumeInUse,
   listVolumeHolders,
-  namedHolders,
-  releaseVolumeHolders,
-  removeEphemeralDataHelpers,
   volumeInUseMessage,
   volumeInUseRemediation,
 } from "../ephemeral-data-helpers.ts";
-import { redactDetails, withApiReason } from "../redact.ts";
+import {
+  containerOwnershipLabels,
+  inspectOwnedNativeId,
+  isSharedNetwork,
+  networkOwnershipLabels,
+} from "../native-ownership.ts";
+import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
 import { planVolumeFilters } from "../volume-ownership.ts";
 import { pruneVolumes, volumeMatchesFilters } from "./volume-prune.ts";
@@ -71,8 +75,6 @@ const appRef = (plan: AppPlan): AppRef => ({
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
-const networkName = (plan: AppPlan) => landoAppNetworkName(plan);
-
 const request = (
   deps: BringDownDeps,
   input: EngineHttpRequest,
@@ -85,9 +87,9 @@ const podmanFailure = (deps: BringDownDeps, operation: string, message: string, 
   new ProviderUnavailableError({
     providerId: deps.options.ctx.providerId,
     operation,
-    message: withApiReason(message, details),
+    message: withApiReason(message, details, redactorFor(deps.options.ctx)),
     remediation: deps.remediation,
-    ...(details === undefined ? {} : { details: redactDetails(details) }),
+    ...(details === undefined ? {} : { details: redactDetails(details, redactorFor(deps.options.ctx)) }),
   });
 
 const publish = (
@@ -130,28 +132,32 @@ const stopContainer = (deps: BringDownDeps, name: string): Effect.Effect<boolean
   );
 
 const removeContainer = (deps: BringDownDeps, name: string): Effect.Effect<boolean, BringDownError> =>
-  request(deps, { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }).pipe(
-    Effect.flatMap((response) => {
-      if (response.status === 200 || response.status === 204) {
-        return Effect.succeed(true);
-      }
-      if (response.status === 404) {
-        return Effect.succeed(false);
-      }
-      return Effect.fail(
-        podmanFailure(
-          deps,
-          "bringDown.remove",
-          `provider-${deps.options.ctx.providerId} container remove failed with HTTP ${response.status}.`,
-          { name, body: response.body },
-        ),
-      );
-    }),
-  );
+  removeRuntimeContainer(deps.api, name, {
+    ...deps.options.ctx,
+    remediation: deps.remediation,
+    operation: "bringDown.remove",
+  });
 
-const removeNetwork = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolean, BringDownError> => {
-  const name = networkName(plan);
-  return request(deps, { method: "DELETE", path: `/networks/${encodeURIComponent(name)}` }).pipe(
+const removeNetwork = Effect.fnUntraced(function* (
+  deps: BringDownDeps,
+  plan: AppPlan,
+  name: string,
+): Effect.fn.Return<boolean, BringDownError> {
+  if (isSharedNetwork(plan, name)) return false;
+  const id = yield* inspectOwnedNativeId(
+    deps.api,
+    {
+      kind: "network",
+      name,
+      labels: networkOwnershipLabels(plan),
+      legacy: plan.networking?.authoredNetworks?.some((network) => network.name === name)
+        ? "reject"
+        : "accept",
+    },
+    deps.options.ctx,
+  );
+  if (id === undefined) return false;
+  return yield* request(deps, { method: "DELETE", path: `/networks/${encodeURIComponent(id)}` }).pipe(
     Effect.flatMap((response) => {
       if (response.status === 200 || response.status === 204) {
         return Effect.succeed(true);
@@ -169,7 +175,7 @@ const removeNetwork = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolea
       );
     }),
   );
-};
+});
 
 const parseVolumeLabels = (body: string): Readonly<Record<string, string>> | undefined => {
   const parsed = parseJsonOrUndefined(body);
@@ -209,41 +215,27 @@ const removeVolume = Effect.fnUntraced(function* (
   if (labels === undefined || !volumeMatchesFilters(labels, planVolumeFilters(plan, [volumeClass]))) {
     return false;
   }
-  const requester = deps.api.request;
-  if (requester !== undefined) {
-    yield* releaseVolumeHolders((input) => requester(input), {
-      appId: String(plan.id),
-      providerId: deps.options.ctx.providerId,
-      volumeName: name,
-    }).pipe(Effect.catch(() => Effect.succeed([])));
-  }
   const response = yield* request(deps, {
     method: "DELETE",
     path: `/volumes/${encodeURIComponent(name)}`,
   });
-  const status = response.status;
-  const body = response.body;
-  if (status === 200 || status === 204) return true;
-  if (status === 404) return false;
+  if (response.status === 200 || response.status === 204) return true;
+  if (response.status === 404) return false;
   if (isVolumeInUse(response)) {
-    const holders =
-      requester === undefined
-        ? []
-        : yield* listVolumeHolders((input) => requester(input), name).pipe(
-            Effect.catch(() => Effect.succeed([])),
-          );
-    const names = holders.map((holder) => holder.name);
+    const redactor = redactorFor(deps.options.ctx);
+    const holders = deps.api.request === undefined ? [] : yield* listVolumeHolders(deps.api.request, name);
     return yield* Effect.fail(
       new ProviderUnavailableError({
         providerId: deps.options.ctx.providerId,
         operation: "bringDown.volume",
         message: volumeInUseMessage(
-          `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${status}.`,
-          names,
+          `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${response.status}.`,
+          holders,
           response,
+          redactor,
         ),
-        remediation: volumeInUseRemediation(namedHolders(holders, deps.options.ctx.providerId)),
-        details: redactDetails({ name, body, status }),
+        remediation: volumeInUseRemediation(redactor),
+        details: redactDetails({ name, body: response.body, status: response.status }, redactor),
       }),
     );
   }
@@ -251,8 +243,8 @@ const removeVolume = Effect.fnUntraced(function* (
     podmanFailure(
       deps,
       "bringDown.volume",
-      `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${status}.`,
-      { name, body },
+      `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${response.status}.`,
+      { name, body: response.body },
     ),
   );
 });
@@ -300,8 +292,13 @@ const stopService = Effect.fnUntraced(function* (
     }),
   );
 
-  const stopped = yield* stopContainer(deps, name);
-  const removed = yield* removeContainer(deps, name);
+  const id = yield* inspectOwnedNativeId(
+    deps.api,
+    { kind: "container", name, labels: containerOwnershipLabels(plan, service.name) },
+    deps.options.ctx,
+  );
+  const stopped = id === undefined ? false : yield* stopContainer(deps, id);
+  const removed = id === undefined ? false : yield* removeContainer(deps, id);
 
   yield* publish(
     deps,
@@ -339,21 +336,16 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
     const result = yield* stopService(deps, plan, service);
     changed = changed || result.changed;
   }
-  const networkRemoved = yield* removeNetwork(deps, plan);
+  let networkRemoved = false;
+  for (const name of landoOwnedNetworkNames(plan)) {
+    const authored = plan.networking?.authoredNetworks?.find((network) => network.name === name);
+    if (authored !== undefined && Object.keys(authored.members).some((member) => !(member in plan.services)))
+      continue;
+    const removed = yield* removeNetwork(deps, plan, name);
+    networkRemoved = networkRemoved || removed;
+  }
   let volumesRemoved = false;
   if (options.volumes === true || options.purgeCaches === true) {
-    const requester = api.request;
-    if (requester !== undefined) {
-      const stores = plan.stores.flatMap((store) => {
-        if (store.kind === "cache") return options.purgeCaches === true ? [store.name] : [];
-        return store.scope === "global" || options.volumes !== true ? [] : [store.name];
-      });
-      yield* removeEphemeralDataHelpers((input) => requester(input), {
-        appId: String(plan.id),
-        providerId: options.ctx.providerId,
-        ...(stores.length === 0 ? {} : { stores }),
-      }).pipe(Effect.catch(() => Effect.succeed({ removed: [], remaining: [] })));
-    }
     volumesRemoved = yield* removeAppScopedVolumes(deps, plan);
     if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
       const pruned = yield* pruneAppScopedVolumes(deps, plan);

@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
-  "homepage": "https://github.com/lando-community/core4",
+  "homepage": "https://github.com/AaronFeledy/core4",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lando-community/core4.git",
+    "url": "git+https://github.com/AaronFeledy/core4.git",
     "directory": "paths"
   },
   "type": "module",
@@ -20,6 +20,7 @@
   "exports": {
     ".": "./src/paths.ts",
     "./overlay": "./src/overlay.ts",
+    "./config-sources": "./src/config-sources.ts",
     "./yaml-min": "./src/yaml-min.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],

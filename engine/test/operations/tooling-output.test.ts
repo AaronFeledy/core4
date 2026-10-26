@@ -13,7 +13,7 @@ for (const live of [false, true]) {
           const sink = yield* StreamFrameSink;
           for (const channel of ["stdout", "stderr"] as const) {
             if (streamed === channel || streamed === "both") {
-              yield* sink.emit({ _tag: channel, chunk: `streamed-${channel}`, raw: true });
+              yield* sink.emit({ _tag: channel, chunk: `streamed-${channel}`, kind: "bytes" });
             }
           }
           return { stdout: "returned-stdout", stderr: "returned-stderr", exitCode: 7 };
@@ -23,6 +23,7 @@ for (const live of [false, true]) {
       const result = await Effect.runPromise(
         live ? operation.pipe(Effect.provideService(StreamFrameSink, delivered.sink)) : operation,
       );
+      await Effect.runPromise(delivered.finish());
       // Then
       const expected = {
         stdout: streamed === "stdout" || streamed === "both" ? "streamed-stdout" : "returned-stdout",

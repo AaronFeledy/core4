@@ -7,7 +7,7 @@ tags: [beta, docs, tomcat, service]
 
 # Add Tomcat
 
-Put `type: tomcat` in your services block. That shorthand is Tomcat 11. Lando mounts your app at `/app` and serves the webroot (the project root by default) as the ROOT webapp:
+Add `type: tomcat` under `services` in `.lando.yml` at the root of your web application. That shorthand is Tomcat 11. Lando mounts your app at `/app` and serves the webroot (the project root by default) as the ROOT webapp:
 
 ```yaml
 name: tomcat-demo
@@ -43,7 +43,7 @@ services:
 
 ## Deploy the webapp
 
-The app mounts at `/app` (or `appMount.target`). `webroot` is relative to that mount and defaults to `.`, so a `WEB-INF` directory at the project root is enough. Point `webroot` at an exploded build when the webapp lives deeper, for example a Maven output directory:
+The app mounts at `/app` (or the `appMount` path you set, for example `appMount: /site`). `webroot` is relative to that mount and defaults to `.`, so a `WEB-INF` directory at the project root is enough. Point `webroot` at an exploded build when the webapp lives deeper, for example a Maven output directory:
 
 ```yaml
 services:
@@ -56,7 +56,7 @@ An absolute container path works too. On catalog images, Lando writes a ROOT con
 
 With a custom `image:` or `build.context`, you own Tomcat's configuration. Lando writes neither `server.xml` nor a ROOT context. Set your image's listener to match `port:`; that value still selects Lando's endpoint and healthcheck. `webroot` only sets `LANDO_WEBROOT`. An explicitly authored image matching the selected catalog's exact digest-pinned reference still uses Lando's configuration. A floating upstream tag is a custom image, not the catalog pin.
 
-`LANDO_APP_ROOT` is `/app`, `lando exec` starts in `/app`, and `LANDO_WEBROOT` is the resolved webroot. `appMount.target` moves the mount. Set `appMount: false` when the service should not mount app code, and set `webroot` to an absolute container path to content the image provides; a relative or omitted `webroot` fails planning.
+`LANDO_APP_ROOT` is `/app`, `lando exec` starts in `/app`, and `LANDO_WEBROOT` is the resolved webroot. `appMount: /site` moves the mount. Set `appMount: false` when the service should not mount app code, and set `webroot` to an absolute container path to content the image provides; a relative or omitted `webroot` fails planning.
 
 ## Change the HTTP port
 
@@ -71,10 +71,10 @@ services:
 
 Lando bakes a reviewed, upstream-based `conf/server.xml` into every catalog image, including when `port:` is omitted or set to `8080`. Each supported major pairs an exact image version and immutable multiarch digest with its matching Apache configuration. Only the active HTTP connector's port is customized. Apache notices, listeners, realms, valves, shutdown settings, deployment defaults, and commented AJP/TLS examples stay intact. No startup script rewrites the config, and your `command:` and `entrypoint:` stay yours.
 
-Rebuild after changing the port, then check the listener from inside the service:
+Start after changing the port, then check the listener from inside the service:
 
 ```sh
-lando rebuild -y
+lando start
 lando exec appserver -- curl --fail --silent http://127.0.0.1:9090/
 ```
 
@@ -99,7 +99,7 @@ on `lando.certs`, so `lando info` shows an `https://` URL after start. Set
 `certs: false` if you do not want a leaf certificate.
 
 ```sh
-lando info --json
+lando info --format=json
 ```
 
 </Guide>

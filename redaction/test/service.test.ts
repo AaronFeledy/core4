@@ -24,10 +24,30 @@ const secretStoreLayer = (values: Record<string, string>) =>
 
 const runWithStore = <A, E>(effect: Effect.Effect<A, E, RedactionService>, values: Record<string, string>) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(RedactionService.layer), Effect.provide(secretStoreLayer(values))),
+    Effect.gen(function* () {
+      const service = yield* RedactionService;
+      yield* service.registerValues(Object.values(values));
+      return yield* effect;
+    }).pipe(Effect.provide(RedactionService.layer), Effect.provide(secretStoreLayer(values))),
   );
 
 describe("RedactionService.layer", () => {
+  test("standalone masking preserves signed URL parameters across repeated passes", () => {
+    // Given
+    const redactor = createStandaloneRedactor("secrets");
+    const input =
+      'Get "https://cdn01.quay.io/x?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAEXAMPLE%2F20261022%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261022T070000Z&X-Amz-Signature=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789": EOF';
+    const expected =
+      'Get "https://cdn01.quay.io/x?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=[redacted]&X-Amz-Date=20261022T070000Z&X-Amz-Signature=[redacted]": EOF';
+    // When
+    const once = redactor.redactString(input);
+    const twice = redactor.redactString(once);
+    // Then
+    expect(once).toBe(expected);
+    expect(twice).toBe(expected);
+    expect(redactor.redactStringBounded?.(input, 1_024)).toBe(expected);
+  });
+
   test("tag is importable and forProfile yields a Redactor", async () => {
     const redactor = await runWithStore(
       Effect.flatMap(RedactionService, (service) => service.forProfile("secrets")),
@@ -38,18 +58,19 @@ describe("RedactionService.layer", () => {
     expect(typeof redactor.redactValue).toBe("function");
   });
 
-  test("masks resolved SecretStore values", async () => {
-    const redactor = await runWithStore(
-      Effect.flatMap(RedactionService, (service) => service.forProfile("secrets")),
+  test("masks explicitly resolved values while the runtime is alive", async () => {
+    const redacted = await runWithStore(
+      Effect.flatMap(RedactionService, (service) => service.forProfile("secrets")).pipe(
+        Effect.map((redactor) => redactor.redactString("x supersecret y")),
+      ),
       { FOO: "supersecret" },
     );
 
-    const redacted = redactor.redactString("x supersecret y");
     expect(redacted).toContain("[redacted]");
     expect(redacted).not.toContain("supersecret");
   });
 
-  test("resolves secrets at call time rather than layer build time", async () => {
+  test("never resolves secrets during layer acquisition or profile construction", async () => {
     let listReads = 0;
     let getReads = 0;
     const store = {
@@ -70,17 +91,17 @@ describe("RedactionService.layer", () => {
       expect(listReads).toBe(0);
       expect(getReads).toBe(0);
       const redactor = yield* service.forProfile("secrets");
-      expect(redactor.redactString("latersecret")).toContain("[redacted]");
+      expect(redactor.redactString("latersecret")).toBe("latersecret");
       return { listReads, getReads };
     });
 
     const counts = await Effect.runPromise(
       program.pipe(Effect.provide(RedactionService.layer), Effect.provide(Layer.succeed(SecretStore, store))),
     );
-    expect(counts).toEqual({ listReads: 1, getReads: 1 });
+    expect(counts).toEqual({ listReads: 0, getReads: 0 });
   });
 
-  test("ignores SecretNotFoundError races for listed ids", async () => {
+  test("does not enumerate even a racy store", async () => {
     const store = {
       id: "racy",
       get: (secret: string) =>
@@ -98,7 +119,7 @@ describe("RedactionService.layer", () => {
       ),
     );
 
-    expect(redactor.redactString("stillsecret")).toContain("[redacted]");
+    expect(redactor.redactString("stillsecret")).toBe("stillsecret");
   });
 
   test("masks explicit redaction tokens", async () => {

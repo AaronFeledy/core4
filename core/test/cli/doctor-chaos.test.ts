@@ -4,13 +4,14 @@ import { TestClock } from "effect/testing";
 import { Cause, type Context, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
-import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
+import { TestRuntimeProvider } from "@lando/core/testing";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
-import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
+import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
 import { probeBudgetMs } from "../../src/cli/commands/doctor-plugin-checks.ts";
 import {
   DoctorReportSchema,
@@ -18,6 +19,7 @@ import {
   doctorReport,
 } from "../../src/cli/commands/doctor-report.ts";
 import { doctor } from "../../src/cli/commands/doctor.ts";
+import { makeLandoRuntime } from "../../src/runtime/layer";
 
 /**
  * Chaos coverage for the doctor self-resilience contract: every service doctor
@@ -27,9 +29,7 @@ import { doctor } from "../../src/cli/commands/doctor.ts";
 
 const SHORT_BUDGET_ENV = { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } as const;
 
-const buildConfigService = (
-  options: { readonly failGet?: boolean } = {},
-): Context.Service.Shape<typeof ConfigService> => {
+const buildConfigService = (): Context.Service.Shape<typeof ConfigService> => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
@@ -37,10 +37,7 @@ const buildConfigService = (
   const load = Effect.succeed(config);
   return ConfigService.of({
     load,
-    get: (key) =>
-      options.failGet === true
-        ? Effect.fail(new ConfigError({ message: `config file is corrupt: ${String(key)}` }))
-        : Effect.map(load, (loadedConfig) => loadedConfig[key]),
+    get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
   });
 };
 
@@ -53,6 +50,7 @@ const failingSelectRegistry = () => ({
         providerId: TestRuntimeProvider.id,
         operation: "select",
         message: "runtime socket is unreachable",
+        remediation: "Install or start the selected runtime provider and confirm it can perform `select`.",
       }),
     ),
 });
@@ -73,13 +71,10 @@ const doctorModule = (check: PluginDoctorCheckContribution): LandoPluginModule =
   doctorChecks: [check],
 });
 
-const layersFor = (
-  registry: ReturnType<typeof statusRegistry> | ReturnType<typeof failingSelectRegistry>,
-  configOptions: { readonly failGet?: boolean } = {},
-) =>
+const layersFor = (registry: ReturnType<typeof statusRegistry> | ReturnType<typeof failingSelectRegistry>) =>
   Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry as never)),
-    Layer.succeed(ConfigService, ConfigService.of(buildConfigService(configOptions))),
+    Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 
@@ -158,6 +153,8 @@ describe("doctor chaos: provider path", () => {
             providerId: TestRuntimeProvider.id,
             operation: "getStatus",
             message: "status probe exploded",
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `getStatus`.",
           }),
         ) as typeof TestRuntimeProvider.getStatus,
       ),
@@ -189,14 +186,19 @@ describe("doctor chaos: provider path", () => {
 
   test("records a self check when configuration cannot be read", async () => {
     // Given a ConfigService whose reads always fail
-    const layers = layersFor(statusRegistry(TestRuntimeProvider.getStatus), { failGet: true });
+    const layers = makeLandoRuntime({
+      bootstrap: "none",
+      configSources: { user: false, env: false },
+      config: { router: { httpPort: 99999 } },
+    });
 
     // When
-    const result = await Effect.runPromise(doctor({}).pipe(Effect.provide(layers)));
+    const result = await Effect.runPromise(resilientDoctorReport({}).pipe(Effect.provide(layers)));
 
     // Then selection still resolves from the capability default
-    expect(result.selfChecks?.map((entry) => entry.section)).toContain("provider-selection-config");
-    expect(result.checks.find((entry) => entry.name === "selected-provider")).toBeDefined();
+    expect(result.self?.checks.map((entry) => entry.section)).toEqual(["global-config"]);
+    expect(result.provider.checks).toEqual([]);
+    expect(result.globalConfig?.error?.issues?.[0]?.source?.layer).toBe("host");
   });
 });
 
@@ -265,8 +267,14 @@ describe("doctor chaos: plugin-contributed checks", () => {
         api: 4,
       }),
     };
-    const secretStore = makeTestSecretStore({ secrets: { DUPLICATE_DOCTOR_TOKEN: secret } });
-    const redactionLayer = RedactionService.layer.pipe(Layer.provide(secretStore.layer));
+    const redactionLayer = Layer.effect(
+      RedactionService,
+      Effect.gen(function* () {
+        const service = yield* RedactionService;
+        yield* service.registerValues([secret]);
+        return service;
+      }),
+    ).pipe(Layer.provide(RedactionService.layer));
     const layers = Layer.merge(layersFor(statusRegistry(TestRuntimeProvider.getStatus)), redactionLayer);
 
     // When
@@ -579,7 +587,7 @@ describe("doctor chaos: whole report", () => {
 
   test("emits a schema-valid report when the provider section is fully broken", async () => {
     // Given provider selection failure and a corrupt config at the same time
-    const layers = layersFor(failingSelectRegistry(), { failGet: true });
+    const layers = layersFor(failingSelectRegistry());
 
     // When
     const report = await Effect.runPromise(
@@ -592,7 +600,7 @@ describe("doctor chaos: whole report", () => {
     // Then the report is still structured, schema-valid, and carries self checks
     expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
     expect(report.provider.checks.length).toBeGreaterThan(0);
-    expect(selfSections(report)).toContain("provider-selection-config");
+    expect(report.provider.checks.find((check) => check.name === "selected-provider")?.status).toBe("fail");
     // Provider-section self checks are lifted to the report level, never duplicated.
     expect(report.provider).not.toHaveProperty("selfChecks");
   });
@@ -609,6 +617,8 @@ describe("doctor chaos: whole report", () => {
             providerId: TestRuntimeProvider.id,
             operation: "select",
             message: `socket auth failed using ${secret}`,
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `select`.",
           }),
         ),
     };

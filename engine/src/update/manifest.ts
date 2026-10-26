@@ -17,7 +17,6 @@ import { Downloader } from "@lando/sdk/services";
 import { updateOutcomeFromError } from "@lando/telemetry/events";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
-import * as LandoConfigService from "../services/config";
 import * as LandoEventService from "../services/event-service";
 import {
   UpdateDowngradeError,
@@ -91,7 +90,10 @@ export const isPlaceholderBinary = (
   binary: UpdateManifest["binaries"][keyof UpdateManifest["binaries"]],
 ): boolean => binary.size === 0 || binary.sha256 === "" || /^0+$/u.test(binary.sha256);
 
-export const defaultFetchManifestBytes: UpdateManifestFetcher = (url) =>
+export const defaultFetchManifestBytes = (
+  url: string,
+  retainedDownloader?: typeof Downloader.Service,
+): Promise<Uint8Array> =>
   Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
@@ -108,10 +110,11 @@ export const defaultFetchManifestBytes: UpdateManifestFetcher = (url) =>
         return new Uint8Array(bytes);
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(
-            downloaderLayer.pipe(Layer.provide(httpClientLayer.pipe(Layer.provide(LandoEventService.layer)))),
-            LandoConfigService.layer,
-          ),
+          retainedDownloader === undefined
+            ? downloaderLayer.pipe(
+                Layer.provide(httpClientLayer.pipe(Layer.provide(LandoEventService.layer))),
+              )
+            : Layer.succeed(Downloader, retainedDownloader),
         ),
       ),
     ),
@@ -127,6 +130,7 @@ export const fetchBytes = (
       new UpdateNetworkError({
         message: `Failed to fetch update metadata from ${url}.`,
         url,
+        remediation: `Check network access to ${url}, then retry \`lando update\`.`,
         cause,
       }),
   });
@@ -138,6 +142,8 @@ export const parseJson = (bytes: Uint8Array, url: string): Effect.Effect<unknown
       new UpdateNetworkError({
         message: `Update manifest at ${url} is not valid JSON.`,
         url,
+        remediation:
+          "Confirm the update channel URL returns a Lando update manifest, then retry `lando update`.",
         cause,
       }),
   });
@@ -153,6 +159,8 @@ export const decodeManifest = (
         new UpdateNetworkError({
           message: `Update manifest at ${url} failed schema validation.`,
           url,
+          remediation:
+            "Use a channel that publishes a current Lando update manifest schema, then retry `lando update`.",
           cause: decoded.failure,
         }),
       );
@@ -336,6 +344,7 @@ export const readUpdateManifestState = (
       new UpdateNetworkError({
         message: `Failed to read update manifest freshness state at ${path}.`,
         url: path,
+        remediation: `Fix permissions on ${path} or remove the corrupt freshness file, then retry \`lando update\`.`,
         cause,
       }),
   }).pipe(
@@ -350,6 +359,7 @@ export const readUpdateManifestState = (
             new UpdateNetworkError({
               message: `Update manifest freshness state at ${path} failed schema validation.`,
               url: path,
+              remediation: `Remove the corrupt freshness file at ${path}, then retry \`lando update\`.`,
               cause: decoded.failure,
             }),
           );
@@ -366,6 +376,7 @@ export const writeUpdateManifestState = (
       new UpdateNetworkError({
         message: `Failed to write update manifest freshness state at ${path}.`,
         url: path,
+        remediation: `Ensure the parent of ${path} is writable, then retry \`lando update\`.`,
         cause,
       }),
   });
@@ -417,6 +428,8 @@ export const enforceManifestFreshness = Effect.fn("Update.enforceManifestFreshne
         channel: manifest.channel,
         cachedVersion: cached.latest,
         manifestVersion: manifest.latest,
+        remediation:
+          "Use a trusted channel whose signed manifest is at least as new as the last verified version; wait for a newer signed release and retry `lando update` without disabling freshness checks.",
       }),
     );
   }

@@ -8,7 +8,13 @@ tags: [beta, docs, library, testing]
 
 # Testing runtime
 
-`makeTestRuntime()` creates an isolated test runtime for library hosts. Every service double records what your code asked for and touches nothing on the host.
+Use `makeTestRuntime()` to test library calls with isolated service doubles rather
+than real host operations. The doubles record the calls your code makes, so you
+can assert on them without running a container provider.
+
+The example below records a log message and a process request. Inspect
+`runtime.calls.logger` and `runtime.calls.processRunner` to check those requests;
+the requested `podman info` process is not launched.
 
 ```ts
 import { Effect } from "effect";
@@ -113,13 +119,10 @@ console.log(provider.id); // "host-fake"`}
 
 ## Deterministic runtime
 
-The FileSystem double records calls and never writes to the real disk (`in-memory`).
-
-The Logger double records messages for assertions without printing by default (`captured`).
-
-The ProcessRunner double records commands and never reaches the host shell or network (`captured`).
-
-The same runtime inputs produce identical recorded calls across runs (`repeatable`).
+The `FileSystem` double stores files in memory and records calls without writing
+to disk. `Logger` captures messages without printing them by default, and
+`ProcessRunner` captures commands without invoking the host shell or network.
+The same runtime inputs produce repeatable recorded calls.
 
 ## Default service tags
 
@@ -137,13 +140,9 @@ Library runtimes can acquire a scratch app up front; legacy isolate 'none' input
 
 ## Provider contract
 
-The provider bootstrap layer resolves a RuntimeProvider by default.
-
-The default fake provider is TestRuntimeProvider.
-
-The fake provider reports the stable provider id test.
-
-The fake provider satisfies the RuntimeProvider contract used by core tests (`valid`).
+The provider bootstrap layer resolves `TestRuntimeProvider` by default. It
+reports the provider id `test` and satisfies the `RuntimeProvider` contract used
+by core tests.
 
 @lando/sdk/test exposes runProviderDataPlaneContract for provider volume, service file, and artifact byte round trips. It checks native snapshot paths when supported and typed capability failures otherwise.
 
@@ -153,9 +152,9 @@ TestRuntimeProvider implements the data-plane methods in memory so contract test
 
 runServiceCompositionContract replays service type resolution and requires stable base and normalizedConfig output.
 
-runServiceFeatureContract validates service feature requires entries, deterministic drafts, and storage, endpoint, mount, and extension intents without realization decisions.
+runServiceFeatureContract validates service feature requires entries, deterministic drafts and endpoint declarations, and storage, mount, and extension intents without realization decisions. Endpoint declarations run through `declareEndpoints` with immutable facts, not application mutators.
 
-runAppFeatureContract validates app feature global service requirements and proves activatedBy misses are no-op paths when expectNoActivation is set.
+runAppFeatureContract validates app feature global service requirements, deterministic endpoint declarations limited to selected services, and proves activatedBy misses are no-op paths when expectNoActivation is set.
 
 runHttpClientContract accepts an optional timeout probe so HttpClient implementations prove timeoutMs aborts and reaps hung request or stream connections without leaking sockets.
 
@@ -171,31 +170,29 @@ Library hosts and tests can lower the cap for deterministic boundary coverage wi
 
 ## Runtime overrides
 
-withService(tag, impl) lets hosts replace one service tag.
+`withService(tag, impl)` lets hosts replace one service tag.
 
-with: { RuntimeProvider } swaps the provider implementation for a test host.
+`with: { RuntimeProvider }` swaps the provider implementation for a test host.
 
-makeLandoRuntime({ config }) relocates userConfRoot, userCacheRoot, userDataRoot, and systemPluginRoot for an isolated PathsService.
+`makeLandoRuntime({ config })` relocates `userConfRoot`, `userCacheRoot`, `userDataRoot`, and `systemPluginRoot` for an isolated `PathsService`.
 
 @lando/core/testing is stable on the next channel for Beta 1.
 
 ## Interaction test double
 
-@lando/core/testing exports makeTestInteractionService for driving prompt flows without a terminal.
-
-Seeded answers are keyed by prompt name and reuse the real makeInteractionService engine so coercion, validation, and precedence match the Live service.
-
-The test double fails on any stdin read, so a seeded flow can never block on the terminal.
-
-The service captures a prompt transcript that hosts can assert against (`captured`).
+Use `makeTestInteractionService` from `@lando/core/testing` to test prompt flows
+without a terminal. Seed answers by prompt name; the double uses the real
+`makeInteractionService` engine so coercion, validation, and precedence match
+the live service. It fails on any stdin read instead of blocking, and captures
+a prompt transcript for your assertions.
 
 @lando/sdk/test exposes runInteractionContract so the Live service, the test double, and plugin or host implementations all prove the same interaction guarantees.
 
 ## Event service test helpers
 
-EventService.waitFor(name, { filter, timeout }) waits for the first typed event match and reports EventError reason timeout when the test clock reaches the deadline.
+`EventService.waitFor(name, { filter, timeout })` waits for the first typed event match and reports EventError reason timeout when the test clock reaches the deadline.
 
-EventService.waitForAny([{ name, filter }], { timeout }) waits for the first matching event across several event names under one timeout.
+`EventService.waitForAny([{ name, filter }], { timeout })` waits for the first matching event across several event names under one timeout.
 
 EventService.query(name, filter?) snapshots matching events from the bounded redacted in-memory history without blocking.
 

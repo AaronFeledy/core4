@@ -7,7 +7,7 @@ tags: [beta, docs, redis, service, cache]
 
 # Add Redis
 
-Put `type: redis` in your services block. Lando pulls `redis:7` and listens on `6379`. The default command enables append-only persistence (`redis-server --appendonly yes`) so cached data survives a restart:
+Add `type: redis` under `services` in `.lando.yml`. Lando pulls `redis:7` and listens on `6379`. The default command enables append-only persistence (`redis-server --appendonly yes`) so cached data survives a restart:
 
 ```yaml
 name: redis-demo
@@ -39,6 +39,8 @@ Connect from another service using the service name `cache` as the hostname. Red
 redis://cache:6379
 ```
 
+That URL uses the default port. Use your authored `port:` in application connection URLs.
+
 ## Open the client
 
 The `redis` type ships the `redis-cli` client task. After start:
@@ -47,7 +49,7 @@ The `redis` type ships the `redis-cli` client task. After start:
 lando redis-cli ping
 ```
 
-Store and read keys from the host with the same command:
+Store a key by invoking the client from your host terminal:
 
 ```sh
 lando redis-cli set hello world
@@ -65,7 +67,7 @@ services:
     persist: true
 ```
 
-Run `lando rebuild`, then `lando redis-cli ping`. The generated client and healthcheck authenticate through the container environment, without putting the password in command arguments. Other services must supply the same password to their Redis client.
+Run `lando start`, then `lando redis-cli ping`. The generated client and healthcheck authenticate through the container environment, without putting the password in command arguments. Other services must supply the same password to their Redis client.
 
 ## Discard cached data on restart
 
@@ -78,7 +80,7 @@ services:
     persist: false
 ```
 
-Run `lando rebuild`, set a disposable key, then run `lando restart` and read it again:
+Run `lando start`, set a disposable key, then run `lando restart` and read it again:
 
 ```sh
 lando redis-cli set temporary value
@@ -88,7 +90,30 @@ lando redis-cli exists temporary
 
 The key should no longer exist. A durable Redis service retains its keys instead.
 
+## Change the port
+
+Set `port:` to move the daemon's listener, healthcheck, endpoint, and Lando's `redis-cli` task together:
+
+```yaml
+services:
+  cache:
+    type: redis
+    port: 6380
+```
+
+Lando passes `--port 6380` to `redis-server`, with or without persistence or password authentication. Other services connect to `cache:6380`. Redis has no daemon-native port environment variable.
+
+If you author `command:`, include `--port 6380` yourself; Lando won't append it to a command you wrote. An authored `entrypoint:` still receives Lando's `redis-server` command, port included. The managed `password:` and `persist:` options can't be combined with an authored `command:` or `entrypoint:`.
+
+Apply the change with `lando rebuild`, then probe the planned port:
+
+```sh
+lando redis-cli ping
+```
+
 ## Pin a version
+
+For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Set `image:` when `redis:7` isn't the version you want:
 

@@ -1,16 +1,5 @@
 import { Schema } from "effect";
 
-export class LandofileUnknownEventError extends Schema.TaggedError<LandofileUnknownEventError>()(
-  "LandofileUnknownEventError",
-  {
-    message: Schema.String,
-    event: Schema.String,
-    validEvents: Schema.Array(Schema.String),
-    file: Schema.String,
-    remediation: Schema.String,
-  },
-) {}
-
 export class LandofileEventStepFailedError extends Schema.TaggedError<LandofileEventStepFailedError>()(
   "LandofileEventStepFailedError",
   {
@@ -21,9 +10,11 @@ export class LandofileEventStepFailedError extends Schema.TaggedError<LandofileE
     service: Schema.optional(Schema.String),
     exitCode: Schema.Number,
     outputTail: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
-) {}
+) {
+  readonly step = this.index + 1;
+}
 
 export class LandofileEventLifecycleReentryError extends Schema.TaggedError<LandofileEventLifecycleReentryError>()(
   "LandofileEventLifecycleReentryError",
@@ -32,7 +23,7 @@ export class LandofileEventLifecycleReentryError extends Schema.TaggedError<Land
     event: Schema.String,
     command: Schema.String,
     chain: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -44,6 +35,19 @@ export class LandofileEventInvocationDepthError extends Schema.TaggedError<Lando
     chain: Schema.Array(Schema.String),
     depth: Schema.Number,
     limit: Schema.Number,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
+
+/**
+ * `destroy` would remove data, but the Landofile at the applied root cannot source its
+ * `pre-destroy` steps, so a backup hook it may declare would not run.
+ */
+export class LandofileEventsSkippedError extends Schema.TaggedError<LandofileEventsSkippedError>()(
+  "LandofileEventsSkippedError",
+  {
+    message: Schema.String,
+    reason: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

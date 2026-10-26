@@ -57,6 +57,6 @@ export const appIncludesUpdateSpec: LandoCommandSpec<
       noNetwork: noNetworkFromInput(input),
       sources: sourcesFromInput(input),
     }),
-  successExitCode: (result) => (result.checkMode && result.drift ? 1 : undefined),
+  completion: (result) => ({ ok: true, exitCode: result.checkMode && result.drift ? 1 : 0 }),
   render: (result) => renderIncludesUpdateResult(result as IncludeUpdateReport, "text"),
 };

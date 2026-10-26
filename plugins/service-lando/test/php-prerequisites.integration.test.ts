@@ -108,7 +108,6 @@ describe("stock PHP prerequisites — live provider", () => {
         provider: providerId,
         services: { [serviceName]: service },
         routes: [],
-        networks: [],
         stores: [],
         fileSync: [],
         metadata: planMetadata,

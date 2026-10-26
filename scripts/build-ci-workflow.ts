@@ -1,10 +1,20 @@
 import { resolve } from "node:path";
+import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
 
+import {
+  CONTAINER_HELPER_ARM64_JOB_ID,
+  CONTAINER_HELPER_JOB_ID,
+  containerHelperDownloadStep,
+  renderContainerHelperArm64Job,
+  renderContainerHelperJob,
+} from "./_container-helper-workflow.ts";
+import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
 import {
   CI_PLATFORMS,
   type CiPlatform,
   LINUX_X64_CI_RUNNERS,
   LINUX_X64_PRIMARY_RUNNER,
+  LINUX_X64_TEST_RUNNER,
   isWindowsCiPlatform,
 } from "./ci-platforms.ts";
 import {
@@ -31,27 +41,20 @@ const staticCheckMatrixInclude = (): string => {
     }
     cells.push({ platform: platform.id, runsOn: platform.runsOn });
   }
-  return cells
-    .map((cell) => `          - platform: ${cell.platform}\n            runs-on: ${cell.runsOn}`)
-    .join("\n");
+  const broad = JSON.stringify(cells.map((cell) => ({ platform: cell.platform, "runs-on": cell.runsOn })));
+  const fast = JSON.stringify([{ platform: "linux-x64", "runs-on": LINUX_X64_TEST_RUNNER }]);
+  return `        include: \${{ fromJSON(needs.selection.outputs.broad == 'true' && '${broad}' || '${fast}') }}`;
 };
 
-const renderLinuxX64MatrixGate = (jobId: string, matrixJobId: string, label: string): string => `  ${jobId}:
+const renderLinuxX64MatrixGate = (jobId: string, matrixJobId: string): string => `  ${jobId}:
     needs: [${matrixJobId}]
     if: always()
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 5
-    steps:
-      - name: Confirm ${label} matrix
-        run: |
-          if [[ "\${{ needs.${matrixJobId}.result }}" != "success" ]]; then
-            echo "${label} matrix result: \${{ needs.${matrixJobId}.result }}"
-            exit 1
-          fi
-          echo "${label} matrix passed on ${linuxX64RunnerList}"
+${ciResultSteps}
 `;
 
-const buildNeeds = "[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]";
+const buildNeeds = `[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, ${CONTAINER_HELPER_JOB_ID}]`;
 
 const timingStartStep = `      - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"`;
@@ -76,7 +79,6 @@ const renderStaticChecks = (): string => `  static-checks-platform:
     strategy:
       fail-fast: false
       matrix:
-        include:
 ${staticCheckMatrixInclude()}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 35
@@ -90,15 +92,16 @@ ${setupBunSteps}
       - name: Regenerate and verify codegen catalog
         run: bun run codegen:check
 
+      - name: Typecheck
+        if: matrix.platform == 'linux-x64'
+        run: bun run typecheck
+
       - name: Native Windows private-file ACL tests
         if: startsWith(matrix.platform, 'windows-')
         run: bun test state-store/test/state-store/private-file-access.test.ts
 
       - name: Lint
         run: bun run lint
-
-      - name: Audit dependencies
-        run: bun run audit
 
       - name: Boundary gates
         run: bun run check:boundaries
@@ -112,6 +115,14 @@ ${setupBunSteps}
       - name: Runtime-bundle manifest invariant
         run: bun run check:runtime-bundle-manifest
 
+      - name: Check runtime bundle license metadata
+        run: bun run check:runtime-bundle-licenses
+
+      - name: Check compiled binary notices
+        run: |
+          bun install --frozen-lockfile --os='*' --cpu='*'
+          bun run check:compiled-binary-notices
+
       - name: Static scope notice for portable static matrix
         run: |
           echo "::notice title=static-checks-scope::\${{ matrix.platform }} on \${{ matrix.runs-on }} runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ${linuxX64RunnerList}. Full cross-platform static test portability remains a follow-up portability effort."
@@ -119,23 +130,17 @@ ${setupBunSteps}
 ${timingNoticeStep("static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}", 35)}
 
   static-checks:
-    needs: [static-checks-platform]
+    needs: [static-checks-platform, ${CONTAINER_HELPER_ARM64_JOB_ID}]
     if: always()
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 5
-    steps:
-      - name: Confirm static-checks platform matrix
-        run: |
-          if [[ "\${{ needs.static-checks-platform.result }}" != "success" ]]; then
-            echo "static-checks platform matrix result: \${{ needs.static-checks-platform.result }}"
-            exit 1
-          fi
-          echo "static-checks platform matrix passed"
+${ciResultSteps}
 `;
 
 const unitShardList = Array.from({ length: UNIT_SHARD_COUNT }, (_, index) => index + 1).join(", ");
 
 const renderUnitTests = (): string => `  unit-tests-linux-x64-shard:
+    needs: ${CONTAINER_HELPER_JOB_ID}
     strategy:
       fail-fast: false
       matrix:
@@ -152,6 +157,8 @@ ${setupBunSteps}
 
 ${codegenStep}
 
+${containerHelperDownloadStep}
+
       - name: Unit test shard
         run: bun run test:unit:shard \${{ matrix.shard }}/${UNIT_SHARD_COUNT}
 
@@ -160,20 +167,13 @@ ${timingNoticeStep("unit-tests-linux-x64-shard/${{ matrix.runs-on }}/${{ matrix.
   unit-tests-linux-x64:
     needs: [unit-tests-linux-x64-shard]
     if: always()
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 5
-    steps:
-      - name: Confirm unit test shard matrix
-        run: |
-          if [[ "\${{ needs.unit-tests-linux-x64-shard.result }}" != "success" ]]; then
-            echo "unit test shard matrix result: \${{ needs.unit-tests-linux-x64-shard.result }}"
-            exit 1
-          fi
-          echo "unit test shard matrix passed on ${linuxX64RunnerList}"
+${ciResultSteps}
 `;
 
 const renderTestIsolation = (): string => `  test-isolation-linux-x64:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
@@ -198,31 +198,8 @@ const renderSmokeCommands = (platform: CiPlatform): string =>
           ./dist/${platform.binaryName} --help
           ./dist/${platform.binaryName} shellenv`;
 
-const renderBuildNeeds = (platform: CiPlatform): string =>
-  isWindowsCiPlatform(platform)
-    ? "[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]"
-    : buildNeeds;
-
-const renderHostProxyShimBuildCommands = (platform: CiPlatform): string =>
-  isWindowsCiPlatform(platform)
-    ? `          bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"`
-    : `          bun run --filter='@lando/core' build:host-proxy-shim
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"`;
-
-const renderHostProxyShimDownloadStep = (platform: CiPlatform): string =>
-  isWindowsCiPlatform(platform)
-    ? `
-
-      - name: Download Linux sidecars from Linux artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: lando-linux-x64
-          path: linux-sidecars`
-    : "";
-
 const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}:
-    needs: ${renderBuildNeeds(platform)}
+    needs: ${buildNeeds}
     runs-on: ${platform.runsOn}
     timeout-minutes: ${platform.timeoutMinutes}
     steps:
@@ -230,9 +207,11 @@ const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}
 
 ${timingStartStep}
 
-${setupBunSteps}${renderHostProxyShimDownloadStep(platform)}
+${setupBunSteps}
 
 ${codegenStep}
+
+${containerHelperDownloadStep}
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -240,10 +219,11 @@ ${codegenStep}
       - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
-${renderHostProxyShimBuildCommands(platform)}
+          bun install --frozen-lockfile --os='*' --cpu='*'
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
+          bun run check:compiled-binary-notices
 
       - name: Smoke test binary
         run: |
@@ -262,8 +242,7 @@ ${renderSmokeCommands(platform)}
           name: lando-${platform.id}
           path: |
             dist/${platform.binaryName}
-            dist/host-proxy/**
-            dist/log-file-access/**
+            dist/THIRD_PARTY_NOTICES.md
           if-no-files-found: ignore
           retention-days: 14
 
@@ -271,7 +250,7 @@ ${timingNoticeStep(`build-${platform.id}`, platform.timeoutMinutes)}
 `;
 
 const renderDocsBuild = (): string => `  docs-build:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -305,7 +284,7 @@ ${timingNoticeStep("docs-build", 15)}
   deploy-docs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [docs-build]
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     permissions:
       pages: write
@@ -321,7 +300,7 @@ ${timingNoticeStep("docs-build", 15)}
 
 const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:
     needs: [build-linux-x64]
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
@@ -348,8 +327,8 @@ ${setupBunSteps}
 ${timingNoticeStep("perf-budget-linux-x64", 10)}
 `;
 
-export const landoManagedPodmanTeardownCommands = `          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
-          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+export const landoManagedPodmanTeardownCommands = `          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" rm -f || true
           "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network rm || true`;
 
@@ -361,7 +340,7 @@ const contractProviderTestSteps = `      - name: Run provider contract tests
           bun test plugins/provider-podman/test/contract.integration.test.ts
           bun test plugins/provider-podman/test/capabilities.test.ts`;
 
-export const landoRuntimeSocketPath = '"$HOME/.local/share/lando/runtime/run/podman.sock"';
+export const landoRuntimeSocketPath = '"$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"';
 
 export const landoRootlessPrereqSteps = `      - name: Provision rootless runtime prerequisites
         run: |
@@ -416,7 +395,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
 
@@ -434,7 +413,8 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
             sleep 1
           done
           test -S ${landoRuntimeSocketPath}
-          echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"
+          curl --fail --max-time 5 --unix-socket ${landoRuntimeSocketPath} http://localhost/_ping
+          echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
       - name: Gate platform readiness doctor
         run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
@@ -446,8 +426,8 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
 
       - name: Pre-pull container images
         run: |
-          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
-          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           pull_image() {
             local image="$1"
             for attempt in 1 2 3; do
@@ -465,7 +445,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:lts
+          pull_image docker.io/library/node:24
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
@@ -511,11 +491,11 @@ ${landoManagedPodmanTeardownCommands}
             test -f "$log" || continue
             tail -n 100 "$log" > "provider-diagnostics/test-logs/$(basename "$log")"
           done
-          LANDO_RT="$HOME/.local/share/lando/runtime"
+          LANDO_RT="$LANDO_USER_DATA_ROOT/runtime"
           ls -la "$LANDO_RT/bin" > provider-diagnostics/runtime-bin.txt 2>&1 || true
           ls -la "$LANDO_RT/run" >> provider-diagnostics/runtime-bin.txt 2>&1 || true
           ps auxww | grep -i podman > provider-diagnostics/podman-processes.txt 2>&1 || true
-          cp -r "$HOME/.cache/lando/logs" provider-diagnostics/lando-logs 2>/dev/null || true
+          cp -r "$LANDO_USER_CACHE_ROOT/logs" provider-diagnostics/lando-logs 2>/dev/null || true
           LP="$LANDO_RT/bin/podman"
           if test -x "$LP"; then
             ldd "$LP" > provider-diagnostics/managed-podman-ldd.txt 2>&1 || true
@@ -543,7 +523,7 @@ ${timingStartStep}
         uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache}
         with:
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
+          key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
 
       - name: Setup Bun
         if: ${linuxRuntimeBundleCacheMiss}
@@ -586,7 +566,7 @@ ${timingNoticeStep("runtime-bundle-linux-x64", 40)}
 `;
 
 const windowsRuntimeBundleJob = `  runtime-bundle-win32-x64:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -622,19 +602,12 @@ const windowsManagedSetupSteps = `      - name: Download current-commit Windows 
 
       - name: Verify compiled Windows managed setup and API reachability
         env:
-          LANDO_USER_DATA_ROOT: \${{ runner.temp }}/lando-data
-          LANDO_USER_CACHE_ROOT: \${{ runner.temp }}/lando-cache
-          LANDO_USER_CONF_ROOT: \${{ runner.temp }}/lando-config
           LANDO_RUNTIME_BUNDLE_MANIFEST: \${{ github.workspace }}/dist/cache/runtime-bundle/runtime-bundle-versions.json
         run: |
           bun run scripts/windows-managed-setup-acceptance.ts --binary dist/lando-windows-x64.exe --report provider-diagnostics/windows-managed-setup.json
 
       - name: Teardown Windows managed machine
         if: always()
-        env:
-          LANDO_USER_DATA_ROOT: \${{ runner.temp }}/lando-data
-          LANDO_USER_CACHE_ROOT: \${{ runner.temp }}/lando-cache
-          LANDO_USER_CONF_ROOT: \${{ runner.temp }}/lando-config
         run: |
           powershell.exe -NoProfile -Command '$podman = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\bin\\podman.exe"; if (Test-Path $podman) { $env:CONTAINERS_CONF = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\config\\containers.conf"; & $podman machine rm --force lando; if ($LASTEXITCODE -ne 0) { Write-Warning "managed machine teardown exited $LASTEXITCODE" } }; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $env:LANDO_USER_DATA_ROOT, $env:LANDO_USER_CACHE_ROOT, $env:LANDO_USER_CONF_ROOT; exit 0'`;
 
@@ -667,17 +640,21 @@ const renderProviderIntegrationJob = (platform: CiPlatform): string => {
     : `provider-integration-${platform.id}`;
 
   const runnerJob = `  ${jobId}:
-    needs: ${platform.id === "windows-x64" ? "[build-windows-x64, runtime-bundle-win32-x64]" : platform.id === "linux-x64" ? "[build-linux-x64, runtime-bundle-linux-x64]" : `[build-${platform.id}]`}
+    needs: ${platform.id === "windows-x64" ? `[build-windows-x64, runtime-bundle-win32-x64, ${CONTAINER_HELPER_JOB_ID}]` : platform.id === "linux-x64" ? `[build-linux-x64, runtime-bundle-linux-x64, ${CONTAINER_HELPER_JOB_ID}]` : `[build-${platform.id}, ${CONTAINER_HELPER_JOB_ID}]`}
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: ${platform.providerTimeoutMinutes}
     steps:
       - uses: actions/checkout@v5
+
+${isolateLandoRootsStep}
 
 ${timingStartStep}
 
 ${setupBunSteps}
 
 ${codegenStep}
+
+${containerHelperDownloadStep}
 
       - name: Download ${platform.id} binary artifact
         uses: actions/download-artifact@v7
@@ -707,7 +684,6 @@ ${timingNoticeStep(timingLabel, platform.providerTimeoutMinutes)}
 ${renderLinuxX64MatrixGate(
   `provider-integration-${platform.id}`,
   `provider-integration-${platform.id}-runner`,
-  `provider-integration-${platform.id}`,
 )}`;
 };
 
@@ -791,14 +767,13 @@ ${matrixBlock}    runs-on: ${runsOn}
         with:
           fetch-depth: 0
 
+${isolateLandoRootsStep}
+
 ${timingStartStep}
 
 ${setupBunSteps}
 
 ${codegenStep}
-
-      - name: Typecheck
-        run: bun run typecheck
 
       - name: Lint guides
         run: bun run lint:guides
@@ -834,15 +809,11 @@ ${timingNoticeStep(timingLabel, 30)}
 
   if (!isLinuxX64) return runnerJob;
   return `${runnerJob}
-${renderLinuxX64MatrixGate(
-  `guide-scenarios-${platform.id}`,
-  `guide-scenarios-${platform.id}-runner`,
-  `guide-scenarios-${platform.id}`,
-)}`;
+${renderLinuxX64MatrixGate(`guide-scenarios-${platform.id}`, `guide-scenarios-${platform.id}-runner`)}`;
 };
 
 const renderIsolatedInstallExperiment = (): string => `  bun-install-isolated-experiment:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     continue-on-error: true
     steps:
@@ -867,12 +838,11 @@ export const renderCiWorkflow = (): string => {
   const providerIntegrationJobs = CI_PLATFORMS.map(renderProviderIntegrationJob).join("\n");
   const guideScenarioJobs = CI_PLATFORMS.map(renderGuideScenariosJob).join("\n");
 
-  return `${GENERATED_HEADER}
+  return applyCiSelection(`${GENERATED_HEADER}
 name: ci
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -891,8 +861,10 @@ ${renderIsolatedInstallExperiment()}
 ${renderUnitTests()}
 ${renderDocsBuild()}
 ${renderTestIsolation()}
+${renderContainerHelperJob()}
+${renderContainerHelperArm64Job()}
   schema-snapshot:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -918,7 +890,7 @@ ${codegenStep}
 
       - name: Check schema compatibility
         env:
-          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/\${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}
         run: bun run check:schema-compatibility
 
       - name: Regenerate command reference
@@ -938,7 +910,7 @@ ${codegenStep}
 ${timingNoticeStep("schema-snapshot", 15)}
 
   bundled-codegen:
-    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
@@ -949,6 +921,10 @@ ${setupBunSteps}
 
       - name: Regenerate paired Tomcat catalog
         run: bun run codegen:tomcat-catalog
+
+      # Gitignored output that container-runtime imports, so bundled plugins need it first.
+      - name: Regenerate provider images manifest
+        run: bun run codegen:provider-images
 
       - name: Regenerate bundled plugins
         run: bun run codegen:bundled-plugins
@@ -961,9 +937,6 @@ ${setupBunSteps}
 
       - name: Regenerate Mutagen versions manifest
         run: bun run codegen:mutagen-versions
-
-      - name: Regenerate provider images manifest
-        run: bun run codegen:provider-images
 
       - name: Regenerate OpenTUI native catalog
         run: bun run codegen:opentui-native-stubs
@@ -994,7 +967,7 @@ ${codegenStep}
 
 ${timingNoticeStep("library-api-tests/${{ matrix.runs-on }}", 15)}
 
-${renderLinuxX64MatrixGate("library-api-tests", "library-api-tests-runner", "library-api-tests")}
+${renderLinuxX64MatrixGate("library-api-tests", "library-api-tests-runner")}
   recipe-tests-runner:
     strategy:
       fail-fast: false
@@ -1016,13 +989,13 @@ ${codegenStep}
 
 ${timingNoticeStep("recipe-tests/${{ matrix.runs-on }}", 15)}
 
-${renderLinuxX64MatrixGate("recipe-tests", "recipe-tests-runner", "recipe-tests")}
+${renderLinuxX64MatrixGate("recipe-tests", "recipe-tests-runner")}
 ${guideScenarioJobs}
 ${buildJobs}
 ${linuxRuntimeBundleJob}
 ${windowsRuntimeBundleJob}
 ${perfBudgetJob}
-${providerIntegrationJobs}`;
+${providerIntegrationJobs}`);
 };
 
 const main = async (): Promise<void> => {

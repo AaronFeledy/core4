@@ -42,6 +42,7 @@ test("selected global stop retries failed route cleanup after its container was 
           service: ServiceName.make(name),
           containerId: `${name}-container`,
           status: "running",
+          publications: { status: "unknown" },
         },
       ]),
     );
@@ -90,6 +91,9 @@ test("selected global stop retries failed route cleanup after its container was 
       Effect.provideService(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([plan]),
           list: Effect.succeed([plan.provider]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),

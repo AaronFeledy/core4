@@ -8,14 +8,14 @@ tags: [beta, docs, cli, tracing]
 
 # Trace a slow command
 
-Add `--trace` to any command and Lando prints a timing tree after the result.
+Add `--trace` to a command to print a timing tree after its result. For example, run this from your app directory to trace startup:
 
 ```sh
 lando start --trace
 LANDO_TRACE=1 lando start
 ```
 
-The flag is global, so it works on every dispatcher-routed command. `LANDO_TRACE=1` does the same thing from the environment. Without either, the tracer stays off and the command runs exactly as fast as it did before.
+The flag is global, so it works on every dispatcher-routed command. In a POSIX shell, `LANDO_TRACE=1` enables it through the environment, as shown in the second command. A configured [export endpoint](./export-traces.mdx) also enables tracing; `--trace` controls whether the timing tree appears in your terminal.
 
 ## Read the timing tree
 

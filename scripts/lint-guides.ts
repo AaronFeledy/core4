@@ -39,6 +39,8 @@ import {
   resolveHostGuidePlatform,
   variantsOf,
 } from "./build-guide-scenarios.ts";
+import { lintYamlFences } from "./lint-guides-yaml-fence.ts";
+import { lintFixtureLandofiles } from "./lint-guides-yaml-fixtures.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
@@ -47,6 +49,7 @@ type MdxNode = {
   readonly name?: string | null;
   readonly value?: unknown;
   readonly lang?: string | null;
+  readonly meta?: string | null;
   readonly attributes?: ReadonlyArray<MdxAttribute>;
   readonly children?: ReadonlyArray<MdxNode>;
   readonly position?: { readonly start?: { readonly line?: number; readonly column?: number } };
@@ -746,6 +749,7 @@ export const lintGuideContent = (
   const guide = elementChildren(root).find((child) => child.name === "Guide");
   lintComponents(sourcePath, root, diagnostics);
   lintRawShellFences(sourcePath, guide, diagnostics);
+  lintYamlFences(sourcePath, root, diagnostics);
   const scenarios = guide === undefined ? [] : lintScenarioIds(sourcePath, guide, diagnostics);
   lintScenarioProps(sourcePath, scenarios, diagnostics);
   lintHiddenScenarioReason(sourcePath, scenarios, diagnostics);
@@ -1059,6 +1063,7 @@ export const lintGuides = async (
       guideId === undefined ? [] : await buildFixtureInventory(root, guideId, options.guideRoot);
     const result = lintGuideContent(sourcePath, content, { fixtures });
     diagnostics.push(...result.diagnostics);
+    await lintFixtureLandofiles(root, fixtures, diagnostics);
     if (result.diagnostics.length === 0)
       diagnostics.push(...lintGuideTranscripts(sourcePath, content).diagnostics);
   }

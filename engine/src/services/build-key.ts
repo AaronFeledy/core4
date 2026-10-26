@@ -3,10 +3,9 @@ import { sha256Hex } from "@lando/sdk/digest";
 import { buildContextContentDigest } from "@lando/container-runtime/image-build";
 import { Effect, Predicate } from "effect";
 
-import { exactSecretReferenceId } from "@lando/landofile/secret-reference";
 import { canonicalJson } from "@lando/sdk/digest";
 import { ProviderInternalError } from "@lando/sdk/errors";
-import type { ServicePlan } from "@lando/sdk/schema";
+import type { Environment, ServicePlan } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 import { compareFingerprintText } from "../cache/canonical.ts";
@@ -42,28 +41,14 @@ interface AppBuildKeyInput {
   readonly user?: string;
 }
 
-const normalizeSecretReferences = (value: unknown): unknown => {
-  if (typeof value === "string") return secretAwareString(value);
-  if (Array.isArray(value)) return value.map(normalizeSecretReferences);
-  if (!Predicate.isObject(value)) return value;
-  return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [key, normalizeSecretReferences(entry)]),
-  );
-};
-
-const stableHash = (value: unknown): string => sha256Hex(canonicalJson(normalizeSecretReferences(value)));
-
-const secretAwareString = (value: string): unknown => {
-  const secret = exactSecretReferenceId(value);
-  return secret === undefined ? value : { secret };
-};
+const stableHash = (value: unknown): string => sha256Hex(canonicalJson(value));
 
 const stableStringRecord = (
-  record: Readonly<Record<string, string>>,
+  record: Readonly<Record<string, unknown>>,
 ): ReadonlyArray<readonly [string, unknown]> =>
   Object.entries(record)
     .sort(([left], [right]) => compareFingerprintText(left, right))
-    .map(([key, value]) => [key, secretAwareString(value)] as const);
+    .map(([key, value]) => [key, value] as const);
 
 const isGeneratedLandoEnv = (key: string): boolean => key === "LANDO" || key.startsWith("LANDO_");
 
@@ -71,9 +56,7 @@ const PROXY_ENV_KEYS = new Set(["http_proxy", "https_proxy", "all_proxy", "no_pr
 
 const isProxyEnv = (key: string): boolean => PROXY_ENV_KEYS.has(key.toLowerCase());
 
-const providerEnvironment = (
-  environment: Readonly<Record<string, string>>,
-): ReadonlyArray<readonly [string, unknown]> => {
+const providerEnvironment = (environment: Environment): ReadonlyArray<readonly [string, unknown]> => {
   const declared = Object.fromEntries(
     Object.entries(environment).filter(([key]) => !isGeneratedLandoEnv(key) && !isProxyEnv(key)),
   );
@@ -109,6 +92,8 @@ const stableArtifactBuildInput = (service: ServicePlan, provider: RuntimeProvide
         operation: "buildKeyForService",
         message: "Unable to hash the artifact build context.",
         cause,
+        remediation:
+          "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
       }),
   }).pipe(Effect.map((contentDigest) => artifactBuildInput(artifact, contentDigest)));
 };
@@ -146,7 +131,7 @@ export const buildStepsFor = (service: ServicePlan): ReadonlyArray<unknown> => {
   const extension = service.extensions["@lando/core/service-features"];
   if (!Predicate.isObject(extension)) return [];
   const buildSteps = extension.buildSteps;
-  return Array.isArray(buildSteps) ? buildSteps.map(normalizeSecretReferences) : [];
+  return Array.isArray(buildSteps) ? [...buildSteps] : [];
 };
 
 const artifactBuildStepInput = (step: unknown): unknown => {
