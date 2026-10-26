@@ -137,9 +137,13 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   if (Result.isFailure(finalized)) {
     const error = finalized.failure;
     if (error._tag === "LandofileFormConflictError") return yield* Effect.fail(error);
+    // A rejected Compose key already has a field-level finding; a pathless copy only repeats it.
+    const reportedRejection =
+      error._tag === "ComposeKeyRejectedError" &&
+      violations.some((violation) => violation.rule === "landofile.compose-rejection");
     if (error._tag === "LandofileValidationError")
       violations.push(...error.issues.map((issue) => attributeLintIssue(issue, "effective", documents)));
-    else {
+    else if (!reportedRejection) {
       const path =
         error._tag === "LandofileIncludeError"
           ? (error.path ?? [])

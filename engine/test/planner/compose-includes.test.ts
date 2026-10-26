@@ -13,17 +13,18 @@ import * as Planner from "../../src/services/planner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 test.each([
-  "include: [sibling/compose.yaml]",
-  "includes:\n  - source: ./sibling/compose.yaml\n    kind: compose",
-])("lints and plans a stock Compose include with named volumes: %s", async (include) => {
+  "include: [mailstack/compose.yaml]",
+  "includes:\n  - source: ./mailstack/compose.yaml\n    kind: compose",
+])("lints and plans fragment-local env files and binds alongside named volumes: %s", async (include) => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-compose-include-plan-"));
   try {
-    await mkdir(join(root, "sibling"));
+    await mkdir(join(root, "mailstack/data"), { recursive: true });
+    await writeFile(join(root, "mailstack/.env.mail"), "MAIL_SOURCE=fragment\n");
     await writeFile(join(root, ".lando.yml"), `name: compose-include\n${include}\n`);
     await writeFile(
-      join(root, "sibling/compose.yaml"),
-      "services:\n  mail:\n    image: axllent/mailpit:v1.27\n  postgres:\n    image: postgres:17\n    volumes: [dbdata:/var/lib/postgresql/data]\nvolumes:\n  dbdata: {}\n",
+      join(root, "mailstack/compose.yaml"),
+      "services:\n  mail:\n    image: axllent/mailpit:v1.27\n    env_file: [.env.mail]\n    volumes: ['./data:/data']\n  postgres:\n    image: postgres:17\n    volumes: [dbdata:/var/lib/postgresql/data]\nvolumes:\n  dbdata: {}\n",
     );
     // When
     const { lint, plan } = await Effect.runPromise(
@@ -51,10 +52,13 @@ test.each([
     expect(Object.values(plan.services).flatMap(({ storage }) => storage)).toMatchObject([
       { target: "/var/lib/postgresql/data" },
     ]);
-    for (const service of Object.values(plan.services)) {
-      expect(service.mounts).toEqual([]);
-      expect(service.appMount).toBeUndefined();
-    }
+    expect(Object.values(plan.services).find(({ name }) => name === "mail")?.environment).toMatchObject({
+      MAIL_SOURCE: "fragment",
+    });
+    expect(Object.values(plan.services).flatMap(({ mounts }) => mounts)).toMatchObject([
+      { source: join(root, "mailstack/data"), target: "/data" },
+    ]);
+    for (const service of Object.values(plan.services)) expect(service.appMount).toBeUndefined();
   } finally {
     await rm(root, { recursive: true, force: true });
   }

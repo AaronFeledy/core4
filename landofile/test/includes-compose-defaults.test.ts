@@ -32,7 +32,10 @@ test.each([`include: [${fragment}]`, `includes:\n  - source: ./${fragment}\n    
   async (include) => {
     // Given
     await writeFile(join(root, ".lando.yml"), `name: defaults\n${include}\n`);
-    await writeFile(join(root, fragment), "services:\n  mail:\n    image: axllent/mailpit:v1.27\n");
+    await writeFile(
+      join(root, fragment),
+      "services:\n  mail:\n    image: axllent/mailpit:v1.27\n    env_file: [.env.mail]\n    volumes: ['./data:/data']\n",
+    );
     // When
     const { document } = await load();
     // Then
@@ -41,6 +44,8 @@ test.each([`include: [${fragment}]`, `includes:\n  - source: ./${fragment}\n    
       home: false,
       appMount: false,
       image: "axllent/mailpit:v1.27",
+      envFile: ["./sibling/.env.mail"],
+      volumes: [{ type: "bind", source: "./sibling/data", target: "/data" }],
     });
     for (const key of ["type", "home", "appMount"])
       expect(getLandofileValueSource(document, ["services", "mail", key])).toEqual({
@@ -48,6 +53,11 @@ test.each([`include: [${fragment}]`, `includes:\n  - source: ./${fragment}\n    
         layer: "canonical",
         path: ["services", "mail"],
       });
+    expect(getLandofileValueSource(document, ["services", "mail", "envFile", 0])).toEqual({
+      file: join(root, fragment),
+      layer: "canonical",
+      path: ["services", "mail", "env_file", 0],
+    });
   },
 );
 
@@ -101,7 +111,10 @@ test.each([`includes: [${fragment}]`, `includes:\n  - source: ${fragment}\n    k
       join(root, ".lando.yml"),
       `name: defaults\n${include}\nservices:\n  main:\n    image: nginx\n`,
     );
-    await writeFile(join(root, fragment), "services:\n  mail:\n    image: axllent/mailpit:v1.27\n");
+    await writeFile(
+      join(root, fragment),
+      "services:\n  mail:\n    image: axllent/mailpit:v1.27\n    env_file: [.env.mail]\n    volumes: ['./data:/data']\n",
+    );
     // When
     const { document } = await load();
     // Then
@@ -110,6 +123,10 @@ test.each([`includes: [${fragment}]`, `includes:\n  - source: ${fragment}\n    k
       expect(service?.home).toBeUndefined();
       expect(service?.appMount).toBeUndefined();
     }
+    expect(document.services?.[mail]).toMatchObject({
+      envFile: [".env.mail"],
+      volumes: [{ type: "bind", source: "./data", target: "/data" }],
+    });
   },
 );
 
@@ -131,11 +148,20 @@ test.each(["services:\n  mail: !override", "services: !override\n  mail:"])(
   async (services) => {
     // Given
     await writeFile(join(root, ".lando.yml"), `name: defaults\ninclude: [${fragment}]\n`);
-    await writeFile(join(root, fragment), `${services}\n    image: mailpit\n`);
+    await writeFile(
+      join(root, fragment),
+      `${services}\n    image: mailpit\n    env_file: !override [.env.mail]\n    volumes: !override ['./data:/data']\n`,
+    );
     // When
     const { document } = await load();
     // Then
-    expect(document.services?.[mail]).toMatchObject({ type: "compose", home: false, appMount: false });
+    expect(document.services?.[mail]).toMatchObject({
+      type: "compose",
+      home: false,
+      appMount: false,
+      envFile: ["./sibling/.env.mail"],
+      volumes: [{ type: "bind", source: "./sibling/data", target: "/data" }],
+    });
   },
 );
 
@@ -147,4 +173,35 @@ test("does not resurrect a reset Compose service", async () => {
   const { document } = await load();
   // Then
   expect(document.services?.[mail]).toBeUndefined();
+});
+
+test("rebases nested Compose includes exactly once from each declaring directory", async () => {
+  // Given
+  await mkdir(join(root, "a/b"), { recursive: true });
+  await writeFile(join(root, ".lando.yml"), "name: nested\ninclude: [a/compose.yaml]\n");
+  await writeFile(join(root, "a/compose.yaml"), "include: [b/compose.yaml]\n");
+  await writeFile(
+    join(root, "a/b/compose.yaml"),
+    "services:\n  mail:\n    image: mailpit\n    env_file: ../shared/.env\n    build:\n      context: image\n      dockerfile: ../Dockerfile\nconfigs:\n  config:\n    file: ./config\nsecrets:\n  secret:\n    file: ./secret\n",
+  );
+  // When
+  const { document } = await load();
+  // Then
+  expect(document.services?.[mail]).toMatchObject({
+    envFile: ["./a/shared/.env"],
+    build: { context: "./a/b/image", dockerfile: "../Dockerfile" },
+  });
+  expect(document.configs).toMatchObject({ config: { file: "./a/b/config" } });
+  expect(document.secrets).toMatchObject({ secret: { file: "./a/b/secret" } });
+});
+
+test("still rejects unsupported env_file objects rather than bypassing Compose dispositions", async () => {
+  // Given
+  await writeFile(join(root, ".lando.yml"), `name: defaults\ninclude: [${fragment}]\n`);
+  await writeFile(
+    join(root, fragment),
+    "services:\n  mail:\n    image: mailpit\n    env_file:\n      - path: .env.mail\n        required: false\n",
+  );
+  // When / Then
+  await expect(load()).rejects.toMatchObject({ _tag: "ComposeKeyRejectedError" });
 });

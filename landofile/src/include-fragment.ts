@@ -103,7 +103,15 @@ export const parseFragment = (
             }),
           );
         return prepareOverlay(
-          fragment.kind === "compose" ? composeIncludeDefaults(parsed) : parsed,
+          fragment.kind === "compose"
+            ? composeIncludeDefaults(
+                parsed,
+                // Remote snapshots live in a shared cache, not the app's bindable source tree.
+                fragment.remoteOrigin === undefined && !fragment.userOwned
+                  ? { appRoot: ctx.appRoot, sourceRoot: fragment.root }
+                  : undefined,
+              )
+            : parsed,
           { file: fragment.filePath, layer },
           getSourceDocuments(parsed)[0]?.document ?? parsed,
         ).pipe(

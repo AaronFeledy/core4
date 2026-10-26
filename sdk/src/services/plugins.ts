@@ -10,6 +10,7 @@ import type {
   AbsoluteContainerPath,
   ContainerUser,
   DatabaseConnection,
+  HostPlatform,
   LogSource,
   PlanMetadata,
   PluginManifest,
@@ -27,7 +28,14 @@ export class PluginRegistry extends Context.Service<
   PluginRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<PluginManifest>, PluginManifestError>;
-    readonly declaredProviderCapabilities?: (id: ProviderId) => ProviderCapabilities | undefined;
+    /**
+     * A provider's capabilities declared offline for the given host, without constructing the provider.
+     * Undefined when the provider contributes no offline declaration.
+     */
+    readonly declaredProviderCapabilities?: (
+      id: ProviderId,
+      platform: HostPlatform,
+    ) => ProviderCapabilities | undefined;
     readonly load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>;
     readonly loadServiceType: (
       id: string,

@@ -273,7 +273,7 @@
       "userIncludesDir:string"
     ],
     "PluginRegistry": [
-      "declaredProviderCapabilities?:(id:ProviderId) => ProviderCapabilities|undefined",
+      "declaredProviderCapabilities?:(id:ProviderId, platform:HostPlatform) => ProviderCapabilities|undefined",
       "list:Effect.Effect<ReadonlyArray<PluginManifest>,PluginManifestError>",
       "load:(name:string) => Effect.Effect<PluginManifest,PluginLoadError|PluginManifestError>",
       "loadAppFeature:(id:string) => Effect.Effect<AppFeatureDefinition,PluginLoadError|PluginManifestError>",

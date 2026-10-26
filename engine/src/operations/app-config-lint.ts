@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import { getLandofileValueSource } from "@lando/landofile/validation";
+import { normalizeHostPlatform } from "@lando/paths";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
 import { resolveLandofileForPlanning } from "../planner/event-set.ts";
@@ -13,7 +14,7 @@ import type {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import type { ConfigLintResult, ValidationIssue } from "@lando/sdk/schema";
+import type { ConfigLintResult, ProviderId, ValidationIssue } from "@lando/sdk/schema";
 
 import {
   type LintLandofileOptions,
@@ -56,7 +57,13 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     pathsService,
     ...(pluginRegistry.declaredProviderCapabilities === undefined
       ? {}
-      : { resolveCapabilities: pluginRegistry.declaredProviderCapabilities }),
+      : {
+          resolveCapabilities: (id: ProviderId) =>
+            pluginRegistry.declaredProviderCapabilities?.(
+              id,
+              pathsService?.platform ?? normalizeHostPlatform(),
+            ),
+        }),
     file: snapshot.landofilePath,
     appRoot: dirname(snapshot.landofilePath),
   }).pipe(Effect.result);
