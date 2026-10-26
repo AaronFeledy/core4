@@ -54,3 +54,27 @@ test("retains bind, tmpfs, and unrecognized kinds without inventing read-only ev
     ],
   });
 });
+
+test("observes HostConfig tmpfs mounts that the engine omits from Mounts", () => {
+  // Given an inspection whose tmpfs mounts appear only in HostConfig, one also listed in Mounts.
+  const result = mountObservationFromInspect({
+    Mounts: [{ Type: "tmpfs", Destination: "/listed", RW: true }],
+    HostConfig: { Tmpfs: { "/scratch": "", "/run/qa": "ro,size=8m", "/listed": "size=1m" } },
+  });
+  // Then each tmpfs target is observed once, with access from its options.
+  expect(result).toEqual({
+    status: "present",
+    mounts: [
+      { type: "tmpfs", target: "/listed", readOnly: false },
+      { type: "tmpfs", target: "/scratch", readOnly: false },
+      { type: "tmpfs", target: "/run/qa", readOnly: true },
+    ],
+  });
+});
+
+test("treats a null HostConfig tmpfs map as no tmpfs mounts", () => {
+  expect(mountObservationFromInspect({ Mounts: [], HostConfig: { Tmpfs: null } })).toEqual({
+    status: "present",
+    mounts: [],
+  });
+});
