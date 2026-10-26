@@ -140,6 +140,9 @@ const writeStdinPayload = (
   stdin.end();
 };
 
+const combinedAbortSignal = (explicit: AbortSignal | undefined, effect: AbortSignal): AbortSignal =>
+  explicit === undefined ? effect : AbortSignal.any([explicit, effect]);
+
 const dockerApiFailure =
   (ctx: ProviderErrorContext) =>
   (request: DockerHttpRequest, cause: unknown): ProviderUnavailableError | ProviderInternalError =>
@@ -200,10 +203,10 @@ export const makeNamedPipeTransportClient = (
   makeSocketHttpClient({
     apiPrefix,
     operation: "docker-api",
-    connect: async () => {
+    connect: async (signal) => {
       if (connect !== undefined) return connect(pipePath);
       const socket = createConnection({ path: pipePath });
-      await connectSocket(socket);
+      await connectSocket(socket, signal);
       return socketHttpConnection(socket);
     },
   });
@@ -220,7 +223,7 @@ export const makeTcpTransportClient = (
     apiPrefix: apiPrefix ?? (fromPath === "" ? DOCKER_API_PREFIX : fromPath),
     operation: "docker-api",
     hostHeader: parsed.host,
-    connect: async () => {
+    connect: async (signal) => {
       const port = parsed.port === "" ? (secure ? 443 : 80) : Number(parsed.port);
       const target = secure
         ? {
@@ -232,7 +235,7 @@ export const makeTcpTransportClient = (
         : { host: parsed.hostname, port };
       if (connect !== undefined) return connect(target);
       const socket = secure ? createTlsConnection(target) : createConnection(target);
-      await connectSocket(socket);
+      await connectSocket(socket, signal);
       return socketHttpConnection(socket);
     },
   });
@@ -297,9 +300,9 @@ async function* streamUnixSocketRequest(
   const client = makeSocketHttpClient({
     apiPrefix: prefix,
     operation: "docker-api",
-    connect: async () => {
+    connect: async (signal) => {
       const socket = createConnection({ path: socketPath });
-      await connectSocket(socket);
+      await connectSocket(socket, signal);
       return socketHttpConnection(socket);
     },
   });
@@ -375,12 +378,14 @@ export const makeUnixDockerApiClient = (
     socketPath.startsWith("/") ? socketPath : `unix://${socketPath}`,
     options,
   );
-  const spawnCurl = async (prefix: string, input: DockerHttpRequest) => {
+  const spawnCurl = async (prefix: string, input: DockerHttpRequest, signal: AbortSignal) => {
     const payload = await collectRequestStdin(input.stdin);
+    if (signal.aborted) throw new DOMException("Docker API request aborted.", "AbortError");
     const proc = (options?.spawn ?? Bun.spawn)(["curl", ...curlRequestArgs(socketPath, prefix, input)], {
       stderr: "pipe",
       stdin: payload === undefined ? "ignore" : "pipe",
       stdout: "pipe",
+      signal,
     });
     writeStdinPayload(proc.stdin, payload);
     const [stdout, stderr, exitCode] = await Promise.all([
@@ -403,9 +408,9 @@ export const makeUnixDockerApiClient = (
       ),
     request: Effect.fn("DockerApiClient.request")(function* (input) {
       return yield* Effect.tryPromise({
-        try: () =>
+        try: (signal) =>
           requestWithNegotiatedPrefix(session, ctx, async (prefix) => {
-            const spawned = await spawnCurl(prefix, input);
+            const spawned = await spawnCurl(prefix, input, combinedAbortSignal(input.signal, signal));
             if (spawned.exitCode !== 0) {
               throw unavailable(ctx)(
                 "docker-api",
@@ -459,7 +464,10 @@ export const makeNamedPipeDockerApiClient = (
       ),
     request: (input) =>
       Effect.tryPromise({
-        try: () => requestWithNegotiatedPrefix(session, ctx, (prefix) => clientFor(prefix).request(input)),
+        try: (signal) =>
+          requestWithNegotiatedPrefix(session, ctx, (prefix) =>
+            clientFor(prefix).request({ ...input, signal: combinedAbortSignal(input.signal, signal) }),
+          ),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
       }),
     info: Effect.suspend(() =>
@@ -487,7 +495,10 @@ export const makeHttpDockerApiClient = (
       ),
     request: (input) =>
       Effect.tryPromise({
-        try: () => requestWithNegotiatedPrefix(session, ctx, (prefix) => clientFor(prefix).request(input)),
+        try: (signal) =>
+          requestWithNegotiatedPrefix(session, ctx, (prefix) =>
+            clientFor(prefix).request({ ...input, signal: combinedAbortSignal(input.signal, signal) }),
+          ),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
       }),
     info: Effect.suspend(() => fetchDockerInfo(makeHttpDockerApiClient(baseUrl, ctx, options).request, ctx)),

@@ -456,7 +456,9 @@ describe("create-body service publish ports", () => {
     expect(createHostPort(fake.calls, 1)).toBe(String(SERVICE_PUBLISH_PORT_MIN + 1));
     expect(ports).toEqual([SERVICE_PUBLISH_PORT_MIN, SERVICE_PUBLISH_PORT_MIN + 1]);
     expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
-    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+    expect(fake.calls.filter((call) => call.method === "DELETE")).toEqual([
+      { method: "DELETE", path: `/containers/${containerName}?force=true&v=true` },
+    ]);
   });
 
   test("a stopped existing container recovers with a fresh port", async () => {
@@ -479,7 +481,9 @@ describe("create-body service publish ports", () => {
     expect(createCalls(fake.calls)).toHaveLength(1);
     expect(createHostPort(fake.calls)).toBe(String(SERVICE_PUBLISH_PORT_MIN + 1));
     expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
-    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+    expect(fake.calls.filter((call) => call.method === "DELETE")).toEqual([
+      { method: "DELETE", path: `/containers/${containerName}?force=true&v=true` },
+    ]);
   });
 
   test.each([false, true])(

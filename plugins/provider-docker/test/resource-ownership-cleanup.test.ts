@@ -78,7 +78,7 @@ for (const foreign of [false, true]) {
       // Then
       expect(Result.isFailure(result)).toBe(foreign);
       expect(calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual(
-        foreign ? [] : ["/containers/observed-container-id?force=true"],
+        foreign ? [] : ["/containers/observed-container-id?force=true&v=true"],
       );
     });
   });
@@ -104,7 +104,7 @@ test("a Git-grouped app identity still verifies, re-prepares, and cleans its rec
     // Then
     expect(result.servicesRemoved.map(String)).toEqual(["web"]);
     expect(calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
-      "/containers/observed-container-id?force=true",
+      "/containers/observed-container-id?force=true&v=true",
     ]);
     expect(await Effect.runPromise(store.summary(root))).toBeUndefined();
   });

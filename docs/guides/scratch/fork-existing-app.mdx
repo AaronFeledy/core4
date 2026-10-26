@@ -58,7 +58,7 @@ lando scratch:info <id>
 lando scratch:destroy <id>
 ```
 
-`scratch:destroy` removes the fork's containers, volumes, and snapshots it took. Snapshots of the app you forked stay put, even with `--isolate=cwd`. Add `--keep-volumes` to keep the fork's volumes and snapshots for inspection.
+`scratch:destroy` removes the fork's containers, volumes, and snapshots it took. Snapshots of the app you forked stay put, even with `--isolate=cwd`. Add `--keep-volumes` to keep the fork's named volumes and snapshots for inspection; an anonymous volume from an image `VOLUME` path still leaves with its container.
 
 To materialize a recipe instead of forking the app, use [Start a scratch app from a recipe](./scratch-from-recipe.mdx).
 

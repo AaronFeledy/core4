@@ -443,6 +443,7 @@ import { RouteFilter, RouteFilterType } from "./route-filter.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
+import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
 import {
   DotnetServiceConfig,
   LocalStackServiceConfig,
@@ -614,6 +615,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServicePlan,
   AppMountInput,
   AppMountPlan,
+  MountObservation,
+  ObservedMount,
+  ServiceInfoMount,
   MountInput,
   MountPlan,
   StorageInput,
@@ -1143,6 +1147,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServicePlan: "Public Lando schema contract for Service Plan.",
   AppMountInput: "Application source mount destination, options, or false to disable it.",
   AppMountPlan: "Public Lando schema contract for App Mount Plan.",
+  MountObservation: "Runtime container mount observation evidence.",
+  ObservedMount: "Provider-neutral observed container mount.",
+  ServiceInfoMount: "User-facing mount observation and storage lifetime.",
   MountInput: "Service mount as a short source:target string or an expanded bind, tmpfs, or volume object.",
   MountPlan: "Public Lando schema contract for Mount Plan.",
   StorageInput:

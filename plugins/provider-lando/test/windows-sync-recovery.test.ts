@@ -160,7 +160,7 @@ describe("retained Windows sync writer quiescence", () => {
     expect([...runtime.containers.keys()]).toEqual(["helper-id", "unrelated-id"]);
     expect(runtime.mutations().map(({ path }) => path)).toEqual([
       "/containers/writer-id/stop",
-      "/containers/writer-id?force=true",
+      "/containers/writer-id?force=true&v=true",
     ]);
   });
 

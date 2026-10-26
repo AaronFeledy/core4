@@ -52,6 +52,7 @@
     "./global-app/service": "./src/global-app/service.ts",
     "./install/owned-executable": "./src/install/owned-executable.ts",
     "./install/record": "./src/install/record.ts",
+    "./install/uninstall-discovery": "./src/install/uninstall-discovery.ts",
     "./landofile/app-resolution": "./src/landofile/app-resolution.ts",
     "./landofile/command-warnings": "./src/landofile/command-warnings.ts",
     "./lifecycle/events": "./src/lifecycle/events.ts",

@@ -115,7 +115,7 @@ A crash before `prepared` MUST alter no target. Unjournaled stages MUST NOT be g
 
 #### 12.4.2 Durable ownership manifest
 
-This durable provider-private identity record lets stop, destroy, and a converging start finish when a failed or interrupted attempt left resources in place (§5.3.1, §6.7). It survives app-plan cache invalidation. Verified absent or removed containers and private networks are retired; volume identities remain until the existing volume flags select their cleanup.
+This durable provider-private identity record lets stop, destroy, and a converging start finish when a failed or interrupted attempt left resources in place (§5.3.1, §6.7). It survives app-plan cache invalidation. Verified absent or removed containers and private networks are retired; named volume identities remain until the existing volume flags select their cleanup (anonymous volumes are never recorded, §6.5).
 
 | Field | Contract |
 |---|---|

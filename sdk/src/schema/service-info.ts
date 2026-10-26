@@ -1,7 +1,9 @@
 import { Schema } from "effect";
 
 import { ServiceCredsDisplay } from "./database-connection.ts";
+import { AppMountPlan } from "./mounts.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
+import { ServiceInfoMount } from "./service-mount.ts";
 
 // ============================================================================
 // Provider-neutral connection addresses and runtime service metadata.
@@ -46,6 +48,12 @@ export const ServiceInfo = Schema.Struct({
   ...connectionAddressFields,
   logSources: Schema.optionalKey(Schema.Array(ServiceInfoLogSource)).annotate({
     description: "Declared service log sources and their provider-specific availability.",
+  }),
+  mounts: Schema.optionalKey(Schema.Array(ServiceInfoMount)).annotate({
+    description: "Planned and runtime user mounts with explicit observation and storage lifetime evidence.",
+  }),
+  appMount: Schema.optionalKey(AppMountPlan).annotate({
+    description: "Full resolved application source mount, absent when disabled.",
   }),
   creds: Schema.optionalKey(ServiceCredsDisplay).annotate({
     description: "Service login credentials surfaced by `lando info` when the service publishes them.",

@@ -1,23 +1,7 @@
-import { FailureRoleAnnotation } from "@lando/sdk/command-result";
-import type { FailureRole } from "@lando/sdk/schema";
-import { Cause, Context, Effect, Exit } from "effect";
+import { mergeFailure } from "@lando/sdk/command-result";
+import { Cause, Effect, Exit } from "effect";
 
-export const mergeFailure = <E, E2>(
-  primary: Cause.Cause<E>,
-  secondary: Cause.Cause<E2>,
-  role: FailureRole,
-): Cause.Cause<E | E2> =>
-  Cause.combine(
-    primary,
-    Cause.fromReasons(
-      secondary.reasons.map((reason) => {
-        const existing = Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation);
-        return existing === undefined || existing === "peer"
-          ? reason.annotate(Context.make(FailureRoleAnnotation, role), { overwrite: true })
-          : reason;
-      }),
-    ),
-  );
+export { mergeFailure };
 
 export const mapFailureErrors =
   <E, E2>(map: (error: E) => E2) =>

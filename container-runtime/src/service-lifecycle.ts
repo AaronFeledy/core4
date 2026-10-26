@@ -12,7 +12,8 @@ import type {
   ServiceSelector,
 } from "@lando/sdk/services";
 
-import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
+import { removeRuntimeContainer } from "./container-removal.ts";
+import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, missingService } from "./engine-errors.ts";
 import { redactDetails, redactorFor, withApiReason } from "./redact.ts";
 
@@ -194,12 +195,11 @@ export const removeObservedContainer = (
     );
   }
   const call = (
-    method: "POST" | "DELETE",
-    path: `/${string}`,
+    input: EngineHttpRequest,
     accepted: ReadonlyArray<number>,
     stage: string,
   ): Effect.Effect<boolean, ProviderError> =>
-    lifecycleRequest(request({ method, path }), options.ctx, {
+    lifecycleRequest(request(input), options.ctx, {
       operation,
       requestAction: `observed container ${stage}`,
       failureAction: `Observed container ${stage}`,
@@ -210,9 +210,11 @@ export const removeObservedContainer = (
 
   // A stop that 404s means the container is already gone, so there is nothing left to remove.
   const id = encodeURIComponent(containerId);
-  return call("POST", `/containers/${id}/stop`, [204, 304], "stop").pipe(
+  return call({ method: "POST", path: `/containers/${id}/stop` }, [204, 304], "stop").pipe(
     Effect.flatMap((present) =>
-      present ? call("DELETE", `/containers/${id}?force=true`, [200, 204], "remove") : Effect.succeed(false),
+      present
+        ? removeRuntimeContainer({ request }, containerId, { ...options.ctx, operation })
+        : Effect.succeed(false),
     ),
   );
 };

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
-import { makeDiagnosticTail } from "../src/diagnostic-tail.ts";
+import { makeDiagnosticTail, makeDiagnosticTailFactory } from "../src/diagnostic-tail.ts";
+import { RedactionService } from "../src/service.ts";
 
 const bytes = (value: string) => new TextEncoder().encode(value);
 
@@ -52,4 +53,48 @@ test("redacts URI passwords and tokens before a UTF-8 tail boundary is cut", asy
   expect(result).not.toContain("lando");
   expect(result).not.toContain("�");
   expect(bytes(result).length).toBeLessThanOrEqual(8192);
+});
+
+test("isolates factory collectors while resolving the live redactor only once", async () => {
+  // Given a real redaction service with counted profile and payload resolution.
+  let profiles = 0;
+  let payloads = 0;
+  const results = await Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* RedactionService;
+      const createTail = yield* makeDiagnosticTailFactory({ MYSQL_PWD: "command-secret" }).pipe(
+        Effect.provideService(RedactionService, {
+          ...service,
+          forProfile: (profile, options) =>
+            Effect.tap(service.forProfile(profile, options), () =>
+              Effect.sync(() => {
+                profiles += 1;
+              }),
+            ),
+          payloadValues: (options) =>
+            Effect.tap(service.payloadValues(options), () =>
+              Effect.sync(() => {
+                payloads += 1;
+              }),
+            ),
+        }),
+      );
+      // When independent collectors interleave, finish, and see a later registered secret.
+      const first = createTail();
+      const second = createTail();
+      first.write(bytes("first command-"));
+      second.write(bytes("second command-secret"));
+      const secondResult = second.finish();
+      first.write(bytes("secret"));
+      const firstResult = first.finish();
+      yield* service.registerValues(["registered-later"]);
+      const third = createTail();
+      third.write(bytes("third registered-later command-secret"));
+      return [firstResult, secondResult, third.finish()];
+    }).pipe(Effect.provide(RedactionService.layer)),
+  );
+  // Then no decoder, exact-match buffer, or finished state leaks between collectors.
+  expect(results).toEqual(["first [redacted]", "second [redacted]", "third [redacted] [redacted]"]);
+  expect(profiles).toBe(1);
+  expect(payloads).toBe(1);
 });
