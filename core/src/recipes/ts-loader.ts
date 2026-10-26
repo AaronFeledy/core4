@@ -13,10 +13,11 @@ import { dirname } from "node:path";
 
 import { Clock, Duration, Effect } from "effect";
 
+import { importAuthorModule, missingPackageRemediation } from "@lando/landofile/author-modules";
 import { RecipeManifestParseError, causeMessage } from "@lando/sdk/errors";
 import type { RecipeContext } from "@lando/sdk/schema";
 
-import { isSandboxParseFailure, resolveTsModuleResult, sandboxScan } from "@lando/landofile/ts-loader";
+import { resolveTsModuleResult, sandboxScan } from "@lando/landofile/ts-loader";
 
 export const DEFAULT_RECIPE_TS_TIMEOUT_MS = 30_000;
 export const RECIPE_TS_TIMEOUT_ENV = "LANDO_RECIPE_TS_TIMEOUT_MS";
@@ -82,7 +83,7 @@ const evaluateImport = Effect.fnUntraced(function* (
   const timestamp = yield* Clock.currentTimeMillis;
   return yield* Effect.tryPromise({
     try: async () => {
-      const module = await import(`${filePath}?t=${timestamp}`);
+      const module = await importAuthorModule(`${filePath}?t=${timestamp}`);
       return await unwrapDefault(filePath, module);
     },
     catch: (cause) =>
@@ -92,7 +93,7 @@ const evaluateImport = Effect.fnUntraced(function* (
             filePath,
             `Failed to load recipe.ts at ${filePath}: ${causeMessage(cause)}`,
             cause,
-            `Fix the TypeScript, imports, and default export in ${filePath} so the recipe module evaluates successfully.`,
+            missingPackageRemediation(causeMessage(cause)),
           ),
   });
 });
@@ -109,7 +110,7 @@ export const loadRecipeTs = Effect.fnUntraced(function* (
 ): Effect.fn.Return<unknown, RecipeManifestParseError> {
   yield* sandboxScan(options.filePath, options.recipeRoot, options.content).pipe(
     Effect.mapError((cause) =>
-      isSandboxParseFailure(cause)
+      cause._tag === "LandofileParseError"
         ? parseError(
             options.filePath,
             `recipe.ts at ${options.filePath} could not be parsed as TypeScript: ${causeMessage(cause.cause)}`,

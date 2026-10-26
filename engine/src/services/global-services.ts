@@ -1,3 +1,4 @@
+import { importAuthorModule } from "@lando/landofile/author-modules";
 import { Effect, Schema } from "effect";
 
 import { GlobalAppError, GlobalServiceCapabilityError, GlobalServiceCollisionError } from "@lando/sdk/errors";
@@ -177,7 +178,7 @@ export const defaultGlobalServiceModuleLoader: GlobalServiceModuleLoader = {
     }
 
     const loadedModule: unknown = yield* Effect.tryPromise({
-      try: () => import(moduleSpecifier),
+      try: () => importAuthorModule(moduleSpecifier),
       catch: (cause) =>
         loaderError(
           `Unable to load global service ${entry.contribution.id} module ${moduleSpecifier}.`,
