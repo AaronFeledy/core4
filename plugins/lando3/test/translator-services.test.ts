@@ -100,7 +100,6 @@ test("flattens a raw service when nested Compose fields are authored", async () 
     },
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
-    { kind: "needs-review", keyPath: ["services", "web"] },
     { kind: "rewritten", keyPath: ["services", "web", "services", "command"] },
     { kind: "rewritten", keyPath: ["services", "web", "meUser"] },
     { kind: "rewritten", keyPath: ["services", "web", "ssl"] },
@@ -115,7 +114,6 @@ test("uses Compose fallback when an unknown type has an image", async () => {
     { services: { custom: { type: "compose", image: "custom:1" } } },
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
-    { kind: "needs-review", keyPath: ["services", "custom"] },
     { kind: "rewritten", keyPath: ["services", "custom", "type"] },
   ]);
 });
@@ -288,7 +286,6 @@ test("dispatches API-4 services with hooks and Compose overrides", async () => {
     },
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
-    { kind: "needs-review", keyPath: ["services", "app"] },
     { kind: "rewritten", keyPath: ["services", "app", "build"] },
     { kind: "rewritten", keyPath: ["services", "app", "overrides", "command"] },
   ]);
@@ -406,13 +403,16 @@ test("keeps the preview when a catalog service authors scanner, home, and meUser
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
     { kind: "dropped", keyPath: ["plugins"] },
-    { kind: "needs-review", keyPath: ["services", "appserver"] },
     { kind: "needs-review", keyPath: ["services", "appserver", "type"] },
     { kind: "rewritten", keyPath: ["services", "appserver", "meUser"] },
-    { kind: "dropped", keyPath: ["services", "appserver", "home"] },
     { kind: "dropped", keyPath: ["services", "appserver", "moreHttpPorts"] },
   ]);
-  expect(result.diagnostics.find((diagnostic) => diagnostic.kind === "needs-review")?.remediation).toContain(
-    "services.appserver.home.path",
-  );
+  expect<unknown>(result.expectations).toEqual([
+    {
+      _tag: "PersistedHome",
+      sourceId: ".lando.yml",
+      keyPath: ["services", "appserver"],
+      service: "appserver",
+    },
+  ]);
 });

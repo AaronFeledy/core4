@@ -45,12 +45,13 @@ import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
-import { ensureAppPlacement } from "../providers/app-placement.ts";
+import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
+import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
 import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
@@ -180,6 +181,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
     services: [...selected],
   });
   yield* publishAndRunAppEvent(target.plan, "pre-restart", preRestart);
+  yield* publishHomeTransitionNotices(appliedPlan, selectedPlan);
   yield* markStartMutation(target.plan);
 
   yield* Effect.forEach(
@@ -258,7 +260,6 @@ export const restartApp = Effect.fn("AppOperation.restart")(
   ): Effect.fn.Return<RestartAppResult, RestartAppError, RestartAppServices> {
     if (options.signal?.aborted === true) return yield* Effect.interrupt;
     const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
-    yield* ensureAppPlacement(resolvedTarget.app, resolvedTarget.plan.provider);
     const registry = yield* RuntimeProviderRegistry;
     const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
     const plan = mysqlResolvedTarget.plan;
@@ -274,6 +275,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
         provider,
         stateStore,
         body: Effect.fnUntraced(function* () {
+          const placement = yield* ensureAppPlacementState(mysqlResolvedTarget.app, plan.provider);
           const pending = yield* readPendingAcceleratedStart(mysqlResolvedTarget.app, plan);
           if (pending !== null)
             yield* startApp(
@@ -301,6 +303,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
             timestamp: DateTime.nowUnsafe(),
           });
           yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
+          yield* publishHomeTransitionNotices(placement.plan, plan);
           yield* markStartMutation(plan);
           yield* stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true });
           yield* managed?.onStopped ?? Effect.void;
@@ -327,10 +330,11 @@ export const restartApp = Effect.fn("AppOperation.restart")(
     );
   },
   (effect, options: RestartAppOptions = {}, _target?: ResolvedAppTarget, _managed?: StartManagedScope) => {
+    const command = withHomeTransitionNotices(effect);
     const signal = options.signal;
-    if (signal === undefined) return effect;
+    if (signal === undefined) return command;
     return Effect.raceFirst(
-      effect,
+      command,
       Effect.callback<never>((resume) => {
         const abort = () => resume(Effect.interrupt);
         if (signal.aborted) {

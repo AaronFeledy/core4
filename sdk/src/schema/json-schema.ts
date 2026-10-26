@@ -1103,6 +1103,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ConfigTranslateOutput: "Validated authoring wire fragment attributed to one target layer.",
   ConfigTranslateRecipeRequestInput: "Recipe identity and answers without filesystem discovery.",
   ConfigTranslateResult: "Target-layer outputs, ordered diagnostics, and deletion intents.",
+  ConfigTranslateExpectation: "Source intent assessed by the host against the final converted configuration.",
   ConfigTranslateSecretReference: "Approved secret reference or init-only sink without raw secret data.",
   ConfigTranslateSourceId: "Core-assigned identity for a document or synthetic recipe source.",
   ConfigTranslateSpan: "Source span used to locate and order translation diagnostics.",

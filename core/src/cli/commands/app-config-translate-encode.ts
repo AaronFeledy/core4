@@ -3,6 +3,7 @@ import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsup
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { decodeLandofileAuthoringLayer, mergeLandofiles } from "@lando/sdk/landofile";
 import {
+  type ConfigTranslateExpectation,
   type ConfigTranslateLayerFragment,
   type ConfigTranslateOutput,
   LandofileAuthoringFragment,
@@ -11,6 +12,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
+import { assessTranslateExpectations } from "../../config/translate-expectations.ts";
 import { layerOrder } from "./app-config-translate-document-set.ts";
 
 export const encodeTranslateOutputs = Effect.fnUntraced(function* (
@@ -18,6 +20,7 @@ export const encodeTranslateOutputs = Effect.fnUntraced(function* (
   fragments: {
     readonly outputs: readonly ConfigTranslateOutput[];
     readonly currentLowerV4Fragments: readonly ConfigTranslateLayerFragment[];
+    readonly expectations?: readonly ConfigTranslateExpectation[];
   },
   encode: NonNullable<ConfigTranslatorShape["encode"]>,
 ) {
@@ -63,6 +66,7 @@ export const encodeTranslateOutputs = Effect.fnUntraced(function* (
     ),
   );
   yield* rejectUnsupportedToolingFeatures(location.inputPath, merged);
+  const assessmentDiagnostics = yield* assessTranslateExpectations(fragments.expectations, merged);
   const layers = landofileLayerPaths(location.appRoot);
   return yield* Effect.forEach(outputs, (output) =>
     Effect.gen(function* () {
@@ -84,7 +88,8 @@ export const encodeTranslateOutputs = Effect.fnUntraced(function* (
       const result = yield* encode({ context: merged, fragment: output.fragment });
       return {
         target: { layer: output.targetLayer, path: layer.yamlPath, content: result.text },
-        diagnostics: result.diagnostics,
+        diagnostics:
+          output === outputs[0] ? [...result.diagnostics, ...assessmentDiagnostics] : result.diagnostics,
       };
     }),
   );

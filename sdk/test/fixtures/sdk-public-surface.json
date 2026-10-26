@@ -1249,6 +1249,7 @@
       "ConfigTranslateDocumentSetInput",
       "ConfigTranslateEncodeInput",
       "ConfigTranslateEncodeResult",
+      "ConfigTranslateExpectation",
       "ConfigTranslateInput",
       "ConfigTranslateLayerFragment",
       "ConfigTranslateMatch",

@@ -37,6 +37,7 @@ import type { AppConfigTranslateResult } from "./app-config-translate-output.ts"
 import { renderTranslateTargets } from "./app-config-translate-output.ts";
 import { readTranslateDocuments } from "./app-config-translate-read.ts";
 export { CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES } from "./app-config-translate-read.ts";
+import { orderTranslateDiagnostics } from "../../config/translate-expectations.ts";
 import { selectTranslator } from "./app-config-translate-selection.ts";
 import {
   discoverSourceFiles,
@@ -170,6 +171,7 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
     outputs,
     diagnostics: frontendDiagnostics,
     deletions,
+    expectations,
   } = yield* runConfigTranslator(selected, {
     _tag: "landofile-document-set",
     documents,
@@ -183,19 +185,21 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
     ? []
     : yield* encodeTranslateOutputs(
         { appRoot, inputPath },
-        { outputs, currentLowerV4Fragments },
+        { outputs, currentLowerV4Fragments, ...(expectations === undefined ? {} : { expectations }) },
         target.encode,
       );
   const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
   const encodingDiagnostics = [...frontendDiagnostics, ...encoded.flatMap((result) => result.diagnostics)];
   const includeDiagnostics = yield* validateTranslatedIncludeTargets(appRoot, outputs);
-  const diagnostics = [...encodingDiagnostics, ...includeDiagnostics].map((diagnostic) => ({
-    ...diagnostic,
-    message: redactor.redactString(diagnostic.message),
-    ...(diagnostic.remediation === undefined
-      ? {}
-      : { remediation: redactor.redactString(diagnostic.remediation) }),
-  }));
+  const diagnostics = orderTranslateDiagnostics([...encodingDiagnostics, ...includeDiagnostics], files).map(
+    (diagnostic) => ({
+      ...diagnostic,
+      message: redactor.redactString(diagnostic.message),
+      ...(diagnostic.remediation === undefined
+        ? {}
+        : { remediation: redactor.redactString(diagnostic.remediation) }),
+    }),
+  );
   const targets = encodingDiagnostics.some((diagnostic) => diagnostic.kind === "unsupported")
     ? []
     : encoded.map((result) => result.target);

@@ -23,6 +23,13 @@ const LIFETIME_LABEL: Record<Lifetime, string> = {
 const LIFETIME_ORDER: ReadonlyArray<Lifetime> = ["retained", "container", "unknown"];
 
 const mountKind = (service: InfoAppService, mount: ServiceInfoMount): string => {
+  if (
+    mount.lifetime === "retained" &&
+    service.home?.state === "persisted" &&
+    service.home.target === mount.target
+  ) {
+    return "home";
+  }
   switch (mount.type) {
     case "bind":
       return mount.origin === "planned" && service.appMount?.target === mount.target
@@ -48,6 +55,33 @@ const mountKind = (service: InfoAppService, mount: ServiceInfoMount): string => 
       return unreachable;
     }
   }
+};
+
+export const homeFields = (service: InfoAppService): ReadonlyArray<SummaryField> => {
+  const home = service.home;
+  if (home?.state !== "unknown") return [];
+  let reason: string;
+  switch (home.reason) {
+    case "custom-image":
+      reason = "image comes from your Landofile";
+      break;
+    case "no-identity":
+      reason = `${service.type} doesn't declare image users`;
+      break;
+    case "undeclared-user":
+      reason = `${service.type} doesn't know where ${home.user ?? "the planned user"}'s home is`;
+      break;
+    default: {
+      const unreachable: never = home.reason;
+      return unreachable;
+    }
+  }
+  return [
+    {
+      label: "home",
+      value: `not kept automatically · ${escapeDiagnosticText(reason)} · set services.${escapeDiagnosticText(service.service)}.home.path to keep one`,
+    },
+  ];
 };
 
 /** Observation wording that never reads as data loss: absence is "not mounted", missing evidence is "unconfirmed". */

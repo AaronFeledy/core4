@@ -116,6 +116,7 @@
     "./planner/effective-events": "./src/planner/effective-events.ts",
     "./planner/effective-tooling": "./src/planner/effective-tooling.ts",
     "./planner/home": "./src/planner/home.ts",
+    "./planner/home-assessment": "./src/planner/home-assessment.ts",
     "./planner/naming": "./src/planner/naming.ts",
     "./plugins/certificate-authority-resolver": "./src/plugins/certificate-authority-resolver.ts",
     "./plugins/config-translator-registry": "./src/plugins/config-translator-registry.ts",

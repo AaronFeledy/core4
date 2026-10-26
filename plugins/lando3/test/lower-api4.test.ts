@@ -260,9 +260,9 @@ describe("API-4 service lowering", () => {
   });
   test("drops home true and moreHttpPorts without blocking", () => {
     const result = lowerApi4Service({ home: true, moreHttpPorts: ["8888"] }, ctx);
-    expect(paths(result, "dropped")).toEqual([path("moreHttpPorts"), path("home")]);
+    expect(paths(result, "dropped")).toEqual([path("moreHttpPorts")]);
     expect(result.blocked).toBeUndefined();
-    expect(result.diagnostics[1]?.message).toContain("Lando 4 default");
+    expect(result.patch).not.toHaveProperty("home");
   });
   test("removes an authored LANDO_HOST_IP so capability decides it", () => {
     const result = lowerApi4Service({ environment: { LANDO_HOST_IP: "10.0.2.2", KEEP: "1" } }, ctx);

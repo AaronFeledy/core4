@@ -59,6 +59,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   ConfigTranslateDocumentSetInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ConfigTranslateEncodeInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ConfigTranslateEncodeResult: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ConfigTranslateExpectation: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ConfigTranslateInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ConfigTranslateLayerFragment: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ConfigTranslateMatch: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

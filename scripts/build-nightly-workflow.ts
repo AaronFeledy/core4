@@ -95,7 +95,7 @@ ${renderAssertPodman6Step()}
 
       - name: Run live integration suites
         run: |
-          bun test core/test/live
+          bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts
         env:
           LANDO_CONFIG__default_provider_id: lando
 

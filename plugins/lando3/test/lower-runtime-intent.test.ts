@@ -108,26 +108,31 @@ describe("home", () => {
     ["node:22", "node"],
     ["apache", "www-data"],
     ["solr:9", undefined],
-  ])("keeps the Lando 4 default home for %s as %p", (type, user) => {
+  ])("records implicit home intent for %s as %p without assessing a catalog", (type, user) => {
     const input = lowered({ type, ...(user === undefined ? {} : { user }) });
-    expect(withHomeIntent(input, {}, ctx)).toBe(input);
+    const result = withHomeIntent(input, {}, ctx);
+    expect<unknown>(result.expectations).toEqual([
+      { _tag: "PersistedHome", sourceId: "source", keyPath: ["services", "web"], service: "web" },
+    ]);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  test("leaves home unset with path remediation when the catalog user has no declared home", () => {
+  test("leaves assessment of an authored user to the host", () => {
     const result = withHomeIntent(lowered({ type: "php:8.3", user: "www-data" }), {}, ctx);
     expect(result.patch).toEqual({ type: "php:8.3", user: "www-data" });
-    expect(summary(result.diagnostics)).toEqual(["needs-review services.web"]);
-    expect(result.diagnostics[0]?.remediation).toContain("services.web.home.path");
+    expect(result.expectations?.map(({ service }) => String(service))).toEqual(["web"]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   test.each([
     ["an image", { type: "lando", image: "custom:1" }],
     ["a build context", { type: "lando", build: { context: "." } }],
     ["a catalog override image", { type: "node:22", image: "custom:1" }],
-  ])("leaves home unset with unknown-image remediation for %s", (_label, patch) => {
+  ])("leaves home unset and records intent for %s", (_label, patch) => {
     const result = withHomeIntent(lowered(patch), { api: 4 }, ctx);
     expect(result.patch).toEqual(patch);
-    expect(result.diagnostics[0]?.message).toContain("image comes from the Landofile");
+    expect(result.expectations?.map(({ service }) => String(service))).toEqual(["web"]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   test("leaves a raw Compose service unchanged because Lando 3 never persisted its home", () => {
@@ -137,12 +142,12 @@ describe("home", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  test("keeps unknown types unchanged with a home review diagnostic", () => {
+  test("leaves unknown type assessment to the host", () => {
     const input = lowered({ type: "unknown-service" });
     const result = withHomeIntent(input, {}, ctx);
     expect(result.patch).toEqual(input.patch);
-    expect(summary(result.diagnostics)).toEqual(["needs-review services.web"]);
-    expect(result.diagnostics[0]?.remediation).toContain("services.web.home.path");
+    expect(result.expectations?.map(({ service }) => String(service))).toEqual(["web"]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   test("leaves authored home and blocked services alone", () => {
@@ -150,6 +155,20 @@ describe("home", () => {
     expect(withHomeIntent(authored, { api: 4 }, ctx)).toBe(authored);
     const blocked: LoweringPatch = { patch: { type: "lando", image: "x" }, diagnostics: [], blocked: true };
     expect(withHomeIntent(blocked, { api: 4 }, ctx)).toBe(blocked);
+  });
+  test.each([false, "/srv", { path: "/srv" }])("omits implicit intent for authored home %p", (home) => {
+    // Given / When
+    const result = withHomeIntent(lowerScannerAndHome({ home }, ctx), { home }, ctx);
+    // Then
+    expect(result.expectations).toBeUndefined();
+  });
+  test("keeps home true as an expectation, not an output setting", async () => {
+    // Given / When
+    const result = await translate("name: legacy\nservices:\n  web:\n    type: node:22\n    home: true\n");
+    // Then
+    expect(result.expectations?.map(({ service }) => String(service))).toEqual(["web"]);
+    expect(JSON.stringify(result.outputs)).not.toContain('"home"');
+    expect(result.diagnostics.filter(({ keyPath }) => keyPath.at(-1) === "home")).toEqual([]);
   });
 });
 

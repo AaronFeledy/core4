@@ -232,6 +232,29 @@ describe("AppPlanner home persistence and host reachability", () => {
     });
   });
 
+  test("Given a previous generated home store, When authored as storage, Then its exact runtime name is preserved", async () => {
+    await withAppRoot(async (appRoot) => {
+      const previous = await plan(appRoot, landofile({ web: { type: "node:22", user: "node" } }));
+      const home = previous.services[ServiceName.make("web")]?.home;
+      if (home?.state !== "persisted") throw new Error("Expected a persisted home");
+      const next = await plan(
+        appRoot,
+        landofile({
+          web: {
+            type: "node:22",
+            image: "custom/node:latest",
+            appMount: false,
+            storage: [{ store: home.store, target: home.target }],
+          },
+        }),
+      );
+      expect(next.services[ServiceName.make("web")]?.storage).toEqual([
+        { store: home.store, target: PortablePath.make(home.target), readOnly: false },
+      ]);
+      expect(next.stores).toEqual([{ name: home.store, scope: "service", kind: "data" }]);
+    });
+  });
+
   test("Given a versioned catalog type, When planned, Then the pinned artifact tag does not look like a custom image", async () => {
     await withAppRoot(async (appRoot) => {
       const appPlan = await plan(appRoot, landofile({ db: { type: "mariadb:11.4" } }));

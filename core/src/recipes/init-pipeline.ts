@@ -25,6 +25,7 @@ import {
 } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Option, Result, Schema } from "effect";
+import { assessTranslateExpectations, orderTranslateDiagnostics } from "../config/translate-expectations.ts";
 import { RECIPE_TRANSLATOR_ID } from "./config-translator.ts";
 import {
   type RecipeAuxiliaryContentSource,
@@ -228,7 +229,11 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
   const encoded = yield* Effect.suspend(() => encode({ context, fragment: context })).pipe(
     Effect.catch(() => Effect.fail(blocked("encode"))),
   );
-  const diagnostics = [...translated.diagnostics, ...encoded.diagnostics].map((diagnostic) => ({
+  const assessmentDiagnostics = yield* assessTranslateExpectations(translated.expectations, context);
+  const diagnostics = orderTranslateDiagnostics(
+    [...translated.diagnostics, ...encoded.diagnostics, ...assessmentDiagnostics],
+    [input.sourceId],
+  ).map((diagnostic) => ({
     ...diagnostic,
     message: redact(diagnostic.message),
     ...(diagnostic.remediation === undefined ? {} : { remediation: redact(diagnostic.remediation) }),
