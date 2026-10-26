@@ -159,6 +159,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   BindMountPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   VolumeMountPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   TmpfsMountPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  MountOrigin: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   StorageInput: "sdk/test/schema/named-contract-examples.test.ts",
   CertsInput: "sdk/test/schema/named-contract-examples.test.ts",
   CaInput: "sdk/test/schema/named-contract-examples.test.ts",

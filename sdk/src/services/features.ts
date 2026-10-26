@@ -39,7 +39,9 @@ import type { ServiceTypeHostFacts } from "./plugins.ts";
  * declare WHAT to mount; whether the mount is a provider-native bind or routed
  * through a file-sync engine is decided later by core's finalization stage.
  */
-export type ServiceMountIntent = Omit<BindMountPlan, "realization" | "role" | "mountKey"> | TmpfsMountPlan;
+export type ServiceMountIntent =
+  | Omit<BindMountPlan, "realization" | "role" | "mountKey" | "origin">
+  | Omit<TmpfsMountPlan, "origin">;
 
 /**
  * The app-source mount a feature declares, stripped of the `realization`
@@ -155,7 +157,7 @@ export interface ServiceFeatureContext {
    * gives the target to, which a fresh volume inherits and which therefore need
    * no preparation.
    */
-  addStorage(storage: Omit<VolumeMountPlan, "type">, ownership?: DataStoreOwnershipIntent): void;
+  addStorage(storage: Omit<VolumeMountPlan, "type" | "origin">, ownership?: DataStoreOwnershipIntent): void;
   /** Add a service dependency. */
   addDependency(dependency: DependencyPlan): void;
   /** Add a host alias. */

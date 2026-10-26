@@ -331,6 +331,7 @@ import { McpCatalog, McpCatalogOptions, McpServeOptions, McpToolDescriptor } fro
 import {
   BindMountPlan,
   DataStorePlan,
+  MountOrigin,
   MountPlan,
   StorageScope,
   TmpfsMountPlan,
@@ -635,6 +636,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   BindMountPlan,
   VolumeMountPlan,
   TmpfsMountPlan,
+  MountOrigin,
   StorageInput,
   CertsInput,
   CaInput,
@@ -1169,6 +1171,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   BindMountPlan: "Planned host path bind, including the app-source mount and its excludes.",
   VolumeMountPlan: "Planned mount of a named data store.",
   TmpfsMountPlan: "Planned memory-backed filesystem that lives as long as the container.",
+  MountOrigin: "Who declared a planned mount: the Landofile, the service type, core, or an integration.",
   StorageInput:
     "Named data or cache volume as a short target path or an expanded store object with optional scope, kind, and key.",
   CertsInput:

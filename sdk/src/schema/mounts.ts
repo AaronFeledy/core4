@@ -6,6 +6,21 @@ import { PortablePath } from "./primitives.ts";
 // `ServicePlan.mounts` is the one list of every container path a service gets,
 // sorted shallow to deep with unique targets, so the deepest target wins.
 
+/**
+ * Who asked for a mount: the Landofile, the service type or a feature, core's
+ * own derivations (exclude shadows, nested includes, Git, home), or a
+ * start-time integration overlay. Absent on plans recorded before provenance.
+ */
+export const MountOrigin = Schema.Literals(["authored", "service", "derived", "integration"]).annotate({
+  identifier: "MountOrigin",
+  description: "Who declared a planned mount: the Landofile, the service type, core, or an integration.",
+});
+export type MountOrigin = typeof MountOrigin.Type;
+
+const originField = Schema.optionalKey(MountOrigin).annotate({
+  description: "Who declared this mount; absent on plans recorded before provenance existed.",
+});
+
 /** A host path bound into the container. */
 export const BindMountPlan = Schema.Struct({
   type: Schema.Literal("bind").annotate({ description: "Mount kind." }),
@@ -31,6 +46,14 @@ export const BindMountPlan = Schema.Struct({
   mountKey: Schema.optionalKey(Schema.String).annotate({
     description: "File-sync correlation key, present exactly when the mount is accelerated.",
   }),
+  origin: originField,
+  relativeTo: Schema.optionalKey(Schema.Literal("app")).annotate({
+    description: "app when the source was resolved from the app root, so isolation can rebase or drop it.",
+  }),
+  fileMode: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 0o7777 }))).annotate({
+    description:
+      "Permission bits for a private copy of a file source that the provider binds instead of the file.",
+  }),
 });
 export type BindMountPlan = typeof BindMountPlan.Type;
 
@@ -43,6 +66,7 @@ export const VolumeMountPlan = Schema.Struct({
   subpath: Schema.optionalKey(Schema.String).annotate({
     description: "Path within the data store to mount instead of its root.",
   }),
+  origin: originField,
 });
 export type VolumeMountPlan = typeof VolumeMountPlan.Type;
 
@@ -54,6 +78,7 @@ export const TmpfsMountPlan = Schema.Struct({
   options: Schema.optionalKey(Schema.String).annotate({
     description: "Canonical runtime tmpfs options such as size=64m,mode=1777; access mode is readOnly.",
   }),
+  origin: originField,
 });
 export type TmpfsMountPlan = typeof TmpfsMountPlan.Type;
 
