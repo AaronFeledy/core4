@@ -21,7 +21,7 @@ import type { CommandTrace, CommandWarning, DeprecationUse } from "@lando/sdk/sc
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { internalErrorRemediation, taggedErrorJson } from "./diagnostic.ts";
-export { internalError, internalErrorRemediation, taggedErrorJson } from "./diagnostic.ts";
+export { normalizeDefect, internalErrorRemediation, taggedErrorJson } from "./diagnostic.ts";
 
 import { JsonProjectionError } from "../errors/command.ts";
 import { emitYamlDocument } from "../yaml/document.ts";

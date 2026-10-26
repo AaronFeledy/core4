@@ -12,7 +12,7 @@ import type { EventService, RouterService, RuntimeProviderRegistry, ShellRunner 
 import {
   buildCommandResultEnvelope,
   failureOutcomeFromCause,
-  internalError,
+  normalizeDefect,
 } from "@lando/sdk/command-result";
 import { OpenAppResultSchema, openForPlan } from "../commands/open";
 import { collectOpenConnections } from "../commands/open-connections";
@@ -58,7 +58,7 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
                     message: Cause.pretty(outcome.cause),
                   },
                 }
-              : failureOutcomeFromCause(outcome.cause, internalError),
+              : failureOutcomeFromCause(outcome.cause, normalizeDefect),
             exitCode: 1,
           };
         });

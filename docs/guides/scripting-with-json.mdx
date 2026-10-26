@@ -314,7 +314,8 @@ or `Also failed (<tag>)`. Each block includes its own remediation and distinct
 diagnostic fields, without stack traces or repeated command context.
 
 An unexpected Lando defect returns `LandoInternalError` and exits `1`, including
-failures during routing, startup, formatting, or cleanup. Its remediation tells
+failures during routing, startup, formatting, or cleanup. A known error that was
+raised as a defect keeps its own tag and remediation. Its remediation tells
 you how to collect diagnostics and report the problem. Normal reports contain
 no stack traces. Rerun with `--debug --trace` to collect redacted diagnostic
 records on stderr and invocation timings. Redirect stderr to a file if you need

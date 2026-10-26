@@ -191,7 +191,9 @@ test("host-proxy selected failure retains its cleanup defect", async () => {
     envelope: {
       error: {
         _tag: "ProviderUnavailableError",
-        additionalErrors: [{ _tag: "Error", role: "peer", message: "inspection cleanup failed" }],
+        additionalErrors: [
+          { _tag: "LandoInternalError", role: "peer", message: "inspection cleanup failed" },
+        ],
       },
     },
   });

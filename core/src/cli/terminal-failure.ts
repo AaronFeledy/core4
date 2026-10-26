@@ -3,7 +3,7 @@ import { activeLogLevel } from "@lando/engine/runtime/cli-options";
 import { type RendererIO, createStdioRendererIO } from "@lando/renderer/io";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import { layerPlainService } from "@lando/renderer/runtime";
-import { encodeCommandResult, failureOutcomeFromCause, internalError } from "@lando/sdk/command-result";
+import { encodeCommandResult, failureOutcomeFromCause, normalizeDefect } from "@lando/sdk/command-result";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Effect, Schema } from "effect";
 import { formatBugReport } from "./bug-report";
@@ -31,7 +31,7 @@ export const renderTerminalFailure = async <A, R, RE>(
   redactor: Redactor,
 ): Promise<void> => {
   const io = options.io ?? createStdioRendererIO();
-  const outcome = failureOutcomeFromCause(cause, internalError);
+  const outcome = failureOutcomeFromCause(cause, normalizeDefect);
   const format = options.resultFormat ?? DEFAULT_RESULT_FORMAT;
   await Effect.runPromise(
     Effect.gen(function* () {

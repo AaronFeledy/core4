@@ -397,10 +397,7 @@ describe("McpService.serve", () => {
     expect(replies).toHaveLength(1);
     expect(replies[0]).toMatchObject({
       ok: true,
-      result: {
-        ok: false,
-        envelope: { error: { _tag: "LandoInternalError", remediation: expect.any(String) } },
-      },
+      result: { ok: false, envelope: { error: { _tag: "McpTransportError" } } },
     });
     expect(getterCalls).toBe(0);
   });

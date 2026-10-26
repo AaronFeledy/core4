@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { outcomeFromExit } from "@lando/mcp/execute";
-import { buildCommandResultEnvelope, internalError } from "@lando/sdk/command-result";
+import { buildCommandResultEnvelope, normalizeDefect } from "@lando/sdk/command-result";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Cause, Effect, Exit, Schema } from "effect";
 
@@ -50,7 +50,7 @@ describe("MCP failure projection", () => {
       _tag: "failure",
       error: primary,
       additionalErrors: [
-        { role: "peer", error: internalError(defect) },
+        { role: "peer", error: normalizeDefect(defect) },
         { role: "peer", error: secondary },
       ],
     });
@@ -66,8 +66,8 @@ describe("MCP failure projection", () => {
     // Then: defects remain separate and the interrupt is excluded.
     expect(outcome).toEqual({
       _tag: "failure",
-      error: internalError(primary),
-      additionalErrors: [{ role: "peer", error: internalError(secondary) }],
+      error: normalizeDefect(primary),
+      additionalErrors: [{ role: "peer", error: normalizeDefect(secondary) }],
     });
   });
 

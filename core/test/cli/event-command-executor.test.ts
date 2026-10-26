@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { Cause, Context, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
-import { internalError } from "@lando/sdk/command-result";
+import { normalizeDefect } from "@lando/sdk/command-result";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -405,7 +405,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     expect(Exit.isFailure(exit) ? exit.cause.reasons.every(Cause.isFailReason) : false).toBe(true);
     expect(
       Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error) : [],
-    ).toEqual([primary, internalError(defect)]);
+    ).toEqual([primary, normalizeDefect(defect)]);
   });
 
   test("propagates target interruption", async () => {

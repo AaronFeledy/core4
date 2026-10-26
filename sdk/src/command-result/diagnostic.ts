@@ -71,7 +71,22 @@ export const taggedErrorJson = (error: unknown): typeof TaggedErrorJson.Type => 
   return { ...extra, ...base };
 };
 
-export const internalError = (error: unknown): LandoInternalError => {
-  const diagnostic = taggedErrorJson(error);
-  return new LandoInternalError({ message: diagnostic.message, remediation: internalErrorRemediation });
+/** A tagged error that surfaced as a defect still has its own message and remediation. */
+const isDiagnosticError = (error: unknown): boolean => {
+  const record = error !== null && typeof error === "object" ? error : undefined;
+  return (["_tag", "message", "remediation"] as const).every(
+    (key) => text(ownValue(record, key)) !== undefined,
+  );
+};
+
+/**
+ * Presents an unexpected defect: a tagged error that was raised as a defect keeps its tag and
+ * remediation, and any other value becomes a `LandoInternalError` that never carries its stack.
+ */
+export const normalizeDefect = (error: unknown): unknown => {
+  if (isDiagnosticError(error)) return error;
+  return new LandoInternalError({
+    message: taggedErrorJson(error).message,
+    remediation: internalErrorRemediation,
+  });
 };

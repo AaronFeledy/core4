@@ -1,6 +1,6 @@
 import { Cause, Context } from "effect";
 import type { FailureRole } from "../schema/failure-role.ts";
-import { internalError } from "./diagnostic.ts";
+import { normalizeDefect } from "./diagnostic.ts";
 
 /** Reason-local metadata, never inferred from cause ordering. */
 export class FailureRoleAnnotation extends Context.Service<FailureRoleAnnotation, FailureRole>()(
@@ -71,7 +71,7 @@ export const commandFailureCause = (cause: Cause.Cause<unknown>): Cause.Cause<un
   Cause.fromReasons(
     cause.reasons.map((reason) => {
       if (Cause.isInterruptReason(reason) || Cause.isFailReason(reason)) return reason;
-      return Cause.makeFailReason(internalError(reason.defect)).annotate(Cause.reasonAnnotations(reason));
+      return Cause.makeFailReason(normalizeDefect(reason.defect)).annotate(Cause.reasonAnnotations(reason));
     }),
   );
 

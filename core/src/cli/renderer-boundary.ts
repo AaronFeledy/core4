@@ -17,7 +17,7 @@ import { GlobalConfigSnapshot } from "@lando/engine/services/config";
 import {
   type CompletedCommandResult,
   failureOutcomeFromCause,
-  internalError,
+  normalizeDefect,
   primaryFailureReason,
   resolveCommandCompletion,
 } from "@lando/sdk/command-result";
@@ -335,7 +335,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
           setExitCode(1);
           return;
         }
-        const failure = failureOutcomeFromCause(cause, internalError);
+        const failure = failureOutcomeFromCause(cause, normalizeDefect);
         if (failure.error instanceof JqExpressionError) {
           setExitCode(2);
           return;
@@ -349,7 +349,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         redactionTokens: extraTokens,
       });
       yield* recordCliDefect(cause, defectRedactor, io);
-      const { error: primaryError, additionalErrors } = failureOutcomeFromCause(cause, internalError);
+      const { error: primaryError, additionalErrors } = failureOutcomeFromCause(cause, normalizeDefect);
       const error = yield* renderFailureEvidence(
         Cause.hasInterruptsOnly(cause) ? "All fibers interrupted without errors." : primaryError,
       );
