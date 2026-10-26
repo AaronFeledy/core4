@@ -83,6 +83,7 @@ export interface ProviderCapabilityConstants {
   readonly composeProjectFields?: ProviderCapabilitiesShape["composeProjectFields"];
   readonly composePreservedPaths?: ProviderCapabilitiesShape["composePreservedPaths"];
   readonly composeServiceFields?: ProviderCapabilitiesShape["composeServiceFields"];
+  readonly authoredNetworks?: ProviderCapabilitiesShape["authoredNetworks"];
   readonly providerExtensions: ProviderCapabilitiesShape["providerExtensions"];
   readonly hostProxy?: ProviderCapabilitiesShape["hostProxy"];
   readonly agentSocket?: AgentSocketProviderCapabilities;
@@ -103,6 +104,7 @@ export const buildProviderCapabilities = (
     serviceHealth: "lando",
     hostReachability: "emulated",
     sharedCrossAppNetwork: true,
+    ...(constants.authoredNetworks === undefined ? {} : { authoredNetworks: constants.authoredNetworks }),
     persistentStorage: true,
     bindMounts: constants.bindMounts,
     bindMountPerformance: constants.bindMountPerformance,

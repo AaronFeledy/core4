@@ -60,7 +60,6 @@ const planWithHostPort = (hostPort: number): AppPlan => {
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     networking: { perAppBridge: { name: "recreate-ports-network", driver: "bridge" } },
     stores: [],
     fileSync: [],
@@ -152,7 +151,10 @@ const makeFakeApi = (input: {
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: input.networkExists === true ? 200 : 404, body: "{}" };
         }
-        if (request.method === "POST" && request.path === "/networks/create") {
+        if (
+          request.method === "POST" &&
+          ["/networks/create", "/libpod/networks/create"].includes(request.path)
+        ) {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && action === "json") {

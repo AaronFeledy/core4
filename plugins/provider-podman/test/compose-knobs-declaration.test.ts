@@ -13,6 +13,7 @@ describe("provider-podman Compose knob declarations", () => {
       expect(capabilities.composeSpec).toBe("native");
       expect(capabilities.composeKnobs?.supported).toEqual(composeKnobsForDialect("libpod"));
       expect(capabilities.composeServiceFields?.supported).toEqual(["labels", "configs"]);
+      expect(capabilities.authoredNetworks).toBe(true);
     });
   }
 });

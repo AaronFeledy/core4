@@ -31,7 +31,6 @@ const planWith = (environment: Readonly<Record<string, string>>, eligible = fals
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     extensions: {},

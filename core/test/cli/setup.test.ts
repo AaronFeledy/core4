@@ -1201,7 +1201,6 @@ describe("meta:setup command", () => {
         provider: ProviderId.make("podman"),
         services: {},
         routes: [],
-        networks: [],
         stores: [],
         fileSync: [],
         extensions: {},

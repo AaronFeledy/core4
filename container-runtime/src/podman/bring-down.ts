@@ -8,7 +8,7 @@ import {
   type AppRef,
   ProviderId,
   type ServicePlan,
-  landoAppNetworkName,
+  landoOwnedNetworkNames,
 } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
@@ -68,8 +68,6 @@ const appRef = (plan: AppPlan): AppRef => ({
 });
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
-
-const networkName = (plan: AppPlan) => landoAppNetworkName(plan);
 
 const request = (
   deps: BringDownDeps,
@@ -137,12 +135,19 @@ const removeContainer = (deps: BringDownDeps, name: string): Effect.Effect<boole
 const removeNetwork = Effect.fnUntraced(function* (
   deps: BringDownDeps,
   plan: AppPlan,
+  name: string,
 ): Effect.fn.Return<boolean, BringDownError> {
-  const name = networkName(plan);
-  if (name === undefined || isSharedNetwork(plan, name)) return false;
+  if (isSharedNetwork(plan, name)) return false;
   const id = yield* inspectOwnedNativeId(
     deps.api,
-    { kind: "network", name, labels: networkOwnershipLabels(plan) },
+    {
+      kind: "network",
+      name,
+      labels: networkOwnershipLabels(plan),
+      legacy: plan.networking?.authoredNetworks?.some((network) => network.name === name)
+        ? "reject"
+        : "accept",
+    },
     deps.options.ctx,
   );
   if (id === undefined) return false;
@@ -307,7 +312,14 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
     const result = yield* stopService(deps, plan, service);
     changed = changed || result.changed;
   }
-  const networkRemoved = yield* removeNetwork(deps, plan);
+  let networkRemoved = false;
+  for (const name of landoOwnedNetworkNames(plan)) {
+    const authored = plan.networking?.authoredNetworks?.find((network) => network.name === name);
+    if (authored !== undefined && Object.keys(authored.members).some((member) => !(member in plan.services)))
+      continue;
+    const removed = yield* removeNetwork(deps, plan, name);
+    networkRemoved = networkRemoved || removed;
+  }
   let volumesRemoved = false;
   if (options.volumes === true || options.purgeCaches === true) {
     volumesRemoved = yield* removeAppScopedVolumes(deps, plan);

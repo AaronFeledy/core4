@@ -21,7 +21,6 @@ const plan: AppPlan = {
   provider: ProviderId.make("docker"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

@@ -135,7 +135,19 @@ export const resolveTree = Effect.fnUntraced(function* (
           }),
         ),
       );
-    const parsed = yield* parseFragment(fragment, ctx, layer).pipe(Effect.mapError(attributeError));
+    const parsed = yield* parseFragment(
+      {
+        ...fragment,
+        kind:
+          path[0] === "include"
+            ? "compose"
+            : typeof rawEntry === "string"
+              ? "landofile"
+              : (rawEntry.kind ?? "landofile"),
+      },
+      ctx,
+      layer,
+    ).pipe(Effect.mapError(attributeError));
     const nested = yield* resolveTree(
       parsed,
       {

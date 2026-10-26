@@ -356,6 +356,7 @@ export const podmanCapabilitiesForPlatform = (
     composeSpec: "native",
     composeKnobs: { supported: composeKnobsForDialect("libpod") },
     composeServiceFields: { supported: ["labels", "configs"] },
+    authoredNetworks: true,
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.containers.internal"),
@@ -804,7 +805,8 @@ const assembleRuntimeProvider = (
       ),
       removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
-        yield* planState.ownership.prepare(plan, yield* appliedPlans.resolvePlan(plan.id));
+        const previous = yield* appliedPlans.resolvePlan(plan.id);
+        yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
           api: podmanApi,
           ctx: PODMAN_CTX,
@@ -820,7 +822,10 @@ const assembleRuntimeProvider = (
           ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
           completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-        }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
+        }).pipe(
+          Effect.tap(() => planState.removeOrphanedNetworks(plan, previous)),
+          Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)),
+        );
       }),
       cleanupOwnedResources: planState.cleanupOwnedResources,
       destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
@@ -967,6 +972,8 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        declaredCapabilities: (platform, arch) =>
+          podmanCapabilitiesForPlatform(platform, hostProxyContainerTargets(arch)),
         resourceOwnership: (ctx, root) =>
           makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
         appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),

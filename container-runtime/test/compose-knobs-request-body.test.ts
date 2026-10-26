@@ -56,7 +56,6 @@ const planWithCompose = (
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     networking: { perAppBridge: { name: "compose-knob-request-network", driver: "bridge" } },
     stores: [],
     fileSync: [],

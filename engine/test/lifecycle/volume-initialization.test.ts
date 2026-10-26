@@ -59,7 +59,6 @@ const plan: AppPlan = {
     },
   },
   routes: [],
-  networks: [],
   stores: [{ name: "data", scope: "service", kind: "data" }],
   fileSync: [],
   metadata,

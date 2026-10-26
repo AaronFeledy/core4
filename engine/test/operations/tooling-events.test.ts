@@ -96,7 +96,6 @@ const harness = (input: {
     provider: service.provider,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     metadata,

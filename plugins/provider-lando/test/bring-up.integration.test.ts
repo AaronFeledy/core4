@@ -128,7 +128,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database, [node.name]: node },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -162,7 +161,6 @@ const makeAliasProbePlan = (): AppPlan => ({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -252,16 +250,28 @@ const makeFakeApi = (hooks: FakeApiHooks = {}) => {
             }),
           };
         }
-        if (request.path === "/networks/create") {
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
           if (hooks.networkCreateFailureBody !== undefined) {
             return { status: 500, body: hooks.networkCreateFailureBody };
           }
+          const payload =
+            request.path === "/libpod/networks/create"
+              ? Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    name: Schema.String,
+                    driver: Schema.Literal("bridge"),
+                    dns_enabled: Schema.Literal(true),
+                    options: Schema.Struct({ metric: Schema.Literal("50") }),
+                    labels: Schema.Record(Schema.String, Schema.String),
+                  }),
+                )(request.body)
+              : undefined;
           const body = Schema.decodeUnknownSync(
             Schema.Struct({
               Name: Schema.String,
               Labels: Schema.optional(Schema.Record(Schema.String, Schema.String)),
             }),
-          )(request.body);
+          )(payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels });
           networks.add(body.Name);
           networkLabels.set(body.Name, body.Labels ?? {});
           return { status: 201, body: JSON.stringify({ Id: `${body.Name}-id` }) };
@@ -380,7 +390,7 @@ describe("provider-lando bringUp", () => {
       "pre-service-start",
       "post-service-start",
     ]);
-    expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
+    expect(fake.calls.some((call) => call.path === "/libpod/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path.includes("/start"))).toBe(true);
     const nodeCreate = fake.calls.find(
       (call) =>
@@ -397,14 +407,16 @@ describe("provider-lando bringUp", () => {
     });
     expect(
       fake.calls
-        .filter((call) => call.path === "/networks/create")
+        .filter((call) => call.path === "/networks/create" || call.path === "/libpod/networks/create")
         .slice(0, 2)
         .map((call) => call.body),
     ).toEqual([
       {
-        Name: "lando-bringupapp",
-        Driver: "bridge",
-        Labels: {
+        name: "lando-bringupapp",
+        driver: "bridge",
+        dns_enabled: true,
+        options: { metric: "50" },
+        labels: {
           "dev.lando.app": plan.id,
           "dev.lando.app-root": appRoot,
           "dev.lando.owner": appIdentityKey("owner", appRoot),
@@ -439,18 +451,20 @@ describe("provider-lando bringUp", () => {
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
     expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
       "custom-app-net": { Aliases: ["node"] },
-      "custom-shared-net": { Aliases: ["node.custom.internal"] },
+      "custom-shared-net": { Aliases: ["node.bringupapp.internal", "node.custom.internal"] },
     });
     expect(
       fake.calls
-        .filter((call) => call.path === "/networks/create")
+        .filter((call) => call.path === "/networks/create" || call.path === "/libpod/networks/create")
         .slice(0, 2)
         .map((call) => call.body),
     ).toEqual([
       {
-        Name: "custom-app-net",
-        Driver: "bridge",
-        Labels: {
+        name: "custom-app-net",
+        driver: "bridge",
+        dns_enabled: true,
+        options: { metric: "50" },
+        labels: {
           "dev.lando.app": plan.id,
           "dev.lando.app-root": appRoot,
           "dev.lando.owner": appIdentityKey("owner", appRoot),
@@ -517,18 +531,20 @@ describe("provider-lando bringUp", () => {
     );
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
     expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
-      "custom-app-only": { Aliases: ["node"] },
+      "custom-app-only": { Aliases: ["node", "node.bringupapp.internal"] },
     });
     expect(
       fake.calls
-        .filter((call) => call.path === "/networks/create")
+        .filter((call) => call.path === "/networks/create" || call.path === "/libpod/networks/create")
         .slice(0, 1)
         .map((call) => call.body),
     ).toEqual([
       {
-        Name: "custom-app-only",
-        Driver: "bridge",
-        Labels: {
+        name: "custom-app-only",
+        driver: "bridge",
+        dns_enabled: true,
+        options: { metric: "50" },
+        labels: {
           "dev.lando.app": plan.id,
           "dev.lando.app-root": appRoot,
           "dev.lando.owner": appIdentityKey("owner", appRoot),

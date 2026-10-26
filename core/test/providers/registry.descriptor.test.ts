@@ -102,7 +102,6 @@ const planFor = (provider: ProviderId): AppPlan => ({
   provider,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

@@ -55,7 +55,6 @@ const planFor = (id: string, proxy?: string): AppPlan => {
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

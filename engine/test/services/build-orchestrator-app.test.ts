@@ -71,7 +71,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: Object.fromEntries(services.map((entry) => [entry.name, entry])),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

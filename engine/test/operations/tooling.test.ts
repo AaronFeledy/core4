@@ -80,7 +80,6 @@ const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseCon
           }),
     },
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     metadata,

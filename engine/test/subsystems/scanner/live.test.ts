@@ -18,7 +18,6 @@ const planWithScanner = (scanner: ScanPlan): AppPlan => ({
   root: AbsolutePath.make("/tmp/myapp"),
   provider: ProviderId.make("test"),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
