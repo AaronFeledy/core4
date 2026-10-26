@@ -72,15 +72,18 @@ Check that `lando info` lists `chrome` as running next to `appserver` and `datab
 
 ## Give tests a writable sites directory
 
-Functional tests create temporary sites under `web/sites/simpletest`. The test runner and Apache both use `www-data`, so give that user ownership of the test directory. On a Linux bind mount, this also changes ownership on your host; rootless providers can map `www-data` to a different host UID.
+Browser tests need both `web/sites/simpletest` for temporary sites and snapshots, and `public://simpletest` for test artifacts. On this scaffold, the public-files directory is `web/sites/default/files`. If your site's `$settings['file_public_path']` or multisite directory changes that path, use its `simpletest` subdirectory below instead.
+
+The test runner and Apache both use `www-data`. Give that user ownership of only the two test directories, not the whole site or public-files directory. On a Linux bind mount, this also changes ownership on your host; rootless providers can map `www-data` to a different host UID.
 
 ```sh
-lando exec appserver --user=root -- mkdir -p web/sites/simpletest/browser_output
-lando exec appserver --user=root -- chown -R www-data:www-data web/sites/simpletest
+lando exec appserver --user=root -- mkdir -p web/sites/simpletest/browser_output web/sites/default/files/simpletest
+lando exec appserver --user=root -- chown -R www-data:www-data web/sites/simpletest web/sites/default/files/simpletest
 lando exec appserver --user=www-data -- test -w web/sites/simpletest/browser_output
+lando exec appserver --user=www-data -- test -w web/sites/default/files/simpletest
 ```
 
-The last command exits successfully without output when the directory is writable.
+The last two commands exit successfully without output when both directories are writable.
 
 ## Run a Kernel test
 
@@ -94,7 +97,22 @@ Pass a test path with this task. Without one, PHPUnit discovers the full configu
 
 ## Test your own module in a browser
 
-Create the directories for the three files below in your project. Drupal needs the module's info file to discover its test namespace; you don't need to enable the module.
+The scaffold can leave `web/modules` owned by container root. Create the new module directory, then match its owner to your host-created `.lando.yml`:
+
+```sh
+lando exec appserver --user=root -- mkdir -p web/modules/custom/hello
+lando exec appserver --user=root -- chown --reference=/app/.lando.yml web/modules/custom/hello
+```
+
+The second command reads the Landofile's ownership without changing the file. This uses the owner as the container sees it, so it doesn't assume host and container UIDs match. If it fails, check that `/app/.lando.yml` exists in `appserver`; don't substitute a guessed UID.
+
+Create the test directories on your host, then save the three files below:
+
+```sh
+mkdir -p web/modules/custom/hello/tests/src/Functional web/modules/custom/hello/tests/src/FunctionalJavascript
+```
+
+The command should finish without a permission error. Drupal needs the module's info file to discover its test namespace; you don't need to enable the module.
 
 Save this as `web/modules/custom/hello/hello.info.yml`:
 
@@ -198,15 +216,15 @@ The `phpunit` task selects `web/core/phpunit.xml.dist` with `-c web/core` and ap
 
 - If PHPUnit isn't found, check that Composer completed and that you ran it from the scaffolded app directory.
 - For a database connection error, compare `SIMPLETEST_DB` with `lando info` and confirm `database` is running.
-- For a permission error under `sites/simpletest`, repeat the ownership and writable-directory checks above. Don't make the whole project world-writable.
+- For a permission error under `sites/simpletest` or an `Unable to create directory: public://simpletest` error, repeat both writable-directory checks above and confirm the public-files path. Don't make the whole project world-writable.
 - If Selenium doesn't become ready or a WebDriver session fails, run `lando logs -s chrome --tail 50`. Confirm the service is running and keep `"w3c":true` in the driver options.
 
 ## Tear down
 
-To remove generated test sites and snapshots, run this while `appserver` is still running. It deletes everything under `web/sites/simpletest`, not your installed site under `web/sites/default`:
+To remove generated test sites, snapshots, and test artifacts, run this while `appserver` is still running. It deletes both `simpletest` directories, not the rest of your site or public files. If you changed the public-files path above, use the same test directory here:
 
 ```sh
-lando exec appserver --user=root -- rm -rf web/sites/simpletest
+lando exec appserver --user=root -- rm -rf web/sites/simpletest web/sites/default/files/simpletest
 ```
 
 Then remove the app's containers, including `chrome`:
