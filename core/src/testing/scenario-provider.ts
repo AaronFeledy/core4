@@ -8,10 +8,19 @@ import { Effect, Layer } from "effect";
 import { makeLandoRuntime, withRuntimeProviderRegistryOverride } from "../runtime/layer.ts";
 
 const canonicalPath = (path: string): Effect.Effect<string> =>
-  Effect.tryPromise(() => realpath(path)).pipe(Effect.orElseSucceed(() => path));
+  Effect.tryPromise(() => realpath(path)).pipe(
+    Effect.catch(() =>
+      Effect.logDebug("scenario-provider canonicalPath falling back to lexical path").pipe(
+        Effect.annotateLogs({ path }),
+        Effect.as(path),
+      ),
+    ),
+  );
+
+const planAppRoot = (plan: AppPlan): string => plan.identity?.appRoot ?? plan.root;
 
 const planMatchesRoot = (plan: AppPlan, root: string): boolean => {
-  const appRoot = plan.identity?.appRoot ?? plan.root;
+  const appRoot = planAppRoot(plan);
   if (appRoot === root || plan.root === root) return true;
   const child = relative(appRoot, root);
   return child === "" || (!child.startsWith("..") && !isAbsolute(child));
@@ -21,15 +30,12 @@ const planMatchesRoot = (plan: AppPlan, root: string): boolean => {
 export const makeScenarioProvider = () => {
   const plans = new Map<AbsolutePath, AppPlan>();
   const uniquePlans = () => [...new Set(plans.values())];
-  const lookupPlan = (root: string): AppPlan | undefined => {
-    const exact = plans.get(AbsolutePath.make(root));
-    if (exact !== undefined) return exact;
-    return uniquePlans().find((plan) => planMatchesRoot(plan, root));
-  };
-  const lookupPlans = (root: string): AppPlan[] => {
-    const exact = plans.get(AbsolutePath.make(root));
-    return exact === undefined ? uniquePlans().filter((plan) => planMatchesRoot(plan, root)) : [exact];
-  };
+  const matchingPlans = (root: string): AppPlan[] =>
+    uniquePlans()
+      .filter((plan) => planMatchesRoot(plan, root))
+      .sort((left, right) => planAppRoot(right).length - planAppRoot(left).length);
+  const lookupPlan = (root: string): AppPlan | undefined => matchingPlans(root)[0];
+  const lookupPlans = (root: string): AppPlan[] => matchingPlans(root);
   const resolvePlan = (root: string) =>
     canonicalPath(root).pipe(Effect.map((canonical) => lookupPlan(canonical) ?? lookupPlan(root)));
   const indexPlan = (plan: AppPlan, ...aliases: string[]) => {

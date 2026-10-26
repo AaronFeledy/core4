@@ -1,12 +1,31 @@
 import { expect, test } from "bun:test";
 import { symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
 import { withScenarioContext } from "@lando/core/testing";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { makeScenarioProvider } from "../../src/testing/scenario-provider.ts";
+
+const planAt = (id: string, appRoot: AbsolutePath): AppPlan => ({
+  id: AppId.make(id),
+  name: id,
+  slug: id,
+  root: appRoot,
+  identity: { appRoot, ownerKey: `${id}-owner` },
+  provider: ProviderId.make("test"),
+  services: {},
+  routes: [],
+  stores: [],
+  fileSync: [],
+  metadata: {
+    resolvedAt: DateTime.makeUnsafe("2026-09-16T00:00:00.000Z"),
+    source: "scenario-provider-dispatch.test",
+    runtime: 4,
+  },
+  extensions: {},
+});
 
 test("uses the test runtime provider for exec when a guide uses the scenario harness", async () => {
   const result = await Effect.runPromise(
@@ -72,6 +91,23 @@ test("resolves the applied plan when later commands use a symlink alias of the r
       }),
     ),
   );
+});
+
+test("prefers the longest matching applied plan the way production ancestor matching does", async () => {
+  const provider = makeScenarioProvider();
+  const parent = planAt("parent-app", AbsolutePath.make("/tmp/scenario-parent"));
+  const child = planAt("child-app", AbsolutePath.make("/tmp/scenario-parent/child"));
+  await Effect.runPromise(provider.provider.apply(parent, {}));
+  await Effect.runPromise(provider.provider.apply(child, {}));
+
+  const planned = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      return yield* registry.resolveAppliedPlan(AbsolutePath.make("/tmp/scenario-parent/child/nested"));
+    }).pipe(Effect.provide(provider.layer)),
+  );
+
+  expect(planned?.id).toBe("child-app");
 });
 
 test("forgets the applied plan when destroy uses a symlink to its root", async () => {
