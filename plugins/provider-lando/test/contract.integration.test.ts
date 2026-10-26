@@ -52,6 +52,38 @@ const attachBytesFrame = (stream: 1 | 2, payload: Uint8Array) => {
 };
 const attachFrame = (stream: 1 | 2, text: string) => attachBytesFrame(stream, textEncoder.encode(text));
 
+const recordNetworkCreate = (
+  request: EngineHttpRequest,
+  networks: Map<string, object>,
+): EngineHttpResponse | undefined => {
+  if (request.path !== "/networks/create" && request.path !== "/libpod/networks/create") return undefined;
+  const payload =
+    request.path === "/libpod/networks/create"
+      ? Schema.decodeUnknownSync(
+          Schema.Struct({
+            name: Schema.String,
+            driver: Schema.Literal("bridge"),
+            dns_enabled: Schema.Literal(true),
+            options: Schema.Struct({ metric: Schema.Literal("50") }),
+            labels: Schema.Record(Schema.String, Schema.String),
+          }),
+        )(request.body)
+      : undefined;
+  const body = Schema.decodeUnknownSync(
+    Schema.Struct({
+      Name: Schema.String,
+      Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+    }),
+  )(payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels });
+  networks.set(body.Name, { Id: body.Name, ...body });
+  return { status: 201, body: "{}" };
+};
+
+const engineInfoResponse = (): EngineHttpResponse => ({
+  status: 200,
+  body: JSON.stringify({ ID: "lando-fake-engine" }),
+});
+
 const tarBlockSize = 512;
 
 const padToBlock = (size: number): number => Math.ceil(size / tarBlockSize) * tarBlockSize;
@@ -188,6 +220,7 @@ const makeFakeApi = () => {
 
         const image = pulledImageInspect(pulledImages, request);
         if (image !== undefined) return image;
+        if (request.path === "/info" && request.method === "GET") return engineInfoResponse();
         if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
         if (request.path === "/volumes/create") {
           const body = Schema.decodeUnknownSync(
@@ -206,16 +239,8 @@ const makeFakeApi = () => {
           return { status: volume === undefined ? 404 : 200, body: JSON.stringify(volume ?? {}) };
         }
 
-        if (request.path === "/networks/create") {
-          const body = Schema.decodeUnknownSync(
-            Schema.Struct({
-              Name: Schema.String,
-              Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-            }),
-          )(request.body);
-          networks.set(body.Name, { Id: body.Name, ...body });
-          return { status: 201, body: "{}" };
-        }
+        const createdNetwork = recordNetworkCreate(request, networks);
+        if (createdNetwork !== undefined) return createdNetwork;
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const observed = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
           return { status: observed === undefined ? 404 : 200, body: JSON.stringify(observed ?? {}) };
@@ -381,6 +406,7 @@ const makeFakeApiWithHooks = () => {
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
+        if (request.path === "/info" && request.method === "GET") return engineInfoResponse();
         if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
         if (request.path === "/volumes/create") {
           const body = Schema.decodeUnknownSync(
@@ -397,16 +423,8 @@ const makeFakeApiWithHooks = () => {
           const volume = createdVolumes.get(name);
           return { status: volume === undefined ? 404 : 200, body: JSON.stringify(volume ?? {}) };
         }
-        if (request.path === "/networks/create") {
-          const body = Schema.decodeUnknownSync(
-            Schema.Struct({
-              Name: Schema.String,
-              Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-            }),
-          )(request.body);
-          networks.set(body.Name, { Id: body.Name, ...body });
-          return { status: 201, body: "{}" };
-        }
+        const createdNetwork = recordNetworkCreate(request, networks);
+        if (createdNetwork !== undefined) return createdNetwork;
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const observed = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
           return { status: observed === undefined ? 404 : 200, body: JSON.stringify(observed ?? {}) };
@@ -536,6 +554,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     request: (request) =>
       Effect.promise(async (): Promise<EngineHttpResponse> => {
         calls.push(request);
+        if (request.path === "/info" && request.method === "GET") return engineInfoResponse();
         // Pinned data-plane helpers are already cached locally; inspect reports the digest they name.
         if (
           request.method === "GET" &&
