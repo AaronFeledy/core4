@@ -391,6 +391,42 @@ describe("applied plan v1 -> v2 mount migration", () => {
     expect(migrateAppliedPlansRecord({ values: v1PlanBase }, 1)?.values?.id).toBe(AppId.make("values"));
   });
 
+  test("moves legacy Compose config grants into read-only bind mounts", () => {
+    const legacy = (grants: unknown) => ({
+      ...v1PlanBase,
+      extensions: { compose: { configs: { phpini: { file: "./php.ini" } } } },
+      services: { web: { ...v1ServiceBase, extensions: { compose: { configs: grants } } } },
+    });
+    const migrated = migrateAppliedPlan(
+      legacy([
+        { source: "phpini", target: "/etc/php.ini", mode: "0444" },
+        { source: "phpini", target: "/etc/b.ini" },
+      ]),
+      1,
+    );
+    const web = migrated?.services[ServiceName.make("web")];
+    expect(Schema.encodeSync(Schema.Array(MountPlan))(web?.mounts ?? [])).toEqual([
+      {
+        type: "bind",
+        source: "/tmp/lando-values/php.ini",
+        target: "/etc/b.ini",
+        readOnly: true,
+        createHostPath: false,
+        realization: "passthrough",
+      },
+      {
+        type: "bind",
+        source: "/tmp/lando-values/php.ini",
+        target: "/etc/php.ini",
+        readOnly: true,
+        createHostPath: false,
+        realization: "passthrough",
+        fileMode: 0o444,
+      },
+    ]);
+    expect(migrateAppliedPlan(legacy([{ source: "missing", target: "/etc/x.ini" }]), 1)).toBeNull();
+  });
+
   test("moves legacy Compose tmpfs knobs into tmpfs mounts", () => {
     const migrated = migrateAppliedPlan(
       {

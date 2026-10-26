@@ -1,3 +1,4 @@
+import { isAbsolute, resolve, win32 } from "node:path";
 import {
   AppPlan,
   type AppPlan as AppPlanShape,
@@ -61,7 +62,42 @@ const legacyComposeTmpfs = (entry: unknown): MountPlan | null => {
  * Convert one v1 service (`appMount` + `mounts` + `storage`) into the v2 one-list
  * shape. Returns null when any entry cannot be represented without guessing.
  */
-const migrateV1Service = (service: unknown): Record<string, unknown> | null => {
+interface V1Project {
+  readonly root: string;
+  readonly configs: Readonly<Record<string, unknown>>;
+}
+
+/** v1 rendered Compose config grants from extensions; v2 carries them as read-only binds. */
+const legacyConfigGrant = (grant: unknown, project: V1Project): MountPlan | null => {
+  if (!Predicate.isObject(grant) || typeof grant.source !== "string" || grant.source.length === 0)
+    return null;
+  const definition = project.configs[grant.source];
+  const file = Predicate.isObject(definition) ? definition.file : undefined;
+  if (typeof file !== "string" || file.length === 0) return null;
+  const target = grant.target === undefined ? `/${grant.source}` : grant.target;
+  if (typeof target !== "string" || target.length === 0) return null;
+  const mode = grant.mode;
+  const fileMode = typeof mode === "string" && /^[0-7]+$/u.test(mode) ? Number.parseInt(mode, 8) : mode;
+  if (fileMode !== undefined && (typeof fileMode !== "number" || !Number.isInteger(fileMode))) return null;
+  const windowsRoot = /^[A-Za-z]:[\\/]/u.test(project.root) || project.root.startsWith("\\\\");
+  const source =
+    isAbsolute(file) || win32.isAbsolute(file)
+      ? file
+      : windowsRoot
+        ? win32.resolve(project.root, file)
+        : resolve(project.root, file);
+  return {
+    type: "bind",
+    source,
+    target: PortablePath.make(target),
+    readOnly: true,
+    createHostPath: false,
+    realization: "passthrough",
+    ...(fileMode === undefined ? {} : { fileMode }),
+  };
+};
+
+const migrateV1Service = (service: unknown, project: V1Project): Record<string, unknown> | null => {
   if (!Predicate.isObject(service)) return null;
   const { appMount, mounts: legacyMounts, storage, ...rest } = service;
   const converted: MountPlan[] = [];
@@ -178,6 +214,19 @@ const migrateV1Service = (service: unknown): Record<string, unknown> | null => {
     }
     extensions = { ...extensions, compose };
   }
+  if (
+    Predicate.isObject(extensions) &&
+    Predicate.isObject(extensions.compose) &&
+    "configs" in extensions.compose
+  ) {
+    const grants = extensions.compose.configs;
+    if (!Array.isArray(grants)) return null;
+    for (const grant of grants) {
+      const mount = legacyConfigGrant(grant, project);
+      if (mount === null) return null;
+      converted.push(mount);
+    }
+  }
 
   if (duplicateMountTarget(converted) !== undefined) return null;
   return { ...rest, ...(extensions === undefined ? {} : { extensions }), mounts: orderMounts(converted) };
@@ -186,10 +235,13 @@ const migrateV1Service = (service: unknown): Record<string, unknown> | null => {
 const migrateV1PlanRaw = (raw: unknown): unknown | null => {
   if (!Predicate.isObject(raw)) return null;
   const { services, ...rest } = raw;
-  if (!Predicate.isObject(services)) return null;
+  if (!Predicate.isObject(services) || typeof rest.root !== "string") return null;
+  const compose = Predicate.isObject(rest.extensions) ? rest.extensions.compose : undefined;
+  const configs = Predicate.isObject(compose) && Predicate.isObject(compose.configs) ? compose.configs : {};
+  const project: V1Project = { root: rest.root, configs };
   const nextServices: Record<string, unknown> = {};
   for (const [name, service] of Object.entries(services)) {
-    const migrated = migrateV1Service(service);
+    const migrated = migrateV1Service(service, project);
     if (migrated === null) return null;
     nextServices[name] = migrated;
   }
