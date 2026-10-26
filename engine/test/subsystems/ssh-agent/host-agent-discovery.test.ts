@@ -392,7 +392,7 @@ test.skipIf(process.platform === "win32")(
       listen: { _tag: "unix", path: relayPath, mode: 0o600 },
     });
     try {
-      expect(found.upstream.path).toBe(link);
+      expect(found.upstream).toMatchObject({ _tag: "unix", path: link });
       expect((await probeSshAgent({ _tag: "unix", path: relayPath }, { timeoutMs: 1_000 })).identities).toBe(
         0,
       );
@@ -712,7 +712,7 @@ test("explicit regular file is socket-not-socket without probing or fallback", a
   const root = await mkdtemp(join(tmpdir(), "ssh-agent-file-"));
   const file = join(root, "plain");
   await writeFile(file, "not an agent");
-  const probes: string[] = [];
+  const probes = 0;
   try {
     const result = await Effect.runPromise(
       Effect.result(
@@ -732,7 +732,7 @@ test("explicit regular file is socket-not-socket without probing or fallback", a
       _tag: "Failure",
       failure: { reason: "socket-not-socket", socketPath: file },
     });
-    expect(probes).toEqual([]);
+    expect(probes).toBe(0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
