@@ -448,15 +448,15 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `networks` | normalized | Normalizes into `ServicePlan.networking` |
 | `networks.*` | normalized | Normalizes into `ServicePlan.networking` |
 | `networks.*.aliases` | normalized | Normalizes into `ServicePlan.networking` |
-| `networks.*.driver_opts` | rejected | Lando doesn't pin network addresses or interface settings. Remove driver_opts and reach the service by its name or an alias. |
-| `networks.*.driver_opts.*` | rejected | Lando doesn't pin network addresses or interface settings. Remove driver_opts and reach the service by its name or an alias. |
-| `networks.*.gw_priority` | rejected | Lando doesn't pin network addresses or interface settings. Remove gw_priority and reach the service by its name or an alias. |
-| `networks.*.interface_name` | rejected | Lando doesn't pin network addresses or interface settings. Remove interface_name and reach the service by its name or an alias. |
-| `networks.*.ipv4_address` | rejected | Lando doesn't pin network addresses or interface settings. Remove ipv4_address and reach the service by its name or an alias. |
-| `networks.*.ipv6_address` | rejected | Lando doesn't pin network addresses or interface settings. Remove ipv6_address and reach the service by its name or an alias. |
-| `networks.*.link_local_ips` | rejected | Lando doesn't pin network addresses or interface settings. Remove link_local_ips and reach the service by its name or an alias. |
-| `networks.*.mac_address` | rejected | Lando doesn't pin network addresses or interface settings. Remove mac_address and reach the service by its name or an alias. |
-| `networks.*.priority` | rejected | Lando doesn't pin network addresses or interface settings. Remove priority and reach the service by its name or an alias. |
+| `networks.*.driver_opts` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.driver_opts and reach the service by its name or an alias. |
+| `networks.*.driver_opts.*` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.driver_opts.* and reach the service by its name or an alias. |
+| `networks.*.gw_priority` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.gw_priority and reach the service by its name or an alias. |
+| `networks.*.interface_name` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.interface_name and reach the service by its name or an alias. |
+| `networks.*.ipv4_address` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.ipv4_address and reach the service by its name or an alias. |
+| `networks.*.ipv6_address` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.ipv6_address and reach the service by its name or an alias. |
+| `networks.*.link_local_ips` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.link_local_ips and reach the service by its name or an alias. |
+| `networks.*.mac_address` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.mac_address and reach the service by its name or an alias. |
+| `networks.*.priority` | rejected | Lando doesn't pin network addresses or interface settings. Remove networks.*.priority and reach the service by its name or an alias. |
 | `networks.*.x-*` | preserved | Retained in the Landofile as inert metadata; never interpreted or capability-gated. |
 
 ### `ports`

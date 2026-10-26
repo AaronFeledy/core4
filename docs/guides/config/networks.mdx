@@ -129,7 +129,7 @@ The key you list must exist under top-level `networks:`, with one exception: `de
 
 Network keys start with a letter or digit and use only letters, digits, `_`, `.`, and `-`.
 
-`aliases` is the only attachment option. `ipv4_address`, `ipv6_address`, `mac_address`, `link_local_ips`, `driver_opts`, `priority`, `gw_priority`, and `interface_name` fail lint with the remediation `Lando doesn't pin network addresses or interface settings. Remove <field> and reach the service by its name or an alias.`
+`aliases` is the only attachment option. `ipv4_address`, `ipv6_address`, `mac_address`, `link_local_ips`, `driver_opts`, `priority`, `gw_priority`, and `interface_name` fail lint with the remediation `Lando doesn't pin network addresses or interface settings. Remove networks.*.<field> and reach the service by its name or an alias.`
 
 ## Membership is additive
 
@@ -271,7 +271,7 @@ Lint also reports provider capability problems under `landofile.capability`, suc
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.compose-rejection\"" } }} />
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"networks\",\\s*\"backend\",\\s*\"ipv4_address\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "Lando doesn.t pin network addresses or interface settings\\. Remove ipv4_address and reach the service by its name or an alias\\." } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "Lando doesn.t pin network addresses or interface settings\\. Remove networks\\.\\*\\.ipv4_address and reach the service by its name or an alias\\." } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

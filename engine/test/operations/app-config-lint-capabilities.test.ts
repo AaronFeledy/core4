@@ -48,7 +48,7 @@ test.each([
     );
     expect(result.valid).toBe(false);
     expect(finding?.severity).toBe("error");
-    expect(finding?.suggestion).toContain(`Remove ${field}`);
+    expect(finding?.suggestion).toContain(`Remove networks.*.${field}`);
     expect(finding?.suggestion).toContain("alias");
   } finally {
     await rm(root, { recursive: true, force: true });

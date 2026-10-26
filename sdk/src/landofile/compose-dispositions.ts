@@ -53,11 +53,10 @@ const preservedEntry = (path: string): ComposeDispositionEntry =>
 
 const rejectedEntry = (path: string): ComposeDispositionEntry => {
   if (path.startsWith("networks.*.")) {
-    const field = path.split(".")[2];
     return {
       disposition: "rejected",
       rationale: "Lando owns network address and interface settings.",
-      remediation: `Lando doesn't pin network addresses or interface settings. Remove ${field} and reach the service by its name or an alias.`,
+      remediation: `Lando doesn't pin network addresses or interface settings. Remove ${path} and reach the service by its name or an alias.`,
     };
   }
   if (path === "extends" || path.startsWith("extends.")) {
