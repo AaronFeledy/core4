@@ -86,6 +86,10 @@ ports:
 
 The proxy answers a hostname like `web.external-access-demo.lndo.site`. Public DNS resolves `*.lndo.site` to `127.0.0.1`, and Lando does not write host DNS rules. On another device, that address points at the device itself, not your app host.
 
+The shared proxy has its own bind, separate from a service's `ports:` `host_ip`. It defaults to `127.0.0.1`. To share the proxy, set `router.bindAddress` to the host's LAN interface IP in the installation `config.yml`, or use `LANDO_ROUTER_BIND_ADDRESS`. A Landofile value is ignored and lint warns. Wildcard values `0.0.0.0` and `::` bind on every interface, subject to the host firewall.
+
+Run `lando start` from an app that uses the router, then check `lando global:info` and `lando doctor`. Non-default binds bypass the Linux/WSL loopback helper and may use fallback ports. Do not assume narrowing to loopback succeeded while doctor reports `bind-application-unconfirmed`. See [Set the shared router bind](./proxy-traefik.mdx#set-the-shared-router-bind).
+
 Proxy routing and published ports are independent. Reaching a proxied hostname from the host does not need a `ports:` entry. `ports:` only controls direct host-port publication.
 
 On a typed service such as `node` or `mysql`, `ports:` adds host publications without removing the type's own listener. The service keeps its primary port whether `ports:` is absent or an empty list, and a published entry that targets that same port publishes that listener on the host; it keeps the listener's protocol and primary marking. A published port the type doesn't know is reported as plain `tcp` or `udp`, because a Compose port mapping describes transport, not application protocol. A Compose `app_protocol` value is kept as a hint and doesn't change that. `expose:` adds an App Network `tcp` listener for any port the service doesn't already declare. To remove a service's listeners from the plan, set `endpoints: []`; an explicit `endpoints:` list is authoritative and `ports:` cannot stand in for it.

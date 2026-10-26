@@ -9,6 +9,7 @@ import { probeHttp, probeTcp } from "./loopback-probe.ts";
 import { DESIRED_HTTPS_PORT, DESIRED_HTTP_PORT } from "./port-acquisition.ts";
 import { acquisitionStateFile } from "./proxy-paths.ts";
 import type { ProxyPaths } from "./proxy-types.ts";
+import { advertisedRouterBindAddress, routerProbeHost } from "./router-bind-address.ts";
 
 export type AdvertisedPortRole = "http" | "https";
 
@@ -19,12 +20,17 @@ export interface AdvertisedPortSnapshot {
 }
 
 export interface AdvertisedPortReaders {
-  readonly readPort: (port: number, role: AdvertisedPortRole) => Promise<AdvertisedPortSnapshot>;
+  readonly readPort: (
+    port: number,
+    role: AdvertisedPortRole,
+    host: string,
+  ) => Promise<AdvertisedPortSnapshot>;
 }
 
 export interface AdvertisedPortPair {
   readonly httpPort: number;
   readonly httpsPort: number;
+  readonly bindAddress?: string;
 }
 
 const LOOPBACK_HOST = "127.0.0.1" as const;
@@ -34,13 +40,17 @@ const LAST_FALLBACK: AdvertisedPortPair = { httpPort: DESIRED_HTTP_PORT, httpsPo
 
 const idle = (port: number): AdvertisedPortSnapshot => ({ port, listening: false, httpOk: false });
 
-const readPort = async (port: number, role: AdvertisedPortRole): Promise<AdvertisedPortSnapshot> => {
-  const listening = (await probeTcp({ host: LOOPBACK_HOST, port, timeoutMs: TCP_PROBE_MS })) === "open";
+const readPort = async (
+  port: number,
+  role: AdvertisedPortRole,
+  host: string,
+): Promise<AdvertisedPortSnapshot> => {
+  const listening = (await probeTcp({ host, port, timeoutMs: TCP_PROBE_MS })) === "open";
   if (!listening) return idle(port);
   return {
     port,
     listening: true,
-    httpOk: await probeHttp({ host: LOOPBACK_HOST, port, role, timeoutMs: HTTP_PROBE_MS }),
+    httpOk: await probeHttp({ host, port, role, timeoutMs: HTTP_PROBE_MS }),
   };
 };
 
@@ -59,7 +69,15 @@ const advertisedPairFromUnknown = (value: unknown): AdvertisedPortPair => {
   const httpPort = "httpPort" in value ? optionalNumber(value.httpPort) : undefined;
   const httpsPort = "httpsPort" in value ? optionalNumber(value.httpsPort) : undefined;
   if (httpPort === undefined || httpsPort === undefined) return LAST_FALLBACK;
-  return { httpPort, httpsPort };
+  const fingerprint = "fingerprint" in value ? value.fingerprint : undefined;
+  const bindAddress =
+    typeof fingerprint === "object" &&
+    fingerprint !== null &&
+    "bindAddress" in fingerprint &&
+    typeof fingerprint.bindAddress === "string"
+      ? advertisedRouterBindAddress({ mode, fingerprint: { bindAddress: fingerprint.bindAddress } })
+      : LOOPBACK_HOST;
+  return { httpPort, httpsPort, bindAddress };
 };
 
 const resolveAdvertisedPair = (
@@ -85,13 +103,14 @@ export const makeAdvertisedProxyPortsCheck = (
   id: "proxy-advertised-ports",
   run: Effect.fnUntraced(function* (input) {
     const pair = yield* resolveAdvertisedPair(input, ports);
+    const host = routerProbeHost(pair.bindAddress ?? LOOPBACK_HOST);
     const probed: ReadonlyArray<{ readonly port: number; readonly role: AdvertisedPortRole }> = [
       { port: pair.httpPort, role: "http" },
       { port: pair.httpsPort, role: "https" },
     ];
     const snapshots = yield* Effect.forEach(
       probed,
-      ({ port, role }) => Effect.promise(() => readers.readPort(port, role).catch(() => idle(port))),
+      ({ port, role }) => Effect.promise(() => readers.readPort(port, role, host).catch(() => idle(port))),
       { concurrency: "unbounded" },
     );
     const broken = snapshots.filter((item) => item.listening && !item.httpOk);
@@ -104,7 +123,7 @@ export const makeAdvertisedProxyPortsCheck = (
       runtimeStatus: "advertised-port-unhealthy",
       runtime: { running: false },
       context: {
-        host: LOOPBACK_HOST,
+        host,
         ports: broken.map((item) => String(item.port)).join(","),
       },
       solutions: [
