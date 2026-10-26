@@ -24,7 +24,6 @@ import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
-export { prepareServiceMounts } from "../planner/mounts.ts";
 export {
   applyAuthoredDependencies,
   applyAuthoredHealthcheck,

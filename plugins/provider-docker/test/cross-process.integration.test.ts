@@ -238,7 +238,7 @@ const isUnavailableExec = (error: unknown): boolean => {
 };
 
 describe("provider-docker cross-process state", () => {
-  test("apply with appliedPlanState writes a version-1 envelope", async () => {
+  test("apply with appliedPlanState writes a version-2 envelope", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakeApi();
       await applyPlan(stateDir, fake.api);
@@ -246,7 +246,7 @@ describe("provider-docker cross-process state", () => {
       const path = appliedPlanPath(stateDir, plan.id);
       expect(await fileExists(path)).toBe(true);
       const raw = JSON.parse(await readFile(path, "utf8"));
-      expect(raw.version).toBe(1);
+      expect(raw.version).toBe(2);
       expect(raw.data).toBeDefined();
     });
   });

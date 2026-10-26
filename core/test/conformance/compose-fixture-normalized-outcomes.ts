@@ -219,6 +219,22 @@ export const assertNormalizedMatch = (match: ComposeDispositionMatch, context: O
     case "volumes":
       assertVolumes(serviceContext);
       return true;
+    case "tmpfs":
+      for (const entry of service.tmpfs ?? []) {
+        const separator = entry.indexOf(":");
+        const target = separator === -1 ? entry : entry.slice(0, separator);
+        const tokens = separator === -1 ? [] : entry.slice(separator + 1).split(",");
+        const options = tokens.filter((token) => token !== "ro" && token !== "rw").join(",");
+        const projected = planService.mounts.find((mount) => String(mount.target) === target);
+        requireProducedValue(projected, match, "ServicePlan.mounts");
+        expect<unknown>(projected).toEqual({
+          type: "tmpfs",
+          target,
+          readOnly: tokens.includes("ro"),
+          ...(options.length === 0 ? {} : { options }),
+        });
+      }
+      return true;
     case "direct": {
       const target = entry.planTarget[0];
       if (target === undefined) throw new ComposeFixtureOutcomeError(`Empty plan target for ${root}`);

@@ -167,6 +167,8 @@ export const normalizedSourceValue = (request: {
     }
     case "volumes":
       return normalizedVolumeSource(match, service);
+    case "tmpfs":
+      return service.tmpfs;
     case "direct":
       return valueAt(service, configTarget);
     default: {

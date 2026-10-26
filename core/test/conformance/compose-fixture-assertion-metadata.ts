@@ -7,6 +7,7 @@ export type ComposePlanAssertion =
   | "healthcheck"
   | "internal-endpoints"
   | "published-endpoints"
+  | "tmpfs"
   | "volumes";
 
 export interface ComposeFixtureAssertionMetadata {
@@ -25,6 +26,7 @@ export const COMPOSE_FIXTURE_ASSERTIONS: Readonly<Record<string, ComposeFixtureA
   healthcheck: { assertion: "healthcheck" },
   image: { assertion: "artifact-ref" },
   ports: { assertion: "published-endpoints" },
+  tmpfs: { assertion: "tmpfs" },
   user: { assertion: "direct" },
   volumes: { assertion: "volumes" },
   working_dir: { assertion: "direct", configTarget: "workingDirectory" },

@@ -1,4 +1,4 @@
-import { join, posix, win32 } from "node:path";
+import { join, posix } from "node:path";
 import { LandofileValidationError, ServiceFeatureError } from "@lando/sdk/errors";
 import {
   type BindMountPlan,
@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
-import { type MountAuthoringContext, compileAuthoredMounts, mountInputError } from "./authored-mounts.ts";
+import { type MountAuthoringContext, compileAuthoredMounts, literalIncludeError } from "./authored-mounts.ts";
 import { bindRealization } from "./compose-capabilities.ts";
 import { SERVICE_FEATURES_EXTENSION_KEY, serviceFeatureExtension } from "./extensions.ts";
 import { mergeDefaultExcludes } from "./file-sync.ts";
@@ -46,7 +46,8 @@ export const prepareServiceMounts = (input: {
   if (duplicate !== undefined)
     return new ServiceFeatureError({
       feature: "mounts",
-      message: `Service ${input.context.serviceName} has multiple feature mounts at ${duplicate}. Remove the conflicting feature mount or replace this destination with one authored mount.`,
+      message: `Service ${input.context.serviceName} has multiple feature mounts at ${duplicate}.`,
+      remediation: `Remove the conflicting feature mount, or author one mount at ${duplicate} to replace them.`,
     });
   const volumes = new Set(
     mounts.filter((mount) => mount.type === "volume").map((mount) => String(mount.target)),
@@ -108,21 +109,8 @@ export const deriveMountOverlays = Effect.fn("AppPlanner.deriveMountOverlays")(f
         bind.role === "app" ? "appMount" : "mounts",
         "includes",
       ];
-      if (
-        posix.isAbsolute(rel) ||
-        win32.isAbsolute(rel) ||
-        rel.split(/[\\/]/u).includes("..") ||
-        /[*?[]/u.test(rel) ||
-        rel.startsWith("!")
-      )
-        return yield* Effect.fail(
-          mountInputError(
-            input.context,
-            [path],
-            `Mount include ${rel} must be a literal relative path.`,
-            "Use a relative path without .., absolute paths, ! prefixes, or glob characters; exact includes cancel excludes and nested includes reopen a shadowed directory.",
-          ),
-        );
+      const invalid = literalIncludeError(input.context, rel, path);
+      if (invalid !== undefined) return yield* Effect.fail(invalid);
       const target = plannedContainerDestination(posix.join(bind.target, rel), input.context.appRoot, path);
       if (target instanceof LandofileValidationError) return yield* Effect.fail(target);
       if (mounts.some((mount) => mount.target === target)) continue;

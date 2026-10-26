@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { isAbsolute, resolve, win32 } from "node:path";
+import { isAbsolute, posix, resolve, win32 } from "node:path";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   type ComposeVolumeEntry,
@@ -32,6 +32,25 @@ export const mountInputError = (
     file: `${context.appRoot}/.lando.yml`,
     issues: paths.map((path) => validationIssue(path, message, remediation)),
   });
+
+/** Includes are literal relative paths: exact ones cancel an exclude, nested ones reopen a shadowed path. */
+export const literalIncludeError = (
+  context: MountAuthoringContext,
+  include: string,
+  path: ValidationIssuePath,
+): LandofileValidationError | undefined =>
+  posix.isAbsolute(include) ||
+  win32.isAbsolute(include) ||
+  include.split(/[\\/]/u).includes("..") ||
+  /[*?[]/u.test(include) ||
+  include.startsWith("!")
+    ? mountInputError(
+        context,
+        [path],
+        `Mount include ${include} must be a literal relative path.`,
+        "Use a relative path without .., absolute paths, ! prefixes, or glob characters; exact includes cancel excludes and nested includes reopen a shadowed directory.",
+      )
+    : undefined;
 
 const bindSource = (source: string, appRoot: string): string => {
   const expanded =
@@ -225,4 +244,32 @@ export const compileAuthoredMounts = (
     ...[...compose.values()].filter((mount) => !lando.has(mount.target)),
     ...[...lando.values()].map(({ mount }) => mount),
   ];
+};
+
+/**
+ * Checks that need only authored input, shared by `app:config:lint` and
+ * planning: duplicate Lando destinations, mount syntax, tmpfs access modes,
+ * bind-only excludes, and literal includes.
+ */
+export const validateAuthoredMounts = (
+  context: MountAuthoringContext,
+  normalized: ServiceConfig,
+  storage: ServiceConfig["storage"],
+  appMount: ServiceConfig["appMount"],
+): LandofileValidationError | undefined => {
+  const compiled = compileAuthoredMounts(context, normalized, storage);
+  if (compiled instanceof LandofileValidationError) return compiled;
+  const includes: Array<readonly [string, ValidationIssuePath]> = [];
+  if (typeof appMount === "object")
+    for (const include of appMount.includes ?? [])
+      includes.push([include, ["services", context.serviceName, "appMount", "includes"]]);
+  for (const [index, entry] of (normalized.mounts ?? []).entries())
+    if (typeof entry === "object")
+      for (const include of entry.includes ?? [])
+        includes.push([include, ["services", context.serviceName, "mounts", index, "includes"]]);
+  for (const [include, path] of includes) {
+    const error = literalIncludeError(context, include, path);
+    if (error !== undefined) return error;
+  }
+  return undefined;
 };

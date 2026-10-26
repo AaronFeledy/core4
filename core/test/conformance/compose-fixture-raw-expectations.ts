@@ -119,10 +119,17 @@ const expectations = {
     });
   },
   "corpus/runtime-knobs.compose.yaml": (context) => {
-    expect(servicePlan(context, "database").extensions.compose).toMatchObject({
+    const database = servicePlan(context, "database");
+    expect(database.mounts).toContainEqual({
+      type: "tmpfs",
+      target: PortablePath.make("/run"),
+      readOnly: false,
+      options: "size=64m,mode=1770",
+    });
+    expect(valueAt(database.extensions.compose, "tmpfs")).toBeUndefined();
+    expect(database.extensions.compose).toMatchObject({
       extra_hosts: { "host.internal": "host-gateway" },
       cap_add: ["IPC_LOCK"],
-      tmpfs: ["/run:size=64m,mode=1770"],
       shm_size: 268_435_456,
       restart: "unless-stopped",
       ulimits: { nofile: { soft: 4096, hard: 8192 } },

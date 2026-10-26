@@ -22,6 +22,7 @@ import {
   orderServicesByCredsReferences,
   serviceScopeContext,
 } from "./landofile-scopes.ts";
+import { normalizeAppSlug } from "./naming.ts";
 import { loadAuthorizedServiceProjectFiles } from "./node-authoring.ts";
 import { type PlannerIssue, attributePlannerIssue } from "./resolved-validation.ts";
 import { validateServiceSeed } from "./seed-validation.ts";
@@ -162,6 +163,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   input: ServiceSeedInput,
 ) {
   const { landofile, fileSystem, appRoot } = input;
+  const appSlug = normalizeAppSlug(landofile.name ?? "app", appRoot);
   const issues: PlannerIssue[] = [];
   const record = (error: LandofileValidationError) => {
     const attributed = error.issues.map((issue) =>
@@ -246,7 +248,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     const seed = resolved.success;
     const facts = serviceExpressionFacts(seed.resolution);
     if (facts !== undefined) serviceCredsScope[name] = facts;
-    const checked = yield* validateServiceSeed(seed, appRoot, input.landofilePath);
+    const checked = yield* validateServiceSeed(seed, appRoot, appSlug, input.landofilePath);
     for (const error of checked.errors) record(error);
     resolvedByName.set(name, { ...seed, logSources: checked.logSources });
   }
