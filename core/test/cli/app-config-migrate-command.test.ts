@@ -109,6 +109,7 @@ test("inspects pending recovery without locking when dry-run input is invalid", 
       Effect.provideService(
         ManagedFileTransactionGuard,
         ManagedFileTransactionGuard.of({
+          assertReadable: () => Effect.void,
           ensureConsistent: () =>
             Effect.sync(() => {
               ensured = true;
@@ -138,6 +139,7 @@ test("does not call ensureConsistent on a clean dry-run", async () => {
       Effect.provideService(
         ManagedFileTransactionGuard,
         ManagedFileTransactionGuard.of({
+          assertReadable: () => Effect.void,
           ensureConsistent: () =>
             Effect.sync(() => {
               ensured = true;

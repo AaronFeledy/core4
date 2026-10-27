@@ -7,6 +7,8 @@ const BLOCKED_REMEDIATION =
   "Transaction blocked: a recorded file changed outside Lando. Compare each target against its .bak backup, resolve by hand, then remove the journal.";
 const DEFAULT_REMEDIATION =
   "Preserve the transaction journal and backups; inspect the recorded state before retrying.";
+const PENDING_REMEDIATION =
+  "Resolve the pending managed-file transaction with an ordinary load before retrying the candidate read.";
 
 export const transactionError = (
   reason: ManagedFileTransactionError["reason"],
@@ -18,7 +20,12 @@ export const transactionError = (
     phase,
     path: path.slice(0, 4096),
     cause: reason === "io" ? "filesystem" : reason === "checkpoint" ? "interrupted-checkpoint" : "invariant",
-    remediation: reason === "blocked" ? BLOCKED_REMEDIATION : DEFAULT_REMEDIATION,
+    remediation:
+      reason === "blocked"
+        ? BLOCKED_REMEDIATION
+        : reason === "pending-transaction"
+          ? PENDING_REMEDIATION
+          : DEFAULT_REMEDIATION,
   });
 
 export const transactionIO = <A>(phase: ManagedFileTransactionError["phase"], action: () => Promise<A>) =>
