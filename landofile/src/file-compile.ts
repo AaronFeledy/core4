@@ -1,7 +1,9 @@
+import { dirname } from "node:path";
 import { Effect } from "effect";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
+import { createIncludeResolutionSession, publishIncludeProposals } from "./include-session.ts";
 import { LANDOFILE_LAYER_POSITIONS, type PresentLandofileLayer } from "./layers.ts";
-import type { LandofileLoadContext } from "./load-context.ts";
+import { type LandofileLoadContext, ensureConsistentRoot } from "./load-context.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { classifyLoadFailure } from "./pipeline/legacy.ts";
@@ -16,6 +18,7 @@ export const compileLandofileFile = Effect.fn("Landofile.loadPreparedFile")(func
   inputs?: LandofileRuntimeInputs,
   scope?: LandofileLoadScope,
 ) {
+  yield* ensureConsistentRoot(context?.appRoot ?? dirname(file), inputs);
   const source = yield* prepareLandofileSource(file, context, inputs);
   const prepared = yield* prepareLandofileValue(source);
   const appRoot = source.context.appRoot;
@@ -25,7 +28,11 @@ export const compileLandofileFile = Effect.fn("Landofile.loadPreparedFile")(func
     layer: source.context.layer,
     order: LANDOFILE_LAYER_POSITIONS.find((position) => position.layer === source.context.layer)?.order ?? 3,
   };
-  const merged = yield* composePreparedLayers([{ layer, landofile: prepared.value }], source.context, inputs);
+  const session = yield* createIncludeResolutionSession({ appRoot, ...inputs });
+  const merged = yield* composePreparedLayers([{ layer, landofile: prepared.value }], source.context, {
+    session,
+    ...(inputs === undefined ? {} : { inputs }),
+  });
   const loadScope =
     scope ??
     (yield* buildLandofileLoadScope(
@@ -43,5 +50,6 @@ export const compileLandofileFile = Effect.fn("Landofile.loadPreparedFile")(func
       classifyLoadFailure(error, appRoot, getSourceDocuments(merged)),
     ),
   );
+  yield* publishIncludeProposals(session, inputs?.stateStore);
   return { landofile: rememberLandofileAppRoot(landofile, appRoot), scope: loadScope };
 });

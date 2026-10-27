@@ -1,14 +1,19 @@
 import { LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { captureCompilationContext } from "./compilation.ts";
+import {
+  type IncludeResolutionSession,
+  createIncludeResolutionSession,
+  publishIncludeProposals,
+} from "./include-session.ts";
 import { LANDOFILE_LAYER_POSITIONS, type PresentLandofileLayer, presentLandofileLayers } from "./layers.ts";
-import { ensureConsistentRoot, loadContext } from "./load-context.ts";
+import { assertReadableRoot, ensureConsistentRoot, loadContext } from "./load-context.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { classifyLoadFailure } from "./pipeline/legacy.ts";
 import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
-import type { LandofileRuntimeInputs } from "./ports.ts";
+import type { LandofileEvaluationInputs, LandofileRuntimeInputs } from "./ports.ts";
 import { prepareLandofileSource, prepareLandofileValue } from "./source.ts";
 import { validationErrorFromCause } from "./validation.ts";
 
@@ -23,11 +28,10 @@ const sourceDocument = (
   document: source.value,
 });
 
-export const acquireLandofileRootLayers = Effect.fn("Landofile.acquireLayers")(function* (
+const acquireRootSources = Effect.fn("Landofile.acquireSources")(function* (
   appRoot: string,
-  inputs?: Pick<LandofileRuntimeInputs, "templates" | "transactionGuard">,
+  inputs?: Pick<LandofileEvaluationInputs, "templates">,
 ) {
-  yield* ensureConsistentRoot(appRoot, inputs);
   const runtime = yield* loadContext(appRoot, inputs?.templates.context?.env);
   const layers = yield* presentLandofileLayers(appRoot);
   const results = yield* Effect.forEach(layers, (layer) =>
@@ -54,11 +58,27 @@ export const acquireLandofileRootLayers = Effect.fn("Landofile.acquireLayers")(f
   return { runtime, sources };
 });
 
-export const prepareLandofileRootLayers = Effect.fn("Landofile.prepareLayers")(function* (
+export const acquireLandofileRootLayers = Effect.fn("Landofile.acquireLayers")(function* (
   appRoot: string,
-  inputs?: LandofileRuntimeInputs,
+  inputs?: Pick<LandofileRuntimeInputs, "templates" | "transactionGuard">,
 ) {
-  const { runtime, sources } = yield* acquireLandofileRootLayers(appRoot, inputs);
+  yield* ensureConsistentRoot(appRoot, inputs);
+  return yield* acquireRootSources(appRoot, inputs);
+});
+
+export const inspectLandofileRootLayers = Effect.fn("Landofile.inspectLayers")(function* (
+  appRoot: string,
+  inputs?: Pick<LandofileRuntimeInputs, "templates" | "transactionGuard">,
+) {
+  yield* assertReadableRoot(appRoot, inputs);
+  return yield* acquireRootSources(appRoot, inputs);
+});
+
+const prepareRootSources = Effect.fn("Landofile.prepareSources")(function* (
+  appRoot: string,
+  inputs?: LandofileEvaluationInputs,
+) {
+  const { runtime, sources } = yield* acquireRootSources(appRoot, inputs);
   const prepared = yield* Effect.forEach(sources, ({ source, layer }) =>
     prepareLandofileValue(source).pipe(Effect.map(({ value }) => ({ layer, landofile: value }))),
   ).pipe(
@@ -71,6 +91,14 @@ export const prepareLandofileRootLayers = Effect.fn("Landofile.prepareLayers")(f
     ),
   );
   return { runtime, sources, prepared };
+});
+
+export const prepareLandofileRootLayers = Effect.fn("Landofile.prepareLayers")(function* (
+  appRoot: string,
+  inputs?: LandofileRuntimeInputs,
+) {
+  yield* ensureConsistentRoot(appRoot, inputs);
+  return yield* prepareRootSources(appRoot, inputs);
 });
 
 export const validatePreparedAuthoringLayers = Effect.fnUntraced(function* (
@@ -93,13 +121,25 @@ export const validatePreparedAuthoringLayers = Effect.fnUntraced(function* (
   return root;
 });
 
+export const evaluateLandofileRootLayers = Effect.fn("Landofile.evaluateLayers")(function* (
+  appRoot: string,
+  evaluation: { readonly session: IncludeResolutionSession; readonly inputs?: LandofileEvaluationInputs },
+) {
+  const prepared = yield* prepareRootSources(appRoot, evaluation.inputs);
+  const merged = yield* composePreparedLayers(prepared.prepared, prepared.runtime, evaluation);
+  return { ...prepared, merged, session: evaluation.session, documents: getSourceDocuments(merged) };
+});
+
 export const composeLandofileRootLayers = Effect.fn("Landofile.composeLayers")(function* (
   appRoot: string,
   inputs?: LandofileRuntimeInputs,
 ) {
-  const prepared = yield* prepareLandofileRootLayers(appRoot, inputs);
-  const merged = yield* composePreparedLayers(prepared.prepared, prepared.runtime, inputs);
-  return { ...prepared, merged, documents: getSourceDocuments(merged) };
+  yield* ensureConsistentRoot(appRoot, inputs);
+  const session = yield* createIncludeResolutionSession({ appRoot, ...inputs });
+  return yield* evaluateLandofileRootLayers(appRoot, {
+    session,
+    ...(inputs === undefined ? {} : { inputs }),
+  });
 });
 
 export const loadAuthoredDocuments = Effect.fn("Landofile.loadDocuments")(function* (
@@ -110,6 +150,8 @@ export const loadAuthoredDocuments = Effect.fn("Landofile.loadDocuments")(functi
   },
   inputs?: LandofileRuntimeInputs,
 ) {
+  yield* ensureConsistentRoot(context.appRoot, inputs);
+  const session = yield* createIncludeResolutionSession({ appRoot: context.appRoot, ...inputs });
   const pendingSites: import("@lando/sdk/schema").ParsedPendingSite[] = [];
   const compilationContext = captureCompilationContext(context.appRoot, inputs?.templates.context?.env);
   const prepared = yield* Effect.forEach(sources, (source) => {
@@ -141,11 +183,13 @@ export const loadAuthoredDocuments = Effect.fn("Landofile.loadDocuments")(functi
       pendingSites,
       policy: DEFAULT_LANDOFILE_LOAD_POLICY,
     },
-    inputs,
+    { session, ...(inputs === undefined ? {} : { inputs }) },
   );
-  return yield* finalizeLandofile(context.file, document, {
+  const compiled = yield* finalizeLandofile(context.file, document, {
     ...context,
     env: compilationContext.env,
     pendingSites,
   });
+  yield* publishIncludeProposals(session, inputs?.stateStore);
+  return compiled;
 });
