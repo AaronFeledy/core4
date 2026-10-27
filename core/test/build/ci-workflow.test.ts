@@ -580,7 +580,9 @@ describe("ci workflow", () => {
     expect(docsBuild).toContain("        run: bun run docs:test");
     expect(docsBuild).toContain("        run: bun run docs:build");
     expect(docsBuild).toContain("        run: test -f docs/dist/reference/schemas/app-plan/index.html");
-    expect(docsBuild).toContain("        uses: actions/upload-pages-artifact@v3");
+    expect(docsBuild).toContain(
+      "        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0",
+    );
     expect(docsBuild).toContain("          path: docs/dist");
     expect(docsBuild).toContain("        if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
     expect(docsBuild.indexOf("bun install --frozen-lockfile")).toBeLessThan(
