@@ -95,7 +95,7 @@ describe("makeArtifactDownload", () => {
     expect(result.bytes).toEqual(BUNDLE);
     expect(result.sha256).toBe(sha256Hex(BUNDLE));
     expect(result.path).toBe(join(directory, "bundle.zip"));
-    expect(capture.init()?.proxy).toBe("http://proxy:3128");
+    expect(capture.init()?.proxy).toEqual({ url: "http://proxy:3128", respectNoProxy: false });
     expect(capture.init()?.tls).toEqual({ ca: [CA_PEM] });
   });
 

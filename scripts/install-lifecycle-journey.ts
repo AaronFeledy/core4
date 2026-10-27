@@ -58,7 +58,7 @@ export const runInstallLifecycleJourney = async (options: LifecycleOptions) => {
   const name = `lifecycle-${crypto.randomUUID().slice(0, 12)}`;
   await writeFile(
     join(appDir, ".lando.yml"),
-    `name: ${name}\nruntime: 4\nprovider: ${options.provider}\nservices:\n  web:\n    type: compose\n    image: nginx:1.27-alpine\n    appMount: false\n    home: false\n`,
+    `name: ${name}\nruntime: 4\nprovider: ${options.provider}\nservices:\n  web:\n    type: compose\n    image: nginx:1.27-alpine\n    appMount: false\n`,
   );
   const env = {
     ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("LANDO_"))),

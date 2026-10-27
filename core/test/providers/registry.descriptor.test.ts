@@ -51,7 +51,11 @@ const manifestWithProvider = (name: string, providerId: ProviderId) =>
   });
 
 const notRegistered = (id: string): PluginLoadError =>
-  new PluginLoadError({ message: `not registered in descriptor registry test: ${id}`, pluginName: id });
+  new PluginLoadError({
+    message: `not registered in descriptor registry test: ${id}`,
+    pluginName: id,
+    remediation: "Install or register the plugin, then retry.",
+  });
 
 const makeDependencyLayer = (manifests: ReadonlyArray<PluginManifest>) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ telemetry: { enabled: false } });
@@ -98,7 +102,6 @@ const planFor = (provider: ProviderId): AppPlan => ({
   provider,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

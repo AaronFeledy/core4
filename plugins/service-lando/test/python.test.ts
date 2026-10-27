@@ -86,12 +86,16 @@ describe("python:3.12 ServiceType", () => {
     expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
     expect(String(plan.workingDirectory)).toBe("/app");
 
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
-    expect(plan.appMount?.excludes).toContain("__pycache__");
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
+    expect(serviceAppMount(plan)?.excludes).toContain("__pycache__");
 
-    expect(plan.mounts).toEqual([]);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
 
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 8000, protocol: "http", name: "web", primary: true },
@@ -239,3 +243,4 @@ describe("python:3.12 ServiceType", () => {
     );
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

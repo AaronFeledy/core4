@@ -88,4 +88,69 @@ describe("dump compression helpers", () => {
     expect(error.compression).toBe("zstd");
     expect(error.operation).toBe("decompress");
   });
+
+  const compressionLevels = [
+    ["gzip", 9],
+    ["zstd", 19],
+  ] as const;
+
+  test.each(compressionLevels)(
+    "honors %s levels while preserving round-trip bytes",
+    async (compression, highLevel) => {
+      // Given
+      const source = join(dir, "levels.sql");
+      const payload = Array.from(
+        { length: 4000 },
+        (_, id) => `INSERT INTO items VALUES (${id}, 'category-${id % 17}', 'value-${id % 113}');\n`,
+      ).join("");
+      await writeFile(source, payload);
+
+      // When
+      const results = await Promise.all(
+        [1, highLevel].map(async (level) => {
+          const destination = join(dir, `level-${level}`);
+          const result = await Effect.runPromise(
+            writeDumpTransform(source, destination, compression, "compress", undefined, level),
+          );
+          return { level, destination, ...result };
+        }),
+      );
+
+      // Then: match the native level explicitly, not just two potentially identical defaults.
+      for (const result of results) {
+        const expected = await new Response(
+          Bun.file(source)
+            .stream()
+            .pipeThrough(new CompressionStream(compression, { level: result.level })),
+        ).bytes();
+        expect(new Uint8Array(await readFile(result.destination))).toEqual(new Uint8Array(expected));
+        expect(
+          await new Response(
+            Bun.file(result.destination).stream().pipeThrough(new DecompressionStream(compression)),
+          ).text(),
+        ).toBe(payload);
+      }
+      expect(results[1]?.sizeBytes).toBeLessThanOrEqual(results[0]?.sizeBytes ?? 0);
+      expect(results[1]?.digest).not.toBe(results[0]?.digest);
+    },
+  );
+
+  test.each(compressionLevels)(
+    "keeps native %s default bytes when the level is omitted",
+    async (compression) => {
+      // Given
+      const source = join(dir, "default.sql");
+      const destination = join(dir, "default.compressed");
+      await writeFile(source, "SELECT 1;\n".repeat(1000));
+      const expected = await new Response(
+        Bun.file(source).stream().pipeThrough(new CompressionStream(compression)),
+      ).bytes();
+
+      // When
+      await Effect.runPromise(writeDumpTransform(source, destination, compression, "compress"));
+
+      // Then
+      expect(new Uint8Array(await readFile(destination))).toEqual(new Uint8Array(expected));
+    },
+  );
 });

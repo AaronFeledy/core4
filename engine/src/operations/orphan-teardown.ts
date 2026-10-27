@@ -1,4 +1,4 @@
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Option } from "effect";
 
 import {
   isGlobalScopedVolume,
@@ -9,6 +9,7 @@ import type { AppLockTimeoutError, AppResolveError, StateStoreError } from "@lan
 import type { AbsolutePath, AppPlan, OwnedResourcesCleanupResult } from "@lando/sdk/schema";
 import {
   type AppliedOrphanGroup,
+  EventService,
   PathsService,
   type ProviderError,
   type ProviderSelectionError,
@@ -58,7 +59,6 @@ const selectionPlan = (group: AppliedOrphanGroup, root: AbsolutePath): AppPlan =
   provider: group.providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: now(), source: "orphan-teardown", runtime: 4 },
@@ -94,6 +94,7 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
       for (const group of input.groups) {
         const plan = selectionPlan(group, input.root);
         const ref = { id: group.appId, root: input.root };
+        let protectedState = false;
         yield* withAppMutationLock(
           appLockTarget(plan),
           Effect.gen(function* () {
@@ -113,8 +114,38 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
               volumesRemoved = true;
             }
           }).pipe(
-            Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "ssh")),
-            Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "gpg")),
+            Effect.tapError((error) =>
+              Effect.sync(() => {
+                protectedState =
+                  error._tag === "ProviderUnavailableError" && error.operation === "applied-state.read";
+              }),
+            ),
+            Effect.ensuring(
+              Effect.suspend(() =>
+                protectedState ? Effect.void : cleanupAgentRelayState(ref, relayRoots, "ssh"),
+              ),
+            ),
+            Effect.ensuring(
+              Effect.suspend(() =>
+                protectedState ? Effect.void : cleanupAgentRelayState(ref, relayRoots, "gpg"),
+              ),
+            ),
+          ),
+        ).pipe(
+          Effect.catchIf(
+            (error) => error._tag === "ProviderUnavailableError" && error.operation === "applied-state.read",
+            (error) =>
+              Effect.gen(function* () {
+                const events = yield* Effect.serviceOption(EventService);
+                if (Option.isSome(events))
+                  yield* events.value
+                    .publish({
+                      _tag: "message.warn",
+                      body: `Skipped resources for app ${group.appId}: ${error.message}`,
+                      timestamp: now(),
+                    })
+                    .pipe(Effect.orDie);
+              }),
           ),
         );
       }

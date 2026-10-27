@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import {
   type PluginTestResult,
   PluginTestResultSchema,
@@ -21,6 +22,6 @@ export const pluginTestSpec: LandoCommandSpec<PluginTestResult> = {
   bootstrap: "minimal",
   strict: false,
   run: (input) => pluginTest({ argv: extractArgv(input) }),
-  successExitCode: (result) => (result.exitCode === 0 ? undefined : result.exitCode),
+  completion: (result) => commandCompletionFromExitCode(result.exitCode),
   render: (result) => renderPluginTestResult(result as PluginTestResult),
 };

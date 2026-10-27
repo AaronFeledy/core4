@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { type AppPlan, PortablePath, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, PortNumber, PortablePath, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -13,7 +13,7 @@ import { restartApp } from "../../src/operations/restart.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling, effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
-import { attachServiceCredsScope, serviceCredsScopeForPlan } from "../../src/planner/landofile-scopes.ts";
+import { serviceCredsScopeForPlan } from "../../src/planner/landofile-scopes.ts";
 import { resolveMysqlVolumeTarget } from "../../src/planner/mysql-volume.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
@@ -25,7 +25,7 @@ const mysqlService = {
   name: service,
   type: "mysql:9.7",
   artifact: { kind: "ref", ref: "mysql:9.7" },
-  storage: [{ store: scoped, target: PortablePath.make("/var/lib/mysql"), readOnly: false }],
+  mounts: [{ type: "volume", store: scoped, target: PortablePath.make("/var/lib/mysql"), readOnly: false }],
 } satisfies ServicePlan;
 const mysqlPlan: AppPlan = {
   ...plan,
@@ -47,13 +47,27 @@ describe("MySQL volume identity recovery across destructive lifecycle operations
     // Given a plan with authored steps whose MySQL store resolves to the legacy volume
     const harness = makeHarness({ plannedApp: mysqlPlan, listVolumes: recoveredVolumes });
     const tooling = { cleanup: { cmd: "echo stopping", service: ":host" } };
-    const credsScope = { db: { creds: { user: "cleanup-user", database: "app", password: "secret" } } };
-    const authored = attachServiceCredsScope(
-      attachEffectiveTooling(
-        withProjectEvents({ ...mysqlPlan }, { "pre-stop": [{ task: "cleanup" }] }),
-        tooling,
+    const { nonSqlCreds: _nonSqlCreds, ...mysqlWithoutNonSqlCreds } = mysqlService;
+    const credsScope = {
+      db: {
+        port: PortNumber.make(3306),
+        creds: { user: "cleanup-user", database: "app", password: "secret" },
+      },
+    };
+    const authored = attachEffectiveTooling(
+      withProjectEvents(
+        {
+          ...mysqlPlan,
+          services: {
+            [mysqlService.name]: {
+              ...mysqlWithoutNonSqlCreds,
+              connection: { family: "mysql", ...credsScope.db },
+            },
+          },
+        },
+        { "pre-stop": [{ task: "cleanup" }] },
       ),
-      credsScope,
+      tooling,
     );
 
     // When
@@ -68,8 +82,8 @@ describe("MySQL volume identity recovery across destructive lifecycle operations
     expect(resolved.plan).not.toBe(authored);
     expect(resolved.plan.stores[0]?.name).toBe(legacy);
     expect(resolved.plan.events).toEqual(authored.events);
-    expect(effectiveToolingForPlan(resolved.plan)).toBe(tooling);
-    expect(serviceCredsScopeForPlan(resolved.plan)).toBe(credsScope);
+    expect(effectiveToolingForPlan(resolved.plan)).toEqual(tooling);
+    expect(serviceCredsScopeForPlan(resolved.plan)).toEqual(credsScope);
   });
 
   test("Given a recovered provider and legacy storage, when restarting a supplied target, then it locks the legacy volume before stopping", async () => {

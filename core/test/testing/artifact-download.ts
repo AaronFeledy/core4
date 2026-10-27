@@ -20,6 +20,7 @@ const toRuntimeBundleDownloadError = (cause: unknown): ProviderUnavailableError 
     operation: "setup",
     message: "Failed to download the provider-lando runtime bundle.",
     cause,
+    remediation: "Install or start the `lando` provider and confirm it can perform `setup`.",
   });
 };
 

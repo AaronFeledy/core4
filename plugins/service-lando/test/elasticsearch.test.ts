@@ -69,10 +69,11 @@ describe("elasticsearch ServiceType", () => {
         ref: "docker.elastic.co/elasticsearch/elasticsearch:8.17.0",
       });
       expect(plan.command).toBeUndefined();
-      expect(plan.storage).toHaveLength(1);
-      expect(plan.storage[0]?.store).toBe("myapp-elasticsearch-data");
-      expect(String(plan.storage[0]?.target)).toBe("/usr/share/elasticsearch/data");
-      expect(plan.storage[0]?.readOnly).toBe(false);
+      const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+      expect(volumes).toHaveLength(1);
+      expect(volumes[0]?.store).toBe("myapp-elasticsearch-data");
+      expect(String(volumes[0]?.target)).toBe("/usr/share/elasticsearch/data");
+      expect(volumes[0]?.readOnly).toBe(false);
       expect(plan.endpoints).toEqual([
         { _tag: "internal", port: 9200, protocol: "tcp", name: "search", primary: true },
       ]);
@@ -162,13 +163,17 @@ describe("elasticsearch ServiceType", () => {
     });
   }
 
-  test("elasticsearch:8 and elasticsearch alias resolve to the same canonical service plan", async () => {
+  test("elasticsearch aliases preserve declaration identity with otherwise identical canonical plans", async () => {
     const primary = await planElasticsearchService(elasticsearch8ServiceType, { type: "elasticsearch:8" });
     const alias = await planElasticsearchService(elasticsearchServiceType, { type: "elasticsearch" });
 
     expect(primary.type).toBe("elasticsearch");
     expect(alias.type).toBe("elasticsearch");
-    expect(alias).toEqual(primary);
+    const { serviceTypeId: primaryId, ...primaryFacts } = primary;
+    const { serviceTypeId: aliasId, ...aliasFacts } = alias;
+    expect(primaryId).toBe("elasticsearch:8");
+    expect(aliasId).toBe("elasticsearch");
+    expect(aliasFacts).toEqual(primaryFacts);
   });
 
   test("uses the authored service name for the endpoint and LANDO context", async () => {

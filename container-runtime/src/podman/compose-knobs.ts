@@ -5,7 +5,6 @@ import { Result, Schema } from "effect";
 import { ComposeServiceKnobKey, ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
 import type { EngineDialect } from "../dialect.ts";
 import { extraHostEntries, realizeHostAliases } from "../host-aliases.ts";
-import { requiresLongMountSyntax } from "../mount-syntax.ts";
 
 import {
   type InvalidKnob,
@@ -16,7 +15,6 @@ import {
   nonNegativeInteger,
   positiveInteger,
   scalarTextMap,
-  tmpfsMounts,
   ulimitEntries,
 } from "./compose-knobs-values.ts";
 
@@ -26,6 +24,9 @@ import {
  * The property signatures come from `ServiceConfig`, so the provider does not
  * duplicate the SDK schema. Its field transforms accept canonical output,
  * making re-decoding idempotent while rejecting values core could not produce.
+ *
+ * `tmpfs` is intentionally absent: planned tmpfs lives on `ServicePlan.mounts`
+ * and is realized by the mount renderers, not the Compose knob registry.
  */
 const PodmanComposeKnobs = Schema.Struct(
   Struct.pick(ServiceConfig.fields, [
@@ -36,7 +37,6 @@ const PodmanComposeKnobs = Schema.Struct(
     "devices",
     "ulimits",
     "sysctls",
-    "tmpfs",
     "shm_size",
     "dns",
     "dns_search",
@@ -133,7 +133,6 @@ const PODMAN_COMPOSE_KNOB_REGISTRY = {
     ulimitEntries(ulimits, fail),
   ),
   sysctls: hostConfigKnob(["libpod", "docker"], "Sysctls", ({ sysctls }) => scalarTextMap(sysctls)),
-  tmpfs: hostConfigKnob(["libpod", "docker"], "Tmpfs", ({ tmpfs }, fail) => tmpfsMounts(tmpfs, fail)),
   shm_size: hostConfigKnob(["libpod", "docker"], "ShmSize", ({ shm_size }, fail) =>
     positiveInteger("shm_size", shm_size, fail),
   ),
@@ -180,69 +179,11 @@ interface RealizePodmanComposeKnobsOptions {
 
 const decodeComposeKnobs = Schema.decodeUnknownResult(PodmanComposeKnobs);
 
-const normalizedTmpfsEntry = (
-  value: unknown,
-): { readonly target: string; readonly options: string } | undefined => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  const keys = Object.keys(value);
-  if (keys.some((key) => !["target", "read_only", "size", "mode"].includes(key))) return undefined;
-
-  const target = Reflect.get(value, "target");
-  const readOnly = Reflect.get(value, "read_only");
-  const size = Reflect.get(value, "size");
-  const mode = Reflect.get(value, "mode");
-  if (
-    typeof target !== "string" ||
-    (readOnly !== undefined && readOnly !== true) ||
-    (size !== undefined && typeof size !== "string" && typeof size !== "number") ||
-    (mode !== undefined && (!Number.isSafeInteger(mode) || typeof mode !== "number"))
-  ) {
-    return undefined;
-  }
-
-  const options = [
-    ...(readOnly === true ? ["ro"] : []),
-    ...(size === undefined ? [] : [`size=${size}`]),
-    ...(mode === undefined ? [] : [`mode=${mode}`]),
-  ];
-  return { target, options: options.join(",") };
-};
-
-const normalizeComposeTmpfs = (
-  compose: unknown,
-  longTmpfs: Record<string, string>,
-  fail: InvalidKnob,
-): unknown => {
-  if (typeof compose !== "object" || compose === null || Array.isArray(compose)) return compose;
-  const tmpfs = Reflect.get(compose, "tmpfs");
-  if (!Array.isArray(tmpfs) || tmpfs.every((entry) => typeof entry === "string")) return compose;
-  const normalized = tmpfs.flatMap((entry): ReadonlyArray<string | undefined> => {
-    if (typeof entry === "string") return [entry];
-    const mount = normalizedTmpfsEntry(entry);
-    if (mount === undefined) return [undefined];
-    if (requiresLongMountSyntax(mount.target)) {
-      if (Object.hasOwn(longTmpfs, mount.target))
-        return fail("Compose runtime knob `tmpfs` repeats a container destination.", {
-          knob: "tmpfs",
-          target: mount.target,
-        });
-      longTmpfs[mount.target] = mount.options;
-      return [];
-    }
-    return [mount.options.length === 0 ? mount.target : `${mount.target}:${mount.options}`];
-  });
-  return normalized.some((entry) => entry === undefined) ? compose : { ...compose, tmpfs: normalized };
-};
-
-const serviceKnobValues = (
-  service: ServicePlan,
-  fail: InvalidKnob,
-  longTmpfs: Record<string, string>,
-): PodmanComposeKnobValues => {
+const serviceKnobValues = (service: ServicePlan, fail: InvalidKnob): PodmanComposeKnobValues => {
   const compose = service.extensions.compose;
   if (compose === undefined) return {};
 
-  const decoded = decodeComposeKnobs(normalizeComposeTmpfs(compose, longTmpfs, fail));
+  const decoded = decodeComposeKnobs(compose);
   if (Result.isSuccess(decoded)) return decoded.success;
 
   const issues = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues;
@@ -260,8 +201,7 @@ export const realizePodmanComposeKnobs = (
 ): PodmanComposeKnobRealization => {
   const fail: InvalidKnob = (message, details) =>
     options.onInvalid(message, { service: service.name, ...details });
-  const longTmpfs: Record<string, string> = {};
-  const knobs = serviceKnobValues(service, fail, longTmpfs);
+  const knobs = serviceKnobValues(service, fail);
 
   const hostConfig: Record<string, unknown> = {};
   const topLevel: Record<string, unknown> = {};
@@ -273,10 +213,6 @@ export const realizePodmanComposeKnobs = (
     Object.assign(hostConfig, fragment.hostConfig);
     Object.assign(topLevel, fragment.topLevel);
     Object.assign(query, fragment.query);
-  }
-
-  if (Object.keys(longTmpfs).length > 0) {
-    hostConfig.Tmpfs = { ...tmpfsMounts(knobs.tmpfs, fail), ...longTmpfs };
   }
 
   return { hostConfig, topLevel, query };

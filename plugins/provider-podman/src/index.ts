@@ -46,7 +46,7 @@ import {
 } from "@lando/container-runtime/podman/discover";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect } from "@lando/container-runtime/podman/inspect";
-import { logs } from "@lando/container-runtime/podman/logs";
+import { containerConsoleLogs, logs } from "@lando/container-runtime/podman/logs";
 import type { MachineSshBridgeHost } from "@lando/container-runtime/podman/machine-ssh-bridge";
 import {
   MINIMUM_PODMAN_VERSION,
@@ -61,7 +61,13 @@ import {
   providerHostInputs,
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
-import { redactDetails, redactString } from "@lando/container-runtime/redact";
+import {
+  redactDetails,
+  redactString,
+  redactorFor,
+  runtimeDiagnosticContext,
+  standaloneSecretsRedactor,
+} from "@lando/container-runtime/redact";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
@@ -95,7 +101,13 @@ import {
 import { AppPlanSanitizer, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Layer, Schema, Stream } from "effect";
 
-import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
+import {
+  listAppliedPlans,
+  listObservedPlans,
+  loadAppliedPlanStrict,
+  persistAppliedPlan,
+  removeAppliedPlan,
+} from "./applied-state.ts";
 import { resolvePodmanAgentBridge } from "./machine-bridge.ts";
 import { providerLandoSetupStatePath } from "./provider-lando-state.ts";
 
@@ -103,14 +115,22 @@ export const PLUGIN_NAME = "@lando/provider-podman" as const;
 
 const PROVIDER_ID = "podman";
 const providerIdBranded = ProviderId.make(PROVIDER_ID);
-const PODMAN_CTX: ProviderErrorContext = {
+const PODMAN_CTX_BASE = {
   providerId: "podman",
   remediation:
     "Run `lando doctor --provider=podman` to inspect the Podman socket, then retry the failing command.",
-};
+} as const;
+
+const podmanContextForEnv = (env: ProviderErrorContext["env"]): ProviderErrorContext => ({
+  ...PODMAN_CTX_BASE,
+  env,
+  redactor: standaloneSecretsRedactor(env),
+});
+
+const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
 export const getContainerDiedEvents = (api: PodmanApiClient) =>
-  getRuntimeContainerDiedEvents(api, { ctx: PODMAN_CTX });
+  getRuntimeContainerDiedEvents(api, { ctx: podmanContextForEnv({ ...process.env }) });
 
 type RuntimeProviderWithContainerEvents = RuntimeProviderShape & {
   readonly getContainerDiedEvents: ReturnType<typeof getContainerDiedEvents>;
@@ -301,6 +321,8 @@ export const resolvePodmanSocket = (options: ResolvePodmanSocketOptions): string
       providerId: PROVIDER_ID,
       operation: "select",
       message: "provider-podman socket resolution requires the resolved host platform.",
+      remediation:
+        "Pass the resolved host platform to resolvePodmanSocket, or supply an explicit socketPath.",
     });
   }
   return defaultPodmanSocket(options.platform, env);
@@ -340,6 +362,7 @@ export const podmanCapabilitiesForPlatform = (
     composeSpec: "native",
     composeKnobs: { supported: composeKnobsForDialect("libpod") },
     composeServiceFields: { supported: ["labels", "configs"] },
+    authoredNetworks: true,
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.containers.internal"),
@@ -382,7 +405,7 @@ export class UnsupportedPodmanSocketError extends ProviderUnavailableError {
         "provider-podman currently supports local Unix sockets and Windows Podman Desktop named pipes only.",
       remediation:
         "Set DOCKER_HOST to a unix:// Podman socket, unset it to use the platform default, or on Windows use the Podman Desktop npipe://./pipe/<machine> socket.",
-      details: { socketPath: redactString(socketPath) },
+      details: { socketPath: redactString(socketPath, hostSecretsRedactor()) },
     });
   }
 }
@@ -481,10 +504,12 @@ const unsupportedSocket = (
 };
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
-  makeRuntimePodmanApiClient(socketPath, PODMAN_CTX);
+  makeRuntimePodmanApiClient(socketPath, podmanContextForEnv({ ...process.env }));
 
 export interface ProviderLayerOptions {
   readonly agentBridgeHost?: MachineSshBridgeHost;
+  /** Lando user-data root; file-mode bind copies live beneath it. */
+  readonly userDataRoot?: string;
   readonly podmanApi?: PodmanApiClient;
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly socketPath?: string;
@@ -520,7 +545,7 @@ const podmanUnavailable = (operation: string, socketPath: string, cause?: unknow
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
-    message: redactString(`The Podman socket "${socketPath}" is not reachable.`),
+    message: redactString(`The Podman socket "${socketPath}" is not reachable.`, hostSecretsRedactor()),
     remediation:
       "Ensure your user-installed Podman is running (e.g. `systemctl --user start podman.socket` on Linux). Verify the socket path or `DOCKER_HOST` env. Run `lando doctor` for a full diagnostic.",
     ...(cause === undefined ? {} : { cause }),
@@ -539,12 +564,16 @@ export class PodmanServerVersionUnsupportedError extends ProviderUnavailableErro
       operation: "select",
       message: redactString(
         `Podman server version "${observedVersion}" (reported by the Podman API /libpod/info) does not satisfy the required minimum ${MINIMUM_PODMAN_VERSION}.`,
+        hostSecretsRedactor(),
       ),
-      details: redactDetails({
-        observedVersion,
-        source: "libpod-info",
-        minimumVersion: MINIMUM_PODMAN_VERSION,
-      }),
+      details: redactDetails(
+        {
+          observedVersion,
+          source: "libpod-info",
+          minimumVersion: MINIMUM_PODMAN_VERSION,
+        },
+        hostSecretsRedactor(),
+      ),
       remediation: `Upgrade Podman Desktop or your system Podman to >= ${MINIMUM_PODMAN_VERSION}, then retry.`,
     });
   }
@@ -576,7 +605,8 @@ const enforceServerVersionFloor = (
  * `@lando/provider-lando`'s persisted setup-state claims the same socket.
  */
 const assembleRuntimeProvider = (
-  options: ProviderLayerOptions = {},
+  options: ProviderLayerOptions,
+  PODMAN_CTX: ProviderErrorContext,
 ): Effect.Effect<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> => {
   if (options.platform === undefined) {
     return Effect.fail(
@@ -584,6 +614,7 @@ const assembleRuntimeProvider = (
         providerId: PROVIDER_ID,
         operation: "select",
         message: "provider-podman construction requires the resolved host platform.",
+        remediation: "Pass the resolved host platform when constructing the Podman provider.",
       }),
     );
   }
@@ -604,7 +635,11 @@ const assembleRuntimeProvider = (
   const unsupportedSocketError =
     options.podmanApi === undefined ? unsupportedSocket(platform, socketPath) : undefined;
   if (unsupportedSocketError !== undefined) return Effect.fail(unsupportedSocketError);
-  const podmanApi = options.podmanApi ?? (options.podmanApiFactory ?? makePodmanApiClient)(socketPath);
+  const podmanApi =
+    options.podmanApi ??
+    (options.podmanApiFactory === undefined
+      ? makeRuntimePodmanApiClient(socketPath, PODMAN_CTX)
+      : options.podmanApiFactory(socketPath));
 
   let desktopMachineName: string | undefined;
   if (family === "darwin" || family === "win32") {
@@ -636,6 +671,8 @@ const assembleRuntimeProvider = (
             hostProxyContainerTargets(containerArch),
           );
           const logSourceBinding = makeProviderLogSourceBinding({
+            ...(PODMAN_CTX.redactor === undefined ? {} : { redactor: PODMAN_CTX.redactor }),
+            sourceEnv: PODMAN_CTX.env,
             providerId: PROVIDER_ID,
             logFileAccess: options.logFileAccess,
             helperTarget: capabilities.hostProxy?.containerTargets[0],
@@ -687,14 +724,14 @@ const assembleRuntimeProvider = (
         }),
       api: podmanApi,
       capabilities: resolvedCapabilities,
-      redactDetails,
+      redactor: redactorFor(PODMAN_CTX),
       volumeCreationLabels: podmanVolumeCreationLabels,
       providerName: "provider-podman",
       ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
       ...(options.sanitizeAppliedPlan === undefined
         ? {}
         : { sanitizeAppliedPlan: options.sanitizeAppliedPlan }),
-      load: loadAppliedPlan,
+      load: loadAppliedPlanStrict,
       persist: persistAppliedPlan,
       remove: removeAppliedPlan,
     });
@@ -748,7 +785,7 @@ const assembleRuntimeProvider = (
       appliedPlans:
         options.appliedPlanState === undefined
           ? Effect.succeed([])
-          : listAppliedPlans(options.appliedPlanState),
+          : listObservedPlans(options.appliedPlanState),
       planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
         Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
       ),
@@ -757,7 +794,7 @@ const assembleRuntimeProvider = (
       getVersions: Effect.succeed({ provider: "0.0.0", runtime: serverVersion }),
       getContainerDiedEvents: getContainerDiedEvents(podmanApi),
       buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
-        buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi }),
+        buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi, sourceEnv: PODMAN_CTX.env }),
       ),
       pullArtifact: Effect.fn("RuntimeProvider.pullArtifact")((spec) =>
         pullImage(podmanApi, spec.ref, {
@@ -776,27 +813,34 @@ const assembleRuntimeProvider = (
       ),
       removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
-        yield* planState.ownership.prepare(plan, yield* appliedPlans.resolvePlan(plan.id));
+        const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
+        yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
           api: podmanApi,
           ctx: PODMAN_CTX,
           ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
           platform,
           daemonUrl: socketPath,
+          userDataRoot:
+            options.userDataRoot ?? options.env?.LANDO_USER_DATA_ROOT ?? process.env.LANDO_USER_DATA_ROOT,
           ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
-          ...(applyOptions.serviceEnvironment === undefined
+          ...(applyOptions.resolveServiceEnvironment === undefined
             ? {}
-            : { serviceEnvironment: applyOptions.serviceEnvironment }),
+            : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
           reconcile: applyOptions.reconcile,
           onVolumeCreated: applyOptions.onVolumeCreated,
           ...(applyOptions.forbidRecreate === true ? { forbidRecreate: true } : {}),
           completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-        }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
+        }).pipe(
+          Effect.tap(() => planState.removeOrphanedNetworks(plan, previous)),
+          Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)),
+        );
       }),
       cleanupOwnedResources: planState.cleanupOwnedResources,
       destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
-        const plan = target.plan ?? (yield* resolvePlan(target.app));
+        const previous = yield* appliedPlans.resolveMutationPlan(target.app);
+        const plan = target.plan ?? previous;
         if (plan === undefined) return DESTROY_NO_OP;
         yield* bringDown(plan, {
           api: podmanApi,
@@ -808,28 +852,48 @@ const assembleRuntimeProvider = (
         return DESTROYED;
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
-        removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }).pipe(
-          Effect.map(observedRemoval),
-        ),
+        appliedPlans
+          .resolveMutationPlan(observed.app)
+          .pipe(
+            Effect.andThen(removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX })),
+            Effect.map(observedRemoval),
+          ),
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(
           (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
-            Effect.map((plan) =>
-              plan === undefined
-                ? Stream.fail(makeNoPlanError(target.app, "logs"))
-                : logs(plan, target, logOptions, {
-                    api: podmanApi,
-                    ctx: PODMAN_CTX,
-                    ...logSourceBinding.bind(podmanApi, serviceContainerName(plan, target.service)),
-                  }),
-            ),
+            Effect.map((plan) => {
+              if (plan !== undefined)
+                return logs(plan, target, logOptions, {
+                  api: podmanApi,
+                  ctx: PODMAN_CTX,
+                  ...logSourceBinding.bind(podmanApi, serviceContainerName(plan, target.service)),
+                });
+              if (podmanApi.request === undefined) return Stream.fail(makeNoPlanError(target.app, "logs"));
+              return Stream.fromEffect(discoverLabeledContainers(podmanApi, PODMAN_CTX)).pipe(
+                Stream.flatMap((containers) => {
+                  const container = containers.find(
+                    (entry) => entry.app === target.app && entry.service === target.service,
+                  );
+                  return container?.containerId === undefined
+                    ? Stream.fail(makeNoPlanError(target.app, "logs"))
+                    : containerConsoleLogs(
+                        podmanApi,
+                        PODMAN_CTX,
+                        container.containerId,
+                        target.service,
+                        logOptions,
+                      );
+                }),
+              );
+            }),
           ),
         ),
       list: Effect.fn("RuntimeProvider.list")(function* (filter) {
-        const persistedPlans =
-          options.appliedPlanState === undefined ? [] : yield* listAppliedPlans(options.appliedPlanState);
-        const allPlans = [...plans.values(), ...persistedPlans.filter((plan) => !plans.has(plan.id))];
+        const allPlans =
+          options.appliedPlanState === undefined
+            ? [...plans.values()]
+            : yield* listObservedPlans(options.appliedPlanState);
 
         const snapshots = yield* Effect.forEach(allPlans, (plan) =>
           Effect.forEach(Object.values(plan.services), (service) =>
@@ -854,16 +918,21 @@ const assembleRuntimeProvider = (
   });
 };
 
-export const makeRuntimeProvider = (
+export const makeRuntimeProvider = Effect.fnUntraced(function* (
   options: ProviderLayerOptions = {},
-): Effect.Effect<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> =>
-  Effect.flatMap(Effect.serviceOption(AppPlanSanitizer), (found) =>
-    assembleRuntimeProvider(
-      options.sanitizeAppliedPlan !== undefined || found._tag === "None"
-        ? options
-        : { ...options, sanitizeAppliedPlan: found.value.sanitizeForPersistence },
-    ),
+): Effect.fn.Return<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> {
+  const ctx = yield* runtimeDiagnosticContext({
+    ...PODMAN_CTX_BASE,
+    env: { ...(options.env ?? process.env) },
+  });
+  const found = yield* Effect.serviceOption(AppPlanSanitizer);
+  return yield* assembleRuntimeProvider(
+    options.sanitizeAppliedPlan !== undefined || found._tag === "None"
+      ? options
+      : { ...options, sanitizeAppliedPlan: found.value.sanitizeForPersistence },
+    ctx,
   );
+});
 
 export const layer = (options: ProviderLayerOptions = {}) =>
   Layer.effect(RuntimeProvider, makeRuntimeProvider(options));
@@ -934,9 +1003,12 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        declaredCapabilities: (platform, arch) =>
+          podmanCapabilitiesForPlatform(platform, hostProxyContainerTargets(arch)),
         resourceOwnership: (ctx, root) =>
           makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
-        appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
+        appliedStateInventory: (ctx) => listAppliedPlans(ctx.stateStore),
+        appliedPlans: (ctx) => listObservedPlans(ctx.stateStore),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan } = yield* providerHostInputs;
           return yield* makeRuntimeProvider({
@@ -945,6 +1017,7 @@ export const plugin = definePlugin({
             appliedPlanState: ctx.stateStore,
             resolveContainerHelper,
             sanitizeAppliedPlan,
+            userDataRoot: paths.roots.userDataRoot,
           });
         }),
       },

@@ -44,7 +44,7 @@ services:
       const landofile = await Effect.runPromise(discover());
 
       // Then
-      expect(landofile.name).toBe("extension-app");
+      expect(landofile.document.name).toBe("extension-app");
     });
   });
 

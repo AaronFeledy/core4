@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { SecretNotFoundError } from "@lando/sdk/errors";
 
 describe("SecretNotFoundError", () => {
-  test("is a tagged error carrying the secret id", () => {
+  test("is a tagged error carrying the secret id and a default remediation", () => {
     const error = new SecretNotFoundError({
       message: "Secret 'MY_TOKEN' was not found",
       secret: "MY_TOKEN",
@@ -12,9 +12,10 @@ describe("SecretNotFoundError", () => {
     expect(error._tag).toBe("SecretNotFoundError");
     expect(error.secret).toBe("MY_TOKEN");
     expect(error.message).toContain("MY_TOKEN");
+    expect(error.remediation.trim().length).toBeGreaterThan(0);
   });
 
-  test("accepts an optional remediation", () => {
+  test("preserves an explicit remediation override", () => {
     const error = new SecretNotFoundError({
       message: "missing",
       secret: "API_KEY",

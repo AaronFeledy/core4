@@ -50,10 +50,13 @@ import {
   type ServiceSelector,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
+import { RedactionService } from "@lando/redaction/service";
 import { PreAppStartEvent } from "@lando/sdk/events";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import * as AppCacheService from "@lando/engine/cache/service";
@@ -80,6 +83,7 @@ import { globalStop, renderGlobalStopResult } from "../../src/cli/commands/meta/
 import { globalUninstall } from "../../src/cli/commands/meta/global-uninstall.ts";
 
 interface ApplyCall {
+  readonly environments: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly plan: AppPlan;
   readonly options: ApplyOptions;
 }
@@ -106,6 +110,8 @@ interface ProviderCalls {
 }
 
 type HarnessLayer = Layer.Layer<
+  | import("@lando/sdk/services").StateStore
+  | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | CacheService
@@ -173,25 +179,34 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
 
 const fakeServiceType = makeLegacyServiceTypeFake({
   id: "lando",
-  toServicePlan: ({ name, appRoot, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+  toServicePlan: ({
+    name,
+    service,
+    appRoot,
+    provider = ProviderId.make("lando"),
+    primary = false,
+    metadata,
+  }) =>
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "lando",
       provider,
       primary,
       artifact: { kind: "ref", ref: "lando-global-service:test" },
-      environment: { TOKEN: "${secret:GLOBAL_TOKEN}" },
+      environment: service.environment ?? {},
       workingDirectory: PortablePath.make("/app"),
-      appMount: {
-        source: AbsolutePath.make(appRoot),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "passthrough",
-      },
-      mounts: [],
-      storage: [],
+      mounts: [
+        {
+          type: "bind",
+          source: AbsolutePath.make(appRoot),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          excludes: [],
+          includes: [],
+          realization: "passthrough",
+          role: "app",
+        },
+      ],
       endpoints: [
         { _tag: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
       ],
@@ -272,9 +287,20 @@ const makeHarness = async (
             }));
       }),
     apply: (plan, applyOptions) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         calls.actions.push("apply");
-        calls.apply.push({ plan, options: applyOptions });
+        const resolve = applyOptions.resolveServiceEnvironment;
+        const environments = Object.fromEntries(
+          yield* Effect.forEach(Object.values(plan.services), (service) =>
+            (resolve === undefined
+              ? Effect.sync(() =>
+                  Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.String))(service.environment),
+                )
+              : resolve(service)
+            ).pipe(Effect.map((env) => [service.name, env] as const)),
+          ),
+        );
+        calls.apply.push({ plan, options: applyOptions, environments });
         return { changed: true };
       }).pipe(
         Effect.flatMap((result) => {
@@ -308,6 +334,7 @@ const makeHarness = async (
               providerId: "lando",
               operation: "destroy",
               message: "provider unavailable",
+              remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
             }),
           )
         : Effect.sync(() => {
@@ -324,6 +351,8 @@ const makeHarness = async (
             providerId: String(providerId),
             operation: "inspect",
             message: "provider unavailable",
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `inspect`.",
           }),
         );
       }
@@ -375,6 +404,7 @@ const makeHarness = async (
     buildApp: () => Effect.void,
   });
   const layer = Layer.mergeAll(
+    testStateStoreLayer,
     PrivateFileAccessService.layer,
     Layer.succeed(PathsService, makeLandoPaths()),
     LandoConfigService.layer,
@@ -509,7 +539,21 @@ const makeHarness = async (
       ),
     ),
   );
-  return { dataRoot, layer, calls, events };
+  const resolvedLayer = Layer.mergeAll(
+    layer,
+    EnvironmentValueResolverLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(layer, RedactionService.layer.pipe(Layer.provide(layer)))),
+    ),
+  );
+  return { dataRoot, layer: resolvedLayer, calls, events };
+};
+
+const authorGlobalSecretBindings = async (dataRoot: string, services: ReadonlyArray<string>) => {
+  await mkdir(join(dataRoot, "global"), { recursive: true });
+  await writeFile(
+    join(dataRoot, "global", ".lando.local.yml"),
+    `services:\n${services.map((name) => `  ${name}:\n    environment:\n      TOKEN: "\${secret:GLOBAL_TOKEN}"\n`).join("")}`,
+  );
 };
 
 const withHarness = async <T>(
@@ -1124,6 +1168,7 @@ describe("meta:global command effects", () => {
 
   test("start materializes the global app, applies the global-rooted plan, and inspects each service", async () => {
     await withHarness(async (harness) => {
+      await authorGlobalSecretBindings(harness.dataRoot, ["mail", "proxy"]);
       const result = await Effect.runPromise(globalStart({}).pipe(Effect.provide(harness.layer)));
 
       expect(harness.calls.apply).toHaveLength(2);
@@ -1134,15 +1179,15 @@ describe("meta:global command effects", () => {
       expect(harness.calls.apply[0]?.plan.name).toBe("global");
       expect(harness.calls.apply[0]?.plan.root).toBe(AbsolutePath.make(join(harness.dataRoot, "global")));
       expect(harness.calls.apply[0]?.options.reconcile).toBe(false);
-      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("mail")]).toEqual({
+      expect(harness.calls.apply[0]?.environments[ServiceName.make("mail")]).toMatchObject({
         TOKEN: "resolved-global-token",
       });
-      expect(harness.calls.apply[1]?.options.serviceEnvironment?.[ServiceName.make("proxy")]).toEqual({
+      expect(harness.calls.apply[1]?.environments[ServiceName.make("proxy")]).toMatchObject({
         TOKEN: "resolved-global-token",
       });
       expect(harness.calls.apply[1]?.plan.services[ServiceName.make("proxy")]?.environment).toEqual({
         LANDO_HOST_IP: "host.lando.internal",
-        TOKEN: "${secret:GLOBAL_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "GLOBAL_TOKEN" },
       });
       expect(harness.calls.apply.map(({ plan }) => Object.keys(plan.services))).toEqual([
         ["mail"],
@@ -1646,6 +1691,19 @@ describe("meta:global command effects", () => {
     });
   });
 
+  test("config reports a canonical TypeScript Landofile as the overlay path", async () => {
+    await withHarness(async (harness) => {
+      await materializeDist(harness);
+      const root = join(harness.dataRoot, "global");
+      await rm(join(root, ".lando.yml"), { force: true });
+      await writeFile(join(root, ".lando.ts"), "export default { runtime: 4 };\n");
+
+      const result = await Effect.runPromise(globalConfig().pipe(Effect.provide(harness.layer)));
+
+      expect(result.userLandofile).toBe(join(root, ".lando.ts"));
+    });
+  });
+
   test("config displays authored overrides consistently with global planning", async () => {
     // Given generated services and a canonical override written through the config command.
     await withHarness(async (harness) => {
@@ -1668,7 +1726,7 @@ describe("meta:global command effects", () => {
         ISSUE1250: "authored",
       });
       if (!loaded.materialized) throw new Error("expected global plan");
-      expect(result.landofile).toEqual(loaded.landofile);
+      expect(result.landofile).toEqual(loaded.landofile.document);
     });
   });
 
@@ -1895,6 +1953,7 @@ describe("meta:global command effects", () => {
 
   test("rebuild publishes rebuilt routes and reports route URLs without router setup", async () => {
     await withHarness(async (harness) => {
+      await authorGlobalSecretBindings(harness.dataRoot, ["mail", "proxy"]);
       const result = await Effect.runPromise(globalRebuild({}).pipe(Effect.provide(harness.layer)));
 
       expect(harness.calls.buildOptions).toEqual([{ refresh: true }, { refresh: true }]);
@@ -1904,15 +1963,15 @@ describe("meta:global command effects", () => {
       expect(harness.calls.build).toHaveLength(2);
       expect(harness.calls.apply).toHaveLength(2);
       expect(harness.calls.apply[0]?.options.reconcile).toBe(true);
-      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("mail")]).toEqual({
+      expect(harness.calls.apply[0]?.environments[ServiceName.make("mail")]).toMatchObject({
         TOKEN: "resolved-global-token",
       });
-      expect(harness.calls.apply[1]?.options.serviceEnvironment?.[ServiceName.make("proxy")]).toEqual({
+      expect(harness.calls.apply[1]?.environments[ServiceName.make("proxy")]).toMatchObject({
         TOKEN: "resolved-global-token",
       });
       expect(harness.calls.apply[1]?.plan.services[ServiceName.make("proxy")]?.environment).toEqual({
         LANDO_HOST_IP: "host.lando.internal",
-        TOKEN: "${secret:GLOBAL_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "GLOBAL_TOKEN" },
       });
       expect(
         Object.values(harness.calls.apply[1]?.plan.services ?? {}).find(
@@ -2048,7 +2107,7 @@ describe("meta:global command effects", () => {
     await withHarness(async (harness) => {
       const missingProvider = new NoProviderInstalledError({
         message: "No runtime provider is installed.",
-        suggestion: "Run lando setup.",
+        remediation: "Run lando setup.",
       });
       const layer = Layer.mergeAll(
         harness.layer,

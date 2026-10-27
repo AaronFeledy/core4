@@ -8,6 +8,7 @@ import {
   AppId,
   AppPlan,
   AppRef,
+  CurrentExecutableAppPlan,
   DataStorePlan,
   PortablePath,
   ProviderId,
@@ -38,7 +39,6 @@ const servicePlanFixture: typeof ServicePlan.Encoded = {
       realization: "passthrough",
     },
   ],
-  storage: [],
   endpoints: [
     {
       _tag: "internal",
@@ -66,7 +66,6 @@ const appPlanFixture: typeof AppPlan.Encoded = {
   provider: "lando",
   services: { web: servicePlanFixture },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -116,6 +115,28 @@ describe("AppRef", () => {
 });
 
 describe("ServicePlan", () => {
+  test.each(["redis-password", { _tag: "SecretRef", reference: "REDIS_PASSWORD" }])(
+    "rejects coexisting SQL connection and non-SQL credentials with password %j",
+    (password) => {
+      // Given
+      const creds = { user: "default", password, database: "0" };
+      const service = {
+        ...servicePlanFixture,
+        connection: { family: "postgres", port: 5432, creds },
+        nonSqlCreds: creds,
+      };
+      // When
+      const result = Schema.decodeUnknownResult(ServicePlan)(service);
+      const appResult = Schema.decodeUnknownResult(AppPlan)({
+        ...appPlanFixture,
+        services: { web: service },
+      });
+      // Then
+      expect(Result.isFailure(result)).toBe(true);
+      expect(Result.isFailure(appResult)).toBe(true);
+    },
+  );
+
   test("decodes a minimal MVP service (one mount, one endpoint) and preserves required fields", () => {
     const decoded = Schema.decodeUnknownSync(ServicePlan)(servicePlanFixture);
     expect(decoded.name).toBe(ServiceName.make("web"));
@@ -124,8 +145,10 @@ describe("ServicePlan", () => {
     expect(decoded.primary).toBe(true);
     expect(decoded.environment).toEqual({ NODE_ENV: "development" });
     expect(decoded.mounts).toHaveLength(1);
-    expect(decoded.mounts[0]?.target).toBe(PortablePath.make("/app"));
-    expect(decoded.mounts[0]?.realization).toBe("passthrough");
+    const mount = decoded.mounts[0];
+    if (mount === undefined || mount.type !== "bind") throw new Error("expected bind mount");
+    expect(mount.target).toBe(PortablePath.make("/app"));
+    expect(mount.realization).toBe("passthrough");
     expect(decoded.endpoints).toHaveLength(1);
     const endpoint = decoded.endpoints[0];
     if (endpoint === undefined) throw new Error("endpoint missing");
@@ -136,6 +159,22 @@ describe("ServicePlan", () => {
     expect(endpoint.port).toBe(3000);
     expect(endpoint.protocol).toBe("http");
     expect(decoded.metadata.runtime).toBe(4);
+  });
+
+  test.each([
+    "${secret:TOKEN}",
+    { _tag: "SecretRef", reference: "TOKEN" },
+    { _tag: "BoundText", parts: ["prefix", { reference: "TOKEN", encoding: "uri-component" }] },
+  ] as const)("round-trips environment descriptors through JSON: %j", (value) => {
+    // Given
+    const authored = { ...servicePlanFixture, environment: { TOKEN: value } };
+    // When
+    const json = JSON.stringify(
+      Schema.encodeSync(ServicePlan)(Schema.decodeUnknownSync(ServicePlan)(authored)),
+    );
+    const decoded = Schema.decodeUnknownSync(ServicePlan)(JSON.parse(json));
+    // Then
+    expect(decoded.environment).toEqual({ TOKEN: value });
   });
 
   test("rejects a malformed service (missing required `metadata`) with a structured ParseError", () => {
@@ -162,6 +201,47 @@ describe("ServicePlan", () => {
 });
 
 describe("AppPlan", () => {
+  test("preserves current eligibility and typed event values through a strict JSON roundtrip", () => {
+    // Given
+    const input = {
+      ...appPlanFixture,
+      valueModel: 1,
+      events: {
+        "pre-start": [
+          {
+            step: { cmd: "echo ready", env: { TOKEN: { _tag: "SecretRef", reference: "TOKEN" } } },
+            source: "host",
+            sourceIndex: 3,
+            status: "active",
+          },
+        ],
+      },
+    } as const;
+    const strict = { onExcessProperty: "error" } as const;
+    // When
+    const plan = Schema.decodeUnknownSync(CurrentExecutableAppPlan)(input, strict);
+    const decoded = Schema.decodeUnknownSync(CurrentExecutableAppPlan)(
+      JSON.parse(JSON.stringify(Schema.encodeSync(CurrentExecutableAppPlan)(plan))),
+      strict,
+    );
+    // Then
+    expect(decoded.valueModel).toBe(1);
+    expect(decoded.events).toEqual(input.events);
+  });
+
+  test("preserves missing legacy eligibility and requires an explicit current marker", () => {
+    // Given
+    const historical = appPlanFixture;
+    // When
+    const observed = Schema.decodeUnknownSync(AppPlan)(historical);
+    const executable = Schema.decodeUnknownResult(CurrentExecutableAppPlan)(historical);
+    // Then
+    expect(Object.hasOwn(observed, "valueModel")).toBe(false);
+    expect(Result.isFailure(executable)).toBe(true);
+    expect(
+      Schema.decodeUnknownSync(CurrentExecutableAppPlan)({ ...historical, valueModel: 1 }).valueModel,
+    ).toBe(1);
+  });
   test("decodes data stores with default data kind and explicit cache keys", () => {
     const dataStore = Schema.decodeUnknownSync(DataStorePlan)({
       name: "myapp-db-data",
@@ -191,7 +271,7 @@ describe("AppPlan", () => {
     expect(web.mounts).toHaveLength(1);
     expect(web.endpoints).toHaveLength(1);
     expect(decoded.routes).toEqual([]);
-    expect(decoded.networks).toEqual([]);
+    expect(decoded.networking).toBeUndefined();
     expect(decoded.stores).toEqual([]);
     expect(decoded.metadata.runtime).toBe(4);
   });

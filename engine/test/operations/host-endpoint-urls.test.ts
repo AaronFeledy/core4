@@ -25,7 +25,13 @@ test.each([
         { _tag: "internal", protocol: "unix", socketPath: PortablePath.make("/run/db.sock") },
       ],
     } satisfies typeof web;
-    const rows = projectServiceConnections({ service, state: "running", publications, routes: [] });
+    const rows = projectServiceConnections({
+      plan: { slug: "test" },
+      service,
+      state: "running",
+      publications,
+      routes: [],
+    });
     expect(rows.filter((row) => row.scope === "app").map((row) => row.url)).toEqual([
       "tcp://web:15432",
       "udp://web:15432",

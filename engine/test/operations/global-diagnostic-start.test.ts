@@ -105,7 +105,9 @@ for (const failBuild of [false, true]) {
       const harness = makeHarness({ plannedApp: appPlan });
       const start = startApp({}, { plan: appPlan, root, app: { kind: "user", id: appPlan.id, root } }).pipe(
         Effect.provideService(GlobalAppService, globalApp),
-        Effect.provideService(AppPlanner, { plan: () => Effect.succeed(globalPlan) }),
+        Effect.provideService(AppPlanner, {
+          plan: () => Effect.succeed({ ...globalPlan, valueModel: 1 as const }),
+        }),
         Effect.provideService(RuntimeProviderRegistry, {
           appliedPlansFor: () => Effect.succeed([]),
           resolveAppliedPlan: () => Effect.succeed(undefined),
@@ -134,6 +136,8 @@ for (const failBuild of [false, true]) {
                         message: "injected build failure",
                         providerId: "lando",
                         operation: "build",
+                        remediation:
+                          "Install or start the `lando` provider and confirm it can perform `build`.",
                       }),
                     );
                   return built;

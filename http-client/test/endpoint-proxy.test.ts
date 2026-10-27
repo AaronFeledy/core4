@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 
 test.each(["http://remote.invalid/status", "http://app.lndo.site/status", "local", "no-proxy", "pinned"])(
   "routes %s through the real Bun transport with ambient proxy configured",
@@ -49,7 +50,7 @@ test.each(["http://remote.invalid/status", "http://app.lndo.site/status", "local
     try {
       // When HttpClient opens a header-only response (no shell or external service).
       const child = Bun.spawn([process.execPath, "--eval", script], {
-        cwd: new URL("../../", import.meta.url).pathname,
+        cwd: fileURLToPath(new URL("../../", import.meta.url)),
         env: {
           ...process.env,
           HTTP_PROXY: proxy.url.href,

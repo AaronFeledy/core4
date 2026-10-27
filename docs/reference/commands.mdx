@@ -116,7 +116,7 @@ Aliases: `lando config:explain`
 
 ## `lando app:config:lint`
 
-Validate the current app's Landofile schema and resolved event names.
+Check Landofile configuration, declared listeners, routes, and event names.
 
 Aliases: `lando config:lint`
 
@@ -193,7 +193,7 @@ Validate the app's Landofile against the schema.
 
 ## `lando app:destroy`
 
-Destroy the current Lando app (preserves volumes unless --purge or --volumes).
+Destroy the current Lando app (preserves named volumes unless --purge or --volumes).
 
 Aliases: `lando destroy`
 
@@ -524,7 +524,7 @@ Flags:
 
 ## `lando app:ssh`
 
-Open an interactive shell in a Lando service (alias of `exec --tty --interactive sh -l`).
+Open an interactive shell in a Lando service (alias of `exec --tty --interactive` with bash when present, otherwise sh).
 
 Aliases: `lando ssh`
 

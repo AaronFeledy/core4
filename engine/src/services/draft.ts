@@ -10,7 +10,14 @@
  */
 import { DateTime } from "effect";
 
-import type { ServicePlan } from "@lando/sdk/schema";
+import type {
+  DatabaseConnection,
+  Environment,
+  EnvironmentValue,
+  ServiceCreds,
+  ServicePlan,
+  VolumeMountPlan,
+} from "@lando/sdk/schema";
 import type {
   ServiceAppMountIntent,
   ServiceBuildStepIntent,
@@ -21,9 +28,12 @@ import type {
 export interface BaseSeed {
   readonly name: ServicePlan["name"];
   readonly type: ServicePlan["type"];
+  readonly serviceTypeId?: string;
   readonly provider: ServicePlan["provider"];
   readonly primary: ServicePlan["primary"];
-  readonly environment?: Readonly<Record<string, string>>;
+  readonly environment?: Environment;
+  readonly connection?: DatabaseConnection;
+  readonly nonSqlCreds?: ServiceCreds;
   readonly defaultFeatures: ReadonlyArray<ServiceFeatureDefinition>;
 }
 
@@ -31,12 +41,15 @@ export interface BaseSeed {
 export interface DraftServicePlan {
   name: ServicePlan["name"];
   type: string;
+  readonly serviceTypeId?: string;
   provider: ServicePlan["provider"];
   primary: boolean;
   artifact?: ServicePlan["artifact"];
   command?: ServicePlan["command"];
   entrypoint?: ServicePlan["entrypoint"];
-  environment: Record<string, string>;
+  environment: Record<string, EnvironmentValue>;
+  readonly connection?: DatabaseConnection;
+  readonly nonSqlCreds?: ServiceCreds;
   user?: string;
   workingDirectory?: ServicePlan["workingDirectory"];
   appMount?: ServiceAppMountIntent;
@@ -44,12 +57,13 @@ export interface DraftServicePlan {
   featureIds?: ReadonlyArray<string>;
   buildSteps: ServiceBuildStepIntent[];
   extensions?: Record<string, unknown>;
-  storage: Array<ServicePlan["storage"][number]>;
+  storage: Array<Omit<VolumeMountPlan, "type">>;
   /** Mounted trees the planned service user must own, by container target. */
   storageOwnership?: Array<{ target: string; seededOwners: ReadonlyArray<string> }>;
   endpoints: Array<ServicePlan["endpoints"][number]>;
   dependsOn: Array<ServicePlan["dependsOn"][number]>;
   healthcheck?: ServicePlan["healthcheck"];
+  readiness?: ServicePlan["readiness"];
   certs?: ServicePlan["certs"];
   hostAliases: Array<ServicePlan["hostAliases"][number]>;
   provenance?: ServicePlan["provenance"];
@@ -75,9 +89,12 @@ export const sortRecord = <V>(input: Readonly<Record<string, V>>): Record<string
 export const makeDraft = (base: BaseSeed): DraftServicePlan => ({
   name: base.name,
   type: base.type,
+  ...(base.serviceTypeId === undefined ? {} : { serviceTypeId: base.serviceTypeId }),
   provider: base.provider,
   primary: base.primary,
   environment: sortRecord(base.environment ?? {}),
+  ...(base.connection === undefined ? {} : { connection: base.connection }),
+  ...(base.nonSqlCreds === undefined ? {} : { nonSqlCreds: base.nonSqlCreds }),
   mounts: [],
   featureIds: base.defaultFeatures.map((feature) => feature.id),
   buildSteps: [],

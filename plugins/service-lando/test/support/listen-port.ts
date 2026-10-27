@@ -11,6 +11,7 @@ export const nativeListenPortSuite = (input: {
   readonly variable: string;
   readonly defaultPort: number;
   readonly serverCommand?: string;
+  readonly startupCommand?: string;
   readonly reservedPorts?: readonly number[];
 }) => {
   const type = input.serviceType.id;
@@ -28,7 +29,8 @@ export const nativeListenPortSuite = (input: {
     test("keeps the published listener when no port is authored", async () => {
       const result = await plan({});
       expect(result.environment[input.variable]).toBe(String(input.defaultPort));
-      expect(result.command).toBeUndefined();
+      if (input.startupCommand === undefined) expect(result.command).toBeUndefined();
+      else expect(result.command?.[0]).toBe(input.startupCommand);
     });
     test.each([{ port }, { port, environment: { [input.variable]: String(port) } }])(
       "moves the listener and endpoint for %j",

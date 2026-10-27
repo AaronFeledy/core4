@@ -8,7 +8,7 @@ import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  CurrentExecutableAppPlan,
   LandofileShape,
   ProviderId,
   ServiceName,
@@ -72,7 +72,8 @@ describe("opensearch service type — live integration: cluster health endpoint"
           serviceName: "search",
           metadata,
         });
-        const plan: AppPlan = {
+        const plan = CurrentExecutableAppPlan.make({
+          valueModel: 1,
           id: appId,
           name: "OpenSearch Integration App",
           slug: "osinttest",
@@ -80,12 +81,11 @@ describe("opensearch service type — live integration: cluster health endpoint"
           provider: providerId,
           services: { [search.name]: search },
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata: search.metadata,
           extensions: {},
-        };
+        });
 
         const api = makePodmanApiClient(socketPath);
         try {

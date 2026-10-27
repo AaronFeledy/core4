@@ -63,7 +63,10 @@ const unknownServiceError = (requested: string, plan: AppPlan): ToolingExecError
         ? `logs: service ${requested} is not in the app plan.`
         : `logs: service ${requested} is not in the app plan (available: ${available.join(", ")}).`,
     tool: "app:logs",
-    ...(first === undefined ? {} : { remediation: `Example: lando logs --service ${first}` }),
+    remediation:
+      first === undefined
+        ? "Add a service to the Landofile before running lando logs --service."
+        : `Example: lando logs --service ${first}`,
   });
 };
 
@@ -98,6 +101,7 @@ const validateSource = (
       new ToolingExecError({
         message: `logs: unknown log source "${requested}" (available: ${known.join(", ")}).`,
         tool: "app:logs",
+        remediation: `Pass --source with one of: ${known.join(", ")}.`,
       }),
     );
   }
@@ -112,6 +116,8 @@ const validateSource = (
     new ToolingExecError({
       message: `logs: log source "${requested}" is unavailable because the runtime provider does not advertise serviceLogSources.`,
       tool: "app:logs",
+      remediation:
+        "Use a provider that advertises serviceLogSources, or omit --source / use --source container.",
     }),
   );
 };
@@ -125,6 +131,7 @@ const invalidSinceError = (raw: string): ToolingExecError =>
   new ToolingExecError({
     message: `logs: invalid --since value "${raw}". Use a duration (e.g. 30s, 15m, 2h, 7d) or an RFC3339 timestamp (e.g. 2026-05-15T00:00:00Z).`,
     tool: "app:logs",
+    remediation: "Pass --since as a duration like 15m or an RFC3339 timestamp like 2026-05-15T00:00:00Z.",
   });
 
 const daysInUtcMonth = (year: number, month: number): number =>
@@ -319,6 +326,7 @@ const drainLogFollow = Effect.fnUntraced(function* (
     (chunk: LogChunk) =>
       Option.isSome(sink)
         ? sink.value.emit({
+            kind: "record",
             _tag: chunk.stream,
             chunk: chunk.line,
             service: String(chunk.service),

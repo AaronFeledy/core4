@@ -76,7 +76,9 @@ test("a layered recipe removal emits native tags without relocation diagnostics"
     const local = result.targets.find(({ path }) => basename(path) === ".lando.local.yml");
     expect(local?.content).toContain("!reset");
     expect(local?.content).toContain("!override");
-    expect(result.diagnostics.filter(({ kind }) => kind === "needs-review")).toEqual([]);
+    expect(
+      result.diagnostics.filter(({ kind }) => kind === "needs-review").map(({ keyPath }) => keyPath),
+    ).toEqual([["recipe"], ["recipe"]]);
   }));
 
 const boundaries: readonly (readonly [TransactionCheckpoint, number])[] = [

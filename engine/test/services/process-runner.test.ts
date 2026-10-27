@@ -1,26 +1,19 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
-import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, ProcessRunner } from "@lando/sdk/services";
-import type { LandoEvent } from "@lando/sdk/services";
+import type { LandoEvent, ProcessStreamChunk } from "@lando/sdk/services";
 import * as BunProcessRunner from "../../src/services/process-runner";
 import { awaitSinkResult, resolveProcessCgroup } from "../../src/services/process-runner";
 
-const redactionLayer = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => ["topsecret"]),
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
-  }),
-);
+import { testRedactionLayer } from "../redaction.ts";
+
+const redactionLayer = testRedactionLayer(["topsecret"]);
 
 const captureEventsLayer = (events: LandoEvent[]) =>
   Layer.succeed(
@@ -356,36 +349,153 @@ describe("BunProcessRunner.layer", () => {
     ).rejects.toThrow("EPIPE");
   });
 
-  test("streamWithExit applies output backpressure when the consumer pauses", async () => {
+  test.each([
+    { pipes: ["stdout"] as const },
+    { pipes: ["stderr"] as const },
+    { pipes: ["stdout", "stderr"] as const },
+  ])("streamWithExit applies output backpressure when the consumer pauses: %j", async ({ pipes }) => {
+    const child = Bun.spawn([process.execPath, "-e", "await Bun.stdin.text();"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const count = 64;
+    const active = new Set<ProcessStreamChunk["kind"]>(pipes);
+    // One consumer event, sixteen queued events, and one held read per pipe.
+    const readAheadLimit = 17 + pipes.length;
+    let reads = 0;
+    let closed = 0;
+    const atCapacity = Promise.withResolvers<void>();
+    const expected = { stdout: createHash("sha256"), stderr: createHash("sha256") };
+    const actual = { stdout: createHash("sha256"), stderr: createHash("sha256") };
+    // Preserve real child lifetime semantics while controlling transport chunk sizes.
+    const spawn = spyOn(Bun, "spawn").mockReturnValue(child);
+    let paused = false;
+    let exitCode: number | undefined;
+    try {
+      for (const kind of ["stdout", "stderr"] as const) {
+        let index = 0;
+        const stream = new ReadableStream<Uint8Array>(
+          {
+            async pull(controller) {
+              if (!active.has(kind) || index === count) {
+                controller.close();
+                if (active.has(kind) && ++closed === pipes.length) await child.stdin.end();
+                return;
+              }
+              const size = index % 3 === 0 ? 1 : index % 3 === 1 ? 65536 : 262144;
+              const chunk = new Uint8Array(size).fill(index++);
+              expected[kind].update(chunk);
+              controller.enqueue(chunk);
+              if (++reads === readAheadLimit) atCapacity.resolve();
+            },
+          },
+          { highWaterMark: 0 },
+        );
+        Object.defineProperty(child, kind, { value: stream });
+      }
+      await Effect.runPromise(
+        Effect.flatMap(ProcessRunner, (runner) =>
+          runner.streamWithExit({ cmd: process.execPath, args: [] }).pipe(
+            Stream.runForEach((event) => {
+              if ("exitCode" in event) {
+                exitCode = event.exitCode;
+                return Effect.void;
+              }
+              actual[event.kind].update(event.chunk);
+              if (paused) return Effect.void;
+              paused = true;
+              return Effect.promise(async () => {
+                await atCapacity.promise;
+                // Let runnable producer microtasks settle without relying on a timer duration.
+                await new Promise<void>((resolve) => setImmediate(resolve));
+                expect(reads).toBe(readAheadLimit);
+              });
+            }),
+          ),
+        ).pipe(Effect.provide(BunProcessRunner.layer), Effect.timeout("2 seconds")),
+      );
+      expect(paused).toBe(true);
+      expect(reads).toBe(count * pipes.length);
+      expect(exitCode).toBe(0);
+      for (const kind of pipes) expect(actual[kind].digest("hex")).toBe(expected[kind].digest("hex"));
+    } finally {
+      spawn.mockRestore();
+      child.kill("SIGKILL");
+      await child.exited;
+    }
+  });
+
+  test("streamWithExit preserves every output byte and exit after a child startup barrier", async () => {
     const directory = await mkdtemp(join(tmpdir(), "lando-process-backpressure-"));
     const marker = join(directory, "finished");
-    let checked = false;
+    const ready = new TextEncoder().encode("ready\n");
+    const output = new Uint8Array(65536 * 128).fill(65);
+    const expected = createHash("sha256").update(ready).update(output).digest("hex");
+    const actual = createHash("sha256");
+    let bytes = 0;
+    let started = false;
+    let exitCode: number | undefined;
+    const barrier = Promise.withResolvers<void>();
+    async function* stdin() {
+      await barrier.promise;
+      yield new Uint8Array([1]);
+    }
+    const program = String.raw`
+      const fs = require("node:fs");
+      let written = 0, calls = 0;
+      function writeAll(buffer) {
+        let offset = 0;
+        while (offset < buffer.length) {
+          const count = fs.writeSync(1, buffer, offset, buffer.length - offset);
+          if (count <= 0) throw new Error("stdout made no progress");
+          offset += count;
+          written += count;
+          calls++;
+        }
+      }
+      writeAll(Buffer.from("ready\n"));
+      await Bun.stdin.text();
+      const chunk = Buffer.alloc(65536, 65);
+      for (let i = 0; i < 128; i++) writeAll(chunk);
+      fs.writeFileSync(process.argv[1], JSON.stringify({ written, calls }));
+      process.exitCode = 23;
+    `;
     try {
       await Effect.runPromise(
         Effect.flatMap(ProcessRunner, (runner) =>
           runner
             .streamWithExit({
               cmd: process.execPath,
-              args: [
-                "-e",
-                'const fs = require("node:fs"); const chunk = Buffer.alloc(65536, 65); for (let i = 0; i < 128; i++) fs.writeSync(1, chunk); fs.writeFileSync(process.argv[1], "done");',
-                marker,
-              ],
+              args: ["-e", program, marker],
+              stdinStream: stdin(),
             })
             .pipe(
               Stream.runForEach((event) => {
-                if ("exitCode" in event || checked) return Effect.void;
-                checked = true;
+                if ("exitCode" in event) {
+                  exitCode = event.exitCode;
+                  return Effect.void;
+                }
+                actual.update(event.chunk);
+                bytes += event.chunk.length;
+                if (started || bytes < ready.length) return Effect.void;
+                expect(bytes).toBe(ready.length);
+                started = true;
                 return Effect.promise(async () => {
-                  await Bun.sleep(200);
                   expect(await Bun.file(marker).exists()).toBe(false);
+                  barrier.resolve();
                 });
               }),
             ),
         ).pipe(Effect.provide(BunProcessRunner.layer)),
       );
-      expect(checked).toBe(true);
-      expect(await Bun.file(marker).exists()).toBe(true);
+      expect(started).toBe(true);
+      expect(bytes).toBe(ready.length + output.length);
+      expect(actual.digest("hex")).toBe(expected);
+      expect(exitCode).toBe(23);
+      const writer = await Bun.file(marker).json();
+      expect(writer.written).toBe(bytes);
+      expect(writer.calls).toBeGreaterThanOrEqual(129);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

@@ -15,8 +15,8 @@ interface LegacyErrorPosition {
 export const legacyParseError = (
   file: string,
   message: string,
-  position?: LegacyErrorPosition,
-  remediation?: string,
+  position: LegacyErrorPosition | undefined,
+  remediation: string,
 ): LandofileParseError =>
   new LandofileParseError({
     message,

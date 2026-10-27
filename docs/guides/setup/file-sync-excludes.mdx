@@ -6,7 +6,7 @@ timeout: 60000
 tags: [beta, docs, file-sync, excludes, setup]
 ---
 
-# Exclude paths from the app mount
+# Exclude paths from the app mount and other binds
 
 Services with an app mount get their own empty `node_modules`, `vendor`, and `tmp` directories. Dependencies installed there through Lando tooling live in the service, not on the host. With accelerated file sync, those directories are also excluded from synchronization. The bundled accelerated path currently supports the managed `lando` provider on native Windows; other hosts and providers keep their ordinary mount behavior. Use `includes` to keep a default-excluded path on the host instead.
 
@@ -14,7 +14,7 @@ Services with an app mount get their own empty `node_modules`, `vendor`, and `tm
 
 Add per-service patterns under `services.<name>.appMount.excludes` in your Landofile. Your patterns are appended after the defaults. Duplicates are removed.
 
-If a path must stay on the host even though a default or a preset excludes it, add it to `services.<name>.appMount.includes`. Includes match whole patterns: `vendor` brings back all of `vendor/`, while `vendor/my-package` reopens nothing.
+If a path must stay on the host even though a default or a preset excludes it, add it to `services.<name>.appMount.includes`. An include that names the exclude, such as `vendor`, keeps all of `vendor/` on the host. A deeper path, such as `vendor/acme/sdk`, keeps only that directory on the host while the rest of `vendor/` stays in the service. Includes are literal paths relative to the mount: an absolute path, `..`, or a glob character fails `lando app:config:lint`.
 
 ```yaml
 services:
@@ -32,11 +32,47 @@ services:
 
 From the app directory, run `lando app:config:lint --format=json`, then `lando start` to apply the changed mounts. Check the affected path inside the service; the [verification commands below](#verify) distinguish a fresh overlay from a host-backed directory.
 
-Lando 3's `!vendor` spelling is not accepted; `includes` is the one way to keep a path. The Lando 3 translator rewrites it for you.
+Lando 3's `!vendor` spelling is not accepted; `includes` is the one way to keep a path. The Lando 3 translator rewrites `!vendor` and deeper entries like `!vendor/acme` into `includes` for you.
 
 An authored `appMount` block needs `target`, the container path of the app mount. `/app` keeps the default. A different path moves the mount, and on Lando service types the working directory, `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, and a relative `webroot` follow it. When you only move the mount, write `appMount: /site`; it means the same as a block with just `target: /site`. Use the block form when you need `excludes`, `includes`, or `readOnly`. The path must be absolute.
 
 Set `appMount: false` when a service does not use your app's code. Lando mounts no app source and sets no `LANDO_APP_ROOT`, `LANDO_PROJECT_MOUNT`, or `LANDO_WEBROOT`. The container starts in the image's own working directory unless you set `workingDirectory`. On webroot-serving types (`php`, `nginx`, `apache`, `static`, `tomcat`), a relative or omitted `webroot` fails planning: set an absolute container path or remove `appMount: false`. An absolute `webroot` such as `/var/www/html` serves content the image provides. Data stores already skip the app mount. An authored `mounts:` entry whose target is the app mount path replaces Lando's app mount instead.
+
+## Mount a host directory inside an excluded one
+
+Lando mounts every path a service gets from the shallowest to the deepest, so a deeper path always shows through the one above it. To put a host directory inside an excluded directory, mount it at its own path:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    primary: true
+    mounts:
+      - source: ./packages/ui
+        target: /app/node_modules/@acme/ui
+```
+
+`/app/node_modules` stays the service's own volume, and `/app/node_modules/@acme/ui` is your host's `packages/ui`. A mount at exactly an excluded path, such as `target: /app/vendor`, replaces that overlay instead of nesting inside it.
+
+Each path takes one mount. Two entries from `mounts:`, `storage:`, and `tmpfs:` at the same path fail `lando app:config:lint`, which names both. A Compose `volumes:` entry or `configs:` grant at a path that `mounts:`, `storage:`, or `tmpfs:` already uses is dropped in their favor; two Compose entries at one path fail lint, as they would in Compose.
+
+## Exclude paths from other bind mounts
+
+A host bind under `mounts:` takes the same `excludes` and `includes` as the app mount. It starts without the default excludes, so list every path you want the service to own:
+
+```yaml
+services:
+  tools:
+    type: "node:22"
+    appMount: false
+    mounts:
+      - source: ./tools
+        target: /tools
+        excludes:
+          - node_modules
+```
+
+`/tools/node_modules` becomes a volume that belongs to the `tools` service. `excludes` and `includes` work only on host binds; on a `volume` or `tmpfs` mount, lint fails.
 
 ## Framework presets
 
@@ -46,9 +82,9 @@ Some service types add their own excludes on top of the defaults. Python adds `_
 
 An excluded directory gets an empty volume overlay, one per service, so two services never share an excluded directory. When a second service needs the same `vendor/` or `node_modules/`, include it on both.
 
-A volume you mount yourself inside the app mount works the same way, so `storage: [/app/node_modules]` and `excludes: [node_modules]` give the same result. Use `storage` when you want to name the volume or share it across services with `scope: app`. A `tmpfs` entry under `mounts:` is the throwaway version.
+A volume you mount yourself inside the app mount works the same way, so `storage: [/app/node_modules]` and `excludes: [node_modules]` give the same result. Use `storage` when you want to name the volume or share it across services with `scope: app`. A `tmpfs` mount at the same path, under `mounts:` or the service's `tmpfs:` list, is the throwaway version: it replaces the overlay with an in-memory directory that starts empty every time the container starts.
 
-An overlay can only cover a directory. When an excluded path is a file on the host, Lando skips the overlay and the file mounts as-is. An accelerated file-sync session still leaves it out.
+An overlay can only cover a directory. When an excluded path is a file on the host, Lando skips the overlay and the file mounts as-is. An accelerated file-sync session still leaves it out, along with every other path mounted beneath the app mount, including nested binds.
 
 ## Git
 
@@ -74,6 +110,15 @@ lando exec app -- git -C /app status --short
 
 The first prints nothing on a fresh service. The second works with a native Linux app mount; with accelerated sync and the default `.git` exclusion, it fails with `not a git repository`.
 
+To see the planned layout without starting anything, refresh the plan and read `lando info --format=json`:
+
+```sh
+lando app:cache:refresh
+lando info --format=json
+```
+
+Each entry under `services[].mounts` has a `type` (`bind`, `volume`, or `tmpfs`) and a `target`, listed shallowest first, plus a `provenance` that says why it is there: `authored` for your Landofile, `service` for the service type, `derived` for an excluded directory's volume or a nested include. Before `lando start`, its `observation` is `unknown`.
+
 Lint the excludes before you start. The check reads the Landofile. It does not boot a sync session.
 
 <Guide>
@@ -85,6 +130,20 @@ Lint the excludes before you start. The check reads the Landofile. It does not b
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"excludes\":\\s*\\[\\s*\"dist\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"includes\":\\s*\\[\\s*\"vendor\"" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="nested-mounts" render>
+    <Step name="plan-nested-mounts">
+      <UseFixture name="nested-mounts" />
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando info --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"volume\",\\s*\"target\":\\s*\"/app/vendor\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/app/vendor/acme/sdk\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/app/node_modules/@acme/ui\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"tmpfs\",\\s*\"target\":\\s*\"/app/tmp\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"volume\",\\s*\"target\":\\s*\"/tools/node_modules\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/app/vendor\",[^}]*\"provenance\":\\s*\"derived\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/app/node_modules/@acme/ui\",[^}]*\"provenance\":\\s*\"authored\"" } }} />
     </Step>
   </Scenario>
 </Guide>

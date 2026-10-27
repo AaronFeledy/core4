@@ -1,6 +1,6 @@
 # Lando v4: CLI, Tasks, and Tooling
 
-> **Part 8 of 19** · [Index](./README.md)
+> **Part 8 of 20** · [Index](./README.md)
 > **Read next:** [09 Embedding and Library Use](./09-embedding.md)
 
 This part defines the CLI, tooling, recipe, renderer, interaction, and machine-output contracts. One native command registry and dispatcher own source and compiled operation; command execution crosses into Effect at `run()` and does not return to an imperative command body.
@@ -254,6 +254,7 @@ Named command types are `CommandNamespace`, `LandoCommandSpec<A, E extends Lando
 | `mcpAllowed` | Generated `mcp-allowlist` membership |
 | `docs`, `acceptance` | Required public documentation and acceptance metadata |
 | `resultSchema` | Required schema for every result; empty result uses an empty struct |
+| `completion` | Optional format-independent policy over the returned value and normalized command input, yielding `CommandCompletion` |
 | `streaming` | Optional `StreamFrame` schema for streaming commands |
 | `run` | Effect program over `CommandInput` and `LandoCommandRequirements` |
 
@@ -268,6 +269,10 @@ Named command types are `CommandNamespace`, `LandoCommandSpec<A, E extends Lando
 | `stdout`, `stderr` | Effect sinks of bytes |
 
 The adapter supplies universal format flags and IO bindings.
+
+`CommandCompletion` separates successful Effect execution from successful command completion. Its schema accepts `{ ok: true, exitCode }` with a nonnegative integer exit code, or `{ ok: false, exitCode }` with a positive integer exit code; exit codes are not restricted to a POSIX-only 255 ceiling. An absent policy means success with exit 0. An installed policy MUST return a complete decision and MUST be resolved exactly once after producer scopes and owned output finish, before terminal lifecycle events and result rendering. CLI, MCP, plugin rendering, and event invocation consume that resolved decision rather than evaluating it again or inferring status from arbitrary result properties.
+
+Process-backed commands explicitly classify their typed process exit code: nonzero completion produces `ok: false`, a `LandoCommandError` with command id, exit code, and remediation, and the completed typed value. Successfully produced diagnostic reports MAY remain `ok: true` while returning a nonzero shell code for findings, independently of result format. Actual Effect failures retain their original Cause and do not invoke a completion policy; pure interruption remains cancellation. Completion-policy defects MUST NOT silently default to success.
 
 Read-only and non-destructive commands MAY set `mcpAllowed`; destructive built-ins MUST NOT. A destructive self-allow returns `McpAllowlistConflictError`. Host-proxy lifecycle commands MUST NOT self-allow; denied requests return `HostProxyCommandNotAllowedError`. Missing required registry metadata or `resultSchema` returns `CommandRegistrationError`.
 
@@ -342,7 +347,7 @@ Declared task keys that are not yet executable are listed once, in `@lando/lando
 
 **Positional argument round-trip.** `ArgSpec` positionals are read by declaration index on every surface: the CLI parses argv into named inputs, and MCP and library callers serialize structured input back to argv for the same parser. Serialization and parsing MUST round-trip for every declared shape. A caller that supplies a value for a later positional while an earlier declared positional resolves to nothing describes an interior hole that argv cannot express; both the serializer and the parser MUST fail with `ToolingInputError` naming the task and argument rather than binding the value to the wrong name. Trailing omitted positionals remain valid. The CLI and MCP paths MUST agree on every accepted and rejected shape.
 
-A string task means one `cmd`. `cmd` normalizes to one ordered `cmds` step. `disabled` and `false` disable inherited tasks. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. `hostProxyAllowed` defaults false and adds the canonical id to `host-proxy-allowlist` (§10.10, §12.1).
+`ToolingTaskInput` accepts a `ToolingTaskShape` object, literal `false`, or a non-empty string other than the exact string `disabled`. Literal `false` decodes to `{ disabled: true }`; a command string decodes to `{ cmd: <string> }`. The bare string `disabled` is rejected with remediation to use `false`; object-form `cmd: disabled` remains valid. Shorthands are interpreted after layer composition and replace an inherited task of the same name wholesale. An empty shorthand string is invalid; an object may still contain `cmd: ""`. `cmd` normalizes to one ordered `cmds` step. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. `hostProxyAllowed` defaults false and adds the canonical id to `host-proxy-allowlist` (§10.10, §12.1).
 
 #### 8.5.2 Commands and dependencies
 
@@ -380,7 +385,7 @@ A tooling-derived event name MUST NOT collide with a reserved app or remote hook
 
 Each `events.<name>` step list replaces its inherited list wholesale across layers; a step's `service` is an execution target, not a merge identity (§7.2).
 
-`stop` and `destroy` tear down the recorded applied plan, which carries no authored steps of its own. Their steps, including the `pre-init`/`post-init` pair that precedes them, are compiled from the current Landofile and `hostEvents` when that Landofile resolves to the recorded app (same kind, id, and canonical root), then run against the applied plan. When the Landofile cannot be loaded or planned, or resolves to a different app, teardown publishes one info notice, skips authored steps, and continues; it MUST NOT fail because of the Landofile. `destroy --root` has no Landofile and skips them silently.
+`stop` and `destroy` tear down the recorded applied plan, which carries no authored steps of its own. Their steps, including the `pre-init`/`post-init` pair that precedes them, are compiled from the current Landofile and `hostEvents` when that Landofile resolves to the recorded app (same kind, id, and canonical root), then run against the applied plan. When the Landofile is missing, cannot be loaded or planned, or resolves to a different app, teardown skips authored steps and continues; it MUST NOT fail because of the Landofile. The notice rules below apply, including to `destroy --root`.
 
 Host-wide steps live in `<userConfRoot>/config.yml` under `hostEvents`, never in `GlobalConfig.events` (delivery policy) and never in the global-app Landofile. Env overlays MUST drop any path whose first segment is `hostEvents`. The ten supported names are pre/post `start`, `stop`, `restart`, `rebuild`, and `destroy`. Restart and rebuild nest the same stop/start (or destroy/start) trees as project events. v1 steps are a string, `{cmd, service?}` (`:host` allowed), or `{command}`; `task`, `defer`, `for`, `env`, `flags`, `args`, `dir`, `user`, and unknown fields fail at load. Container (non-`:host`) steps in `pre-start`, `post-stop`, and `post-destroy` fail at load and MUST name `config.yml hostEvents.<event>[i]`. A `command:` step that resolves to a lifecycle command id also fails at load.
 
@@ -409,6 +414,8 @@ Top comment front matter validates as `BunShellScriptFrontMatter` and MAY carry 
 Default service is `:host`. Scripts run through `ShellRunner.runScript`; realpaths MUST remain under the app or permitted recipe cache, else `ShellScriptOutsideRootError`. They MUST NOT require host Node.js. Inputs are available through `LANDO_FLAG_<NAME>`, `LANDO_ARG_<NAME>`, and serialized `LANDO_INPUT: CommandInput`. Script checksum participates in freshness. `runScript` runs the file on the embedded Bun (`process.execPath` with `BUN_BE_BUN=1`), and Bun Shell exports that switch and `BUN_FEATURE_FLAG_NO_ORPHANS` to every command. A bare `lando` command in a script MUST run as Lando with neither variable set, so it neither falls into Bun nor reaps a nested `lando start`'s detached workers; it resolves to the `lando` on the script's `PATH`, else the running compiled CLI. Other commands keep both variables so Bun Shell's `bun` fallback still reaches the embedded Bun. A path-qualified call to a Lando binary is outside this guarantee.
 
 ### 8.6 The `ToolingEngine` abstraction
+
+Sessions use this tooling executor under §22.6 admission. Aliases, authoring eligibility, hooks, and IO remain unchanged; §22 adds no command or workflow language.
 
 The Effect service tag `ToolingEngine` has `id`, `canHandle(ToolingSpec)`, `compile(ToolingSpec) -> ToolingProgram | ToolingCompileError`, and `execute(ToolingProgram, CommandInput) -> ExecResult | ToolingExecError` with provider/process/shell requirements.
 
@@ -620,7 +627,7 @@ Events are `pre-init-source-auth`, `post-init-source-auth`, `pre-init-source-acq
 
 #### 8.8.14 Programmatic recipes (`recipe.ts`)
 
-`recipe.ts` is mutually exclusive with `recipe.yml`. It default-exports a static `RecipeManifest` or async `RecipeContext -> RecipeManifest`, optionally wrapped by `defineRecipe` from `@lando/core/schema`/`@lando/sdk`; runtime output still decodes through the canonical schema.
+`recipe.ts` is mutually exclusive with `recipe.yml`. It default-exports a static `RecipeManifest` or async `RecipeContext -> RecipeManifest`, optionally wrapped by `defineRecipe` from `@lando/sdk/schema`; runtime output still decodes through the canonical schema. Evaluation uses the host-owned modules in §7.1.1 without a local SDK or Effect install; other bare packages resolve beside the author file.
 
 `ctx.prompt` is the only prompt path and delegates to `InteractionService`; raw init-only secrets remain outside factory data. `ctx.run` may invoke only ids in `runs`, else `RecipeForbiddenCommandError`. `ctx.fetch` permits HTTP GET only to `fetchAllowlist`, else `RecipeForbiddenFetchError`. Top-level side effects, arbitrary shell, plugin/global mutation, and other network access are forbidden. Evaluation is bounded.
 
@@ -864,7 +871,7 @@ Every command is agent-consumable without prose parsing. `--renderer` selects pr
 
 #### 8.11.1 The result envelope
 
-Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `FailureRole`, `CommandWarning`, and `CommandResultEnvelope`.
+Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `FailureRole`, `CommandWarning`, `CommandCompletion`, `CommandOutputChunk`, `CommandOutput`, and `CommandResultEnvelope`.
 
 **Advertised formats.** `text`, `json`, and `yaml` are universal and are attached to every command's `--format` flag. `table` and `ndjson` are opt-in render-path values declared through the command's `resultFormats`. Help, the generated command-registry manifest, and the MCP catalog projection MUST show exactly the supported set. A command that does not advertise a value MUST reject it with `RendererSelectionError` rather than silently emit text. Advertisement and implementation MUST agree on every surface. `text` is the default.
 
@@ -875,16 +882,23 @@ Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `Fa
 | `ok` | Success discriminator |
 | `result` | Optional command `resultSchema` value |
 | `error` | Optional primary `TaggedErrorJson`; non-empty `error.additionalErrors` carries ordered, non-recursive additional tagged failures with required `role` |
+| `output` | Optional `CommandOutput`: bounded, redacted text chunks with channel/provenance and an explicit truncation flag; mandatory for completed MCP command responses |
 | `warnings` | `CommandWarning[]` |
 | `deprecations` | `DeprecationUse[]` |
 
 Payloadless commands return an empty result object.
+
+Unsuccessful process completion MUST retain its schema-encoded `result` alongside `error`, with `ok: false`; result-key projection and result-derived redaction tokens apply to that retained value too. CLI output uses its ordinary result renderer rather than presenting an expected nonzero child exit as an internal Lando defect. Effect-native library operations keep their existing typed results and failure channels (§16).
 
 CLI and MCP failure envelopes MUST share one Cause projection. The primary is the first `Fail` reason without a failure role, otherwise the first such `Die`, otherwise the first `Fail`, otherwise the first `Die`, otherwise the squashed Cause. Failure-role annotations take precedence over Cause order, which breaks ties within each category. Every other `Fail` and `Die` reason, in Cause order and excluding interruptions, is an additional error with a `role`: `rollback` (undoing the failed operation's partial work), `cleanup` (best-effort release, teardown, or bookkeeping), or `peer` (a sibling step in the same phase, and the default for unannotated reasons). Roles are reason annotations set only by the engine compensation helpers; error mappings and nested defect conversion MUST preserve every reason and its annotations.
 
 `error.additionalErrors` is omitted when empty and never nests. Each entry is the additional error's `TaggedErrorJson` plus `role`, encoded and redacted like the primary. Additional errors MUST NOT change the primary's exit status. Human reports show the primary body and remediation, then one `Rollback also failed (<tag>)`, `Cleanup also failed (<tag>)`, or `Also failed (<tag>)` block per additional error with its body, indented continuation and remediation lines, and diagnostic fields that differ from the primary's, without stack traces. Interruption-only Causes follow the invocation surface's cancellation policy. Effect-native library results follow §16.7.
 
 `CommandWarning` carries `code`, `message`, and optional `remediation`. Only a breaking envelope change may change `apiVersion`.
+
+Every primary and additional `TaggedErrorJson` MUST carry `_tag`, `message`, and required nonblank `remediation`. Unknown failures and serialization fallbacks MUST also satisfy that schema with a specific diagnostic/reporting action. CLI human reports, JSON/YAML envelopes, and MCP MUST use one field-generic SDK diagnostic projection, not error-tag presentation branches. Human formatters MAY specialize by field name (`issues`, `logTail`, `outputTail`); error-owned fields carry tag-specific human context such as a 1-based event step.
+
+Defects at CLI presentation and MCP command-outcome boundaries MUST normalize to `LandoInternalError`, including routing, bootstrap, command, formatter, and finalizer failures. A defect that is already a tagged error with a message and nonblank remediation keeps its tag and remediation instead; only unexpected values (plain exceptions, strings, untagged objects) become internal errors. A primary defect exits `1`. Normal stdout/stderr MUST NOT contain stack traces, raw Causes, or `Cause.pretty` embedded in an exception message. Redacted pretty Causes go only to the existing opt-in debug diagnostic channel (`--debug`, structured stderr records); `--trace` supplies invocation timings. Remediation MUST name those flags, explain that debug records can be captured from stderr and runtime worker logs live under the reported `logsDir`, and say how to report the problem. The dependency-light entrypoint fallback remains for failures before dispatch or inside terminal emission.
 
 Validation failures carry the collected `issues` (`ValidationIssue`: `path` as an array of keys and indexes, `message`, optional `rule`, optional `suggestion`, optional authored `source: { file, layer, path }`) in the envelope's `error`, and MCP results carry the same structure. The text renderer prints one line per issue as `<dotted path>: <message>`, subject to the stage boundaries in §7.8. A completed lint returns `ok: true` with `ConfigLintResult`, including `valid: false` and its `violations` when configuration errors were found; a failure that prevents that result uses the failure envelope.
 
@@ -904,7 +918,9 @@ Live commands MUST treat `StreamFrameSink` as optional (`Effect.serviceOption`).
 
 Streaming specs emit newline-delimited `StreamFrame` values tagged `stdout`, `stderr`, `event`, or terminal `result`. Data frames carry chunks and optional service/source; event frames carry redacted bounded-history events; result frames carry `CommandResultEnvelope`. Human sinks deliver tool bytes through value-only payload redaction (§3.7). JSON data frames MUST first apply the boundary-safe byte value layer, then accumulate complete lines (including `\n`), flush at end of stream or a 64 KiB byte cap, decode with UTF-8 replacement, and apply the full `secrets` profile through `redactString` before encoding. UTF-8 codepoints split at the cap MUST decode incrementally; an incomplete final codepoint becomes a replacement character. Pattern matching is bounded to each line or capped fragment; registered-value matching MUST span fragments. Envelopes keep §8.11.2 redaction unchanged. This is not a second event tap. `--format=ndjson` is that frame sequence, one JSON document per line, and is advertised only by streaming commands: a command with no frame sequence does not advertise `ndjson` rather than inventing one.
 
-Tooling MUST use one sink path. Without a host-provided live sink it MUST install a collecting sink and return stdout and stderr, including for envelope, MCP, library, and event invocations. Live sink delivery MUST NOT also accumulate those channels in the result or replay them at completion. The output is delivered exactly once. Live memory MUST be bounded by chunk size, the registered value set and longest-prefix hold, and the JSON line cap, not total output size.
+Tooling MUST use one sink path. Without a host-provided live sink it MUST install a collecting sink and return stdout and stderr, including for envelope, library, and event invocations. A live sink MUST NOT also accumulate an unbounded copy in those result channels or replay live frames at completion. Human delivery remains byte-exact after value redaction. MCP additionally retains a bounded final text capture (§10.14); that authoritative result evidence is not a second live emission. Live memory MUST be bounded by chunk size, the registered value set and longest-prefix hold, the JSON line cap, and any explicitly bounded capture, not total output size.
+
+Producer frames MUST distinguish continuous `kind: bytes` chunks from complete `kind: record` strings. Byte chunks invent no delimiter or terminal prefix; records contain no terminating delimiter, and machine/captured text adds one LF. Human record presentation MAY add provenance labels. Producers receive an emit-only sink. The invocation owner closes or joins producer scopes, calls its idempotent terminal `finish`, resolves completion, then publishes the terminal lifecycle event and final result. Nested exec/tooling steps MUST NOT finish a supplied parent sink or expose held secret prefixes between sibling steps. Locally created collectors are finished by their local owner. CLI and MCP MUST agree on Unicode, record boundaries, and final-tail behavior without sharing protocol-specific inspection or presentation.
 
 `CommandResultEnvelope`, `CommandWarning`, `CommandResultFormat`, and `StreamFrame` are published from `@lando/sdk`, re-exported by `@lando/core/schema`, and snapshot-governed by §13.2.
 
@@ -918,7 +934,7 @@ Every non-interactive canonical command MUST accept `--format json` and `-j`; in
 
 - Bare `--json` after command resolution lists selectable top-level result keys as a JSON array and does not run the command.
 - Valued `--json` projects comma-separated keys and dot paths into `envelope.result`.
-- Failure envelopes are never projected.
+- A failure's retained `result` MAY be projected; its failure metadata MUST remain intact.
 - Space form consumes a value only when it contains comma or dot.
 - Equals form always supplies a field list.
 - `-j` never consumes the next token.

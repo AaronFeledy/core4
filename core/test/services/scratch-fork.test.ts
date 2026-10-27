@@ -12,6 +12,7 @@ import {
   type ProviderCapabilities,
   ProviderId,
   landoAppNetworkName,
+  serviceAppMount,
 } from "@lando/core/schema";
 import {
   AppPlanner,
@@ -41,8 +42,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
+import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
@@ -77,14 +77,7 @@ const landofileRuntimeInputs = {
 const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
 const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
-const redactionLive = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () => Effect.succeed(createRedactor("secrets")),
-  }),
-);
+const redactionLive = RedactionService.layer;
 
 const scratchInitAppPortLive = Layer.succeed(
   ScratchInitAppPort,
@@ -348,6 +341,7 @@ const makeScratchForkLayer = (
                 operation: "registry.write",
                 message: "injected registry upsert failure",
                 cause: undefined,
+                remediation: "Injected registry upsert failure for scratch fork fixture.",
               }),
             );
           }
@@ -398,6 +392,7 @@ const makeScratchForkLayer = (
           ),
         ];
   const scratchDeps = Layer.mergeAll(
+    environmentResolverLayer(),
     LandoEventService.layer,
     BunFileSystem.layer,
     landofileServiceLayer,
@@ -547,7 +542,6 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
           identity: { appRoot: globalRoot, ownerKey: "global-owner" },
           provider: ProviderId.make("docker"),
           services: {},
-          networks: [],
           stores: [],
           routes: [],
           fileSync: [],
@@ -842,7 +836,9 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       const primaryService = Object.values(appliedPlans.at(0)?.services ?? {}).find(
         (service) => service.primary,
       );
-      expect(String(primaryService?.appMount?.source)).toBe(dir);
+      expect(String(primaryService === undefined ? undefined : serviceAppMount(primaryService)?.source)).toBe(
+        dir,
+      );
       expect(result.resolved).toEqual(result.handle);
       expect(result.stopped).toEqual(result.handle);
       expect(result.destroyed).toEqual(result.keepHandle);
@@ -892,3 +888,4 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
     });
   });
 });
+import { environmentResolverLayer } from "../_support/value-contracts.ts";

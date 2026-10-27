@@ -6,14 +6,13 @@ import { LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
 const planEither = (landofile: typeof LandofileShape.Type) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, TestRuntimeProvider.capabilities)).pipe(
-      Effect.result,
-      Effect.provide(AppPlannerLayer.layer),
-      Effect.provide(PluginRegistryLayer.layer),
-    ),
+    Effect.flatMap(AppPlanner, (planner) =>
+      planner.plan(compileTestLandofile(landofile), TestRuntimeProvider.capabilities),
+    ).pipe(Effect.result, Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
 
 test("creates no generated stores when Redis persistence is disabled", async () => {
@@ -24,14 +23,17 @@ test("creates no generated stores when Redis persistence is disabled", async () 
   });
   // When
   const plan = await Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, TestRuntimeProvider.capabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
-      Effect.provide(PluginRegistryLayer.layer),
-    ),
+    Effect.flatMap(AppPlanner, (planner) =>
+      planner.plan(compileTestLandofile(landofile), TestRuntimeProvider.capabilities),
+    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
   // Then
   expect(plan.stores).toEqual([]);
-  expect(Object.values(plan.services).flatMap((service) => service.storage)).toEqual([]);
+  expect(
+    Object.values(plan.services).flatMap((service) =>
+      service.mounts.filter((mount) => mount.type === "volume"),
+    ),
+  ).toEqual([]);
 });
 
 test("refuses an authored Redis command that bypasses explicit authentication", async () => {

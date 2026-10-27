@@ -31,7 +31,7 @@ import {
   setActiveCommandId,
 } from "../compiled-runtime";
 
-export const runMetaUninstall = async (argv: ReadonlyArray<string>): Promise<void> => {
+export const runMetaUninstall = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
   if (await rejectInvalidInvocation("meta:uninstall", argv)) return;
   const input = compiledCommandInputFromArgv("meta:uninstall", argv);
   return runCompiledCommand(
@@ -42,10 +42,11 @@ export const runMetaUninstall = async (argv: ReadonlyArray<string>): Promise<voi
       makeHostMaintenanceRegistryLayer(bundledPluginModules()),
     ),
     renderUninstallResult,
+    signal === undefined ? {} : { signal },
   );
 };
 
-export const runMetaMcp = async (argv: ReadonlyArray<string>): Promise<void> => {
+export const runMetaMcp = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
   if (await rejectInvalidInvocation("meta:mcp", argv)) return;
   const input = compiledCommandInputFromArgv("meta:mcp", argv);
   const flags = mcpFlagsFromParsed(input.flags);
@@ -62,6 +63,7 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>): Promise<void> => 
   ).pipe(Layer.orDie) as Layer.Layer<unknown>;
   return dispatchMcpCommand({
     flags,
+    ...(signal === undefined ? {} : { signal }),
     commandRuntime,
     retainedRuntime,
     rendererMode: activeRendererMode,
@@ -73,7 +75,7 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>): Promise<void> => 
       flags: input.flags,
       cwd: process.cwd(),
     },
-    formatError: (failure) => commandErrorMessage(failure, "meta:mcp"),
+    formatError: (failure, redactor) => commandErrorMessage(failure, "meta:mcp", redactor),
   });
 };
 
@@ -85,7 +87,10 @@ export const runMetaVersion = async (): Promise<void> => {
 
 const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
 
-export const runMetaShellenv = async (argv: ReadonlyArray<string> = []): Promise<void> => {
+export const runMetaShellenv = async (
+  argv: ReadonlyArray<string> = [],
+  signal?: AbortSignal,
+): Promise<void> => {
   if (await rejectInvalidInvocation("meta:shellenv", argv)) return;
   const input = compiledCommandInputFromArgv("meta:shellenv", argv);
   const shell = input.flags.shell;
@@ -99,5 +104,10 @@ export const runMetaShellenv = async (argv: ReadonlyArray<string> = []): Promise
     process.exitCode = 2;
     return;
   }
-  await runCompiledCommand(shellenvSpec.run(input), Layer.empty, (value) => value);
+  await runCompiledCommand(
+    shellenvSpec.run(input),
+    Layer.empty,
+    (value) => value,
+    signal === undefined ? {} : { signal },
+  );
 };

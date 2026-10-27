@@ -101,6 +101,11 @@ export const verifyPendingStartResume = Effect.fnUntraced(function* (app: AppRef
   yield* verifyPreparedFileSyncTargets(plan, prepared.targets);
   if (!matchesRecordedTargets(record, prepared.targets))
     return yield* Effect.fail(resumeError(record, "Prepared volume names differ from the journal."));
-  if (engine.appLifecycle !== undefined) yield* engine.appLifecycle.invalidateDrain(app);
+  if (engine.appLifecycle !== undefined) {
+    const phase = yield* engine.appLifecycle.disposalPhase(app);
+    // A new replacement journal may exist before its first session. Creation clears the completed marker.
+    if (sessions.length > 0 || (phase !== "completed" && phase !== "absent"))
+      yield* engine.appLifecycle.invalidateDrain(app);
+  }
   return prepared.targets;
 });

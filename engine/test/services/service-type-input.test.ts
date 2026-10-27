@@ -10,7 +10,11 @@ import { planApp } from "../../src/planner/assemble.ts";
 import { resolveHostFacts } from "../../src/planner/service-types.ts";
 
 const missingPlugin = (id: string) =>
-  new PluginLoadError({ message: `Plugin ${id} is not registered.`, pluginName: id });
+  new PluginLoadError({
+    message: `Plugin ${id} is not registered.`,
+    pluginName: id,
+    remediation: "Install or register the plugin, then retry.",
+  });
 
 describe("service type resolve input", () => {
   test("Given host facts, when resolved, then arch matches process.arch", () => {
@@ -54,7 +58,20 @@ describe("service type resolve input", () => {
 
     // When
     await Effect.runPromise(
-      planApp(pluginRegistry, undefined, undefined, undefined, undefined, undefined, landofile, capabilities),
+      compileTestLandofile(landofile).pipe(
+        Effect.flatMap((compiled) =>
+          planApp(
+            pluginRegistry,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            compiled,
+            capabilities,
+          ),
+        ),
+      ),
     );
 
     // Then
@@ -63,3 +80,4 @@ describe("service type resolve input", () => {
     expect(captured[0]?.capabilities).toBe(capabilities);
   });
 });
+import { compileTestLandofile } from "../compiled-landofile.ts";

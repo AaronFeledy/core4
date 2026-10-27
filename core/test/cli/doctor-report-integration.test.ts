@@ -30,9 +30,10 @@ import {
   renderDoctorReport,
   renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report.ts";
-import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
+import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { CORE_VERSION } from "../../src/version.ts";
+import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSync(GlobalConfig)(input);
 
@@ -76,26 +77,25 @@ describe("combined doctor certificate and network-trust wiring", () => {
     );
 
     // When
-    const report = await Effect.runPromise(doctorReport({ env: {} }).pipe(Effect.provide(layer)));
+    const report = await Effect.runPromise(
+      doctorReport({ env: {} }).pipe(Effect.provide(layer), Effect.provide(DefaultSubsystemDoctorLayer)),
+    );
 
     // Then
     expect(report.subsystems.checks.map((check) => check.name)).toEqual([
       "router",
-      "certs",
       "ssh",
-      "healthcheck",
-      "scanner",
       "host-proxy",
       "network-trust",
       "legacy-snapshot-catalogs",
       "filesystem-watch",
     ]);
-    expect(report.subsystems.checks[1]).toMatchObject({
-      name: "certs",
-      status: "pass",
-      context: { subsystemId: "mkcert-selected", ready: "true" },
+    expect(report.skipped).toContainEqual({
+      section: "certs",
+      status: "skipped",
+      reason: expect.any(String),
     });
-    expect(report.subsystems.checks[6]).toMatchObject({
+    expect(report.subsystems.checks[3]).toMatchObject({
       name: "network-trust",
       status: "pass",
       severity: "info",
@@ -114,15 +114,19 @@ describe("combined doctor certificate and network-trust wiring", () => {
         provider: Effect.succeed({ checks: [] }),
         deprecations: Effect.succeed({ entries: [] }),
         certs: Effect.succeed({ _tag: "selected", id: "injected-ca" }),
+        subsystems: (options) => subsystemDoctor(options).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
       }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),
     );
 
     // Then
     expect(report.version).toBe(CORE_VERSION);
     expect(renderDoctorReport(report)).toContain(`version: ${CORE_VERSION}`);
-    expect(report.subsystems.checks.find((check) => check.name === "certs")?.context.subsystemId).toBe(
-      "injected-ca",
-    );
+    expect(report.subsystems.checks.find((check) => check.name === "certs")).toBeUndefined();
+    expect(report.skipped).toContainEqual({
+      section: "certs",
+      status: "skipped",
+      reason: expect.any(String),
+    });
   });
 
   test("DoctorReportSchema requires version", () => {

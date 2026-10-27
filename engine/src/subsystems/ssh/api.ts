@@ -16,10 +16,22 @@ export const layerUnavailable = Layer.succeed(
   SshService.of({
     id: UNAVAILABLE_ID,
     setup: unavailableOperation(
-      () => new SshError({ message: SSH_UNAVAILABLE_MESSAGE, sshId: UNAVAILABLE_ID }),
+      () =>
+        new SshError({
+          message: SSH_UNAVAILABLE_MESSAGE,
+          sshId: UNAVAILABLE_ID,
+          remediation:
+            "Install or repair the SSH service plugin and confirm the agent socket is available, then re-run.",
+        }),
     ),
     getAgentSocket: unavailableOperation(
-      () => new SshError({ message: SSH_UNAVAILABLE_MESSAGE, sshId: UNAVAILABLE_ID }),
+      () =>
+        new SshError({
+          message: SSH_UNAVAILABLE_MESSAGE,
+          sshId: UNAVAILABLE_ID,
+          remediation:
+            "Install or repair the SSH service plugin and confirm the agent socket is available, then re-run.",
+        }),
     ),
   }),
 );

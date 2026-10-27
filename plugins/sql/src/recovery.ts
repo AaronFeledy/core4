@@ -1,9 +1,11 @@
-import { DateTime, Effect, Exit } from "effect";
+import { DateTime, Effect, Exit, Option, absurd } from "effect";
 
-import { SqlRecoveryOperationError } from "@lando/sdk/errors";
+import { DataTransferError, SqlCommandFailedError, SqlRecoveryOperationError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { SnapshotId, type SnapshotMetadata } from "@lando/sdk/schema";
 
+import { normalizeCommandFailure } from "./command-failure.ts";
+import { SqlEnvironmentSession } from "./environment.ts";
 import type { SqlPublisher } from "./progress.ts";
 import { resolveLockedPhysicalTarget } from "./recovery-adoption.ts";
 import {
@@ -25,26 +27,30 @@ type SqlPhysicalOperation<A, E> = SqlPhysicalContextInput & {
   readonly body: (context: SqlRecoveryContext, recoveryId: string) => Effect.Effect<A, E>;
 };
 
-export const withPhysicalVolumeLock = <A, E>(
+export const withPhysicalVolumeLock = Effect.fnUntraced(function* <A, E>(
   input: SqlPhysicalContextInput & {
     readonly body: (context: SqlRecoveryContext) => Effect.Effect<A, E>;
   },
-) =>
-  resolvePhysicalTarget(input).pipe(
+) {
+  const session = yield* SqlEnvironmentSession;
+  return yield* resolvePhysicalTarget(input).pipe(
     Effect.flatMap((target) =>
       input.deps.withVolumeLock(
         target.coordinationKey,
-        resolvePhysicalTarget(input).pipe(
-          Effect.flatMap((lockedTarget) => resolveLockedPhysicalTarget(input, target, lockedTarget)),
-          Effect.flatMap((identifiedTarget) =>
-            resolvePhysicalContext(input, identifiedTarget).pipe(
-              Effect.flatMap((context) => Effect.suspend(() => input.body(context))),
+        resolvePhysicalTarget(input)
+          .pipe(
+            Effect.flatMap((lockedTarget) => resolveLockedPhysicalTarget(input, target, lockedTarget)),
+            Effect.flatMap((identifiedTarget) =>
+              resolvePhysicalContext(input, identifiedTarget).pipe(
+                Effect.flatMap((context) => Effect.suspend(() => input.body(context))),
+              ),
             ),
-          ),
-        ),
+          )
+          .pipe(Effect.provideService(SqlEnvironmentSession, session)),
       ),
     ),
   );
+});
 
 export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
   withPhysicalVolumeLock({
@@ -82,20 +88,55 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
           return captured.value;
         }),
       );
-      if (input.resumeAfterSnapshot && context.running) yield* context.resume;
-      const result = yield* input.body(context, recovery.id).pipe(
-        Effect.mapError((cause) =>
-          input.reason === "manual"
-            ? cause
-            : new SqlRecoveryOperationError({
-                message: `${input.reason} failed after recovery snapshot ${recovery.id} was created.`,
-                service: input.serviceName,
-                operation: input.reason,
-                recoverySnapshotId: recovery.id,
-                cause,
-                remediation: `Restore recovery snapshot ${recovery.id} after resolving the failure.`,
-              }),
-        ),
+      const result = yield* Effect.gen(function* () {
+        if (input.resumeAfterSnapshot && context.running) yield* context.resume;
+        return yield* input.body(context, recovery.id);
+      }).pipe(
+        Effect.mapError((cause) => {
+          const normalized = normalizeCommandFailure(cause);
+          if (Option.isSome(normalized)) {
+            const failure = normalized.value;
+            switch (failure._tag) {
+              case "SqlCommandFailedError":
+                return new SqlCommandFailedError({
+                  message: failure.message,
+                  service: failure.service,
+                  command: failure.command,
+                  exitCode: failure.exitCode,
+                  stderrTail: failure.stderrTail,
+                  recoverySnapshotId: recovery.id,
+                  remediation: `${failure.remediation} Use lando db:restore ${recovery.id} after resolving the failure if recovery is needed.`,
+                });
+              case "DataTransferError":
+                return new DataTransferError({
+                  message: failure.message,
+                  fromEndpoint: failure.fromEndpoint,
+                  toEndpoint: failure.toEndpoint,
+                  operation: failure.operation,
+                  exitCode: failure.exitCode,
+                  stderrTail: failure.stderrTail,
+                  recoverySnapshotId: recovery.id,
+                  remediation: `${failure.remediation ?? "Resolve the command failure."} Use lando db:restore ${recovery.id} after resolving the failure if recovery is needed.`,
+                });
+              default:
+                return absurd(failure);
+            }
+          }
+          return new SqlRecoveryOperationError({
+            message:
+              input.reason === "manual"
+                ? `Snapshot ${recovery.id} was captured, but ${input.serviceName} could not resume.`
+                : `${input.reason} failed after recovery snapshot ${recovery.id} was created.`,
+            service: input.serviceName,
+            operation: input.reason === "manual" ? "snapshot" : input.reason,
+            recoverySnapshotId: recovery.id,
+            cause,
+            remediation:
+              input.reason === "manual"
+                ? `Snapshot ${recovery.id} remains available. Resolve the database restart failure and start the service again.`
+                : `Resolve the failure, then retry or restore recovery snapshot ${recovery.id} if needed.`,
+          });
+        }),
       );
       if (input.reason !== "manual") {
         yield* input.deps
@@ -130,6 +171,6 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
             ),
           );
       }
-      return result;
+      return { result, recoverySnapshotId: recovery.id };
     }),
   });

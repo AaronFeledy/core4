@@ -53,6 +53,7 @@ export const normalizeAppSelector = (
         message: "App selector cannot combine `id` and `landofile`; choose one.",
         reason: "ambiguous",
         detail: "id+landofile",
+        remediation: "Pass only one of id or landofile in the app selector.",
       }),
     );
   }
@@ -82,6 +83,7 @@ export const normalizeAppSelector = (
           message: "A decoded Landofile selector must be paired with an explicit `root`.",
           reason: "missing-root",
           detail: "landofile",
+          remediation: "Pass root alongside the decoded landofile selector.",
         }),
       );
     }

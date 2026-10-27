@@ -28,9 +28,32 @@ Passing checks stay out of the way. To see every check, including the ones that 
 lando doctor --all
 ```
 
+A check passes only after doctor inspects it. Loading a healthcheck runner or an
+endpoint scanner does not prove either one works against your provider. Doctor
+reports `healthcheck` and `scanner` as `SKIPPED`, with a reason, because it does
+not run service probes or scan app endpoints. `lando start` runs those checks
+against the app's selected provider; rebuild also runs service readiness gates.
+`--fix` does not turn an uninspected check into a pass.
+
+JSON reports keep these entries in the report's `skipped` array, separate from
+`subsystems.checks`. The library `doctorReport()` skips the subsystem section
+when neither runtime subsystem services nor a host DNS resolver were supplied.
+
+The `host-proxy` check resolves `lando-doctor-probe.<proxy.defaultDomain>` through
+your host DNS resolver, even without a host-proxy service. It passes only when
+the answer is nonempty and every address matches the expected loopback address.
+Without that service, the context contains DNS observations, not service status.
+An unavailable resolver produces a `SKIPPED` entry with a reason.
+
+Selecting a certificate authority does not verify its installation or host trust.
+Doctor reports `certs` as `SKIPPED` when selection succeeds but no read-only trust
+inspection is available. Certificate selection errors still appear as findings.
+
 | Check | What to do |
 | --- | --- |
 | global-config | Your global config does not decode. Doctor prints the `ConfigError` and its fix, marks `provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, and `mcp` as `SKIPPED` (plus `app-config`, `app-version-constraints`, and `deprecations` under `--app` or `--deprecations`), still runs config-independent checks such as `filesystem-watch`, and exits `1`. Run `lando config validate`, repair with `lando config set`, `unset`, or `edit`, then rerun doctor. See [Repair an invalid global config](../config/global-config.mdx#repair-an-invalid-global-config). |
+| provider-bootstrap | Global config passed, but doctor could not build the provider runtime. Read this self check's failure and suggested repair. Doctor marks `provider`, `router`, `ssh`, `healthcheck`, `scanner`, `certificate-authority`, `missing-app-roots`, and `orphaned-volume-snapshots` as `SKIPPED`, plus requested `app-config` and `deprecations`. It does not invent router, SSH, or certificate warnings or suggest `--fix` for checks it never ran. Host DNS (`host-proxy`), filesystem watches, network trust, MCP, global-app files, accelerated-start journals, legacy snapshot catalogs, and requested app version constraints still get checked. Doctor exits `1`; repair the bootstrap failure, then rerun it. |
+| host-proxy | Host DNS did not resolve the probe hostname to loopback. Check connectivity and DNS-rebinding protection on your resolver, or add a local DNS rule for your configured domain. `lando setup` and `doctor --fix` do not write host DNS. See [Check host DNS](./host-proxy.mdx). |
 | proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. |
 | preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports in `config.yml`, then run `lando setup`. |
 | certs | Run `lando setup` to install and trust the local CA. |

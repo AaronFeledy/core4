@@ -6,6 +6,7 @@ import type { CertificateAuthorityShape, CertificateSpec } from "@lando/sdk/serv
 
 import type { TraefikProxyDependencies } from "../src/proxy-types.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
+import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
 
 export const app = AppId.make("demo/app");
 export const httpsRoutes: ReadonlyArray<RoutePlan> = [
@@ -49,7 +50,9 @@ export const makeHarness = (issueFailure?: CaError) => {
       });
     },
   };
+  const runtime = makeApplyRuntime(files);
   const dependencies: TraefikProxyDependencies = {
+    httpClient: runtime.httpClient,
     certificateAuthority,
     probeBind: () => Effect.succeed({ kind: "success" }),
     probeForward: () => Effect.succeed({ kind: "success" }),
@@ -82,6 +85,7 @@ export const makeHarness = (issueFailure?: CaError) => {
     },
     paths: { platform: "linux", globalAppRoot: "/lando/global" },
     globalApp: {
+      ownedPublishPorts: runtime.ownedPublishPorts,
       ensureRunning: () =>
         Effect.succeed([
           {
@@ -93,5 +97,5 @@ export const makeHarness = (issueFailure?: CaError) => {
     },
   };
   const makeService = () => makeTraefikRouterService(dependencies);
-  return { calls, files, operations, service: makeService(), makeService };
+  return { calls, files, operations, dependencies, runtime, service: makeService(), makeService };
 };

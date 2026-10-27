@@ -16,6 +16,7 @@ import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 type ObjectIncludeEntry = Exclude<IncludeEntry, string>;
 
 export interface NormalizedToolingInclude {
+  readonly varOrigins?: ValueOrigins<AuthoredOrigin> | undefined;
   readonly origin?: AuthoredOrigin | undefined;
   readonly source: string;
   readonly namespace: string | undefined;
@@ -189,6 +190,7 @@ export const assertCompatibleIncludeFields = (
 };
 
 const normalizeEntry = (input: {
+  readonly varOrigins?: ValueOrigins<AuthoredOrigin> | undefined;
   readonly origin?: AuthoredOrigin | undefined;
   readonly source: string;
   readonly namespace: string | undefined;
@@ -199,6 +201,7 @@ const normalizeEntry = (input: {
   readonly excludes: ReadonlyArray<string> | undefined;
   readonly vars: Readonly<Record<string, ToolingVarLiteral>> | undefined;
 }): NormalizedToolingInclude => ({
+  varOrigins: input.varOrigins,
   origin: input.origin,
   source: input.source,
   namespace: input.namespace,
@@ -219,6 +222,7 @@ const fromIncludesArray = (
       ? []
       : [
           normalizeEntry({
+            varOrigins: origins?.children.get("includes")?.children.get(index)?.children.get("vars"),
             origin: origins === undefined ? undefined : valueOriginAt(origins, ["includes", index]).source,
             source: entry.source,
             namespace: entry.namespace,
@@ -238,6 +242,7 @@ const fromShorthandMap = (
 ): ReadonlyArray<NormalizedToolingInclude> =>
   Object.entries(map).map(([namespace, entry]) =>
     normalizeEntry({
+      varOrigins: origins?.children.get("toolingIncludes")?.children.get(namespace)?.children.get("vars"),
       origin:
         origins === undefined ? undefined : valueOriginAt(origins, ["toolingIncludes", namespace]).source,
       source: entry.file,

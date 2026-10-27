@@ -26,7 +26,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},
@@ -123,7 +122,14 @@ test("returns only missing roots and treats filesystem failures as present", asy
     ],
     (path) =>
       path === "/denied"
-        ? Effect.fail(new FileIoError({ path, message: "denied" }))
+        ? Effect.fail(
+            new FileIoError({
+              path,
+              message: "denied",
+              remediation:
+                "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+            }),
+          )
         : Effect.succeed(path === "/present"),
   );
   expect(result.map((item) => item.root)).toEqual([root]);

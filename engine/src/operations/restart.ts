@@ -38,20 +38,23 @@ import {
   makeServiceRestartWouldRecreateError,
 } from "@lando/container-runtime/podman/bring-up-recreate";
 import type { RedactionService } from "@lando/redaction/service";
+import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
+import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
-import { ensureAppPlacement } from "../providers/app-placement.ts";
+import { ensureAppPlacementState } from "../providers/app-placement.ts";
+import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
+import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
 import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
-import { inspectAppliedService, waitForServiceReadiness } from "./service-readiness.ts";
+import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
-import { startFileSyncSessions } from "./start-file-sync.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import { StartAppResultSchema, type StartManagedScope, startApp } from "./start.ts";
@@ -68,6 +71,7 @@ export const RestartAppResultSchema = Schema.Struct({
 });
 
 type RestartAppServices =
+  | EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -109,14 +113,40 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       }),
     );
   }
-  const runtimePlan = yield* withRetainedAgentOverlays(selectedPlan, target.app);
+  const projectedServices = yield* Effect.forEach(Object.values(selectedPlan.services), (service) =>
+    Effect.gen(function* () {
+      const artifact = appliedPlan.services[service.name]?.artifact;
+      if (artifact?.kind !== "ref" || artifact.ref.length === 0) {
+        return yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId: String(target.plan.provider),
+            operation: "restart",
+            message: `Selected restart requires a concrete applied artifact for ${service.name}.`,
+            remediation: `Run \`lando rebuild -s ${service.name}\` to create this service.`,
+          }),
+        );
+      }
+      return [
+        service.name,
+        serviceWithArtifact(service, { providerId: appliedPlan.provider, ...artifact }),
+      ] as const;
+    }),
+  );
+  const runtimePlan = yield* withRetainedAgentOverlays(
+    { ...selectedPlan, services: Object.fromEntries(projectedServices) },
+    target.app,
+  );
+  const inspectionPlan: AppPlan = {
+    ...target.plan,
+    services: { ...target.plan.services, ...runtimePlan.services },
+  };
   const services = Object.values(runtimePlan.services);
 
   for (const service of services) {
     const runtime = yield* provider.inspect({
       app: target.plan.id,
       service: service.name,
-      plan: target.plan,
+      plan: inspectionPlan,
     });
     if (runtime.status === "stopped" && runtime.containerId === undefined) {
       return yield* Effect.fail(
@@ -128,7 +158,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
         }),
       );
     }
-    const reasons = bringUpRecreateReasons(target.plan, service, runtime, { skipAbsentFields: true });
+    const reasons = bringUpRecreateReasons(inspectionPlan, service, runtime, { skipAbsentFields: true });
     if (reasons[0] !== undefined) {
       return yield* Effect.fail(
         makeServiceRestartWouldRecreateError({
@@ -151,6 +181,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
     services: [...selected],
   });
   yield* publishAndRunAppEvent(target.plan, "pre-restart", preRestart);
+  yield* publishHomeTransitionNotices(appliedPlan, selectedPlan);
   yield* markStartMutation(target.plan);
 
   yield* Effect.forEach(
@@ -167,9 +198,7 @@ const restartSelectedServices = Effect.fnUntraced(function* (
             timestamp: DateTime.nowUnsafe(),
           }),
         );
-        yield* provider
-          .stop({ app: target.plan.id, service: service.name, plan: target.plan })
-          .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void));
+        yield* provider.stop({ app: target.plan.id, service: service.name, plan: target.plan });
         yield* events.publish(
           PostServiceStopEvent.make({
             eventName: "post-service-stop",
@@ -199,9 +228,10 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       Effect.map((runtime) => [String(service.name), runtime] as const),
     ),
   );
-  yield* startFileSyncSessions(selectedPlan, events);
-
-  const ready = yield* waitForServiceReadiness({
+  const ready = yield* completeStartup({
+    policy: "selected-restart",
+    selectedPlan,
+    events,
     provider,
     plan: target.plan,
     services: selected,
@@ -230,7 +260,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
   ): Effect.fn.Return<RestartAppResult, RestartAppError, RestartAppServices> {
     if (options.signal?.aborted === true) return yield* Effect.interrupt;
     const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
-    yield* ensureAppPlacement(resolvedTarget.app, resolvedTarget.plan.provider);
+    const placement = yield* ensureAppPlacementState(resolvedTarget.app, resolvedTarget.plan.provider);
     const registry = yield* RuntimeProviderRegistry;
     const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
     const plan = mysqlResolvedTarget.plan;
@@ -273,6 +303,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
             timestamp: DateTime.nowUnsafe(),
           });
           yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
+          yield* publishHomeTransitionNotices(placement.plan, plan);
           yield* markStartMutation(plan);
           yield* stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true });
           yield* managed?.onStopped ?? Effect.void;
@@ -299,10 +330,11 @@ export const restartApp = Effect.fn("AppOperation.restart")(
     );
   },
   (effect, options: RestartAppOptions = {}, _target?: ResolvedAppTarget, _managed?: StartManagedScope) => {
+    const command = withHomeTransitionNotices(effect);
     const signal = options.signal;
-    if (signal === undefined) return effect;
+    if (signal === undefined) return command;
     return Effect.raceFirst(
-      effect,
+      command,
       Effect.callback<never>((resume) => {
         const abort = () => resume(Effect.interrupt);
         if (signal.aborted) {

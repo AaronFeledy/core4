@@ -57,7 +57,7 @@ const WEB = ServiceName.make("web");
 const makeService = (
   providerId: ProviderId,
   name: ServiceName,
-  overrides: Partial<Pick<ServicePlan, "dependsOn" | "primary" | "storage">> = {},
+  overrides: Partial<Pick<ServicePlan, "dependsOn" | "primary" | "mounts">> = {},
 ): ServicePlan => ({
   ...makeTestServicePlan(providerId),
   name,
@@ -74,8 +74,9 @@ const makeRetentionPlan = (providerId: ProviderId): AppPlan => {
   const db = makeService(providerId, DB, { primary: false });
   const web = makeService(providerId, WEB, {
     dependsOn: [{ service: DB, condition: "service_started", required: true }],
-    storage: [
+    mounts: [
       {
+        type: "volume",
         store: dataStore,
         target: PortablePath.make("/data"),
         readOnly: false,

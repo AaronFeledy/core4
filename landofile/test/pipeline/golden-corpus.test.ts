@@ -63,7 +63,7 @@ test("every guide app retains its encoded Landofile digest or tagged load failur
       const result = await Effect.runPromise(
         loadLandofileLayers(appRoot, join(repoRoot, path), inputs).pipe(
           Effect.map((landofile) => ({
-            digest: sha256Hex(canonicalJson(Schema.encodeSync(LandofileShape)(landofile))),
+            digest: sha256Hex(canonicalJson(Schema.encodeSync(LandofileShape)(landofile.document))),
           })),
           Effect.catch((error) =>
             Effect.succeed({ invalid: { status: "invalid" as const, tag: error._tag } }),

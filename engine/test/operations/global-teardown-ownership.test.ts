@@ -55,7 +55,6 @@ const harnessAt = (
     provider: providerId,
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     extensions: {},

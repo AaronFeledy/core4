@@ -1,5 +1,5 @@
 import { constants, closeSync, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync } from "node:fs";
-import { createStandaloneRedactor } from "@lando/redaction/service";
+import type { Redactor } from "@lando/sdk/secrets";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
 export class DetachedWorkerLogError extends Error {
@@ -54,11 +54,11 @@ export const openWorkerLog = async (
 const TAIL_BYTES = 4 * 1024;
 // Redact the complete log before clipping so even a secret longer than the tail cannot leak a suffix.
 
-export const stderrTailFromLog = async (logPath: string): Promise<string> => {
+export const stderrTailFromLog = async (logPath: string, redactor: Redactor): Promise<string> => {
   const file = Bun.file(logPath);
   if (!(await file.exists())) return "";
   const text = await file.text();
-  return createStandaloneRedactor("secrets")
+  return redactor
     .redactString(text)
     .slice(-TAIL_BYTES)
     .split("\n")

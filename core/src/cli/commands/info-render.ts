@@ -8,9 +8,11 @@ import {
   formatSummary,
   worstSummaryTone,
 } from "@lando/renderer/summary";
+import { escapeDiagnosticText } from "../diagnostic-text";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { connectionFields, scopedConnectionText, unambiguousHostHttpUrls } from "./connection-summary";
+import { homeFields, plainStorageRows, storageFields, storageRemedy } from "./info-storage-render";
 import { INFO_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
 type InfoResultWithHostProxy = InfoAppResult & {
@@ -50,21 +52,39 @@ const credsText = (creds: NonNullable<InfoAppService["creds"]>): string => {
   return parts.join(" ");
 };
 
+const detailList = new Intl.ListFormat("en", { type: "conjunction" });
+
+/** One pointer to the JSON contract for the details the summary leaves out. */
+const jsonDetailsNote = (hasLogSources: boolean, hasStorage: boolean): string => {
+  const details = [
+    ...(hasLogSources ? ["log paths", "strategies"] : []),
+    ...(hasStorage ? ["mount sources"] : []),
+  ];
+  return `Run \`lando info --format=json\` for ${detailList.format(details)}.`;
+};
+
 export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
   const hostProxy = hostProxyFor(result);
-  const rows: SummaryRow[] = result.services.map((service) => ({
-    label: service.service,
-    tone: infoStatusTone(service.status),
-    value: service.status,
-    fields: [
-      { label: "type", value: service.type },
-      { label: "provider", value: service.provider },
-      ...connectionFields(service.connections),
-      ...(service.logSources === undefined ? [] : logSourceFields(service.logSources)),
-      ...(service.creds === undefined ? [] : [{ label: "creds", value: credsText(service.creds) }]),
-    ],
-  }));
+  const rows: SummaryRow[] = result.services.map((service) => {
+    const remedy = storageRemedy(service);
+    return {
+      label: service.service,
+      tone: infoStatusTone(service.status),
+      value: service.status,
+      fields: [
+        { label: "type", value: service.type },
+        { label: "provider", value: service.provider },
+        ...connectionFields(service.connections),
+        ...storageFields(service),
+        ...homeFields(service),
+        ...(service.logSources === undefined ? [] : logSourceFields(service.logSources)),
+        ...(service.creds === undefined ? [] : [{ label: "creds", value: credsText(service.creds) }]),
+      ],
+      ...(remedy === undefined ? {} : { remedy }),
+    };
+  });
   const hasLogSources = result.services.some((service) => (service.logSources?.length ?? 0) > 0);
+  const hasStorage = result.services.some((service) => (service.mounts?.length ?? 0) > 0);
   const agentEnvSection =
     result.agentEnv === undefined
       ? []
@@ -99,8 +119,8 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
         rows,
         ...(rows.length === 0
           ? { notes: ["No services are defined for this app."] }
-          : hasLogSources
-            ? { notes: ["Run `lando info --format=json` for log paths and strategies."] }
+          : hasLogSources || hasStorage
+            ? { notes: [jsonDetailsNote(hasLogSources, hasStorage)] }
             : {}),
       },
       ...(hostProxy === undefined
@@ -162,7 +182,10 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
     });
     const credsRows =
       service.creds === undefined ? [] : [`${service.service}\tcreds\t${credsText(service.creds)}`];
-    return [base, ...logRows, ...credsRows];
+    const homeRows = homeFields(service).map(
+      (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
+    );
+    return [base, ...plainStorageRows(service), ...homeRows, ...logRows, ...credsRows];
   });
   return [`app\t${result.app}`, "service\tstate\tHost\tApp Network", ...rows, ...extra].join("\n");
 };

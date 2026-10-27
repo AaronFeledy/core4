@@ -1,21 +1,23 @@
 import { isIP } from "node:net";
 import { Schema } from "effect";
 import type { DirectHttpTransport } from "./direct-http.ts";
-import { type ResolvedNetworkTrust, fetchInitForNetwork, usesDirectEndpoint } from "./network-trust.ts";
+import { type ResolvedNetworkTrust, fetchInitForNetwork, shouldBypassProxy } from "./network-trust.ts";
 import type { RequestPolicyShape } from "./policy.ts";
 
 export interface HttpTransports {
-  readonly fetch: typeof fetch;
+  readonly fetch: (input: string | URL | Request, init?: BunFetchRequestInit) => Promise<Response>;
   readonly direct: DirectHttpTransport;
 }
 
 class RedirectError extends Schema.TaggedError<RedirectError>()("RedirectError", {
   message: Schema.String,
   urlOrigin: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 class ConnectionTargetError extends Schema.TaggedError<ConnectionTargetError>()("ConnectionTargetError", {
   message: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 interface RequestNetwork {
@@ -51,30 +53,44 @@ export const requestWithNetworkTrust = async (
       url.password !== "" ||
       (headers.has("host") && headers.get("host") !== url.host)
     )
-      throw new ConnectionTargetError({ message: "Invalid connection target or conflicting authority" });
+      throw new ConnectionTargetError({
+        message: "Invalid connection target or conflicting authority",
+        remediation:
+          "Provide a connection target whose origin matches the request URL and does not set a conflicting Host header.",
+      });
     headers.set("host", url.host);
   }
   let body = request.body;
   const { trust, transports, systemCaPems } = network;
-  const startsDirect = usesDirectEndpoint(url, trust);
+  const startsLoopback = shouldBypassProxy(url.href, []);
+  const defaultCa = process.platform === "win32" && systemCaPems.length > 0 ? systemCaPems : undefined;
   const ca =
-    trust === undefined || (trust.trustHost && trust.caPems.length === 0)
-      ? undefined
-      : trust.trustHost
-        ? [...systemCaPems, ...trust.caPems]
-        : trust.caPems;
+    trust === undefined
+      ? defaultCa
+      : trust.trustHost && trust.caPems.length === 0
+        ? undefined
+        : trust.trustHost
+          ? [...systemCaPems, ...trust.caPems]
+          : trust.caPems;
 
   for (let redirects = 0; ; redirects += 1) {
     signal.throwIfAborted();
+    const init: BunFetchRequestInit =
+      trust === undefined
+        ? {
+            ...(shouldBypassProxy(url.href, []) ? { proxy: false as const } : {}),
+            ...(defaultCa === undefined ? {} : { tls: { ca: [...defaultCa] } }),
+          }
+        : fetchInitForNetwork(url.href, trust, systemCaPems);
     const response =
-      target !== undefined || (startsDirect && usesDirectEndpoint(url, trust))
+      target !== undefined
         ? await transports.direct(url, {
             method,
             headers,
             signal,
             ca,
             body,
-            ...(target === undefined ? {} : { connectionAddress: target.address }),
+            connectionAddress: target.address,
           })
         : await transports.fetch(url.href, {
             method,
@@ -82,7 +98,7 @@ export const requestWithNetworkTrust = async (
             signal,
             redirect: "manual",
             body,
-            ...(trust === undefined ? {} : fetchInitForNetwork(url.href, trust, systemCaPems)),
+            ...init,
           });
     const location = response.headers.get("location");
     if (
@@ -98,6 +114,10 @@ export const requestWithNetworkTrust = async (
       throw new RedirectError({
         message: request.redirect === "error" ? "redirect forbidden by request policy" : "too many redirects",
         urlOrigin: url.origin,
+        remediation:
+          request.redirect === "error"
+            ? "Set redirect to follow or manual if redirects are expected for this request policy."
+            : "Break the redirect loop at the origin or set redirect to manual so the client stops following Location hops.",
       });
     }
     const next = new URL(location, url);
@@ -106,7 +126,19 @@ export const requestWithNetworkTrust = async (
       next.username !== "" ||
       next.password !== ""
     ) {
-      throw new RedirectError({ message: "unsupported redirect target", urlOrigin: url.origin });
+      throw new RedirectError({
+        message: "unsupported redirect target",
+        urlOrigin: url.origin,
+        remediation: "Use an http(s) Location without embedded credentials for redirect targets.",
+      });
+    }
+    if (!startsLoopback && shouldBypassProxy(next.href, [])) {
+      throw new RedirectError({
+        message: "remote redirect to loopback forbidden",
+        urlOrigin: url.origin,
+        remediation:
+          "Request the local endpoint directly rather than following a remote Location to loopback.",
+      });
     }
     headers.delete("host");
     headers.delete("proxy-authorization");

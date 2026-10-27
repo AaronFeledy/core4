@@ -88,6 +88,7 @@ import type {
   CheckResult,
   ConfigLintResult,
   DatasetKind,
+  Environment,
   LandofileShape,
   ProviderId,
   RemoteConfig,
@@ -392,7 +393,7 @@ export interface ExecAppOptions {
   readonly command: ReadonlyArray<string>;
   readonly user?: string;
   readonly cwd?: string;
-  readonly env?: Readonly<Record<string, string>>;
+  readonly env?: Environment;
   readonly interactive?: boolean;
   readonly tty?: boolean;
 }
@@ -421,7 +422,7 @@ export interface ToolingOptions {
   readonly args?: ReadonlyArray<string>;
   readonly user?: string;
   readonly cwd?: string;
-  readonly env?: Readonly<Record<string, string>>;
+  readonly env?: Environment;
   readonly cacheRoot?: string;
   /** Explicitly request a provider PTY. Omission remains noninteractive. */
   readonly tty?: boolean;

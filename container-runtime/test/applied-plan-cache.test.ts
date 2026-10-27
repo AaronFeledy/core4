@@ -7,6 +7,7 @@ import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
 import { makeAppliedPlanCache } from "../src/applied-plan-cache.ts";
+import { plan as valuePlan } from "./fixtures/environment-values.ts";
 
 const appId = AppId.make("app");
 
@@ -33,7 +34,76 @@ const stateStore = (lockFails: boolean): PluginStateStore => ({
 });
 
 describe("applied plan cache", () => {
-  test("loads a plan once for two lookups", async () => {
+  test.each([false, true])(
+    "refuses unreadable durable state before persisting reconcile=%s",
+    async (reconcile) => {
+      const error = new ProviderUnavailableError({
+        providerId: "docker",
+        operation: "applied-state.read",
+        message: "Unreadable state",
+        remediation: "Restore the file from backup.",
+      });
+      let readable = true;
+      let writes = 0;
+      const cache = makeAppliedPlanCache({
+        providerId: ProviderId.make("docker"),
+        providerName: "Docker",
+        appliedPlanState: stateStore(false),
+        load: () =>
+          Effect.suspend(() => (readable ? Effect.succeed(appPlan("saved", ["db"])) : Effect.fail(error))),
+        persist: () =>
+          Effect.sync(() => {
+            writes += 1;
+          }),
+        remove: () => Effect.void,
+      });
+      await Effect.runPromise(cache.resolvePlan(appId));
+      readable = false;
+      expect(
+        await Effect.runPromise(
+          cache.rememberPlan(appPlan("incoming", ["web"]), reconcile).pipe(Effect.flip),
+        ),
+      ).toBe(error);
+      expect(writes).toBe(0);
+      expect(await Effect.runPromise(cache.resolvePlan(appId))).toBeUndefined();
+    },
+  );
+  test.each([false, true])(
+    "projects hooks before memory caching with persistent state=%s",
+    async (persistent) => {
+      const desired: AppPlan = {
+        ...valuePlan,
+        events: { "pre-stop": [{ step: "stale", source: "project", sourceIndex: 0, status: "active" }] },
+        extensions: { eventSites: ["stale"], retainedTooling: { task: "cleanup" } },
+      };
+      const written: AppPlan[] = [];
+      let stored: AppPlan | undefined;
+      const cache = makeAppliedPlanCache({
+        providerId: desired.provider,
+        providerName: "test",
+        ...(persistent ? { appliedPlanState: stateStore(false) } : {}),
+        sanitizeAppliedPlan: (input) => {
+          const { eventSites: _sites, ...extensions } = input.extensions;
+          return { ...input, extensions };
+        },
+        load: () => Effect.sync(() => stored),
+        persist: (_state, input) =>
+          Effect.sync(() => {
+            written.push(input);
+            stored = input;
+          }),
+        remove: () => Effect.void,
+      });
+      await Effect.runPromise(cache.rememberPlan(desired, true));
+      const observed = await Effect.runPromise(cache.resolvePlan(desired.id));
+      const { events: _events, ...record } = desired;
+      const expected = { ...record, extensions: { retainedTooling: { task: "cleanup" } } };
+      expect(observed).toEqual(expected);
+      expect(written).toEqual(persistent ? [expected] : []);
+      expect(desired.events?.["pre-stop"]).toHaveLength(1);
+    },
+  );
+  test("reuses the cached plan for observation and reads fresh state for mutation", async () => {
     const stored = new Map<AppId, AppPlan>([[appId, appPlan("stored", ["db"])]]);
     let loads = 0;
     const cache = makeAppliedPlanCache({
@@ -51,9 +121,11 @@ describe("applied plan cache", () => {
 
     const first = await Effect.runPromise(cache.resolvePlan(appId));
     const second = await Effect.runPromise(cache.resolvePlan(appId));
-
-    expect(first).toBe(second);
+    expect(second).toBe(first);
     expect(loads).toBe(1);
+
+    await Effect.runPromise(cache.resolveMutationPlan(appId));
+    expect(loads).toBe(2);
   });
 
   test("merges and persists the sanitized plan when reconcile is false", async () => {
@@ -86,7 +158,7 @@ describe("applied plan cache", () => {
     expect(Object.keys(persisted[0]?.services ?? {}).sort()).toEqual(["db", "web"]);
   });
 
-  test("skips the previous-plan load when reconcile is true", async () => {
+  test("verifies the previous plan even when reconcile is true", async () => {
     const stored = new Map<AppId, AppPlan>([[appId, appPlan("stored", ["db"])]]);
     const persisted: AppPlan[] = [];
     let loads = 0;
@@ -109,7 +181,7 @@ describe("applied plan cache", () => {
 
     await Effect.runPromise(cache.rememberPlan(appPlan("incoming", ["web"]), true));
 
-    expect(loads).toBe(0);
+    expect(loads).toBe(1);
     expect(Object.keys(persisted[0]?.services ?? {})).toEqual(["web"]);
     expect(persisted[0]?.name).toBe("sanitized:incoming");
   });
@@ -145,18 +217,24 @@ describe("applied plan cache", () => {
   });
 
   test("keeps the cached plan when state removal fails", async () => {
+    let stored: AppPlan | undefined;
     const cache = makeAppliedPlanCache({
       providerId: ProviderId.make("podman"),
       providerName: "provider-podman",
       appliedPlanState: stateStore(false),
-      load: () => Effect.succeed(undefined),
-      persist: () => Effect.void,
+      load: () => Effect.sync(() => stored),
+      persist: (_state, plan) =>
+        Effect.sync(() => {
+          stored = plan;
+        }),
       remove: () =>
         Effect.fail(
           new ProviderUnavailableError({
             providerId: "podman",
             operation: "applied-state.remove",
             message: "Removal failed.",
+            remediation:
+              "Install or start the `podman` provider and confirm it can perform `applied-state.remove`.",
           }),
         ),
     });

@@ -72,7 +72,6 @@ const baseServicePlan = (name: string, primary = false): ServicePlan => ({
   primary,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -92,7 +91,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     provider: providerId,
     services: map as AppPlan["services"],
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     metadata,
@@ -166,7 +164,9 @@ const inertProvider: RuntimeProviderShape = {
 };
 
 const runEngineLayer = (live: typeof ProviderExecToolingEngine.layer) =>
-  Effect.runPromise(ToolingEngine.pipe(Effect.provide(live)));
+  Effect.runPromise(
+    ToolingEngine.pipe(Effect.provide(live.pipe(Layer.provide(testEnvironmentResolverLayer)))),
+  );
 const hostToolingEngineLayer = HostToolingEngine.layer.pipe(Layer.provide(PrivateFileAccessService.layer));
 
 describe("ToolingEngine contract — built-in engines", () => {
@@ -295,3 +295,4 @@ describe("ToolingEngine contract — built-in engines", () => {
     expect(exit._tag).toBe("Success");
   });
 });
+import { testEnvironmentResolverLayer } from "../environment-values.ts";

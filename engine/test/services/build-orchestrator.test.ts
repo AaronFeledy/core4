@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 import {
   Cause,
@@ -18,7 +18,8 @@ import {
 } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { ProviderInternalError, StateStoreError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -70,7 +71,6 @@ const servicePlan = (name: "web" | "db"): ServicePlan => ({
   primary: name === "web",
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -90,7 +90,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [db.name]: db },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -157,7 +156,7 @@ const layerWithRedaction = (provider: RuntimeProviderShape, redaction: Layer.Lay
 const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
-    registerValues: registerRedactionValues,
+    ...makeRedactionService(),
     payloadValues: () => Effect.succeed(() => ["topsecret"]),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
   }),
@@ -208,6 +207,15 @@ describe("BuildOrchestratorLayer.layer", () => {
         LANDO_CA_BUNDLE: "/etc/lando/certs/ca-bundle.pem",
         LANDO_CA_DIR: "/etc/lando/certs",
       };
+      const buildSteps = [
+        {
+          id: "lando.security:trust-store",
+          phase: "build",
+          command: "install-trust",
+          buildKeyInputs: { caDigests: [digest] },
+          caFiles: [{ path: "/host/corp.pem", digest, archiveName: `lando-${digest}.crt` }],
+        },
+      ];
       const trustService: ServicePlan = {
         ...web,
         artifact: { kind: "ref", ref: "debian:12" },
@@ -230,15 +238,7 @@ describe("BuildOrchestratorLayer.layer", () => {
         ],
         extensions: {
           "@lando/core/service-features": {
-            buildSteps: [
-              {
-                id: "lando.security:trust-store",
-                phase: "build",
-                command: "install-trust",
-                buildKeyInputs: { caDigests: [digest] },
-                caFiles: [{ path: "/host/corp.pem", digest, archiveName: `lando-${digest}.crt` }],
-              },
-            ],
+            buildSteps,
           },
         },
       };
@@ -287,7 +287,17 @@ describe("BuildOrchestratorLayer.layer", () => {
       expect(builtService?.environment.LANDO_CA_BUNDLE).toBe(caEnvironment.LANDO_CA_BUNDLE);
       expect(builtService?.environment.LANDO_CA_DIR).toBe(caEnvironment.LANDO_CA_DIR);
       expect(cachedService?.environment).toEqual(builtService?.environment);
-      expect(cachedService?.extensions).toEqual(trustService.extensions);
+      const expectedExtensions = {
+        ...trustService.extensions,
+        "@lando/container-runtime/create-artifact": {
+          source: sha256Hex(canonicalJson({ artifact: trustService.artifact, buildSteps })),
+          realized: sha256Hex(
+            canonicalJson({ artifact: { kind: "ref", ref: "debian:12-lando-ca" }, buildSteps }),
+          ),
+        },
+      };
+      expect(builtService?.extensions).toEqual(expectedExtensions);
+      expect(cachedService?.extensions).toEqual(expectedExtensions);
     });
   });
 
@@ -388,13 +398,13 @@ describe("BuildOrchestratorLayer.layer", () => {
           expect.objectContaining({
             taskId: String(web.name),
             transcriptPath: expect.stringContaining(
-              `/builds/${String(plan.id)}/artifact/${String(web.name)}/`,
+              `${sep}${join("builds", String(plan.id), "artifact", String(web.name))}${sep}`,
             ),
           }),
           expect.objectContaining({
             taskId: String(db.name),
             transcriptPath: expect.stringContaining(
-              `/builds/${String(plan.id)}/artifact/${String(db.name)}/`,
+              `${sep}${join("builds", String(plan.id), "artifact", String(db.name))}${sep}`,
             ),
           }),
         ]),
@@ -406,7 +416,11 @@ describe("BuildOrchestratorLayer.layer", () => {
 
   test("settles every artifact task when scratch cache access fails", async () => {
     // Given
-    const cacheFailure = new StateStoreError({ reason: "io", operation: "open" });
+    const cacheFailure = new StateStoreError({
+      reason: "io",
+      operation: "open",
+      remediation: "Injected state-store open failure for build orchestrator fixture.",
+    });
     const scratchPlan: AppPlan = {
       ...plan,
       id: AppId.make("scratch-cache-failure"),
@@ -473,8 +487,14 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "buildArtifact",
       message: "build failed",
+      remediation:
+        "Re-run the command after checking `test` logs for the `buildArtifact` failure; if it persists, report the error with that operation name.",
     });
-    const cacheFailure = new StateStoreError({ reason: "io", operation: "update" });
+    const cacheFailure = new StateStoreError({
+      reason: "io",
+      operation: "update",
+      remediation: "Injected state-store update failure for build orchestrator fixture.",
+    });
     const scratchPlan: AppPlan = {
       ...plan,
       id: AppId.make("scratch-cache-write-failure"),
@@ -526,6 +546,8 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "buildArtifact",
       message: "build failed",
+      remediation:
+        "Re-run the command after checking `test` logs for the `buildArtifact` failure; if it persists, report the error with that operation name.",
     });
     const calls: string[] = [];
     const siblingStarted = Deferred.makeUnsafe<void>();
@@ -588,6 +610,201 @@ describe("BuildOrchestratorLayer.layer", () => {
     },
   );
 
+  test("rebuild invalidates the derived image key when the base digest moves", async () => {
+    const derived: ServicePlan = {
+      ...web,
+      artifact: { kind: "ref", ref: "php:8.2-apache-bookworm" },
+      extensions: {
+        "@lando/core/service-features": {
+          buildSteps: [
+            {
+              id: "service-lando.php:prerequisites",
+              phase: "build",
+              command: "true",
+              buildKeyInputs: { aptPackages: { unzip: "1" }, extensions: ["gd"] },
+            },
+          ],
+        },
+      },
+    };
+    const artifactPlan: AppPlan = { ...plan, services: { [web.name]: derived } };
+    let baseDigest = "sha256:first";
+    const keys: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true, artifactBuild: true },
+      pullArtifact: () => Effect.succeed({ providerId, ref: "php:8.2-apache-bookworm", digest: baseDigest }),
+      buildArtifact: (spec: ArtifactBuildSpec) =>
+        Effect.sync(() => {
+          keys.push(spec.buildKey);
+          return { providerId, ref: `php-derived:${keys.length}` };
+        }),
+    };
+
+    await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+        Effect.gen(function* () {
+          yield* orchestrator.build(artifactPlan);
+          baseDigest = "sha256:moved-base";
+          yield* orchestrator.build(artifactPlan, { refresh: true });
+        }),
+      ).pipe(Effect.provide(layer(provider))),
+    );
+
+    const firstKey = await Effect.runPromise(
+      buildKeyForService(provider, {
+        ...derived,
+        artifact: { kind: "ref", ref: "php:8.2-apache-bookworm", digest: "sha256:first" },
+      }),
+    );
+    const movedKey = await Effect.runPromise(
+      buildKeyForService(provider, {
+        ...derived,
+        artifact: { kind: "ref", ref: "php:8.2-apache-bookworm", digest: "sha256:moved-base" },
+      }),
+    );
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toBe(firstKey);
+    expect(keys[1]).toBe(movedKey);
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  test("start after rebuild reuses the derived image", async () => {
+    await withTempUserRoots(async () => {
+      const derived: ServicePlan = {
+        ...web,
+        artifact: { kind: "ref", ref: "php:8.2-apache-bookworm" },
+        extensions: {
+          "@lando/core/service-features": {
+            buildSteps: [
+              {
+                id: "service-lando.php:prerequisites",
+                phase: "build",
+                command: "true",
+                buildKeyInputs: { aptPackages: { unzip: "1" }, extensions: ["gd"] },
+              },
+            ],
+          },
+        },
+      };
+      const scratchPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("scratch-rebuild-then-start"),
+        slug: "scratch-rebuild-then-start",
+        services: { [web.name]: derived },
+      };
+      let baseDigest = "sha256:first";
+      const builds: string[] = [];
+      const provider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true, artifactBuild: true },
+        pullArtifact: () =>
+          Effect.succeed({ providerId, ref: "php:8.2-apache-bookworm", digest: baseDigest }),
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.sync(() => {
+            builds.push(spec.buildKey);
+            return {
+              providerId,
+              ref: `php-derived:${builds.length}`,
+              digest: `sha256:derived-${builds.length}`,
+            };
+          }),
+      };
+
+      const result = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            const first = yield* orchestrator.build(scratchPlan);
+            baseDigest = "sha256:second";
+            const rebuilt = yield* orchestrator.build(scratchPlan, { refresh: true });
+            const started = yield* orchestrator.build(scratchPlan);
+            return { first, rebuilt, started };
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      expect(builds).toHaveLength(2);
+      expect(result.started.services[web.name]?.artifact).toEqual(
+        result.rebuilt.services[web.name]?.artifact,
+      );
+      expect(result.rebuilt.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+      });
+      expect(result.first.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:1",
+        digest: "sha256:derived-1",
+      });
+    });
+  });
+
+  test("rebuild keeps the local derived image when refresh fails", async () => {
+    await withTempUserRoots(async () => {
+      const derived: ServicePlan = {
+        ...web,
+        artifact: { kind: "ref", ref: "php:8.2-apache-bookworm" },
+        extensions: {
+          "@lando/core/service-features": {
+            buildSteps: [
+              {
+                id: "service-lando.php:prerequisites",
+                phase: "build",
+                command: "true",
+                buildKeyInputs: { aptPackages: { unzip: "1" }, extensions: ["gd"] },
+              },
+            ],
+          },
+        },
+      };
+      const scratchPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("scratch-refresh-offline"),
+        slug: "scratch-refresh-offline",
+        services: { [web.name]: derived },
+      };
+      const failure = new ProviderInternalError({
+        providerId: "test",
+        operation: "pullArtifact",
+        message: "registry unavailable",
+        remediation: "Retry when the registry is reachable.",
+      });
+      let refreshing = false;
+      const builds: string[] = [];
+      const provider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true, artifactBuild: true },
+        pullArtifact: (spec: ArtifactPullSpec) => {
+          if (refreshing && spec.policy !== "never") return Effect.fail(failure);
+          return Effect.succeed({ providerId, ref: spec.ref, digest: "sha256:local" });
+        },
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.sync(() => {
+            builds.push(spec.buildKey);
+            return { providerId, ref: `php-derived:${builds.length}`, digest: "sha256:derived-1" };
+          }),
+      };
+      const commandWarnings = makeCommandWarnings(true);
+
+      const result = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            const first = yield* orchestrator.build(scratchPlan);
+            refreshing = true;
+            const rebuilt = yield* orchestrator.build(scratchPlan, { refresh: true });
+            return { first, rebuilt, warnings: yield* commandWarnings.list };
+          }),
+        ).pipe(Effect.provideService(CommandWarnings, commandWarnings), Effect.provide(layer(provider))),
+      );
+
+      expect(builds).toHaveLength(1);
+      expect(result.rebuilt.services[web.name]?.artifact).toEqual(result.first.services[web.name]?.artifact);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]?.code).toBe("LANDO_ARTIFACT_REFRESH_FAILED");
+    });
+  });
+
   test("uses the local artifact and publishes one redacted warning when refresh fails", async () => {
     // Given
     const ref = "debian:12.11-slim";
@@ -599,6 +816,8 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "pullArtifact",
       message: "registry unavailable topsecret",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const pulls: ArtifactPullSpec[] = [];
     const provider = {
@@ -650,6 +869,8 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "pullArtifact",
       message: "registry unavailable topsecret",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const provider = {
       ...TestRuntimeProvider,
@@ -697,11 +918,15 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "pullArtifact",
       message: "registry unavailable",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const localFailure = new ProviderInternalError({
       providerId: "test",
       operation: "pullArtifact",
       message: "local copy missing",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const pulls: ArtifactPullSpec[] = [];
     const provider = {
@@ -924,7 +1149,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const envRedactionLayer = Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
+        ...makeRedactionService(),
         payloadValues: (options) => Effect.succeed(() => [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""]),
         forProfile: (_profile, options) =>
           Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
@@ -975,7 +1200,7 @@ describe("BuildOrchestratorLayer.layer", () => {
     const lazyRedactionLayer = Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
+        ...makeRedactionService(),
         payloadValues: () => Effect.succeed(() => ["latersecret"]),
         forProfile: () =>
           Effect.sync(() => {
@@ -1390,6 +1615,8 @@ describe("BuildOrchestratorLayer.layer", () => {
         providerId: "test",
         operation: "pullArtifact",
         message: "pull failed",
+        remediation:
+          "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
       });
       const retryCalls: string[] = [];
       const failingProvider = {

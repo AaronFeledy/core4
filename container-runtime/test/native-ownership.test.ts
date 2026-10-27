@@ -17,6 +17,7 @@ import { privateNetworkLabels } from "../src/resource-cleanup.ts";
 const metadata = { source: "ownership-test", runtime: 4 as const, resolvedAt: DateTime.makeUnsafe(0) };
 const web = ServiceName.make("web");
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("owned"),
   name: "owned",
   slug: "owned",
@@ -31,7 +32,6 @@ const plan: AppPlan = {
       artifact: { kind: "ref", ref: "node:22" },
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -44,7 +44,6 @@ const plan: AppPlan = {
     perAppBridge: { name: "private", driver: "bridge" },
     sharedNetworkMembership: { name: "shared", aliases: {} },
   },
-  networks: [],
   stores: [],
   routes: [],
   fileSync: [],
@@ -59,7 +58,7 @@ const networkLabels = privateNetworkLabels({
   appId: plan.id,
   providerId: plan.provider,
 });
-const ctx = { providerId: "docker", remediation: "retry" };
+const ctx = { providerId: "docker", remediation: "retry", env: {} };
 
 const fakeApi = (observations: ReadonlyMap<string, object>) => {
   const calls: EngineHttpRequest[] = [];
@@ -217,7 +216,7 @@ test("bring-down mutates verified native IDs rather than reusable names", async 
     fake.calls.filter((call) => call.method !== "GET").map((call) => `${call.method} ${call.path}`),
   ).toEqual([
     "POST /containers/observed-container/stop",
-    "DELETE /containers/observed-container?force=true",
+    "DELETE /containers/observed-container?force=true&v=true",
     "DELETE /networks/observed-network",
   ]);
 });

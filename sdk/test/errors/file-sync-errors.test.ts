@@ -42,14 +42,15 @@ describe("FileSyncStartError", () => {
     }
   });
 
-  test("accepts an absent optional sessionSpec field", () => {
+  test("accepts an absent optional sessionSpec field when remediation is provided", () => {
     const error = new FileSyncStartError({
       engineId: "passthrough",
       message: "engine not ready",
+      remediation: "Wait until the file-sync engine reports ready, then retry `lando start`.",
     });
 
     expect(error.sessionSpec).toBeUndefined();
-    expect(error.remediation).toBeUndefined();
+    expect(error.remediation).toContain("file-sync engine");
     expect(error.cause).toBeUndefined();
   });
 });
@@ -82,6 +83,7 @@ describe("FileSyncDriftError", () => {
       message: "drift detected",
       sessionRef: "session-xyz",
       conflictedPaths: ["a", "b"],
+      remediation: "Resolve the listed conflicted paths, then retry `lando start`.",
     });
 
     expect(Result.isSuccess(decoded)).toBe(true);
@@ -98,6 +100,7 @@ describe("FileSyncDriftError", () => {
       message: "drift detected",
       sessionRef: "session-xyz",
       conflictedPaths: [],
+      remediation: "Remove the stale sync session before running lando start again.",
     });
 
     expect(error.suggestedMode).toBeUndefined();
@@ -128,12 +131,13 @@ describe("FileSyncStopError", () => {
       engineId: "mutagen",
       sessionRef: "session-xyz",
       message: "terminate failed",
+      remediation: "Inspect the file-sync engine log, then retry `lando stop`.",
     });
 
     expect(Result.isSuccess(decoded)).toBe(true);
     if (Result.isSuccess(decoded)) {
       expect(decoded.success.sessionRef).toBe("session-xyz");
-      expect(decoded.success.remediation).toBeUndefined();
+      expect(decoded.success.remediation).toContain("lando stop");
     }
   });
 });

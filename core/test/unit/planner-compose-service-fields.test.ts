@@ -12,6 +12,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 const composeServiceFieldCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -19,7 +20,7 @@ const composeServiceFieldCapabilities: ProviderCapabilities = {
     supported: [...(TestRuntimeProvider.capabilities.composeKnobs?.supported ?? []), "shm_size"],
   },
   composeServiceFields: {
-    supported: ["networks", "configs", "secrets", "profiles", "labels"],
+    supported: ["configs", "secrets", "profiles", "labels"],
   },
 };
 
@@ -37,7 +38,9 @@ const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
 
 const plan = (landofile: typeof LandofileShape.Type) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, composeServiceFieldCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) =>
+      planner.plan(literalLandofile(landofile, process.cwd()), composeServiceFieldCapabilities),
+    ).pipe(
       Effect.provide(
         AppPlannerLayer.layer.pipe(
           Layer.provide(Layer.mergeAll(BunFileSystem.layer, PluginRegistryLayer.layer)),
@@ -58,6 +61,7 @@ describe("Compose service field preservation", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "compose-fields",
       runtime: 4,
+      networks: { frontend: {} },
       configs: {
         "app-config": { file: "./app.conf" },
         "site-config": { file: "./site.conf" },
@@ -96,7 +100,6 @@ describe("Compose service field preservation", () => {
       // Then
       const expectedCompose = {
         labels: { "io.lando.role": "web" },
-        networks: { frontend: {} },
         configs: [
           { source: "app-config" },
           {

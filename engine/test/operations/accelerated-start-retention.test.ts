@@ -13,11 +13,14 @@ test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
       providerId: "lando",
       operation: "apply",
       message: "apply failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
     });
     const secondary = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: "old",
       message: "drain failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const harness = await Effect.runPromise(
       recoveryHarness({ phase, harnessOptions: { applyEffect: Effect.fail(original) } }),

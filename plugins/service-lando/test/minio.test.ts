@@ -62,10 +62,11 @@ describe("minio ServiceType", () => {
       { _tag: "internal", port: 9000, protocol: "http", name: "storage", primary: true },
       { _tag: "internal", port: 9001, protocol: "http", name: "console" },
     ]);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-minio-data");
-    expect(String(plan.storage[0]?.target)).toBe("/data");
-    expect(plan.storage[0]?.readOnly).toBe(false);
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-minio-data");
+    expect(String(volumes[0]?.target)).toBe("/data");
+    expect(volumes[0]?.readOnly).toBe(false);
   });
 
   test("sets root credentials, bucket name, and mc alias for the official image", async () => {

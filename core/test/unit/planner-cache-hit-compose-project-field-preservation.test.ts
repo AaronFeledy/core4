@@ -13,6 +13,7 @@ import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 test("Given supported project fields, when planning twice, then the cache hit retains the Compose extension", async () => {
   // Given
@@ -39,9 +40,9 @@ test("Given supported project fields, when planning twice, then the cache hit re
   );
   const runPlan = () =>
     Effect.runPromise(
-      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-        Effect.provide(plannerLayer),
-      ),
+      Effect.flatMap(AppPlanner, (planner) =>
+        planner.plan(literalLandofile(landofile, appRoot), capabilities),
+      ).pipe(Effect.provide(plannerLayer)),
     );
 
   try {

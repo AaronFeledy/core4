@@ -41,7 +41,6 @@ const makeService = (
   artifact,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -51,6 +50,7 @@ const makeService = (
 });
 
 const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "Mailpit App",
   slug: "mailpit-app",
@@ -58,7 +58,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
   provider: providerId,
   services: Object.fromEntries(services.map((entry) => [entry.name, entry])),
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "lando-mailpit-app", driver: "bridge" } },
   stores: [],
   fileSync: [],
@@ -86,7 +85,8 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
       const responseFor = (): EngineHttpResponse => {
         if (request.method === "GET" && request.path.startsWith("/networks/"))
           return { status: 404, body: "" };
-        if (request.path === "/networks/create") return { status: 201, body: "" };
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create")
+          return { status: 201, body: "" };
         if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
           const ref = decodeURIComponent(request.path.slice("/libpod/images/".length, -"/json".length));
           return {
@@ -188,13 +188,13 @@ describe("provider-podman apply image pull", () => {
     },
   );
 
-  test("apply forwards secret-only overrides without dropping planned environment", async () => {
+  test("apply forwards the complete resolved environment callback", async () => {
     // Given
     const service = {
       ...makeService("mailpit", mailpitRef),
       environment: {
         PLAIN: "visible",
-        TOKEN: "${secret:API_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "API_TOKEN" } as const,
         SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
       },
     };
@@ -219,7 +219,8 @@ describe("provider-podman apply image pull", () => {
       Effect.scoped(
         provider.apply(makePlan([service]), {
           reconcile: false,
-          serviceEnvironment: { [service.name]: { TOKEN: "resolved-canary" } },
+          resolveServiceEnvironment: () =>
+            Effect.succeed({ ...service.environment, TOKEN: "resolved-canary" }),
         }),
       ),
     );

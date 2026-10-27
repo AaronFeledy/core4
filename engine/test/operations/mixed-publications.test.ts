@@ -12,7 +12,6 @@ const service: ServicePlan = {
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   routes: [],
   dependsOn: [],
   hostAliases: [],
@@ -28,7 +27,13 @@ test("keeps dynamic intent pending when only its sibling fixed binding is observ
     bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 8080 }],
   } as const;
   // When
-  const rows = projectServiceConnections({ service, state: "running", publications, routes: [] });
+  const rows = projectServiceConnections({
+    plan: { slug: "test" },
+    service,
+    state: "running",
+    publications,
+    routes: [],
+  });
   // Then
   expect(
     rows
@@ -60,7 +65,13 @@ test("assigns dynamic aliases only to unreserved physical bindings across IP and
     ],
   } as const;
   // When
-  const rows = projectServiceConnections({ service: planned, state: "running", publications, routes: [] });
+  const rows = projectServiceConnections({
+    plan: { slug: "test" },
+    service: planned,
+    state: "running",
+    publications,
+    routes: [],
+  });
   // Then aliases share a single assigned physical binding, with typed listener metadata.
   expect(
     rows

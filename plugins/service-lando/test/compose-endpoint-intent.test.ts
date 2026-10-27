@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
@@ -75,10 +76,9 @@ describe("compose endpoint intent", () => {
 
     // When
     const exit = await Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, linuxMvpCapabilities)).pipe(
-        Effect.provide(AppPlannerLayer.layer),
-        Effect.provide(PluginRegistryLayer.layer),
-      ),
+      Effect.flatMap(AppPlanner, (planner) =>
+        planner.plan(compileTestLandofile(landofile), linuxMvpCapabilities),
+      ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
     );
 
     // Then

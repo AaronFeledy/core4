@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   LandofileShape,
@@ -13,6 +12,7 @@ import { Cause, Effect, Exit, Option, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { composeExtendedServiceType } from "../../src/services/extends.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 const APP_ROOT = process.cwd();
 const plan = (service: typeof ServiceConfig.Encoded) => {
@@ -22,7 +22,7 @@ const plan = (service: typeof ServiceConfig.Encoded) => {
     services: { web: { home: false, certs: false, ...service } },
   });
   return Effect.flatMap(AppPlanner, (planner) =>
-    planner.plan(rememberLandofileAppRoot(landofile, APP_ROOT), TestRuntimeProvider.capabilities),
+    planner.plan(literalTestLandofile(landofile, APP_ROOT), TestRuntimeProvider.capabilities),
   ).pipe(Effect.provide(AppPlannerLayer.layer));
 };
 
@@ -93,7 +93,7 @@ test.each(["php:8.3", "nginx", "apache", "static:nginx", "tomcat"])(
     // Then the supporting server composition plans without app-context env.
     const web = result.services[ServiceName.make("web")];
     expect(web?.environment.LANDO_WEBROOT).toBeUndefined();
-    expect(web?.appMount).toBeUndefined();
+    expect(serviceAppMount(web ?? { mounts: [] })).toBeUndefined();
   },
 );
 
@@ -206,3 +206,4 @@ test.each(["python:3.12", "ruby:3.3"])(
     expect(web?.extensions["custom.root"]).toEqual({ webroot: "/srv/public" });
   },
 );
+import { serviceAppMount } from "@lando/sdk/schema";

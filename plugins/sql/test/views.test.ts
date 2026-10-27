@@ -3,13 +3,18 @@ import { describe, expect, test } from "bun:test";
 import { toSqlLandofile, toSqlPlan } from "../src/views.ts";
 
 describe("toSqlPlan", () => {
-  test("preserves storage destinations when projecting a service", () => {
-    const storage = [
+  test("preserves volume mount destinations when projecting a service", () => {
+    const mounts = [
+      { type: "volume", store: "home", target: "/home/lando", readOnly: false },
+      { type: "volume", store: "data", target: "/var/lib/mysql", readOnly: false },
+      { type: "bind", source: "/host", target: "/app", readOnly: false, realization: "passthrough" },
+      { type: "tmpfs", target: "/tmp", readOnly: false },
+    ];
+    const plan = toSqlPlan({ services: { database: { type: "mysql", mounts } } });
+    expect(plan.services.database?.storage).toEqual([
       { store: "home", target: "/home/lando" },
       { store: "data", target: "/var/lib/mysql" },
-    ];
-    const plan = toSqlPlan({ services: { database: { type: "mysql", storage } } });
-    expect(plan.services.database?.storage).toEqual(storage);
+    ]);
   });
   test("retains planner-owned app identity", () => {
     // Given: a planned app with canonical owner and repository-group identity.
@@ -43,7 +48,7 @@ describe("toSqlPlan", () => {
           type: "mysql",
           artifact: { kind: "ref", ref: "mysql:8.0" },
           environment: {},
-          storage: [],
+          mounts: [],
         },
       },
     });

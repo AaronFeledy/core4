@@ -32,7 +32,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "node:22-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -48,14 +47,13 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
   extensions: {},
 };
 const target = { app: appId, service: serviceName };
-const ctx = { providerId: "docker", remediation: "Inspect the engine and retry." } as const;
+const ctx = { providerId: "docker", remediation: "Inspect the engine and retry.", env: {} } as const;
 
 const makeFakeApi = (responses: ReadonlyArray<EngineHttpResponse>) => {
   const calls: EngineHttpRequest[] = [];
@@ -212,7 +210,7 @@ describe("waitForExit failures", () => {
 
   test("uses the supplied podman context on failures", async () => {
     // Given
-    const podmanCtx = { providerId: "podman", remediation: "Repair Podman and retry." } as const;
+    const podmanCtx = { providerId: "podman", remediation: "Repair Podman and retry.", env: {} } as const;
     const fake = makeFakeApi([{ status: 500, body: "" }]);
 
     // When
@@ -223,7 +221,7 @@ describe("waitForExit failures", () => {
     );
 
     // Then
-    expect(failure.providerId).toBe("podman");
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
     expect(failure.remediation).toBe(podmanCtx.remediation);
   });
 });

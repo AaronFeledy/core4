@@ -68,7 +68,6 @@ describe("toolbox decomposition", () => {
           primary: true,
           image: TOOLBOX_IMAGE,
           command: "sleep infinity",
-          home: false,
         },
       },
     });

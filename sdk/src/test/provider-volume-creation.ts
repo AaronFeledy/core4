@@ -84,6 +84,8 @@ export const runProviderVolumeCreationContract = Effect.fnUntraced(function* (
     providerId: provider.id,
     operation: "record-volume-creation",
     message: "Receipt persistence failed.",
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
   const startsBeforeFailure = serviceStartCount();
   let failedCallbacks = 0;

@@ -3,8 +3,9 @@ import { createPayloadRedactor } from "@lando/sdk/secrets";
 /**
  * `lando shell` — host shell at the app root by default, or a service shell with `--service`.
  *
- * Service mode runs `sh -l` in the requested service via provider execStream.
- * Host mode uses `ShellRunner` for an interactive Bun Shell line REPL.
+ * Service mode runs a login shell in the requested service via provider execStream
+ * (bash when present, otherwise sh). Host mode uses `ShellRunner` for an
+ * interactive Bun Shell line REPL.
  */
 import { DateTime, Effect, Option, Queue, Stream } from "effect";
 
@@ -35,6 +36,7 @@ import { availableServiceList, unknownPlanServiceError } from "@lando/engine/ope
 import { makeLandoPaths } from "@lando/paths";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import { loadUserLandofile } from "../app-resolution";
+import { serviceLoginShellCommand } from "../service-login-shell";
 import { cancellableTerminalStdin } from "./terminal-stdin";
 
 export interface ShellAppOptions {
@@ -166,6 +168,10 @@ const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError 
         ? "shell requires a service: the app has no services."
         : `shell requires a service: the app has no primary service (available: ${list}).`,
     tool: "app:shell",
+    remediation:
+      list.length === 0
+        ? "Add a service to the Landofile before running lando shell."
+        : `Pass --service with one of: ${list}, or mark a service primary: true.`,
   });
 };
 
@@ -272,13 +278,13 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       ...(options.user === undefined ? {} : { user: options.user }),
     };
     const terminalSize = currentTerminalSize(io);
-    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.document.agentEnv, process.env);
     const serviceEnv = withAgentContextEnv(options.env, process.env, {
       allowlist,
       lowerThanEnv: service.environment,
     });
     const spec: CommandSpec = {
-      command: options.args?.length === 0 || options.args === undefined ? ["sh", "-l"] : options.args,
+      command: serviceLoginShellCommand(options.args),
       stdin: "inherit",
       ...(io.stdin === undefined ? {} : { stdinStream: io.stdin }),
       tty: true,

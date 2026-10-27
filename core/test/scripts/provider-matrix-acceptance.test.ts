@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 type ProviderAcceptanceCellId =
   | "docker-desktop-macos"
   | "docker-engine-linux"
+  | "docker-engine-linux-latest"
   | "podman-podman6-linux"
   | "lando-podman6-linux";
 
@@ -137,6 +138,7 @@ describe("provider matrix acceptance reporting", () => {
     expect(report.checks.map((check) => check.id)).toEqual([
       "managed-setup-readiness",
       "compose-knobs-transport",
+      "storage-lifecycle",
       "sdk-provider-contract",
       "lando-bring-up",
       "lando-bring-down",
@@ -164,6 +166,34 @@ describe("provider matrix acceptance reporting", () => {
       "plugins/provider-lando/test/compose-knobs-transport.test.ts",
     ]);
     expect(evaluateProviderAcceptanceReport(report).exitCode).toBe(0);
+  });
+
+  test("Docker Engine latest cell checks that lando exec creates 0644 files", () => {
+    const cell = buildProviderAcceptancePlan("docker-engine-linux-latest") as {
+      readonly releaseBlocking: boolean;
+      readonly checks: ReadonlyArray<{
+        readonly id: string;
+        readonly label: string;
+        readonly command: readonly string[];
+      }>;
+    };
+    expect(cell.releaseBlocking).toBe(false);
+    expect(cell.checks.map((check) => check.id)).toEqual([
+      "storage-lifecycle",
+      "sdk-provider-contract",
+      "exec-umask-mode",
+    ]);
+    expect(cell.checks.find((check) => check.id === "exec-umask-mode")).toEqual({
+      id: "exec-umask-mode",
+      label: "lando exec creates 0644 files",
+      command: [
+        "bun",
+        "test",
+        "plugins/provider-docker/test/exec-umask.integration.test.ts",
+        "--test-name-pattern",
+        "lando exec creates 0644 files",
+      ],
+    });
   });
 
   test("provider matrix runner preflights required sockets before running commands", async () => {

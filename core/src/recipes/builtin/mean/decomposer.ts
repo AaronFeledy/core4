@@ -17,7 +17,8 @@ export const meanDecomposer = makeOptionBearingDecomposer({
           environment: {
             NODE_ENV: "development",
             PORT: 3000,
-            MONGO_URL: "mongodb://lando:lando@database:27017/{{ app.name }}?authSource=admin",
+            MONGO_URL:
+              "mongodb://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?authSource=admin",
             ...(redis ? { REDIS_URL: "redis://cache:6379" } : {}),
           },
           dependsOn: redis ? ["database", "cache"] : ["database"],

@@ -129,10 +129,11 @@ describe("rabbitmq ServiceType", () => {
           { _tag: "internal", port: 5672, protocol: "tcp", name: "queue", primary: true },
           { _tag: "internal", port: 15672, protocol: "http", name: "management" },
         ]);
-        expect(plan.storage).toHaveLength(1);
-        expect(plan.storage[0]?.store).toBe("myapp-rabbitmq-data");
-        expect(String(plan.storage[0]?.target)).toBe("/var/lib/rabbitmq");
-        expect(plan.storage[0]?.readOnly).toBe(false);
+        const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+        expect(volumes).toHaveLength(1);
+        expect(volumes[0]?.store).toBe("myapp-rabbitmq-data");
+        expect(String(volumes[0]?.target)).toBe("/var/lib/rabbitmq");
+        expect(volumes[0]?.readOnly).toBe(false);
         expect(plan.environment).toMatchObject({
           RABBITMQ_DEFAULT_USER: "lando",
           RABBITMQ_DEFAULT_PASS: "lando",
@@ -201,8 +202,10 @@ describe("rabbitmq ServiceType", () => {
         expect(plan.environment).toMatchObject({
           RABBITMQ_DEFAULT_USER: "author",
           RABBITMQ_DEFAULT_PASS: "lando",
+          RABBITMQ_NODE_PORT: "25672",
           EXTRA_VAR: "extra",
         });
+        expect(plan.healthcheck?.command).toEqual(["rabbitmq-diagnostics", "-q", "ping"]);
         expect(plan.command).toEqual(["rabbitmq-server"]);
         expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
         expect(String(plan.workingDirectory)).toBe("/var/lib/rabbitmq");

@@ -1,6 +1,6 @@
 # Lando v4: Toolchain
 
-> **Part 2 of 19** · [Index](./README.md)
+> **Part 2 of 20** · [Index](./README.md)
 > **Read next:** [03 Architecture](./03-architecture.md)
 
 This part defines the technology stack and the architectural rules each component imposes.
@@ -57,6 +57,8 @@ Build-visible code and data MUST be statically imported or explicitly embedded. 
 TTY renderers enforce the perceived-performance budget (§8.9). Non-TTY output is exempt from spinner/progress but MUST emit its first line within 80 ms when the end-to-end budget exceeds 100 ms. Level-`none` commands have no separate first-paint budget; the pre-dispatch fast-path shape (§3.2) MUST NOT construct an Effect runtime or import `@oclif/core`, while dispatcher-routed `none` commands build any runtime inside their own body.
 
 Per-PR performance tests and the §13.4 merge gate enforce both budget tables.
+
+Execution bookkeeping (§22.10) MUST preserve these budgets and provider request counts. Test both deterministic request counts and same-toolchain compiled timings; skipped live measurements do not establish support. The execution facade MUST stay out of the CLI cold import graph.
 
 ### 2.2 TypeScript
 
@@ -142,6 +144,7 @@ Effect plus a small set of YAML/CA primitives are the only target runtime depend
 | `@lando/core/landofile` | canonical parser and serializer (§7.8.1) |
 | `@lando/core/testing` | supported test wiring and fixtures |
 | `@lando/core/cli` | programmatic native CLI invocation |
+| `@lando/core/execution` | opt-in scoped execution facade on the retained runtime (§22); not a separate runtime or workflow language |
 | `@lando/core/docs/components` | executable-guide runtime and AST helpers (§19.3) |
 | `@lando/core/docs/redactions` | transcript redaction list (§19.6) |
 

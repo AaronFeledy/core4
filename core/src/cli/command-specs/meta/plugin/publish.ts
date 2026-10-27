@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Flags } from "../../../spec/metadata";
 
 import {
@@ -45,6 +46,6 @@ export const pluginPublishSpec: LandoCommandSpec<PluginPublishResult> = {
     "no-interactive": Flags.boolean({ description: "Never prompt for credentials.", default: false }),
   },
   run: (input) => pluginPublish(extractInput(input)),
-  successExitCode: (result) => (result.exitCode === 0 ? undefined : result.exitCode),
+  completion: (result) => commandCompletionFromExitCode(result.exitCode),
   render: (result) => renderPluginPublishResult(result as PluginPublishResult),
 };

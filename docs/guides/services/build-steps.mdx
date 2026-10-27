@@ -118,9 +118,9 @@ lando app:cache:refresh
       <UseFixture name="build-steps-invalid-user" />
     </Step>
     <Step name="lint-invalid-user">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"build\",\\s*\"artifact\",\\s*0,\\s*\"user\"\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"build\",\\s*\"artifact\",\\s*0,\\s*\"user\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-invalid">
       <Cleanup />

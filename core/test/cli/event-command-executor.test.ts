@@ -3,8 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, Context, DateTime, Effect, Exit, Queue, Schema, Stream } from "effect";
+import { Cause, Context, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
+import { normalizeDefect } from "@lando/sdk/command-result";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -29,12 +30,8 @@ import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
-import {
-  RedactionService,
-  createPayloadValues,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { EnvironmentValueResolver } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
@@ -48,6 +45,7 @@ import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { extractSpecParsedArgv } from "../../src/cli/spec/command-boundary.ts";
 import { Args, Flags } from "../../src/cli/spec/metadata.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+import { environmentResolverLayer } from "../_support/value-contracts.ts";
 
 class EventCommandTestError extends Schema.TaggedError<EventCommandTestError>()("EventCommandTestError", {
   message: Schema.String,
@@ -93,15 +91,11 @@ const makeHarness = (): Harness => {
         ),
     },
   } satisfies Context.Service.Shape<typeof Renderer>;
-  const redaction = {
-    registerValues: registerRedactionValues,
-    payloadValues: (options?: Parameters<typeof createStandaloneRedactor>[1]) =>
-      Effect.succeed(createPayloadValues([], options)),
-    forProfile: (
-      profile: "secrets" | "telemetry" | "transcript",
-      options?: Parameters<typeof createStandaloneRedactor>[1],
-    ) => Effect.succeed(createStandaloneRedactor(profile, options)),
-  } satisfies Context.Service.Shape<typeof RedactionService>;
+  const redaction = makeRedactionService();
+  const resolver = Context.get(
+    Effect.runSync(Effect.scoped(Layer.build(environmentResolverLayer({}, redaction)))),
+    EnvironmentValueResolver,
+  );
   return {
     events,
     presentation,
@@ -109,6 +103,7 @@ const makeHarness = (): Harness => {
       Context.add(EventService, eventService),
       Context.add(Renderer, renderer),
       Context.add(RedactionService, redaction),
+      Context.add(EnvironmentValueResolver, resolver),
       Context.add(PrivateFileAccessService, ownerOnlyFileAccess),
       Context.add(
         ShellRunner,
@@ -157,7 +152,6 @@ const eventPlan = (): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
@@ -259,13 +253,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     const harness = makeHarness();
     const spec = {
       ...testSpec(() => Effect.succeed({ exitCode: 7 })),
-      successExitCode: (result: unknown) =>
-        typeof result === "object" &&
-        result !== null &&
-        "exitCode" in result &&
-        typeof result.exitCode === "number"
-          ? result.exitCode
-          : undefined,
+      completion: () => ({ ok: false, exitCode: 7 }),
     } satisfies LandoCommandSpec;
 
     // When
@@ -281,7 +269,7 @@ describe("EventCommandExecutorLayer.layer", () => {
 
     // Then
     expect(result.exitCode).toBe(7);
-    expect(harness.events.at(-1)).toMatchObject({ _tag: `cli-${spec.id}-run`, exitCode: 7 });
+    expect(harness.events.at(-1)).toMatchObject({ _tag: `cli-${spec.id}-error`, exitCode: 7 });
   });
 
   test("renders a successful target result through the provided renderer", async () => {
@@ -416,7 +404,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     expect(Exit.isFailure(exit) ? exit.cause.reasons.every(Cause.isFailReason) : false).toBe(true);
     expect(
       Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error) : [],
-    ).toEqual([primary, defect]);
+    ).toEqual([primary, normalizeDefect(defect)]);
   });
 
   test("propagates target interruption", async () => {
@@ -449,7 +437,9 @@ describe("EventCommandExecutorLayer.layer", () => {
     const spec = {
       ...testSpec(() =>
         StreamFrameSink.pipe(
-          Effect.flatMap((sink) => sink.emit({ _tag: "stdout", service: "app", chunk: "before interrupt" })),
+          Effect.flatMap((sink) =>
+            sink.emit({ kind: "record", _tag: "stdout", service: "app", chunk: "before interrupt" }),
+          ),
           Effect.andThen(Effect.interrupt),
         ),
       ),

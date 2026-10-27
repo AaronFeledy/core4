@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { PortNumber } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
@@ -10,6 +10,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { TOMCAT_CATALOG } from "./generated/tomcat-catalog.ts";
@@ -35,13 +36,6 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const { webroot, ownsImageConfig, major } = Schema.decodeUnknownSync(TomcatFeatureConfig)(ctx.config);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
-  ctx.addEndpoint({
-    _tag: "internal",
-    port,
-    protocol: "http",
-    name: ctx.serviceName,
-    primary: true,
-  });
   ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
   if (ownsImageConfig) {
     ctx.addBuildStep({
@@ -75,6 +69,13 @@ export const tomcatServiceFeature: ServiceFeatureDefinition = {
   id: TOMCAT_FEATURE_ID,
   schema: TomcatFeatureConfig,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, {
+        port: Schema.decodeUnknownSync(PortNumber)(ctx.normalizedConfig.port ?? DEFAULT_PORT),
+        protocol: "http",
+      }),
+    ),
   apply: serviceFeatureApply(TOMCAT_FEATURE_ID, "tomcat service feature failed to apply", applyTomcatFeature),
 };
 

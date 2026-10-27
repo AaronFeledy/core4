@@ -43,16 +43,19 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "node:22-alpine" },
   command: ["node", "server.js"],
   environment: {},
-  appMount: {
-    source: root,
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    realization: "accelerated",
-    excludes: [],
-    includes: [],
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      source: root,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      realization: "accelerated",
+      role: "app",
+      excludes: [],
+      includes: [],
+      mountKey: "app-mount",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -68,7 +71,6 @@ const plan: AppPlan = {
   provider,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [
     {

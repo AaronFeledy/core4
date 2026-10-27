@@ -8,11 +8,12 @@ import { composeService } from "../../src/services/feature.ts";
 const defaults: ServiceFeatureDefinition = {
   id: "test.endpoints",
   priority: 600,
-  apply: (ctx) =>
-    Effect.sync(() => {
-      ctx.addEndpoint({ _tag: "internal", name: "web", protocol: "http", port: 80 });
-      ctx.addEndpoint({ _tag: "internal", name: "admin", protocol: "http", port: 9000 });
-    }),
+  declareEndpoints: () =>
+    Effect.succeed([
+      { _tag: "internal", name: "web", protocol: "http", port: 80 },
+      { _tag: "internal", name: "admin", protocol: "http", port: 9000 },
+    ]),
+  apply: () => Effect.void,
 };
 
 test.each([

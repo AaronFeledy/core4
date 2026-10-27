@@ -32,7 +32,7 @@ const planComposeService = (args: {
     featureOverrides: args.featureOverrides ?? defaultFeatureOverrides,
   });
 
-const landoEnvKeys = (environment: Readonly<Record<string, string>>): ReadonlyArray<string> =>
+const landoEnvKeys = (environment: import("@lando/sdk/schema").Environment): ReadonlyArray<string> =>
   Object.keys(environment).filter((key) => key === "LANDO" || key.startsWith("LANDO_"));
 
 const expectComposePlanRejects = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
@@ -83,12 +83,20 @@ describe("compose ServiceType (raw passthrough)", () => {
         publication: { hostPort: 9001 },
       },
     ]);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-worker-data");
-    expect(String(plan.storage[0]?.target)).toBe("/var/lib/worker");
-    expect(plan.appMount).toMatchObject({ source: "/srv/apps/myapp", target: "/app", readOnly: false });
-    expect(plan.mounts).toEqual([]);
-    expect(plan.appMount).toMatchObject({ source: "/srv/apps/myapp", target: "/app", readOnly: false });
+    expect(plan.mounts.filter((mount) => mount.type === "volume")).toHaveLength(1);
+    expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe("myapp-worker-data");
+    expect(String(plan.mounts.find((mount) => mount.type === "volume")?.target)).toBe("/var/lib/worker");
+    expect(serviceAppMount(plan)).toMatchObject({
+      source: "/srv/apps/myapp",
+      target: "/app",
+      readOnly: false,
+    });
+    expect(plan.mounts.filter((mount) => mount.type === "bind" && mount.role !== "app")).toEqual([]);
+    expect(serviceAppMount(plan)).toMatchObject({
+      source: "/srv/apps/myapp",
+      target: "/app",
+      readOnly: false,
+    });
     // Compose uses the l337 base and must not inject LANDO_* env.
     expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
     expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
@@ -139,7 +147,7 @@ describe("compose ServiceType (raw passthrough)", () => {
       target: "/etc/worker",
       readOnly: true,
     });
-    expect(plan.storage).toEqual([]);
+    expect(plan.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
   });
 
   test("type compose with only a Compose build sets no artifact in the plugin", async () => {
@@ -201,7 +209,10 @@ describe("compose ServiceType (raw passthrough)", () => {
     const plan = await planComposeService({ service, serviceName: "api" });
 
     expect(plan.extensions).toEqual({
-      "@lando/core/service-features": { featureIds: ["service-lando.compose", "lando.app-mount"] },
+      "@lando/core/service-features": {
+        featureIds: ["service-lando.compose", "lando.app-mount"],
+        dataTrees: [],
+      },
       lando: { labels: { "com.example.team": "platform" } },
       docker: { restart: "unless-stopped" },
     });
@@ -350,12 +361,12 @@ describe("compose ServiceType (raw passthrough)", () => {
 
       const plan = await planComposeService({ service, serviceName: "worker" });
 
-      expect(plan.appMount).toMatchObject({
+      expect(serviceAppMount(plan)).toMatchObject({
         source: "/srv/apps/myapp",
         target: "/app",
         readOnly: false,
       });
-      expect(plan.mounts).toEqual([]);
+      expect(plan.mounts.filter((mount) => mount.type === "bind" && mount.role !== "app")).toEqual([]);
       // Compose uses the l337 base and must not inject LANDO_* env.
       expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
       expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
@@ -377,7 +388,7 @@ describe("compose ServiceType (raw passthrough)", () => {
 
       const plan = await planComposeService({ service, serviceName: "worker" });
 
-      expect(plan.appMount).toBeUndefined();
+      expect(serviceAppMount(plan)).toBeUndefined();
       expect(plan.mounts).toHaveLength(1);
       expect(plan.mounts[0]).toMatchObject({
         type: "bind",
@@ -404,8 +415,8 @@ describe("compose ServiceType (raw passthrough)", () => {
 
       const plan = await planComposeService({ service, serviceName: "worker" });
 
-      expect(String(plan.appMount?.target)).toBe("/site");
-      expect(plan.mounts).toEqual([]);
+      expect(serviceAppMount(plan)).toBeUndefined();
+      expect(plan.mounts).toMatchObject([{ type: "bind", source: "/srv/apps/myapp/x", target: "/site" }]);
     });
 
     test("an authored mount at another spelling of the moved app mount replaces the default bind", async () => {
@@ -439,7 +450,7 @@ describe("compose ServiceType (raw passthrough)", () => {
 
       const plan = await planComposeService({ service, serviceName: "worker" });
 
-      expect(plan.appMount).toBeUndefined();
+      expect(serviceAppMount(plan)).toBeUndefined();
       expect(plan.mounts).toEqual([]);
       expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
       expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
@@ -461,9 +472,9 @@ describe("compose ServiceType (raw passthrough)", () => {
 
       const plan = await planComposeService({ service, serviceName: "worker" });
 
-      expect(plan.appMount).toMatchObject({ source: "/srv/apps/myapp", target: "/app" });
-      expect(plan.mounts).toHaveLength(1);
-      expect(plan.mounts[0]).toMatchObject({
+      expect(serviceAppMount(plan)).toMatchObject({ source: "/srv/apps/myapp", target: "/app" });
+      expect(plan.mounts.filter((mount) => mount.type === "bind" && mount.role !== "app")).toHaveLength(1);
+      expect(plan.mounts.find((mount) => mount.target === "/etc/worker")).toMatchObject({
         type: "bind",
         source: "/srv/apps/myapp/config",
         target: "/etc/worker",
@@ -472,3 +483,4 @@ describe("compose ServiceType (raw passthrough)", () => {
     });
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

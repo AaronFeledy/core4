@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Context, Effect, Option, Schema } from "effect";
 
 import {
@@ -101,6 +102,7 @@ const loadPluginSpec = (
             pluginName,
             message: `Plugin ${pluginName} command loader ${id} failed.`,
             cause,
+            remediation: `Repair plugin ${pluginName} so command loader ${id} succeeds.`,
           }),
   });
 
@@ -140,13 +142,10 @@ const toolingSpec = (
       ),
       (raw) => runEventToolingCommand(plan, declaration.name, task, raw),
     ),
-  successExitCode: (result) =>
-    typeof result === "object" &&
-    result !== null &&
-    "exitCode" in result &&
-    typeof result.exitCode === "number"
-      ? result.exitCode
-      : undefined,
+  completion: (result) =>
+    commandCompletionFromExitCode(
+      Schema.decodeUnknownSync(Schema.Struct({ exitCode: Schema.Number }))(result).exitCode,
+    ),
 });
 
 const distance = (left: string, right: string): number => {

@@ -16,7 +16,6 @@ services:
     type: compose
     image: typesense/typesense:30.2
     appMount: false
-    home: false
     ports:
       - 8108:8108
     volumes:
@@ -24,7 +23,7 @@ services:
     command: '--data-dir /data --api-key=xyz --enable-cors'
 ```
 
-`appMount: false` keeps Typesense off your app tree. Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](../home-and-host/). Create the host data directory, then start:
+`appMount: false` keeps Typesense off your app tree. Because you supply the image, Lando plans no home store for it; the index lives in `./typesense-data`, so nothing is lost. Create the host data directory, then start:
 
 ```sh
 mkdir -p typesense-data

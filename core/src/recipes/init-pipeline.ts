@@ -1,17 +1,25 @@
 import { join } from "node:path";
+import {
+  assessTranslateExpectations,
+  orderTranslateDiagnostics,
+} from "@lando/engine/planner/home-expectations";
 import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
+import { compiledLandofileSource } from "@lando/landofile/serializer";
 import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { containsReservedBinding } from "@lando/sdk/expressions";
 import { mergeLandofiles } from "@lando/sdk/landofile";
-import { validateRecipeSecretPrompts } from "@lando/sdk/recipes";
+import { renderCompiledRecipeSnapshot, validateRecipeSecretPrompts } from "@lando/sdk/recipes";
 import {
+  AbsolutePath,
   type ConfigTranslateDiagnostic,
   ConfigTranslateRecipeRequestInput,
   LandofileAuthoringFragment,
   LandofileAuthoringFragmentNative,
   type RecipeManifest,
+  RecipeOptionValue,
 } from "@lando/sdk/schema";
 import { REDACTED } from "@lando/sdk/secrets";
 import {
@@ -39,14 +47,14 @@ export class RecipeInitBlockedError extends Schema.TaggedError<RecipeInitBlocked
   {
     message: Schema.String,
     stage: Schema.Literals(["secret-prompts", "translate", "validate", "encode", "diagnostics"]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 export class RecipeInitCommitError extends Schema.TaggedError<RecipeInitCommitError>()(
   "RecipeInitCommitError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     phase: Schema.String,
     reason: Schema.String,
   },
@@ -55,7 +63,7 @@ export class RecipeInitPostInitError extends Schema.TaggedError<RecipeInitPostIn
   "RecipeInitPostInitError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     committedLandofile: Schema.String,
     committedAuxiliaryFiles: Schema.Array(Schema.String),
     failedAction: Schema.String,
@@ -158,7 +166,8 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
     secretAnswers: references,
   }).pipe(Effect.mapError(() => blocked("translate")));
   const service = yield* Effect.serviceOption(RedactionService);
-  const options = { redactionTokens: raw };
+  if (Option.isSome(service)) yield* service.value.registerValues(raw);
+  const options = { redactionTokens: raw, sourceEnv: { ...process.env } };
   const base = Option.isSome(service)
     ? yield* service.value.forProfile("secrets", options)
     : createStandaloneRedactor("secrets", options);
@@ -192,7 +201,28 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
     Effect.flatMap(Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))),
     Effect.mapError(() => blocked("validate")),
   );
-  const context = mergeLandofiles([mapping, { name: request.appName }]);
+  const compilationContext = { appRoot: AbsolutePath.make(request.appRoot ?? process.cwd()), env: {} };
+  const snapshot = request.manifest.snapshot;
+  if (containsReservedBinding(mapping)) return yield* Effect.fail(blocked("validate"));
+  let source = mapping;
+  if (snapshot !== undefined) {
+    const compiled = yield* Effect.fromResult(
+      renderCompiledRecipeSnapshot(
+        snapshot,
+        yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, RecipeOptionValue))({
+          ...snapshot.defaults,
+          ...request.answers,
+        }).pipe(Effect.mapError(() => blocked("validate"))),
+        compilationContext,
+      ),
+    ).pipe(Effect.mapError(() => blocked("validate")));
+    const snapshotSource = yield* Effect.try({
+      try: () => compiledLandofileSource(compiled),
+      catch: () => blocked("encode"),
+    });
+    source = { ...snapshotSource, ...(mapping.recipe === undefined ? {} : { recipe: mapping.recipe }) };
+  }
+  const context = mergeLandofiles([source, { name: request.appName }]);
   yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(context, {
     onExcessProperty: "error",
   }).pipe(Effect.mapError(() => blocked("validate")));
@@ -202,7 +232,11 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
   const encoded = yield* Effect.suspend(() => encode({ context, fragment: context })).pipe(
     Effect.catch(() => Effect.fail(blocked("encode"))),
   );
-  const diagnostics = [...translated.diagnostics, ...encoded.diagnostics].map((diagnostic) => ({
+  const assessmentDiagnostics = yield* assessTranslateExpectations(translated.expectations, context);
+  const diagnostics = orderTranslateDiagnostics(
+    [...translated.diagnostics, ...encoded.diagnostics, ...assessmentDiagnostics],
+    [input.sourceId],
+  ).map((diagnostic) => ({
     ...diagnostic,
     message: redact(diagnostic.message),
     ...(diagnostic.remediation === undefined ? {} : { remediation: redact(diagnostic.remediation) }),

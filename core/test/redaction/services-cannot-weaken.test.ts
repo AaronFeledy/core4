@@ -7,8 +7,8 @@ import { Cause, type Context, Effect, Exit, Layer, Option, Queue, Stream } from 
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
-import { FileSyncStartError, SecretNotFoundError, ShellExecError } from "@lando/sdk/errors";
-import { EventService, type LandoEvent, SecretStore, ShellRunner } from "@lando/sdk/services";
+import { FileSyncStartError, ShellExecError } from "@lando/sdk/errors";
+import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
 import { SECRET_SOUP_FIXTURE } from "@lando/sdk/test";
 
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
@@ -18,9 +18,11 @@ import {
   makeDownloaderEvents,
   makeDownloaderService,
 } from "@lando/http-client/downloader";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { redactDetails, redactString } from "../../src/cli/redact.ts";
+
+const patternRedactor = () => createStandaloneRedactor("secrets", { sourceEnv: {} });
 
 /**
  * These assertions target each surface's shipped redaction point:
@@ -39,23 +41,14 @@ const PATTERN_SOUP = `${SECRET_SOUP_FIXTURE.text.replace("superSecretTokenLonger
 const CANONICAL_SENTINEL = "[redacted]";
 const LEGACY_SENTINEL = "[REDACTED]";
 
-const secretStoreLayer = Layer.succeed(
-  SecretStore,
-  SecretStore.of({
-    id: "redaction-proof-secrets",
-    get: (secret: string) => {
-      const index = Number(secret.replace("SECRET_", ""));
-      const value = SECRET_SOUP_FIXTURE.registeredSecrets[index];
-      return value === undefined
-        ? Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` }))
-        : Effect.succeed(value);
-    },
-    has: (secret: string) => Effect.succeed(/^SECRET_\d+$/u.test(secret)),
-    list: Effect.succeed(SECRET_SOUP_FIXTURE.registeredSecrets.map((_value, index) => `SECRET_${index}`)),
-  } satisfies Context.Service.Shape<typeof SecretStore>),
-);
-
-const realRedactionLayer = RedactionService.layer.pipe(Layer.provide(secretStoreLayer));
+const realRedactionLayer = Layer.effect(
+  RedactionService,
+  Effect.gen(function* () {
+    const service = yield* RedactionService;
+    yield* service.registerValues(SECRET_SOUP_FIXTURE.registeredSecrets);
+    return service;
+  }),
+).pipe(Layer.provide(RedactionService.layer));
 const shellRunnerLive = BunShellRunner.layer(() => {
   throw new TypeError("Interactive shell IO is not used by redaction service tests.");
 });
@@ -86,7 +79,13 @@ const capturingDownloaderEvents = (): {
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
   } satisfies Context.Service.Shape<typeof EventService>;
-  return { events: makeDownloaderEvents(Option.some(eventService)), captured };
+  return {
+    events: makeDownloaderEvents(
+      Option.some(eventService),
+      createStandaloneRedactor("secrets", { sourceEnv: {} }),
+    ),
+    captured,
+  };
 };
 
 const fakeHttpClient = (url: string, payload: string): HttpClient.HttpClient =>
@@ -218,8 +217,8 @@ describe("audited services compose canonical redaction", () => {
       cause: new Error(`dns setup failed ${PATTERN_SOUP}`),
       details: { authorization: UNREGISTERED_BEARER, token: REGISTERED_SECRET },
     };
-    const renderedDetails = JSON.stringify(redactDetails(diagnostic));
-    const renderedMessage = redactString(`host-proxy diagnostic ${PATTERN_SOUP}`);
+    const renderedDetails = JSON.stringify(redactDetails(diagnostic, patternRedactor()));
+    const renderedMessage = redactString(`host-proxy diagnostic ${PATTERN_SOUP}`, patternRedactor());
 
     assertPatternSecretsGone(renderedDetails);
     assertPatternSecretsGone(renderedMessage);
@@ -234,8 +233,8 @@ describe("audited services compose canonical redaction", () => {
       cause: new Error(`nested ${PATTERN_SOUP}`),
     });
 
-    const redactedDetails = JSON.stringify(redactDetails(error));
-    const redactedMessage = redactString(error.message);
+    const redactedDetails = JSON.stringify(redactDetails(error, patternRedactor()));
+    const redactedMessage = redactString(error.message, patternRedactor());
 
     assertPatternSecretsGone(redactedDetails);
     assertPatternSecretsGone(redactedMessage);

@@ -1,3 +1,4 @@
+import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
 import { Context, Effect, Layer, Result, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { GlobalConfigSources } from "../services/config.ts";
@@ -50,6 +51,8 @@ const toProviderUnavailable = (cause: unknown) =>
     operation: "list",
     message: "Unable to list runtime provider plugins.",
     cause,
+    remediation:
+      "Run lando plugin:list and repair the provider plugin manifest or import reported by the cause before retrying.",
   });
 
 export const makeRuntimeProviderRegistry = (
@@ -70,10 +73,11 @@ export const makeRuntimeProviderRegistry = (
       const managedFileService = yield* ManagedFileService;
       const paths = yield* PathsService;
       const redaction = yield* Effect.serviceOption(RedactionService);
+      const redactorOptions = { sourceEnv: { ...process.env } };
       const errorRedactor =
         redaction._tag === "Some"
-          ? yield* redaction.value.forProfile("secrets")
-          : createStandaloneRedactor("secrets");
+          ? yield* redaction.value.forProfile("secrets", redactorOptions)
+          : createStandaloneRedactor("secrets", redactorOptions);
       const redactFailure = (error: ProviderUnavailableError) => redactProviderError(error, errorRedactor);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;
@@ -214,6 +218,26 @@ export const makeRuntimeProviderRegistry = (
       );
 
       return RuntimeProviderRegistry.of({
+        assertAppliedStateReadable: Effect.fn("RuntimeProviderRegistry.assertAppliedStateReadable")(
+          function* (plan) {
+            const { contribution, context } = yield* contributionFor(plan.provider);
+            if (contribution.appliedStateInventory === undefined) return;
+            const inventory = yield* contribution
+              .appliedStateInventory(context)
+              .pipe(Effect.provideService(PathsService, paths));
+            const issue = inventory.unreadable.find(
+              (entry) => entry.appId === undefined || entry.appId === plan.id,
+            );
+            if (issue !== undefined)
+              return yield* Effect.fail(
+                unreadableAppliedStateError({
+                  providerId: plan.provider,
+                  path: issue.path,
+                  layout: issue.appId === undefined ? "record" : "per-app",
+                }),
+              );
+          },
+        ),
         list: providerIds,
         appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (root) {
           const ids = yield* providerIds;

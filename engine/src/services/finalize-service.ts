@@ -10,6 +10,7 @@ const destinationError = (target: string, reason: "not-absolute" | "root"): Serv
   new ServiceFeatureError({
     message: containerDestinationRefusalMessage(reason, target),
     feature: "destination",
+    remediation: "Correct the `destination` feature configuration in the Landofile, then re-run.",
   });
 
 export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFeatureError => {
@@ -28,45 +29,60 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
           },
         };
 
-  let appMount: ServicePlan["appMount"];
+  const mounts: Array<ServicePlan["mounts"][number]> = [];
   if (draft.appMount !== undefined) {
     const parsed = parseContainerDestination(draft.appMount.target);
     if (!parsed.ok) return destinationError(draft.appMount.target, parsed.reason);
-    appMount = { ...draft.appMount, target: parsed.value, realization: "passthrough" };
+    mounts.push({
+      ...draft.appMount,
+      type: "bind",
+      origin: "service",
+      relativeTo: "app",
+      role: "app",
+      target: parsed.value,
+      realization: "passthrough",
+    });
   }
 
-  const mounts: Array<ServicePlan["mounts"][number]> = [];
   for (const mount of draft.mounts) {
     const parsed = parseContainerDestination(mount.target);
     if (!parsed.ok) return destinationError(mount.target, parsed.reason);
-    mounts.push({ ...mount, target: parsed.value, realization: "passthrough" });
+    mounts.push(
+      mount.type === "bind"
+        ? { ...mount, origin: "service", target: parsed.value, realization: "passthrough" }
+        : { ...mount, origin: "service", target: parsed.value },
+    );
   }
 
-  const storage: Array<ServicePlan["storage"][number]> = [];
   for (const entry of draft.storage) {
     const parsed = parseContainerDestination(entry.target);
     if (!parsed.ok) return destinationError(entry.target, parsed.reason);
-    storage.push({ ...entry, target: parsed.value });
+    mounts.push({ ...entry, origin: "service", type: "volume", target: parsed.value });
   }
 
   return {
     name: draft.name,
     type: draft.type,
+    ...(draft.serviceTypeId === undefined ? {} : { serviceTypeId: draft.serviceTypeId }),
     provider: draft.provider,
     primary: draft.primary,
     ...(draft.artifact === undefined ? {} : { artifact: draft.artifact }),
     ...(draft.command === undefined ? {} : { command: draft.command }),
     ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
     environment: sortRecord(draft.environment),
+    ...(draft.connection !== undefined
+      ? { connection: draft.connection }
+      : draft.nonSqlCreds === undefined
+        ? {}
+        : { nonSqlCreds: draft.nonSqlCreds }),
     ...(draft.user === undefined ? {} : { user: draft.user }),
     ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
-    ...(appMount === undefined ? {} : { appMount }),
     mounts,
-    storage,
     endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
     routes: [],
     dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),
     ...(draft.healthcheck === undefined ? {} : { healthcheck: draft.healthcheck }),
+    ...(draft.readiness === undefined ? {} : { readiness: draft.readiness }),
     ...(draft.certs === undefined ? {} : { certs: draft.certs }),
     hostAliases: draft.hostAliases.map((alias) => ({ ...alias })),
     metadata: deterministicMetadata,

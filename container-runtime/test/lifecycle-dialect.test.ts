@@ -19,7 +19,7 @@ import { bringUp } from "../src/podman/bring-up.ts";
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("lifecycle-dialect-app");
 const serviceName = ServiceName.make("web");
-const ctx = { providerId: "docker", remediation: "Repair Docker and retry." } as const;
+const ctx = { providerId: "docker", remediation: "Repair Docker and retry.", env: {} } as const;
 const service: ServicePlan = {
   name: serviceName,
   type: "generic",
@@ -28,7 +28,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "example/web:latest" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -41,6 +40,7 @@ const service: ServicePlan = {
   extensions: {},
 };
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Lifecycle Dialect App",
   slug: "lifecycle-dialect-app",
@@ -48,7 +48,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: service.metadata,
@@ -69,7 +68,10 @@ const makeBringUpApi = (
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: 404, body: "{}" };
         }
-        if (request.method === "POST" && request.path === "/networks/create") {
+        if (
+          request.method === "POST" &&
+          ["/networks/create", "/libpod/networks/create"].includes(request.path)
+        ) {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && request.path.endsWith("/json")) {
@@ -106,47 +108,41 @@ const makeBringUpApi = (
 };
 
 describe("lifecycle dialect", () => {
-  test.each(["full", "secrets-only"] as const)(
-    "preserves the same ordered create Env with %s resolved overrides",
-    async (shape) => {
-      // Given
-      const environment = {
-        PLAIN: "visible",
-        TOKEN: "${secret:API_TOKEN}",
-        SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
-        LAST: "last",
-      };
-      const appliedPlan = { ...plan, services: { [serviceName]: { ...service, environment } } };
-      const fake = makeBringUpApi();
-      // When
-      await Effect.runPromise(
-        bringUp(appliedPlan, {
-          api: fake.api,
-          ctx,
-          dialect: dockerLifecycleDialect,
-          serviceEnvironment: {
-            [serviceName]:
-              shape === "full" ? { ...environment, TOKEN: "resolved-canary" } : { TOKEN: "resolved-canary" },
-          },
-        }),
-      );
-      // Then
-      expect(
-        fake.requests.find((request) => request.path.startsWith("/containers/create?"))?.body,
-      ).toMatchObject({
-        Env: [
-          "PLAIN=visible",
-          "TOKEN=resolved-canary",
-          "SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock",
-          "LAST=last",
-        ],
-      });
-      expect(appliedPlan.services[serviceName]?.environment).toEqual(environment);
-      expect(JSON.stringify(appliedPlan)).not.toContain("resolved-canary");
-    },
-  );
+  test("preserves the ordered complete resolved environment", async () => {
+    // Given
+    const environment = {
+      PLAIN: "visible",
+      TOKEN: "${secret:API_TOKEN}",
+      SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
+      LAST: "last",
+    };
+    const appliedPlan = { ...plan, services: { [serviceName]: { ...service, environment } } };
+    const fake = makeBringUpApi();
+    // When
+    await Effect.runPromise(
+      bringUp(appliedPlan, {
+        api: fake.api,
+        ctx,
+        dialect: dockerLifecycleDialect,
+        resolveServiceEnvironment: () => Effect.succeed({ ...environment, TOKEN: "resolved-canary" }),
+      }),
+    );
+    // Then
+    expect(
+      fake.requests.find((request) => request.path.startsWith("/containers/create?"))?.body,
+    ).toMatchObject({
+      Env: [
+        "PLAIN=visible",
+        "TOKEN=resolved-canary",
+        "SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock",
+        "LAST=last",
+      ],
+    });
+    expect(appliedPlan.services[serviceName]?.environment).toEqual(environment);
+    expect(JSON.stringify(appliedPlan)).not.toContain("resolved-canary");
+  });
 
-  test("preserves plain environment variables with empty secret overrides", async () => {
+  test("uses the complete callback map without retaining omitted plan variables", async () => {
     // Given
     const appliedPlan = {
       ...plan,
@@ -155,13 +151,13 @@ describe("lifecycle dialect", () => {
     const fake = makeBringUpApi();
     // When
     await Effect.runPromise(
-      bringUp(appliedPlan, { api: fake.api, ctx, serviceEnvironment: { [serviceName]: {} } }),
+      bringUp(appliedPlan, { api: fake.api, ctx, resolveServiceEnvironment: () => Effect.succeed({}) }),
     );
     // Then
     expect(
       fake.requests.find((request) => request.path.startsWith("/containers/create?"))?.body,
     ).toMatchObject({
-      Env: ["PLAIN=visible", "LAST=last"],
+      Env: [],
     });
   });
 
@@ -197,7 +193,7 @@ describe("lifecycle dialect", () => {
     const createBody = fake.requests[createIndex]?.body;
     expect(createBody).toMatchObject({
       NetworkingConfig: {
-        EndpointsConfig: { "lando-lifecycle-dialect-app": { Aliases: ["web"] } },
+        EndpointsConfig: { "lando-lifecycle-dialect-app": { Aliases: ["web"], GwPriority: 1 } },
       },
     });
   });
@@ -227,7 +223,12 @@ describe("lifecycle dialect", () => {
         fake.requests.find((request) => request.path.startsWith("/containers/create?"))?.body,
       ).toMatchObject({
         NetworkingConfig: {
-          EndpointsConfig: { lando_bridge_network: { Aliases: ["web.global.internal"] } },
+          EndpointsConfig: {
+            lando_bridge_network: {
+              Aliases: ["web.global.internal"],
+              ...(dialect.engine === "docker" ? { GwPriority: 1 } : {}),
+            },
+          },
         },
       });
       expect(fake.requests.filter((request) => request.path.endsWith("/connect"))).toEqual([]);
@@ -251,10 +252,10 @@ describe("lifecycle dialect", () => {
       });
       expect(
         fake.requests
-          .filter((request) => request.path === "/networks/create")
+          .filter((request) => ["/networks/create", "/libpod/networks/create"].includes(request.path))
           .map((request) =>
             typeof request.body === "object" && request.body !== null
-              ? Reflect.get(request.body, "Name")
+              ? (Reflect.get(request.body, "Name") ?? Reflect.get(request.body, "name"))
               : undefined,
           ),
       ).toEqual(["lando-shop", "lando_bridge_network"]);

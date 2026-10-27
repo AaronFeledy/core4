@@ -21,12 +21,12 @@ import {
   createAgentRelayWorkerControl,
 } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import type { RootOverrides } from "@lando/paths";
-import { registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
 import { detachStdioWrites, writeStdioLine } from "@lando/renderer/io";
 import { SshAgentTransportError } from "@lando/sdk/errors";
 import { AbsolutePath, AgentSocketUpstream, type AppPlan } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { DateTime, Effect, type Layer, Match, Option, Schema } from "effect";
+import { DateTime, Effect, Layer, Match, Option, Schema } from "effect";
 
 export interface AgentRelayWorkerOptions {
   readonly platform?: string;
@@ -53,10 +53,11 @@ export const scopedAgentRelayWorker = Effect.fn("AgentRelay.scopedWorker")(funct
     ...(input.paths.platform === undefined ? {} : { platform: input.paths.platform }),
   };
   const paths = sshAgentSessionPaths(input.app, roots, input.kind);
+  const redaction = yield* RedactionService;
   const token = input.delivery === "volume-relay" ? (input.token ?? makeAgentRelayToken()) : undefined;
-  yield* registerRedactionValues(token === undefined ? [] : [token]);
+  yield* redaction.registerValues(token === undefined ? [] : [token]);
   if (input.upstream._tag === "loopback-tcp" && input.upstream.token !== undefined)
-    yield* registerRedactionValues([input.upstream.token]);
+    yield* redaction.registerValues([input.upstream.token]);
   const listen: AgentRelayOptions["listen"] = Match.value(input.delivery).pipe(
     Match.when("volume-relay", () => ({
       _tag: "loopback-tcp" as const,
@@ -130,7 +131,6 @@ export const scopedAgentRelayWorker = Effect.fn("AgentRelay.scopedWorker")(funct
           root: input.app.root,
           services: {},
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           extensions: {},
@@ -158,7 +158,7 @@ export const scopedAgentRelayWorker = Effect.fn("AgentRelay.scopedWorker")(funct
     Match.exhaustive,
   );
   const controlToken = makeAgentRelayToken();
-  yield* registerRedactionValues([controlToken]);
+  yield* redaction.registerValues([controlToken]);
   const control = yield* Effect.acquireRelease(
     Effect.tryPromise({
       try: () => createAgentRelayWorkerControl(identity, controlToken),
@@ -222,6 +222,9 @@ export const runAgentRelayWorkerProcess = async (
   const signals: NodeJS.EventEmitter = process;
   signals.once("SIGTERM", onSignal);
   signals.once("SIGINT", onSignal);
+  const owner = makeRedactionOwner();
+  const sourceEnv = { ...process.env };
+  const redactionLayer = Layer.succeed(RedactionService, owner.service);
   try {
     const readInput = options.readInput ?? (() => Bun.stdin.text());
     const input = await Effect.runPromise(
@@ -229,7 +232,7 @@ export const runAgentRelayWorkerProcess = async (
         Effect.mapError(workerError("worker")),
       ),
     );
-    await Effect.runPromise(registerRedactionValues(input.token === undefined ? [] : [input.token]));
+    await Effect.runPromise(owner.service.registerValues(input.token === undefined ? [] : [input.token]));
     const runtime =
       options.runtime ??
       (input.delivery === "bind-directory"
@@ -245,12 +248,19 @@ export const runAgentRelayWorkerProcess = async (
         yield* Effect.promise(() => shutdown.promise);
       }),
     );
+    const withRuntime =
+      runtime === undefined ? run : Effect.provide(run, Layer.provide(runtime, redactionLayer));
     await Effect.runPromise(
-      (runtime === undefined ? run : run.pipe(Effect.provide(runtime))).pipe(
+      withRuntime.pipe(
+        Effect.provide(redactionLayer),
         Effect.raceFirst(Effect.promise(() => shutdown.promise)),
       ),
     );
+  } catch (cause) {
+    const redactor = await Effect.runPromise(owner.service.forProfile("secrets", { sourceEnv }));
+    throw new Error(redactor.redactString(String(cause)));
   } finally {
+    owner.dispose();
     signals.removeListener("SIGTERM", onSignal);
     signals.removeListener("SIGINT", onSignal);
   }

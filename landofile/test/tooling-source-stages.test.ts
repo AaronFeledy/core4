@@ -79,11 +79,6 @@ test.each([
     content: "tooling:\n  build:\n    cmd: build\n    flags:\n      debug: false\n",
     path: ["tooling", "build", "flags", "debug"],
   },
-  {
-    content:
-      'tooling:\n  build:\n    cmd: build\n    flags:\n      debug:\n        required: "{{ recipe.missing }}"\n',
-    path: ["tooling", "build", "flags", "debug", "required"],
-  },
 ])("preserves structured fragment validation failures at $path", async ({ content, path }) => {
   // Given
   await mkdir(join(root, "tasks"));
@@ -96,6 +91,25 @@ test.each([
     _tag: "LandofileValidationError",
     file,
     issues: expect.arrayContaining([expect.objectContaining({ path })]),
+  });
+});
+
+test("attributes an unresolved tooling flag expression to its authored fragment", async () => {
+  // Given
+  await mkdir(join(root, "tasks"));
+  const filePath = join(root, "tasks", "fragment.yml");
+  await writeFile(
+    filePath,
+    'tooling:\n  build:\n    cmd: build\n    flags:\n      debug:\n        required: "{{ recipe.missing }}"\n',
+  );
+  // When
+  const error = await Effect.runPromise(resolve().pipe(Effect.flip));
+  // Then
+  expect(error).toMatchObject({
+    _tag: "ConfigExpressionError",
+    filePath,
+    path: "tooling.build.flags.debug.required",
+    expression: "{{ recipe.missing }}",
   });
 });
 

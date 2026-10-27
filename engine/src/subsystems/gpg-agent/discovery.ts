@@ -37,13 +37,14 @@ const inspectSocketPath = async (path: string): Promise<GpgSocketPathKind> => {
 export const discoverHostGpgAgent = Effect.fnUntraced(function* (
   options: GpgAgentDiscoveryOptions,
 ): Effect.fn.Return<HostGpgAgent, GpgAgentUnavailableError> {
-  const unavailable = (reason: GpgAgentUnavailableError["reason"], socketPath?: string) =>
+  const unavailable = (reason: GpgAgentUnavailableError["reason"], socketPath?: string, cause?: unknown) =>
     new GpgAgentUnavailableError({
       message:
         reason === "unrestricted-socket"
           ? "The configured GPG agent socket is not the restricted extra socket."
           : "The host GPG agent is unavailable.",
       reason,
+      cause,
       ...(socketPath === undefined ? {} : { socketPath }),
       remediation:
         reason === "gpg-missing"
@@ -53,7 +54,7 @@ export const discoverHostGpgAgent = Effect.fnUntraced(function* (
   const run = (args: ReadonlyArray<string>) =>
     options.runner
       .run({ cmd: "gpgconf", args, timeoutMs: 5_000 })
-      .pipe(Effect.mapError(() => unavailable("gpg-missing")));
+      .pipe(Effect.mapError((cause) => unavailable("gpg-missing", undefined, cause)));
   const path = yield* options.explicitSocket === undefined
     ? run(["--list-dirs", "agent-extra-socket"]).pipe(
         Effect.flatMap((result) =>

@@ -11,7 +11,11 @@ import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const plan = (input: unknown) =>
   Effect.flatMap(AppPlanner, (planner) =>
-    planner.plan(Schema.decodeUnknownSync(LandofileShape)(input), TestRuntimeProvider.capabilities),
+    planTestLandofile(
+      planner,
+      Schema.decodeUnknownSync(LandofileShape)(input),
+      TestRuntimeProvider.capabilities,
+    ),
   ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))));
 
 for (const fixture of [
@@ -243,3 +247,4 @@ test("rejects expression-produced template text instead of evaluating it again",
     expect(result.failure.message).toContain("{{ app.name }}");
   }
 });
+import { planTestLandofile } from "../compiled-landofile.ts";

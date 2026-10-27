@@ -23,6 +23,7 @@ export { readAppEnvironment } from "./app-environment.ts";
 export interface ResolvedProviderOpsInput {
   readonly ctx: ProviderErrorContext;
   readonly resolvePlan: (app: AppId) => Effect.Effect<AppPlan | undefined>;
+  readonly beforeMutation?: (app: AppId) => Effect.Effect<void, ProviderUnavailableError>;
   readonly noPlanError: (app: AppId, operation: string) => ProviderError;
   readonly before?: Effect.Effect<void, ProviderError>;
   readonly readAppEnvironment: RuntimeProviderShape["readAppEnvironment"];
@@ -88,6 +89,7 @@ export type ResolvedProviderOps = Pick<
 
 export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): ResolvedProviderOps => {
   const before = input.before ?? Effect.void;
+  const beforeMutation = (app: AppId) => input.beforeMutation?.(app) ?? Effect.void;
   const unavailable = (operation: string) =>
     new ProviderUnavailableError({
       providerId: input.ctx.providerId,
@@ -115,9 +117,13 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     delegate: (plan: AppPlan) => Effect.Effect<A, E, R>,
   ): Effect.Effect<A, ProviderError | E, R> => {
     const directPlan = target.plan;
-    return directPlan === undefined
-      ? resolve(target.app, operation, delegate)
-      : before.pipe(Effect.flatMap(() => delegate(directPlan)));
+    const resolved =
+      directPlan === undefined
+        ? resolve(target.app, operation, delegate)
+        : before.pipe(Effect.flatMap(() => delegate(directPlan)));
+    return operation === "inspect" || operation === "waitForExit" || operation === "observeVolume"
+      ? resolved
+      : beforeMutation(target.app).pipe(Effect.andThen(resolved));
   };
   const withOptionalPlan = (target: ExecTarget): Effect.Effect<ExecTarget> =>
     target.plan === undefined
@@ -231,7 +237,12 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       ),
     snapshotVolume: (spec) =>
       requireDataPlane("snapshotVolume").pipe(
-        Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.snapshotVolume(spec)))),
+        Effect.flatMap((dataPlane) =>
+          beforeMutation(spec.volume.app).pipe(
+            Effect.andThen(before),
+            Effect.flatMap(() => dataPlane.snapshotVolume(spec)),
+          ),
+        ),
       ),
     removeVolumeSnapshot: (snapshot, options) =>
       requireDataPlane("removeVolumeSnapshot").pipe(
@@ -247,7 +258,12 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       ),
     restoreVolume: (spec) =>
       requireDataPlane("restoreVolume").pipe(
-        Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.restoreVolume(spec)))),
+        Effect.flatMap((dataPlane) =>
+          beforeMutation(spec.target.app).pipe(
+            Effect.andThen(before),
+            Effect.flatMap(() => dataPlane.restoreVolume(spec)),
+          ),
+        ),
       ),
     listVolumes: (filter) =>
       requireDataPlane("listVolumes").pipe(
@@ -256,13 +272,17 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     removeVolume: (ref, expectedGeneration) =>
       requireDataPlane("removeVolume").pipe(
         Effect.flatMap((dataPlane) =>
-          before.pipe(Effect.flatMap(() => dataPlane.removeVolume(ref, expectedGeneration))),
+          beforeMutation(ref.app).pipe(
+            Effect.andThen(before),
+            Effect.flatMap(() => dataPlane.removeVolume(ref, expectedGeneration)),
+          ),
         ),
       ),
     copyToService: (target, spec) =>
       requireDataPlane("copyToService").pipe(
         Effect.flatMap((dataPlane) =>
-          withOptionalPlan(target).pipe(
+          beforeMutation(target.app).pipe(
+            Effect.andThen(withOptionalPlan(target)),
             Effect.flatMap((resolved) =>
               before.pipe(Effect.flatMap(() => dataPlane.copyToService(resolved, spec))),
             ),
