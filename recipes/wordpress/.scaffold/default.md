@@ -3,7 +3,7 @@
 Create the Lando services for WordPress with PHP, MariaDB, Composer, and
 WP-CLI tooling. Starting the stock PHP service builds in mysqli,
 checksum-verified WP-CLI, and a 512M memory limit for CLI and web requests.
-The recipe does not download WordPress; install it after starting the stack.
+The recipe does not download WordPress; install it after starting the stack. To run a subdomain network, follow the [WordPress multisite guide](/guides/recipes/wordpress-multisite/).
 
 Before you begin, install Lando and complete provider setup. For a new app,
 run the initialization command from the directory that will contain it. If this
