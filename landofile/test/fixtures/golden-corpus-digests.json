@@ -1068,39 +1068,92 @@
     }
   ],
   "intended": {
-    "docs/guides/config-explain/fixtures/bare-recipe": {
-      "before": { "invalid": { "status": "invalid", "tag": "LandofileValidationError" } },
-      "after": { "invalid": { "status": "invalid", "tag": "ConfigExpressionError" } },
-      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. A bare recipe supplies no options, so this fixture remains rejected with a located ConfigExpressionError; no bare-recipe acceptance is introduced."
-    },
-    "docs/guides/migrating-recipes/fixtures/bare-recipe": {
-      "before": { "invalid": { "status": "invalid", "tag": "LandofileValidationError" } },
-      "after": { "invalid": { "status": "invalid", "tag": "ConfigExpressionError" } },
-      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. Missing options on the bare recipe now produce a located ConfigExpressionError while the same invalid fixture remains refused."
-    },
-    "docs/guides/expressions/fixtures/expressions-escaped-literals": {
-      "before": { "digest": "5b7e08fc5571540bd86652b554c130a67ffe5ac422348c0fa367dac0cdd84220" },
-      "after": { "digest": "73a76f1d968a938c8c84d4ee561567d39885c1e3be3e212009ac746e07e9829b" },
-      "reason": "Documented dollar and brace escapes decode exactly once at authored source sites. The encoded load-scoped document now carries the resulting literal text without retaining artificial delimiter escapes or granting later expression authority."
-    },
-    "docs/guides/expressions/fixtures/expressions-service-creds": {
-      "before": { "digest": "096e0c0033fd8b2ddc3fa52d5f415c469c9e733b3adb89712a3c192d37c9b8c9" },
-      "after": { "digest": "cd782ede6ce2a22f5af8be79c7d90b157dab49eece777299bf9eb62d70ccde4b" },
-      "reason": "The authored guide fixture now sets database port 5433, derives the URL port from services.database.port, and explicitly component-encodes its password. This records the deliberate input update, not a refresh of unchanged inputs."
-    },
-    "docs/guides/secret-stores/fixtures/secret-stores-demo": {
-      "before": { "digest": "129bb83ef1bf4571ca18662ff8789457241433a6931b4d0158f075eda41ccc25" },
-      "after": { "digest": "0bb28603bc928f7101b0620ed650b047bc9eac670af78170e7d7b7b3d47fd085" },
-      "reason": "Authored secret references now encode as SecretRef descriptors without store access. The guide also adds the API_URL mixed-reference example, encoded as BoundText with raw reference parts rather than decrypted bytes."
-    },
-    "docs/guides/expressions/fixtures/expressions-typed-values": {
+    "docs/guides/compose-passthrough/fixtures/compose-passthrough-demo": {
       "before": {
-        "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470"
+        "digest": "37a441e3a9e7a061e9fc859c5b3c6d012eab5ef87378b7b0768e7b9c7db2d64b"
       },
       "after": {
-        "digest": "be20878221770ab99554bc13061abbc3ed910d85a7dbdba5f3a1832c9a6e0327"
+        "digest": "7e881845ad5976118d84bada503017aa51dfb8e27d7665250e607e2602c9d585"
       },
-      "reason": "Upstream c1855d462 adds the number-converted env example router.httpsPort=8443 and changes worker.primary to an equivalent boolean-converted env expression. Independently reproduced on integrated parent ed5ee8443; this is a parent fixture change, not an A1 merge-semantic change."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/compose-service-block/fixtures/compose-configs-phpini": {
+      "before": {
+        "digest": "31d47121fc6cd3b48dd655d7fb64f7f87228dcf731f426277748e68ab1579589"
+      },
+      "after": {
+        "digest": "4ebcae72dcf5a49539cc758cb2a75a05fe18eff3244d8789a12e16ad23a7ebd0"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/compose-service-block/fixtures/compose-service-block-demo": {
+      "before": {
+        "digest": "085f959213aad951b20bc2130f18c8c9d1f1d4c1c8705814fe436a28ed3b0545"
+      },
+      "after": {
+        "digest": "623da16f721a84c8143d34081d2198d372be50ed9b6a854bc1a8f4d12c23b5d2"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/config-explain/fixtures/bare-recipe": {
+      "before": {
+        "invalid": {
+          "status": "invalid",
+          "tag": "LandofileValidationError"
+        }
+      },
+      "after": {
+        "invalid": {
+          "status": "invalid",
+          "tag": "ConfigExpressionError"
+        }
+      },
+      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. A bare recipe supplies no options, so this fixture remains rejected with a located ConfigExpressionError; no bare-recipe acceptance is introduced."
+    },
+    "docs/guides/config-lint/fixtures/config-lint-demo": {
+      "before": {
+        "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
+      },
+      "after": {
+        "digest": "92d7b634e4486ff193024c111432610bb4019d4616442692a56401b37a5c3759"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/config-lint/fixtures/route-declared-http": {
+      "before": {
+        "digest": "4d49aacd279230fe3efc6458589504641f955efae6f4f4b9465527706608d1de"
+      },
+      "after": {
+        "digest": "8010a9f789e56e914dab484e7d1a4f5cd76dbef5321b8662f56291df055f291c"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/config-lint/fixtures/route-missing-http": {
+      "before": {
+        "digest": "ab78ee10251571f12549ce10a6d9728201df7344889fe42eee427380bf283cb9"
+      },
+      "after": {
+        "digest": "5da1037523b53cad1736a6ee2ca182175c4407240b2a72c7ebde85ed68796916"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/drupal-stack-overrides/fixtures/database-image-pin": {
+      "before": {
+        "digest": "3f256ed2c224bc94bc91ee335eb6a8fa1111d4f4bd8d7aa0d391d1ff2e44a585"
+      },
+      "after": {
+        "digest": "d8d00f6fa98810ea2e051b7c724a596e3aa1c309b16ca267b79fb7e7b4fd7610"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/drupal-stack-overrides/fixtures/two-database-services": {
+      "before": {
+        "digest": "c5d890ccf5168bac68eb47a4a55d47145d21cd7fee243fe96175b0b2bdf3514e"
+      },
+      "after": {
+        "digest": "fc87e3aef6c08c23945f4b4c42f7998ce97f153026374b85b8fa3eda9fa27d4f"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
     "docs/guides/elasticsearch/fixtures/elasticsearch-demo": {
       "before": {
@@ -1114,6 +1167,174 @@
       },
       "reason": "The guide fixture replaces unsupported braced positional shell substitution with a POSIX test and set default followed by quoted $1 expansion. The corrected input now loads; the historical NotImplementedError remains preserved rather than refreshing same-input behavior."
     },
+    "docs/guides/expressions/fixtures/expressions-escaped-literals": {
+      "before": {
+        "digest": "5b7e08fc5571540bd86652b554c130a67ffe5ac422348c0fa367dac0cdd84220"
+      },
+      "after": {
+        "digest": "73a76f1d968a938c8c84d4ee561567d39885c1e3be3e212009ac746e07e9829b"
+      },
+      "reason": "Documented dollar and brace escapes decode exactly once at authored source sites. The encoded load-scoped document now carries the resulting literal text without retaining artificial delimiter escapes or granting later expression authority."
+    },
+    "docs/guides/expressions/fixtures/expressions-service-creds": {
+      "before": {
+        "digest": "096e0c0033fd8b2ddc3fa52d5f415c469c9e733b3adb89712a3c192d37c9b8c9"
+      },
+      "after": {
+        "digest": "cd782ede6ce2a22f5af8be79c7d90b157dab49eece777299bf9eb62d70ccde4b"
+      },
+      "reason": "The authored guide fixture now sets database port 5433, derives the URL port from services.database.port, and explicitly component-encodes its password. This records the deliberate input update, not a refresh of unchanged inputs."
+    },
+    "docs/guides/expressions/fixtures/expressions-typed-values": {
+      "before": {
+        "digest": "3715d09e705d1dbc5025e94f2f777cd4d7c115372077ee3399b25b312e79a470"
+      },
+      "after": {
+        "digest": "be20878221770ab99554bc13061abbc3ed910d85a7dbdba5f3a1832c9a6e0327"
+      },
+      "reason": "Upstream c1855d462 adds the number-converted env example router.httpsPort=8443 and changes worker.primary to an equivalent boolean-converted env expression. Independently reproduced on integrated parent ed5ee8443; this is a parent fixture change, not an A1 merge-semantic change."
+    },
+    "docs/guides/external-access/fixtures/external-access-demo": {
+      "before": {
+        "digest": "167f5aa0981074f86f93925c54bfc7c9c9d96654132433fd01353049d08111e0"
+      },
+      "after": {
+        "digest": "773e39c0201b13f3f457cf47c58b209ed1a62668af02b2787c76ad9a73406872"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/frankenphp/fixtures/frankenphp-demo": {
+      "before": {
+        "digest": "93e781d9036aeddf186f20ba3b21f899ae6f8f3f516dfc2397c81d8e8b6be7b6"
+      },
+      "after": {
+        "digest": "48ba233142c110c21d155b435db71d62a3bc55c6132ade9ff75e9115544f3b60"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/host-services/fixtures/host-reach-demo": {
+      "before": {
+        "digest": "bb717d18eb01d22992330342a66440aee195a7c6616a6af971dc4856cf2fc236"
+      },
+      "after": {
+        "digest": "8e847d5d93a75949225f673715954e533cfeee2e8b25925e74e97442eca36134"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/migrating-recipes/fixtures/bare-recipe": {
+      "before": {
+        "invalid": {
+          "status": "invalid",
+          "tag": "LandofileValidationError"
+        }
+      },
+      "after": {
+        "invalid": {
+          "status": "invalid",
+          "tag": "ConfigExpressionError"
+        }
+      },
+      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. Missing options on the bare recipe now produce a located ConfigExpressionError while the same invalid fixture remains refused."
+    },
+    "docs/guides/networks/fixtures/networks-demo": {
+      "before": {
+        "digest": "1a0e8d66f3e73cef88f44002d918e0522172dd2a39c25f9e5c6785545e0aed6f"
+      },
+      "after": {
+        "digest": "d88e2477693ed96dd258ca97402038c81faea15e3d2e03b2a600957c34d3f367"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/networks/fixtures/networks-include": {
+      "before": {
+        "digest": "cb069536a4627ca18f8601c497293d1b3ebb4802c1e70aae98184c0ee4ac6d1c"
+      },
+      "after": {
+        "digest": "c2ed26d8fd69e99f9d8ae23b92ffe12a71a094d9e9fb6effd846556b81aeffee"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/networks/fixtures/networks-misdeclared": {
+      "before": {
+        "digest": "5c6f4865559c80cd10d6e618c2a948e35cfdaf784fe10c98c014e08ae3655eae"
+      },
+      "after": {
+        "digest": "782fc829f480ae13883e1d7f0fa0e98a108d8e9b8dc894f5c5751a91da9e868c"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/networks/fixtures/networks-undeclared": {
+      "before": {
+        "digest": "1043e09b1fcfa6be384fb3bc16839209bc9df7e8b03a365c6d5655b236beaf93"
+      },
+      "after": {
+        "digest": "27b9761862739ac441c3169c70cc5f0f23428106357235e66aebb64a2838bc07"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/node-playwright/fixtures/playwright-demo": {
+      "before": {
+        "digest": "7a07cec9f964825aca7f28fddfa28707839dfd570afa2e80c3f4dc807c453c60"
+      },
+      "after": {
+        "digest": "eba1b3645d85ac68b7b274590e6ca8bb7cf2dd48c5bfd4be3185d2672acd2933"
+      },
+      "reason": "Explicit empty endpoint declarations suppress generated listeners instead of inheriting the service defaults. The guide fixture also dropped its dodge-only home: false, which planning no longer needs for a Landofile-supplied image, so the encoded document no longer carries that key."
+    },
+    "docs/guides/ollama/fixtures/ollama-demo": {
+      "before": {
+        "digest": "9191a0b49df33e43ab8e9de2cc600a19888178d59c1598f147fbdd2a5444ff56"
+      },
+      "after": {
+        "digest": "b5045eff7b2f06c1a9804dbde9b7563a4fc4c0d5aa17f43e811afb4950469e4b"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/output-streaming/fixtures/stream-container": {
+      "before": {
+        "digest": "9185bfe3f0ad6878eed4924a4157fe63bca16fa652f941560b83d8bf328931e9"
+      },
+      "after": {
+        "digest": "b26bdb6af50b3c57a6044c3a144a10a494174a05eb262669ea772bc8dab1892d"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/postgres-pgvector/fixtures/pgvector-demo": {
+      "before": {
+        "digest": "0ebf4df0f481601fa8e74c0f68e66c0a352e0e6d39f9e6cf9caf8af89416e25e"
+      },
+      "after": {
+        "digest": "fec5a1b854b5cda4da5a8c11f152565edb41e5c7b1a0ff458dfdf9de38680f5f"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/route-shorthand/fixtures/route-shorthand-demo": {
+      "before": {
+        "digest": "a05a7da1df7e4e0880b520fa518a450cfd2ce591ebc275113f5e2c9d70c22e83"
+      },
+      "after": {
+        "digest": "8ce3989a78b0312903b6811adcf1593a85c8a14bd1491afa3a6e73cd287190b9"
+      },
+      "reason": "The route shorthand guide now explicitly declares its Compose listener as HTTP. This records the authored protocol change while retaining the previous fixture digest; publishing a TCP port alone no longer implies an HTTP listener."
+    },
+    "docs/guides/secret-stores/fixtures/secret-stores-demo": {
+      "before": {
+        "digest": "129bb83ef1bf4571ca18662ff8789457241433a6931b4d0158f075eda41ccc25"
+      },
+      "after": {
+        "digest": "0bb28603bc928f7101b0620ed650b047bc9eac670af78170e7d7b7b3d47fd085"
+      },
+      "reason": "Authored secret references now encode as SecretRef descriptors without store access. The guide also adds the API_URL mixed-reference example, encoded as BoundText with raw reference parts rather than decrypted bytes."
+    },
+    "docs/guides/solr10/fixtures/solr10-demo": {
+      "before": {
+        "digest": "af52f8b657a1349fc157b50d79d9629754cc761c1263b32016d8eb5a9b03109f"
+      },
+      "after": {
+        "digest": "64bd6eb92542775f0d24231fe68ecedb08fa4011f0c44394c43c1430109f1c05"
+      },
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
     "docs/guides/static/fixtures/static-demo": {
       "before": {
         "invalid": {
@@ -1126,23 +1347,23 @@
       },
       "reason": "The guide fixture replaces unsupported braced positional shell substitution with a POSIX test and set default followed by quoted $1 expansion. The empty default keeps the static URL at one root slash. The corrected input now loads; the historical NotImplementedError remains preserved rather than refreshing same-input behavior."
     },
-    "docs/guides/node-playwright/fixtures/playwright-demo": {
+    "docs/guides/typesense/fixtures/typesense-demo": {
       "before": {
-        "digest": "7a07cec9f964825aca7f28fddfa28707839dfd570afa2e80c3f4dc807c453c60"
+        "digest": "95e962df56ce0ced5e73ee2e2c3a9f389464f5aff60fc483ebe4639c785229f0"
       },
       "after": {
-        "digest": "aa9246e83fc28448cbd0704c046b9d649e44afbdb6a9b7301c71a6d0b0ed8204"
+        "digest": "40a6b4a9e3e779d555c8be3bf18d0cd22543242a2d7499acb425372beb37e48e"
       },
-      "reason": "Explicit empty endpoint declarations suppress generated listeners instead of inheriting the service defaults."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
-    "docs/guides/route-shorthand/fixtures/route-shorthand-demo": {
+    "docs/guides/xhprof-xhgui/fixtures/xhprof-demo": {
       "before": {
-        "digest": "a05a7da1df7e4e0880b520fa518a450cfd2ce591ebc275113f5e2c9d70c22e83"
+        "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
       },
       "after": {
-        "digest": "8ce3989a78b0312903b6811adcf1593a85c8a14bd1491afa3a6e73cd287190b9"
+        "digest": "c63a0c661016d391a1cf9651b07dbcd9e3d43ad456b1ac489565b5ef22a29d0b"
       },
-      "reason": "The route shorthand guide now explicitly declares its Compose listener as HTTP. This records the authored protocol change while retaining the previous fixture digest; publishing a TCP port alone no longer implies an HTTP listener."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     }
   }
 }

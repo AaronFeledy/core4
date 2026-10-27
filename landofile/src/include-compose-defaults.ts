@@ -87,7 +87,7 @@ export const composeIncludeDefaults = (
     mapValue(value, (plain) =>
       isPlainRecord(plain)
         ? mapFields(
-            { type: "compose", home: false, appMount: false, ...plain },
+            { type: "compose", appMount: false, ...plain },
             {
               volumes: (value) => mapList(value, volume),
               env_file: envFiles,

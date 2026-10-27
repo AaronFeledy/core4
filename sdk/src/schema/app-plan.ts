@@ -21,6 +21,7 @@ import {
   ScanPlan,
 } from "./networking.ts";
 import {
+  AbsoluteContainerPath,
   AbsolutePath,
   AppId,
   CommandSpec,
@@ -33,6 +34,41 @@ import {
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.
+
+export const ServiceHomePlan = Schema.Union([
+  Schema.Struct({
+    state: Schema.Literal("persisted").annotate({ description: "Lando generated a persistent home store." }),
+    target: AbsoluteContainerPath.annotate({ description: "Resolved home directory inside the container." }),
+    store: Schema.String.annotate({ description: "Generated home store name." }),
+    user: Schema.optionalKey(Schema.String).annotate({
+      description: "User principal whose home is persisted, when known.",
+    }),
+  }),
+  Schema.Struct({
+    state: Schema.Literal("authored").annotate({
+      description: "An authored mount already covers the home directory.",
+    }),
+    target: AbsoluteContainerPath.annotate({ description: "Resolved home directory inside the container." }),
+    mount: Schema.Literals(["volume", "bind", "tmpfs"]).annotate({
+      description: "Kind of authored mount at the home target.",
+    }),
+  }),
+  Schema.Struct({
+    state: Schema.Literal("disabled").annotate({ description: "Home persistence was explicitly disabled." }),
+  }),
+  Schema.Struct({
+    state: Schema.Literal("unknown").annotate({
+      description: "No home store can be planned from the declared image identity.",
+    }),
+    reason: Schema.Literals(["custom-image", "no-identity", "undeclared-user"]).annotate({
+      description: "Why the home directory is unknown.",
+    }),
+    user: Schema.optionalKey(Schema.String).annotate({
+      description: "User principal whose home is unknown, when known.",
+    }),
+  }),
+]).annotate({ identifier: "ServiceHomePlan", description: "Resolved service home persistence status." });
+export type ServiceHomePlan = typeof ServiceHomePlan.Type;
 
 const ServicePlanFields = {
   name: ServiceName,
@@ -48,6 +84,9 @@ const ServicePlanFields = {
   entrypoint: Schema.optionalKey(CommandSpec),
   environment: Environment,
   user: Schema.optionalKey(Schema.String),
+  home: Schema.optionalKey(ServiceHomePlan).annotate({
+    description: "Resolved home status, always set by the planner; optional for hand-built plans.",
+  }),
   workingDirectory: Schema.optionalKey(PortablePath),
   appMount: Schema.optionalKey(AppMountPlan),
   mounts: Schema.Array(MountPlan),

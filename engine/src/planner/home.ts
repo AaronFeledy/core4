@@ -5,18 +5,21 @@
  * say where that home is. The service type declares the identities inside the
  * image it ships; a service that supplies its own `image:` or Compose `build:`
  * is a custom image, so that declaration no longer describes it. When neither
- * the type nor the author names a home, planning fails before any provider
- * action rather than guessing a path.
+ * the type nor the author names a home for the planned user, no home store is
+ * planned rather than guessing a path.
  */
-import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
-import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import { sha256Hex } from "@lando/sdk/digest";
+import { LandofileValidationError } from "@lando/sdk/errors";
+import type { ServiceConfig, ServiceHomePlan, ServicePlan } from "@lando/sdk/schema";
+import { AbsoluteContainerPath, sameImageReference } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
+import { Predicate } from "effect";
 
 import { plannedContainerDestination } from "./storage.ts";
 
 /** What planning knows about one service's home before the plan is finalized. */
 export interface ServiceHomeIntent {
-  /** Service type id, reported with a refusal. */
+  /** Service type id. */
   readonly serviceType: string;
   /** Identities declared by the service type, absent for a custom image. */
   readonly identity?: ServiceImageIdentity;
@@ -34,7 +37,11 @@ export interface ServiceHomeIntent {
  * Lando's image and the type's identity still describes it.
  */
 export const hasCustomImage = (service: ServiceConfig, pinnedArtifactTag?: string | undefined): boolean => {
-  if (service.image !== undefined && service.image !== pinnedArtifactTag) return true;
+  if (
+    service.image !== undefined &&
+    (pinnedArtifactTag === undefined || !sameImageReference(service.image, pinnedArtifactTag))
+  )
+    return true;
   const build = service.build;
   return build !== undefined && "context" in build;
 };
@@ -61,58 +68,35 @@ const userPrincipal = (user: string): string => {
   return separator === -1 ? user : user.slice(0, separator);
 };
 
-export const homeStoreName = (appSlug: string, serviceName: string): string =>
-  `lando-${appSlug}-${serviceName}-home`;
-
-const refusal = (input: {
-  readonly serviceName: string;
-  readonly serviceType: string;
-  readonly user?: string | undefined;
-  readonly reason: string;
-}): HomePathCapabilityError =>
-  new HomePathCapabilityError({
-    message: `Service ${input.serviceName} persists its home directory, but ${input.reason}`,
-    service: input.serviceName,
-    serviceType: input.serviceType,
-    ...(input.user === undefined ? {} : { user: input.user }),
-    remediation: `Set services.${input.serviceName}.home: false to skip home persistence, or set services.${input.serviceName}.home.path to an absolute container path.`,
-  });
+export const homeStoreName = (appSlug: string, serviceName: string, principal?: string): string => {
+  const base = `lando-${appSlug}-${serviceName}-home`;
+  if (principal === undefined) return base;
+  const readable = principal
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 32);
+  return `${base}-${readable}-${sha256Hex(`${serviceName}\0${principal}`).slice(0, 8)}`;
+};
 
 /**
  * Resolves the home destination for one service. Returns `undefined` when home
- * persistence is off, and a tagged refusal when the destination is unknowable.
+ * persistence is off or the destination is unknown.
  */
 export const resolveHomePath = (input: {
   readonly serviceName: string;
   readonly intent: ServiceHomeIntent;
   readonly plannedUser: string | undefined;
-}): HomePathCapabilityError | string | undefined => {
+}): string | undefined => {
   const home = input.intent.home;
   if (home === false) return undefined;
   if (home?.path !== undefined) return home.path;
 
   const identity = input.intent.identity;
-  if (identity === undefined) {
-    return refusal({
-      serviceName: input.serviceName,
-      serviceType: input.intent.serviceType,
-      ...(input.plannedUser === undefined ? {} : { user: input.plannedUser }),
-      reason:
-        "its image is supplied by the Landofile, so Lando does not know which user runs it or where that user's home is.",
-    });
-  }
+  if (identity === undefined || input.intent.customImage) return undefined;
 
-  const user = input.plannedUser ?? identity.defaultUser;
-  const path = identity.homes[userPrincipal(user)];
-  if (path === undefined) {
-    return refusal({
-      serviceName: input.serviceName,
-      serviceType: input.intent.serviceType,
-      user,
-      reason: `service type ${input.intent.serviceType} does not declare a home directory for user ${user}.`,
-    });
-  }
-  return path;
+  const principal = userPrincipal(input.plannedUser ?? identity.defaultUser);
+  return Object.hasOwn(identity.homes, principal) ? identity.homes[principal] : undefined;
 };
 
 /**
@@ -126,14 +110,32 @@ export const applyServiceHome = (input: {
   readonly appSlug: string;
   readonly appRoot: string;
   readonly intent: ServiceHomeIntent;
-}): HomePathCapabilityError | LandofileValidationError | ServicePlan => {
+}): LandofileValidationError | (ServicePlan & { readonly home: ServiceHomePlan }) => {
+  const user =
+    input.servicePlan.user ?? (input.intent.customImage ? undefined : input.intent.identity?.defaultUser);
+  const principal = user === undefined ? undefined : userPrincipal(user);
+  const knownUser = principal === undefined ? {} : { user: principal };
   const resolved = resolveHomePath({
     serviceName: input.serviceName,
     intent: input.intent,
     plannedUser: input.servicePlan.user,
   });
-  if (resolved instanceof HomePathCapabilityError) return resolved;
-  if (resolved === undefined) return input.servicePlan;
+  if (resolved === undefined)
+    return {
+      ...input.servicePlan,
+      home:
+        input.intent.home === false
+          ? { state: "disabled" }
+          : {
+              state: "unknown",
+              reason: input.intent.customImage
+                ? "custom-image"
+                : input.intent.identity === undefined
+                  ? "no-identity"
+                  : "undeclared-user",
+              ...knownUser,
+            },
+    };
 
   const target = plannedContainerDestination(resolved, input.appRoot, [
     "services",
@@ -143,15 +145,36 @@ export const applyServiceHome = (input: {
   ]);
   if (target instanceof LandofileValidationError) return target;
 
-  const occupied = input.servicePlan.storage.some((mount) => mount.target === target);
-  if (occupied) return input.servicePlan;
+  const homeTarget = AbsoluteContainerPath.make(target);
+  const matches = (destination: string): boolean =>
+    plannedContainerDestination(destination, input.appRoot, [
+      "services",
+      input.serviceName,
+      "home",
+      "path",
+    ]) === target;
+  const compose = input.servicePlan.extensions.compose;
+  const tmpfs = Predicate.isObject(compose) && Array.isArray(compose.tmpfs) ? compose.tmpfs : [];
+  const occupied = input.servicePlan.storage.some((mount) => matches(mount.target))
+    ? "volume"
+    : (input.servicePlan.mounts.find((mount) => matches(mount.target))?.type ??
+      (input.servicePlan.appMount !== undefined && matches(input.servicePlan.appMount.target)
+        ? "bind"
+        : tmpfs.some((entry: unknown) => typeof entry === "string" && matches(entry.split(":")[0] ?? entry))
+          ? "tmpfs"
+          : undefined));
+  if (occupied !== undefined)
+    return { ...input.servicePlan, home: { state: "authored", target: homeTarget, mount: occupied } };
+
+  const store = homeStoreName(input.appSlug, input.serviceName, principal);
 
   return {
     ...input.servicePlan,
+    home: { state: "persisted", target: homeTarget, store, ...knownUser },
     storage: [
       ...input.servicePlan.storage,
       {
-        store: homeStoreName(input.appSlug, input.serviceName),
+        store,
         target,
         readOnly: false,
       },

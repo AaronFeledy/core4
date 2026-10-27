@@ -6,7 +6,6 @@ services:
   web:
     type: compose
     image: traefik/whoami:v1.10
-    home: false
     networks:
       backend:
         ipv4_address: 10.5.0.10

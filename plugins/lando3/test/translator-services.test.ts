@@ -95,13 +95,11 @@ test("flattens a raw service when nested Compose fields are authored", async () 
           ports: ["8080:80"],
           user: "www-data",
           certs: true,
-          home: false,
         },
       },
     },
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
-    { kind: "needs-review", keyPath: ["services", "web"] },
     { kind: "rewritten", keyPath: ["services", "web", "services", "command"] },
     { kind: "rewritten", keyPath: ["services", "web", "meUser"] },
     { kind: "rewritten", keyPath: ["services", "web", "ssl"] },
@@ -113,10 +111,9 @@ test("uses Compose fallback when an unknown type has an image", async () => {
   const result = await translate('services: {custom: {type: frobnicator, overrides: {image: "custom:1"}}}');
   // Then
   expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
-    { services: { custom: { type: "compose", image: "custom:1", home: false } } },
+    { services: { custom: { type: "compose", image: "custom:1" } } },
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
-    { kind: "needs-review", keyPath: ["services", "custom"] },
     { kind: "rewritten", keyPath: ["services", "custom", "type"] },
   ]);
 });
@@ -202,12 +199,11 @@ test("overlays authored services while preserving recipe siblings", async () => 
   // Then
   const fragment = result.outputs[0]?.fragment;
   expect(isPlainRecord(fragment) ? fragment.services : undefined).toEqual({
-    appserver: { type: "compose", image: "custom:1", command: ["serve"], home: false },
+    appserver: { type: "compose", image: "custom:1", command: ["serve"] },
     redis: { image: "redis:7" },
   });
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
     { kind: "generated", keyPath: ["recipe"] },
-    { kind: "generated", keyPath: ["services", "appserver"] },
     { kind: "rewritten", keyPath: ["services", "appserver", "services", "command"] },
   ]);
 });
@@ -285,13 +281,11 @@ test("dispatches API-4 services with hooks and Compose overrides", async () => {
           image: "alpine:3",
           build: { artifact: [{ run: "touch /ready" }] },
           command: ["serve"],
-          home: false,
         },
       },
     },
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
-    { kind: "needs-review", keyPath: ["services", "app"] },
     { kind: "rewritten", keyPath: ["services", "app", "build"] },
     { kind: "rewritten", keyPath: ["services", "app", "overrides", "command"] },
   ]);
@@ -334,15 +328,13 @@ test("keeps top-level excludes on API-4 default and string app mounts", async ()
           type: "lando",
           image: "custom:1",
           appMount: { target: "/app", excludes: ["vendor"], includes: [] },
-          home: false,
         },
         rooted: {
           type: "lando",
           image: "custom:1",
           appMount: { target: "/srv/app", excludes: ["vendor"], includes: [] },
-          home: false,
         },
-        quiet: { type: "lando", image: "custom:1", appMount: false, home: false },
+        quiet: { type: "lando", image: "custom:1", appMount: false },
       },
     },
   ]);
@@ -407,17 +399,21 @@ test("keeps the preview when a catalog service authors scanner, home, and meUser
   );
   // Then
   expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
-    { services: { appserver: { type: "php:8.3", user: "www-data", scanner: false, home: false } } },
+    { services: { appserver: { type: "php:8.3", user: "www-data", scanner: false } } },
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
     { kind: "dropped", keyPath: ["plugins"] },
-    { kind: "needs-review", keyPath: ["services", "appserver"] },
     { kind: "needs-review", keyPath: ["services", "appserver", "type"] },
     { kind: "rewritten", keyPath: ["services", "appserver", "meUser"] },
     { kind: "dropped", keyPath: ["services", "appserver", "home"] },
     { kind: "dropped", keyPath: ["services", "appserver", "moreHttpPorts"] },
   ]);
-  expect(result.diagnostics.find((diagnostic) => diagnostic.kind === "needs-review")?.remediation).toContain(
-    "services.appserver.home.path",
-  );
+  expect<unknown>(result.expectations).toEqual([
+    {
+      _tag: "PersistedHome",
+      sourceId: ".lando.yml",
+      keyPath: ["services", "appserver"],
+      service: "appserver",
+    },
+  ]);
 });
