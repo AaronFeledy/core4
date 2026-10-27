@@ -67,10 +67,19 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(26);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(27);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
+    const signalJob = findIndentedBlock(
+      findIndentedBlock(workflow, "jobs"),
+      "process-signal-tests-darwin",
+      2,
+    );
+    const signalCodegen = signalJob.indexOf("run: bun run codegen");
+    const signalTests = signalJob.indexOf("run: bun test core/test/cli/process-signals.test.ts");
+    expect(signalCodegen).toBeGreaterThanOrEqual(0);
+    expect(signalTests).toBeGreaterThan(signalCodegen);
     const bundledCodegen = findIndentedBlock(findIndentedBlock(workflow, "jobs"), "bundled-codegen", 2);
     const catalog = bundledCodegen.indexOf("run: bun run codegen:tomcat-catalog");
     const providerImages = bundledCodegen.indexOf("run: bun run codegen:provider-images");
