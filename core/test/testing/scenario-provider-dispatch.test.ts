@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { DateTime, Effect } from "effect";
 
 import { withScenarioContext } from "@lando/core/testing";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { makeScenarioProvider } from "../../src/testing/scenario-provider.ts";
 
@@ -25,6 +25,38 @@ const planAt = (id: string, appRoot: AbsolutePath): AppPlan => ({
     runtime: 4,
   },
   extensions: {},
+});
+
+test.each([
+  ["solr", "/home/solr"],
+  ["elasticsearch", "/usr/share/elasticsearch"],
+] as const)("remembers the %s fixture's prepared-home plan", async (guideId, homeTarget) => {
+  await Effect.runPromise(
+    withScenarioContext({ guideId, scenarioId: "prepared-home-plan" }, (context) =>
+      Effect.gen(function* () {
+        // Given: a real guide fixture requiring a prepared catalog home.
+        const root = yield* context.fixtures.use(`${guideId}-demo`);
+        const provider = makeScenarioProvider();
+
+        // When: the scenario provider plans and remembers the fixture.
+        yield* Effect.tryPromise(() => provider.remember(root));
+
+        // Then: applied-state observation retains the home and its ownership build intent.
+        const registry = yield* RuntimeProviderRegistry.pipe(Effect.provide(provider.layer));
+        const applied = yield* registry.resolveAppliedPlan(AbsolutePath.make(root));
+        const search = applied?.services[ServiceName.make("search")];
+        expect(search?.home).toMatchObject({ state: "persisted", target: homeTarget, user: guideId });
+        expect(search?.extensions["@lando/core/service-features"]).toMatchObject({
+          buildSteps: expect.arrayContaining([
+            expect.objectContaining({ id: "lando.storage:own-data-trees", phase: "build", user: "root" }),
+          ]),
+        });
+        const selected = yield* registry.select(applied);
+        expect(yield* registry.capabilities).toBe(selected.capabilities);
+        expect(selected.capabilities).toBe(provider.provider.capabilities);
+      }),
+    ),
+  );
 });
 
 test("uses the test runtime provider for exec when a guide uses the scenario harness", async () => {

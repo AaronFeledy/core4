@@ -187,9 +187,9 @@ If you are looking for a public surface or policy:
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |
 | Deprecation presentation, removal, and gates | 16 | §18.6 + §18.8 |
-| Executable-guide model, components, and scenario runtime | 17 | §19.2 + §19.4 |
-| Transcripts, codegen, source maps, and lint | 17 | §19.6 + §19.10 |
-| Recipe README and library-guide integration | 17 | §19.13 + §19.14 |
+| Executable-guide model, components, scenario runtime, and display vs. execute bindings | 17 | §19.2 + §19.4 + §19.5 |
+| Transcripts, shared scenario compiler, source maps, and binding diagnostics | 17 | §19.6 + §19.7 + §19.10 |
+| Recipe scaffold README cells, skips, and single-mode library scenarios | 17 | §19.13 + §19.14 |
 | Guide acceptance and tabbed variants | 17 | §19.15 + §19.16 |
 | Global-app identity, Landofile, and plugin contributions | 18 | §20.2 + §20.3 + §20.4 |
 | Global service, lifecycle, CLI, networking, and storage | 18 | §20.5 + §20.9 |
