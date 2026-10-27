@@ -115,6 +115,47 @@ What each part does:
 A scenario must exercise or assert product behavior. Keep prose outside the
 scenario, and do not add a scenario solely to hold variables or setup.
 
+### Where each component goes
+
+The compiler checks placement and rejects anything out of place with the
+guide path and line, so a misplaced component never silently drops out of
+the test.
+
+| Component | Direct parent |
+| --- | --- |
+| `<Guide>` | the page (one per guide) |
+| `<Scenario>` | `<Guide>` |
+| `<Step>`, `<Hidden>`, `<Skip>`, `<Tabs>` | `<Scenario>` |
+| `<Tab>` | `<Tabs>` |
+| `<Step>` | also `<Hidden>`, `<Skip>`, `<Tab>` |
+| `<Run>`, `<Verify>`, `<Cleanup>`, `<Variable>`, `<UseFixture>`, `<Inspect>`, `<Inline>` | `<Step>` |
+
+Wrappers do not nest: no `<Hidden>` inside a `<Tab>`, no `<Tabs>` inside
+`<Skip>`. Write each component as block MDX, not inside a prose paragraph.
+A component inside a paragraph, such as `Run <Verify command="lando start" />
+first.`, is text to MDX, not an action, and fails the same way. Markdown
+prose between components inside a wrapper is fine.
+
+### What `expect` accepts
+
+The `expect` prop of `<Verify>` is a matcher:
+
+- A string, number, boolean, or `null` must equal the value exactly.
+- An array must match an array of the same length, element by element.
+- A plain object is partial: every key you list must match, and keys you
+  leave out are ignored, so `{ stdout: { ... } }` says nothing about `stderr`.
+- `{ regex: "..." }` tests the value as a string against the pattern.
+- `{ schema: "AppPlan" }` decodes the value with a named public schema,
+  such as the one on the
+  [AppPlan schema reference](../reference/schemas/app-plan.mdx). A name that
+  is not published does not match, so the verification fails when the test
+  runs.
+- `{ anyOf: [...] }` passes when any listed matcher passes.
+- `{ not: ... }` inverts one matcher.
+
+Those are the only operators. `exact`, `allOf`, and `oneOf` are rejected,
+and a partial object may not use any of those names as a key.
+
 ## How variables bind
 
 One compiler validates the guide and resolves each scenario for each variant.
