@@ -120,7 +120,7 @@ jobs:
 #           bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
 #
 #       - name: Setup Go for Linux Podman source build
-#         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+#         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
 #         with:
 #           go-version: 1.25.6
 #
@@ -318,7 +318,7 @@ jobs:
 #           bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
 #
 #       - name: Setup Go for Linux Podman source build
-#         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+#         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
 #         with:
 #           go-version: 1.25.6
 #

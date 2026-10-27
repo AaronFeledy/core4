@@ -577,7 +577,7 @@ ${timingStartStep}
 
       - name: Setup Go for Linux Podman source build
         if: ${linuxRuntimeBundleCacheMiss}
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupGo}
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
         with:
           go-version: 1.25.6
 
