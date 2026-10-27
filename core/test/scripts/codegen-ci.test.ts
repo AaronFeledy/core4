@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { delimiter, dirname, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import * as Schema from "effect/Schema";
@@ -49,7 +49,7 @@ const runCodegen = async (): Promise<string> => {
     cwd: repoRoot,
     env: {
       ...process.env,
-      PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}`,
+      PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`,
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -364,7 +364,7 @@ describe("ci workflow codegen", () => {
       }
 
       const originalPackageJson = await readFile(packageJsonPath, "utf8");
-      const mutatedPackageJson = originalPackageJson.replace('"bun": ">=1.4.2"', '"bun": ">=9.8.7"');
+      const mutatedPackageJson = originalPackageJson.replace(/"bun": ">=\d+\.\d+\.\d+"/u, '"bun": ">=9.8.7"');
       expect(mutatedPackageJson).not.toBe(originalPackageJson);
 
       try {

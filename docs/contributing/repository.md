@@ -12,9 +12,7 @@ Read the root [repository instructions](../../AGENTS.md) and any package-specifi
 
 ## Build from source
 
-You need Git and Bun. Use the version pinned in [`.bun-version`](../../.bun-version);
-the current minimum is Bun 1.4.2. Node is not a supported host runtime. Use Bun
-for dependency installation, scripts, and tests.
+You need Git and Bun. Use the version pinned in [`.bun-version`](../../.bun-version); the current minimum is Bun 1.4.3. Node is not a supported host runtime. Use Bun for dependency installation, scripts, and tests.
 
 Follow the [source-build steps](../alpha-install-and-bug-reports.md#option-2-build-from-source)
 to clone the repository, install dependencies, and generate sources. Before

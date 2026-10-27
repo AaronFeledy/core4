@@ -47,7 +47,7 @@ test.each([
 );
 
 test.each([false, true])(
-  "destroys the direct socket on scope release with body consumed=%s",
+  "destroys the loopback fetch socket on scope release with body consumed=%s",
   async (consume) => {
     // Given a real endpoint that sends headers and one chunk, but never completes.
     const closed = Promise.withResolvers<void>();
@@ -85,7 +85,7 @@ test.each([false, true])(
 );
 
 test("carries method and headers and streams the response bytes", async () => {
-  // Given a direct endpoint that echoes request metadata and body bytes.
+  // Given a loopback endpoint that echoes request metadata and body bytes.
   const seen: { method: string; token: string | null }[] = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",

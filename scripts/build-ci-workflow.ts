@@ -92,6 +92,8 @@ ${setupBunSteps}
       - name: Regenerate and verify codegen catalog
         run: bun run codegen:check
 
+      - name: Type check (bun check, no emit)
+        run: bun run check:types
       - name: Typecheck
         if: matrix.platform == 'linux-x64'
         run: bun run typecheck

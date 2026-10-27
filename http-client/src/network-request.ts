@@ -1,11 +1,11 @@
 import { isIP } from "node:net";
 import { Schema } from "effect";
 import type { DirectHttpTransport } from "./direct-http.ts";
-import { type ResolvedNetworkTrust, fetchInitForNetwork, usesDirectEndpoint } from "./network-trust.ts";
+import { type ResolvedNetworkTrust, fetchInitForNetwork, shouldBypassProxy } from "./network-trust.ts";
 import type { RequestPolicyShape } from "./policy.ts";
 
 export interface HttpTransports {
-  readonly fetch: typeof fetch;
+  readonly fetch: (input: string | URL | Request, init?: BunFetchRequestInit) => Promise<Response>;
   readonly direct: DirectHttpTransport;
 }
 
@@ -62,25 +62,35 @@ export const requestWithNetworkTrust = async (
   }
   let body = request.body;
   const { trust, transports, systemCaPems } = network;
-  const startsDirect = usesDirectEndpoint(url, trust);
+  const startsLoopback = shouldBypassProxy(url.href, []);
+  const defaultCa = process.platform === "win32" && systemCaPems.length > 0 ? systemCaPems : undefined;
   const ca =
-    trust === undefined || (trust.trustHost && trust.caPems.length === 0)
-      ? undefined
-      : trust.trustHost
-        ? [...systemCaPems, ...trust.caPems]
-        : trust.caPems;
+    trust === undefined
+      ? defaultCa
+      : trust.trustHost && trust.caPems.length === 0
+        ? undefined
+        : trust.trustHost
+          ? [...systemCaPems, ...trust.caPems]
+          : trust.caPems;
 
   for (let redirects = 0; ; redirects += 1) {
     signal.throwIfAborted();
+    const init: BunFetchRequestInit =
+      trust === undefined
+        ? {
+            ...(shouldBypassProxy(url.href, []) ? { proxy: false as const } : {}),
+            ...(defaultCa === undefined ? {} : { tls: { ca: [...defaultCa] } }),
+          }
+        : fetchInitForNetwork(url.href, trust, systemCaPems);
     const response =
-      target !== undefined || (startsDirect && usesDirectEndpoint(url, trust))
+      target !== undefined
         ? await transports.direct(url, {
             method,
             headers,
             signal,
             ca,
             body,
-            ...(target === undefined ? {} : { connectionAddress: target.address }),
+            connectionAddress: target.address,
           })
         : await transports.fetch(url.href, {
             method,
@@ -88,7 +98,7 @@ export const requestWithNetworkTrust = async (
             signal,
             redirect: "manual",
             body,
-            ...(trust === undefined ? {} : fetchInitForNetwork(url.href, trust, systemCaPems)),
+            ...init,
           });
     const location = response.headers.get("location");
     if (
@@ -120,6 +130,14 @@ export const requestWithNetworkTrust = async (
         message: "unsupported redirect target",
         urlOrigin: url.origin,
         remediation: "Use an http(s) Location without embedded credentials for redirect targets.",
+      });
+    }
+    if (!startsLoopback && shouldBypassProxy(next.href, [])) {
+      throw new RedirectError({
+        message: "remote redirect to loopback forbidden",
+        urlOrigin: url.origin,
+        remediation:
+          "Request the local endpoint directly rather than following a remote Location to loopback.",
       });
     }
     headers.delete("host");
