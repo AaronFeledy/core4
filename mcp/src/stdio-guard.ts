@@ -1,5 +1,5 @@
 import { McpTransportError } from "@lando/sdk/errors";
-import { Cause, Clock, Deferred, Duration, Effect, Pull, Stdio, Stream } from "effect";
+import { Cause, Clock, Deferred, Duration, Effect, Pull, Semaphore, Stdio, Stream } from "effect";
 import { Schema } from "effect";
 import { forEach as forEachChunk } from "effect/Sink";
 import { ParseError } from "effect/ai/McpSchema";
@@ -14,17 +14,30 @@ export const guardStdio = Effect.fnUntraced(function* (
   stdio: Stdio.Stdio,
   terminal: Deferred.Deferred<void, McpTransportError>,
 ) {
+  let open = true;
+  const close = Effect.sync(() => {
+    open = false;
+  });
+  const lane = yield* Semaphore.make(1);
+  const fail = (error: McpTransportError) =>
+    close.pipe(Effect.andThen(Deferred.fail(terminal, error)), Effect.asVoid);
   const stdout: Stdio.Stdio["stdout"] = (options) =>
     forEachChunk((chunk: string | Uint8Array) =>
-      Stream.run(Stream.make(chunk), stdio.stdout(options)).pipe(
-        Effect.timeoutOrElse({
-          duration: OUTBOUND_WRITE_DEADLINE,
-          orElse: () =>
-            Effect.fail(stdioTransportError("MCP stdio stdout write exceeded the 5 second deadline.")),
-        }),
-        Effect.catch((error) =>
-          Deferred.fail(terminal, stdioTransportError(error.message, error)).pipe(Effect.asVoid),
-        ),
+      lane.withPermits(1)(
+        Effect.suspend(() =>
+          open
+            ? Stream.run(Stream.make(chunk), stdio.stdout(options)).pipe(
+                Effect.timeoutOrElse({
+                  duration: OUTBOUND_WRITE_DEADLINE,
+                  orElse: () =>
+                    Effect.fail(
+                      stdioTransportError("MCP stdio stdout write exceeded the 5 second deadline."),
+                    ),
+                }),
+                Effect.catch((error) => fail(stdioTransportError(error.message, error))),
+              )
+            : Effect.void,
+        ).pipe(Effect.uninterruptible),
       ),
     );
   const stdin = Stream.transformPull(stdio.stdin, (pull) =>
@@ -67,6 +80,7 @@ export const guardStdio = Effect.fnUntraced(function* (
                     stdioTransportError("MCP stdio closed with an incomplete non-whitespace frame."),
                   );
                 }
+                yield* close;
                 yield* Deferred.succeed(terminal, undefined);
                 return yield* Cause.done();
               }),
@@ -123,15 +137,18 @@ export const guardStdio = Effect.fnUntraced(function* (
             error instanceof McpTransportError
               ? error
               : stdioTransportError("MCP stdio input failed while reading a frame.", error);
-          return Deferred.fail(terminal, failure).pipe(Effect.andThen(Cause.done()));
+          return fail(failure).pipe(Effect.andThen(Cause.done()));
         }),
       );
       return next();
     }),
   );
-  return Stdio.make({
-    ...stdio,
-    stdin,
-    stdout,
-  });
+  return {
+    close,
+    stdio: Stdio.make({
+      ...stdio,
+      stdin,
+      stdout,
+    }),
+  };
 });
