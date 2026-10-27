@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
+import { homeStoreName } from "@lando/engine/planner/home";
 import { ServiceName } from "@lando/sdk/schema";
 
 import { mysqlServiceType } from "../src/services/mysql.ts";
@@ -62,9 +63,9 @@ describe("MySQL managed versions", () => {
     expect(analyticsStore).not.toContain("9.7");
     expect(appPlan.stores.map((store) => store.name)).toEqual([
       "mysql-versions-db-mysql-data",
-      "lando-mysql-versions-db-home",
+      homeStoreName("mysql-versions", "db", "root"),
       "mysql-versions-analytics-mysql-data",
-      "lando-mysql-versions-analytics-home",
+      homeStoreName("mysql-versions", "analytics", "root"),
     ]);
   });
 

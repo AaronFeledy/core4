@@ -45,6 +45,45 @@ const diagnostic = (id: string, line = 1, column = 1, keyPath: readonly (string 
 
 // ==== Cross-field constraints
 describe("config translation validators", () => {
+  test("deduplicates source-attributed expectations by converted service", () => {
+    // Given two layers referring to the same converted service.
+    const expectation = {
+      _tag: "PersistedHome",
+      sourceId: sourceId("a"),
+      keyPath: ["services", "web"],
+      service: schema.ServiceName.make("web"),
+    } as const;
+    const result = {
+      outputs: [{ ...output("a"), fragment: { services: { web: { type: "node:22" } } } }],
+      diagnostics: [],
+      deletions: [],
+      expectations: [expectation, { ...expectation, sourceId: sourceId("b") }],
+    };
+    // When
+    const validated = landofile.validateConfigTranslateResult(input(), result);
+    // Then
+    expect(validated).toEqual(Result.succeed({ ...result, expectations: [expectation] }));
+  });
+  test.each(["foreign", "missing-service"])("rejects an expectation with %s attribution", (invalid) => {
+    // Given an expectation outside the source or output membership boundary.
+    const result = {
+      outputs: [output("a")],
+      diagnostics: [],
+      deletions: [],
+      expectations: [
+        {
+          _tag: "PersistedHome",
+          sourceId: sourceId(invalid === "foreign" ? "foreign" : "a"),
+          keyPath: [],
+          service: schema.ServiceName.make("web"),
+        },
+      ],
+    } as const;
+    // When
+    const validated = landofile.validateConfigTranslateResult(input(), result);
+    // Then
+    expect(Result.isFailure(validated)).toBe(true);
+  });
   test("preserves wire expressions and recursively partial authoring fields", () => {
     // Given
     const result = {

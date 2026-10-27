@@ -41,13 +41,13 @@ test.each([`include: [${fragment}]`, `includes:\n  - source: ./${fragment}\n    
     // Then
     expect(document.services?.[mail]).toMatchObject({
       type: "compose",
-      home: false,
       appMount: false,
       image: "axllent/mailpit:v1.27",
       envFile: ["./sibling/.env.mail"],
       volumes: [{ type: "bind", source: "./sibling/data", target: "/data" }],
     });
-    for (const key of ["type", "home", "appMount"])
+    expect(document.services?.[mail]?.home).toBeUndefined();
+    for (const key of ["type", "appMount"])
       expect(getLandofileValueSource(document, ["services", "mail", key])).toEqual({
         file: join(root, fragment),
         layer: "canonical",
@@ -157,7 +157,6 @@ test.each(["services:\n  mail: !override", "services: !override\n  mail:"])(
     // Then
     expect(document.services?.[mail]).toMatchObject({
       type: "compose",
-      home: false,
       appMount: false,
       envFile: ["./sibling/.env.mail"],
       volumes: [{ type: "bind", source: "./sibling/data", target: "/data" }],

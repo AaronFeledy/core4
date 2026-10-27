@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Cause, Effect, Exit, Layer, Stream } from "effect";
 
+import { homeStoreName } from "@lando/engine/planner/home";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   bringDown,
@@ -283,7 +284,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     assertServiceContainerRunning(inspect, containerName);
     const home = arrayField(inspect, "Mounts").find((mount) => field(mount, "Destination") === "/root");
     expect(field(home, "Type")).toBe("volume");
-    expect(field(home, "Name")).toBe(`lando-${plan.slug}-${fixture.service}-home`);
+    expect(field(home, "Name")).toBe(homeStoreName(plan.slug, fixture.service, "root"));
     expect(field(home, "RW")).toBe(true);
     fixture.assertInspect(inspect, appRoot);
   } finally {

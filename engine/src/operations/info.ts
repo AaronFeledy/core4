@@ -125,6 +125,7 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
       ...toServiceInfo(plan, service, row.state, row.connections, serviceLogSources),
       ...(mounts === undefined ? {} : { mounts }),
       ...(service.appMount === undefined ? {} : { appMount: service.appMount }),
+      ...(service.home === undefined ? {} : { home: service.home }),
     };
   });
 

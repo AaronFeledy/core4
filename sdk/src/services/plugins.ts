@@ -149,6 +149,9 @@ export interface ServiceImageIdentity {
   readonly defaultUser: ContainerUser;
   /** Home directory per user principal, keyed without any `:group` suffix. */
   readonly homes: Readonly<Record<string, AbsoluteContainerPath>>;
+  /** Principals whose passwd home the image does not create or give to that user.
+   * Lando creates and owns it in a root build step so a fresh home store seeds correctly. */
+  readonly preparedHomes?: ReadonlyArray<string>;
 }
 
 /**
