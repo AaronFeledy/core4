@@ -47,12 +47,33 @@ The lint exits clean when the YAML parses and the keys are valid. `lando info` l
 
 ## Install the network
 
+Download WordPress and create `wp-config.php` with the database settings and HTTPS handling:
+
 ```sh
 lando wp core download
-lando wp config create --dbname=wp-network --dbuser=lando --dbpass=lando --dbhost=database --skip-check
+lando wp config create \
+  --dbname=wp-network \
+  --dbuser=lando \
+  --dbpass=lando \
+  --dbhost=database \
+  --skip-check \
+  --extra-php <<'PHP'
+if ( ( $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' ) === 'https' ) {
+    $_SERVER['HTTPS'] = 'on';
+}
+PHP
 ```
 
-Add the `HTTP_X_FORWARDED_PROTO` snippet from [Run the WordPress recipe](wordpress-workflow.mdx#download-and-install-wordpress) to `wp-config.php`. Without it, HTTPS pages load their assets over `http://`.
+Lando's proxy forwards HTTPS requests to Apache over HTTP. The PHP snippet lets WordPress recognize the original HTTPS request. `--extra-php` writes it into the config inside the service, so you don't need to edit a container-owned file from your host. Keep the quotes around `'PHP'` so your host shell leaves `$_SERVER` unchanged.
+
+Check the generated file before installing the network:
+
+```sh
+lando exec appserver -- php -l wp-config.php
+lando exec appserver -- cat wp-config.php
+```
+
+Confirm that the HTTPS snippet appears above the line that loads `wp-settings.php`.
 
 ```sh
 lando wp core multisite-install --subdomains \
