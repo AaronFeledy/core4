@@ -22,9 +22,13 @@ the client. Do not launch serve mode directly in a terminal or add `--format=jso
 to it; that format is for the terminating `--list` command.
 
 The server speaks MCP over newline-delimited JSON-RPC and runs until the client
-closes stdin. Keep stdin open until every outstanding request id has an answer;
-closing early interrupts in-flight tool calls. Serve mode writes protocol frames
-only, not a Lando command-result envelope for startup or shutdown.
+closes stdin. Closing stdin ends the session: calls still running or waiting are
+cancelled and their resources released, and shutdown generates no result for
+them, not an error and not a success. A response that was already being written
+may still arrive. So if you need a result, keep stdin open until the response
+with that request id arrives. You don't need to cancel each outstanding request
+before closing. Serve mode writes protocol frames only, not
+a Lando command-result envelope for startup or shutdown.
 
 ## Initialize the client
 
@@ -46,8 +50,8 @@ structured output. `isError` is `true` whenever the envelope is not `ok`, so a
 command's own tagged failure (for example `LandofileNotFoundError`) arrives as a
 normal tool result you can read.
 
-Rejections that never reach the command (bad input, `Server busy`, an
-interrupted call) also come back as a tool result with `isError: true`; the
+Rejections that never reach the command (bad input, `Server busy`) also come
+back as a tool result with `isError: true`; the
 `text` block is the tagged error as JSON and there is no `structuredContent`.
 A tool outside the effective allowlist is never registered, so calling it gets
 the protocol's unknown-tool error, code `-32602`.
@@ -129,10 +133,12 @@ tagged `error` and captured output. A successfully produced diagnostic report ca
 instead have `ok: true` while reporting findings; inspect its result fields too.
 
 Without a progress token, only live notifications are omitted. Final output,
-status, and diagnostics are still returned. Cancel an unwanted request with
-`notifications/cancelled` and its `requestId`; closing stdin also cancels active
-calls and releases their provider reads, including idle log followers. A canceled
-call does not acquire a fabricated successful result.
+status, and diagnostics are still returned. Cancel one unwanted request with
+`notifications/cancelled` and its `requestId`; the session stays open for your
+other requests. Closing stdin cancels every active call and releases its
+provider reads, including idle log followers. Either way, a cancelled call gets
+no fabricated result, and a change the command had already applied to the app
+stays applied. Progress notifications you already received remain valid.
 
 ## Confirm changes to an app
 
