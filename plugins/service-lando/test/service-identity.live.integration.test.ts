@@ -207,7 +207,7 @@ for (const entry of catalog) {
       if (images.length === 0) {
         const plan = await composeServicePlan({
           serviceType: entry.type,
-          service: { type: entry.id },
+          service: { type: entry.id, ...(entry.id === "varnish" ? { backend: "appserver" } : {}) },
           appRoot: import.meta.dirname,
           metadata: { resolvedAt: "2026-01-01T00:00:00.000Z", source: "identity-live", runtime: 4 },
         });
@@ -238,6 +238,10 @@ for (const entry of catalog) {
             expect(uidFor(facts.user), `${context}; defaultUser=${entry.identity.defaultUser}`).toBe(
               uidFor(entry.identity.defaultUser),
             );
+            if (entry.id === "varnish" || entry.id === "varnish:7") {
+              expect(facts.passwd.find((row) => row.name === "varnish")?.home, context).toBe("/nonexistent");
+              expect(entry.identity.homes.varnish, context).toBeUndefined();
+            }
             for (const [principal, home] of Object.entries(entry.identity.homes)) {
               const account = facts.passwd.find(
                 (row) => row.name === principal || String(row.uid) === principal,

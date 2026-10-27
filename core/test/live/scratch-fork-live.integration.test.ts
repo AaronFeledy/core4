@@ -7,11 +7,13 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type CurrentExecutableAppPlan,
   ProviderId,
   ServiceName,
   type ServicePlan,
   landoAppNetworkName,
 } from "@lando/sdk/schema";
+import { currentTestPlan } from "../_support/value-contracts.ts";
 
 const providerId = ProviderId.make("lando");
 const webName = ServiceName.make("web");
@@ -73,10 +75,10 @@ const postgresService = (): ServicePlan => ({
   extensions: {},
 });
 
-const appPlan = (slug: string): AppPlan => {
+const appPlan = (slug: string): CurrentExecutableAppPlan => {
   const web = webService();
   const db = postgresService();
-  return {
+  return currentTestPlan({
     id: AppId.make(slug),
     name: slug,
     slug,
@@ -88,7 +90,7 @@ const appPlan = (slug: string): AppPlan => {
     fileSync: [],
     metadata,
     extensions: {},
-  };
+  });
 };
 
 const cloneService = (service: ServicePlan): ServicePlan => ({
@@ -108,7 +110,7 @@ const requireService = (plan: AppPlan, serviceName: ServiceName): ServicePlan =>
   return service;
 };
 
-const rewritePlanIdentity = (plan: AppPlan, slug: string): AppPlan => {
+const rewritePlanIdentity = (plan: CurrentExecutableAppPlan, slug: string): CurrentExecutableAppPlan => {
   const web = cloneService(requireService(plan, webName));
   const db = cloneService(requireService(plan, dbName));
   return {

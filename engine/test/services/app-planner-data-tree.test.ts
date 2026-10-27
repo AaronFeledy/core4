@@ -107,14 +107,17 @@ describe("Planned-user ownership of volume-backed data trees", () => {
 
   test("Given solr with no authored user, When planned, Then no ownership step is added", async () => {
     await withAppRoot(async (appRoot) => {
-      const appPlan = await plan(appRoot, landofile({ search: { type: "solr", cores: ["default"] } }));
+      const appPlan = await plan(
+        appRoot,
+        landofile({ search: { type: "solr", cores: ["default"], home: false } }),
+      );
       expect(ownershipCommand(appPlan, "search")).toBe("");
     });
   });
 
   test("Given solr running as the identity the image seeds, When planned, Then no ownership step is added", async () => {
     await withAppRoot(async (appRoot) => {
-      const appPlan = await plan(appRoot, landofile({ search: { type: "solr", user: "solr" } }));
+      const appPlan = await plan(appRoot, landofile({ search: { type: "solr", user: "solr", home: false } }));
       expect(ownershipCommand(appPlan, "search")).toBe("");
     });
   });

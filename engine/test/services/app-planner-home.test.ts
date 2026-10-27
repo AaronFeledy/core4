@@ -77,6 +77,102 @@ const landofile = (services: Record<string, unknown>): LandofileShape =>
   Schema.decodeUnknownSync(LandofileShape)({ name: "home-app", runtime: 4, services });
 
 describe("AppPlanner home persistence and host reachability", () => {
+  test.each(["elasticsearch", "elasticsearch:8"])("prepares the %s catalog home", async (type) => {
+    await withAppRoot(async (appRoot) => {
+      const result = await plan(appRoot, landofile({ search: { type } }));
+      const search = result.services[ServiceName.make("search")];
+      expect(search?.home).toEqual({
+        state: "persisted",
+        target: "/usr/share/elasticsearch",
+        store: homeStoreName(result.slug, "search", "elasticsearch"),
+        user: "elasticsearch",
+      });
+      expect(
+        serviceFeatureBuildSteps(search?.extensions ?? {}).find(
+          (step) => step.id === DATA_TREE_OWNERSHIP_STEP_ID,
+        ),
+      ).toMatchObject({
+        user: "root",
+        phase: "build",
+        command: [
+          "sh",
+          "-c",
+          "set -eu; mkdir -p '/usr/share/elasticsearch'; chown -R 'elasticsearch' '/usr/share/elasticsearch'; chmod 0770 '/usr/share/elasticsearch'",
+        ],
+      });
+    });
+  });
+  test.each([
+    ["mssql", "/home/mssql", "mssql"],
+    ["mssql:2019", "/home/mssql", "mssql"],
+    ["mssql:2022", "/home/mssql", "mssql"],
+    ["solr", "/home/solr", "solr"],
+    ["solr:9", "/home/solr", "solr"],
+  ] as const)("prepares the %s passwd home separately from its data store", async (type, target, user) => {
+    await withAppRoot(async (appRoot) => {
+      const result = await plan(appRoot, landofile({ web: { type } }));
+      const web = result.services[ServiceName.make("web")];
+      expect(web?.home).toMatchObject({ state: "persisted", target, user });
+      expect(
+        serviceFeatureBuildSteps(web?.extensions ?? {}).find(
+          (step) => step.id === DATA_TREE_OWNERSHIP_STEP_ID,
+        ),
+      ).toMatchObject({
+        user: "root",
+        phase: "build",
+        command: [
+          "sh",
+          "-c",
+          `set -eu; mkdir -p '${target}'; chown -R '${user}' '${target}'; chmod 0770 '${target}'`,
+        ],
+      });
+      expect(
+        web?.mounts.some((mount) => mount.target === (user === "mssql" ? "/var/opt/mssql" : "/var/solr")),
+      ).toBe(true);
+    });
+  });
+  test.each(["varnish", "varnish:6", "varnish:7"])(
+    "persists %s as its final planned root user",
+    async (type) => {
+      await withAppRoot(async (appRoot) => {
+        const result = await plan(
+          appRoot,
+          landofile({ web: { type, backend: "appserver", certs: false }, appserver: { type: "nginx" } }),
+        );
+        const web = result.services[ServiceName.make("web")];
+        expect(web?.user).toBe("root");
+        expect(web?.home).toMatchObject({ state: "persisted", target: "/root", user: "root" });
+        expect(
+          serviceFeatureBuildSteps(web?.extensions ?? {}).some(
+            (step) => step.id === DATA_TREE_OWNERSHIP_STEP_ID,
+          ),
+        ).toBe(false);
+      });
+    },
+  );
+  test.each(["varnish", "varnish:7"])(
+    "does not persist %s's nonexistent home for an authored varnish user",
+    async (type) => {
+      await withAppRoot(async (appRoot) => {
+        const result = await plan(
+          appRoot,
+          landofile({
+            web: { type, user: "varnish", backend: "appserver", certs: false },
+            appserver: { type: "nginx" },
+          }),
+        );
+        const web = result.services[ServiceName.make("web")];
+        expect(web?.user).toBe("varnish");
+        expect(web?.home).toEqual({ state: "unknown", reason: "undeclared-user", user: "varnish" });
+        expect(web?.mounts.some((mount) => mount.target === "/nonexistent")).toBe(false);
+        expect(
+          serviceFeatureBuildSteps(web?.extensions ?? {}).some(
+            (step) => step.id === DATA_TREE_OWNERSHIP_STEP_ID,
+          ),
+        ).toBe(false);
+      });
+    },
+  );
   test("prepares a catalog home selected implicitly by defaultUser", async () => {
     await withAppRoot(async (appRoot) => {
       const registry = Layer.effect(

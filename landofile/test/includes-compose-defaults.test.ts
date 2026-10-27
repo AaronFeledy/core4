@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { loadLandofileLayers } from "../src/service.ts";
@@ -60,6 +60,31 @@ test.each([`include: [${fragment}]`, `includes:\n  - source: ./${fragment}\n    
     });
   },
 );
+
+test("rebases compose include paths when the app root is a symlink alias", async () => {
+  const alias = join(dirname(root), `alias-${basename(root)}`);
+  await writeFile(join(root, ".lando.yml"), `name: defaults\ninclude: [${fragment}]\n`);
+  await writeFile(
+    join(root, fragment),
+    "services:\n  mail:\n    image: axllent/mailpit:v1.27\n    env_file: [.env.mail]\n    volumes: ['./data:/data']\n",
+  );
+  await symlink(root, alias, "dir");
+  try {
+    const { document } = await Effect.runPromise(
+      loadLandofileLayers(alias, join(alias, ".lando.yml"), {
+        ports: makeTestLandofilePorts(alias),
+        stateStore: makeTestLandofileStateStore(),
+        templates: { modules: [] },
+      }),
+    );
+    expect(document.services?.[mail]).toMatchObject({
+      envFile: ["./sibling/.env.mail"],
+      volumes: [{ type: "bind", source: "./sibling/data", target: "/data" }],
+    });
+  } finally {
+    await rm(alias, { recursive: true, force: true });
+  }
+});
 
 test("preserves explicit fragment service values", async () => {
   // Given

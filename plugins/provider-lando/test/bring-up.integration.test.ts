@@ -64,6 +64,23 @@ const waitForHttpBody = async (url: string, expectedBody: string): Promise<strin
   throw lastError ?? new Error(`Timed out waiting for ${url}`);
 };
 
+const waitForTcpPort = async (hostname: string, port: number): Promise<void> => {
+  for (let attempt = 1; attempt <= liveProbeAttempts; attempt += 1) {
+    try {
+      const socket = await Bun.connect({
+        hostname,
+        port,
+        socket: { data() {}, open() {}, close() {} },
+      });
+      socket.end();
+      return;
+    } catch (error) {
+      if (attempt === liveProbeAttempts) throw error;
+      await sleep(liveProbeDelayMs);
+    }
+  }
+};
+
 const servicePlan = (name: "node" | "database"): ServicePlan => ({
   name: ServiceName.make(name),
   type: name === "node" ? "node" : "postgres",
@@ -939,12 +956,7 @@ describe("provider-lando bringUp", () => {
 
         const responseBody = await waitForHttpBody("http://127.0.0.1:31080", "lando-bringup-ok");
         expect(responseBody).toBe("lando-bringup-ok");
-        const socket = await Bun.connect({
-          hostname: "127.0.0.1",
-          port: 55432,
-          socket: { data() {}, open() {}, close() {} },
-        });
-        socket.end();
+        await waitForTcpPort("127.0.0.1", 55432);
       } finally {
         for (const service of Object.values(plan.services)) {
           await Effect.runPromise(
