@@ -9,7 +9,7 @@ tags: [beta, docs, recipes, wordpress, multisite]
 
 A subdomain network puts every site on its own host, like `blog.wp-network.lndo.site`, so the proxy has to send hostnames you have not invented yet to one Apache. Add a wildcard route, turn on `.htaccess`, and let WP-CLI build the network.
 
-Prerequisite: Lando's proxy on ports 80 and 443. WordPress will not create a network when its address uses any other port, so `lando info` must show `https://wp-network.lndo.site` with no port. If it shows `:8443`, free 80 and 443, then run `lando setup`.
+Prerequisite: Lando's proxy on ports 80 and 443. This guide's subdomain URLs assume the default ports, so `lando info` must show `https://wp-network.lndo.site` with no port. If it shows `:8443`, free 80 and 443, then run `lando setup`.
 
 ## Route every subdomain to the appserver
 
