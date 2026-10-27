@@ -74,7 +74,7 @@ For day-to-day tooling and DB/Redis hosts, see [Run the Laravel recipe](/guides/
 ## 1. scaffold
 
 ```bash
-lando init --recipe laravel --name=my-laravel-worker --yes
+lando init --recipe laravel --name=my-laravel-app --yes
 ```
 
 ## 2. start

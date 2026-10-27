@@ -85,7 +85,7 @@ Three tooling commands ship with the Landofile, all running inside the `web` ser
 ## 1. scaffold
 
 ```bash
-lando init --recipe nextjs --name=my-nextjs-nextauth --yes
+lando init --recipe nextjs --name=my-nextjs --yes
 ```
 
 ## 2. start

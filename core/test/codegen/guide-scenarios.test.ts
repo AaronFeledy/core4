@@ -121,8 +121,8 @@ describe("build-guide-scenarios MDX walker", () => {
 
     const multi = first[1];
     expect(multi?.scenarios.map((scenario) => [scenario.id, scenario.render])).toEqual([
-      ["hidden-regression", false],
       ["reader-path", true],
+      ["hidden-regression", false],
     ]);
   });
 
@@ -192,7 +192,7 @@ describe("build-guide-scenarios MDX walker", () => {
       expect(firstContent).toContain("}, 60000);");
       expect(firstContent).toContain("// @display: appName = Node/Postgres");
       expect(firstContent).toContain(
-        'context.vars.set("appName", { value: "node-postgres", display: "Node/Postgres" });',
+        'context.vars.set("appName", { value: "version", display: "Node/Postgres" });',
       );
       expect(firstContent).toContain(
         'yield* Effect.addFinalizer(() => context.transcript.append({ kind: "cleanup", command: [], exit: 0 }));',

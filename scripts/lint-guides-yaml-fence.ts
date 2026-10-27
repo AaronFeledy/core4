@@ -20,6 +20,7 @@ import {
   validationIssuesFromCause,
 } from "@lando/sdk/schema";
 
+import type { MdxNode } from "./guides/mdx.ts";
 import type { GuideLintDiagnostic } from "./lint-guides.ts";
 
 const YAML_FENCE_LANGS = new Set(["yaml", "yml"]);
@@ -28,14 +29,7 @@ const LANDOFILE_KEYS = new Set(Object.keys(LandofileShape.schema.fields));
 const SERVICE_KEYS = new Set([...Object.keys(ServiceConfig.fields), "working_dir", "env_file", "depends_on"]);
 const GLOBAL_CONFIG_KEYS = new Set(Object.keys(GlobalConfig.fields));
 
-export type YamlFenceMdxNode = {
-  readonly type: string;
-  readonly value?: unknown;
-  readonly lang?: string | null;
-  readonly meta?: string | null;
-  readonly children?: ReadonlyArray<YamlFenceMdxNode>;
-  readonly position?: { readonly start?: { readonly line?: number; readonly column?: number } };
-};
+export type YamlFenceMdxNode = MdxNode;
 
 const walkAllNodes = (node: YamlFenceMdxNode, visitor: (node: YamlFenceMdxNode) => void): void => {
   visitor(node);
