@@ -15,9 +15,9 @@ describe("SQL physical volume selection", () => {
           name: "database",
           type: "mysql:8.0",
           environment: {},
-          storage: [
-            { store: "shared-home", target: "/home/lando" },
-            { store: "data", target: "/var/lib/mysql" },
+          mounts: [
+            { type: "volume", store: "shared-home", target: "/home/lando", readOnly: false },
+            { type: "volume", store: "data", target: "/var/lib/mysql", readOnly: false },
           ],
         },
       },
@@ -37,7 +37,7 @@ describe("SQL physical volume selection", () => {
       services: {
         database: {
           type: "mysql:8.0",
-          storage: [{ store: "unproven" }],
+          mounts: [{ type: "volume", store: "unproven", target: "/somewhere-else", readOnly: false }],
         },
       },
     });
@@ -55,9 +55,9 @@ describe("SQL physical volume selection", () => {
       services: {
         database: {
           type: "mysql:8.0",
-          storage: [
-            { store: "a", target: "/var/lib/mysql" },
-            { store: "b", target: "/var/lib/mysql" },
+          mounts: [
+            { type: "volume", store: "a", target: "/var/lib/mysql", readOnly: false },
+            { type: "volume", store: "b", target: "/var/lib/mysql", readOnly: false },
           ],
         },
       },

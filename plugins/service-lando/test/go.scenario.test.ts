@@ -220,8 +220,12 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     ]);
     expect(web.healthcheck).toBeUndefined();
     expect(String(web.workingDirectory)).toBe("/app");
-    expect(String(web.appMount?.target)).toBe("/app");
-    expect(web.mounts).toEqual([]);
+    expect(String(serviceAppMount(web)?.target)).toBe("/app");
+    expect(
+      web.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("go:1.22");
     expect(web.environment.LANDO_APP_ROOT).toBe("/app");
     expect(web.environment.GOPATH).toBe("/go");
@@ -334,3 +338,4 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     expect(discoveries).toBe(0);
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

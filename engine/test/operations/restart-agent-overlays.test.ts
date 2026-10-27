@@ -31,8 +31,8 @@ const runtimeBindSources = (applied: AppPlan) => {
     Mounts: Object.values(applied.services).flatMap((service) =>
       service.mounts.map((mount) => ({
         Type: mount.type,
-        Source: mount.source,
-        Name: mount.source,
+        Source: mount.type === "bind" ? mount.source : undefined,
+        Name: mount.type === "volume" ? mount.store : undefined,
         Destination: mount.target,
       })),
     ),
@@ -117,11 +117,13 @@ for (const kind of ["ssh", "gpg"] as const) {
       };
       applied =
         kind === "ssh"
-          ? withSshAgentOverlay(eligible, runtimeSession)
-          : withGpgAgentOverlay(
-              eligible,
-              runtimeSession,
-              join(paths.agentRelayRunDir("gpg", plan.id, plan.root), "keyring"),
+          ? Effect.runSync(withSshAgentOverlay(eligible, runtimeSession))
+          : Effect.runSync(
+              withGpgAgentOverlay(
+                eligible,
+                runtimeSession,
+                join(paths.agentRelayRunDir("gpg", plan.id, plan.root), "keyring"),
+              ),
             );
       const originalService = applied.services[web.name];
       if (originalService === undefined) throw new TypeError("Expected original overlay service");
@@ -167,11 +169,13 @@ test("retains the managed SSH sidecar volume without restarting its session", as
     extensions: { "@lando/core/ssh-agent": { mode: "sidecar" } },
     services: { [web.name]: { ...web, extensions: { "@lando/core/ssh-agent": { mode: "sidecar" } } } },
   };
-  const runtimePlan = withSshAgentOverlay(desired, {
-    kind: "ssh",
-    socketName: SSH_AGENT_SOCKET_NAME,
-    mount: { _tag: "volume", volume: "retained-agent" },
-  });
+  const runtimePlan = Effect.runSync(
+    withSshAgentOverlay(desired, {
+      kind: "ssh",
+      socketName: SSH_AGENT_SOCKET_NAME,
+      mount: { _tag: "volume", volume: "retained-agent" },
+    }),
+  );
   const bindSources = runtimeBindSources(runtimePlan);
   const originalService = runtimePlan.services[web.name];
   if (originalService === undefined) throw new TypeError("Expected original sidecar service");

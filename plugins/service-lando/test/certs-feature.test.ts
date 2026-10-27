@@ -60,6 +60,7 @@ describe("lando.certs feature", () => {
 
     expect(plan.mounts).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/host/certs/web.crt",
         target: PortablePath.make("/etc/lando/certs/leaf/web.crt"),
@@ -69,6 +70,7 @@ describe("lando.certs feature", () => {
       {
         type: "bind",
         source: "/host/certs/web.key",
+        origin: "service",
         target: PortablePath.make("/etc/lando/certs/leaf/web.key"),
         readOnly: true,
         realization: "passthrough",

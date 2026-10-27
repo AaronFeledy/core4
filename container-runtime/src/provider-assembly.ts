@@ -53,6 +53,10 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
     }),
   ownership: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
   cleanupOwnedResources: makeOwnedResourcesCleanup({
+    checkAppliedState: (app) =>
+      options.appliedPlanState === undefined
+        ? Effect.void
+        : options.load(options.appliedPlanState, app).pipe(Effect.asVoid),
     store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
     ctx: options.ctx,
     ...(options.api === undefined ? {} : { api: options.api }),
@@ -83,6 +87,8 @@ export const bindResolvedProviderOps = (
 ) =>
   makeResolvedProviderOps({
     ...input,
+    beforeMutation:
+      input.beforeMutation ?? ((app) => state.appliedPlans.resolveMutationPlan(app).pipe(Effect.asVoid)),
     resolvePlan: state.appliedPlans.resolvePlan,
     ...(state.dataPlane === undefined ? {} : { dataPlane: state.dataPlane }),
   });

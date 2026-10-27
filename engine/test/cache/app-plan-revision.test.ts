@@ -122,7 +122,7 @@ test("reads a current cache containing the retired networks field", async () => 
   expect(read).not.toHaveProperty("networks");
 });
 
-test.each([6, 27, 28, 31])("ignores desired-plan revision %i without deleting it", async (revision) => {
+test.each([6, 27, 28, 31, 38])("ignores desired-plan revision %i without deleting it", async (revision) => {
   // Given
   const cacheRoot = await mkdtemp(join(tmpdir(), `lando-app-plan-v${revision}-`));
   const appRoot = "/workspace/redirect-app";
@@ -149,7 +149,6 @@ test.each([6, 27, 28, 31])("ignores desired-plan revision %i without deleting it
         primary: true,
         environment: {},
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],
@@ -219,7 +218,7 @@ test("includes the canonical fingerprint revision in the app-plan cache key", ()
   const key = deriveAppPlanCacheKey(input);
 
   // Then
-  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(36n);
+  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(39n);
   expect(key).not.toBe("52ac114b46244edd3741469e45ce9009aa2a3c67f99bc8c2983104e3f399b737");
   expect(key).not.toBe("b7ee8b58156c17f30d73e11f3560e06267bc1961746b424e033b7a4885f98487");
 });

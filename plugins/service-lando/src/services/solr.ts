@@ -13,7 +13,7 @@ import { ServiceConfigIssue, commandHealthcheck, serviceFeatureApply } from "./_
 import { appNameFor } from "../app-name.ts";
 import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { resolveBindSource } from "./_volume-helpers.ts";
+import { isAppRelativeSource, resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "solr:9";
 const VERSIONS = ["9"] as const;
@@ -111,6 +111,7 @@ const applySolrFeature = (ctx: ServiceFeatureContext): void => {
     ctx.addMount({
       type: "bind",
       source: resolveBindSource(configDir, ctx.appRoot),
+      ...(isAppRelativeSource(configDir) ? { relativeTo: "app" as const } : {}),
       target: SOLR_CONFIG_TARGET,
       readOnly: true,
     });
@@ -138,7 +139,8 @@ export const solrServiceFeature: ServiceFeatureDefinition = {
 
 const IDENTITY: ServiceImageIdentity = {
   defaultUser: "solr",
-  homes: { solr: "/var/solr", root: "/root" },
+  homes: { solr: "/home/solr", root: "/root" },
+  preparedHomes: ["solr"],
 };
 
 const resolveSolr =

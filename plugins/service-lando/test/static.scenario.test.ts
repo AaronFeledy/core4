@@ -205,7 +205,7 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     expect(web.endpoints).toEqual([
       { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
     ]);
-    expect(web.appMount?.readOnly).toBe(true);
+    expect(serviceAppMount(web)?.readOnly).toBe(true);
     expect(web.healthcheck?.kind).toBe("command");
     expect(web.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("static:nginx");
@@ -224,7 +224,7 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
 
     expect(web.type).toBe("static:nginx");
     expect(web.environment.LANDO_WEBROOT).toBe("/app/dist");
-    expect(web.appMount?.readOnly).toBe(true);
+    expect(serviceAppMount(web)?.readOnly).toBe(true);
     expect(web.endpoints).toEqual([
       { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
     ]);
@@ -266,3 +266,4 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     ]);
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

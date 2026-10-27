@@ -41,6 +41,7 @@ test("builds a read-only passthrough bind when the socket uses a host directory"
   // Then
   expect(mount).toEqual({
     type: "bind",
+    origin: "integration",
     source: directory,
     target,
     readOnly: true,
@@ -216,10 +217,10 @@ test("omits bind-only fields when the socket uses a volume", () => {
   // Then
   expect(mount).toEqual({
     type: "volume",
-    source: "agent",
+    origin: "integration",
+    store: "agent",
     target,
     readOnly: true,
-    realization: "passthrough",
   });
 });
 

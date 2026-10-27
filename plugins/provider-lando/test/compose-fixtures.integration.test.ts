@@ -209,10 +209,10 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     );
 
     for (const service of Object.values(plan.services)) {
-      for (const storage of service.storage) {
-        if (storage.subpath === undefined) continue;
-        const store = plan.stores.find((candidate) => candidate.name === storage.store);
-        expect(store, `planned store ${storage.store} is missing`).toBeDefined();
+      for (const mount of service.mounts) {
+        if (mount.type !== "volume" || mount.subpath === undefined) continue;
+        const store = plan.stores.find((candidate) => candidate.name === mount.store);
+        expect(store, `planned store ${mount.store} is missing`).toBeDefined();
         if (store === undefined) continue;
 
         const volumeCreate = await Effect.runPromise(
@@ -242,7 +242,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
             path: `/containers/create?name=${encodeURIComponent(initializerName)}`,
             body: {
               Image: "node:22-alpine",
-              Cmd: ["mkdir", "-p", `/volume/${storage.subpath}`],
+              Cmd: ["mkdir", "-p", `/volume/${mount.subpath}`],
               HostConfig: { Binds: [`${store.name}:/volume`] },
             },
           }),

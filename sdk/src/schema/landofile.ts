@@ -7,7 +7,7 @@ import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 import { BuildBlock } from "./build-block.ts";
 import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
-import { ComposeServiceKnobFields } from "./compose-service-knobs.ts";
+import { ComposeServiceKnobFields, ComposeTmpfsServiceField } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
 import { ServiceCreds } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
@@ -109,10 +109,14 @@ export const MountInput = Schema.Union([
     source: Schema.optionalKey(Schema.String),
     target: Schema.String,
     readOnly: Schema.optionalKey(Schema.Boolean),
-    /** Overlay excludes (gitignore-flavoured) — bind only; realized as volume shadows. */
-    excludes: Schema.optionalKey(Schema.Array(Schema.String)),
-    /** Includes — re-bind specific excluded paths. */
-    includes: Schema.optionalKey(Schema.Array(Schema.String)),
+    excludes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+      description:
+        "Bind mounts only: paths beneath the bind that become service-owned volume shadows. Use includes instead of ! entries.",
+    }),
+    includes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+      description:
+        "Bind mounts only: exact paths cancel excludes; literal relative paths nested beneath a shadow reopen host directories. No ! entries or glob patterns.",
+    }),
   }),
 ]).annotate({ description: MOUNT_INPUT_DESCRIPTION, expected: "a source:target string or a mount object" });
 export type MountInput = typeof MountInput.Type;
@@ -382,7 +386,7 @@ const composeConfigOrSecretInput = (description: string) =>
     .annotate({ description });
 
 const COMPOSE_CONFIGS_DESCRIPTION =
-  "Service config grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose, capability-checked, and realized as read-only file mounts honoring source, target, and mode.";
+  "Service config grants as source-name strings or long entries; capability-checked and normalized into authored read-only file binds in ServicePlan.mounts, honoring source, target (default /<name>), and numeric or octal-string mode. Lando mounts, storage, and tmpfs take precedence; duplicate Compose volume/config destinations are rejected.";
 
 const COMPOSE_SECRETS_DESCRIPTION =
   "Service secret grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
@@ -684,9 +688,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
 
     ports: Schema.optionalKey(ComposePortsField),
     expose: Schema.optionalKey(ComposeExposeField),
+    tmpfs: ComposeTmpfsServiceField,
     volumes: Schema.optionalKey(ComposeVolumesField).annotate({
       description:
-        'Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths normalize into mounts, named and anonymous volumes into storage, and tmpfs into the preserved tmpfs runtime knob.',
+        'Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths, named and anonymous volumes, and tmpfs normalize into the service mount list.',
     }),
     networks: Schema.optionalKey(ComposeNetworksInput).annotate({
       description: COMPOSE_NETWORKS_DESCRIPTION,

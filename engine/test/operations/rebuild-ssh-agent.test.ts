@@ -113,6 +113,7 @@ test.each(["sidecar", "host"] as const)(
         readOnly: true,
         createHostPath: false,
         realization: "passthrough",
+        origin: "integration",
       });
       expect(closed).toBe(1);
     } finally {

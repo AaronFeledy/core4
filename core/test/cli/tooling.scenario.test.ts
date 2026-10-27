@@ -95,7 +95,6 @@ const makeService = (name: string, primary = false): ServicePlan => ({
   artifact: { kind: "ref", ref: "node:22-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

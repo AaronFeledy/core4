@@ -89,6 +89,7 @@ describe("composeService", () => {
     expect(plan.environment).toEqual({ FROM_BASE: "yes", NODE_ENV: "development" });
     expect(plan.mounts).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/host/cache",
         target: PortablePath.make("/cache"),
@@ -96,7 +97,9 @@ describe("composeService", () => {
         realization: "passthrough",
       },
     ]);
-    expect(plan.mounts.every((mount) => mount.realization === "passthrough")).toBe(true);
+    expect(plan.mounts.every((mount) => mount.type !== "bind" || mount.realization === "passthrough")).toBe(
+      true,
+    );
     expect(plan.extensions).toEqual({
       "@lando/core/service-features": {
         featureIds: ["feature.plan-intent"],

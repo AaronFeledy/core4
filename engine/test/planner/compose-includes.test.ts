@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ServiceName } from "@lando/sdk/schema";
+import { ServiceName, serviceAppMount } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
@@ -79,16 +79,17 @@ test.each([
       { kind: "ref", ref: "axllent/mailpit:v1.27" },
       { kind: "ref", ref: "postgres:17" },
     ]);
-    expect(Object.values(plan.services).flatMap(({ storage }) => storage)).toMatchObject([
+    const mounts = Object.values(plan.services).flatMap((service) => service.mounts);
+    expect(mounts.filter((mount) => mount.type === "volume")).toMatchObject([
       { target: "/var/lib/postgresql/data" },
     ]);
     expect(Object.values(plan.services).find(({ name }) => name === "mail")?.environment).toMatchObject({
       MAIL_SOURCE: "fragment",
     });
-    expect(Object.values(plan.services).flatMap(({ mounts }) => mounts)).toMatchObject([
+    expect(mounts.filter((mount) => mount.type === "bind")).toMatchObject([
       { source: join(root, "mailstack/data"), target: "/data" },
     ]);
-    for (const service of Object.values(plan.services)) expect(service.appMount).toBeUndefined();
+    for (const service of Object.values(plan.services)) expect(serviceAppMount(service)).toBeUndefined();
   } finally {
     await rm(root, { recursive: true, force: true });
   }

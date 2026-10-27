@@ -13,7 +13,6 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import type { ServiceConfig, ServiceHomePlan, ServicePlan } from "@lando/sdk/schema";
 import { AbsoluteContainerPath, sameImageReference } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
-import { Predicate } from "effect";
 
 import { plannedContainerDestination } from "./storage.ts";
 
@@ -101,8 +100,8 @@ export const resolveHomePath = (input: {
 
 /**
  * Adds the generated home store to a finalized service plan. An authored
- * storage entry already covering the same destination keeps its own store name,
- * scope, and ownership; nothing is generated on top of it.
+ * mount already covering the same destination keeps its own intent;
+ * nothing is generated on top of it.
  */
 export const applyServiceHome = (input: {
   readonly servicePlan: ServicePlan;
@@ -153,16 +152,7 @@ export const applyServiceHome = (input: {
       "home",
       "path",
     ]) === target;
-  const compose = input.servicePlan.extensions.compose;
-  const tmpfs = Predicate.isObject(compose) && Array.isArray(compose.tmpfs) ? compose.tmpfs : [];
-  const occupied = input.servicePlan.storage.some((mount) => matches(mount.target))
-    ? "volume"
-    : (input.servicePlan.mounts.find((mount) => matches(mount.target))?.type ??
-      (input.servicePlan.appMount !== undefined && matches(input.servicePlan.appMount.target)
-        ? "bind"
-        : tmpfs.some((entry: unknown) => typeof entry === "string" && matches(entry.split(":")[0] ?? entry))
-          ? "tmpfs"
-          : undefined));
+  const occupied = input.servicePlan.mounts.find((mount) => matches(mount.target))?.type;
   if (occupied !== undefined)
     return { ...input.servicePlan, home: { state: "authored", target: homeTarget, mount: occupied } };
 
@@ -171,9 +161,11 @@ export const applyServiceHome = (input: {
   return {
     ...input.servicePlan,
     home: { state: "persisted", target: homeTarget, store, ...knownUser },
-    storage: [
-      ...input.servicePlan.storage,
+    mounts: [
+      ...input.servicePlan.mounts,
       {
+        type: "volume",
+        origin: "derived",
         store,
         target,
         readOnly: false,

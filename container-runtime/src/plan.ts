@@ -1,11 +1,5 @@
-import {
-  type AppPlan,
-  type InternalEndpoint,
-  type PublishedEndpoint,
-  type ServicePlan,
-  fileSyncVolumeName,
-  sameAppMountTarget,
-} from "@lando/sdk/schema";
+import type { AppPlan, InternalEndpoint, PublishedEndpoint, ServicePlan } from "@lando/sdk/schema";
+import { containerMountIntent } from "./container-mounts.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
 import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
 import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
@@ -18,15 +12,9 @@ import {
   scratchLabelsForPlan,
 } from "./labels.ts";
 
-import {
-  bindSourceForComposeConfig,
-  composeConfigBindStrings,
-  composeConfigMounts,
-} from "./compose-configs.ts";
-import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 
-export { composeConfigBindStrings };
+export { bindMountStrings, mountSuffix } from "./container-mounts.ts";
 export { ContainerPlanError, normalizeCommand, normalizeEntrypoint };
 
 /** Retain earlier service metadata when a provider applies only a subset without reconciliation. */
@@ -57,8 +45,6 @@ export const envArrayFromRecord = (environment: Readonly<Record<string, string>>
 export const serviceEnv = (service: ServicePlan): ReadonlyArray<string> =>
   envArrayFromRecord(literalServiceEnvironment(service));
 
-export const mountSuffix = (readOnly: boolean): string => (readOnly ? ":ro" : "");
-
 export const commonContainerLabels = (
   plan: AppPlan,
   service: ServicePlan,
@@ -87,144 +73,9 @@ export const commonContainerLabels = (
 };
 
 export interface ContainerHostConfigOptions {
-  readonly onMissingBindMountSource?: (mount: ServicePlan["mounts"][number]) => never;
   /** Local endpoint copy for the create body. Does not rewrite desired state. */
   readonly endpoints?: ReadonlyArray<InternalEndpoint | PublishedEndpoint>;
 }
-
-const missingBindMountSource = (mount: ServicePlan["mounts"][number]): never => {
-  throw new ContainerPlanError("Container bind mounts require a source.", { mount });
-};
-
-interface ContainerBindMountObject {
-  readonly Type: "bind";
-  readonly Source: string;
-  readonly Target: string;
-  readonly ReadOnly: boolean;
-  readonly BindOptions?: { readonly CreateMountpoint: false };
-}
-
-interface ContainerVolumeMountObject {
-  readonly Type: "volume";
-  readonly Source: string;
-  readonly Target: string;
-  readonly ReadOnly: boolean;
-  readonly VolumeOptions?: { readonly Subpath: string };
-}
-
-type ContainerMountObject =
-  | ContainerBindMountObject
-  | ContainerVolumeMountObject
-  | {
-      readonly Type: "tmpfs";
-      readonly Target: string;
-      readonly ReadOnly: boolean;
-    };
-
-const containerMountObjects = (
-  plan: AppPlan,
-  service: ServicePlan,
-  options: ContainerHostConfigOptions = {},
-): ReadonlyArray<ContainerMountObject> => [
-  ...(service.appMount !== undefined && requiresLongMountSyntax(service.appMount.target)
-    ? [
-        {
-          Type: service.appMount.realization === "accelerated" ? ("volume" as const) : ("bind" as const),
-          Source:
-            service.appMount.realization === "accelerated"
-              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
-              : service.appMount.source,
-          Target: service.appMount.target,
-          ReadOnly: service.appMount.readOnly,
-        },
-      ]
-    : []),
-  ...service.mounts.flatMap((mount, index): ReadonlyArray<ContainerMountObject> => {
-    if (sameAppMountTarget(service.appMount, mount)) return [];
-    const strictBind =
-      mount.type === "bind" && mount.realization === "passthrough" && mount.createHostPath === false;
-    if (mount.type !== "volume" && !strictBind && !requiresLongMountSyntax(mount.target)) {
-      return [];
-    }
-    if (mount.type === "tmpfs") return [{ Type: "tmpfs", Target: mount.target, ReadOnly: mount.readOnly }];
-    if (mount.source === undefined)
-      return (options.onMissingBindMountSource ?? missingBindMountSource)(mount);
-    return [
-      {
-        Type: mount.type === "volume" || mount.realization === "accelerated" ? "volume" : "bind",
-        Source:
-          mount.type === "bind" && mount.realization === "accelerated"
-            ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
-            : mount.source,
-        Target: mount.target,
-        ReadOnly: mount.readOnly,
-        ...(strictBind ? { BindOptions: { CreateMountpoint: false as const } } : {}),
-      },
-    ];
-  }),
-  ...service.storage.flatMap(
-    (storeMount): ReadonlyArray<ContainerVolumeMountObject> =>
-      storeMount.subpath === undefined && !requiresLongMountSyntax(storeMount.target)
-        ? []
-        : [
-            {
-              Type: "volume",
-              Source: storeMount.store,
-              Target: storeMount.target,
-              ReadOnly: storeMount.readOnly,
-              ...(storeMount.subpath === undefined ? {} : { VolumeOptions: { Subpath: storeMount.subpath } }),
-            },
-          ],
-  ),
-  ...composeConfigMounts(plan, service).flatMap(
-    (mount): ReadonlyArray<ContainerBindMountObject> =>
-      requiresLongMountSyntax(mount.target)
-        ? [{ Type: "bind", Source: bindSourceForComposeConfig(mount), Target: mount.target, ReadOnly: true }]
-        : [],
-  ),
-];
-
-export const bindMountStrings = (
-  plan: AppPlan,
-  service: ServicePlan,
-  options: ContainerHostConfigOptions = {},
-): ReadonlyArray<string> => {
-  const appMounts =
-    service.appMount === undefined || requiresLongMountSyntax(service.appMount.target)
-      ? []
-      : [
-          `${
-            service.appMount.realization === "accelerated"
-              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
-              : service.appMount.source
-          }:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`,
-        ];
-  const binds = service.mounts.flatMap((mount, index) => {
-    if (mount.type !== "bind") return [];
-    if (sameAppMountTarget(service.appMount, mount)) return [];
-    if (mount.source === undefined) {
-      (options.onMissingBindMountSource ?? missingBindMountSource)(mount);
-    }
-    if (
-      requiresLongMountSyntax(mount.target) ||
-      (mount.realization === "passthrough" && mount.createHostPath === false)
-    )
-      return [];
-    const source =
-      mount.realization === "accelerated"
-        ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
-        : mount.source;
-    return [`${source}:${mount.target}${mountSuffix(mount.readOnly)}`];
-  });
-  const storage = service.storage.flatMap((storeMount) =>
-    storeMount.subpath === undefined && !requiresLongMountSyntax(storeMount.target)
-      ? [`${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`]
-      : [],
-  );
-  return Array.from(
-    new Set([...appMounts, ...binds, ...storage, ...composeConfigBindStrings(plan, service)]),
-  );
-};
 
 export const containerPortBindings = (
   endpoints: ReadonlyArray<PublishedEndpoint>,
@@ -295,13 +146,13 @@ export const containerHostConfigFragment = (
       endpoint._tag === "published" ? [endpoint] : [],
     ),
   );
-  const binds = bindMountStrings(plan, service, options);
-  const mounts = containerMountObjects(plan, service, options);
+  const { binds, mounts, tmpfs } = containerMountIntent(plan, service);
   const extraHosts = service.hostAliases.map(({ hostname, ip }) => `${hostname}:${ip}`);
   return {
     ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
     ...(binds.length > 0 ? { Binds: binds } : {}),
     ...(mounts.length > 0 ? { Mounts: mounts } : {}),
+    ...(Object.keys(tmpfs).length > 0 ? { Tmpfs: tmpfs } : {}),
     ...(extraHosts.length === 0 ? {} : { ExtraHosts: extraHosts }),
   };
 };

@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { type Context, Effect, Predicate } from "effect";
@@ -7,6 +6,7 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
+import { bindSource } from "./authored-mount-entry.ts";
 
 type ComposeConfigFileInput = {
   readonly name: string;
@@ -118,7 +118,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
         }),
       );
     }
-    const source = resolve(input.appRoot, definition.file);
+    const source = bindSource(definition.file, input.appRoot);
     const content = yield* input.fileSystem.readText(source).pipe(
       Effect.mapError(
         (cause) =>

@@ -1,25 +1,22 @@
 import { LandofileValidationError, NotImplementedError } from "@lando/sdk/errors";
 import {
-  type DataStoreMountPlan,
   type PortablePath,
   type ServiceConfig,
-  type ServicePlan,
-  type StorageScope,
   containerDestinationRefusalMessage,
   parseContainerDestination,
 } from "@lando/sdk/schema";
 
 import { type ValidationIssuePath, validationIssue } from "@lando/sdk/schema";
-import { kebab, shortHash } from "./naming.ts";
+import { kebab } from "./naming.ts";
 import type { AuthoredStorageInfo } from "./service-types.ts";
-import { effectiveShadowExcludes } from "./shadow-host-checks.ts";
 
 const GLOBAL_SCOPE_REMEDIATION =
   "Use scope: app or scope: service. Storage scope: global is deferred until global app support lands.";
 
 const cacheStorageKey = (target: string, key: string | undefined): string => key ?? kebab(target);
 
-const cacheStoreName = (target: string, key: string | undefined): string =>
+/** Cache stores are named from the canonical destination so every reader derives one name. */
+export const cacheStoreName = (target: string, key: string | undefined): string =>
   `lando-cache-${cacheStorageKey(target, key)}`;
 
 export const plannedContainerDestination = (
@@ -69,8 +66,10 @@ export const authoredStorageScopes = (
       };
     }
     const kind = entry.kind ?? "data";
-    const key = kind === "cache" ? cacheStorageKey(entry.target, entry.key) : entry.key;
-    const storeName = kind === "cache" ? cacheStoreName(entry.target, entry.key) : entry.store;
+    const destination = parseContainerDestination(entry.target);
+    const target = destination.ok ? destination.value : entry.target;
+    const key = kind === "cache" ? cacheStorageKey(target, entry.key) : entry.key;
+    const storeName = kind === "cache" ? cacheStoreName(target, key) : entry.store;
     const scope = entry.scope ?? "service";
     if (scope === "global" && kind !== "cache") {
       return { byStore, globalEntry: { index, store: entry.store } };
@@ -84,40 +83,6 @@ export const authoredStorageScopes = (
   return { byStore };
 };
 
-export const applyAuthoredStorage = (
-  servicePlan: ServicePlan,
-  service: ServiceConfig,
-  appRoot: string,
-  serviceName: string,
-): ServicePlan | LandofileValidationError => {
-  const authored = service.storage ?? [];
-  if (authored.length === 0) return servicePlan;
-  const occupiedTargets = new Set<string>(servicePlan.storage.map((mount) => String(mount.target)));
-  const additions: DataStoreMountPlan[] = [];
-  for (const entry of authored) {
-    const target = typeof entry === "string" ? entry : entry.target;
-    const mountTarget = plannedContainerDestination(target, appRoot, ["services", serviceName, "storage"]);
-    if (mountTarget instanceof LandofileValidationError) return mountTarget;
-    if (occupiedTargets.has(String(mountTarget))) continue;
-    occupiedTargets.add(String(mountTarget));
-    let store: string;
-    if (typeof entry === "string") {
-      store = kebab(target);
-    } else if (entry.kind === "cache") {
-      store = cacheStoreName(target, entry.key);
-    } else {
-      store = entry.store;
-    }
-    additions.push({
-      store,
-      target: mountTarget,
-      readOnly: typeof entry === "string" ? false : (entry.readOnly ?? false),
-    });
-  }
-  if (additions.length === 0) return servicePlan;
-  return { ...servicePlan, storage: [...servicePlan.storage, ...additions] };
-};
-
 export const rejectGlobalScope = (
   appRoot: string,
   serviceName: string,
@@ -128,63 +93,3 @@ export const rejectGlobalScope = (
     commandId: "landofile.parse",
     remediation: GLOBAL_SCOPE_REMEDIATION,
   });
-
-const joinPathSegments = (target: string, exclude: string): string => {
-  const normalizedTarget = target.endsWith("/") ? target.slice(0, -1) : target;
-  const normalizedExclude = exclude.startsWith("/") ? exclude.slice(1) : exclude;
-  return `${normalizedTarget}/${normalizedExclude}`;
-};
-
-export const expandExcludesToShadows = (
-  appName: string,
-  serviceName: string,
-  servicePlan: ServicePlan,
-  appRoot: string,
-  shadowableExcludes: ReadonlySet<string>,
-):
-  | {
-      servicePlan: ServicePlan;
-      shadowStores: ReadonlyArray<{ name: string; scope: StorageScope }>;
-    }
-  | LandofileValidationError => {
-  const appMount = servicePlan.appMount;
-  if (appMount === undefined) return { servicePlan, shadowStores: [] };
-  const effectiveExcludes = effectiveShadowExcludes(appMount);
-  if (effectiveExcludes.length === 0) return { servicePlan, shadowStores: [] };
-
-  const shadowStores: Array<{ name: string; scope: StorageScope }> = [];
-  const shadowTargets = new Set<string>(servicePlan.storage.map((mount) => String(mount.target)));
-  const shadowMounts: Array<{
-    readonly store: string;
-    readonly target: PortablePath;
-    readonly readOnly: boolean;
-  }> = [];
-
-  for (const excludePath of effectiveExcludes) {
-    if (!shadowableExcludes.has(excludePath)) continue;
-    const destination = joinPathSegments(appMount.target, excludePath);
-    const mountTarget = plannedContainerDestination(destination, appRoot, [
-      "services",
-      serviceName,
-      "appMount",
-      "excludes",
-    ]);
-    if (mountTarget instanceof LandofileValidationError) return mountTarget;
-    const targetKey = String(mountTarget);
-    if (shadowTargets.has(targetKey)) continue;
-    shadowTargets.add(targetKey);
-    const storeName = `${appName}-${serviceName}-${kebab(targetKey)}-${shortHash(targetKey)}`;
-    shadowStores.push({ name: storeName, scope: "service" });
-    shadowMounts.push({
-      store: storeName,
-      target: mountTarget,
-      readOnly: false,
-    });
-  }
-
-  const nextPlan: ServicePlan = {
-    ...servicePlan,
-    storage: [...servicePlan.storage, ...shadowMounts],
-  };
-  return { servicePlan: nextPlan, shadowStores };
-};

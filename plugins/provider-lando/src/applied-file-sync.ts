@@ -7,51 +7,17 @@ import type { PluginStateStore } from "@lando/sdk/plugins";
 import {
   type AppPlan,
   type FileSyncSessionSpec,
-  appMountSyncIgnores,
   fileSyncVolumeName,
-  sameAppMountTarget,
+  plannedFileSyncSessions,
 } from "@lando/sdk/schema";
 import type { AppliedFileSyncInspection } from "@lando/sdk/services";
 
 import { inspectAppliedPlan } from "./applied-state.ts";
 
 export const verifiedFileSyncSessions = (plan: AppPlan): ReadonlyArray<FileSyncSessionSpec> | undefined => {
-  const expected: Array<{
-    service: string;
-    mountKey: string;
-    source: string;
-    target: string;
-    volume: string;
-    excludes: ReadonlyArray<string>;
-  }> = [];
-  for (const [serviceName, service] of Object.entries(plan.services)) {
-    const appMount = service.appMount;
-    if (appMount?.realization === "accelerated") {
-      expected.push({
-        service: serviceName,
-        mountKey: "app-mount",
-        source: appMount.source,
-        target: appMount.target,
-        volume: fileSyncVolumeName(plan.name, serviceName, "app-mount"),
-        excludes: appMountSyncIgnores(service),
-      });
-    }
-    for (const [index, mount] of service.mounts.entries()) {
-      if (mount.type !== "bind" || mount.realization !== "accelerated") continue;
-      if (sameAppMountTarget(appMount, mount)) continue;
-      if (mount.source === undefined) return undefined;
-      const mountKey = `mount-${index}`;
-      expected.push({
-        service: serviceName,
-        mountKey,
-        source: mount.source,
-        target: mount.target,
-        volume: fileSyncVolumeName(plan.name, serviceName, mountKey),
-        excludes: [],
-      });
-    }
-  }
-  if (expected.length === 0 || plan.fileSync.length !== expected.length) return undefined;
+  const expected = plannedFileSyncSessions(plan);
+  if (expected === undefined || expected.length === 0 || plan.fileSync.length !== expected.length)
+    return undefined;
   const seen = new Set<string>();
   for (const { session } of plan.fileSync) {
     const key = `${session.service}/${session.mountKey}`;
@@ -68,8 +34,8 @@ export const verifiedFileSyncSessions = (plan: AppPlan): ReadonlyArray<FileSyncS
       session.excludes.length !== mount.excludes.length ||
       session.excludes.some((exclude, index) => exclude !== mount.excludes[index]) ||
       session.target._tag !== "volume" ||
-      session.target.name !== mount.volume ||
-      session.target.path !== mount.target
+      session.target.name !== mount.volumeName ||
+      session.target.path !== mount.targetPath
     )
       return undefined;
     seen.add(key);
@@ -96,7 +62,7 @@ const syncVolumeEvidence = (body: string, plan: AppPlan): "none" | "accelerated"
   const expected = expectedVolumeNames(plan);
   const appPrefix = `${plan.name}-`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
   const plausiblePreviousSyncName = (name: string): boolean =>
-    name.startsWith(appPrefix) && (name.endsWith("-app-mount") || /-mount-[0-9]+$/u.test(name));
+    name.startsWith(appPrefix) && (name.endsWith("-app-mount") || /-mount-[0-9a-f]{8}$/u.test(name));
   for (const item of volumes) {
     if (typeof item !== "object" || item === null || Array.isArray(item)) return "unknown";
     const name = Reflect.get(item, "Name");
@@ -131,10 +97,8 @@ export const inspectAppliedFileSync = Effect.fnUntraced(function* (
     }
     if (
       prior.plan.fileSync.length > 0 ||
-      Object.values(prior.plan.services).some(
-        (service) =>
-          service.appMount?.realization === "accelerated" ||
-          service.mounts.some((mount) => mount.type === "bind" && mount.realization === "accelerated"),
+      Object.values(prior.plan.services).some((service) =>
+        service.mounts.some((mount) => mount.type === "bind" && mount.realization === "accelerated"),
       )
     )
       return { status: "unknown" } as const;

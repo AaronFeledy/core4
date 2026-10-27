@@ -11,7 +11,6 @@ import {
   type ServiceInfoMount,
   type ServicePlan,
   fileSyncVolumeName,
-  sameAppMountTarget,
 } from "@lando/sdk/schema";
 import type { ServiceRuntimeInfo } from "@lando/sdk/services";
 import { stripGpgAgentOverlay } from "../subsystems/gpg-agent/overlay.ts";
@@ -25,6 +24,7 @@ type PlannedMount = {
   readonly fact: ObservedMount;
   readonly realized: ObservedMount;
   readonly lifetime: ServiceInfoMount["lifetime"];
+  readonly provenance: ServiceInfoMount["provenance"];
 };
 
 const windowsSource = (source: string): boolean => /^[a-z]:[\\/]/iu.test(source) || source.startsWith("\\\\");
@@ -80,62 +80,43 @@ export const projectServiceMounts = (
   if (hostProxyActive) {
     for (const target of HOST_PROXY_MOUNT_TARGETS) internalTargets.add(target);
   }
-  const { appMount } = service;
-  if (appMount !== undefined) {
-    const fact: ObservedMount = {
-      type: "bind",
-      source: appMount.source,
-      target: appMount.target,
-      readOnly: appMount.readOnly,
-    };
-    planned.push({
-      fact,
-      lifetime: "retained",
-      realized:
-        appMount.realization === "accelerated"
-          ? {
-              ...fact,
-              type: "volume",
-              source: fileSyncVolumeName(plan.name, String(service.name), "app-mount"),
-            }
-          : fact,
-    });
+  for (const mount of service.mounts) {
+    if (mount.origin === "integration") internalTargets.add(mount.target);
+    else if (mount.origin !== undefined) internalTargets.delete(mount.target);
   }
-  service.mounts.forEach((mount, index) => {
-    if (internalTargets.has(mount.target)) return;
-    if (sameAppMountTarget(appMount, mount)) return;
+  for (const mount of service.mounts) {
+    if (mount.origin === "integration" || (mount.origin === undefined && internalTargets.has(mount.target)))
+      continue;
     const fact: ObservedMount = {
       type: mount.type,
       target: mount.target,
       readOnly: mount.readOnly,
-      ...(mount.source === undefined ? {} : { source: mount.source }),
+      ...(mount.type === "bind"
+        ? { source: mount.source }
+        : mount.type === "volume"
+          ? { source: mount.store }
+          : {}),
     };
     planned.push({
       fact,
-      lifetime: lifetime(mount.type),
+      provenance: mount.origin,
+      lifetime: mount.type === "tmpfs" ? "container" : "retained",
       realized:
-        mount.type === "bind" && mount.realization === "accelerated"
+        mount.type === "bind" && mount.realization === "accelerated" && mount.mountKey !== undefined
           ? {
               ...fact,
               type: "volume",
-              source: fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`),
+              source: fileSyncVolumeName(plan.name, String(service.name), mount.mountKey),
             }
-          : fact,
+          : mount.type === "bind" && mount.fileMode !== undefined
+            ? // The container binds a private content-addressed copy, so the logical source never matches.
+              { type: "bind", target: mount.target, readOnly: mount.readOnly }
+            : fact,
     });
-  });
-  for (const mount of service.storage) {
-    if (internalTargets.has(mount.target)) continue;
-    const fact: ObservedMount = {
-      type: "volume",
-      source: mount.store,
-      target: mount.target,
-      readOnly: mount.readOnly,
-    };
-    planned.push({ fact, realized: fact, lifetime: "retained" });
   }
   const observed = observation?.status === "present" ? observation.mounts : [];
   const matched = new Set<ObservedMount>();
-  const result = planned.map(({ fact, realized, lifetime }): ServiceInfoMount => {
+  const result = planned.map(({ fact, realized, lifetime, provenance }): ServiceInfoMount => {
     const actual = observed.find(
       (mount) =>
         !matched.has(mount) &&
@@ -161,6 +142,7 @@ export const projectServiceMounts = (
       ...fact,
       ...(actual?.readOnly === undefined ? {} : { readOnly: actual.readOnly }),
       origin: "planned",
+      ...(provenance === undefined ? {} : { provenance }),
       lifetime,
       observation:
         actual !== undefined

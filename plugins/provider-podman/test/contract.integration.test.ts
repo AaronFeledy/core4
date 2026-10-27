@@ -77,7 +77,6 @@ const servicePlan: ServicePlan = {
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -167,7 +166,19 @@ const createBodyBinds = (body: unknown): ReadonlyArray<string> => {
   const hostConfig = Reflect.get(parsed, "HostConfig");
   if (typeof hostConfig !== "object" || hostConfig === null) return [];
   const binds = Reflect.get(hostConfig, "Binds");
-  return Array.isArray(binds) ? binds.filter((bind): bind is string => typeof bind === "string") : [];
+  const mounts = Reflect.get(hostConfig, "Mounts");
+  const strictBinds = Array.isArray(mounts)
+    ? mounts.flatMap((mount: unknown) => {
+        if (typeof mount !== "object" || mount === null || Reflect.get(mount, "Type") !== "bind") return [];
+        const source = Reflect.get(mount, "Source");
+        const target = Reflect.get(mount, "Target");
+        return typeof source === "string" && typeof target === "string" ? [`${source}:${target}`] : [];
+      })
+    : [];
+  return [
+    ...(Array.isArray(binds) ? binds.filter((bind): bind is string => typeof bind === "string") : []),
+    ...strictBinds,
+  ];
 };
 
 const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string): Uint8Array | undefined => {
@@ -840,7 +851,6 @@ const dbServicePlan: ServicePlan = {
   command: ["postgres"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

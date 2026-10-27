@@ -25,6 +25,7 @@ const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): Planne
   hostnames: [],
   authoredArtifact: undefined,
   authored: { byStore: new Map() },
+  authoredStorage: undefined,
   homeIntent: { serviceType: "lando", home: false as const },
   draft: {
     name: ServiceName.make("appserver"),
@@ -38,8 +39,8 @@ const phpishDraft = (routes: ReadonlyArray<NormalizedRoute> | undefined): Planne
     normalizedConfig: {},
     environment: {},
     mounts: [],
-    buildSteps: [],
     storage: [],
+    buildSteps: [],
     endpoints: [HTTP_ENDPOINT],
     dependsOn: [],
     hostAliases: [],

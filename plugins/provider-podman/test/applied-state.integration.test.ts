@@ -3,12 +3,13 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, DateTime, Effect, Exit, Option } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
+import { makeRuntimeProvider } from "../src/index.ts";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
 import {
   listAppliedPlans,
@@ -45,7 +46,6 @@ const planFor = (id: string, proxy?: string): AppPlan => {
         command: ["node", "server.js"],
         environment: proxy === undefined ? {} : { HTTPS_PROXY: proxy },
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],
@@ -98,6 +98,167 @@ const withFailingModify = (state: PluginStateStore): PluginStateStore => ({
 });
 
 describe("provider-podman applied state", () => {
+  for (const damage of ["corrupt", "migration", "decode", "bad-member"] as const) {
+    for (const operation of [
+      "apply",
+      "reconcile",
+      "stop",
+      "stop-supplied",
+      "restart",
+      "destroy",
+      "destroy-supplied",
+    ] as const) {
+      test(`${operation} refuses ${damage} state after a successful cached read`, async () => {
+        await withStateRoot(async (root) => {
+          const state = stateFor(root);
+          const plan = planFor("guarded-app");
+          const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+          const requests: string[] = [];
+          const provider = await Effect.runPromise(
+            makeRuntimeProvider({
+              platform: "linux",
+              env: {},
+              conflictDetector: () => Effect.void,
+              appliedPlanState: state,
+              podmanApi: {
+                ping: Effect.void,
+                info: Effect.succeed({ version: { Version: "6.0.0" } }),
+                request: (input) =>
+                  Effect.sync(() => {
+                    requests.push(input.path);
+                    return { status: 204, body: "" };
+                  }),
+              },
+            }),
+          );
+          await Effect.runPromise(provider.start({ app: plan.id, service: serviceName, plan }));
+          requests.length = 0;
+          const encoded = Schema.encodeSync(AppPlan)(plan);
+          const broken = {
+            ...encoded,
+            services: {
+              web: {
+                ...encoded.services[serviceName],
+                mounts: [
+                  { type: "bind", source: "/x", target: "/x", readOnly: false, realization: "accelerated" },
+                ],
+              },
+            },
+          };
+          const bytes =
+            damage === "corrupt"
+              ? "not json"
+              : JSON.stringify({
+                  version: damage === "migration" || damage === "bad-member" ? 1 : 2,
+                  data:
+                    damage === "bad-member"
+                      ? { [plan.id]: encoded, broken }
+                      : { [plan.id]: damage === "decode" ? { ...encoded, services: "invalid" } : broken },
+                });
+          await writeFile(path, bytes);
+          const target = { app: plan.id, service: serviceName };
+          const action =
+            operation === "apply" || operation === "reconcile"
+              ? provider.apply(plan, { reconcile: operation === "reconcile" })
+              : operation === "stop"
+                ? provider.stop(target)
+                : operation === "stop-supplied"
+                  ? provider.stop({ ...target, plan })
+                  : operation === "restart"
+                    ? provider.restart({ ...target, plan })
+                    : provider.destroy(
+                        { app: plan.id, ...(operation === "destroy-supplied" ? { plan } : {}) },
+                        { volumes: true },
+                      );
+          const failure = await Effect.runPromise(action.pipe(Effect.flip, Effect.scoped));
+          expect(failure).toBeInstanceOf(ProviderUnavailableError);
+          expect(failure).toMatchObject({ providerId: "podman", operation: "applied-state.read" });
+          expect(failure.remediation).toContain(path);
+          expect(failure.message).toContain("state for several apps");
+          expect(requests).toEqual([]);
+          expect(await readFile(path, "utf8")).toBe(bytes);
+        });
+      });
+    }
+    test(`observation tolerates ${damage} while inventory reports the protected record`, async () => {
+      await withStateRoot(async (root) => {
+        const state = stateFor(root);
+        const plan = planFor("guarded-app");
+        const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+        const encoded = Schema.encodeSync(AppPlan)(plan);
+        await writeFile(
+          path,
+          damage === "corrupt"
+            ? "not json"
+            : JSON.stringify({
+                version: damage === "migration" || damage === "bad-member" ? 1 : 2,
+                data: { [plan.id]: encoded, broken: {} },
+              }),
+        );
+        const provider = await Effect.runPromise(
+          makeRuntimeProvider({
+            platform: "linux",
+            env: {},
+            conflictDetector: () => Effect.void,
+            appliedPlanState: state,
+            podmanApi: {
+              ping: Effect.void,
+              info: Effect.succeed({ version: { Version: "6.0.0" } }),
+              request: () => Effect.succeed({ status: 200, body: "[]" }),
+            },
+          }),
+        );
+        expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toBeUndefined();
+        expect(await Effect.runPromise(provider.appliedPlans ?? Effect.die("missing inventory"))).toEqual([]);
+        expect(await Effect.runPromise(provider.list({ includeUnplanned: true }))).toEqual([]);
+        expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({
+          plans: [],
+          unreadable: [{ path }],
+        });
+      });
+    });
+  }
+
+  test("logs discover the labeled container when applied state is unreadable", async () => {
+    await withStateRoot(async (root) => {
+      const state = stateFor(root);
+      const plan = planFor("log-app");
+      const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+      await writeFile(path, "not json");
+      const streams: string[] = [];
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({
+          platform: "linux",
+          env: {},
+          conflictDetector: () => Effect.void,
+          appliedPlanState: state,
+          podmanApi: {
+            ping: Effect.void,
+            info: Effect.succeed({ version: { Version: "6.0.0" } }),
+            request: () =>
+              Effect.succeed({
+                status: 200,
+                body: JSON.stringify([
+                  {
+                    Id: "observed-log-container",
+                    Labels: { "dev.lando.app": plan.id, "dev.lando.service": serviceName },
+                  },
+                ]),
+              }),
+            stream: (input) => {
+              streams.push(input.path);
+              return Stream.empty;
+            },
+          },
+        }),
+      );
+      await Effect.runPromise(
+        Stream.runCollect(provider.logs({ app: plan.id, service: serviceName }, { follow: false })),
+      );
+      expect(streams).toHaveLength(1);
+      expect(streams[0]).toStartWith("/containers/observed-log-container/logs?");
+    });
+  });
   test("credential-bearing proxy env round-trips across fresh stores", async () => {
     await withStateRoot(async (root) => {
       const plan = planFor("proxy-app", proxyUrl);
@@ -136,7 +297,7 @@ describe("provider-podman applied state", () => {
       await Effect.runPromise(removeAppliedPlan(state, first.id));
 
       const plans = await Effect.runPromise(listAppliedPlans(state));
-      expect(plans.map((plan) => plan.id)).toEqual([second.id]);
+      expect(plans.plans.map((plan) => plan.id)).toEqual([second.id]);
       expect(await Effect.runPromise(loadAppliedPlan(state, first.id))).toBeUndefined();
     });
   });
@@ -171,7 +332,7 @@ describe("provider-podman applied state", () => {
       const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
 
       expect(loaded).toBeUndefined();
-      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual([]);
+      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({ plans: [], unreadable: [{ path }] });
     });
   });
 
@@ -186,18 +347,17 @@ describe("provider-podman applied state", () => {
       const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
 
       expect(loaded).toBeUndefined();
-      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual([]);
+      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({ plans: [], unreadable: [{ path }] });
     });
   });
 
-  test("listAppliedPlans fails when the applied-state collection cannot be read", async () => {
+  test("listAppliedPlans reports when the applied-state collection cannot be read", async () => {
     await withStateRoot(async (root) => {
       await mkdir(join(root, "applied-plans.json"));
 
-      const result = await Effect.runPromiseExit(listAppliedPlans(stateFor(root)));
+      const result = await Effect.runPromise(listAppliedPlans(stateFor(root)));
 
-      expect(result._tag).toBe("Failure");
-      expect(String(result)).toContain("ProviderUnavailableError");
+      expect(result).toEqual({ plans: [], unreadable: [{ path: join(root, "applied-plans.json") }] });
     });
   });
 });

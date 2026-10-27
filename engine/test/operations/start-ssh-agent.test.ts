@@ -34,7 +34,6 @@ const plan: AppPlan = {
       primary: true,
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

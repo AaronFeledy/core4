@@ -165,7 +165,7 @@ const liveFixture = Effect.gen(function* () {
       .run({
         image: helper.ref,
         command: ["sh", "-c", "cat > /data/payload"],
-        mounts: [{ store, target: PortablePath.make("/data"), readOnly: false }],
+        mounts: [{ type: "volume", store, target: PortablePath.make("/data"), readOnly: false }],
         stdinStream: stdinOf(text),
         remove: true,
       })
@@ -174,7 +174,7 @@ const liveFixture = Effect.gen(function* () {
     .run({
       image: helper.ref,
       command: ["sh", "-c", "cat /data/payload"],
-      mounts: [{ store, target: PortablePath.make("/data"), readOnly: true }],
+      mounts: [{ type: "volume", store, target: PortablePath.make("/data"), readOnly: true }],
       captureStdout: true,
       remove: true,
     })
