@@ -1037,6 +1037,10 @@
       "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
     },
     {
+      "fixture": "docs/guides/your-landofile/fixtures/config-set-dry-run",
+      "digest": "712074e6aeccb78777421a3b61be947954c794f9da06d779115d1419585ea4a7"
+    },
+    {
       "fixture": "docs/guides/your-landofile/fixtures/dual-form-conflict",
       "invalid": {
         "status": "invalid",

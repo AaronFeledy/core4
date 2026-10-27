@@ -2,8 +2,9 @@ import { join } from "node:path";
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { LandofileAuthoringFragmentNative, validationIssue } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
+import { createIncludeResolutionSession } from "./include-session.ts";
 import { type PresentLandofileLayer, presentLandofileLayers } from "./layers.ts";
-import { ensureConsistentRoot, loadContext } from "./load-context.ts";
+import { assertReadableRoot, loadContext } from "./load-context.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
@@ -22,7 +23,8 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
     replacement: LandofileReplacement,
     inputs: LandofileRuntimeInputs & { readonly overrides?: LandofileFinalizeOverrides | undefined },
   ) {
-    yield* ensureConsistentRoot(replacement.appRoot, inputs);
+    yield* assertReadableRoot(replacement.appRoot, inputs);
+    const session = yield* createIncludeResolutionSession({ appRoot: replacement.appRoot, ...inputs });
     const runtime = yield* loadContext(replacement.appRoot, inputs.templates.context?.env);
     const layers = yield* presentLandofileLayers(replacement.appRoot);
     const target = layers.find((layer) => layer.filePath === replacement.targetFile);
@@ -43,7 +45,7 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
         layer.filePath,
         { ...runtime, layer: layer.layer },
         {
-          ...inputs,
+          templates: inputs.templates,
           sourceReplacement: layer.filePath === replacement.targetFile ? replacement : undefined,
         },
       ).pipe(
@@ -89,7 +91,7 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
     const prepared = yield* Effect.forEach(acquired, ({ source, layer }) =>
       prepareLandofileValue(source).pipe(Effect.map(({ value }) => ({ layer, landofile: value }))),
     );
-    const merged = yield* composePreparedLayers(prepared, runtime, inputs);
+    const merged = yield* composePreparedLayers(prepared, runtime, { session, inputs });
     yield* finalizeLandofile(join(replacement.appRoot, ".lando.yml"), merged, {
       appRoot: replacement.appRoot,
       overrides: inputs.overrides,

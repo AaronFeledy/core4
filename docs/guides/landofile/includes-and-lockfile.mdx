@@ -197,6 +197,12 @@ include's lockfile entry. Review and commit the lockfile change with the
 Landofile change. In CI, run `lando app:includes:verify`; it fails when the
 committed lockfile doesn't pin what the Landofile asks for.
 
+`lando app:config set`, `unset`, and `edit` never write the lockfile, with or
+without `--dry-run`. They may fetch a new or re-versioned include into the
+include cache to validate the candidate, but the pin arrives with the next
+ordinary load, after the whole effective config loads successfully. See
+[Set, unset, and edit from the CLI](./your-landofile.mdx#set-unset-and-edit-from-the-cli).
+
 A cached fragment whose bytes no longer match its checksum fails closed with
 `LandofileLockMismatchError`. If `.lando.lock.yml` can't be decoded, for
 example after a merge conflict, Lando fails with `LandofileParseError`

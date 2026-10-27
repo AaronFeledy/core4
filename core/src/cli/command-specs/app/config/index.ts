@@ -10,6 +10,7 @@ import {
   appConfigRedactionTokens,
   renderAppConfigResult,
 } from "../../../commands/app-config";
+import { runAppConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { dryRunFlag, editorFlag, formatFlag, pathFlag, typeFlag } from "../../config-flags";
 import { configWriteOptionsFromInput } from "../../config-write-input";
@@ -35,7 +36,7 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   summary: "Read or write the current app's Landofile.",
   namespace: "app",
   topLevelAlias: false,
-  bootstrap: "app",
+  bootstrap: "plugins",
   strict: false,
   args: {
     subcommand: Args.string({
@@ -53,7 +54,7 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
     editor: editorFlag,
     "dry-run": dryRunFlag,
   },
-  run: (input) => appConfig(appConfigOptionsFromInput(input)),
+  run: (input) => runAppConfig(appConfigOptionsFromInput(input)),
   documentOutput: {
     format: "yaml",
     reason:

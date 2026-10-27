@@ -14,11 +14,12 @@ import { GlobalConfigView } from "@lando/sdk/schema";
 import { makeLandoPaths } from "@lando/paths";
 import { mergeGlobalConfigSources } from "@lando/paths/config-sources";
 import { MinimalYamlError, parseMinimalYaml } from "@lando/paths/yaml-min";
-import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath, parsePathSegments } from "../config-write/dot-path";
-import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "../config-write/verbs";
-import { type ValueType, writeValidationErrorFromIssues } from "../config-write/write-core";
+import type { EditorRunner } from "../config-write/editor.ts";
+import { runEditVerb, runSetVerb, runUnsetVerb } from "../config-write/verbs";
+import type { ValueType } from "../config-write/write-core";
 import { configSourceStack, decodeConfigStack, validateConfigCandidate } from "../config/config-repair.ts";
 import { recordConfigWarning } from "../config/config-warnings.ts";
 import type { CliTelemetrySource } from "../runtime/cli-options";
@@ -26,18 +27,7 @@ import { GlobalConfigSources } from "../services/config.ts";
 
 // allow: SIZE_OK — this behavior-preserving extraction keeps one config operation on one engine seam.
 
-export interface EditorRunInput {
-  readonly name: string;
-  readonly content: string;
-  readonly cwd: string;
-}
-
-export type EditorRunResult =
-  | { readonly kind: "edited"; readonly content: string }
-  | { readonly kind: "no-editor" }
-  | { readonly kind: "failed"; readonly reason: string; readonly exitCode?: number };
-
-export type EditorRunner = (input: EditorRunInput) => Promise<EditorRunResult>;
+export type { EditorRunInput, EditorRunResult, EditorRunner } from "../config-write/editor.ts";
 
 export interface ConfigOptions {
   readonly subcommand?: "view" | "get" | "set" | "unset" | "edit" | "validate" | "translate" | "telemetry";
@@ -155,13 +145,15 @@ const decodeConfigCandidate = (input: unknown, path: string, reportOtherSources 
   validateConfigCandidate(input, path, { reportOtherSources }).pipe(
     Effect.map(Result.mapError((error) => error.issues ?? [validationIssue([], error.message)])),
   );
-const configValidationError = (
-  path: string,
-  issues: readonly ValidationIssue[],
-  key?: string,
-): LandofileWriteValidationError =>
-  writeValidationErrorFromIssues({ file: path, issues, ...(key === undefined ? {} : { path: key }) });
-
+const installationDocument = (path: string) => ({
+  file: path,
+  readText: readConfigText(path),
+  parse: parseConfigText(path),
+  editCommand: "lando config edit",
+  decode: (input: unknown) => decodeConfigCandidate(input, path),
+  decodeBaseline: (input: unknown) => decodeConfigCandidate(input, path, false),
+  writeText: writeConfigAtomic,
+});
 const HOST_EVENTS_HAND_EDIT =
   "hostEvents can only be changed by editing config.yml. Use `lando config edit` or edit the file itself.";
 
@@ -199,23 +191,17 @@ const metaConfigSet = Effect.fnUntraced(function* (
   }
   const path = resolveConfigWritePath(options);
   const outcome = yield* runSetVerb({
-    file: path,
+    ...installationDocument(path),
     key,
     raw,
     type: options.type,
     dryRun: options.dryRun === true,
-    readText: readConfigText(path),
-    parse: parseConfigText(path),
-    editCommand: "lando config edit",
-    decode: (input) => decodeConfigCandidate(input, path),
-    decodeBaseline: (input) => decodeConfigCandidate(input, path, false),
-    writeText: writeConfigAtomic,
   });
   return {
     subcommand: "set",
     key,
     value: outcome.value,
-    changed: true,
+    changed: outcome.changed,
     dryRun: outcome.dryRun,
     configPath: path,
     format: options.format ?? "table",
@@ -241,15 +227,9 @@ const metaConfigUnset = Effect.fnUntraced(function* (
   }
   const path = resolveConfigWritePath(options);
   const outcome = yield* runUnsetVerb({
-    file: path,
+    ...installationDocument(path),
     key,
     dryRun: options.dryRun === true,
-    readText: readConfigText(path),
-    parse: parseConfigText(path),
-    editCommand: "lando config edit",
-    decode: (input) => decodeConfigCandidate(input, path),
-    decodeBaseline: (input) => decodeConfigCandidate(input, path, false),
-    writeText: writeConfigAtomic,
   });
   return {
     subcommand: "unset",
@@ -281,42 +261,29 @@ const metaConfigEdit = Effect.fnUntraced(function* (
   options: ConfigOptions,
 ): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError, GlobalConfigSources> {
   const path = resolveConfigWritePath(options);
-  const content = yield* readConfigText(path);
   const runner = options.editorRunner;
-  if (runner === undefined) {
-    return yield* Effect.fail(noEditorError(path));
-  }
-  const edited = yield* Effect.promise(() => runner({ name: "lando-config", content, cwd: dirname(path) }));
-  if (edited.kind === "no-editor") {
-    return yield* Effect.fail(noEditorError(path));
-  }
-  if (edited.kind === "failed") {
-    return yield* Effect.fail(
-      editorFailedError(
-        path,
-        edited.reason,
-        "Re-run `lando config edit` after resolving the editor error. The file was left unchanged.",
-      ),
-    );
-  }
-  const parsed = yield* Effect.try({
-    try: () => parseMinimalYaml(edited.content),
-    catch: (cause) =>
-      new LandofileWriteValidationError({
-        message: `The edited config is not valid YAML: ${cause instanceof Error ? cause.message : String(cause)}`,
-        file: path,
-        issues: [validationIssue([], cause instanceof Error ? cause.message : String(cause))],
-        remediation: "Fix the YAML syntax so it parses, then retry. The file was left unchanged.",
+  const outcome = yield* runEditVerb({
+    ...installationDocument(path),
+    dryRun: options.dryRun === true,
+    openEditor:
+      runner === undefined
+        ? undefined
+        : (content) => Effect.promise(() => runner({ name: "lando-config", content, cwd: dirname(path) })),
+    parse: (content) =>
+      Effect.try({
+        try: () => parseMinimalYaml(content),
+        catch: (cause) =>
+          new LandofileWriteValidationError({
+            message: `The edited config is not valid YAML: ${cause instanceof Error ? cause.message : String(cause)}`,
+            file: path,
+            issues: [validationIssue([], cause instanceof Error ? cause.message : String(cause))],
+            remediation: "Fix the YAML syntax so it parses, then retry. The file was left unchanged.",
+          }),
       }),
   });
-  const decoded = yield* decodeConfigCandidate(parsed, path);
-  const issues = Result.isFailure(decoded) ? decoded.failure : [];
-  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
-  yield* writeConfigAtomic(path, edited.content);
   return {
     subcommand: "edit",
-    changed: true,
-    valid: true,
+    ...outcome,
     configPath: path,
     format: options.format ?? "table",
   };

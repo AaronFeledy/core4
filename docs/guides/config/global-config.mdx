@@ -122,7 +122,9 @@ lando config validate
 lando config edit
 ```
 
-`edit` uses `$VISUAL` or `$EDITOR`; pass `--editor` to choose another editor.
+`edit` uses `$VISUAL` or `$EDITOR`; pass `--editor` to choose another editor. Add `--dry-run` to `set`, `unset`, or `edit` to run the same validation and report the result, including `"dryRun": true` in `--format=json`, without writing `config.yml`. A dry-run `edit` still opens your editor; Lando validates the buffer you save and then discards it.
+
+A change that would leave `config.yml` as it is still validates and writes nothing: `set` to the value the file already holds reports `logLevel is already set to "debug" (text) (no change)`, `unset` of a key the file doesn't hold reports `(no change)`, and `edit` where you save the buffer untouched reports `no edits made to config (no change)`. JSON carries `"changed": false` in each case, dry run or not. Both compare against `config.yml` alone: a value that only a drop-in, env override, or default supplies is not a key in the file, so `set` to that value writes it and `unset` of it changes nothing and keeps the effective value.
 
 `--source raw` shows the parsed `config.yml` by itself, before drop-ins, env, and defaults. It works even when that file fails validation, which makes it the quickest way to see what you actually wrote:
 
@@ -385,6 +387,13 @@ lando global:config validate
 
 # Open the canonical global Landofile in $VISUAL or $EDITOR, or pass --editor
 lando global:config edit
+
+# Validate a change and report it without writing; works with set and unset too
+lando global:config edit --dry-run
 ```
+
+`set`, `unset`, and `edit` validate the candidate the same way `lando app:config` does, so [Set, unset, and edit from the CLI](../landofile/your-landofile.mdx#set-unset-and-edit-from-the-cli) applies to the global root. A dry run, a rejected candidate, and a no-op such as setting a key to the value `.lando.yml` already holds write neither `.lando.yml` nor a pin in `<userDataRoot>/global/.lando.lock.yml`; the no-op reports `(no change)` or `"changed": false`. An accepted write changes only `.lando.yml`, and the next ordinary load, for example `lando global:config`, publishes any new include pin once the effective config loads successfully. An unfinished multi-file write in that directory stops all three with `ManagedFileTransactionError`; run `lando global:config` to finish it, then retry.
+
+When `.lando.yml` is missing or empty, `edit` opens a buffer seeded with `name: global` and `runtime: 4`. Saving that buffer, edited or not, creates the file, because the seed is new content for a file that had none. Add `--dry-run` to validate the seed and your edits without creating anything.
 
 Writes don't touch running containers. Check `lando global:config --format=json`, then run `lando global:start` to apply env, bind, and image changes. `lando global:rebuild` forces a pull and build refresh. `validate` loads every present layer, including TypeScript layers and their includes, so a bad value in `.lando.local.ts` reports there even though `set` and `unset` only write `.lando.yml`.
