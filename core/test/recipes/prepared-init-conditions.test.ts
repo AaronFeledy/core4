@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { plugin } from "@lando/lando4";
 import { Effect } from "effect";
 import { prepareInitApp } from "../../src/cli/commands/init-preparation.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { runPostInit } from "../../src/recipes/post-init/runtime.ts";
 import { prepareRecipeInit } from "../../src/recipes/prepared-init.ts";
 import { compileTestSource, testSource } from "./fixtures/prepared-source.ts";
@@ -102,6 +103,7 @@ postInit:
           userDataRoot: join(root, "state"),
           full: false,
           nonInteractive: true,
+          privateFileAccess: ownerOnlyFileAccess,
           answers: transport === "supplied" ? { tpl: value } : {},
         });
         if (value === "react-app") {
