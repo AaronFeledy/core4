@@ -1,26 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { joomlaDecomposer } from "../../src/recipes/builtin/joomla/decomposer.ts";
-import { joomlaRecipeYaml } from "../../src/recipes/builtin/joomla/manifest.ts";
-import {
-  JOOMLA_CONTENT_DIGEST,
-  joomlaDefaults,
-  joomlaProducer,
-  joomlaSnapshot,
-} from "../../src/recipes/builtin/joomla/snapshot.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: joomlaDecomposer,
+  defaults: joomlaDefaults,
+  producer: joomlaProducer,
+  snapshot: joomlaSnapshot,
+  contentDigest: JOOMLA_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("joomla");
 
 const defaults = { ...joomlaDefaults };
 const alternatives = { php: "8.1", database: "mysql:8.0", composer: "2.7.7", webroot: "/app/public" };
-const composerDisabled = { ...defaults, composer: "false" };
+const composerDisabled = { ...defaults, composer: false };
 const validInput: RecipeDecomposeInput = { producer: joomlaProducer, options: defaults, secrets: {} };
 const decomposer = joomlaDecomposer({ redactor: createStandaloneRedactor("secrets") });
 
@@ -35,8 +31,6 @@ const authoringOf = (options: Readonly<Record<string, unknown>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(Bun.YAML.parse(joomlaRecipeYaml));
 
 describe("joomla decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -101,8 +95,9 @@ describe("joomla decomposition", () => {
       services: { appserver: { composer: unknown } };
       tooling: Record<string, unknown>;
     };
-    expect(authoring.services.appserver.composer).toBe(false);
-    expect(Object.keys(authoring.tooling)).toEqual(["joomla", "php"]);
+    expect(authoring.services.appserver.composer).toBe("{{ recipe.composer }}");
+    expect(decompose(composerDisabled).provenance.options.composer).toBe(false);
+    expect(Object.keys(authoring.tooling).sort()).toEqual(["joomla", "php"]);
   });
 
   test.each([
@@ -126,15 +121,13 @@ describe("joomla decomposition", () => {
   });
 
   test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
-    expect(manifest.postInit).toHaveLength(1);
+    expect(manifest.files).toEqual([]);
+    expect(manifest.postInit).toHaveLength(2);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(JOOMLA_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(JOOMLA_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(joomlaSnapshot);
     expect(joomlaSnapshot.identity.contentDigest).toBe(JOOMLA_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");

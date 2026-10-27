@@ -1,24 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { toolboxDecomposer } from "../../src/recipes/builtin/toolbox/decomposer.ts";
 import { TOOLBOX_IMAGE } from "../../src/recipes/builtin/toolbox/image.ts";
-import { toolboxRecipeSource, toolboxRecipeYaml } from "../../src/recipes/builtin/toolbox/manifest.ts";
-import {
-  TOOLBOX_CONTENT_DIGEST,
-  toolboxDefaults,
-  toolboxProducer,
-  toolboxSnapshot,
-} from "../../src/recipes/builtin/toolbox/snapshot.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: toolboxDecomposer,
+  defaults: toolboxDefaults,
+  producer: toolboxProducer,
+  snapshot: toolboxSnapshot,
+  contentDigest: TOOLBOX_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("toolbox");
 
 const defaults = { ...toolboxDefaults };
 const validInput: RecipeDecomposeInput = { producer: toolboxProducer, options: defaults, secrets: {} };
@@ -33,10 +28,6 @@ const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(
-  Effect.runSync(parseRecipeYaml({ source: toolboxRecipeSource, content: toolboxRecipeYaml })),
-);
 
 describe("toolbox decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -71,7 +62,7 @@ describe("toolbox decomposition", () => {
         },
       },
     });
-    expect(result.fragment.services.toolbox.image).toBe(TOOLBOX_IMAGE);
+    expect(result.fragment).toMatchObject({ services: { toolbox: { image: TOOLBOX_IMAGE } } });
     expect<unknown>(result.fragment).toEqual({
       runtime: 4,
       recipe: result.provenance,
@@ -101,15 +92,13 @@ describe("toolbox decomposition", () => {
   );
 
   test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect(manifest.files).toEqual([]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(TOOLBOX_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(TOOLBOX_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(toolboxSnapshot);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });

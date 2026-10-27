@@ -1,23 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { eleventyDecomposer } from "../../src/recipes/builtin/eleventy/decomposer.ts";
-import { eleventyRecipeSource, eleventyRecipeYaml } from "../../src/recipes/builtin/eleventy/manifest.ts";
-import {
-  ELEVENTY_CONTENT_DIGEST,
-  eleventyDefaults,
-  eleventyProducer,
-  eleventySnapshot,
-} from "../../src/recipes/builtin/eleventy/snapshot.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: eleventyDecomposer,
+  defaults: eleventyDefaults,
+  producer: eleventyProducer,
+  snapshot: eleventySnapshot,
+  contentDigest: ELEVENTY_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("eleventy");
 
 const defaults = { ...eleventyDefaults };
 const validInput: RecipeDecomposeInput = { producer: eleventyProducer, options: defaults, secrets: {} };
@@ -32,10 +27,6 @@ const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(
-  Effect.runSync(parseRecipeYaml({ source: eleventyRecipeSource, content: eleventyRecipeYaml })),
-);
 
 describe("eleventy decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -114,15 +105,13 @@ describe("eleventy decomposition", () => {
   );
 
   test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect(manifest.files).toEqual([]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(ELEVENTY_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(ELEVENTY_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(eleventySnapshot);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });

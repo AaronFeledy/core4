@@ -1,26 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { mergeLandofiles } from "@lando/sdk/landofile";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { railsDecomposer } from "../../src/recipes/builtin/rails/decomposer.ts";
-import { railsRecipeSource, railsRecipeYaml } from "../../src/recipes/builtin/rails/manifest.ts";
 import { RAILS_GEMFILE } from "../../src/recipes/builtin/rails/scaffold.ts";
-import {
-  RAILS_CONTENT_DIGEST,
-  railsDefaults,
-  railsProducer,
-  railsSnapshot,
-} from "../../src/recipes/builtin/rails/snapshot.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: railsDecomposer,
+  defaults: railsDefaults,
+  producer: railsProducer,
+  snapshot: railsSnapshot,
+  contentDigest: RAILS_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("rails");
 import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
 
 const defaults = { ...railsDefaults };
 const validInput: RecipeDecomposeInput = { producer: railsProducer, options: defaults, secrets: {} };
@@ -35,10 +30,6 @@ const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(
-  Effect.runSync(parseRecipeYaml({ source: railsRecipeSource, content: railsRecipeYaml })),
-);
 
 describe("rails decomposition", () => {
   test("preserves authored settings when a local layer overrides the scaffold", () => {
@@ -141,10 +132,7 @@ describe("rails decomposition", () => {
   );
 
   test("publishes the Gemfile auxiliary asset alongside declared files and postInit", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-      { src: "assets/Gemfile", dest: "Gemfile", template: false },
-    ]);
+    expect(manifest.files).toEqual([{ src: "assets/Gemfile", dest: "Gemfile", template: false }]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual([
       {
@@ -161,8 +149,8 @@ describe("rails decomposition", () => {
     );
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(RAILS_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(RAILS_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(railsSnapshot);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });

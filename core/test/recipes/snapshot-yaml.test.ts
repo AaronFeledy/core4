@@ -1,73 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
-
-import { astroSnapshot, astroSnapshotYaml } from "../../src/recipes/builtin/astro/snapshot.ts";
-import { backdropSnapshot, backdropSnapshotYaml } from "../../src/recipes/builtin/backdrop/snapshot.ts";
-import { djangoSnapshot, djangoSnapshotYaml } from "../../src/recipes/builtin/django/snapshot.ts";
-import { drupalCmsSnapshot, drupalCmsSnapshotYaml } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
-import { drupalSnapshot, drupalSnapshotYaml } from "../../src/recipes/builtin/drupal/snapshot.ts";
-import { eleventySnapshot, eleventySnapshotYaml } from "../../src/recipes/builtin/eleventy/snapshot.ts";
-import { emptySnapshot, emptySnapshotYaml } from "../../src/recipes/builtin/empty/snapshot.ts";
-import { fastapiSnapshot, fastapiSnapshotYaml } from "../../src/recipes/builtin/fastapi/snapshot.ts";
-import { hugoSnapshot, hugoSnapshotYaml } from "../../src/recipes/builtin/hugo/snapshot.ts";
-import { jekyllSnapshot, jekyllSnapshotYaml } from "../../src/recipes/builtin/jekyll/snapshot.ts";
-import { joomlaSnapshot, joomlaSnapshotYaml } from "../../src/recipes/builtin/joomla/snapshot.ts";
-import { lampSnapshot, lampSnapshotYaml } from "../../src/recipes/builtin/lamp/snapshot.ts";
-import { laravelSnapshot, laravelSnapshotYaml } from "../../src/recipes/builtin/laravel/snapshot.ts";
-import { lempSnapshot, lempSnapshotYaml } from "../../src/recipes/builtin/lemp/snapshot.ts";
-import { meanSnapshot, meanSnapshotYaml } from "../../src/recipes/builtin/mean/snapshot.ts";
-import { nextjsSnapshot, nextjsSnapshotYaml } from "../../src/recipes/builtin/nextjs/snapshot.ts";
-import { nodeApiSnapshot, nodeApiSnapshotYaml } from "../../src/recipes/builtin/node-api/snapshot.ts";
-import {
-  nodePostgresSnapshot,
-  nodePostgresSnapshotYaml,
-} from "../../src/recipes/builtin/node-postgres/snapshot.ts";
-import { nodeTsSnapshot, nodeTsSnapshotYaml } from "../../src/recipes/builtin/node-ts/snapshot.ts";
-import { railsSnapshot, railsSnapshotYaml } from "../../src/recipes/builtin/rails/snapshot.ts";
+import { renderRecipeSnapshot } from "@lando/sdk/recipes";
+import { RecipeSnapshot } from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 import { recipeSnapshotYaml } from "../../src/recipes/builtin/snapshot-yaml.ts";
-import { sveltekitSnapshot, sveltekitSnapshotYaml } from "../../src/recipes/builtin/sveltekit/snapshot.ts";
-import { symfonySnapshot, symfonySnapshotYaml } from "../../src/recipes/builtin/symfony/snapshot.ts";
-import { toolboxSnapshot, toolboxSnapshotYaml } from "../../src/recipes/builtin/toolbox/snapshot.ts";
-import { wordpressSnapshot, wordpressSnapshotYaml } from "../../src/recipes/builtin/wordpress/snapshot.ts";
+import { BUILTIN_RECIPE_SNAPSHOTS } from "../../src/recipes/builtin/snapshots.ts";
 import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
 
-describe("recipe snapshot YAML", () => {
-  test.each([
-    ["lamp", lampSnapshot, lampSnapshotYaml],
-    ["lemp", lempSnapshot, lempSnapshotYaml],
-    ["wordpress", wordpressSnapshot, wordpressSnapshotYaml],
-    ["laravel", laravelSnapshot, laravelSnapshotYaml],
-    ["symfony", symfonySnapshot, symfonySnapshotYaml],
-    ["drupal", drupalSnapshot, drupalSnapshotYaml],
-    ["drupal-cms", drupalCmsSnapshot, drupalCmsSnapshotYaml],
-    ["backdrop", backdropSnapshot, backdropSnapshotYaml],
-    ["joomla", joomlaSnapshot, joomlaSnapshotYaml],
-    ["node-postgres", nodePostgresSnapshot, nodePostgresSnapshotYaml],
-    ["node-api", nodeApiSnapshot, nodeApiSnapshotYaml],
-    ["mean", meanSnapshot, meanSnapshotYaml],
-    ["node-ts", nodeTsSnapshot, nodeTsSnapshotYaml],
-    ["astro", astroSnapshot, astroSnapshotYaml],
-    ["sveltekit", sveltekitSnapshot, sveltekitSnapshotYaml],
-    ["nextjs", nextjsSnapshot, nextjsSnapshotYaml],
-    ["django", djangoSnapshot, djangoSnapshotYaml],
-    ["fastapi", fastapiSnapshot, fastapiSnapshotYaml],
-    ["rails", railsSnapshot, railsSnapshotYaml],
-    ["jekyll", jekyllSnapshot, jekyllSnapshotYaml],
-    ["hugo", hugoSnapshot, hugoSnapshotYaml],
-    ["eleventy", eleventySnapshot, eleventySnapshotYaml],
-    ["empty", emptySnapshot, emptySnapshotYaml],
-    ["toolbox", toolboxSnapshot, toolboxSnapshotYaml],
-  ] as const)(
-    "round-trips the published %s snapshot through the restricted parser",
-    (_, snapshot, content) => {
-      // Given the bundled snapshot's published YAML.
-      // When core parses it without a general-purpose YAML library.
-      const parsed = Effect.runSync(parseRecipeYaml({ source: "recipe.yml", content }));
-      // Then every value retains its original type and content.
-      expect(parsed).toEqual({ snapshot });
+const lampSnapshot = bundledRecipe("lamp").snapshot;
+describe("recipe snapshot transport", () => {
+  test.each([...BUILTIN_RECIPE_SNAPSHOTS])(
+    "preserves %s compiled data and behavior across inert JSON transport",
+    (_, snapshot) => {
+      const transported = Schema.decodeUnknownSync(RecipeSnapshot)(JSON.parse(JSON.stringify(snapshot)));
+      expect(transported).toEqual(snapshot);
+      expect(Result.getOrThrow(renderRecipeSnapshot(transported, snapshot.defaults))).toEqual(
+        Result.getOrThrow(renderRecipeSnapshot(snapshot, snapshot.defaults)),
+      );
     },
   );
-
   test.each([
     { nested: [{ children: [{ empty: {}, values: ["8.3", "2", "{{ recipe.php }}"] }], next: true }] },
     { emptyArray: [], emptyObject: {}, after: "preserved" },
@@ -80,17 +31,13 @@ describe("recipe snapshot YAML", () => {
       ],
     },
     { "123": "numeric key", "-key": "hyphen key" },
-  ])("round-trips supported JSON values: %j", (testData) => {
-    // Given a snapshot carrying the JSON value under test.
+  ])("round-trips historical YAML-compatible values: %j", (testData) => {
     const snapshot = { ...lampSnapshot, testData };
-    // When the emitted YAML is parsed by core.
     const parsed = Effect.runSync(
       parseRecipeYaml({ source: "recipe.yml", content: recipeSnapshotYaml(snapshot) }),
     );
-    // Then the parser preserves the complete value.
     expect(parsed).toEqual({ snapshot });
   });
-
   test.each([
     [{ "bad.key": true }, /Invalid.*key/],
     [{ ["__proto__"]: true }, /Invalid.*key/],
@@ -102,19 +49,12 @@ describe("recipe snapshot YAML", () => {
     [[{}], /empty maps/],
     [[[1]], /array directly inside a sequence/],
     [[{ "123": true }], /first key/],
-  ] as const)("rejects unrepresentable input: %j", (testData, message) => {
-    // Given data outside the restricted parser's representable subset.
+  ] as const)("rejects unrepresentable historical YAML input: %j", (testData, message) => {
     const snapshot = { ...lampSnapshot, testData };
-    // When emission is attempted, then it fails loudly instead of corrupting data.
     expect(() => recipeSnapshotYaml(snapshot)).toThrow(message);
   });
-
-  test("emits two-space block indentation in insertion order", () => {
-    // Given a minimal snapshot with deliberately ordered keys.
-    const snapshot = { ...lampSnapshot, optionTypes: {}, defaults: { z: "2", a: true } };
-    // When YAML is emitted.
-    const yaml = recipeSnapshotYaml(snapshot);
-    // Then empty maps and ordered scalars use the restricted block form.
+  test("emits historical two-space block indentation in insertion order", () => {
+    const yaml = recipeSnapshotYaml({ ...lampSnapshot, optionTypes: {}, defaults: { z: "2", a: true } });
     expect(yaml).toContain('  optionTypes:\n  defaults:\n    z: "2"\n    a: true\n');
   });
 });

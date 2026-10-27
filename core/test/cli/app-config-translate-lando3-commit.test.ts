@@ -11,7 +11,8 @@ import {
 import { LANDOFILE_EDITOR_SCHEMA_URL, LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
-import { wordpressDecomposer } from "../../src/recipes/builtin/wordpress/decomposer.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const { decomposer: wordpressDecomposer } = bundledRecipe("wordpress");
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { failure, originals, snapshot, withFixture } from "./translate-lando3-fixture.ts";
 

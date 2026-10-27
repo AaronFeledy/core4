@@ -1,174 +1,74 @@
 import { describe, expect, test } from "bun:test";
+import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+import { loadBuiltinRecipe } from "../_support/recipe-output.ts";
 
-import {
-  LARAVEL_DATABASES,
-  PHP_DEFAULT,
-  PHP_VERSIONS,
-  SYMFONY_DATABASES,
-  WEBROOT_PATTERN,
-  phpPromptYaml,
-  renderDatabaseLines,
-  renderNginxEdgeLines,
-  renderPhpAppserverLines,
-  renderPrimaryRouteLines,
-  resolvePhpStackAnswers,
-} from "../../src/recipes/builtin/php-stack.ts";
-
-describe("php-stack helper", () => {
-  test("offers PHP 8.6 as a selectable recipe answer", () => {
-    expect([...PHP_VERSIONS]).toEqual(["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"]);
-    expect(PHP_DEFAULT).toBe("8.4");
-    expect(phpPromptYaml).toContain("default: '8.4'");
-    expect(phpPromptYaml).toContain("value: '8.1'");
-    expect(phpPromptYaml).toContain("value: '8.6'");
+describe("compiled PHP source behavior", () => {
+  test("publishes all PHP versions with the intended default", () => {
+    const { snapshot } = bundledRecipe("lamp");
+    expect(snapshot.optionTypes.php).toEqual({
+      kind: "enum",
+      values: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"],
+    });
+    expect(snapshot.defaults).toEqual({ php: "8.4", database: "mariadb:11.4", composer: "2", webroot: "." });
   });
-
-  test("resolves lamp defaults from empty extras", () => {
-    const resolved = resolvePhpStackAnswers(
-      {},
-      { php: "8.4", database: "mariadb:11.4", webroot: ".", composer: "2" },
-    );
-    expect(resolved.php).toBe("8.4");
-    expect(resolved.database).toBe("mariadb:11.4");
-    expect(resolved.webroot).toBe(".");
-    expect(resolved.composer).toBe("2");
-    expect(resolved.webserver).toBe("apache");
-  });
-
-  test("webroot pattern accepts relative and absolute paths but rejects unsupported characters", () => {
-    expect(WEBROOT_PATTERN.test("/app")).toBe(true);
-    expect(WEBROOT_PATTERN.test("/app/web")).toBe(true);
-    expect(WEBROOT_PATTERN.test("/app/public")).toBe(true);
-    expect(WEBROOT_PATTERN.test(".")).toBe(true);
-    expect(WEBROOT_PATTERN.test("web")).toBe(true);
-    expect(WEBROOT_PATTERN.test("./public/")).toBe(true);
-    expect(WEBROOT_PATTERN.test("")).toBe(false);
-    expect(WEBROOT_PATTERN.test("public files")).toBe(false);
-    expect(WEBROOT_PATTERN.test("web;echo")).toBe(false);
-  });
-
-  test("renders an app-root nginx webroot as a YAML string", () => {
-    // Given / When
-    const yaml = renderNginxEdgeLines(".", "test-app").join("\n");
-    // Then
-    expect(Bun.YAML.parse(yaml)).toMatchObject({ edge: { webroot: "." } });
-  });
-
-  test("apache appserver omits via and can keep allowOverride", () => {
-    const lines = renderPhpAppserverLines({
-      php: "8.3",
-      webroot: "/app",
-      composer: "2",
-      webserver: "apache",
+  test.each(["/app", "/app/web", "/app/public", ".", "web", "./public/"])(
+    "retains supported webroot %s",
+    async (webroot) => {
+      const loaded = await loadBuiltinRecipe("lamp", { webroot });
+      expect(loaded.document.services?.[ServiceName.make("appserver")]?.webroot).toBe(
+        PortablePath.make(webroot),
+      );
+    },
+  );
+  test.each(["", "public files", "web;echo"])(
+    "rejects unsupported webroot %s before encoding",
+    async (webroot) => {
+      await expect(loadBuiltinRecipe("lamp", { webroot })).rejects.toMatchObject({
+        _tag: "RecipeInitBlockedError",
+        stage: "translate",
+      });
+    },
+  );
+  test("resolves Apache defaults with versioned PHP and database, routes and override support", async () => {
+    const loaded = await loadBuiltinRecipe("drupal");
+    const app = loaded.document.services?.[ServiceName.make("appserver")];
+    expect(app).toMatchObject({
+      type: "php:8.4",
+      primary: true,
       allowOverride: true,
       port: 80,
-      dependsOn: ["database"],
-      appName: "test-app",
-    });
-    const yaml = lines.join("\n");
-    expect(yaml).toContain("type: php:8.3");
-    expect(yaml).toContain("    primary: true");
-    expect(yaml).not.toContain("via:");
-    expect(yaml).toContain("allowOverride: true");
-    expect(yaml).toContain("port: 80");
-    expect(yaml).toContain('composer: "2"');
-  });
-
-  test("nginx appserver emits via fpm without allowOverride or port", () => {
-    const lines = renderPhpAppserverLines({
-      php: "8.4",
-      webroot: "/app/web",
-      composer: "2.7.7",
-      webserver: "nginx",
-      dependsOn: ["database"],
-      appName: "test-app",
-    });
-    const yaml = lines.join("\n");
-    expect(yaml).toContain("via: fpm");
-    expect(yaml).toContain("    primary: true");
-    expect(yaml).not.toContain("allowOverride:");
-    expect(yaml).not.toContain("port: 80");
-    const edge = renderNginxEdgeLines("/app/web", "test-app").join("\n");
-    expect(edge).toContain("backend: appserver");
-    expect(edge).not.toContain("primary: true");
-    expect(edge).toContain("webroot: /app/web");
-  });
-
-  test("composer false emits a boolean and skips the quoted string", () => {
-    const lines = renderPhpAppserverLines({
-      php: "8.3",
-      webroot: "/app",
-      composer: false,
-      webserver: "apache",
-      dependsOn: ["database"],
-      appName: "test-app",
-    });
-    expect(lines.join("\n")).toMatch(/composer:\s+false\b/);
-    expect(lines.join("\n")).not.toContain('composer: "false"');
-  });
-
-  test("database lines emit the versioned type", () => {
-    expect(renderDatabaseLines("mariadb:11.4").join("\n")).toContain("type: mariadb:11.4");
-    expect(renderDatabaseLines("postgres:16").join("\n")).toContain("type: postgres:16");
-  });
-
-  test("laravel and symfony database lists keep engine order for --yes defaults", () => {
-    expect(LARAVEL_DATABASES[0]).toBe("mariadb:11.4");
-    expect(LARAVEL_DATABASES).toContain("postgres:16");
-    expect(SYMFONY_DATABASES[0]).toBe("postgres:16");
-    expect(SYMFONY_DATABASES).toContain("mariadb:11.4");
-  });
-
-  test("renderPrimaryRouteLines emits the expression hostname and primary-URL comment", () => {
-    // Given / When
-    const lines = renderPrimaryRouteLines("my-app");
-
-    // Then
-    expect(lines).toEqual([
-      "    # primary URL uses the configured proxy.defaultDomain for my-app",
-      "    routes:",
-      '      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"',
-      "        scheme: both",
-    ]);
-  });
-
-  test("apache appserver YAML contains routes, expression hostname, and primary-URL comment", () => {
-    // Given / When
-    const yaml = renderPhpAppserverLines({
-      php: "8.3",
-      webroot: "/app",
       composer: "2",
-      webserver: "apache",
-      allowOverride: true,
-      port: 80,
-      dependsOn: ["database"],
-      appName: "apache-app",
-    }).join("\n");
-
-    // Then
-    expect(yaml).toContain("    routes:");
-    expect(yaml).toContain('hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"');
-    expect(yaml).toContain("scheme: both");
+    });
+    expect(app?.via).toBeUndefined();
+    expect(app?.routes).toEqual([{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }]);
+    expect(loaded.document.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
   });
-
-  test("nginx places routes on edge and none on the fpm appserver", () => {
-    // Given / When
-    const appserver = renderPhpAppserverLines({
-      php: "8.4",
-      webroot: "/app/web",
-      composer: "2.7.7",
+  test("places nginx routes on an edge and leaves FPM without Apache fields", async () => {
+    const loaded = await loadBuiltinRecipe("drupal", {
       webserver: "nginx",
-      dependsOn: ["database"],
-      appName: "nginx-app",
-    }).join("\n");
-    const edge = renderNginxEdgeLines("/app/web", "nginx-app").join("\n");
-
-    // Then
-    expect(appserver).toContain("via: fpm");
-    expect(appserver).not.toContain("routes:");
-    expect(appserver).not.toContain("{{ app.name }}");
-    expect(edge).toContain("    routes:");
-    expect(edge).toContain('hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"');
-    expect(edge).not.toContain("via: fpm");
+      webroot: ".",
+      database: "postgres:16",
+    });
+    const app = loaded.document.services?.[ServiceName.make("appserver")];
+    expect(app).toMatchObject({ via: "fpm", primary: true });
+    expect(app?.routes).toBeUndefined();
+    expect(app?.port).toBeUndefined();
+    expect(app?.allowOverride).toBeUndefined();
+    expect(loaded.document.services?.[ServiceName.make("edge")]).toMatchObject({
+      backend: "appserver",
+      webroot: ".",
+      routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
+    });
+    expect(loaded.document.services?.[ServiceName.make("database")]?.type).toBe("postgres:16");
+  });
+  test("retains typed false composer after the generated Landofile reloads", async () => {
+    const loaded = await loadBuiltinRecipe("lamp", { composer: false });
+    expect(loaded.document.services?.[ServiceName.make("appserver")]?.composer).toBe(false);
+    expect(loaded.document.tooling?.composer).toBeUndefined();
+  });
+  test("keeps each framework's database default", () => {
+    expect(bundledRecipe("laravel").snapshot.defaults.database).toBe("mariadb:11.4");
+    expect(bundledRecipe("symfony").snapshot.defaults.database).toBe("postgres:16");
   });
 });

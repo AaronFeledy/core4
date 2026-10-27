@@ -94,7 +94,7 @@ const expectedCatalogRows = [
   ["tomcat-catalog", "derived", "build-tomcat-catalog.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
-  ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo"],
+  ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo", ["core-service-env-catalog"]],
   ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo", ["core-service-env-catalog"]],
   [
     "setup-plugin-flags",

@@ -91,6 +91,7 @@ export const CODEGEN_CATALOG = [
   },
   {
     id: "bundled-recipes",
+    dependsOn: ["core-service-env-catalog"],
     ownership: "derived",
     script: "build-bundled-recipes.ts",
     workspace: "repo",
