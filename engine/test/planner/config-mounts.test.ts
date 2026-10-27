@@ -125,7 +125,12 @@ test.each([
     ],
   },
 ])("lint and planning reject duplicate Compose destinations $paths", async ({ volumes, configs, paths }) => {
-  await withApp({ volumes, configs }, async ({ plan, lint }) => {
+  // An empty list is omitted: Bun 1.4.2 serializes it on its own line, which the Landofile parser rejects.
+  const service = {
+    ...(volumes.length === 0 ? {} : { volumes }),
+    ...(configs.length === 0 ? {} : { configs }),
+  };
+  await withApp(service, async ({ plan, lint }) => {
     const expected = paths.map((path) => ["services", "web", ...path]);
     await expect(plan()).rejects.toMatchObject({
       _tag: "LandofileValidationError",
