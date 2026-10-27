@@ -53,7 +53,7 @@ python3 -m http.server 8000 --bind 0.0.0.0
 
 Leave this terminal running. Keeping the server in the foreground also lets you stop it with Ctrl+C on every platform.
 
-This bind is separate from the Lando router. The router listens on `127.0.0.1` by default, set by `router.bindAddress` in the installation `config.yml` or `LANDO_ROUTER_BIND_ADDRESS`. Setting it to `0.0.0.0` or `::` exposes the router to your local network, and `lando doctor` warns. A specific interface IP is treated as intentional LAN sharing. See [Reach an app from another device](./external-access.mdx) for details.
+This bind is separate from the Lando router, which listens on `127.0.0.1` by default. To change the router bind, see [Set the shared router bind](./proxy-traefik.mdx#set-the-shared-router-bind).
 
 ## Reach the host from the container
 
