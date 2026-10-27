@@ -28,6 +28,180 @@ const failureDetail = <A, E>(exit: Exit.Exit<A, E>): unknown => {
 
 const root = AbsolutePath.make("/tmp/applied-state-evidence");
 
+test("per-app inventory damage does not poison readable plans or an unrelated cwd", async () => {
+  const plan = planFor("docker");
+  const damaged = {
+    ...provider("docker", { appliedPlans: Effect.succeed([plan]) }),
+    appliedStateInventory: Effect.succeed({
+      plans: [plan],
+      unreadable: [{ appId: AppId.make("damaged-a"), path: "/tmp/isolated-state/damaged-a.json" }],
+    }),
+  };
+  expect(await Effect.runPromise(resolveTeardownEvidence(root, [damaged]))).toEqual({
+    kind: "applied",
+    plan,
+  });
+  expect(await Effect.runPromise(resolveAppliedPlanEvidence(root, [damaged]))).toEqual(plan);
+  expect(
+    await Effect.runPromise(resolveTeardownEvidence(AbsolutePath.make("/tmp/outside-app"), [damaged])),
+  ).toEqual({ kind: "absent" });
+});
+
+test("an unreadable aggregate record does not poison another provider's app", async () => {
+  const plan = planFor("docker");
+  const aggregate = {
+    ...provider("podman"),
+    appliedStateInventory: Effect.succeed({
+      plans: [],
+      unreadable: [{ path: "/tmp/isolated-podman/applied-plans.json" }],
+    }),
+  };
+  expect(
+    await Effect.runPromise(
+      resolveTeardownEvidence(root, [
+        provider("docker", { appliedPlans: Effect.succeed([plan]) }),
+        aggregate,
+      ]),
+    ),
+  ).toEqual({ kind: "applied", plan });
+});
+
+test.each(["per-app", "record"] as const)(
+  "%s inventory keeps protected cleanup hints enumerable without granting mutation authority",
+  async (layout) => {
+    const appId = AppId.make("damaged-a");
+    const damaged = {
+      ...provider("docker", { isAvailable: Effect.succeed(true) }),
+      canCleanupOwnedResources: Effect.succeed(true),
+      appliedStateInventory: Effect.succeed({
+        plans: [],
+        unreadable: [
+          { path: "/tmp/isolated-state/applied.json", ...(layout === "per-app" ? { appId } : {}) },
+        ],
+      }),
+      resourceOwnership: (requested: AbsolutePath) =>
+        Effect.succeed(
+          requested === root
+            ? {
+                appRoot: root,
+                ownerKey: appIdentityKey("owner", root),
+                providerId: ProviderId.make("docker"),
+                appIds: [appId],
+              }
+            : undefined,
+        ),
+    };
+    const evidence = await Effect.runPromise(resolveTeardownEvidence(root, [damaged]));
+    expect(evidence).toEqual({
+      kind: "owned",
+      ownership: [
+        {
+          appRoot: root,
+          ownerKey: appIdentityKey("owner", root),
+          providerId: ProviderId.make("docker"),
+          appIds: [appId],
+        },
+      ],
+    });
+    expect(
+      await Effect.runPromise(resolveTeardownEvidence(AbsolutePath.make("/tmp/outside-app"), [damaged])),
+    ).toEqual({ kind: "absent" });
+  },
+);
+
+test("unreadable applied state refuses teardown before label-owned resources can become orphans", async () => {
+  const error = unavailable("docker", "applied-state.read");
+  let observed = false;
+  const damaged = provider("docker", {
+    appliedPlans: Effect.fail(error),
+    isAvailable: Effect.succeed(true),
+    list: () =>
+      Effect.sync(() => {
+        observed = true;
+        return [
+          {
+            providerId: ProviderId.make("docker"),
+            app: AppId.make("damaged"),
+            appRoot: root,
+            service: ServiceName.make("web"),
+            status: "running" as const,
+            publications: { status: "unknown" as const },
+          },
+        ];
+      }),
+  });
+  const failure = await Effect.runPromise(resolveTeardownEvidence(root, [damaged]).pipe(Effect.flip));
+  expect(failure).toBe(error);
+  expect(observed).toBe(false);
+});
+
+test.each(["per-app", "record"] as const)(
+  "read-only discovery treats %s protected state as unknown, not orphaned",
+  async (layout) => {
+    const appId = AppId.make("damaged-a");
+    const damaged = {
+      ...provider("docker", {
+        isAvailable: Effect.succeed(true),
+        list: () =>
+          Effect.succeed([
+            {
+              providerId: ProviderId.make("docker"),
+              app: appId,
+              appRoot: root,
+              service: ServiceName.make("web"),
+              status: "running" as const,
+              publications: { status: "unknown" as const },
+            },
+          ]),
+      }),
+      appliedStateInventory: Effect.succeed({
+        plans: [],
+        unreadable: [
+          { path: "/tmp/isolated-state/applied.json", ...(layout === "per-app" ? { appId } : {}) },
+        ],
+      }),
+      resourceOwnership: () =>
+        Effect.succeed({
+          appRoot: root,
+          ownerKey: appIdentityKey("owner", root),
+          providerId: ProviderId.make("docker"),
+          appIds: [appId],
+        }),
+    };
+    expect(await Effect.runPromise(resolveAppliedPlanEvidence(root, [damaged]))).toBeUndefined();
+  },
+);
+
+test("host info observes label-owned services with no applied plan when state is unreadable", async () => {
+  const service = {
+    providerId: ProviderId.make("docker"),
+    app: AppId.make("damaged"),
+    appRoot: root,
+    service: ServiceName.make("web"),
+    status: "running" as const,
+    publications: { status: "unknown" as const },
+  };
+  const snapshots = await Effect.runPromise(
+    observeProviderRuntime([
+      provider("docker", {
+        appliedPlans: Effect.fail(unavailable("docker", "applied-state.read")),
+        isAvailable: Effect.succeed(true),
+        list: () => Effect.succeed([service]),
+        listVolumes: () => Effect.succeed([]),
+      }),
+    ]),
+  );
+  expect(snapshots).toEqual([
+    {
+      providerId: ProviderId.make("docker"),
+      appliedPlans: [],
+      runtimeObserved: true,
+      services: [service],
+      volumes: [],
+    },
+  ]);
+});
+
 test("applied provider A preserves failed provider B ownership in teardown evidence", async () => {
   // Given
   const hints = {

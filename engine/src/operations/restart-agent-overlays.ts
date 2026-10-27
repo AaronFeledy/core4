@@ -33,8 +33,8 @@ export const withRetainedAgentOverlays = Effect.fnUntraced(function* (plan: AppP
       }
       overlaid =
         kind === "ssh"
-          ? withSshAgentOverlay(overlaid, record)
-          : withGpgAgentOverlay(
+          ? yield* withSshAgentOverlay(overlaid, record)
+          : yield* withGpgAgentOverlay(
               overlaid,
               record,
               join(paths.agentRelayRunDir("gpg", app.id, app.root), "keyring"),
@@ -58,7 +58,7 @@ export const withRetainedAgentOverlays = Effect.fnUntraced(function* (plan: AppP
           ),
         );
         if (socket.runtimeVolume !== undefined) {
-          overlaid = withSshAgentOverlay(overlaid, {
+          overlaid = yield* withSshAgentOverlay(overlaid, {
             kind: "ssh",
             socketName: SSH_AGENT_SOCKET_NAME,
             mount: { _tag: "volume", volume: socket.runtimeVolume },

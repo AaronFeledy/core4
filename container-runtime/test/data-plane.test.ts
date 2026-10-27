@@ -773,7 +773,9 @@ describe("provider data plane", () => {
       owner: { app: appId, plan: ownedPlan },
       image: "alpine:3.20",
       command: ["true"],
-      mounts: [{ store: "data", target: PortablePath.make("/data"), readOnly: false }],
+      mounts: [
+        { type: "volume" as const, store: "data", target: PortablePath.make("/data"), readOnly: false },
+      ],
       remove: true,
     };
 
@@ -902,8 +904,8 @@ describe("provider data plane", () => {
           image: "alpine:3.20",
           command: ["true"],
           mounts: [
-            { store: "data", target: PortablePath.make("/data:ro"), readOnly: true },
-            { store: "data", target: PortablePath.make("/ordinary"), readOnly: false },
+            { type: "volume", store: "data", target: PortablePath.make("/data:ro"), readOnly: true },
+            { type: "volume", store: "data", target: PortablePath.make("/ordinary"), readOnly: false },
           ],
           remove: true,
         }),
@@ -952,7 +954,7 @@ describe("provider data plane", () => {
           owner: { app: appId, plan: ownedPlan },
           image: "alpine:3.20",
           command: ["true"],
-          mounts: [{ store: "data", target: PortablePath.make("/data"), readOnly: false }],
+          mounts: [{ type: "volume", store: "data", target: PortablePath.make("/data"), readOnly: false }],
           remove: true,
         }),
       ),
@@ -987,7 +989,7 @@ describe("provider data plane", () => {
           owner: { app: appId },
           image: "alpine:3.20",
           command: ["true"],
-          mounts: [{ store: "data", target: PortablePath.make("/data"), readOnly: false }],
+          mounts: [{ type: "volume", store: "data", target: PortablePath.make("/data"), readOnly: false }],
         }),
       ),
     );

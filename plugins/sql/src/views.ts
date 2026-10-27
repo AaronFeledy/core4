@@ -112,13 +112,13 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
     const environment = Schema.decodeUnknownSync(Environment)(
       Object.fromEntries(Object.entries(objectOrArray(service.environment) ? service.environment : {})),
     );
-    const storage = Array.isArray(service.storage)
-      ? service.storage.flatMap((entry) => {
-          if (!objectOrArray(entry) || typeof entry.store !== "string") return [];
-          const target = asString(entry.target);
-          return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
-        })
-      : [];
+    // Volume entries live on ServicePlan.mounts; keep a narrow storage projection for SQL.
+    const mounts = Array.isArray(service.mounts) ? service.mounts : [];
+    const storage = mounts.flatMap((entry) => {
+      if (!objectOrArray(entry) || entry.type !== "volume" || typeof entry.store !== "string") return [];
+      const target = asString(entry.target);
+      return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
+    });
     mapped[name] = {
       name: asString(service.name) ?? name,
       type: asString(service.type) ?? name,

@@ -25,6 +25,7 @@ export const agentSocketMountPlan = (mount: AgentSocketBridgeResult, target: Por
     case "bind-directory":
       return {
         type: "bind",
+        origin: "integration",
         source: mount.directory,
         target,
         readOnly: true,
@@ -34,10 +35,10 @@ export const agentSocketMountPlan = (mount: AgentSocketBridgeResult, target: Por
     case "volume":
       return {
         type: "volume",
-        source: mount.volume,
+        origin: "integration",
+        store: mount.volume,
         target,
         readOnly: true,
-        realization: "passthrough",
       };
     default:
       return mount satisfies never;

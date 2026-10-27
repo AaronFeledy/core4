@@ -41,10 +41,8 @@ import {
   parseProcSelfStatusUmask,
   peekContainerHasShell,
   peekExecUmask,
-  peekUnavailableExecUmask,
   rememberContainerHasShell,
   rememberExecUmask,
-  rememberUnavailableExecUmask,
   shellProbeOutcome,
   wrapExecCommand,
 } from "./exec-umask.ts";
@@ -416,17 +414,10 @@ const resolveExecUmask = Effect.fnUntraced(function* (
   options: ExecOptions,
   containerId: string | undefined,
 ): Effect.fn.Return<ExecUmaskProbeResult, never, Scope.Scope> {
-  const cachedOk = peekExecUmask(session.api);
-  if (cachedOk !== undefined) return cachedOk;
-  if (containerId !== undefined && peekUnavailableExecUmask(session.api, containerId)) {
-    return { status: "unavailable" };
-  }
+  const cached = containerId === undefined ? undefined : peekExecUmask(session.api, containerId, target.user);
+  if (cached !== undefined) return cached;
   const probed = yield* probeUmask(plan, target, options);
-  if (probed.status === "ok") {
-    rememberExecUmask(session.api, probed);
-    return probed;
-  }
-  if (containerId !== undefined) rememberUnavailableExecUmask(session.api, containerId);
+  if (containerId !== undefined) rememberExecUmask(session.api, containerId, probed, target.user);
   return probed;
 });
 
@@ -441,18 +432,14 @@ const resolveExecCommand = Effect.fnUntraced(function* (
     return command;
   }
 
-  const cachedOk = peekExecUmask(session.api);
-  if (cachedOk !== undefined && !isWorldWritableUmask(cachedOk.umask)) {
-    return command;
-  }
-
   const containerId = yield* inspectContainerId(session, plan);
   const umaskResult = yield* resolveExecUmask(session, plan, target, options, containerId);
   if (umaskResult.status !== "ok" || !isWorldWritableUmask(umaskResult.umask)) {
     return command;
   }
 
-  const cachedShell = containerId === undefined ? undefined : peekContainerHasShell(session.api, containerId);
+  const cachedShell =
+    containerId === undefined ? undefined : peekContainerHasShell(session.api, containerId, target.user);
   const shell =
     cachedShell === true
       ? "present"
@@ -462,8 +449,10 @@ const resolveExecCommand = Effect.fnUntraced(function* (
             Effect.tap((outcome) =>
               Effect.sync(() => {
                 if (containerId === undefined) return;
-                if (outcome === "present") rememberContainerHasShell(session.api, containerId, true);
-                if (outcome === "missing") rememberContainerHasShell(session.api, containerId, false);
+                if (outcome === "present")
+                  rememberContainerHasShell(session.api, containerId, true, target.user);
+                if (outcome === "missing")
+                  rememberContainerHasShell(session.api, containerId, false, target.user);
               }),
             ),
           );

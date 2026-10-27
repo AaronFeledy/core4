@@ -208,8 +208,9 @@ describe("meilisearch service type — scenario: index create + document post + 
     expect(search.endpoints).toEqual([
       { _tag: "internal", port: 7700, protocol: "http", name: "search", primary: true },
     ]);
-    expect(search.storage).toHaveLength(1);
-    expect(search.storage[0]?.store).toBe("myapp-meilisearch-data");
+    const volumes = search.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-meilisearch-data");
     expect(search.healthcheck?.kind).toBe("command");
     expect(search.healthcheck?.command).toEqual(["sh", "-c", "curl -sf http://localhost:7700/health"]);
     expect(search.environment.LANDO_SERVICE_TYPE).toBe("meilisearch");

@@ -54,7 +54,6 @@ const webService: ServicePlan = {
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     { _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } },
   ],
@@ -74,14 +73,19 @@ const planWithFileSync = (root: string): AppPlan => ({
   services: {
     [webService.name]: {
       ...webService,
-      appMount: {
-        source: AbsolutePath.make(root),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "accelerated",
-        excludes: [],
-        includes: [],
-      },
+      mounts: [
+        {
+          type: "bind",
+          source: AbsolutePath.make(root),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+          role: "app",
+          excludes: [],
+          includes: [],
+          mountKey: "app-mount",
+        },
+      ],
     },
   },
   routes: [],
@@ -117,12 +121,14 @@ const planWithTwoFileSyncEntries = (root: string): AppPlan => {
       [webService.name]: {
         ...service,
         mounts: [
+          ...service.mounts,
           {
             type: "bind",
             source: root,
             target: PortablePath.make("/app2"),
             readOnly: false,
             realization: "accelerated",
+            mountKey: "mount-0",
           },
         ],
       },
@@ -135,7 +141,7 @@ const planWithTwoFileSyncEntries = (root: string): AppPlan => {
           ...first.session,
           mountKey: "mount-0",
           target: { _tag: "volume", name: "embedded-app-web-mount-0", path: PortablePath.make("/app2") },
-          excludes: [],
+          excludes: [".git"],
         },
       },
     ],

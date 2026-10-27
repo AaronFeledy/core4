@@ -1,6 +1,7 @@
 export type ComposePlanAssertion =
   | "artifact-build"
   | "artifact-ref"
+  | "configs"
   | "dependencies"
   | "direct"
   | "environment"
@@ -8,6 +9,7 @@ export type ComposePlanAssertion =
   | "internal-endpoints"
   | "networks"
   | "published-endpoints"
+  | "tmpfs"
   | "volumes";
 
 export interface ComposeFixtureAssertionMetadata {
@@ -18,6 +20,7 @@ export interface ComposeFixtureAssertionMetadata {
 export const COMPOSE_FIXTURE_ASSERTIONS: Readonly<Record<string, ComposeFixtureAssertionMetadata>> = {
   build: { assertion: "artifact-build" },
   command: { assertion: "direct" },
+  configs: { assertion: "configs" },
   depends_on: { assertion: "dependencies", configTarget: "dependsOn" },
   entrypoint: { assertion: "direct" },
   env_file: { assertion: "environment", configTarget: "envFile" },
@@ -27,6 +30,7 @@ export const COMPOSE_FIXTURE_ASSERTIONS: Readonly<Record<string, ComposeFixtureA
   image: { assertion: "artifact-ref" },
   networks: { assertion: "networks" },
   ports: { assertion: "published-endpoints" },
+  tmpfs: { assertion: "tmpfs" },
   user: { assertion: "direct" },
   volumes: { assertion: "volumes" },
   working_dir: { assertion: "direct", configTarget: "workingDirectory" },

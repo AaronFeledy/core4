@@ -22,7 +22,6 @@ const service = (name: string, eligible: boolean): ServicePlan => ({
   primary: true,
   environment: { KEEP: "yes" },
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

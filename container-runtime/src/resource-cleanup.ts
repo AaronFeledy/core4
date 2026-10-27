@@ -1,7 +1,7 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { AbsolutePath, OwnedResourcesCleanupResult, ServiceName } from "@lando/sdk/schema";
-import type { DestroyOptions, ProviderError } from "@lando/sdk/services";
-import { Effect, Option, Schema } from "effect";
+import type { AbsolutePath, AppId, OwnedResourcesCleanupResult, ServiceName } from "@lando/sdk/schema";
+import { type DestroyOptions, EventService, type ProviderError } from "@lando/sdk/services";
+import { DateTime, Effect, Option, Schema } from "effect";
 import { removeRuntimeContainer } from "./container-removal.ts";
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import { Observations, networkLabelsDecision, privateNetworkLabels } from "./native-ownership.ts";
@@ -12,6 +12,7 @@ import { VOLUME_OWNER_LABEL, VOLUME_SELECTOR_LABEL } from "./volume-ownership.ts
 export { privateNetworkLabels } from "./native-ownership.ts";
 
 export const makeOwnedResourcesCleanup = (input: {
+  readonly checkAppliedState?: (appId: AppId) => Effect.Effect<void, ProviderUnavailableError>;
   readonly store: ReturnType<typeof makeResourceOwnershipStore>;
   readonly api?: {
     readonly request?: (request: EngineHttpRequest) => Effect.Effect<EngineHttpResponse, ProviderError>;
@@ -21,6 +22,8 @@ export const makeOwnedResourcesCleanup = (input: {
   Effect.fn("RuntimeProvider.cleanupOwnedResources")(function* (root: AbsolutePath, options: DestroyOptions) {
     const inventory = yield* input.store.load(root);
     const servicesRemoved: ServiceName[] = [];
+    const skipped: Array<{ appId: AppId; resource: string; reason: string }> = [];
+    const events = yield* Effect.serviceOption(EventService);
     let networksRemoved = 0;
     let volumesRemoved = 0;
     const request = (request: EngineHttpRequest) =>
@@ -33,6 +36,26 @@ export const makeOwnedResourcesCleanup = (input: {
     });
     for (const resource of resources) {
       if (options.appIds !== undefined && !options.appIds.includes(resource.appId)) continue;
+      const readable = yield* (input.checkAppliedState?.(resource.appId) ?? Effect.void).pipe(
+        Effect.as(true),
+        Effect.catchIf(
+          (error) => error.operation === "applied-state.read",
+          (error) =>
+            Effect.gen(function* () {
+              skipped.push({ appId: resource.appId, resource: resource.nativeName, reason: error.message });
+              if (Option.isSome(events))
+                yield* events.value
+                  .publish({
+                    _tag: "message.warn",
+                    body: `Skipped ${resource.nativeName} for app ${resource.appId}: ${error.message}`,
+                    timestamp: DateTime.nowUnsafe(),
+                  })
+                  .pipe(Effect.orDie);
+              return false;
+            }),
+        ),
+      );
+      if (!readable) continue;
       if (
         resource.kind === "volume" &&
         !(resource.volumeClass === "cache"
@@ -159,5 +182,10 @@ export const makeOwnedResourcesCleanup = (input: {
         }
       }
     }
-    return { servicesRemoved, networksRemoved, volumesRemoved } satisfies OwnedResourcesCleanupResult;
+    return {
+      servicesRemoved,
+      networksRemoved,
+      volumesRemoved,
+      ...(skipped.length === 0 ? {} : { skipped }),
+    } satisfies OwnedResourcesCleanupResult;
   });

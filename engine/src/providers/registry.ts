@@ -1,3 +1,4 @@
+import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
 import { Context, Effect, Layer, Result, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { GlobalConfigSources } from "../services/config.ts";
@@ -217,6 +218,26 @@ export const makeRuntimeProviderRegistry = (
       );
 
       return RuntimeProviderRegistry.of({
+        assertAppliedStateReadable: Effect.fn("RuntimeProviderRegistry.assertAppliedStateReadable")(
+          function* (plan) {
+            const { contribution, context } = yield* contributionFor(plan.provider);
+            if (contribution.appliedStateInventory === undefined) return;
+            const inventory = yield* contribution
+              .appliedStateInventory(context)
+              .pipe(Effect.provideService(PathsService, paths));
+            const issue = inventory.unreadable.find(
+              (entry) => entry.appId === undefined || entry.appId === plan.id,
+            );
+            if (issue !== undefined)
+              return yield* Effect.fail(
+                unreadableAppliedStateError({
+                  providerId: plan.provider,
+                  path: issue.path,
+                  layout: issue.appId === undefined ? "record" : "per-app",
+                }),
+              );
+          },
+        ),
         list: providerIds,
         appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (root) {
           const ids = yield* providerIds;

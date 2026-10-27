@@ -41,7 +41,6 @@ const makeService = (
   artifact,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

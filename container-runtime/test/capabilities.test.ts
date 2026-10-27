@@ -105,7 +105,7 @@ describe("container runtime capability helpers", () => {
   });
 
   test("passes an explicit composeKnobs declaration through unchanged", () => {
-    const composeKnobs = { supported: ["restart", "tmpfs"] } as const;
+    const composeKnobs = { supported: ["restart", "privileged"] } as const;
     const capabilities = buildProviderCapabilities({
       ...baseConstants,
       composeSpec: "native",

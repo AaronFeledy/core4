@@ -263,8 +263,8 @@ A check is a **kind** plus a target plus declarative **rules**. The kind observe
 
 ### 10.6 Files and performance
 
-- Providers expose app root, user home, and config root when supported. `MountPlan` remains provider-neutral; excludes/includes belong to each mount.
-- Heavy directories may be excluded from live sync. The engine's exclusion patterns are derived from what is overlaid under the app mount plus VCS metadata (§6.4); `includes` cancels an entry before the engine sees it. Windows/WSL handling is provider setup and documentation, not core logic.
+- Providers expose app root, user home, and config root when supported. `MountPlan` remains provider-neutral; excludes/includes belong to each bind entry.
+- Heavy directories may be excluded from live sync. The engine's exclusion patterns are derived from every entry mounted beneath the accelerated bind plus VCS metadata (§6.4); `includes` cancels an entry before the engine sees it. Windows/WSL handling is provider setup and documentation, not core logic.
 - Bind realization is `passthrough` or `accelerated`, derived from `bindMountPerformance` (§5.4, §6.4), without changing the Landofile.
 - `FileSyncEngine` is the pluggable accelerated path. `passthrough` is the no-op default; `@lando/file-sync-mutagen` is bundled for slow-IO providers.
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Stream } from "effect";
 
-import { seedNonCompensatingExecUmask } from "@lando/container-runtime/podman/exec-umask";
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
@@ -41,7 +41,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "node:22-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -84,7 +83,7 @@ const makeFakeApi = () => {
       return Stream.empty;
     },
   };
-  seedNonCompensatingExecUmask(api);
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 

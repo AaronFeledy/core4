@@ -33,7 +33,6 @@ const service = (compose?: Record<string, unknown>): ServicePlan => ({
   artifact: { kind: "ref", ref: "nginx:1.27" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

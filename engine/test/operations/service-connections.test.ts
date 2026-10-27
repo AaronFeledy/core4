@@ -11,7 +11,6 @@ const service: ServicePlan = {
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   routes: [],
   dependsOn: [],
   hostAliases: [],

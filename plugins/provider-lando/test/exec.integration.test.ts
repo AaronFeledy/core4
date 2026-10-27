@@ -6,7 +6,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { seedNonCompensatingExecUmask } from "@lando/container-runtime/podman/exec-umask";
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, exec, execStream, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -39,16 +39,18 @@ const node: ServicePlan = {
   artifact: { kind: "ref", ref: "node:22-alpine" },
   command: ["node", "-e", "setInterval(() => {}, 1000)"],
   environment: {},
-  appMount: {
-    source: appRoot,
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough",
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: appRoot,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "passthrough",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -118,7 +120,7 @@ const makeFakeApi = (
       }),
   };
 
-  seedNonCompensatingExecUmask(api);
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 

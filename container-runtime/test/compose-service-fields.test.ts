@@ -5,6 +5,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  PortablePath,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -31,7 +32,6 @@ const planWith = (extensions: Record<string, unknown>, appExtensions: Record<str
     artifact: { kind: "ref", ref: "nginx:1.27-alpine" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -135,9 +135,28 @@ describe("Podman Compose service field realization", () => {
       { compose: { configs: [{ source: "phpini", target: "/usr/local/etc/php/conf.d/zz.ini" }] } },
       { compose: { configs: { phpini: { file: "./php.ini" } } } },
     );
+    const service = plan.services[serviceName];
+    if (service === undefined) throw new TypeError("web service missing");
+    const normalized = {
+      ...plan,
+      services: {
+        [serviceName]: {
+          ...service,
+          mounts: [
+            {
+              type: "bind" as const,
+              source: "/srv/apps/compose-service-fields/php.ini",
+              target: PortablePath.make("/usr/local/etc/php/conf.d/zz.ini"),
+              realization: "passthrough" as const,
+              readOnly: true,
+            },
+          ],
+        },
+      },
+    };
 
     // When
-    const content = renderCompose(plan, ctx);
+    const content = renderCompose(normalized, ctx);
 
     // Then: `configs` is declared supported at both service and project level via bind realization.
     expect(content).toContain(

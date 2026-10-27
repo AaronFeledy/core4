@@ -129,6 +129,11 @@ export const normalizedSourceValue = (request: {
     }
     case "artifact-ref":
       return service.image;
+    case "configs": {
+      if (match.matrixPath === "configs") return service.configs;
+      const grant = service.configs?.[matchedIndex(match, "configs")];
+      return valueAt(grant, relativePath.replace(/^configs\[\d+\]\./u, ""));
+    }
     case "dependencies": {
       if (match.matrixPath === "depends_on") return service.dependsOn;
       const dependencyName = relativePath.split(".")[1];
@@ -169,6 +174,8 @@ export const normalizedSourceValue = (request: {
     }
     case "volumes":
       return normalizedVolumeSource(match, service);
+    case "tmpfs":
+      return service.tmpfs;
     case "direct":
       return valueAt(service, configTarget);
     default: {

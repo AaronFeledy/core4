@@ -29,7 +29,6 @@ const service = (
   artifact: { kind: "ref", ref: "alpine:3.22" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: options.dependsOn,

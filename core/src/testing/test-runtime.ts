@@ -291,7 +291,6 @@ const makeServicePlan = (providerId: ProviderId): ServicePlan =>
     primary: true,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

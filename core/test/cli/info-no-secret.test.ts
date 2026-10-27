@@ -97,7 +97,6 @@ const postgres: ServicePlan = {
     creds: { user: "lando", database: "appdb", password: { _tag: "SecretRef", reference: "DB_PASSWORD" } },
   },
   mounts: [],
-  storage: [],
   endpoints: [{ _tag: "internal", port: 5432, protocol: "tcp", name: "database" }],
   routes: [],
   dependsOn: [],

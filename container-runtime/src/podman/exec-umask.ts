@@ -18,9 +18,9 @@ export type ExecUmaskProbeResult =
 
 export type ShellProbeOutcome = "present" | "missing" | "unknown";
 
-const umaskOk = new WeakMap<EngineHttpApi, Extract<ExecUmaskProbeResult, { readonly status: "ok" }>>();
-const umaskUnavailableByContainer = new WeakMap<EngineHttpApi, Set<string>>();
-const shellResolved = new WeakMap<EngineHttpApi, Map<string, boolean>>();
+type ProbeCache<Value> = WeakMap<EngineHttpApi, Map<string, Map<string | undefined, Value>>>;
+const umaskResults: ProbeCache<ExecUmaskProbeResult> = new WeakMap();
+const shellResolved: ProbeCache<boolean> = new WeakMap();
 const missingShellWarned = new WeakMap<EngineHttpApi, Set<string>>();
 
 const sameArgv = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean =>
@@ -34,14 +34,20 @@ const containerSet = (store: WeakMap<EngineHttpApi, Set<string>>, api: EngineHtt
   return created;
 };
 
-const containerMap = <Value>(
-  store: WeakMap<EngineHttpApi, Map<string, Value>>,
+const probeMap = <Value>(
+  store: ProbeCache<Value>,
   api: EngineHttpApi,
-): Map<string, Value> => {
-  const existing = store.get(api);
+  containerId: string,
+): Map<string | undefined, Value> => {
+  let containers = store.get(api);
+  if (containers === undefined) {
+    containers = new Map();
+    store.set(api, containers);
+  }
+  const existing = containers.get(containerId);
   if (existing !== undefined) return existing;
-  const created = new Map<string, Value>();
-  store.set(api, created);
+  const created = new Map<string | undefined, Value>();
+  containers.set(containerId, created);
   return created;
 };
 
@@ -85,33 +91,32 @@ export const isShellProbeCommand = (command: ReadonlyArray<string>): boolean =>
 
 export const peekExecUmask = (
   api: EngineHttpApi,
-): Extract<ExecUmaskProbeResult, { readonly status: "ok" }> | undefined => umaskOk.get(api);
+  containerId: string,
+  user?: string,
+): ExecUmaskProbeResult | undefined => umaskResults.get(api)?.get(containerId)?.get(user);
 
-export const rememberExecUmask = (api: EngineHttpApi, result: ExecUmaskProbeResult): void => {
-  if (result.status !== "ok") return;
-  umaskOk.set(api, result);
+export const rememberExecUmask = (
+  api: EngineHttpApi,
+  containerId: string,
+  result: ExecUmaskProbeResult,
+  user?: string,
+): void => {
+  probeMap(umaskResults, api, containerId).set(user, result);
 };
 
-export const seedNonCompensatingExecUmask = (api: EngineHttpApi): void => {
-  rememberExecUmask(api, { status: "ok", umask: EXEC_UMASK_COMPENSATION });
-};
-
-export const peekUnavailableExecUmask = (api: EngineHttpApi, containerId: string): boolean =>
-  umaskUnavailableByContainer.get(api)?.has(containerId) === true;
-
-export const rememberUnavailableExecUmask = (api: EngineHttpApi, containerId: string): void => {
-  containerSet(umaskUnavailableByContainer, api).add(containerId);
-};
-
-export const peekContainerHasShell = (api: EngineHttpApi, containerId: string): boolean | undefined =>
-  shellResolved.get(api)?.get(containerId);
+export const peekContainerHasShell = (
+  api: EngineHttpApi,
+  containerId: string,
+  user?: string,
+): boolean | undefined => shellResolved.get(api)?.get(containerId)?.get(user);
 
 export const rememberContainerHasShell = (
   api: EngineHttpApi,
   containerId: string,
   hasShell: boolean,
+  user?: string,
 ): void => {
-  containerMap(shellResolved, api).set(containerId, hasShell);
+  probeMap(shellResolved, api, containerId).set(user, hasShell);
 };
 
 export const claimMissingShellWarning = (api: EngineHttpApi, containerId: string): boolean => {
@@ -122,4 +127,4 @@ export const claimMissingShellWarning = (api: EngineHttpApi, containerId: string
 };
 
 export const missingShellWarning = (service: string): string =>
-  `Service ${service} has no /bin/sh; exec umask compensation is skipped. Files created by exec may be world-writable.`;
+  `Service ${service} cannot run /bin/sh for the selected exec user; umask compensation is skipped. Files created by exec may be world-writable.`;

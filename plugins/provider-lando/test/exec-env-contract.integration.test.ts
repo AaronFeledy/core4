@@ -6,7 +6,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { seedNonCompensatingExecUmask } from "@lando/container-runtime/podman/exec-umask";
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { bringUp, exec } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -143,7 +143,7 @@ const makeFakeApi = () => {
     },
   };
 
-  seedNonCompensatingExecUmask(api);
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 

@@ -68,9 +68,40 @@ export const makeLegacyServiceTypeFake = (options: MakeLegacyServiceTypeFakeOpti
         });
 
         for (const [key, value] of Object.entries(plan.environment)) ctx.addEnv(key, value);
-        for (const mount of plan.mounts) ctx.addMount(mount);
-        if (plan.appMount !== undefined) ctx.setAppMount(plan.appMount);
-        for (const storage of plan.storage) ctx.addStorage(storage);
+        for (const mount of plan.mounts) {
+          if (mount.type === "bind" && mount.role === "app") {
+            ctx.setAppMount({
+              source: mount.source,
+              target: mount.target,
+              readOnly: mount.readOnly,
+              excludes: mount.excludes ?? [],
+              includes: mount.includes ?? [],
+            });
+            continue;
+          }
+          if (mount.type === "volume") {
+            ctx.addStorage({
+              store: mount.store,
+              target: mount.target,
+              readOnly: mount.readOnly,
+              ...(mount.subpath === undefined ? {} : { subpath: mount.subpath }),
+            });
+            continue;
+          }
+          if (mount.type === "bind") {
+            ctx.addMount({
+              type: "bind",
+              source: mount.source,
+              target: mount.target,
+              readOnly: mount.readOnly,
+              ...(mount.createHostPath === undefined ? {} : { createHostPath: mount.createHostPath }),
+              ...(mount.excludes === undefined ? {} : { excludes: mount.excludes }),
+              ...(mount.includes === undefined ? {} : { includes: mount.includes }),
+            });
+            continue;
+          }
+          ctx.addMount(mount);
+        }
         for (const dependency of plan.dependsOn) ctx.addDependency(dependency);
         for (const alias of plan.hostAliases) ctx.addHostAlias(alias);
         if (plan.healthcheck !== undefined) ctx.setHealthcheck(plan.healthcheck);

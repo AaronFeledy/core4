@@ -30,7 +30,6 @@ const planWithScanner = (scanner: ScanPlan): AppPlan => ({
       primary: true,
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

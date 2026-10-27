@@ -55,7 +55,6 @@ const service: ServicePlan = {
     creds: { user: "user", database: "app", password: { _tag: "SecretRef", reference: "DB_PASSWORD" } },
   },
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -110,11 +109,13 @@ const basePlan: AppPlan = {
 };
 
 const overlaidPlan = (): AppPlan => {
-  const ssh = withSshAgentOverlay(basePlan, {
-    kind: "ssh",
-    socketName: "agent.sock",
-    mount: { _tag: "volume", volume: "ssh-agent" },
-  });
+  const ssh = Effect.runSync(
+    withSshAgentOverlay(basePlan, {
+      kind: "ssh",
+      socketName: "agent.sock",
+      mount: { _tag: "volume", volume: "ssh-agent" },
+    }),
+  );
   return {
     ...ssh,
     events: { "pre-stop": [{ step: "stale-hook", source: "project", sourceIndex: 0, status: "active" }] },
@@ -153,10 +154,9 @@ const overlaidPlan = (): AppPlan => {
         environment.LANDO_GPG_KEYRING = "/run/lando/gpg-agent-keys";
         mounts.push({
           type: "volume",
-          source: "gpg-agent",
+          store: "gpg-agent",
           target: PortablePath.make(AGENT_SOCKET_CONTAINER_DIR.gpg),
           readOnly: true,
-          realization: "passthrough",
         });
         return [planned.name, { ...planned, environment, mounts, extensions }];
       }),

@@ -11,7 +11,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { seedNonCompensatingExecUmask } from "@lando/container-runtime/podman/exec-umask";
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makePodmanApiClient, layer as providerLayer } from "@lando/provider-lando";
@@ -339,7 +339,7 @@ const makeFakeApi = () => {
     },
   };
 
-  seedNonCompensatingExecUmask(api);
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -736,7 +736,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     },
   };
 
-  seedNonCompensatingExecUmask(api);
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 

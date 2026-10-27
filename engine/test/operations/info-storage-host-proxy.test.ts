@@ -48,8 +48,8 @@ test.each([...HOST_PROXY_MOUNT_TARGETS])("retains an unmarked authored user bind
   ]);
 });
 
-test("matches an accelerated user bind by its original index after an internal integration mount", async () => {
-  // Given: the integration occupies index zero, so the user's backing volume is mount-1.
+test("matches an accelerated user bind by mountKey after an internal integration mount", async () => {
+  // Given: host-proxy integration is stripped; the user's accelerated bind is keyed independently.
   const internalMount = {
     type: "bind" as const,
     source: "/host/helper",
@@ -68,10 +68,11 @@ test("matches an accelerated user bind by its original index after an internal i
         target: PortablePath.make("/workspace"),
         readOnly: false,
         realization: "accelerated",
+        mountKey: "mount-workspace",
       },
     ],
   };
-  const source = fileSyncVolumeName(plan.name, String(service.name), "mount-1");
+  const source = fileSyncVolumeName(plan.name, String(service.name), "mount-workspace");
 
   // When
   const { row } = await runInfo(

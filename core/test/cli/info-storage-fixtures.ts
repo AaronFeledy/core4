@@ -41,12 +41,14 @@ export const runtimeVolume = (target: string, source: string): ServiceInfoMount 
 });
 
 export const appMount: NonNullable<InfoAppService["appMount"]> = {
+  type: "bind",
   source: AbsolutePath.make("/home/user/projects/demo-app"),
   target: PortablePath.make("/app"),
   readOnly: false,
   includes: [],
   excludes: ["node_modules"],
   realization: "passthrough",
+  role: "app",
 };
 
 export const HEX_VOLUME = "3f9c".repeat(16);

@@ -16,6 +16,7 @@ import type {
   EnvironmentValue,
   ServiceCreds,
   ServicePlan,
+  VolumeMountPlan,
 } from "@lando/sdk/schema";
 import type {
   ServiceAppMountIntent,
@@ -56,7 +57,7 @@ export interface DraftServicePlan {
   featureIds?: ReadonlyArray<string>;
   buildSteps: ServiceBuildStepIntent[];
   extensions?: Record<string, unknown>;
-  storage: Array<ServicePlan["storage"][number]>;
+  storage: Array<Omit<VolumeMountPlan, "type">>;
   /** Mounted trees the planned service user must own, by container target. */
   storageOwnership?: Array<{ target: string; seededOwners: ReadonlyArray<string> }>;
   endpoints: Array<ServicePlan["endpoints"][number]>;

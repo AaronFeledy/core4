@@ -103,7 +103,7 @@ describe("control characters in runtime-reported text", () => {
     expect(remedyLines(out)).toHaveLength(1);
   });
 
-  test("keeps plain rows one line and eight columns wide", () => {
+  test("keeps plain rows one line and nine columns wide", () => {
     const rows = renderInfoAppResult(result(hostile)).split("\n");
     const mountRow = rows.find((row) => row.startsWith("hostile\tmount\t"));
     expect(mountRow?.split("\t")).toEqual([
@@ -114,6 +114,7 @@ describe("control characters in runtime-reported text", () => {
       "vol\\u001b[0m\\u0007",
       "unverified",
       "mounted",
+      "-",
       "-",
     ]);
     expect(rows.filter((row) => row.startsWith("hostile\t"))).toHaveLength(3);
@@ -142,13 +143,13 @@ describe("plain renderer rows", () => {
     runtimeVolume("/meili_data", HEX_VOLUME),
   ]);
 
-  test("lists target, kind, source, lifetime, observation, and access for every mount", () => {
+  test("lists target, kind, source, lifetime, observation, access, and provenance for every mount", () => {
     const rows = renderInfoAppResult(result(search)).split("\n");
     expect(rows.filter((row) => row.startsWith("search\tmount\t"))).toEqual([
-      "search\tmount\t/app\thost files\t/home/user/projects/demo-app\tretained\tmounted\tread-write",
-      "search\tmount\t/var/lib/mysql\tstore\tdatabase\tretained\tnot mounted\tread-only",
-      "search\tmount\t/tmp\tmemory\t-\ttemporary\tunconfirmed\t-",
-      `search\tmount\t/meili_data\truntime volume\t${HEX_VOLUME}\tunverified\tmounted\t-`,
+      "search\tmount\t/app\thost files\t/home/user/projects/demo-app\tretained\tmounted\tread-write\t-",
+      "search\tmount\t/var/lib/mysql\tstore\tdatabase\tretained\tnot mounted\tread-only\t-",
+      "search\tmount\t/tmp\tmemory\t-\ttemporary\tunconfirmed\t-\t-",
+      `search\tmount\t/meili_data\truntime volume\t${HEX_VOLUME}\tunverified\tmounted\t-\t-`,
     ]);
   });
 

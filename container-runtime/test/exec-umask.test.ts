@@ -10,7 +10,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import type { CommandSpec } from "@lando/sdk/services";
+import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
 
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import {
@@ -29,7 +29,6 @@ import {
   parseProcSelfStatusUmask,
   peekContainerHasShell,
   peekExecUmask,
-  peekUnavailableExecUmask,
   rememberContainerHasShell,
   rememberExecUmask,
   shellProbeOutcome,
@@ -60,7 +59,6 @@ const makeService = (name: ServiceName): ServicePlan => ({
   artifact: { kind: "ref", ref: "node:22-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -119,9 +117,9 @@ const containerNameOf = (path: string): string | undefined => {
 };
 
 const makeScriptedApi = (
-  scriptFor: (cmd: ReadonlyArray<string>, container: string) => FakeExecScript,
+  scriptFor: (cmd: ReadonlyArray<string>, container: string, user?: string) => FakeExecScript,
   options: {
-    readonly failCreate?: (cmd: ReadonlyArray<string>, container: string) => boolean;
+    readonly failCreate?: (cmd: ReadonlyArray<string>, container: string, user?: string) => boolean;
     readonly containerId?: (container: string) => string;
   } = {},
 ) => {
@@ -145,12 +143,17 @@ const makeScriptedApi = (
         if (input.method === "POST" && input.path.endsWith("/exec")) {
           const container = containerNameOf(input.path) ?? "unknown";
           const cmd = commandOf(input.body) ?? [];
-          if (options.failCreate?.(cmd, container) === true) {
+          const body = input.body;
+          const user =
+            typeof body === "object" && body !== null && "User" in body && typeof body.User === "string"
+              ? body.User
+              : undefined;
+          if (options.failCreate?.(cmd, container, user) === true) {
             return { status: 500, body: "exec create failed" };
           }
           const id = `exec-${nextId}`;
           nextId += 1;
-          scripts.set(id, scriptFor(cmd, container));
+          scripts.set(id, scriptFor(cmd, container, user));
           return { status: 201, body: JSON.stringify({ Id: id }) };
         }
         if (input.method === "GET" && input.path.startsWith("/exec/") && input.path.endsWith("/json")) {
@@ -179,7 +182,7 @@ const makeScriptedApi = (
 const runExec = (
   api: EngineHttpApi,
   command: CommandSpec,
-  execTarget = target,
+  execTarget: ExecTarget = target,
   onWarn?: (message: string) => void,
 ) =>
   Effect.runPromise(
@@ -264,9 +267,9 @@ describe.skipIf(process.platform === "win32")("umask wrapper process contract", 
   });
 
   test("preserves an explicit umask in the authored shell command", async () => {
-    const result = await runWrapped(["/bin/sh", "-c", "umask 0077; exec cat /proc/self/status"]);
+    const result = await runWrapped(["/bin/sh", "-c", "umask 0077; umask"]);
     expect(result.exitCode).toBe(0);
-    expect(parseProcSelfStatusUmask(result.stdout)).toBe("0077");
+    expect(result.stdout.trim().padStart(4, "0")).toBe("0077");
   });
 
   test("forwards argv through the shell without re-quoting", async () => {
@@ -297,6 +300,77 @@ describe.skipIf(process.platform === "win32")("umask wrapper process contract", 
 });
 
 describe("exec umask compensation", () => {
+  test.each([
+    ["0022", "0000"],
+    ["0000", "0077"],
+  ] as const)("keeps container umasks isolated in order %s then %s", async (first, second) => {
+    const fake = makeScriptedApi((cmd, container) =>
+      isUmaskProbeCommand(cmd) ? { stdout: umaskStatus(container === containerName ? first : second) } : {},
+    );
+    await runExec(fake.api, { command: ["id"] });
+    await runExec(fake.api, { command: ["id"] }, { app: appId, service: otherService });
+    const commands = createBodies(fake.calls).filter((cmd) => cmd[0] === "id" || isWrappedExecCommand(cmd));
+    expect(commands).toEqual([
+      first === "0000" ? wrapExecCommand(["id"]) : ["id"],
+      second === "0000" ? wrapExecCommand(["id"]) : ["id"],
+    ]);
+    expect(peekExecUmask(fake.api, `cid-${containerName}`)).toEqual({ status: "ok", umask: first });
+    expect(peekExecUmask(fake.api, `cid-${otherContainer}`)).toEqual({ status: "ok", umask: second });
+  });
+
+  test.each([
+    ["0022", "0000"],
+    ["0000", "0077"],
+  ] as const)("reprobes a recreated container after successful %s before %s", async (first, second) => {
+    let generation = 1;
+    const fake = makeScriptedApi(
+      (cmd) => (isUmaskProbeCommand(cmd) ? { stdout: umaskStatus(generation === 1 ? first : second) } : {}),
+      { containerId: () => `generation-${generation}` },
+    );
+    await runExec(fake.api, { command: ["id"] });
+    generation = 2;
+    await runExec(fake.api, { command: ["id"] });
+    expect(createBodies(fake.calls).filter(isUmaskProbeCommand)).toHaveLength(2);
+    expect(createBodies(fake.calls).at(-1)).toEqual(second === "0000" ? wrapExecCommand(["id"]) : ["id"]);
+    expect(peekExecUmask(fake.api, "generation-2")).toEqual({ status: "ok", umask: second });
+  });
+
+  test.each([undefined, "0"])("invalid exec user does not poison a later user %s", async (user) => {
+    const fake = makeScriptedApi((cmd) => (isUmaskProbeCommand(cmd) ? { stdout: umaskStatus("0000") } : {}), {
+      failCreate: (_cmd, _container, selectedUser) => selectedUser === "invalid-user",
+    });
+    await expect(
+      runExec(fake.api, { command: ["id"] }, { ...target, user: "invalid-user" }),
+    ).rejects.toBeDefined();
+    await runExec(fake.api, { command: ["id"] }, { ...target, ...(user === undefined ? {} : { user }) });
+    expect(createBodies(fake.calls).at(-1)).toEqual(wrapExecCommand(["id"]));
+    expect(peekExecUmask(fake.api, `cid-${containerName}`, "invalid-user")).toEqual({
+      status: "unavailable",
+    });
+    expect(peekExecUmask(fake.api, `cid-${containerName}`, user)).toEqual({ status: "ok", umask: "0000" });
+  });
+
+  test("shell denied to one user does not poison root in the same container", async () => {
+    const warnings: string[] = [];
+    const fake = makeScriptedApi((cmd, _container, user) => {
+      if (isUmaskProbeCommand(cmd)) return { stdout: umaskStatus("0000") };
+      if (isShellProbeCommand(cmd)) return { exitCode: user === "1000" ? 126 : 0 };
+      return {};
+    });
+    await runExec(fake.api, { command: ["id"] }, { ...target, user: "1000" }, (message) =>
+      warnings.push(message),
+    );
+    await runExec(fake.api, { command: ["id"] }, { ...target, user: "0" }, (message) =>
+      warnings.push(message),
+    );
+    expect(createBodies(fake.calls).filter((cmd) => cmd[0] === "id" || isWrappedExecCommand(cmd))).toEqual([
+      ["id"],
+      wrapExecCommand(["id"]),
+    ]);
+    expect(peekContainerHasShell(fake.api, `cid-${containerName}`, "1000")).toBe(false);
+    expect(peekContainerHasShell(fake.api, `cid-${containerName}`, "0")).toBe(true);
+    expect(warnings).toHaveLength(1);
+  });
   test("cancels an in-flight umask probe before starting the user command", async () => {
     const controller = new AbortController();
     let markStarted: () => void = () => undefined;
@@ -396,7 +470,7 @@ describe("exec umask compensation", () => {
       [...EXEC_UMASK_SHELL_PROBE_COMMAND],
       wrapExecCommand(["id"]),
     ]);
-    expect(peekExecUmask(fake.api)).toEqual({ status: "ok", umask: "0000" });
+    expect(peekExecUmask(fake.api, `cid-${containerName}`)).toEqual({ status: "ok", umask: "0000" });
   });
 
   test("does not wrap when the probed umask is not 0000", async () => {
@@ -410,7 +484,7 @@ describe("exec umask compensation", () => {
     expect(createBodies(fake.calls)).toEqual([[...EXEC_UMASK_PROBE_COMMAND], ["id"]]);
   });
 
-  test("caches an ok probe per engine connection", async () => {
+  test("caches an ok probe for the same container and user", async () => {
     let probes = 0;
     const fake = makeScriptedApi((cmd) => {
       if (isUmaskProbeCommand(cmd)) {
@@ -429,7 +503,7 @@ describe("exec umask compensation", () => {
 
   test("does not wrap a seeded non-world-writable umask", async () => {
     const fake = makeScriptedApi(() => ({ exitCode: 0 }));
-    rememberExecUmask(fake.api, { status: "ok", umask: "0022" });
+    rememberExecUmask(fake.api, `cid-${containerName}`, { status: "ok", umask: "0022" });
 
     await runExec(fake.api, { command: ["id"] });
 
@@ -450,7 +524,7 @@ describe("exec umask compensation", () => {
     expect(first.stdout).toBe("raw\n");
     expect(second.stdout).toBe("raw\n");
     expect(warnings).toEqual([
-      "Service web has no /bin/sh; exec umask compensation is skipped. Files created by exec may be world-writable.",
+      "Service web cannot run /bin/sh for the selected exec user; umask compensation is skipped. Files created by exec may be world-writable.",
     ]);
     expect(createBodies(fake.calls).filter((cmd) => cmd[0] === "id")).toEqual([["id"], ["id"]]);
     expect(peekContainerHasShell(fake.api, `cid-${containerName}`)).toBe(false);
@@ -496,7 +570,7 @@ describe("exec umask compensation", () => {
     expect(bodies).toContainEqual(wrapExecCommand(["id"]));
     expect(bodies.filter((cmd) => cmd[0] === "id")).toEqual([["id"], ["id"]]);
     expect(warnings).toEqual([
-      "Service web has no /bin/sh; exec umask compensation is skipped. Files created by exec may be world-writable.",
+      "Service web cannot run /bin/sh for the selected exec user; umask compensation is skipped. Files created by exec may be world-writable.",
     ]);
     expect(peekContainerHasShell(fake.api, `cid-${containerName}`)).toBe(true);
     expect(peekContainerHasShell(fake.api, `cid-${otherContainer}`)).toBe(false);
@@ -520,8 +594,8 @@ describe("exec umask compensation", () => {
       [...EXEC_UMASK_SHELL_PROBE_COMMAND],
       wrapExecCommand(["id"]),
     ]);
-    expect(peekExecUmask(fake.api)).toEqual({ status: "ok", umask: "0000" });
-    expect(peekUnavailableExecUmask(fake.api, `cid-${containerName}`)).toBe(true);
+    expect(peekExecUmask(fake.api, `cid-${otherContainer}`)).toEqual({ status: "ok", umask: "0000" });
+    expect(peekExecUmask(fake.api, `cid-${containerName}`)).toEqual({ status: "unavailable" });
   });
 
   test("does not treat a user cat /proc/self/status as the internal probe", async () => {
@@ -529,19 +603,19 @@ describe("exec umask compensation", () => {
       if (isUmaskProbeCommand(cmd)) return { stdout: umaskStatus("0000"), exitCode: 0 };
       return { stdout: umaskStatus("0022"), exitCode: 0 };
     });
-    rememberExecUmask(fake.api, { status: "ok", umask: "0000" });
+    rememberExecUmask(fake.api, `cid-${containerName}`, { status: "ok", umask: "0000" });
     rememberContainerHasShell(fake.api, `cid-${containerName}`, true);
 
     const result = await runExec(fake.api, { command: [...EXEC_UMASK_PROBE_COMMAND] });
 
     expect(parseProcSelfStatusUmask(result.stdout)).toBe("0022");
     expect(createBodies(fake.calls)).toEqual([wrapExecCommand([...EXEC_UMASK_PROBE_COMMAND])]);
-    expect(peekExecUmask(fake.api)).toEqual({ status: "ok", umask: "0000" });
+    expect(peekExecUmask(fake.api, `cid-${containerName}`)).toEqual({ status: "ok", umask: "0000" });
   });
 
   test("leaves an explicit raw probe unwrapped", async () => {
     const fake = makeScriptedApi(() => ({ stdout: umaskStatus("0000"), exitCode: 0 }));
-    rememberExecUmask(fake.api, { status: "ok", umask: "0000" });
+    rememberExecUmask(fake.api, `cid-${containerName}`, { status: "ok", umask: "0000" });
     rememberContainerHasShell(fake.api, `cid-${containerName}`, true);
 
     const result = await runExec(fake.api, { command: [...EXEC_UMASK_PROBE_COMMAND], raw: true });
@@ -559,8 +633,8 @@ describe("exec umask compensation", () => {
     await runExec(fake.api, { command: ["id"] });
 
     expect(createBodies(fake.calls)).toEqual([[...EXEC_UMASK_PROBE_COMMAND], ["id"]]);
-    expect(peekExecUmask(fake.api)).toBeUndefined();
-    expect(peekUnavailableExecUmask(fake.api, `cid-${containerName}`)).toBe(true);
+    expect(peekExecUmask(fake.api, `cid-${containerName}`)).toEqual({ status: "unavailable" });
+    expect(peekExecUmask(fake.api, `cid-${containerName}`)).toEqual({ status: "unavailable" });
   });
 
   test("does not cache a shell-probe exit 1 as missing /bin/sh", async () => {

@@ -437,18 +437,26 @@ export const runProviderContract = Effect.fnUntraced(function* (
     const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "lando-contract-configs-")));
     const configPath = join(directory, "php.ini");
     yield* Effect.promise(() => writeFile(configPath, payload));
+    // Planning compiles Compose config grants into read-only bind entries with fileMode.
     const configPlan = {
       ...testAppPlan,
       root: Schema.decodeUnknownSync(AbsolutePath)(directory),
-      extensions: { compose: { configs: { phpini: { file: "./php.ini" } } } },
       services: {
         [TEST_SERVICE_NAME]: {
           ...makeTestServicePlan(providerId),
-          extensions: {
-            compose: {
-              configs: [{ source: "phpini", target: "/etc/php.ini", mode: "0444" }],
+          mounts: [
+            {
+              type: "bind" as const,
+              source: configPath,
+              target: Schema.decodeUnknownSync(PortablePath)("/etc/php.ini"),
+              readOnly: true,
+              createHostPath: false,
+              realization: "passthrough" as const,
+              fileMode: 0o444,
+              origin: "authored" as const,
+              relativeTo: "app" as const,
             },
-          },
+          ],
         },
       },
     };
