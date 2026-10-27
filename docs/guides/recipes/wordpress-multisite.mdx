@@ -9,7 +9,9 @@ tags: [beta, docs, recipes, wordpress, multisite]
 
 A subdomain network puts every site on its own host, like `blog.wp-network.lndo.site`, so the proxy has to send hostnames you have not invented yet to one Apache. Add a wildcard route, turn on `.htaccess`, and let WP-CLI build the network.
 
-Prerequisite: Lando's proxy on ports 80 and 443. This guide's subdomain URLs assume the default ports, so `lando info` must show `https://wp-network.lndo.site` with no port. If it shows `:8443`, free 80 and 443, then run `lando setup`.
+Run the commands in a POSIX-compatible host shell, such as Bash or Zsh. Start with a working Lando setup and [trust the local HTTPS certificates](../subsystems/certificates-mkcert.mdx). This example creates a new network; it does not convert an existing WordPress site.
+
+Lando's proxy must use ports 80 and 443. After starting the app, check that `lando info` shows `https://wp-network.lndo.site` with no port. If it shows `:8443`, free 80 and 443, then run `lando setup`.
 
 ## Route every subdomain to the appserver
 
@@ -111,9 +113,11 @@ The list shows both sites on `https://`. Repeat the two `option update` lines fo
 ## Check the subdomains from your host
 
 ```sh
-curl -s https://blog.wp-network.lndo.site/ | grep -o '<title>[^<]*'
-curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://nope.wp-network.lndo.site/
+curl -sS https://blog.wp-network.lndo.site/ | grep -o '<title>[^<]*'
+curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' https://nope.wp-network.lndo.site/
 ```
+
+If curl reports a certificate error, follow [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx). If it cannot resolve the hostname, see [Resolve lndo.site on this machine](../subsystems/host-proxy.mdx).
 
 The first prints `<title>Team Blog`, which proves the wildcard route, the certificate, and WordPress's host lookup all line up. The second returns `302` to `wp-signup.php` on the main site: an unknown subdomain still reached WordPress, which then decided it does not exist. Open `https://wp-network.lndo.site/wp-admin/network/` to manage the network in a browser.
 
