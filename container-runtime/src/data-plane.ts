@@ -4,6 +4,13 @@ import type { Redactor } from "@lando/sdk/secrets";
 import { boundedDiagnostic, makeCompletionDiagnosticContext } from "./completion-diagnostic.ts";
 import { removeRuntimeContainer } from "./container-removal.ts";
 import { tryParseJson } from "./engine-json.ts";
+import {
+  ephemeralDataHelperLabels,
+  isVolumeInUse,
+  listVolumeHolders,
+  volumeInUseMessage,
+  volumeInUseRemediation,
+} from "./ephemeral-data-helpers.ts";
 import { type PinnedHelperImage, dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
 import type { PulledImage } from "./image-pull.ts";
 import {
@@ -19,7 +26,7 @@ import {
 } from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { serviceContainerName as namedServiceContainer } from "./plan.ts";
-import { redactDetails, redactString, withApiReason } from "./redact.ts";
+import { redactDetails } from "./redact.ts";
 import { listNativeSnapshots } from "./snapshot-images.ts";
 import { makeAttachDecoder } from "./streams.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
@@ -271,14 +278,6 @@ const snapshotDataMountTarget = PortablePath.make("/lando-data");
 const nativeSnapshotRepo = "localhost/lando-volume-snapshot";
 
 const nativeSnapshotImage = (id: string): string => `${nativeSnapshotRepo}:${sanitize(id).toLowerCase()}`;
-
-const isVolumeInUse = (details: unknown): details is { readonly body: string } => {
-  if (typeof details !== "object" || details === null) return false;
-  if (!("body" in details) || typeof details.body !== "string") return false;
-  return (
-    ("status" in details && details.status === 409) || /\b(?:in use|being used by)\b/i.test(details.body)
-  );
-};
 
 const volumeError = (
   options: ProviderDataPlaneOptions,
@@ -617,6 +616,12 @@ const createEphemeralContainer = (
     body: {
       Image: spec.image,
       Cmd: spec.command,
+      Labels: ephemeralDataHelperLabels({
+        providerId: options.providerId,
+        ...(spec.owner === undefined ? {} : { app: String(spec.owner.app) }),
+        ...(spec.owner?.plan?.identity === undefined ? {} : { appRoot: spec.owner.plan.identity.appRoot }),
+        ...(mount === undefined ? {} : { store: mount.store }),
+      }),
       ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
       ...(witnessSource === undefined
         ? { HostConfig: { Binds: binds, ...(mounts.length === 0 ? {} : { Mounts: mounts }) } }
@@ -1365,34 +1370,43 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         ),
         Effect.tap((response) => ensure2xx(options, "removeVolume", response, ref.store)),
         Effect.asVoid,
-        Effect.mapError((cause) => {
-          const details = cause instanceof VolumeOperationError ? cause.details : undefined;
-          if (isVolumeInUse(details)) {
-            const base = "Provider volume remove failed.";
-            const message = withApiReason(base, details, options.redactor);
-            return new VolumeOperationError({
-              providerId: options.providerId,
-              operation: "removeVolume",
-              store: ref.store,
-              message:
-                message === base && details.body.trim().length > 0
-                  ? `${base} ${redactString(details.body.trim(), options.redactor)}`
-                  : message,
-              remediation:
-                "A container still uses this volume. Remove that container first (for a Lando app, run lando destroy for it; lando doctor lists leftovers), then retry.",
-              details: redactDetails(details, options.redactor),
-              cause,
-            });
-          }
-          return volumeError(
-            options,
-            "removeVolume",
-            "Provider volume remove failed.",
-            undefined,
-            cause,
-            ref.store,
-          );
-        }),
+        Effect.catch(
+          Effect.fnUntraced(function* (cause) {
+            const details = cause instanceof VolumeOperationError ? cause.details : undefined;
+            if (isVolumeInUse(details)) {
+              const holders =
+                options.api.request === undefined
+                  ? []
+                  : yield* listVolumeHolders(options.api.request, volumeName(ref.store));
+              return yield* Effect.fail(
+                new VolumeOperationError({
+                  providerId: options.providerId,
+                  operation: "removeVolume",
+                  store: ref.store,
+                  message: volumeInUseMessage(
+                    "Provider volume remove failed.",
+                    holders,
+                    details,
+                    options.redactor,
+                  ),
+                  remediation: volumeInUseRemediation(options.redactor),
+                  details: redactDetails(details, options.redactor),
+                  cause,
+                }),
+              );
+            }
+            return yield* Effect.fail(
+              volumeError(
+                options,
+                "removeVolume",
+                "Provider volume remove failed.",
+                undefined,
+                cause,
+                ref.store,
+              ),
+            );
+          }),
+        ),
       )) satisfies RuntimeProviderShape["removeVolume"],
     copyToService: ((target, spec) =>
       Effect.tryPromise({
