@@ -49,7 +49,7 @@ ${isolateLandoRootsStep}
 
 // Artifacts drop the executable bit; tests run the downloaded helpers directly.
 export const containerHelperDownloadStep = `      - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${CONTAINER_HELPER_ARTIFACT}
           path: core/container-helper/dist

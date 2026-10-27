@@ -16,6 +16,8 @@ import {
 import { opentuiNativeCatalog } from "../../../scripts/generated/opentui-native/catalog.generated.ts";
 import { stubContainerHelperDir } from "./fixtures/container-helper-stubs.ts";
 
+const STRICT_CODEGEN_EXEC_ARGV = ["--disallow-code-generation-from-strings=strict"];
+
 const releaseTargets = Object.entries(opentuiNativeCatalog.targetToNativeRoot);
 const fixtureShimAssets = async (): Promise<readonly [string, string]> => [
   "/fixture/lando-container-helper-linux-x64.tar.gz",
@@ -86,7 +88,7 @@ describe("compiled binary OpenTUI native pruning", () => {
       "linux-x64",
     );
 
-    // Then: compile, bytecode, minification, sourcemap, define, and exactly one pruning plugin are preserved.
+    // Then: compile, strict code-generation hardening, bytecode, minification, sourcemap, define, and exactly one pruning plugin are preserved.
     expect(received).toMatchObject({
       target: "bun",
       format: "esm",
@@ -103,6 +105,7 @@ describe("compiled binary OpenTUI native pruning", () => {
     expect<unknown>(received?.compile).toEqual({
       target: `bun-${target}`,
       outfile: `./dist/lando-${target}`,
+      execArgv: STRICT_CODEGEN_EXEC_ARGV,
     });
     expect(received?.plugins).toHaveLength(1);
     expect(received?.plugins?.[0]?.name).toBe("opentui-native-pruning");
@@ -160,7 +163,11 @@ describe("compiled binary OpenTUI native pruning", () => {
       sourcemap: "external",
     });
     expect(received?.plugins).toHaveLength(1);
-    expect(received?.compile).toEqual({ target: `bun-${target}`, outfile: "./dist/lando.exe" });
+    expect(received?.compile).toEqual({
+      target: `bun-${target}`,
+      outfile: "./dist/lando.exe",
+      execArgv: STRICT_CODEGEN_EXEC_ARGV,
+    });
   });
 
   test("omits Windows resources for a non-Windows target on a Windows host", async () => {
@@ -177,7 +184,11 @@ describe("compiled binary OpenTUI native pruning", () => {
       "windows-x64",
     );
     // Then: the compile configuration contains no Windows resources.
-    expect(received?.compile).toEqual({ target: "bun-linux-x64", outfile: "./dist/lando" });
+    expect(received?.compile).toEqual({
+      target: "bun-linux-x64",
+      outfile: "./dist/lando",
+      execArgv: STRICT_CODEGEN_EXEC_ARGV,
+    });
   });
 
   test("CLI accepts the normative Bun build flags and normalizes the target", () => {

@@ -2,407 +2,158 @@
 import type { Dirent } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-
-import { Effect, Result } from "effect";
+import type { RootContent } from "mdast";
 import { toMarkdown } from "mdast-util-to-markdown";
-import remarkFrontmatter from "remark-frontmatter";
-import remarkMdx from "remark-mdx";
-import remarkParse from "remark-parse";
-import { unified } from "unified";
-
-import { parseLandofile } from "../landofile/src/parser.ts";
-import { type GuideFrontmatter, decodeGuideFrontmatterEither } from "../sdk/src/docs/components/index.ts";
-import { GuideFrontmatterValidationError } from "../sdk/src/errors/index.ts";
-import { validationIssuesFromCause } from "../sdk/src/schema/validation-issue.ts";
+import { elementChildren, lineOf, propsOf } from "./guides/mdx.ts";
+import type { GuideScenarioAst, GuideStepComponent, GuideStepNode, GuideVariant } from "./guides/model.ts";
+import { parseGuideScenarioAst } from "./guides/parser.ts";
+import { resolveScenario } from "./guides/resolve.ts";
+import { variantsOf } from "./guides/variants.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-const RECIPES_ROOT = "recipes";
-const SCAFFOLD_DIR = ".scaffold";
-const SINGLETON_FILE = "default";
-
 const isNotFound = (cause: unknown): boolean =>
-  cause !== null && typeof cause === "object" && (cause as { code?: unknown }).code === "ENOENT";
-
-type MdxNode = {
-  type: string;
-  name?: string | null;
-  value?: unknown;
-  lang?: string | null;
-  depth?: number;
-  attributes?: ReadonlyArray<MdxAttribute>;
-  children?: Array<MdxNode>;
-};
-
-type MdxAttribute = {
-  readonly type: string;
-  readonly name?: string;
-  readonly value?:
-    | string
-    | null
-    | { readonly type?: string; readonly value?: string; readonly data?: unknown };
-};
-
-const processor = unified().use(remarkParse).use(remarkMdx).use(remarkFrontmatter, ["yaml"]);
-
-const DEFAULT_AXIS = "default";
-
-interface VariantPair {
-  readonly axis: string;
-  readonly value: string;
-}
-
+  cause !== null && typeof cause === "object" && "code" in cause && cause.code === "ENOENT";
 export interface RecipeReadmeOutput {
   readonly fileName: string;
   readonly relativePath: string;
   readonly markdown: string;
 }
-
 export interface BuildRecipeReadmeOptions {
   readonly onlyRecipe?: string;
 }
-
-const expressionToValue = (expression: string): unknown => {
-  const trimmed = expression.trim();
-  if (trimmed === "true") return true;
-  if (trimmed === "false") return false;
-  if (trimmed === "null") return null;
-  if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    const jsonish = trimmed.replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3').replace(/'/g, '"');
-    return JSON.parse(jsonish) as unknown;
-  }
-  throw new Error(`Unsupported MDX attribute expression: ${expression}`);
+type DisplayedRun = { readonly lang: "bash" | "ts"; readonly text: string };
+type StripContext = {
+  stepCounter: number;
+  readonly cleanups: Array<DisplayedRun>;
+  readonly guide: GuideScenarioAst;
+  readonly variant: GuideVariant | undefined;
 };
-
-const propsOf = (node: MdxNode): Record<string, unknown> => {
-  const props: Record<string, unknown> = {};
-  for (const attribute of node.attributes ?? []) {
-    if (attribute.type !== "mdxJsxAttribute" || attribute.name === undefined) continue;
-    if (attribute.value === null || attribute.value === undefined) {
-      props[attribute.name] = true;
-    } else if (typeof attribute.value === "string") {
-      props[attribute.name] = attribute.value;
-    } else {
-      props[attribute.name] = expressionToValue(attribute.value.value ?? "");
-    }
-  }
-  return props;
-};
-
-const elementChildren = (node: MdxNode): ReadonlyArray<MdxNode> =>
-  (node.children ?? []).filter(
-    (child) => child.type === "mdxJsxFlowElement" || child.type === "mdxJsxTextElement",
-  );
-
-const firstYaml = (root: MdxNode): string | undefined =>
-  root.children?.find((child) => child.type === "yaml")?.value as string | undefined;
-
-const parseFrontmatter = (sourcePath: string, yaml: string | undefined): Record<string, unknown> => {
-  if (yaml === undefined) return {};
-  try {
-    const parsed = Effect.runSync(
-      parseLandofile({ file: sourcePath, content: yaml, cwd: dirname(sourcePath) }),
-    );
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return parsed as Record<string, unknown>;
-  } catch (error) {
-    throw new GuideFrontmatterValidationError({
-      message: `Invalid recipe README frontmatter at ${sourcePath}.`,
-      sourcePath,
-      field: "frontmatter",
-      rejectedValue: yaml,
-      issues: [{ path: [], message: String(error) }],
-      remediation: `Fix the YAML frontmatter in ${sourcePath}.`,
-    });
-  }
-};
-
-const decodeFrontmatter = (sourcePath: string, input: Record<string, unknown>): GuideFrontmatter => {
-  const decoded = decodeGuideFrontmatterEither(input);
-  if (Result.isSuccess(decoded)) return decoded.success;
-  throw new GuideFrontmatterValidationError({
-    message: `Recipe README frontmatter is invalid at ${sourcePath}.`,
-    sourcePath,
-    field: "frontmatter",
-    rejectedValue: input,
-    issues: validationIssuesFromCause(decoded.failure),
-    remediation: `Fix the recipe README frontmatter in ${sourcePath}.`,
-  });
-};
-
-const axisEntriesOf = (
-  frontmatter: GuideFrontmatter,
-): ReadonlyArray<readonly [string, ReadonlyArray<string>]> => {
-  if (frontmatter.tabs !== undefined && frontmatter.tabs.length > 0) {
-    return [[DEFAULT_AXIS, frontmatter.tabs]];
-  }
-  if (frontmatter.axes !== undefined) return Object.entries(frontmatter.axes);
-  return [];
-};
-
-const variantsOf = (frontmatter: GuideFrontmatter): ReadonlyArray<ReadonlyArray<VariantPair>> => {
-  const entries = axisEntriesOf(frontmatter);
-  if (entries.length === 0) return [[]];
-  let combinations: ReadonlyArray<ReadonlyArray<VariantPair>> = [[]];
-  for (const [axis, values] of entries) {
-    combinations = combinations.flatMap((prefix) => values.map((value) => [...prefix, { axis, value }]));
-  }
-  return combinations;
-};
-
-const fileNameOf = (pairs: ReadonlyArray<VariantPair>): string =>
-  pairs.length === 0 ? SINGLETON_FILE : pairs.map((pair) => pair.value).join(".");
-
-const interpolate = (value: string, variables: ReadonlyMap<string, string>): string =>
-  value.replace(/\{\{\s*([A-Za-z_$][\w$-]*)\s*\}\}/g, (_match, name: string) => variables.get(name) ?? "");
-
-const matchedTab = (tabs: MdxNode, variant: ReadonlyArray<VariantPair>): MdxNode | undefined => {
-  const axisProp = propsOf(tabs).axis;
-  const [firstPair] = variant;
-  const axis =
-    typeof axisProp === "string"
-      ? axisProp
-      : variant.length === 1 && firstPair !== undefined
-        ? firstPair.axis
-        : DEFAULT_AXIS;
-  const value = variant.find((pair) => pair.axis === axis)?.value;
-  if (value === undefined) return undefined;
-  return elementChildren(tabs).find((child) => child.name === "Tab" && propsOf(child).name === value);
-};
-
-// <Variable> supplies `display` (falling back to `value`) for stripped README interpolation.
-const collectVariables = (
-  node: MdxNode,
-  variables: Map<string, string>,
-  variant: ReadonlyArray<VariantPair>,
-): void => {
-  if (node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") {
-    if (node.name === "Scenario" && propsOf(node).render === false) return;
-    if (node.name === "Hidden" || node.name === "Skip") return;
-    if (node.name === "Tabs") {
-      const tab = matchedTab(node, variant);
-      if (tab !== undefined) collectVariables(tab, variables, variant);
-      return;
-    }
-    if (node.name === "Variable") {
-      const props = propsOf(node);
-      const name = typeof props.name === "string" ? props.name : undefined;
-      if (name !== undefined) {
-        const display = typeof props.display === "string" ? props.display : undefined;
-        const value = typeof props.value === "string" ? props.value : "";
-        variables.set(name, display ?? value);
-      }
-    }
-  }
-  for (const child of node.children ?? []) collectVariables(child, variables, variant);
-};
-
-const headingNode = (depth: number, text: string): MdxNode => ({
+const headingNode = (text: string): RootContent => ({
   type: "heading",
-  depth,
+  depth: 2,
   children: [{ type: "text", value: text }],
 });
-
-const codeNode = (lang: string | null, value: string): MdxNode => ({ type: "code", lang, value });
-
-interface StripContext {
-  readonly variables: ReadonlyMap<string, string>;
-  readonly variant: ReadonlyArray<VariantPair>;
-  stepCounter: number;
-  readonly cleanups: Array<string>;
-}
-
-const displayedCommand = (props: Record<string, unknown>, variables: ReadonlyMap<string, string>): string => {
-  const command = typeof props.command === "string" ? props.command : undefined;
-  if (command !== undefined) return interpolate(command, variables);
-  const shell = typeof props.shell === "string" ? props.shell : "";
-  return interpolate(shell, variables);
+const codeNode = (lang: string | null, value: string): RootContent => ({ type: "code", lang, value });
+const displayedRun = (component: Extract<GuideStepComponent, { kind: "Run" }>): DisplayedRun => {
+  const props = component.props;
+  return "runtime" in props
+    ? { lang: "ts", text: props.displayCode }
+    : { lang: "bash", text: "command" in props ? props.command : props.shell };
 };
-
-// A step that contains a <Cleanup/> marker is a teardown step: its <Run> commands are
-// deferred into the final "Cleanup" block and the step emits no numbered heading.
-const isCleanupStep = (step: MdxNode): boolean =>
-  elementChildren(step).some((child) => child.name === "Cleanup");
-
-const stripStepComponents = (step: MdxNode, ctx: StripContext): ReadonlyArray<MdxNode> => {
-  const output: MdxNode[] = [];
-  for (const component of elementChildren(step)) {
-    const props = propsOf(component);
-    switch (component.name) {
-      case "Run":
-        output.push(codeNode("bash", displayedCommand(props, ctx.variables)));
-        break;
-      case "Inspect":
-        // No runtime transcript is available while stripping, so emit a placeholder.
-        output.push(codeNode(null, "(generated at runtime)"));
-        break;
-      case "Inline": {
-        const lang = typeof props.lang === "string" ? props.lang : "ts";
-        const code = typeof props.code === "string" ? props.code : "";
-        output.push(codeNode(lang, code));
-        break;
-      }
-      // <Verify>, <Variable>, <UseFixture> render nothing in the stripped README.
-      default:
-        break;
-    }
+const cleanupCodeNodes = (runs: ReadonlyArray<DisplayedRun>): ReadonlyArray<RootContent> => {
+  const groups: Array<{ readonly lang: DisplayedRun["lang"]; readonly texts: string[] }> = [];
+  for (const run of runs) {
+    const previous = groups.at(-1);
+    if (previous?.lang === run.lang) previous.texts.push(run.text);
+    else groups.push({ lang: run.lang, texts: [run.text] });
   }
-  return output;
+  return groups.map(({ lang, texts }) => codeNode(lang, texts.join("\n")));
 };
-
-const stripStep = (step: MdxNode, ctx: StripContext): ReadonlyArray<MdxNode> => {
-  const props = propsOf(step);
-  const name = typeof props.name === "string" ? props.name : "step";
-  if (isCleanupStep(step)) {
-    for (const child of elementChildren(step)) {
-      if (child.name === "Run") ctx.cleanups.push(displayedCommand(propsOf(child), ctx.variables));
-    }
+const stripStep = (step: GuideStepNode, ctx: StripContext): ReadonlyArray<RootContent> => {
+  if (step.components.some((component) => component.kind === "Cleanup")) {
+    for (const component of step.components)
+      if (component.kind === "Run") ctx.cleanups.push(displayedRun(component));
     return [];
   }
   ctx.stepCounter += 1;
-  return [headingNode(2, `${ctx.stepCounter}. ${name}`), ...stripStepComponents(step, ctx)];
-};
-
-const stripScenarioChild = (child: MdxNode, ctx: StripContext): ReadonlyArray<MdxNode> => {
-  if (child.type === "mdxJsxFlowElement" || child.type === "mdxJsxTextElement") {
-    switch (child.name) {
-      case "Step":
-        return stripStep(child, ctx);
-      case "Tabs": {
-        const tab = matchedTab(child, ctx.variant);
-        if (tab === undefined) return [];
-        return elementChildren(tab)
-          .filter((node) => node.name === "Step")
-          .flatMap((node) => stripStep(node, ctx));
+  return [
+    headingNode(`${ctx.stepCounter}. ${step.stepName}`),
+    ...step.components.flatMap((component) => {
+      switch (component.kind) {
+        case "Run": {
+          const run = displayedRun(component);
+          return [codeNode(run.lang, run.text)];
+        }
+        case "Inspect":
+          return [codeNode(null, "(generated at runtime)")];
+        case "Inline":
+          return [codeNode(component.props.lang, component.props.code)];
+        case "Verify":
+        case "Variable":
+        case "UseFixture":
+        case "Cleanup":
+          return [];
       }
-      // <Hidden> and <Skip> blocks (and any other component) are omitted from the README.
-      default:
-        return [];
-    }
-  }
-  return [];
+    }),
+  ];
 };
-
-const stripScenario = (scenario: MdxNode, ctx: StripContext): ReadonlyArray<MdxNode> => {
-  const props = propsOf(scenario);
-  // Test-only scenarios (render={false}) are omitted entirely.
-  if (props.render === false) return [];
-  return (scenario.children ?? []).flatMap((child) => stripScenarioChild(child, ctx));
-};
-
-const stripGuide = (guide: MdxNode, ctx: StripContext): ReadonlyArray<MdxNode> =>
-  (guide.children ?? []).flatMap((child) => {
-    if (
-      (child.type === "mdxJsxFlowElement" || child.type === "mdxJsxTextElement") &&
-      child.name === "Scenario"
-    ) {
-      return stripScenario(child, ctx);
-    }
-    // Non-scenario prose inside <Guide> is preserved when it carries real content.
-    if (child.type === "mdxJsxFlowElement" || child.type === "mdxJsxTextElement") return [];
-    return [child];
+const stripGuide = (
+  node: Extract<RootContent, { readonly type: "mdxJsxFlowElement" }>,
+  ctx: StripContext,
+): ReadonlyArray<RootContent> =>
+  node.children.flatMap((child) => {
+    const scenario = ctx.guide.scenarios.find((candidate) => candidate.line === lineOf(child));
+    if (scenario !== undefined && child.type === "mdxJsxFlowElement" && child.name === "Scenario")
+      return resolveScenario(ctx.guide, scenario, ctx.variant).publicSteps.flatMap((step) =>
+        stripStep(step, ctx),
+      );
+    return child.type === "mdxJsxFlowElement" ? [] : [child];
   });
 
-const guideScaffoldStripDisabled = (root: MdxNode): boolean => {
-  const guide = elementChildren(root).find((child) => child.name === "Guide");
-  return guide !== undefined && propsOf(guide).scaffoldStrip === false;
-};
-
 export const stripRecipeReadme = (sourcePath: string, content: string): ReadonlyArray<RecipeReadmeOutput> => {
-  const root = processor.parse(content) as MdxNode;
-  const frontmatter = decodeFrontmatter(sourcePath, parseFrontmatter(sourcePath, firstYaml(root)));
-  const recipeId = frontmatter.id;
-  const variants = variantsOf(frontmatter);
-  const scaffoldStripDisabled = guideScaffoldStripDisabled(root);
-
-  return variants.map((pairs) => {
-    const fileName = fileNameOf(pairs);
-    const relativePath = `${RECIPES_ROOT}/${recipeId}/${SCAFFOLD_DIR}/${fileName}.md`;
-    if (scaffoldStripDisabled) {
-      return { fileName, relativePath, markdown: content };
-    }
-    const variables = new Map<string, string>();
-    collectVariables(root, variables, pairs);
-    const ctx: StripContext = { variables, variant: pairs, stepCounter: 0, cleanups: [] };
-    const children: MdxNode[] = [];
-    for (const child of root.children ?? []) {
+  const guide = parseGuideScenarioAst(sourcePath, content);
+  const guideNode = elementChildren(guide.root).find((child) => child.name === "Guide");
+  const verbatim = guideNode !== undefined && propsOf(guideNode, sourcePath).scaffoldStrip === false;
+  return variantsOf(guide).map((variant) => {
+    const fileName =
+      variant === undefined || variant.pairs.length === 0
+        ? "default"
+        : variant.pairs.map((pair) => pair.value).join(".");
+    const relativePath = `recipes/${guide.frontmatter.id}/.scaffold/${fileName}.md`;
+    if (verbatim) return { fileName, relativePath, markdown: content };
+    const ctx: StripContext = { stepCounter: 0, cleanups: [], guide, variant };
+    const children: RootContent[] = [];
+    for (const child of guide.root.children) {
       if (child.type === "yaml") continue;
-      if (
-        (child.type === "mdxJsxFlowElement" || child.type === "mdxJsxTextElement") &&
-        child.name === "Guide"
-      ) {
+      if (child.type === "mdxJsxFlowElement" && child.name === "Guide")
         children.push(...stripGuide(child, ctx));
-        continue;
-      }
-      if (child.type === "mdxJsxFlowElement" || child.type === "mdxJsxTextElement") continue;
-      children.push(child);
+      else if (child.type !== "mdxJsxFlowElement" && child.type !== "mdxJsxTextElement") children.push(child);
     }
-    if (ctx.cleanups.length > 0) {
-      children.push(headingNode(2, "Cleanup"));
-      children.push(codeNode("bash", ctx.cleanups.join("\n")));
-    }
-    const markdown = toMarkdown({ type: "root", children } as never);
-    return { fileName, relativePath, markdown };
+    if (ctx.cleanups.length > 0) children.push(headingNode("Cleanup"), ...cleanupCodeNodes(ctx.cleanups));
+    return { fileName, relativePath, markdown: toMarkdown({ type: "root", children }) };
   });
 };
 
 export const discoverRecipeReadmeMdxFiles = async (root = REPO_ROOT): Promise<ReadonlyArray<string>> => {
-  const recipesRoot = resolve(root, RECIPES_ROOT);
   let entries: ReadonlyArray<Dirent<string>>;
   try {
-    entries = await readdir(recipesRoot, { withFileTypes: true });
+    entries = await readdir(resolve(root, "recipes"), { withFileTypes: true });
   } catch (cause) {
     if (isNotFound(cause)) return [];
     throw cause;
   }
   const candidates = entries
     .filter((entry) => entry.isDirectory())
-    .map((entry) => `${RECIPES_ROOT}/${entry.name}/README.mdx`);
+    .map((entry) => `recipes/${entry.name}/README.mdx`);
   const existing = await Promise.all(
     candidates.map(async (path) => ((await Bun.file(resolve(root, path)).exists()) ? path : undefined)),
   );
-  return existing
-    .filter((path): path is string => path !== undefined)
-    .sort((left, right) => left.localeCompare(right));
+  return existing.filter((path): path is string => path !== undefined).sort((a, b) => a.localeCompare(b));
 };
-
 export const buildRecipeReadmes = async (
   root = REPO_ROOT,
   options: BuildRecipeReadmeOptions = {},
 ): Promise<ReadonlyArray<string>> => {
   const files = await discoverRecipeReadmeMdxFiles(root);
-  const written: string[] = [];
-  for (const sourcePath of files) {
-    const recipeId = sourcePath.split("/")[1];
-    if (options.onlyRecipe !== undefined && recipeId !== options.onlyRecipe) continue;
-    const content = await Bun.file(resolve(root, sourcePath)).text();
-    const outputs = stripRecipeReadme(sourcePath, content);
-    if (outputs.length === 0) continue;
-    const scaffoldDir = dirname(outputs[0]?.relativePath ?? "");
-    await rm(resolve(root, scaffoldDir), { force: true, recursive: true });
-    await mkdir(resolve(root, scaffoldDir), { recursive: true });
-    for (const output of outputs) {
-      await Bun.write(resolve(root, output.relativePath), output.markdown);
-      written.push(output.relativePath);
-    }
+  const outputs = (
+    await Promise.all(
+      files
+        .filter((path) => options.onlyRecipe === undefined || path.split("/")[1] === options.onlyRecipe)
+        .map(async (path) => stripRecipeReadme(path, await Bun.file(resolve(root, path)).text())),
+    )
+  ).flat();
+  for (const dir of new Set(outputs.map((output) => dirname(output.relativePath)))) {
+    await rm(resolve(root, dir), { force: true, recursive: true });
+    await mkdir(resolve(root, dir), { recursive: true });
   }
-  return written.sort((left, right) => left.localeCompare(right));
+  for (const output of outputs) await Bun.write(resolve(root, output.relativePath), output.markdown);
+  return outputs.map((output) => output.relativePath).sort((a, b) => a.localeCompare(b));
 };
-
-const main = async (): Promise<void> => {
+if (import.meta.main) {
   try {
-    const written = await buildRecipeReadmes(REPO_ROOT);
-    process.stdout.write(`${JSON.stringify(written, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(await buildRecipeReadmes(REPO_ROOT), null, 2)}\n`);
   } catch (error) {
     process.stderr.write(`${JSON.stringify(error, null, 2)}\n`);
     process.exitCode = 1;
   }
-};
-
-if (import.meta.main) await main();
+}

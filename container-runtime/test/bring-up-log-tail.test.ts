@@ -34,7 +34,7 @@ const textEncoder = new TextEncoder();
 const servicePlan = (
   name: ServicePlan["name"],
   primary: boolean,
-  overrides: Partial<ServicePlan> = {},
+  overrides: Partial<Omit<ServicePlan, "nonSqlCreds">> = {},
 ): ServicePlan => ({
   name,
   type: "generic",

@@ -372,7 +372,7 @@ describe("HttpClient network trust", () => {
       caPems: [CA_PEM],
       trustHost: true,
     });
-    expect(capture.init()?.proxy).toBe("http://proxy:3128");
+    expect(capture.init()?.proxy).toEqual({ url: "http://proxy:3128", respectNoProxy: false });
     expect(capture.init()?.tls).toEqual({ ca: [CA_PEM] });
   });
 
@@ -383,7 +383,7 @@ describe("HttpClient network trust", () => {
       caPems: [CA_PEM],
       trustHost: true,
     });
-    expect(capture.init()?.proxy).toBeUndefined();
+    expect(capture.init()?.proxy).toBe(false);
     expect(capture.init()?.tls).toEqual({ ca: [CA_PEM] });
   });
 
@@ -424,7 +424,7 @@ describe("HttpClient network trust", () => {
     const envCaPem = "-----BEGIN CERTIFICATE-----\nFROMENV\n-----END CERTIFICATE-----";
     await writeFile(caPath, envCaPem);
 
-    stashEnv("HTTP_PROXY", "http://env-proxy:8080");
+    stashEnv("HTTPS_PROXY", "http://env-proxy:8080");
     stashEnv("LANDO_NETWORK_CA_CERTS", JSON.stringify([caPath]));
 
     const configLayer = Layer.effect(
@@ -491,7 +491,7 @@ describe("HttpClient network trust", () => {
     );
 
     await Effect.runPromise(program);
-    expect(capture.init()?.proxy).toBe("http://config-proxy:3128");
+    expect(capture.init()?.proxy).toEqual({ url: "http://config-proxy:3128", respectNoProxy: false });
     expect(capture.init()?.tls).toEqual({ ca: [fromConfig] });
   });
 
@@ -510,7 +510,7 @@ describe("HttpClient network trust", () => {
     // When HTTP executes using only its retained layer services.
     await run(getCollect("https://example.com/retained"), clientLayer);
     // Then no ambient proxy reaches the transport.
-    expect(capture.init()?.proxy).toBeUndefined();
+    expect(capture.init()?.proxy).toBe(false);
   });
 
   test("fails before fetch when a configured CA path is unreadable", async () => {

@@ -15,7 +15,7 @@ import { snapshotHandle } from "@lando/sdk/schema";
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import type { SqlExec } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
-import { hostFile, parseCount, secretTokens } from "./command-input.ts";
+import { hostFile, parseCount, secretTokens, validateExportCompressionLevel } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
@@ -41,6 +41,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   rawDeps: SqlCommandDeps,
   input: DbCommandInput,
 ) {
+  yield* validateExportCompressionLevel(input);
   const session = yield* rawDeps.environmentResolver.openSession();
   const exec: SqlExec = Effect.fn("Sql.exec")(function* (
     service: string,
@@ -214,6 +215,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       env,
       file,
       compression,
+      ...(input.compressionLevel === undefined ? {} : { compressionLevel: input.compressionLevel }),
       ...(expectedDigest === undefined ? {} : { expectedDigest }),
     };
     let snapshotId: string | undefined;

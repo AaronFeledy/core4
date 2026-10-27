@@ -85,7 +85,7 @@ For day-to-day tooling and database hosts, see [Run the Drupal CMS recipe](/guid
 ## 1. scaffold
 
 ```bash
-lando init --recipe drupal-cms --name=my-drupal-cms-nginx --yes
+lando init --recipe drupal-cms --name=my-drupal-cms-app --yes
 ```
 
 ## 2. start

@@ -18,7 +18,7 @@ import { VFile } from "vfile";
 import { variantFileSuffix } from "@lando/core/docs/variant";
 
 import { buildGuideScenarioAst, emitPublicTranscripts } from "../../scripts/build-guide-scenarios.ts";
-import { transcriptPathFor } from "../src/lib/transcripts.ts";
+import { resolveTranscript, transcriptPathFor } from "../src/lib/transcripts.ts";
 import { remarkGuideContext } from "../src/plugins/remark-guide-context.ts";
 
 type MdxElement = MdxJsxFlowElement | MdxJsxTextElement;
@@ -206,8 +206,8 @@ tabs: [postgres, mysql]
     });
   });
 
-  test("pairs multi-axis nested fixture emitted paths with rendered data-variant filenames", async () => {
-    // Given: nested Tabs covering the full Cartesian product in declaration order.
+  test("pairs multi-axis sibling fixture emitted cells with rendered data-variant filenames", async () => {
+    // Given: one sibling Tabs per declared axis under a Scenario, the only legal multi-axis placement.
     const source = `---
 id: pair-axes
 provider: test
@@ -220,32 +220,26 @@ axes:
   <Scenario id="matrix">
     <Tabs axis="os">
       <Tab name="linux">
-        <Tabs axis="package-manager">
-          <Tab name="composer">
-            <Step name="lc">
-              <Run command="lando version" />
-            </Step>
-          </Tab>
-          <Tab name="npm">
-            <Step name="ln">
-              <Run command="lando version" />
-            </Step>
-          </Tab>
-        </Tabs>
+        <Step name="linux-install">
+          <Run command="lando version" />
+        </Step>
       </Tab>
       <Tab name="macos">
-        <Tabs axis="package-manager">
-          <Tab name="composer">
-            <Step name="mc">
-              <Run command="lando version" />
-            </Step>
-          </Tab>
-          <Tab name="npm">
-            <Step name="mn">
-              <Run command="lando version" />
-            </Step>
-          </Tab>
-        </Tabs>
+        <Step name="macos-install">
+          <Run command="lando version" />
+        </Step>
+      </Tab>
+    </Tabs>
+    <Tabs axis="package-manager">
+      <Tab name="composer">
+        <Step name="composer-setup">
+          <Run command="lando version" />
+        </Step>
+      </Tab>
+      <Tab name="npm">
+        <Step name="npm-setup">
+          <Run command="lando version" />
+        </Step>
       </Tab>
     </Tabs>
   </Scenario>
@@ -258,17 +252,42 @@ axes:
       const written = await emitPublicTranscripts(await buildGuideScenarioAst(root), root, transcriptRoot);
       const tree = renderGuideContext(source, guidePath);
 
-      // Then: full Cartesian filename sets match and every rendered variant resolves.
+      // Then: the compiler emits the full Cartesian product of declared axis values.
       const emitted = emittedBasenames(written, "pair-axes");
-      const rendered = renderedVariantFilenames(tree, "matrix");
-      expect([...emitted].sort()).toEqual([...rendered].sort());
       expect([...emitted].sort()).toEqual([
         "matrix.os=linux.package-manager=composer.json",
         "matrix.os=linux.package-manager=npm.json",
         "matrix.os=macos.package-manager=composer.json",
         "matrix.os=macos.package-manager=npm.json",
       ]);
+
+      // Then: render completes each sibling Tab with the other axis's first declared value,
+      // so three distinct cells are reachable from a Tab and every one resolves on disk.
+      const rendered = renderedVariantFilenames(tree, "matrix");
+      expect([...rendered].sort()).toEqual([
+        "matrix.os=linux.package-manager=composer.json",
+        "matrix.os=linux.package-manager=npm.json",
+        "matrix.os=macos.package-manager=composer.json",
+      ]);
       await assertEveryRenderedVariantResolves(tree, "pair-axes", join(root, transcriptRoot));
+
+      // Then: the macos/npm cell no Tab reaches is still a complete transcript selecting one step per sibling axis.
+      const fourthCell = await resolveTranscript(
+        { guideId: "pair-axes", scenarioId: "matrix", variant: "os=macos package-manager=npm" },
+        { root: join(root, transcriptRoot) },
+      );
+      expect(fourthCell.kind).toBe("ok");
+      if (fourthCell.kind !== "ok") throw new Error("expected the macos/npm transcript to resolve");
+      expect(
+        fourthCell.transcript.frames
+          .filter((frame) => frame.kind === "tab" || frame.kind === "step")
+          .map((frame) => [frame.kind, frame.displayText]),
+      ).toEqual([
+        ["tab", "os=macos"],
+        ["tab", "package-manager=npm"],
+        ["step", "macos-install"],
+        ["step", "npm-setup"],
+      ]);
     });
   });
 });
