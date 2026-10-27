@@ -35,7 +35,6 @@ const web: ServicePlan = {
   command: ["node", "-e", "setInterval(() => {}, 1000)"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

@@ -148,6 +148,61 @@ const useDeprecation = Effect.fnUntraced(function* (
 });
 
 describe("meta:doctor combined report", () => {
+  test.each([false, true])("renders canonical env warnings alongside errors=%s", async (withError) => {
+    const base = await run({ ...TestRuntimeProvider, id: "lando" });
+    const report: DoctorReport = {
+      ...base,
+      appConfig: {
+        app: "env",
+        file: "/app/.lando.yml",
+        valid: !withError,
+        violations: [
+          {
+            rule: "env-file.literal",
+            severity: "warning",
+            path: ["env_file", 0],
+            message: "Literal env warning",
+          },
+          ...(withError
+            ? [
+                {
+                  rule: "env-file.read",
+                  severity: "error" as const,
+                  path: ["env_file", 1],
+                  message: "Missing env file",
+                },
+              ]
+            : []),
+        ],
+      },
+    };
+    const text = renderDoctorReport(report);
+    expect(text).toContain(`app-config-lint: ${withError ? "fail" : "warn"}`);
+    expect(text).toContain("Literal env warning");
+    const decorated = renderDoctorReport(report, {
+      mode: "lando",
+      format: "text",
+      isTTY: true,
+      columns: 100,
+    });
+    expect(decorated).toContain("Literal env warning");
+    const ndjson = renderDoctorReportAsNdjson(report);
+    const payload = eventPayloads(ndjson).find((event) => event.name === "app-config-lint");
+    expect(payload).toMatchObject({
+      status: withError ? "fail" : "warn",
+      severity: withError ? "error" : "warn",
+    });
+    expect(payload?.violations).toEqual(report.appConfig?.violations);
+    expect(payload).not.toHaveProperty("warnings");
+    const baseSummary = resultEnvelope(renderDoctorReportAsNdjson(base)).result as {
+      warned: number;
+      failed: number;
+    };
+    expect(resultEnvelope(ndjson).result).toMatchObject({
+      warned: baseSummary.warned + 1,
+      failed: baseSummary.failed + (withError ? 1 : 0),
+    });
+  });
   test.each([
     { range: ">=0", skip: "0", status: "pass", severity: "info" },
     { range: ">=99", skip: "1", status: "warn", severity: "warn" },

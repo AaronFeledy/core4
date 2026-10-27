@@ -93,12 +93,16 @@ describe("apache ServiceType", () => {
       LANDO_WEBROOT: "/app",
     });
 
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
-    expect(plan.appMount?.realization).toBe("passthrough");
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
+    expect(serviceAppMount(plan)?.realization).toBe("passthrough");
 
-    expect(plan.mounts).toEqual([]);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
 
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
@@ -312,3 +316,4 @@ describe("apache ServiceType", () => {
     expect(directives.join("\n")).not.toContain("Include");
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

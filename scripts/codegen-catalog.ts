@@ -207,6 +207,7 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    dependsOn: ["core-service-env-catalog"],
     id: "php-base-images",
     ownership: "derived",
     script: "build-php-base-images.ts",

@@ -69,10 +69,11 @@ describe("elasticsearch ServiceType", () => {
         ref: "docker.elastic.co/elasticsearch/elasticsearch:8.17.0",
       });
       expect(plan.command).toBeUndefined();
-      expect(plan.storage).toHaveLength(1);
-      expect(plan.storage[0]?.store).toBe("myapp-elasticsearch-data");
-      expect(String(plan.storage[0]?.target)).toBe("/usr/share/elasticsearch/data");
-      expect(plan.storage[0]?.readOnly).toBe(false);
+      const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+      expect(volumes).toHaveLength(1);
+      expect(volumes[0]?.store).toBe("myapp-elasticsearch-data");
+      expect(String(volumes[0]?.target)).toBe("/usr/share/elasticsearch/data");
+      expect(volumes[0]?.readOnly).toBe(false);
       expect(plan.endpoints).toEqual([
         { _tag: "internal", port: 9200, protocol: "tcp", name: "search", primary: true },
       ]);

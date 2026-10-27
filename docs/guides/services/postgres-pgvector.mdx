@@ -19,7 +19,6 @@ services:
   db:
     type: postgres:18
     image: pgvector/pgvector:pg18
-    home: false
   app:
     type: "python:3.12"
     primary: true
@@ -40,7 +39,6 @@ Each `db` line has a job:
 | --- | --- |
 | `type: postgres:18` | Select Lando's Postgres 18 service type while keeping the custom image below |
 | `image: pgvector/pgvector:pg18` | Postgres 18 with the `vector` extension already compiled in |
-| `home: false` | Disable home-directory persistence for this custom image. Without this or an explicit `home.path`, planning fails with `HomePathCapabilityError` because Lando cannot infer the image user's home |
 
 Lando sets `PGDATA` to `/var/lib/postgresql/data` and mounts the `<app>-postgresql-data` volume there for every supported Postgres major, including 18. You don't need an environment override for this image.
 
@@ -184,7 +182,7 @@ lando destroy -y --volumes
 
 ## Check the Landofile config
 
-`lando app:config --format=json` shows the Landofile's type, image, and `home` before anything boots. It does not show the planned `PGDATA`, inspect the image, or prove database readiness. After `lando start`, `lando app:info --format=json` lists the `db` App Network connection with its passwordless Postgres URI:
+`lando app:config --format=json` shows the Landofile's type and image before anything boots. It does not show the planned `PGDATA`, inspect the image, or prove database readiness. After `lando start`, `lando app:info --format=json` lists the `db` App Network connection with its passwordless Postgres URI:
 
 <Guide>
   <Scenario id="reader-path" render>
@@ -195,7 +193,6 @@ lando destroy -y --volumes
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:18\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"pgvector/pgvector:pg18\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"home\":\\s*false" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uv\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
     </Step>
     <Step name="start">

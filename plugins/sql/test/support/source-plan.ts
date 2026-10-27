@@ -42,7 +42,6 @@ export const sourcePlan = (root: string, type = "mysql:8.0", names: readonly str
             MONGO_INITDB_DATABASE: "source-db",
           },
           mounts: [],
-          storage: [],
           endpoints: [],
           routes: [],
           dependsOn: [],

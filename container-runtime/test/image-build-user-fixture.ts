@@ -29,7 +29,6 @@ export const runBuild = (input: {
     artifact: input.artifact,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

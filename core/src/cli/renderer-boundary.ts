@@ -53,6 +53,7 @@ import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
 import { dimBugReportDetails } from "./diagnostic-text";
 import { renderFailureEvidence } from "./failure-evidence";
 import { DEFAULT_RESULT_FORMAT, type ResultFormat, isEnvelopeResultFormat } from "./format-flags";
+import { interruptOnAbort } from "./interrupt-on-abort";
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
 import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
 import type { RendererMode } from "./renderer-selection";
@@ -127,6 +128,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
   readonly suppressInterruptionDiagnostics?: boolean;
+  readonly signal?: AbortSignal;
   readonly render?: (value: A, ctx: RenderContext) => string | undefined;
   readonly renderEffect?: (completed: CompletedCommandResult<A>) => Effect.Effect<void, unknown, R>;
   readonly completion?: (value: A) => CommandCompletion;
@@ -251,7 +253,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     return Effect.sync(unsubscribe);
   });
   // Subscribe before command writes; raceFirst waits for interrupted scope finalizers.
-  const commandEffect = Effect.raceFirst(brokenPipeSignal, effect).pipe(
+  const commandEffect = Effect.raceFirst(brokenPipeSignal, interruptOnAbort(effect, options.signal)).pipe(
     Effect.withErrorReporting({ defectsOnly: true }),
   );
   const renderContext: RenderContext = {
@@ -498,10 +500,22 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       }),
     );
     const commandOutcome = yield* Effect.exit(
-      withCommandEventService(executeWithEventConsumer).pipe(
-        Effect.provide(Layer.provide(commandLayer, Layer.succeed(Tracer.ParentSpan, initSpan)), {
-          local: true,
+      Effect.scoped(
+        Effect.gen(function* () {
+          const memoMap = yield* Layer.makeMemoMap;
+          const runtimeContext = yield* interruptOnAbort(
+            Layer.buildWithMemoMap(
+              Layer.provide(commandLayer, Layer.succeed(Tracer.ParentSpan, initSpan)),
+              memoMap,
+              yield* Effect.scope,
+            ),
+            options.signal,
+          );
+          return yield* withCommandEventService(executeWithEventConsumer).pipe(
+            Effect.provide(runtimeContext),
+          );
         }),
+      ).pipe(
         Effect.provideService(EventPublicationObserver, (event) =>
           envelopeFormat && isMessageWarnEvent(event)
             ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })

@@ -2,6 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import * as Schema from "effect/Schema";
 
 import { CI_PLATFORMS, releaseBinaryFileName } from "../../../scripts/ci-platforms";
 
@@ -311,7 +312,7 @@ describe("ci workflow codegen", () => {
       const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(40);
+      expect(versionFileMatches).toBe(41);
       expect(workflow).not.toContain("bun-version: ");
       expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(12);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
@@ -467,6 +468,63 @@ describe("ci workflow codegen", () => {
   );
 
   test(
+    "runs only the signal suite on both hosted Darwin architectures for runtime PRs",
+    async () => {
+      await runCodegen();
+      const workflow = Schema.decodeUnknownSync(
+        Schema.Struct({
+          jobs: Schema.Struct({
+            "process-signal-tests-darwin": Schema.Struct({
+              needs: Schema.Array(Schema.String),
+              if: Schema.String,
+              "runs-on": Schema.String,
+              "timeout-minutes": Schema.Number,
+              strategy: Schema.Struct({
+                "fail-fast": Schema.Boolean,
+                matrix: Schema.Struct({
+                  include: Schema.Array(Schema.Struct({ platform: Schema.String, "runs-on": Schema.String })),
+                }),
+              }),
+              steps: Schema.Array(
+                Schema.Struct({
+                  name: Schema.optional(Schema.String),
+                  run: Schema.optional(Schema.String),
+                }),
+              ),
+            }),
+            ci: Schema.Struct({ needs: Schema.Array(Schema.String), if: Schema.String }),
+          }),
+        }),
+      )(Bun.YAML.parse(await readFile(workflowPath, "utf8")));
+      const job = workflow.jobs["process-signal-tests-darwin"];
+      expect(job.strategy.matrix.include).toEqual([
+        { platform: "darwin-arm64", "runs-on": "macos-15" },
+        { platform: "darwin-x64", "runs-on": "macos-15-intel" },
+      ]);
+      expect(job.strategy["fail-fast"]).toBe(false);
+      expect(job["runs-on"]).toBe("${{ matrix.runs-on }}");
+      expect(job["timeout-minutes"]).toBe(10);
+      expect(job.needs).toEqual(["selection"]);
+      expect(job.if).toContain("needs.selection.outputs.profile == 'runtime'");
+      expect(job.if).not.toContain("profile == 'guides'");
+      const commands = job.steps.flatMap((step) => (step.run === undefined ? [] : [step.run]));
+      expect(commands.filter((command) => command.startsWith("bun test"))).toEqual([
+        "bun test core/test/cli/process-signals.test.ts",
+      ]);
+      expect(commands).toContain("bun install --frozen-lockfile");
+      expect(commands.indexOf("bun run codegen")).toBeLessThan(
+        commands.indexOf("bun test core/test/cli/process-signals.test.ts"),
+      );
+      expect(job.steps.find((step) => step.name === "Isolate Lando roots")?.run).toContain(
+        "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf",
+      );
+      expect(workflow.jobs.ci.needs.filter((id) => id === "process-signal-tests-darwin")).toHaveLength(1);
+      expect(workflow.jobs.ci.if).toBe("always()");
+    },
+    codegenTestTimeout,
+  );
+
+  test(
     "keeps static-checks platform matrix cells to portable gates",
     async () => {
       await runCodegen();
@@ -556,7 +614,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain(
         "needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]",
       );
-      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(26);
+      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(27);
       expect(workflow).not.toContain("run: bun run codegen:guide-scenarios");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");
@@ -655,9 +713,16 @@ describe("ci workflow codegen", () => {
         expect(workflow).toContain(releaseBinaryFileName(platform));
       }
       expect(workflow).toContain("RELEASE_TAG: v4.0.0-dev.${{ github.run_number }}");
-      expect(workflow).toContain("gh release create");
+      expect(workflow).toContain("gh api --method POST repos/{owner}/{repo}/releases");
+      expect(workflow).toContain("gh release upload");
       expect(workflow).toContain("dist/SHA256SUMS");
-      expect(workflow).toContain("--prerelease");
+      expect(workflow).toContain("-F prerelease=true");
+      expect(workflow).toContain("-F draft=true");
+      expect(workflow).toContain("set -euo pipefail");
+      expect(workflow).not.toContain("trap ");
+      expect(workflow).not.toContain("--cleanup-tag");
+      expect(workflow).not.toContain("--method DELETE");
+      expect(workflow).toContain('gh api --method PATCH "$release_api" -F draft=false');
       expect(workflow).not.toContain("cosign");
       expect(workflow).not.toContain("gpg");
       expect(workflow).not.toContain("sbom");
@@ -774,9 +839,16 @@ describe("ci workflow codegen", () => {
         expect(workflow).toContain(`dist/${releaseBinaryFileName(platform)}`);
         expect(workflow).toContain(`test -f dist/${releaseBinaryFileName(platform)}`);
       }
-      expect(workflow).toContain("gh release create");
+      expect(workflow).toContain("gh api --method POST repos/{owner}/{repo}/releases");
+      expect(workflow).toContain("gh release upload");
       expect(workflow).toContain("v4.0.0-dev.${{ github.run_number }}");
       expect(workflow).toContain("dist/SHA256SUMS");
+      expect(workflow).toContain("-F draft=true");
+      expect(workflow).toContain("set -euo pipefail");
+      expect(workflow).not.toContain("trap ");
+      expect(workflow).not.toContain("--cleanup-tag");
+      expect(workflow).not.toContain("--method DELETE");
+      expect(workflow).toContain('gh api --method PATCH "$release_api" -F draft=false');
       expect(workflow).not.toContain("sha256sum lando > SHA256SUMS");
       expect(workflow).not.toContain("if-no-files-found");
     },

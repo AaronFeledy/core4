@@ -332,7 +332,6 @@ test("declares the HTTP endpoints a route targets on services without catalog en
   });
   expect(result.diagnostics.filter(({ kind }) => kind === "generated").map(({ keyPath }) => keyPath)).toEqual(
     [
-      ["services", "who"],
       ["proxy", "who"],
       ["proxy", "node"],
     ],

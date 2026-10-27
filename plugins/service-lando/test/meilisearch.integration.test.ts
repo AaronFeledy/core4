@@ -8,7 +8,7 @@ import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  CurrentExecutableAppPlan,
   LandofileShape,
   ProviderId,
   ServiceName,
@@ -80,7 +80,8 @@ describe("meilisearch service type — live integration: index create + document
           serviceName: "search",
           metadata,
         });
-        const plan: AppPlan = {
+        const plan = CurrentExecutableAppPlan.make({
+          valueModel: 1,
           id: appId,
           name: "Meilisearch Integration App",
           slug: "meilinttest",
@@ -92,7 +93,7 @@ describe("meilisearch service type — live integration: index create + document
           fileSync: [],
           metadata: search.metadata,
           extensions: {},
-        };
+        });
 
         const api = makePodmanApiClient(socketPath);
         try {

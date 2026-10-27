@@ -139,6 +139,7 @@ describe("lando.security feature", () => {
 
     expect(plan.mounts).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/host/b.pem",
         target: PortablePath.make(`/usr/local/share/ca-certificates/lando-${DIGEST_B}.crt`),
@@ -148,6 +149,7 @@ describe("lando.security feature", () => {
       {
         type: "bind",
         source: "/host/a.pem",
+        origin: "service",
         target: PortablePath.make(`/usr/local/share/ca-certificates/lando-${DIGEST_A}.crt`),
         readOnly: true,
         realization: "passthrough",

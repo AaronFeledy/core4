@@ -13,8 +13,8 @@ import {
 } from "@lando/engine/cache/app-plan";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
 
-test.each([19, 20, 21, 22, 23, 24, 25, 26, 27, 28])(
-  "app-plan revision 32 rejects the persisted revision %i fixture",
+test.each([19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 35, 38])(
+  "current app-plan cache rejects the persisted revision %i fixture",
   async (revision) => {
     // Given intact versioned bytes at the real cache path.
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-previous-"));
@@ -41,8 +41,9 @@ test.each([19, 20, 21, 22, 23, 24, 25, 26, 27, 28])(
         }),
       );
 
-      // Then even the upstream revision 28 bytes are intact but historical.
+      // Then historical desired-plan bytes stay intact and cannot be reused.
       expect(cached).toBeNull();
+      expect(await readFile(path)).toEqual(fixture);
     } finally {
       await rm(cacheRoot, { recursive: true, force: true });
     }

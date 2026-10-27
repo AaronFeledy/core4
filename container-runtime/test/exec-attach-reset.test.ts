@@ -38,7 +38,6 @@ test("preserves stdout and exit zero when the attach socket resets in the respon
         artifact: { kind: "ref", ref: "alpine:3.20" },
         environment: {},
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],

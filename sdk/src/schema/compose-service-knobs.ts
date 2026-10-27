@@ -24,6 +24,16 @@ const describeEncodedField = <A, I>(schema: Schema.Codec<A, I, never, never>, de
     description,
   });
 
+/** Compose service `tmpfs:`; a mount spelling normalized into the service mount list, not a runtime knob. */
+export const ComposeTmpfsServiceField = Schema.optionalKey(
+  describeEncodedField(
+    ComposeTmpfsField,
+    "Temporary filesystem mounts as a single Compose mount string or string list; normalized into tmpfs entries in the service mount list.",
+  ),
+).annotate({
+  description: "Temporary filesystem mounts normalized into tmpfs entries in the service mount list.",
+});
+
 export const ComposeServiceKnobFields = {
   restart: Schema.optionalKey(ComposeRestartField).annotate({
     description: "Container restart policy: no, always, on-failure, or unless-stopped.",
@@ -70,14 +80,6 @@ export const ComposeServiceKnobFields = {
     ),
   ).annotate({
     description: "Container kernel parameters as a map or KEY=value list, canonicalized to a map.",
-  }),
-  tmpfs: Schema.optionalKey(
-    describeEncodedField(
-      ComposeTmpfsField,
-      "Temporary filesystem mounts as a single Compose mount string or string list; canonicalized to a string list.",
-    ),
-  ).annotate({
-    description: "Temporary filesystem mounts; a scalar mount specification canonicalizes to a list.",
   }),
   shm_size: Schema.optionalKey(
     describeEncodedField(

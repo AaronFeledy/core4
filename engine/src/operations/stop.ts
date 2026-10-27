@@ -87,6 +87,7 @@ const stopAppWithResolvedPlan = (
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
       const validatedTarget = execution.revalidate ? yield* validateResolvedAppTarget(target) : target;
+      yield* registry.assertAppliedStateReadable?.(validatedTarget.plan) ?? Effect.void;
       const { pending } = yield* readDiscardableStart(validatedTarget.app);
       const cleanup =
         execution.cleanupOwnership !== false

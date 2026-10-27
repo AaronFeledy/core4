@@ -85,29 +85,6 @@ export const ulimitEntries = (
     ? undefined
     : Object.entries(ulimits).map(([name, limit]) => ulimitEntry(name, limit, fail));
 
-// Compose tmpfs entries are "<target>" or "<target>:<options>"; Podman wants a
-// target-to-options map, so the split is on the first colon only.
-export const tmpfsMounts = (
-  mounts: ReadonlyArray<string> | undefined,
-  fail: InvalidKnob,
-): Record<string, string> | undefined => {
-  if (mounts === undefined) return undefined;
-
-  const map: Record<string, string> = {};
-  for (const mount of mounts) {
-    const separator = mount.indexOf(":");
-    const target = separator === -1 ? mount : mount.slice(0, separator);
-    if (Object.hasOwn(map, target)) {
-      return fail("Compose runtime knob `tmpfs` repeats a container destination.", {
-        knob: "tmpfs",
-        target,
-      });
-    }
-    map[target] = separator === -1 ? "" : mount.slice(separator + 1);
-  }
-  return map;
-};
-
 export const positiveInteger = (
   knob: string,
   value: number | undefined,

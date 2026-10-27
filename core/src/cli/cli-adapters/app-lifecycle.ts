@@ -24,7 +24,7 @@ import {
 } from "../compiled-runtime";
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
 
-export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
+export const runSetup = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
   if (await rejectInvalidInvocation("meta:setup", argv)) return;
   const installDir = dirname(process.execPath);
   const input = compiledCommandInputFromArgv("meta:setup", argv);
@@ -50,6 +50,7 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       ...(projectResultKeys === undefined ? {} : { projectResultKeys }),
       ...(jqExpression === undefined ? {} : { jqExpression }),
       command: setupSpec.id,
+      ...(signal === undefined ? {} : { signal }),
       invocation: getActiveCommandInvocation() ?? {
         commandId: setupSpec.id,
         argv: input.argv,

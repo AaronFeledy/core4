@@ -205,8 +205,9 @@ describe("valkey service type — scenario: Valkey + lando valkey-cli tooling", 
     expect(cache.endpoints).toEqual([
       { _tag: "internal", port: 6379, protocol: "tcp", name: "cache", primary: true },
     ]);
-    expect(cache.storage).toHaveLength(1);
-    expect(cache.storage[0]?.store).toBe("myapp-valkey-data");
+    const volumes = cache.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-valkey-data");
     expect(cache.healthcheck?.kind).toBe("command");
     expect(cache.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6379"]);
     expect(cache.environment.LANDO_SERVICE_TYPE).toBe("valkey");

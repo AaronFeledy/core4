@@ -155,6 +155,27 @@ const makeInput = (
 };
 
 describe("resolved provider operations", () => {
+  test.each(["start", "stop", "restart"] as const)(
+    "%s checks durable state even with a supplied plan",
+    async (operation) => {
+      const calls: Call[] = [];
+      const error = noPlanError(app, "applied-state.read");
+      const ops = makeResolvedProviderOps({ ...makeInput(calls), beforeMutation: () => Effect.fail(error) });
+      const failure = await Effect.runPromise(ops[operation]({ ...target, plan }).pipe(Effect.flip));
+      expect(failure).toBe(error);
+      expect(calls).toEqual([]);
+    },
+  );
+
+  test("inspect does not use the strict mutation guard", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps({
+      ...makeInput(calls),
+      beforeMutation: () => Effect.fail(noPlanError(app, "applied-state.read")),
+    });
+    expect(await Effect.runPromise(ops.inspect({ ...target, plan }))).toMatchObject({ status: "running" });
+    expect(calls.map((call) => call.name)).toEqual(["before", "inspect"]);
+  });
   test("secret read-back never invokes the runtime-starting before hook", async () => {
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps(makeInput(calls));

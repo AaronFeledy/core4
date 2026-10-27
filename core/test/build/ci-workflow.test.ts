@@ -1,5 +1,6 @@
-import { readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
@@ -67,10 +68,20 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(26);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(27);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
+    const signalJob = findIndentedBlock(
+      findIndentedBlock(workflow, "jobs"),
+      "process-signal-tests-darwin",
+      2,
+    );
+    const signalCodegen = signalJob.indexOf("run: bun run codegen");
+    const signalTests = signalJob.indexOf("run: bun test core/test/cli/process-signals.test.ts");
+    expect(signalJob).toContain("needs.selection.outputs.profile == 'providers'");
+    expect(signalCodegen).toBeGreaterThanOrEqual(0);
+    expect(signalTests).toBeGreaterThan(signalCodegen);
     const bundledCodegen = findIndentedBlock(findIndentedBlock(workflow, "jobs"), "bundled-codegen", 2);
     const catalog = bundledCodegen.indexOf("run: bun run codegen:tomcat-catalog");
     const providerImages = bundledCodegen.indexOf("run: bun run codegen:provider-images");
@@ -271,7 +282,9 @@ describe("ci workflow", () => {
     expect(providerLandoE2e).toContain('echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"');
     expect(providerLandoE2e).toContain("          LANDO_CONFIG__default_provider_id: lando");
     expect(providerLandoE2e).toContain("      - name: Run live integration suites");
-    expect(providerLandoE2e).toContain("          bun test core/test/live");
+    expect(providerLandoE2e).toContain(
+      '          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts',
+    );
     expect(providerLandoE2e).not.toContain("LANDO_MVP_BINARY_PATH");
     expect(providerLandoE2e).not.toContain("core/test/scenario");
     expect(providerLandoE2e).toContain("      - name: Teardown Podman");
@@ -1095,6 +1108,9 @@ describe("ci workflow", () => {
       "    needs: [selection, build-linux-x64, runtime-bundle-linux-x64, container-helper]",
     );
     expect(providerIntegration).toContain("        runs-on: [ubuntu-26.04]");
+    expect(providerIntegration).toContain("        suite: [providers, services]");
+    expect(providerIntegration).toContain("      fail-fast: false");
+    expect(providerIntegration).toContain("          LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}");
     expect(providerIntegration).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(providerIntegration).toContain("    timeout-minutes: 35");
     expect(providerIntegrationGate).toContain(
@@ -1201,7 +1217,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("      - name: Restore binary executable bit");
     expect(providerIntegration).toContain("        run: chmod +x dist/lando");
     expect(providerIntegration).toContain(
-      "          bun test core/test/live | tee /tmp/lando-provider-test-logs/core-live.log",
+      "          bun test core/test/live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log",
     );
     expect(providerIntegration).not.toContain("LANDO_MVP_BINARY_PATH");
     expect(providerIntegration).toContain(
@@ -1236,12 +1252,15 @@ describe("ci workflow", () => {
     );
     expect(providerIntegration).toContain("        if: always()");
     expect(providerIntegration).toContain("      - name: Collect provider diagnostics");
-    expect(providerIntegration).toContain("        if: failure()");
+    expect(providerIntegration).toContain("        if: failure() || cancelled()");
     expect(providerIntegration).toContain('          journalctl --no-pager --since "-30 minutes"');
     expect(providerIntegration).toContain("      - name: Upload provider integration diagnostics");
     expect(providerIntegration).toContain("        uses: actions/upload-artifact@v6");
     expect(providerIntegration).toContain(
-      "          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}",
+      "          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}-${{ matrix.suite }}",
+    );
+    expect(providerIntegration).toContain(
+      "provider-integration-linux-x64/${{ matrix.runs-on }}/${{ matrix.suite }} completed in",
     );
     expect(providerIntegration).toContain("          if-no-files-found: ignore");
     expect(providerIntegration).not.toContain("--silent");
@@ -1262,6 +1281,74 @@ describe("ci workflow", () => {
       providerIntegration.indexOf("Collect provider diagnostics"),
     );
   });
+
+  test.skipIf(process.platform === "win32")(
+    "partitions all Linux integration commands and propagates a failed suite",
+    async () => {
+      const jobs = findIndentedBlock(await readWorkflow(), "jobs");
+      const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
+      const step = providerIntegration.slice(
+        providerIntegration.indexOf("      - name: Run provider integration tests"),
+        providerIntegration.indexOf("      - name: Teardown Lando runtime"),
+      );
+      const runBlock = step.split("        run: |\n")[1];
+      if (runBlock === undefined) throw new Error("Missing integration command dispatcher");
+      const script = runBlock.replace(/^ {10}/gm, "");
+      const root = await mkdtemp(join(tmpdir(), "lando-ci-provider-suites-"));
+      try {
+        const runSuite = async (suite: string, bunExit = 0) => {
+          const receipt = join(root, `${suite}-${bunExit}.txt`);
+          const stream = join(root, `${suite}-${bunExit}-stream.txt`);
+          const stubs = [
+            "mkdir() { :; }",
+            'tee() { cat >> "$TEST_STREAM"; }',
+            'bun() { printf "%s\\n" "$*" >> "$TEST_RECEIPT"; echo "simulated Bun stderr" >&2; return "${TEST_BUN_EXIT_CODE:-0}"; }',
+          ].join("\n");
+          const proc = Bun.spawn(["/bin/bash", "-e", "-o", "pipefail", "-c", `${stubs}\n${script}`], {
+            cwd: root,
+            env: {
+              ...process.env,
+              LANDO_PROVIDER_TEST_SUITE: suite,
+              TEST_RECEIPT: receipt,
+              TEST_STREAM: stream,
+              TEST_BUN_EXIT_CODE: String(bunExit),
+            },
+            stdout: "ignore",
+            stderr: "pipe",
+          });
+          const [status, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+          return {
+            status,
+            stderr,
+            stream: (await Bun.file(stream).exists()) ? await Bun.file(stream).text() : "",
+            commands: (await Bun.file(receipt).exists())
+              ? (await Bun.file(receipt).text()).trim().split("\n")
+              : [],
+          };
+        };
+        const providers = await runSuite("providers");
+        expect(providers.status).toBe(0);
+        expect(providers.commands).toEqual([
+          "test core/test/live",
+          "test plugins/provider-lando/test/*.integration.test.ts",
+          "test plugins/provider-docker/test/*.integration.test.ts",
+        ]);
+        const services = await runSuite("services");
+        expect(services.status).toBe(0);
+        expect(services.commands).toEqual(["test plugins/service-lando/test/*.integration.test.ts"]);
+        const failed = await runSuite("providers", 23);
+        expect(failed.status).toBe(23);
+        expect(failed.commands).toEqual(["test core/test/live"]);
+        expect(failed.stream).toContain("simulated Bun stderr");
+        const unknown = await runSuite("unknown");
+        expect(unknown.status).toBe(1);
+        expect(unknown.commands).toEqual([]);
+        expect(unknown.stderr).toContain("Unknown provider test suite: unknown");
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("gates linux-x64 provider integration with a success-path platform-readiness doctor", async () => {
     // Given / When

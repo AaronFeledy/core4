@@ -7,7 +7,7 @@ import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { EventsPlan } from "./landofile-events.ts";
 import { LogSource } from "./log-source.ts";
-import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan } from "./mounts.ts";
+import { DataStorePlan, MountPlan } from "./mounts.ts";
 import {
   type AuthoredNetworkPlan,
   CertificatePlan,
@@ -21,6 +21,7 @@ import {
   ScanPlan,
 } from "./networking.ts";
 import {
+  AbsoluteContainerPath,
   AbsolutePath,
   AppId,
   CommandSpec,
@@ -33,6 +34,41 @@ import {
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.
+
+export const ServiceHomePlan = Schema.Union([
+  Schema.Struct({
+    state: Schema.Literal("persisted").annotate({ description: "Lando generated a persistent home store." }),
+    target: AbsoluteContainerPath.annotate({ description: "Resolved home directory inside the container." }),
+    store: Schema.String.annotate({ description: "Generated home store name." }),
+    user: Schema.optionalKey(Schema.String).annotate({
+      description: "User principal whose home is persisted, when known.",
+    }),
+  }),
+  Schema.Struct({
+    state: Schema.Literal("authored").annotate({
+      description: "An authored mount already covers the home directory.",
+    }),
+    target: AbsoluteContainerPath.annotate({ description: "Resolved home directory inside the container." }),
+    mount: Schema.Literals(["volume", "bind", "tmpfs"]).annotate({
+      description: "Kind of authored mount at the home target.",
+    }),
+  }),
+  Schema.Struct({
+    state: Schema.Literal("disabled").annotate({ description: "Home persistence was explicitly disabled." }),
+  }),
+  Schema.Struct({
+    state: Schema.Literal("unknown").annotate({
+      description: "No home store can be planned from the declared image identity.",
+    }),
+    reason: Schema.Literals(["custom-image", "no-identity", "undeclared-user"]).annotate({
+      description: "Why the home directory is unknown.",
+    }),
+    user: Schema.optionalKey(Schema.String).annotate({
+      description: "User principal whose home is unknown, when known.",
+    }),
+  }),
+]).annotate({ identifier: "ServiceHomePlan", description: "Resolved service home persistence status." });
+export type ServiceHomePlan = typeof ServiceHomePlan.Type;
 
 const ServicePlanFields = {
   name: ServiceName,
@@ -48,10 +84,14 @@ const ServicePlanFields = {
   entrypoint: Schema.optionalKey(CommandSpec),
   environment: Environment,
   user: Schema.optionalKey(Schema.String),
+  home: Schema.optionalKey(ServiceHomePlan).annotate({
+    description: "Resolved home status, always set by the planner; optional for hand-built plans.",
+  }),
   workingDirectory: Schema.optionalKey(PortablePath),
-  appMount: Schema.optionalKey(AppMountPlan),
-  mounts: Schema.Array(MountPlan),
-  storage: Schema.Array(DataStoreMountPlan),
+  mounts: Schema.Array(MountPlan).annotate({
+    description:
+      "Every container mount, sorted shallow to deep with unique targets; the app-source bind has role app.",
+  }),
   endpoints: Schema.Array(EndpointPlan),
   routes: Schema.Array(RouteRef),
   dependsOn: Schema.Array(DependencyPlan),
@@ -91,10 +131,6 @@ export const ServicePlan = Schema.Union([
   }),
 ]);
 export type ServicePlan = typeof ServicePlan.Type;
-
-// Shared file-sync naming and mount-target contract used by the planner and providers.
-export const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
-  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 export const LANDO_SHARED_CROSS_APP_NETWORK = "lando_bridge_network" as const;
 
@@ -289,15 +325,6 @@ export const landoServiceNetworkAttachments = (
   }
   return attachments;
 };
-
-export const sameAppMountTarget = (
-  appMount: ServicePlan["appMount"],
-  mount: ServicePlan["mounts"][number],
-): boolean =>
-  appMount !== undefined &&
-  mount.type === "bind" &&
-  mount.source === appMount.source &&
-  mount.target === appMount.target;
 
 /**
  * One file-sync session entry on an `AppPlan`.

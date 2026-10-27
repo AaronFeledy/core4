@@ -125,6 +125,16 @@ describe("doctor progress outcomes", () => {
       appConfigOutcome({
         app: "a",
         file: "f",
+        valid: true,
+        violations: [
+          { rule: "env-file.literal", severity: "warning", path: ["env_file", 0], message: "literal" },
+        ],
+      }),
+    ).toEqual({ summary: "app-config · 1 warning", warned: true });
+    expect(
+      appConfigOutcome({
+        app: "a",
+        file: "f",
         valid: false,
         violations: [{ rule: "landofile.validation", severity: "error", path: ["x"], message: "m" }],
       }),

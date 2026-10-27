@@ -18,7 +18,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 
-const capabilities = TestRuntimeProvider.capabilities;
+const capabilities = { ...TestRuntimeProvider.capabilities, artifactBuild: true };
 
 const planEffect = (appRoot: string, landofile: LandofileShape) => {
   const planner = AppPlannerLayer.layer.pipe(
@@ -107,14 +107,17 @@ describe("Planned-user ownership of volume-backed data trees", () => {
 
   test("Given solr with no authored user, When planned, Then no ownership step is added", async () => {
     await withAppRoot(async (appRoot) => {
-      const appPlan = await plan(appRoot, landofile({ search: { type: "solr", cores: ["default"] } }));
+      const appPlan = await plan(
+        appRoot,
+        landofile({ search: { type: "solr", cores: ["default"], home: false } }),
+      );
       expect(ownershipCommand(appPlan, "search")).toBe("");
     });
   });
 
   test("Given solr running as the identity the image seeds, When planned, Then no ownership step is added", async () => {
     await withAppRoot(async (appRoot) => {
-      const appPlan = await plan(appRoot, landofile({ search: { type: "solr", user: "solr" } }));
+      const appPlan = await plan(appRoot, landofile({ search: { type: "solr", user: "solr", home: false } }));
       expect(ownershipCommand(appPlan, "search")).toBe("");
     });
   });
@@ -160,16 +163,24 @@ describe("Planned-user ownership of volume-backed data trees", () => {
     });
   });
 
-  test("Given a Landofile-supplied image and a named user, When planned, Then the refusal names the image option", async () => {
-    await withAppRoot(async (appRoot) => {
-      const failure = await planFailure(
-        appRoot,
-        landofile({
-          search: { type: "solr", image: "example/custom-solr:1", user: "solr", home: { path: "/tmp/h" } },
-        }),
-      );
-      expect(failure).toBeInstanceOf(DataTreeOwnershipCapabilityError);
-      expect(failure).toMatchObject({ option: "services.search.image" });
-    });
-  });
+  test.each([undefined, { path: "/tmp/h" }])(
+    "Given a Landofile-supplied image and home %j, When planned, Then data-tree ownership still refuses the named user",
+    async (home) => {
+      await withAppRoot(async (appRoot) => {
+        const failure = await planFailure(
+          appRoot,
+          landofile({
+            search: {
+              type: "solr",
+              image: "example/custom-solr:1",
+              user: "solr",
+              ...(home === undefined ? {} : { home }),
+            },
+          }),
+        );
+        expect(failure).toBeInstanceOf(DataTreeOwnershipCapabilityError);
+        expect(failure).toMatchObject({ option: "services.search.image" });
+      });
+    },
+  );
 });

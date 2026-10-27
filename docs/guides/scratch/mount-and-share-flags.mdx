@@ -17,7 +17,7 @@ shared access to your files, not an isolated copy. The separate
 lando scratch:start --from lamp --yes --detach --mount-cwd
 ```
 
-`--mount-cwd` takes an optional container path. A bare flag is valid: the CLI rewrites it to `--mount-cwd=` and rebinds the primary app mount to `$PWD` (usually `/app`). To verify the mount, find the scratch with `lando scratch:list`, then run
+`--mount-cwd` takes an optional container path. A bare flag is valid: the CLI rewrites it to `--mount-cwd=` and binds `$PWD` wherever the app root was bound. That means the app mount (usually `/app`) and every mount whose source is a relative path in the Landofile, in every service. To verify the mount, find the scratch with `lando scratch:list`, then run
 `lando scratch:info <id>` and check its mount source and target.
 
 ## Mount `$PWD`
@@ -27,7 +27,7 @@ lando scratch:start --from lamp --yes --detach --mount-cwd
 lando scratch:start --from lamp --yes --detach --mount-cwd=/srv/site
 ```
 
-An explicit path adds a bind mount at that container path and leaves the primary app mount alone.
+An explicit path binds `$PWD` at that container path in the primary service and replaces whatever was planned exactly there. Every other mount stays as planned. Pass the app mount's own path (`--mount-cwd=/app`) to replace only that mount, so other services keep their app-relative mounts.
 
 The same mount controls apply to recipe scratches and forks. `lando run` defaults to mounting `$PWD`; pass `--no-mount` to skip it. See [Run a command in a disposable scratch](./disposable-tool-runner.mdx).
 
@@ -58,6 +58,17 @@ lando scratch:start --fork --detach --isolate=full
 Do not combine `--mount-cwd` with `--isolate=full`. That pair fails with `ScratchIsolationConflictError` and creates nothing.
 
 On a fork, `--mount-cwd` defaults isolation to `cwd` unless you set `--isolate`.
+
+Isolation decides where the app mount and every mount with a relative source, such as `source: ./assets`, point:
+
+| Mode | App mount and relative mounts |
+| --- | --- |
+| `full` | The scratch's own copy of your app. |
+| `baked` on a recipe | The recipe's scaffold, which Lando keeps in its own directory. |
+| `baked` on a fork | Not mounted. |
+| `cwd` | The directory you ran the command from, in every service. |
+
+Mounts with absolute sources pass through in every mode. Under `full` and recipe `baked`, a relative mount that leads outside the scratch's directory, for example `../shared` or a symlink pointing elsewhere, is not mounted, and Lando warns with the service and path. Use an absolute source when a scratch really needs that directory.
 
 ## Control a full fork copy
 

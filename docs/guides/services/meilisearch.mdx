@@ -201,10 +201,9 @@ services:
   search:
     type: meilisearch
     image: getmeili/meilisearch:v1.11.3
-    home: false
 ```
 
-`home: false` disables home-directory persistence for the custom image. Without it or an explicit `home.path`, Lando can't infer the home and planning fails. The separate `/meili_data` volume still persists index data.
+With your own `image:`, Lando plans no home store for `search`. The separate `/meili_data` volume still persists index data.
 
 After an authorized version change and any required migration, run `lando rebuild`, then repeat the health and `/version` checks. Also rerun a search; a running container alone doesn't prove the data is usable.
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, ServiceName, serviceAppMount } from "@lando/sdk/schema";
 import type { ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
 
 import { appMountTarget } from "../src/services/_volume-helpers.ts";
@@ -116,10 +116,12 @@ describe("effective app mount paths", () => {
       // When: the service is composed through the real service features and authored wrapper.
       const plan = await composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata });
       // Then: app-source intent has no mirror bind, with matching env and default cwd.
-      expect(String(plan.appMount?.target)).toBe("/site");
-      expect(plan.mounts.some((mount) => mount.type === "bind" && mount.source === "/srv/apps/myapp")).toBe(
-        false,
-      );
+      expect(String(serviceAppMount(plan)?.target)).toBe("/site");
+      expect(
+        plan.mounts.some(
+          (mount) => mount.type === "bind" && mount.role !== "app" && mount.source === "/srv/apps/myapp",
+        ),
+      ).toBe(false);
       expect(plan.workingDirectory === undefined ? undefined : String(plan.workingDirectory)).toBe(
         "cwd" in entry ? entry.cwd : "/site",
       );
@@ -199,8 +201,10 @@ describe("effective app mount paths", () => {
       metadata,
     });
     // Then: the app bind wins over the Compose volume.
-    expect(String(plan.appMount?.target)).toBe("/site");
-    expect(plan.mounts).toEqual([]);
+    expect(serviceAppMount(plan)).toBeUndefined();
+    expect(plan.mounts).toMatchObject([
+      { type: "bind", source: "/srv/apps/myapp/alternate", target: "/site" },
+    ]);
   });
 });
 

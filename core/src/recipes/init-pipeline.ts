@@ -1,4 +1,8 @@
 import { join } from "node:path";
+import {
+  assessTranslateExpectations,
+  orderTranslateDiagnostics,
+} from "@lando/engine/planner/home-expectations";
 import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
@@ -228,7 +232,11 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
   const encoded = yield* Effect.suspend(() => encode({ context, fragment: context })).pipe(
     Effect.catch(() => Effect.fail(blocked("encode"))),
   );
-  const diagnostics = [...translated.diagnostics, ...encoded.diagnostics].map((diagnostic) => ({
+  const assessmentDiagnostics = yield* assessTranslateExpectations(translated.expectations, context);
+  const diagnostics = orderTranslateDiagnostics(
+    [...translated.diagnostics, ...encoded.diagnostics, ...assessmentDiagnostics],
+    [input.sourceId],
+  ).map((diagnostic) => ({
     ...diagnostic,
     message: redact(diagnostic.message),
     ...(diagnostic.remediation === undefined ? {} : { remediation: redact(diagnostic.remediation) }),

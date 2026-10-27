@@ -34,7 +34,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "mongo:7" },
   environment: {},
   mounts: [],
-  storage: [],
   routes: [],
   dependsOn: [],
   hostAliases: [],
