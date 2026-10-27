@@ -3,7 +3,9 @@ import { Schema } from "effect";
 import { DeprecationNotice } from "./deprecation.ts";
 import { ChoicesFrom, PromptChoice, PromptType, PromptValidate } from "./prompt.ts";
 import { RecipeId, RecipeVersion } from "./recipe-identity.ts";
+import { RecipeOptionValue } from "./recipe-identity.ts";
 import { RecipeMigration, RecipeSnapshot } from "./recipe-snapshot.ts";
+import type { RecipeSource } from "./recipe-source.ts";
 
 export { RecipeId, RecipeVersion } from "./recipe-identity.ts";
 
@@ -67,7 +69,7 @@ export const RecipePrompt = Schema.Struct({
   name: Schema.String,
   type: PromptType,
   message: Schema.String,
-  default: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number, Schema.Boolean])),
+  default: Schema.optionalKey(RecipeOptionValue),
   when: Schema.optionalKey(Schema.String),
   validate: Schema.optionalKey(PromptValidate),
   choices: Schema.optionalKey(Schema.Array(PromptChoice)),
@@ -300,7 +302,7 @@ export const RecipeManifest = Schema.Struct({
 export type RecipeManifest = typeof RecipeManifest.Type;
 
 /** Author-facing recipe value — what a programmatic `recipe.ts` default-exports. */
-export type Recipe = RecipeManifest;
+export type Recipe = RecipeSource;
 
 /** Context passed to a `recipe.ts` factory. */
 export interface RecipeContext {
