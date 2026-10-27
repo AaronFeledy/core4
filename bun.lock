@@ -53,6 +53,7 @@
         "uqr": "^0.1.3",
       },
       "devDependencies": {
+        "@lando/sql": "workspace:*",
         "@types/semver": "^7.7.1",
       },
     },

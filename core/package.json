@@ -105,7 +105,8 @@
     "uqr": "^0.1.3"
   },
   "devDependencies": {
-    "@types/semver": "^7.7.1"
+    "@types/semver": "^7.7.1",
+    "@lando/sql": "workspace:*"
   },
   "scripts": {
     "build": "bun run build:manifest && bun run build:compile",

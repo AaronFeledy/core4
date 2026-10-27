@@ -56,6 +56,22 @@ describe("CI selection", () => {
     ]);
   });
 
+  test.each(["failure", "cancelled", "skipped"])(
+    "requires native Darwin signal %s to fail runtime CI",
+    (result) => {
+      expect(
+        resultFailures(selectPaths(["core/src/cli/process-signals.ts"]), {
+          "process-signal-tests-darwin": { result },
+        }),
+      ).toEqual([`process-signal-tests-darwin: ${result}`]);
+      expect(
+        resultFailures(selectPaths(["docs/guides/start.mdx"]), {
+          "process-signal-tests-darwin": { result: "skipped" },
+        }),
+      ).toEqual([]);
+    },
+  );
+
   test("allows only policy-excluded skips and never hides failures or unknown jobs", () => {
     const selection = selectPaths(["docs/intro.md"]);
     expect(resultFailures(selection, { "build-linux-x64": { result: "skipped" } })).toEqual([]);
@@ -185,6 +201,7 @@ describe("CI selection", () => {
         "unit-tests-linux-x64-shard",
         "unit-tests-linux-x64",
         "test-isolation-linux-x64",
+        "process-signal-tests-darwin",
         "perf-budget-linux-x64",
       ];
       const expected = { docs, guides, runtime, broad: Object.keys(CI_JOB_TIERS) }[profile];
