@@ -77,6 +77,7 @@ export const runExport = Effect.fn("Sql.export")(function* (
     readonly env: Environment;
     readonly file: string;
     readonly compression: DumpCompression;
+    readonly compressionLevel?: number;
   },
 ) {
   const app = AppId.make(input.plan.id);
@@ -84,6 +85,7 @@ export const runExport = Effect.fn("Sql.export")(function* (
   return yield* withHostDumpCompression({
     path: input.file,
     compression: input.compression,
+    ...(input.compressionLevel === undefined ? {} : { compressionLevel: input.compressionLevel }),
     direction: "export",
     transfer: Effect.fn("Sql.export.transfer")(function* (workingPath: string) {
       const path = AbsolutePath.make(workingPath);

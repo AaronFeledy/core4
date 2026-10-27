@@ -10,8 +10,8 @@ import {
 } from "./compiled-binary-licenses.ts";
 
 export const BUN_LICENSE_PIN = {
-  version: "1.4.2",
-  sha256: "b9caf52728691b4057e371232c221a132883198be2f3d2ddf92c90404c984b1a",
+  version: "1.4.3",
+  sha256: "056696884250b0d682365260cf1487a6501b1665a343ec60e23a1e647043c572",
 } as const;
 
 export const verifyBunLicensePin = (version: string, text: string): void => {

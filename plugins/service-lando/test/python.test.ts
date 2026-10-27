@@ -89,7 +89,7 @@ describe("python:3.12 ServiceType", () => {
     expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
     expect(String(serviceAppMount(plan)?.target)).toBe("/app");
     expect(serviceAppMount(plan)?.readOnly).toBe(false);
-    expect(serviceAppMount(plan)?.excludes).toContain("__pycache__");
+    expect(serviceAppMount(plan)?.excludes).toEqual(expect.arrayContaining(["__pycache__", ".venv"]));
 
     expect(
       plan.mounts.filter(

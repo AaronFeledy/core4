@@ -166,7 +166,7 @@ ${matrixInclude}
 
       - name: Setup Go for Linux Podman source build
         if: startsWith(matrix.hostKey, 'linux-')
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v5.5.0
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
         with:
           go-version: 1.25.6
 
@@ -209,7 +209,7 @@ ${matrixInclude}
 
       - name: Download assembled bundles
         if: needs.classify.outputs.state == 'publish_new'
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.downloadArtifact} # v5.0.0
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.downloadArtifact} # v8.0.2
         with:
           pattern: runtime-bundle-*
           merge-multiple: true

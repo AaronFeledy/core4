@@ -1,8 +1,8 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
 import { Duration, Effect, Result, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
-import { layer, layerWith } from "../src/live.ts";
+import { layer } from "../src/live.ts";
 import { NetworkTrust } from "../src/network-trust.ts";
 
 const decoded = new TextEncoder().encode("decoded-body");
@@ -14,20 +14,11 @@ const encodings = [
   { encoding: "unknown", bytes: decoded },
 ] as const;
 
-const proxyKeys = ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"] as const;
-afterEach(() => {
-  for (const key of proxyKeys) Reflect.deleteProperty(process.env, key);
-});
-
-const clearAmbientProxy = () => {
-  for (const key of proxyKeys) Reflect.deleteProperty(process.env, key);
-};
-
 for (const explicitNoProxy of [false, true]) {
-  test.each([...encodings])(
+  // Both Bun fetch and node:http reject mapped IPv6 sockets on Windows with EADDRNOTAVAIL.
+  test.skipIf(process.platform === "win32" && explicitNoProxy).each([...encodings])(
     `decodes $encoding like Bun fetch with explicitNoProxy=${explicitNoProxy}`,
     async ({ encoding, bytes }) => {
-      clearAmbientProxy();
       // Given compressed wire bytes and unchanged content headers at a local endpoint.
       const server = Bun.serve({
         hostname: "127.0.0.1",
@@ -43,12 +34,12 @@ for (const explicitNoProxy of [false, true]) {
       });
       const url = explicitNoProxy ? `http://[::ffff:127.0.0.1]:${server.port}/` : server.url.href;
       try {
-        const baseline = await fetch(server.url, {
+        const baseline = await fetch(url, {
           signal: AbortSignal.timeout(1000),
-          proxy: undefined,
-        } as RequestInit);
+          proxy: false,
+        });
         const expected = new Uint8Array(await baseline.arrayBuffer());
-        // When the production client selects loopback or explicit NO_PROXY direct transport.
+        // When the production fetch selects loopback or explicit NO_PROXY bypass.
         const actual = await Effect.runPromise(
           Effect.gen(function* () {
             const client = yield* HttpClient.HttpClient;
@@ -56,7 +47,7 @@ for (const explicitNoProxy of [false, true]) {
             const chunks = yield* Stream.runCollect(response.stream);
             return { bytes: Array.from(chunks).flatMap((chunk) => [...chunk]), headers: response.headers };
           }).pipe(
-            Effect.provide(layerWith()),
+            Effect.provide(layer),
             Effect.provideService(NetworkTrust, {
               proxy: { http: "http://unreachable.invalid:3128", noProxy: explicitNoProxy ? ["*"] : [] },
               caPems: [],
@@ -68,7 +59,7 @@ for (const explicitNoProxy of [false, true]) {
         expect(actual.bytes).toEqual([...expected]);
         expect(actual.bytes).toEqual([...decoded]);
         for (const name of ["content-encoding", "content-length", "x-retained"] as const) {
-          expect(actual.headers[name]).toBe(baseline.headers.get(name) ?? undefined);
+          expect<string | undefined>(actual.headers[name]).toBe(baseline.headers.get(name) ?? undefined);
         }
       } finally {
         server.stop(true);
@@ -81,7 +72,6 @@ for (const bytes of [new Uint8Array(), new Uint8Array([255, 255, 255, 255])]) {
   test.each(["gzip", "deflate", "br"])(
     `bounds invalid/empty %s body with ${bytes.length} wire bytes`,
     async (encoding) => {
-      clearAmbientProxy();
       // Given an empty or malformed encoded response with a finite wire body.
       const server = Bun.serve({
         hostname: "127.0.0.1",
@@ -94,8 +84,8 @@ for (const bytes of [new Uint8Array(), new Uint8Array([255, 255, 255, 255])]) {
       try {
         const baseline = await fetch(server.url, {
           signal: AbortSignal.timeout(1000),
-          proxy: undefined,
-        } as RequestInit)
+          proxy: false,
+        })
           .then((response) => response.arrayBuffer())
           .then(
             (body) => ({ ok: true, bytes: [...new Uint8Array(body)] }),
@@ -114,7 +104,7 @@ for (const bytes of [new Uint8Array(), new Uint8Array([255, 255, 255, 255])]) {
         if (Result.isSuccess(result)) {
           expect(Array.from(result.success).flatMap((chunk) => [...chunk])).toEqual(baseline.bytes);
         } else {
-          expect((result.failure as { _tag?: string })._tag).not.toBe("TimeoutError");
+          expect(result.failure._tag).not.toBe("TimeoutError");
           expect(baseline.ok).toBe(false);
         }
       } finally {

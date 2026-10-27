@@ -3678,9 +3678,73 @@ describe("AppPlannerLayer.layer", () => {
       );
       const web = appPlan.services[ServiceName.make("web")];
       expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(
-        expect.arrayContaining([...DEFAULT_APP_MOUNT_EXCLUDES, "__pycache__", "dist"]),
+        expect.arrayContaining([...DEFAULT_APP_MOUNT_EXCLUDES, "__pycache__", ".venv", "dist"]),
       );
       expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toContain("__pycache__");
+    });
+  });
+
+  test("python venv overlays are service-owned and isolated between services", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        {
+          name: "pyapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("web")]: {
+              type: "python:3.12",
+              home: false,
+            },
+            [ServiceName.make("worker")]: {
+              type: "python:3.12",
+              home: false,
+            },
+          },
+        },
+        providerLandoCapabilities,
+      );
+      const web = appPlan.services[ServiceName.make("web")];
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual([
+        ...DEFAULT_APP_MOUNT_EXCLUDES,
+        "__pycache__",
+        ".venv",
+      ]);
+      const venvStores = ["web", "worker"].map((name) => {
+        const mount = appPlan.services[ServiceName.make(name)]?.mounts.find(
+          (entry) => entry.type === "volume" && entry.target === "/app/.venv",
+        );
+        expect(mount).toMatchObject({ type: "volume", origin: "derived", readOnly: false });
+        if (mount?.type !== "volume") throw new Error("Expected a venv overlay");
+        expect(appPlan.stores.find((store) => store.name === mount.store)).toMatchObject({
+          scope: "service",
+        });
+        return mount.store;
+      });
+      expect(new Set(venvStores).size).toBe(2);
+    });
+  });
+
+  test("python appMount.includes opts the host venv back in without affecting other services", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "pyapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            type: "python:3.12",
+            home: false,
+            appMount: { target: "/app", includes: [".venv"] },
+          },
+          [ServiceName.make("worker")]: { type: "python:3.12", home: false },
+        },
+      });
+      const web = appPlan.services[ServiceName.make("web")];
+      const worker = appPlan.services[ServiceName.make("worker")];
+      expect(serviceAppMount(web ?? { mounts: [] })?.includes).toContain(".venv");
+      expect(web?.mounts.some((mount) => mount.target === "/app/.venv")).toBe(false);
+      expect(worker?.mounts).toContainEqual(
+        expect.objectContaining({ type: "volume", target: "/app/.venv" }),
+      );
     });
   });
 

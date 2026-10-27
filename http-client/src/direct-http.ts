@@ -16,7 +16,7 @@ export interface DirectHttpInit {
 
 export type DirectHttpTransport = (url: URL, init: DirectHttpInit) => Promise<Response>;
 
-/** Bun fetch cannot suppress ambient proxies; Node's request API can go direct without global mutation. */
+/** Dial an explicit address while preserving the URL's Host, SNI, and certificate identity. */
 export const directHttpRequest: DirectHttpTransport = (url, init) =>
   new Promise((resolve, reject) => {
     const identity = url.hostname.replace(/^\[|\]$/gu, "");

@@ -72,6 +72,7 @@ export const sidebar = [
           { label: "Run the Backdrop recipe", slug: "guides/recipes/backdrop-workflow" },
           { label: "Run the WordPress recipe", slug: "guides/recipes/wordpress-workflow" },
           { label: "Run Vite HMR with WordPress", slug: "guides/recipes/wordpress-vite" },
+          { label: "Run a WordPress multisite network", slug: "guides/recipes/wordpress-multisite" },
           { label: "Run the Drupal recipe", slug: "guides/recipes/drupal-workflow" },
           { label: "Run the Drupal CMS recipe", slug: "guides/recipes/drupal-cms-workflow" },
           { label: "Run the Joomla recipe", slug: "guides/recipes/joomla-workflow" },

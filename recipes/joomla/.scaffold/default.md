@@ -37,7 +37,7 @@ For day-to-day tooling and database hosts, see [Run the Joomla recipe](/guides/r
 ## 1. scaffold
 
 ```bash
-lando init --recipe joomla --name=my-joomla-mysql --yes
+lando init --recipe joomla --name=my-joomla-app --yes
 ```
 
 ## 2. start

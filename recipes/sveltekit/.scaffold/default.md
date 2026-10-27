@@ -51,7 +51,7 @@ lando npm install
 ## 1. scaffold
 
 ```bash
-lando init --recipe sveltekit --name=my-sveltekit-auto --yes
+lando init --recipe sveltekit --name=my-sveltekit --yes
 ```
 
 ## 2. start

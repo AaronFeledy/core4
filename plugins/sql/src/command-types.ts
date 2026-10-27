@@ -27,6 +27,7 @@ export type DbCommandInput = {
   readonly snapshotId?: string;
   readonly label?: string;
   readonly compression?: "gzip" | "zstd" | "none";
+  readonly compressionLevel?: number;
   readonly fromApp?: string;
   readonly fromPath?: string;
   readonly fromService?: string;

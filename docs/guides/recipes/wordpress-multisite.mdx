@@ -1,0 +1,179 @@
+---
+id: wordpress-multisite
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, wordpress, multisite]
+---
+
+# Run a WordPress multisite network on subdomains
+
+A subdomain network puts every site on its own host, like `blog.wp-network.lndo.site`, so the proxy has to send hostnames you have not invented yet to one Apache. Add a wildcard route, turn on `.htaccess`, and let WP-CLI build the network.
+
+Run the commands in a POSIX-compatible host shell, such as Bash or Zsh. Start with a working Lando setup and [trust the local HTTPS certificates](../subsystems/certificates-mkcert.mdx). This example creates a new network; it does not convert an existing WordPress site.
+
+Lando's proxy must use ports 80 and 443. After starting the app, check that `lando info` shows `https://wp-network.lndo.site` with no port. If it shows `:8443`, free 80 and 443, then run `lando setup`.
+
+## Route every subdomain to the appserver
+
+Start from the WordPress recipe:
+
+```sh
+lando init --recipe wordpress --name=wp-network --yes
+cd wp-network
+```
+
+Open `.lando.yml` and add `allowOverride` and a second route under the existing `appserver` service. Keep the recipe's other `appserver` keys as they are:
+
+```yaml
+services:
+  appserver:
+    allowOverride: true
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+      - hostname: "*.{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+```
+
+Quote the wildcard hostname, because YAML reads a bare leading `*` as an alias. `allowOverride: true` switches Apache to `AllowOverride All` so WordPress's rewrite rules load; the PHP service already enables `mod_rewrite`. Public DNS answers every `*.lndo.site` name with `127.0.0.1`, subdomains of your app included.
+
+```sh
+lando app:config:lint
+lando start
+lando info
+```
+
+The lint exits clean when the YAML parses and the keys are valid. `lando info` lists `https://*.wp-network.lndo.site` beside `https://wp-network.lndo.site`, which proves the proxy picked up the wildcard. The proxy issues one certificate that covers both names.
+
+## Install the network
+
+Download WordPress and create `wp-config.php` with the database settings and HTTPS handling:
+
+```sh
+lando wp core download
+lando wp config create \
+  --dbname=wp-network \
+  --dbuser=lando \
+  --dbpass=lando \
+  --dbhost=database \
+  --skip-check \
+  --extra-php <<'PHP'
+if ( ( $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' ) === 'https' ) {
+    $_SERVER['HTTPS'] = 'on';
+}
+PHP
+```
+
+Lando's proxy forwards HTTPS requests to Apache over HTTP. The PHP snippet lets WordPress recognize the original HTTPS request. `--extra-php` writes it into the config inside the service, so you don't need to edit a container-owned file from your host. Keep the quotes around `'PHP'` so your host shell leaves `$_SERVER` unchanged.
+
+Check the generated file before installing the network:
+
+```sh
+lando exec appserver -- php -l wp-config.php
+lando exec appserver -- cat wp-config.php
+```
+
+Confirm that the HTTPS snippet appears above the line that loads `wp-settings.php`.
+
+```sh
+lando wp core multisite-install --subdomains \
+  --url='https://wp-network.lndo.site' \
+  --title='WP Network' \
+  --admin_user=admin \
+  --admin_email=admin@example.com \
+  --skip-email
+```
+
+WP-CLI prints the generated admin password once, so save it. It also writes `MULTISITE`, `SUBDOMAIN_INSTALL`, and `DOMAIN_CURRENT_SITE` into `wp-config.php`. It may warn that wildcard DNS is not configured. WordPress runs that check from inside the `appserver` container, not along your browser's path, so trust the host checks at the end instead.
+
+## Add the network rewrite rules
+
+These are the subdomain rules WordPress prints on its Network Setup screen. Write them from the container so file ownership matches the app:
+
+```sh
+lando exec appserver -- sh -c "cat > .htaccess <<'EOF'
+RewriteEngine On
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteBase /
+RewriteRule ^index\.php$ - [L]
+
+# add a trailing slash to /wp-admin
+RewriteRule ^wp-admin$ wp-admin/ [R=301,L]
+
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+RewriteRule ^(wp-(content|admin|includes).*) \$1 [L]
+RewriteRule ^(.*\.php)$ \$1 [L]
+RewriteRule . index.php [L]
+EOF"
+```
+
+The `\$1` escapes keep the host shell from eating the backreferences. Confirm the file has plain `$1`:
+
+```sh
+lando exec appserver -- cat .htaccess
+```
+
+## Create a subsite
+
+```sh
+lando wp site create --slug=blog --title='Team Blog'
+```
+
+WordPress gives new subdomain sites `http://` addresses even when the network runs on HTTPS. Point the new site at HTTPS, using `--url` to pick which site WP-CLI talks to:
+
+```sh
+lando wp --url=blog.wp-network.lndo.site option update home https://blog.wp-network.lndo.site
+lando wp --url=blog.wp-network.lndo.site option update siteurl https://blog.wp-network.lndo.site
+lando wp site list --fields=blog_id,url
+```
+
+The list shows both sites on `https://`. Repeat the two `option update` lines for every site you create.
+
+## Check the subdomains from your host
+
+```sh
+curl -sS https://blog.wp-network.lndo.site/ | grep -o '<title>[^<]*'
+curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' https://nope.wp-network.lndo.site/
+```
+
+If curl reports a certificate error, follow [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx). If it cannot resolve the hostname, see [Resolve lndo.site on this machine](../subsystems/host-proxy.mdx).
+
+The first prints `<title>Team Blog`, which proves the wildcard route, the certificate, and WordPress's host lookup all line up. The second returns `302` to `wp-signup.php` on the main site: an unknown subdomain still reached WordPress, which then decided it does not exist. Open `https://wp-network.lndo.site/wp-admin/network/` to manage the network in a browser.
+
+## Tear down
+
+Destroy removes the containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+```sh
+lando destroy -y
+```
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="wp-network" />
+    </Step>
+    <Step name="check-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"\\*\\.\\{\\{ app\\.name \\}\\}\\.\\{\\{ proxy\\.defaultDomain \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"\\{\\{ app\\.name \\}\\}\\.\\{\\{ proxy\\.defaultDomain \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"allowOverride\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"framework\":\\s*\"wordpress\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"wp\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Run the WordPress recipe](wordpress-workflow.mdx)
+- [Route shorthand](../proxy/route-shorthand.mdx)
+- [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx)
+- [Drupal multisite](drupal-multisite.mdx)

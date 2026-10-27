@@ -27,4 +27,4 @@ the generated tooling or place the application files in the app yourself.
   install WordPress through the generated tooling or by adding files manually.
   Built-in source/template fetch (`postInit: bun install`, git clone) is
   deferred to Beta.
-- The recipe does not configure WordPress multisite or install WP-CLI plugins for you. Its default route supports HTTP and HTTPS through Lando's proxy; complete local CA trust setup for browser-trusted HTTPS.
+- The recipe does not configure WordPress multisite or install WP-CLI plugins for you; to run a subdomain network, follow the [WordPress multisite guide](../../../../../docs/guides/recipes/wordpress-multisite.mdx). Its default route supports HTTP and HTTPS through Lando's proxy; complete local CA trust setup for browser-trusted HTTPS.

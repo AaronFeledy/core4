@@ -83,7 +83,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -102,7 +102,7 @@ jobs:
           bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
 
       - name: Setup Go for Linux Podman source build
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: 1.25.6
 
@@ -230,7 +230,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -249,7 +249,7 @@ jobs:
           bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
 
       - name: Setup Go for Linux Podman source build
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: 1.25.6
 
@@ -377,7 +377,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -442,7 +442,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -507,7 +507,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist
@@ -581,7 +581,7 @@ jobs:
         run: bun run codegen
 
       - name: Download container helper
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: container-helper
           path: core/container-helper/dist

@@ -61,7 +61,7 @@ For the day-to-day path (`django-admin`, `DATABASE_URL` in settings, `runserver`
 ## 1. scaffold
 
 ```bash
-lando init --recipe django --name=my-django-celery --yes
+lando init --recipe django --name=my-django --yes
 ```
 
 ## 2. inspect-config

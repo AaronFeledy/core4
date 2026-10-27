@@ -39,7 +39,7 @@ const ciPlatformFor = (id: string): CiPlatform => {
 };
 
 const renderSourceBuildPrerequisites = (): string => `      - name: Setup Go for Linux Podman source build
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v5.5.0
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
         with:
           go-version: 1.25.6
 
