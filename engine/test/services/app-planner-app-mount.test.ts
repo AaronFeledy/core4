@@ -5,6 +5,7 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { mergeLandofiles } from "@lando/sdk/landofile";
 import {
   LandofileShape,
+  PortablePath,
   type ServiceConfig,
   ServiceName,
   formatValidationIssuePath,
@@ -29,6 +30,29 @@ const planExit = (service: typeof ServiceConfig.Encoded, capabilities = TestRunt
     ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
 };
+
+test.each([
+  { mode: 0o755, octal: "755" },
+  { mode: 0o770, octal: "770" },
+  { mode: 0o1770, octal: "1770" },
+  { mode: 0o2770, octal: "2770" },
+  { mode: 0o3770, octal: "3770" },
+  { mode: 1770, octal: "3352" },
+])("Compose tmpfs numeric bitmask $mode plans as octal $octal", async ({ mode, octal }) => {
+  const exit = await planExit({
+    type: "compose",
+    image: "alpine:3.20",
+    volumes: [{ type: "tmpfs", target: "/run/app", tmpfs: { size: 67108864, mode } }],
+  });
+  if (!Exit.isSuccess(exit)) throw new Error(Cause.pretty(exit.cause));
+  expect(exit.value.services[ServiceName.make("web")]?.mounts).toContainEqual({
+    type: "tmpfs",
+    target: PortablePath.make("/run/app"),
+    readOnly: false,
+    origin: "authored",
+    options: `size=67108864,mode=${octal}`,
+  });
+});
 
 test.each([
   {

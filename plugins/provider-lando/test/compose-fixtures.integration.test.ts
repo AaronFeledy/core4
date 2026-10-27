@@ -9,12 +9,13 @@ import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   bringDown,
   bringUp,
+  exec,
   introspectProviderCapabilities,
   makePodmanApiClient,
   providerLandoCapabilitiesForPlatform,
 } from "@lando/provider-lando";
 import { CapabilityError } from "@lando/sdk/errors";
-import { type AppPlan, landoAppNetworkName, landoAuthoredNetworkName } from "@lando/sdk/schema";
+import { type AppPlan, ServiceName, landoAppNetworkName, landoAuthoredNetworkName } from "@lando/sdk/schema";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -45,6 +46,7 @@ interface FixtureCase {
   readonly service: string;
   readonly seedFiles?: Readonly<Record<string, string>>;
   readonly authoredNetworks?: Readonly<Record<string, readonly string[]>>;
+  readonly statModes?: Readonly<Record<string, string>>;
   readonly assertInspect?: (inspect: unknown, appRoot: string) => void;
 }
 
@@ -53,6 +55,7 @@ const fixtures = [
     id: "long-form-mounts-ports",
     file: "corpus/long-form-mounts-ports.compose.yaml",
     service: "web",
+    statModes: { "/run/app": "1770" },
     assertInspect: (inspect: unknown, appRoot: string) => {
       const hostConfig = field(inspect, "HostConfig");
       expect(field(field(hostConfig, "PortBindings"), "8080/tcp")).toEqual([
@@ -290,6 +293,19 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     expect(field(home, "Name")).toBe(homeStoreName(plan.slug, fixture.service, "root"));
     expect(field(home, "RW")).toBe(true);
     fixture.assertInspect?.(inspect, appRoot);
+    for (const [target, mode] of Object.entries(fixture.statModes ?? {})) {
+      const result = await Effect.runPromise(
+        exec(
+          plan,
+          { app: plan.id, service: ServiceName.make(fixture.service) },
+          {
+            command: ["stat", "-c", "%a", target],
+          },
+          { api },
+        ),
+      );
+      expect(result).toMatchObject({ exitCode: 0, stdout: `${mode}\n` });
+    }
     for (const [service, keys] of Object.entries(fixture.authoredNetworks ?? {})) {
       const response = await Effect.runPromise(
         liveRequest({ method: "GET", path: `/containers/lando-${plan.slug}-${service}/json` }),
