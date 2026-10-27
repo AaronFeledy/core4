@@ -39,6 +39,8 @@ export const CI_JOB_TIERS: Readonly<Record<string, CiTier>> = {
 };
 
 export const selectPaths = (paths: readonly string[]): CiSelection => {
+  if (paths.includes(".bun-version"))
+    return { profile: "runtime", broad: true, reason: "Bun toolchain change" };
   if (paths.length === 0) return { profile: "runtime", broad: false, reason: "empty diff" };
   let profile: CiProfile = "docs";
   for (const path of paths) {

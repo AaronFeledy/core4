@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as Schema from "effect/Schema";
 import { renderCiWorkflow } from "../../../scripts/build-ci-workflow.ts";
+import { CI_PLATFORMS } from "../../../scripts/ci-platforms.ts";
 import { CI_JOB_TIERS, jobSelected, resultFailures, selectPaths } from "../../../scripts/ci-selection.ts";
 import { CiGitError, selectCi } from "../../../scripts/select-ci.ts";
 
@@ -19,10 +20,41 @@ describe("CI selection", () => {
     ["docs/astro.config.ts", "runtime"],
     ["scripts/build-ci-workflow.ts", "runtime"],
     ["bun.lock", "runtime"],
+    ["docs/.bun-version", "runtime"],
+    [".bun-version.bak", "runtime"],
     ["core/test/foo.test.ts", "runtime"],
     ["unknown", "runtime"],
   ])("classifies %s as %s", (path, profile) => {
     expect(selectPaths([path])).toMatchObject({ profile, broad: false });
+  });
+
+  test.each([
+    { paths: [".bun-version"] },
+    { paths: [".bun-version", "core/src/cli/run.ts"] },
+    { paths: ["core/src/cli/run.ts", ".bun-version"] },
+    { paths: [".bun-version", "docs/page.md"] },
+    { paths: ["docs/page.md", ".bun-version"] },
+  ])("selects broad runtime CI for root Bun toolchain changes %j", ({ paths }) => {
+    expect(selectPaths(paths)).toEqual({ profile: "runtime", broad: true, reason: "Bun toolchain change" });
+  });
+
+  test("selects every existing platform tier for a Bun toolchain change", () => {
+    const selection = selectPaths([".bun-version"]);
+    for (const { id } of CI_PLATFORMS) {
+      for (const job of [`build-${id}`, `guide-scenarios-${id}`, `provider-integration-${id}`]) {
+        const tier = CI_JOB_TIERS[job];
+        expect(tier).toBeDefined();
+        expect(tier && jobSelected(tier, selection)).toBe(true);
+      }
+    }
+    expect(Object.values(CI_JOB_TIERS).every((tier) => jobSelected(tier, selection))).toBe(true);
+  });
+
+  test.each(["failure", "cancelled", "skipped"])("fails closed on broad selected job result %s", (result) => {
+    const selection = selectPaths([".bun-version"]);
+    for (const id of Object.keys(CI_JOB_TIERS)) {
+      expect(resultFailures(selection, { [id]: { result } })).toEqual([`${id}: ${result}`]);
+    }
   });
 
   test("widens mixed changes and empty diffs conservatively", () => {
@@ -129,7 +161,9 @@ describe("CI selection", () => {
       git("commit", "-m", "base advances");
       const base = git("rev-parse", "HEAD");
       git("checkout", "-b", "head", ancestor);
-      await writeFile(join(cwd, "docs/new\npage.md"), "docs");
+      await mkdir(join(cwd, "docs"), { recursive: true });
+      const page = process.platform === "win32" ? "new page.md" : "new\npage.md";
+      await writeFile(join(cwd, "docs", page), "docs");
       git("add", ".");
       git("commit", "-m", "docs");
       expect(selectCi({ event: "pull_request", base, head: git("rev-parse", "HEAD"), cwd }).profile).toBe(
@@ -143,6 +177,42 @@ describe("CI selection", () => {
       expect(selectCi({ event: "pull_request", base: "f".repeat(40), head: ancestor, cwd }).reason).toBe(
         "missing commit history",
       );
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test("does not broaden a PR for a Bun toolchain change made only on its base branch", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "ci-selection-base-bun-"));
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(
+        ["git", "-c", "user.name=CI test", "-c", "user.email=ci@example.test", ...args],
+        { cwd },
+      );
+      expect(result.exitCode).toBe(0);
+      return result.stdout.toString().trim();
+    };
+    try {
+      git("init");
+      await writeFile(join(cwd, ".bun-version"), "1.4.2\n");
+      git("add", ".");
+      git("commit", "-m", "common ancestor");
+      const ancestor = git("rev-parse", "HEAD");
+      git("checkout", "-b", "base");
+      await writeFile(join(cwd, ".bun-version"), "1.4.3\n");
+      git("add", ".");
+      git("commit", "-m", "base changes Bun");
+      const base = git("rev-parse", "HEAD");
+      git("checkout", "-b", "head", ancestor);
+      await mkdir(join(cwd, "docs"));
+      await writeFile(join(cwd, "docs/page.md"), "docs\n");
+      git("add", ".");
+      git("commit", "-m", "unrelated PR");
+      expect(selectCi({ event: "pull_request", base, head: git("rev-parse", "HEAD"), cwd })).toEqual({
+        profile: "docs",
+        broad: false,
+        reason: "changed paths",
+      });
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
