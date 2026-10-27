@@ -62,7 +62,7 @@ jobs:
       runtime_tag: \${{ steps.classify.outputs.runtime_tag }}
       desired_sources_sha: \${{ steps.classify.outputs.desired_sources_sha }}
     steps:
-      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v5.0.0
+      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
         with:
           persist-credentials: false
 
@@ -152,7 +152,7 @@ ${expectedAssetLines}
         include:
 ${matrixInclude}
     steps:
-      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v5.0.0
+      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
         with:
           persist-credentials: false
 
@@ -198,7 +198,7 @@ ${matrixInclude}
       actions: write
     runs-on: ubuntu-24.04
     steps:
-      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v5.0.0
+      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
         with:
           persist-credentials: false
 

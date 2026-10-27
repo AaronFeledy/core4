@@ -109,6 +109,15 @@ const runStreamPull = async (
 };
 
 describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
+  test("returns the pulled ref when the stream client has no request transport", async () => {
+    const reference = "alpine:3.20";
+    const api: EngineHttpApi = {
+      stream: () => Stream.fromIterable([bytes('{"status":"Pull complete"}\n')]),
+    };
+    const result = await Effect.runPromise(pullImage(api, reference, { ctx: dockerCtx, dialect }));
+    expect(result).toEqual({ ref: reference });
+  });
+
   test.each(["missing", "never", "always"] as const)(
     "reports the requested digest among multiple RepoDigests for %s",
     async (policy) => {

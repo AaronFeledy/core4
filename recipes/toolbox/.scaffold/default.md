@@ -34,7 +34,7 @@ lando exec toolbox -- apt-get update
 ## 1. scaffold
 
 ```bash
-lando init --recipe toolbox --name=my-toolbox-stack --yes
+lando init --recipe toolbox --name=my-toolbox --yes
 ```
 
 ## 2. start

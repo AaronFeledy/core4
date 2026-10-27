@@ -6,7 +6,6 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 import { Cause, Duration, Effect, Exit, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
-import type * as HttpClientError from "effect/http/HttpClientError";
 import { layerWith } from "../src/live.ts";
 import { NetworkTrust } from "../src/network-trust.ts";
 
@@ -84,7 +83,12 @@ test.each(["config", "env", "missing"] as const)(
         if (Exit.isFailure(result)) {
           const failure = Cause.findErrorOption(result.cause);
           expect(failure._tag).toBe("Some");
-          if (failure._tag === "Some") expect(trustCause(failure.value)?._tag).toBe("HttpTrustError");
+          if (failure._tag === "Some") {
+            expect(failure.value).toMatchObject({
+              _tag: "HttpClientError",
+              reason: { _tag: "TransportError", cause: { _tag: "HttpTrustError" } },
+            });
+          }
         }
       } else {
         expect(result).toMatchObject({ _tag: "Success", value: "private-ca-ok" });
@@ -97,25 +101,8 @@ test.each(["config", "env", "missing"] as const)(
   },
 );
 
-const isHttpClientError = (value: unknown): value is HttpClientError.HttpClientError =>
-  typeof value === "object" &&
-  value !== null &&
-  "_tag" in value &&
-  (value as { _tag: string })._tag === "HttpClientError";
-
-const trustCause = (error: unknown): { _tag?: string; kind?: string } | undefined => {
-  if (!isHttpClientError(error)) return undefined;
-  const reason = error.reason;
-  if (reason._tag !== "TransportError") return undefined;
-  const cause = reason.cause;
-  if (typeof cause === "object" && cause !== null && "_tag" in cause) {
-    return cause as { _tag?: string; kind?: string };
-  }
-  return undefined;
-};
-
 test.each(["custom", "merged", "empty", "default"] as const)(
-  "preserves %s CA trust for direct HTTPS",
+  "preserves %s CA trust for loopback HTTPS fetch",
   async (mode) => {
     // Given a self-signed local HTTPS endpoint and explicit trust inputs.
     const server = Bun.serve({
@@ -130,14 +117,14 @@ test.each(["custom", "merged", "empty", "default"] as const)(
       trustHost: mode === "merged" || mode === "default",
     };
     try {
-      // When TLS connects through the direct transport, keeping verification enabled.
+      // When fetch connects with proxy:false and TLS verification enabled.
       const result = await Effect.runPromiseExit(
         Effect.gen(function* () {
           const client = yield* HttpClient.HttpClient;
           return yield* client.get(server.url.href);
         }).pipe(
           Effect.timeout(Duration.millis(1000)),
-          Effect.provide(layerWith({ fetch, systemCaPems: () => (mode === "merged" ? [cert] : []) })),
+          Effect.provide(layerWith({ systemCaPems: () => (mode === "merged" ? [cert] : []) })),
           Effect.provideService(NetworkTrust, trust),
         ),
       );
@@ -150,9 +137,13 @@ test.each(["custom", "merged", "empty", "default"] as const)(
           const failure = Cause.findErrorOption(result.cause);
           expect(failure._tag).toBe("Some");
           if (failure._tag === "Some") {
-            const cause = trustCause(failure.value);
-            expect(cause?._tag).toBe("HttpTrustError");
-            expect(cause?.kind).toBe("missing-custom-ca");
+            expect(failure.value).toMatchObject({
+              _tag: "HttpClientError",
+              reason: {
+                _tag: "TransportError",
+                cause: { _tag: "HttpTrustError", kind: "missing-custom-ca" },
+              },
+            });
           }
         }
       }

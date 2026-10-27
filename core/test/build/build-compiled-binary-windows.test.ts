@@ -29,6 +29,7 @@ describe("compiled Windows branding", () => {
     expect(received?.compile).toEqual({
       target: `bun-${target}`,
       outfile,
+      execArgv: ["--disallow-code-generation-from-strings=strict"],
       windows: {
         icon,
         title: "Lando",

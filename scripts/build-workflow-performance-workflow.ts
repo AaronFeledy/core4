@@ -58,7 +58,7 @@ const renderJob = (cell: PlatformReadinessCell): string => {
     runs-on: ${cell.runsOn}
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

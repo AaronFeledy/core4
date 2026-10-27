@@ -87,7 +87,8 @@ describe("Windows managed machine API socket activation", () => {
     };
     const runner = makeSystemPodmanMachineRunner("podman", "lando", "win32", spawn);
     const owners = await Effect.runPromise(
-      runner.hostPortOwners?.([38080, 28443]) ?? Effect.succeed(new Map()),
+      runner.hostPortOwners?.([38080, 28443]) ??
+        Effect.succeed<ReadonlyMap<number, "free" | "wslrelay" | "foreign">>(new Map()),
     );
     expect([...owners]).toEqual([
       [38080, "wslrelay"],
@@ -105,7 +106,10 @@ describe("Windows managed machine API socket activation", () => {
     });
     const runner = makeSystemPodmanMachineRunner("podman", "lando", "win32", spawn);
     const result = await Effect.runPromise(
-      Effect.result(runner.hostPortOwners?.([38080]) ?? Effect.succeed(new Map())),
+      Effect.result(
+        runner.hostPortOwners?.([38080]) ??
+          Effect.succeed<ReadonlyMap<number, "free" | "wslrelay" | "foreign">>(new Map()),
+      ),
     );
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure._tag).toBe("ProviderUnavailableError");

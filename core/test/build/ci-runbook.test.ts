@@ -175,16 +175,16 @@ describe("ci runbook", () => {
       readText(bunVersionPath),
     ]);
 
-    expect(JSON.parse(rootPackage).engines.bun).toBe(">=1.4.2");
-    expect(JSON.parse(corePackage).engines.bun).toBe(">=1.4.2");
-    expect(bunVersion.trim()).toBe("1.4.2");
+    expect(JSON.parse(rootPackage).engines.bun).toBe(">=1.4.3");
+    expect(JSON.parse(corePackage).engines.bun).toBe(">=1.4.3");
+    expect(bunVersion.trim()).toBe("1.4.3");
 
     for (const surface of [runbook, betaDecisions]) {
-      expect(surface).toContain(">=1.4.2");
+      expect(surface).toContain(">=1.4.3");
       expect(surface).toContain("--bytecode");
     }
 
-    expect(repository).toContain("current minimum is Bun 1.4.2");
+    expect(repository).toContain("current minimum is Bun 1.4.3");
     expect(repository).toContain("bytecode for all six release targets");
     expect(repository).toContain("./decisions.md#bun-floor-decision");
 
