@@ -596,7 +596,16 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
           }),
         ),
       ),
-      getVersions: Effect.succeed({ provider: "0.0.0" }),
+      getVersions: dockerApi.info.pipe(
+        Effect.map((info) => {
+          const runtime =
+            typeof info === "object" && info !== null ? Reflect.get(info, "ServerVersion") : undefined;
+          return typeof runtime === "string" && runtime.length > 0
+            ? { provider: "0.0.0", runtime }
+            : { provider: "0.0.0" };
+        }),
+        Effect.catch(() => Effect.succeed({ provider: "0.0.0" })),
+      ),
       buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
         buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi, sourceEnv: DOCKER_CTX.env }),
       ),

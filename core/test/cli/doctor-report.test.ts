@@ -316,6 +316,7 @@ describe("meta:doctor combined report", () => {
       "subsystems",
       "selected-provider",
       "runtime-service",
+      "exec-umask",
       "network-trust",
       "legacy-snapshot-catalogs",
       "filesystem-watch",
@@ -327,7 +328,7 @@ describe("meta:doctor combined report", () => {
       ok: true,
       result: {
         timestamp: "1970-01-01T00:00:00.000Z",
-        checks: 7,
+        checks: 8,
         failed: 0,
         warned: checks.filter((line) => line.status === "warn").length,
       },
@@ -436,7 +437,7 @@ describe("meta:doctor combined report", () => {
 
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
       expect(eventPayloads(ndjson).map((line) => line.name)).toContain("app-config-lint");
-      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 8, failed: 1 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 9, failed: 1 });
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
@@ -495,7 +496,7 @@ describe("meta:doctor combined report", () => {
       expect(text).toContain("app-version-constraint: fail");
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
       expect(eventPayloads(ndjson).map((line) => line.name)).toContain("app-version-constraint");
-      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 9, failed: 1 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 10, failed: 1 });
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
@@ -912,7 +913,7 @@ describe("meta:doctor combined report", () => {
         severity: "warn",
         count: 1,
       });
-      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 8 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 9 });
     } finally {
       process.env.LANDO_DEPRECATION_WARNINGS = undefined;
     }
