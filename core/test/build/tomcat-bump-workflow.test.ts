@@ -24,7 +24,7 @@ describe("Tomcat bump workflow", () => {
     // Then
     expect(committed).toBe(workflow);
     expect(() => Schema.decodeUnknownSync(Workflow)(Bun.YAML.parse(workflow))).not.toThrow();
-    expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout}`);
+    expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1`);
     expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun}`);
     expect(workflow).toContain("persist-credentials: false");
     const ci = await Bun.file(resolve(import.meta.dirname, "../../../.github/workflows/ci.yml")).text();

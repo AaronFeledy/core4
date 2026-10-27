@@ -83,7 +83,7 @@ ${staticCheckMatrixInclude()}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
@@ -152,7 +152,7 @@ const renderDarwinSignalTests = (): string => {
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${isolateLandoRootsStep}
 
@@ -180,7 +180,7 @@ const renderUnitTests = (): string => `  unit-tests-linux-x64-shard:
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
@@ -207,7 +207,7 @@ const renderTestIsolation = (): string => `  test-isolation-linux-x64:
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
@@ -234,7 +234,7 @@ const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}
     runs-on: ${platform.runsOn}
     timeout-minutes: ${platform.timeoutMinutes}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
@@ -284,7 +284,7 @@ const renderDocsBuild = (): string => `  docs-build:
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
@@ -334,7 +334,7 @@ const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
@@ -554,7 +554,7 @@ const linuxRuntimeBundleJob = `  runtime-bundle-linux-x64:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
@@ -609,7 +609,7 @@ const windowsRuntimeBundleJob = `  runtime-bundle-win32-x64:
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
@@ -685,7 +685,7 @@ const renderProviderIntegrationJob = (platform: CiPlatform): string => {
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: ${platform.providerTimeoutMinutes}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${isolateLandoRootsStep}
 
@@ -804,7 +804,7 @@ const renderGuideScenariosJob = (platform: CiPlatform): string => {
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -858,7 +858,7 @@ const renderIsolatedInstallExperiment = (): string => `  bun-install-isolated-ex
     timeout-minutes: 10
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
@@ -909,7 +909,7 @@ ${renderContainerHelperArm64Job()}
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -955,7 +955,7 @@ ${timingNoticeStep("schema-snapshot", 15)}
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
@@ -996,7 +996,7 @@ ${timingNoticeStep("bundled-codegen", 15)}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 
@@ -1018,7 +1018,7 @@ ${renderLinuxX64MatrixGate("library-api-tests", "library-api-tests-runner")}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${timingStartStep}
 

@@ -118,7 +118,7 @@ const dockerFallbackSmoke = `  docker-fallback-smoke:
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Isolate Lando roots
         run: |
@@ -178,7 +178,7 @@ ${renderMatrixInclude(args.includeCells)}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${isolateLandoRootsStep}
 

@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout}
+      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false

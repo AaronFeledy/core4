@@ -571,7 +571,9 @@ describe("ci workflow", () => {
     // Then
     expect(jobs).toContain("  docs-build:");
     expect(docsBuild).toContain("    runs-on: ubuntu-26.04");
-    expect(docsBuild).toContain("      - uses: actions/checkout@v5");
+    expect(docsBuild).toContain(
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+    );
     expect(docsBuild).toContain("        uses: oven-sh/setup-bun@v2");
     expect(docsBuild).toContain("          bun-version-file: .bun-version");
     expect(docsBuild).toContain("        run: bun install --frozen-lockfile");
@@ -655,7 +657,9 @@ describe("ci workflow", () => {
     expect(schemaSnapshot).not.toContain("dist/command-schemas");
     expect(schemaSnapshot).not.toContain("docs/reference/schemas");
     expect(schemaSnapshot).toContain('if [[ -n "$schema_changes" ]]; then');
-    expect(schemaSnapshot).toContain(`      - uses: actions/checkout@v5
+    expect(
+      schemaSnapshot,
+    ).toContain(`      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0`);
     expect(schemaSnapshot).toContain("      - name: Check schema compatibility");
