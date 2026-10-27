@@ -15,11 +15,9 @@ An executable guide is a prose-first MDX guide that defines Scenarios, the engin
 
 Components are the executable minority. Documentation MUST remain Markdown; component props are machine hints, not prose. Non-executed examples stay outside `<Scenario>`. A scenario MUST execute or assert behavior.
 
-Executable components are allowed only in:
+Executable components are allowed only in the guide discovery roots:
 
-- `docs/src/content/docs/guides/**/*.mdx`
-- `docs/src/content/docs/tutorials/**/*.mdx`
-- `docs/src/content/docs/how-to/**/*.mdx`
+- `docs/guides/**/*.mdx`
 - `recipes/<id>/README.mdx`
 
 Explanation, reference, and blog content MUST NOT contain rendered executable scenarios. Unrelated regressions belong under `test/scenarios/`.
@@ -64,11 +62,13 @@ Prop schemas live in `@lando/sdk/docs/components`; implementations and AST helpe
 | `<Tabs>` | Selects content by a declared variant axis; nesting is forbidden. |
 | `<Tab>` | Supplies content for one declared axis value. |
 
-`MatcherSchema` is the assertion vocabulary for `<Verify>` and `<Inspect>`. It supports deep-equal scalars, partial objects by default, and the named operators `exact`, `partial`, `regex`, `schema`, `anyOf`, `allOf`, `oneOf`, and `not`. Other assertions require justified `<Inline>`.
+`MatcherSchema` is the assertion vocabulary for `<Verify>` and `<Inspect>`. A scalar (string, number, boolean, null) matches by deep equality. An array matches an array of the same length element by element. A plain object is a partial object matcher: every listed key MUST match, and unlisted keys are ignored. An object whose single key is one of the named operators is an operator: `regex` tests the stringified value against a pattern, `schema` names a schema from the canonical public schema registry in `@lando/sdk/schema` and decodes the value with it, `anyOf` accepts when any listed matcher matches, and `not` negates one matcher. A `schema` name that is not registered does not match, so the verification fails when the generated test runs. The operator keys `exact`, `allOf`, and `oneOf` are reserved and rejected; partial objects MUST NOT use any reserved key. Other assertions require justified `<Inline>`.
 
 `<Run command>` and `<Verify command>` accept an optional integer `expectExit`, defaulting to zero. Command verification MUST enforce that exit code before checking output matchers; `expectExit` is invalid on other verification targets. A negative lint report therefore uses explicit exit 1 in every format while retaining its report assertions, without a shell wrapper that hides the status.
 
 `<Hidden>` MUST NOT define distinct product behavior. `<Inline>` MUST remain exceptional. `<Variable>` display values MUST be short substitutions, never explanatory sentences.
+
+Component placement is fail-closed. `<Guide>` is a root-level element. `<Scenario>` is a direct child of `<Guide>`. `<Step>`, `<Hidden>`, `<Skip>`, and `<Tabs>` are direct children of `<Scenario>`; `<Tab>` is a direct child of `<Tabs>`; `<Hidden>`, `<Skip>`, and `<Tab>` contain only `<Step>`. Leaf actions (`<Run>`, `<Verify>`, `<Cleanup>`, `<Variable>`, `<UseFixture>`, `<Inspect>`, `<Inline>`) are direct children of `<Step>`. Markdown prose MAY appear inside any wrapper. An executable component anywhere else, including a wrapper nested in another wrapper or an executable component written inline within a paragraph, MUST be rejected with its source path and line rather than silently ignored.
 
 ### 19.4 The ScenarioContext
 
@@ -131,6 +131,7 @@ Generated tests MUST preserve source path, line range, scenario, variant, step, 
 `bun run lint:guides` is a merge gate and MUST enforce:
 
 - `GuideFrontmatter`, scenario, component, matcher, transcript, tab, and variant schema validity.
+- Component placement (§19.3): a misplaced, nested, or inline executable component fails with its source path and line.
 - Allowed Diátaxis buckets and unique scenario/step ids.
 - At least one reader scenario unless explicitly test-only.
 - Required reasons, ownership metadata, and cleanup for every e2e scenario variant.
