@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -63,7 +63,7 @@ jobs:
     env:
       COMPOSER_PROCESS_TIMEOUT: "2000"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -215,7 +215,7 @@ jobs:
     env:
       COMPOSER_PROCESS_TIMEOUT: "2000"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -367,7 +367,7 @@ jobs:
     env:
       COMPOSER_PROCESS_TIMEOUT: "2000"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -437,7 +437,7 @@ jobs:
     env:
       COMPOSER_PROCESS_TIMEOUT: "2000"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -507,7 +507,7 @@ jobs:
     env:
       COMPOSER_PROCESS_TIMEOUT: "2000"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
@@ -586,7 +586,7 @@ jobs:
     env:
       COMPOSER_PROCESS_TIMEOUT: "2000"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Isolate Lando roots
         shell: bash
