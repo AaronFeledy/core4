@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chmod, link, lstat, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, readFile, readdir, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { fixture, scoped } from "./transaction-fixture.ts";
@@ -80,8 +80,10 @@ test("blocks when a same-digest file is a different inode", async () => {
   const { appRoot, transactions } = await fixture((at, index) =>
     at === "after-mutation" && index === 0
       ? Effect.promise(async () => {
-          await rm(join(appRoot, "a"));
+          // Retain the original inode so the filesystem cannot reuse it for the replacement.
+          await rename(join(appRoot, "a"), join(appRoot, "original"));
           await writeFile(join(appRoot, "a"), content);
+          await chmod(join(appRoot, "a"), 0o644);
         }).pipe(Effect.andThen(Effect.fail("crash")))
       : Effect.void,
   );
@@ -89,6 +91,8 @@ test("blocks when a same-digest file is a different inode", async () => {
     Effect.result(transactions.run({ appRoot, operations: [{ kind: "create", path: "a", content }] })),
   );
   const inode = (await lstat(join(appRoot, "a"))).ino;
+  expect(inode).not.toBe((await lstat(join(appRoot, "original"))).ino);
+  await expectMode(join(appRoot, "a"), 0o644);
 
   // When recovery is asked to adopt that file
   const outcome = await scoped(Effect.result(transactions.recover(appRoot)));
