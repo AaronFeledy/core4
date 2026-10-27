@@ -94,10 +94,6 @@
       }
     },
     {
-      "fixture": "docs/guides/config-explain/fixtures/managed-lamp",
-      "digest": "1b6ee8a107f12fccad545ea906217a41ddbec0788a42aac74d243cb500ac1b99"
-    },
-    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-demo",
       "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
     },
@@ -501,10 +497,6 @@
     {
       "fixture": "docs/guides/migrating-recipes/fixtures/includes-app",
       "digest": "37537289e2b2b6e51b4bacbdf1d9a7683a23a4020c1d2e073589213280013a30"
-    },
-    {
-      "fixture": "docs/guides/migrating-recipes/fixtures/managed-lamp",
-      "digest": "d1ec760c78d917e906d28b410071b263da8af6e64c7e0dfe0fcf85a39773a68f"
     },
     {
       "fixture": "docs/guides/migrating-recipes/fixtures/programmatic-app",
