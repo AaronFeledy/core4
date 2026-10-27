@@ -1,4 +1,5 @@
-import { Effect } from "effect";
+import { importAuthorModule } from "@lando/landofile/author-modules";
+import { Effect, Predicate } from "effect";
 import type { Scope } from "effect";
 
 import { type EventError, PluginLoadError } from "@lando/sdk/errors";
@@ -13,12 +14,16 @@ export type RuntimeSubscriberFactory = (
   config: unknown,
 ) => RuntimeSubscriberHandler;
 
-type SubscriberModule = { readonly default?: unknown };
-
-const loadError = (subscriber: IndexedSubscriber, message: string, cause?: unknown): PluginLoadError =>
+const loadError = (
+  subscriber: IndexedSubscriber,
+  message: string,
+  cause: unknown | undefined,
+  remediation: string,
+): PluginLoadError =>
   new PluginLoadError({
     pluginName: subscriber.pluginName,
     message: cause === undefined ? message : `${message}: ${String(cause)}`,
+    remediation,
   });
 
 export const isRuntimeSubscriberFactory = (value: unknown): value is RuntimeSubscriberFactory =>
@@ -28,15 +33,25 @@ export const loadExternalSubscriberFactory = (
   subscriber: IndexedSubscriber,
 ): Effect.Effect<RuntimeSubscriberFactory, PluginLoadError> =>
   Effect.tryPromise({
-    try: () => import(subscriber.entry.module).then((module: SubscriberModule) => module),
+    try: () => importAuthorModule(subscriber.entry.module),
     catch: (cause) =>
-      loadError(subscriber, `Failed to import subscriber module ${subscriber.entry.module}`, cause),
+      loadError(
+        subscriber,
+        `Failed to import subscriber module ${subscriber.entry.module}`,
+        cause,
+        `Repair plugin ${subscriber.pluginName} so ${subscriber.entry.module} imports successfully.`,
+      ),
   }).pipe(
     Effect.flatMap((module) =>
-      isRuntimeSubscriberFactory(module.default)
+      Predicate.hasProperty(module, "default") && isRuntimeSubscriberFactory(module.default)
         ? Effect.succeed(module.default)
         : Effect.fail(
-            loadError(subscriber, `Subscriber module ${subscriber.entry.module} has no default factory.`),
+            loadError(
+              subscriber,
+              `Subscriber module ${subscriber.entry.module} has no default factory.`,
+              undefined,
+              `Export a default subscriber factory from ${subscriber.entry.module} in plugin ${subscriber.pluginName}.`,
+            ),
           ),
     ),
   );

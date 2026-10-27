@@ -7,7 +7,7 @@ tags: [beta, docs, php, service, runtime]
 
 # Add PHP
 
-Put `type: php:8.3` in your services block. PHP has no bare `type: php` alias, so pin a minor. Lando supports `8.1`, `8.2`, `8.3`, `8.4`, `8.5`, and `8.6`. The default serving mode is Apache with mod_php on port `80`. 8.1 through 8.5 use `php:<version>-apache-bookworm`. 8.6 uses the official RC tag `php:8.6-rc-apache-bookworm` until GA. Your repository is bind-mounted read-write at `/app`:
+Add `type: php:8.3` under `services` in `.lando.yml`. PHP has no bare `type: php` alias, so pin a minor. Lando supports `8.1`, `8.2`, `8.3`, `8.4`, `8.5`, and `8.6`. The default serving mode is Apache with mod_php on port `80`. 8.1 through 8.5 use `php:<version>-apache-bookworm`. 8.6 uses the official RC tag `php:8.6-rc-apache-bookworm` until GA. Your repository is bind-mounted read-write at `/app`:
 
 ```yaml
 name: php-demo
@@ -50,8 +50,8 @@ Lando enables `mod_rewrite` while building stock Apache services. Set
 `allowOverride: true` if your app uses `.htaccess` rewrite rules; it defaults to
 `false`. PHP framework recipes such as Laravel and Backdrop already set it.
 Custom images and authored `command:` or `entrypoint:` values own their Apache
-configuration, including module setup. Rebuild existing apps after upgrading
-Lando to apply the new default.
+configuration, including module setup. After upgrading Lando, run `lando start`
+to apply the updated default build key to existing apps.
 
 Pair FPM with nginx by naming the PHP service on `backend:`. The nginx service
 generates a FastCGI upstream pointing at that service on port `9000`:
@@ -93,12 +93,15 @@ services:
   appserver:
     type: php:8.3
     user: www-data
-    home: false
 ```
 
-`home: false` is there because Lando persists the planned user's home directory
-and only knows where `root`'s home is on the PHP images. Drop it and set
-`home.path:` instead when you want that directory to survive a rebuild.
+Lando keeps `www-data`'s home at `/var/www`, the directory the account's
+passwd entry points at. The image ships it owned by root, so Lando creates it
+for `www-data` in a root build step and the fresh home volume starts owned by
+`www-data`. Composer and shell caches dropped there survive a rebuild. Run
+`lando info` to see the mount labeled `(home)`; see
+[Keep a service home across rebuilds](./home-and-host.mdx) for the volume
+naming and what happens when you change `user:`.
 
 A non-root process still can't bind a port below 1024 on the default `lando`
 provider, and the image's own `ports.conf` says `Listen 80`. Set `port:` to
@@ -112,7 +115,6 @@ services:
   appserver:
     type: php:8.3
     user: www-data
-    home: false
     port: 8080
 ```
 
@@ -132,7 +134,6 @@ services:
     type: php:8.3
     via: fpm
     user: www-data
-    home: false
 ```
 
 FPM listens on `9000`, so there's no privileged port to worry about. Under a
@@ -142,12 +143,11 @@ you set.
 
 ## Set the webroot yourself
 
-`framework: wordpress` installs pinned, checksum-verified WP-CLI on stock PHP images, sets `WP_CLI_ALLOW_ROOT=1` for tooling, and writes `conf.d/50-lando-wordpress.ini` with `memory_limit = 512M` for CLI and web PHP alike; a later drop-in such as `zz-custom.ini` overrides it. No framework name switches the served webroot for Drupal, Laravel, Symfony, or WordPress. Omit `webroot:` or use `.` to serve the app root at `/app`. To serve a framework public directory, set `webroot: public`, or put nginx in front with `via: fpm`. Relative paths resolve against `/app`; `LANDO_WEBROOT` inside the container is always the resolved absolute path. An absolute value such as `webroot: /srv/site` is allowed when you need a very specific container path outside the usual app layout. Compose's `configs:` block isn't realized by `provider-lando`, so a custom `php.ini` or vhost file has to be mounted in, not declared under `configs:`.
+`framework: wordpress` installs pinned, checksum-verified WP-CLI on stock PHP images, sets `WP_CLI_ALLOW_ROOT=1` for tooling, and writes `conf.d/50-lando-wordpress.ini` with `memory_limit = 512M` for CLI and web PHP alike; a later drop-in such as `zz-custom.ini` overrides it. No framework name switches the served webroot for Drupal, Laravel, Symfony, or WordPress. Omit `webroot:` or use `.` to serve the app root at `/app`. To serve a framework public directory, set `webroot: public`, or put nginx in front with `via: fpm`. Relative paths resolve against `/app`; `LANDO_WEBROOT` inside the container is always the resolved absolute path. An absolute value such as `webroot: /srv/site` is allowed when you need a very specific container path outside the usual app layout. For a custom `php.ini`, use a read-only mount or a Compose `configs:` grant. See [Customize PHP](./php-customization.mdx#mount-a-custom-phpini) for both forms.
 
 ## Run Composer
 
-PHP projects typically expose Composer as a tooling alias targeting the
-service:
+Declare a Composer tooling alias targeting your PHP service before running this command. PHP recipes normally include it; a hand-written service needs its own tooling entry:
 
 ```sh
 lando composer install

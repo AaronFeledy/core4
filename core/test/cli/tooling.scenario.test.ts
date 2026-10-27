@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { Cause, DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/core/cli/operations";
-import { ConfigError, LandofileValidationError, PluginManifestError } from "@lando/core/errors";
+import { LandofileValidationError, PluginManifestError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
   GlobalConfig,
-  type LandofileShape,
+  LandofileShape,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
@@ -40,10 +40,11 @@ import * as AppCacheService from "@lando/engine/cache/service";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
-import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { currentTestPlan, environmentResolverLayer } from "../_support/value-contracts.ts";
 import { configServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
@@ -113,7 +114,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
     services.map((service) => [String(service.name), service]),
   ) as AppPlan["services"],
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -190,7 +190,15 @@ const makeLayer = (options: {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: loadAuthoredDocuments(
+        [
+          {
+            file: `${options.plan.root}/.lando.yml`,
+            value: Schema.encodeSync(LandofileShape)(options.landofile),
+          },
+        ],
+        { appRoot: options.plan.root, file: `${options.plan.root}/.lando.yml` },
+      ),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -200,7 +208,7 @@ const makeLayer = (options: {
         options.planCalls?.push(1);
         options.planCwds?.push(process.cwd());
         return options.planError === undefined
-          ? Effect.succeed(options.plan)
+          ? Effect.succeed(currentTestPlan(options.plan))
           : Effect.fail(options.planError);
       },
     }),
@@ -208,6 +216,9 @@ const makeLayer = (options: {
   const registryLayer = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(options.provider),
@@ -218,7 +229,7 @@ const makeLayer = (options: {
     landofileLayer,
     plannerLayer,
     registryLayer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provideMerge(environmentResolverLayer())),
     options.configLayer ?? emptyConfigServiceLayer,
   );
 };
@@ -255,6 +266,7 @@ const cachedPlanKey = async (
   provider: RuntimeProviderShape,
 ): Promise<string> =>
   deriveAppPlanCacheKey({
+    hostProvider: "lando",
     appRoot,
     landofile: { ...landofile, provider: ProviderId.make(provider.id) },
     pluginManifests: [],
@@ -485,7 +497,11 @@ describe("runTooling — CLI rendering", () => {
           PluginRegistry,
           PluginRegistry.of({
             list: Effect.fail(
-              new PluginManifestError({ message: "plugin registry unavailable", issues: ["not used"] }),
+              new PluginManifestError({
+                message: "plugin registry unavailable",
+                issues: [{ path: [], message: "not used" }],
+                remediation: "Correct the plugin manifest.",
+              }),
             ),
             load: () => Effect.die("not used"),
             loadServiceType: () => Effect.die("not used"),
@@ -584,13 +600,19 @@ describe("runTooling — CLI rendering", () => {
     const landofile: LandofileShape = {
       name: "scenario",
       toolingDefaults: {
-        env: { DEFAULT_API_TOKEN: "bare-default-token", NUMERIC_SECRET: 12_345_678 },
+        env:
+          Schema.decodeUnknownSync(LandofileShape)({
+            toolingDefaults: { env: { DEFAULT_API_TOKEN: "bare-default-token", NUMERIC_SECRET: 12_345_678 } },
+          }).toolingDefaults?.env ?? {},
       },
       tooling: {
         composer: {
           service: "appserver",
           cmd: "composer",
-          env: { TASK_PASSWORD: "bare-task-password", BOOLEAN_SECRET: true },
+          env:
+            Schema.decodeUnknownSync(LandofileShape)({
+              tooling: { task: { env: { TASK_PASSWORD: "bare-task-password", BOOLEAN_SECRET: true } } },
+            }).tooling?.task?.env ?? {},
         },
       },
     };
@@ -631,7 +653,10 @@ describe("runTooling — CLI rendering", () => {
       tooling: { inspect: { cmd: "env" } },
     };
     const landofile = await Effect.runPromise(
-      resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario" }),
+      loadAuthoredDocuments(
+        [{ file: "/tmp/scenario/.lando.yml", value: Schema.encodeSync(LandofileShape)(authoredLandofile) }],
+        { appRoot: "/tmp/scenario", file: "/tmp/scenario/.lando.yml" },
+      ).pipe(Effect.map((compiled) => compiled.document)),
     );
     const layer = makeLayer({ landofile, plan, provider });
 
@@ -667,7 +692,10 @@ describe("runTooling — CLI rendering", () => {
       },
     };
     const landofile = await Effect.runPromise(
-      resolveLandofileIncludes({ landofile: authoredLandofile, appRoot: "/tmp/scenario" }),
+      loadAuthoredDocuments(
+        [{ file: "/tmp/scenario/.lando.yml", value: Schema.encodeSync(LandofileShape)(authoredLandofile) }],
+        { appRoot: "/tmp/scenario", file: "/tmp/scenario/.lando.yml" },
+      ).pipe(Effect.map((compiled) => compiled.document)),
     );
     const layer = makeLayer({ landofile, plan, provider });
 
@@ -888,8 +916,8 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       const brokenConfig = Layer.succeed(
         ConfigService,
         ConfigService.of({
-          load: Effect.fail(new ConfigError({ message: "config unavailable" })),
-          get: () => Effect.fail(new ConfigError({ message: "config unavailable" })),
+          load: Effect.die("Unexpected config read on script shortcut"),
+          get: () => Effect.die("Unexpected config read on script shortcut"),
         }),
       );
       const layer = makeLayer({ landofile, plan, provider, planCalls, configLayer: brokenConfig });
@@ -951,6 +979,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       };
       const planError = new LandofileValidationError({
         message: "planned failure",
+        remediation: "Fix the service configuration.",
         file: join(root, ".lando.yml"),
         issues: [{ path: [], message: "service planning failed" }],
       });
@@ -978,6 +1007,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       };
       const planError = new LandofileValidationError({
         message: "original planning failure",
+        remediation: "Fix the service configuration.",
         file: join(root, ".lando.yml"),
         issues: [{ path: [], message: "service planning failed" }],
       });

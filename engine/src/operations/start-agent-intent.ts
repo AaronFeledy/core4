@@ -11,6 +11,7 @@ interface StartAgentIntentConfig<Extension, Intent, Error> {
     readonly message: string;
     readonly stage: "broker";
     readonly remediation: string;
+    readonly cause: unknown;
   }) => Error;
   readonly eligibleServices: (plan: AppPlan) => readonly ServicePlan[];
   readonly planExtension: (plan: AppPlan) => Extension | undefined;
@@ -34,30 +35,20 @@ export const resolveStartAgentIntent = <Extension, Intent, Error>(
       (eligible && Option.isSome(landofiles)
         ? yield* loadUserLandofileAt(landofiles.value, target.root).pipe(
             Effect.mapError(
-              () =>
+              (cause) =>
                 new config.error({
                   message: `Unable to resolve the current ${config.label} agent configuration.`,
                   stage: "broker",
                   remediation: "Fix the app Landofile and retry lando start.",
+                  cause,
                 }),
             ),
           )
         : undefined);
     const extension = agentLandofile === undefined ? config.planExtension(plan) : undefined;
     return config.resolveIntent({
-      landofile: agentLandofile ?? (extension === undefined ? {} : config.fallbackLandofile(extension)),
-      globalConfig:
-        Option.isSome(global) && eligible
-          ? yield* global.value.load.pipe(
-              Effect.mapError(
-                () =>
-                  new config.error({
-                    message: `Unable to resolve the global ${config.label} agent configuration.`,
-                    stage: "broker",
-                    remediation: "Fix the global configuration and retry lando start.",
-                  }),
-              ),
-            )
-          : undefined,
+      landofile:
+        agentLandofile?.document ?? (extension === undefined ? {} : config.fallbackLandofile(extension)),
+      globalConfig: Option.isSome(global) && eligible ? yield* global.value.load : undefined,
     });
   });

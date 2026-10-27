@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { expect, test } from "bun:test";
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
 import {
   LandofileShape,
@@ -19,6 +18,7 @@ import { Effect, Layer, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 const planAt = (
   root: string,
@@ -30,7 +30,7 @@ const planAt = (
   capabilities: ProviderCapabilities = TestRuntimeProvider.capabilities,
   service: { readonly mounts?: readonly unknown[]; readonly storage?: readonly unknown[] } = {},
 ) => {
-  const landofile = rememberLandofileAppRoot(
+  const landofile = literalTestLandofile(
     Schema.decodeUnknownSync(LandofileShape)({
       name: "gitapp",
       runtime: 4,

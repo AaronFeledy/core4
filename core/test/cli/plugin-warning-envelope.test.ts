@@ -62,7 +62,8 @@ for (const resultFormat of ["json", "yaml"] as const) {
           }
           if (transport === "live") {
             const sink = yield* Effect.serviceOption(StreamFrameSink);
-            if (Option.isSome(sink)) yield* sink.value.emit({ _tag: "stdout", chunk: "streamed chunk\n" });
+            if (Option.isSome(sink))
+              yield* sink.value.emit({ kind: "bytes", _tag: "stdout", chunk: "streamed chunk\n" });
             else output = "streamed chunk\n";
           }
           yield* plugin.warn("last command warning");
@@ -86,7 +87,7 @@ for (const resultFormat of ["json", "yaml"] as const) {
           extraRedactionTokens: [secret],
           sourceEnv: {},
           io,
-          formatError: String,
+          formatError: ({ error }) => String(error),
           setExitCode: (code) => {
             exitCode = code;
           },
@@ -143,7 +144,7 @@ test("retains plugin warnings when the runtime publishes during layer acquisitio
     resultFormat: "json",
     resultSchema: ResultSchema,
     io,
-    formatError: String,
+    formatError: ({ error }) => String(error),
     setExitCode: () => undefined,
   });
   // Then: acquisition warnings reach the same command-local envelope.
@@ -170,7 +171,7 @@ test("retains encoded warning events when using the fallback event service", asy
     resultFormat: "json",
     resultSchema: ResultSchema,
     io,
-    formatError: String,
+    formatError: ({ error }) => String(error),
     setExitCode: () => undefined,
   });
   // Then: the encoded warning is retained too.
@@ -193,7 +194,7 @@ test("keeps human warning rendering when using a retained plugin publisher", asy
     resultFormat: "text",
     io,
     render: () => "done",
-    formatError: String,
+    formatError: ({ error }) => String(error),
     setExitCode: () => undefined,
   });
   // Then: the warning and result use separate streams.

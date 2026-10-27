@@ -5,9 +5,10 @@ import { Effect, Match } from "effect";
 import { CommandInputValidationError } from "@lando/sdk/errors";
 import type { ExecutableCommandInput } from "@lando/sdk/plugins";
 
+import type { EnvironmentValue } from "@lando/sdk/schema";
 import type { DbAction, DbCommandInput } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
-import { DEFAULT_SQL_PASSWORD } from "./creds.ts";
+
 import type { SqlLandofileService, SqlPlan } from "./views.ts";
 
 export const hostFile = (
@@ -63,25 +64,12 @@ export const validateExportCompressionLevel = (
 };
 
 export const secretTokens = (
-  creds: { readonly password?: string; readonly rootPassword?: string },
-  authored?: SqlLandofileService,
+  creds: { readonly password?: EnvironmentValue; readonly rootPassword?: EnvironmentValue },
+  _authored?: SqlLandofileService,
 ): string[] => {
-  const authoredPasswords = [
-    authored?.creds?.password,
-    authored?.creds?.rootPassword,
-    ...Object.entries(authored?.environment ?? {})
-      .filter(([key]) => /PASSWORD$/u.test(key))
-      .map(([, value]) => value),
-  ];
-  const password =
-    creds.password === undefined ||
-    creds.password.length === 0 ||
-    (creds.password === DEFAULT_SQL_PASSWORD && !authoredPasswords.includes(creds.password))
-      ? []
-      : [creds.password];
-  const rootPassword =
-    creds.rootPassword === undefined || creds.rootPassword.length === 0 ? [] : [creds.rootPassword];
-  return [...password, ...rootPassword];
+  return [creds.password, creds.rootPassword].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
 };
 
 export const dbCommandRedactionTokens = (result: unknown): ReadonlyArray<string> => {

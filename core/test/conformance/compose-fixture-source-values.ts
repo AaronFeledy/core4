@@ -142,9 +142,10 @@ export const normalizedSourceValue = (request: {
       return requiredMapEntry(service.environment, relativePath.slice("environment.".length), match);
     case "healthcheck": {
       if (match.matrixPath === "healthcheck") return service.healthcheck;
+      if (service.healthcheck === false) return false;
+      if (match.matrixPath === "healthcheck.disable") return service.healthcheck;
       const field =
         {
-          "healthcheck.disable": "kind",
           "healthcheck.interval": "intervalSeconds",
           "healthcheck.start_period": "startPeriodSeconds",
           "healthcheck.test": "kind",
@@ -154,6 +155,8 @@ export const normalizedSourceValue = (request: {
     }
     case "internal-endpoints":
       return service.expose;
+    case "networks":
+      return service.networks;
     case "published-endpoints": {
       if (match.matrixPath === "ports") return service.ports;
       const port = service.ports?.[matchedIndex(match, "ports")];
@@ -180,7 +183,8 @@ export const preservedSourceValue = (match: ComposeDispositionMatch, service: Se
     const dependencyName = serviceDocumentPath(match).split(".")[1];
     return service.dependsOn?.find((candidate) => candidate.service === dependencyName)?.restart;
   }
-  if (match.matrixPath === "healthcheck.start_interval") return service.healthcheck?.startInterval;
+  if (match.matrixPath === "healthcheck.start_interval")
+    return service.healthcheck === false ? undefined : service.healthcheck?.startInterval;
   if (match.matrixPath.startsWith("volumes.tmpfs")) {
     const volume = service.volumes?.[matchedIndex(match, "volumes")];
     if (match.matrixPath === "volumes.tmpfs") return volume?.tmpfs;

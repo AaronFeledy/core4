@@ -1,0 +1,14 @@
+name: escaped-literals
+services:
+  app:
+    type: "node:22"
+    primary: true
+    command: 'sh -c "echo $${HOME}"'
+    environment:
+      GREETING: "pre-$${HOME}-post"
+      TEMPLATE: "{{{{ app.name }}"
+tooling:
+  home:
+    service: app
+    cmds:
+      - 'sh -c "echo $${HOME}"'

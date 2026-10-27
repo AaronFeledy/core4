@@ -1,15 +1,16 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
+  ServiceConfigIssue,
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
@@ -75,7 +76,11 @@ export const validateServer = (
   if ((SUPPORTED_STATIC_SERVERS as ReadonlyArray<string>).includes(server)) {
     return server as SupportedStaticServer;
   }
-  throw new Error(`Unsupported static server "${server}". ${REMEDIATION_SERVER(server)}`);
+  throw new ServiceConfigIssue(
+    ["type"],
+    `Unsupported static server "${server}".`,
+    REMEDIATION_SERVER(server),
+  );
 };
 
 const configFor = (ctx: ServiceFeatureContext): StaticFeatureConfig => ctx.config as StaticFeatureConfig;
@@ -95,7 +100,6 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   }
   ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port, service.user));
   applyAuthoredProcessFields(ctx, ["user"]);
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
@@ -110,6 +114,10 @@ export const staticServiceFeature: ServiceFeatureDefinition = {
   id: STATIC_FEATURE_ID,
   schema: StaticFeatureConfigSchema as Schema.Codec<unknown>,
   priority: STATIC_FEATURE_PRIORITY,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+    ),
   apply: serviceFeatureApply(STATIC_FEATURE_ID, "service-lando.static failed to apply", applyStaticFeature),
 };
 
@@ -125,6 +133,11 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
     id,
     name: id,
     base: "lando",
+    // Verified linux/amd64: nginx:1.26-alpine config
+    // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111 has
+    // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin (cache, not a persisted home).
+    // caddy:2-alpine config sha256:3067cc4e02c091399edbd5d65f85a3ff4d511574aecadb47f280c3761e68852e
+    // has only root. Both server choices therefore declare only the root home.
     identity: rootIdentity(),
     schema: Schema.Unknown,
     resolve: (input) =>

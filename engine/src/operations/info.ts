@@ -4,32 +4,32 @@ import type {
   InfoAppOptions,
   InfoAppResult,
   InfoAppService,
-  InfoServiceStatus,
   InfoAppError as SdkInfoAppError,
 } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
 import {
   type AppPlan,
-  type LandofileShape,
-  type PublishedEndpoint,
-  ServiceCreds,
-  type ServiceName,
+  type LoadScopedLandofile,
+  type ServiceConnection,
+  ServiceInfo,
   type ServicePlan,
+  type ServiceState,
 } from "@lando/sdk/schema";
 import { REDACTED } from "@lando/sdk/secrets";
 import {
   type AppPlanner,
   type ConfigService,
   LandofileService,
-  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
 import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
-import { routeUrlsForPlan } from "../lifecycle/routes.ts";
+import { observedAppPlan } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
-import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./authority-url.ts";
+import { resolveAppliedStateTarget } from "./applied-state-target.ts";
+import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
+import { projectServiceMounts } from "./info-storage.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -37,36 +37,7 @@ export type { InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/a
 
 type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 
-const InfoServiceStatusSchema = Schema.Literals([
-  "unknown",
-  "stopped",
-  "starting",
-  "running",
-  "healthy",
-  "unhealthy",
-  "error",
-]);
-
-const AppInfoLogSourceSchema = Schema.Struct({
-  id: Schema.String,
-  path: Schema.String,
-  strategy: Schema.Literals(["redirect", "follow"]),
-  availability: Schema.Literals(["available", "redirected-to-console", "unavailable"]),
-  reason: Schema.optionalKey(Schema.String),
-});
-
-export const AppInfoServiceSchema = Schema.Struct({
-  app: Schema.String,
-  service: Schema.String,
-  api: Schema.Literal(4),
-  type: Schema.String,
-  provider: Schema.String,
-  primary: Schema.Boolean,
-  status: InfoServiceStatusSchema,
-  endpoints: Schema.Array(Schema.String),
-  logSources: Schema.optionalKey(Schema.Array(AppInfoLogSourceSchema)),
-  creds: Schema.optionalKey(ServiceCreds),
-});
+export const AppInfoServiceSchema = ServiceInfo;
 
 export const AppInfoAgentEnvSchema = Schema.Struct({
   enabled: Schema.Boolean,
@@ -87,55 +58,13 @@ export const AppInfoResultSchema = Schema.Struct({
   hostProxy: Schema.optionalKey(AppInfoHostProxySchema),
 });
 
-const statusText = (status: string | undefined): InfoServiceStatus => {
-  switch (status) {
-    case "stopped":
-    case "starting":
-    case "running":
-    case "healthy":
-    case "unhealthy":
-    case "error":
-      return status;
-    default:
-      return "unknown";
-  }
-};
-
-const endpointText = (
-  service: ServicePlan,
-  endpoint: PublishedEndpoint & MaterializedPublishedEndpoint,
-): ReadonlyArray<string> => {
-  if (service.type === "postgres") {
-    const user = service.environment.POSTGRES_USER ?? "lando";
-    const database = service.environment.POSTGRES_DB ?? "postgres";
-    const url = publishedEndpointUrl(endpoint, "postgresql");
-    return url === undefined ? [] : [`${url.replace("postgresql://", `postgresql://${user}@`)}/${database}`];
-  }
-  if (service.type === "memcached" && endpoint.protocol === "tcp") {
-    const url = publishedEndpointUrl(endpoint, "memcached");
-    return url === undefined ? [] : [url];
-  }
-  if (service.type === "valkey" && endpoint.protocol === "tcp") {
-    const valkey = publishedEndpointUrl(endpoint, "valkey");
-    const redis = publishedEndpointUrl(endpoint, "redis");
-    return valkey === undefined || redis === undefined ? [] : [valkey, redis];
-  }
-  const url = publishedEndpointUrl(endpoint);
-  return url === undefined ? [] : [url];
-};
-
-const credsFromEnvironment = (environment: ServicePlan["environment"]): InfoAppService["creds"] => {
-  const user = environment.LANDO_DB_USER;
-  const password = environment.LANDO_DB_PASSWORD;
-  const database = environment.LANDO_DB_NAME;
-  const rootPassword = environment.LANDO_DB_ROOT_PASSWORD;
-  if (user === undefined && password === undefined && database === undefined) {
-    return undefined;
-  }
+const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppService["creds"] => {
+  if (connection === undefined) return undefined;
+  const { user, database, rootPassword } = connection.creds;
   return {
-    user: user ?? "",
-    password: password === undefined ? "" : REDACTED,
-    database: database ?? "",
+    user,
+    password: REDACTED,
+    database,
     ...(rootPassword === undefined ? {} : { rootPassword: REDACTED }),
   };
 };
@@ -143,8 +72,8 @@ const credsFromEnvironment = (environment: ServicePlan["environment"]): InfoAppS
 const toServiceInfo = (
   plan: AppPlan,
   service: ServicePlan,
-  status: InfoServiceStatus,
-  endpoints: ReadonlyArray<string>,
+  status: ServiceState,
+  connections: readonly ServiceConnection[],
   serviceLogSources: boolean,
 ): InfoAppService => {
   const logSources = (service.logSources ?? []).map((source) => {
@@ -160,7 +89,7 @@ const toServiceInfo = (
         "This provider cannot follow log files. Set `strategy: redirect` on this source to view it with `lando logs`.",
     };
   });
-  const creds = credsFromEnvironment(service.environment);
+  const creds = credsFromConnection(service.connection);
   return {
     app: String(plan.id),
     service: String(service.name),
@@ -169,7 +98,7 @@ const toServiceInfo = (
     provider: String(service.provider),
     primary: service.primary,
     status,
-    endpoints,
+    connections,
     ...(logSources.length === 0 ? {} : { logSources }),
     ...(creds === undefined ? {} : { creds }),
   };
@@ -180,37 +109,25 @@ const toServiceInfo = (
 // user-Landofile resolution into their bootstrap layer.
 export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   plan: AppPlan,
+  completionPlan: AppPlan = plan,
 ): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
   const registry = yield* RuntimeProviderRegistry;
-  const proxy = yield* Effect.serviceOption(RouterService);
   const provider = yield* registry.select(plan);
-  const routedUrls =
-    proxy._tag === "Some"
-      ? yield* routeUrlsForPlan(proxy.value, plan)
-      : new Map<ServiceName, ReadonlyArray<string>>();
-
   const serviceLogSources = provider.capabilities.serviceLogSources === true;
-  const services = yield* Effect.forEach(Object.values(plan.services), (service) =>
-    provider.inspect({ app: plan.id, service: service.name, plan }).pipe(
-      Effect.map((runtime) => {
-        const status = statusText(runtime.state ?? runtime.status);
-        return toServiceInfo(
-          plan,
-          service,
-          status,
-          status === "stopped"
-            ? []
-            : [
-                ...(routedUrls.get(service.name) ?? []),
-                ...(runtime.endpoints ?? service.endpoints).flatMap((endpoint) =>
-                  endpoint._tag === "published" ? endpointText(service, endpoint) : [],
-                ),
-              ],
-          serviceLogSources,
-        );
-      }),
-    ),
-  );
+  const observations = yield* collectPlanObservations(plan, completionPlan, provider);
+  const rows = yield* collectObservedConnections(plan, observations);
+  const services = rows.map((row) => {
+    const service = Object.values(plan.services).find((service) => String(service.name) === row.name);
+    if (service === undefined) throw new TypeError(`Missing service plan for ${row.name}`);
+    const runtime = observations.find((observed) => observed.name === row.name)?.runtime;
+    const mounts = projectServiceMounts(plan, service, runtime);
+    return {
+      ...toServiceInfo(plan, service, row.state, row.connections, serviceLogSources),
+      ...(mounts === undefined ? {} : { mounts }),
+      ...(service.appMount === undefined ? {} : { appMount: service.appMount }),
+      ...(service.home === undefined ? {} : { home: service.home }),
+    };
+  });
 
   const hostProxy = hostProxyPlanExtension(plan);
   return { app: plan.name, services, ...(hostProxy === undefined ? {} : { hostProxy }) };
@@ -223,19 +140,22 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
   const landofileService = yield* LandofileService;
 
   let plan: AppPlan;
-  let landofile: LandofileShape | undefined;
-  if (target?.plan !== undefined) {
-    plan = target.plan;
+  let landofile: LoadScopedLandofile | undefined;
+  const observedTarget = target ?? (yield* resolveAppliedStateTarget);
+  if (observedTarget !== undefined) {
+    plan = observedTarget.plan;
     if (options?.deep === true) {
-      landofile = yield* loadUserLandofileAt(landofileService, target.root);
+      landofile =
+        observedTarget.landofile ?? (yield* loadUserLandofileAt(landofileService, observedTarget.root));
     }
   } else {
     ({ plan, landofile } = yield* planDesiredApp);
   }
 
-  const selectedPlan = yield* selectInfoPlan(plan, options?.services);
-  const result = yield* infoForPlan(selectedPlan);
+  const observedPlan = yield* observedAppPlan(plan);
+  const selectedPlan = yield* selectInfoPlan(observedPlan, options?.services);
+  const result = yield* infoForPlan(selectedPlan, observedPlan);
   if (options?.deep !== true) return result;
-  const agentEnv = yield* resolveAgentEnvAudit(landofile?.agentEnv, process.env);
+  const agentEnv = yield* resolveAgentEnvAudit(landofile?.document.agentEnv, process.env);
   return { ...result, agentEnv };
 });

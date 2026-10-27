@@ -7,7 +7,7 @@ tags: [beta, docs, dotnet, service]
 
 # Add .NET
 
-Put `type: dotnet` in your services block. That shorthand is the .NET 9 SDK image, which includes the ASP.NET runtime. Lando mounts the app at `/app` and keeps the container idle until you set `command:` to your dev server:
+Add `type: dotnet` under `services` in `.lando.yml` at the root of your .NET project. That shorthand is the .NET 9 SDK image, which includes the ASP.NET runtime. Lando mounts the app at `/app` and keeps the container idle until you set `command:` to your dev server:
 
 ```yaml
 name: dotnet-demo
@@ -50,9 +50,7 @@ services:
 
 ## Run the app
 
-Lando does not invent a `dotnet run` for you. Set `command:` to whatever
-your project actually starts with, and bind it to `0.0.0.0:5000` so the
-default route can reach it.
+Set `command:` to your project's development-server command. The example uses `dotnet watch run` and binds it to `0.0.0.0:5000` so the default route can reach it.
 
 ## Cache and the default route
 
@@ -61,5 +59,5 @@ service listens on `5000`, gets a default hostname route, and turns on
 `lando.certs`. Set `certs: false` if you do not want a leaf certificate.
 
 ```sh
-lando info --json
+lando info --format=json
 ```

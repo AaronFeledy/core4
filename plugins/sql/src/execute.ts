@@ -2,15 +2,25 @@ import { DateTime, Effect, absurd } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
-import { SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
-import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
+import { SqlRecoveryOperationError, SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
+import type {
+  DataTransferResult,
+  Environment,
+  PrunePolicy,
+  SnapshotId,
+  SnapshotInfo,
+} from "@lando/sdk/schema";
+import { snapshotHandle } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
+import type { SqlExec } from "./actions.ts";
+import { checkedSqlExecution } from "./checked-execution.ts";
 import { hostFile, parseCount, secretTokens, validateExportCompressionLevel } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
-import { credsEnv, resolveSqlCreds } from "./creds.ts";
+import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
 import { ensureReadableDump } from "./dump-file.ts";
+import { SqlEnvironmentSession } from "./environment.ts";
 import { countCommand } from "./families.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
@@ -22,235 +32,150 @@ import { requireRestoreCompatibleSnapshot } from "./snapshot-compatibility.ts";
 import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
 import { resolveSqlTarget } from "./target.ts";
+import { sqlPlanIdentity } from "./views.ts";
 export type { DbAction, DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 
 export { dbCommandRedactionTokens, dbInputFromCommand } from "./command-input.ts";
 
 export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
-  deps: SqlCommandDeps,
+  rawDeps: SqlCommandDeps,
   input: DbCommandInput,
 ) {
   yield* validateExportCompressionLevel(input);
-  const resolved = resolveSqlTarget(deps.plan, input.service);
-  if (resolved._tag === "Failure") return yield* Effect.fail(resolved.failure);
-  const target = resolved.success;
-  const service = deps.plan.services[target.name];
-  if (service === undefined) {
-    return yield* Effect.fail(
-      new SqlServiceNotFoundError({
-        message: `No SQL service named ${target.name}.`,
-        service: target.name,
-        available: [],
-        remediation: "Add a mysql, mariadb, postgres, mongodb, or mssql service.",
-      }),
-    );
-  }
-  const authored = deps.landofile.services?.[target.name];
-  const creds = resolveSqlCreds({
-    family: target.family,
-    serviceName: target.name,
-    appName: deps.plan.name,
-    ...(authored === undefined ? {} : { landofileService: authored }),
-    planEnvironment: service.environment,
-  });
-  const tokens = secretTokens(creds, authored);
-  const env = credsEnv(target.family, creds);
-  const waitForDatabase = waitForSqlDatabase(deps.exec, {
-    service: target.name,
-    command: countCommand(target.family, creds),
-    env,
-  });
-  const resumeDatabase = (serviceName: string, identity: Parameters<typeof deps.resume>[1]) =>
-    deps.resume(serviceName, identity).pipe(Effect.andThen(waitForDatabase));
-  if (
-    input.action === "seed" &&
-    [input.file, input.snapshotId, input.fromApp, input.fromPath].filter((source) => source !== undefined)
-      .length !== 1
+  const session = yield* rawDeps.environmentResolver.openSession();
+  const exec: SqlExec = Effect.fn("Sql.exec")(function* (
+    service: string,
+    command: ReadonlyArray<string>,
+    env?: Environment,
   ) {
-    return yield* Effect.fail(
-      new SqlSeedSourceError({
-        message: `Seed ${target.name} requires exactly one source.`,
+    const concrete = env === undefined ? undefined : yield* session.resolveEnvironment(env);
+    return yield* rawDeps.exec(service, command, concrete);
+  });
+  const deps = { ...rawDeps, exec };
+  return yield* Effect.gen(function* () {
+    const resolved = resolveSqlTarget(deps.plan, input.service);
+    if (resolved._tag === "Failure") return yield* Effect.fail(resolved.failure);
+    const target = resolved.success;
+    const owner = sqlPlanIdentity(deps.plan);
+    const service = deps.plan.services[target.name];
+    if (service === undefined) {
+      return yield* Effect.fail(
+        new SqlServiceNotFoundError({
+          message: `No SQL service named ${target.name}.`,
+          service: target.name,
+          available: [],
+          remediation: "Add a mysql, mariadb, postgres, mongodb, or mssql service.",
+        }),
+      );
+    }
+    const authored = deps.landofile.services?.[target.name];
+    const connection = yield* currentAppliedDatabaseConnection(service, {
+      app: deps.plan.id,
+      providerId: deps.providerId,
+    });
+    const creds = resolveSqlCreds(connection);
+    const tokens = secretTokens(creds, authored);
+    const env = credsEnv(target.family, creds);
+    const waitForDatabase = waitForSqlDatabase(deps.exec, {
+      service: target.name,
+      command: countCommand(target.family, creds),
+      env,
+    });
+    const resumeDatabase = (serviceName: string, identity: Parameters<typeof deps.resume>[1]) =>
+      deps
+        .resume(serviceName, identity)
+        .pipe(Effect.andThen(waitForDatabase), Effect.provideService(SqlEnvironmentSession, session));
+    if (
+      input.action === "seed" &&
+      [input.file, input.snapshotId, input.fromApp, input.fromPath].filter((source) => source !== undefined)
+        .length !== 1
+    ) {
+      return yield* Effect.fail(
+        new SqlSeedSourceError({
+          message: `Seed ${target.name} requires exactly one source.`,
+          service: target.name,
+          remediation: "Pass exactly one dump file, --snapshot <id>, --from-app <id>, or --from-path <dir>.",
+        }),
+      );
+    }
+    const seedSource =
+      input.action === "seed" && (input.fromApp !== undefined || input.fromPath !== undefined)
+        ? yield* resolveSeedSource(rawDeps, input, target)
+        : undefined;
+    const file = hostFile(deps.plan, { ...input, service: target.name });
+    const action = input.action;
+    let restoreSource: SnapshotInfo | undefined;
+    const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
+    const dump =
+      action === "import" || (action === "seed" && input.file !== undefined)
+        ? yield* ensureReadableDump(file, deps.plan.root)
+        : undefined;
+    const expectedDigest = dump?.digest;
+    const compression = dump?.compression ?? compressionFromExportPath(file);
+    const steps: DbCommandStep[] = [
+      {
+        id: action,
+        label: `${action} ${target.name}`,
+        target: target.name,
+        destructive: action === "import" || action === "reset" || action === "restore",
+      },
+    ];
+
+    if (action === "import") {
+      const command = countCommand(target.family, creds);
+      const counted = yield* checkedSqlExecution(deps.exec(target.name, command, env), {
         service: target.name,
-        remediation: "Pass exactly one dump file, --snapshot <id>, --from-app <id>, or --from-path <dir>.",
-      }),
-    );
-  }
-  const seedSource =
-    input.action === "seed" && (input.fromApp !== undefined || input.fromPath !== undefined)
-      ? yield* resolveSeedSource(deps, input, target)
-      : undefined;
-  const file = hostFile(deps.plan, { ...input, service: target.name });
-  const action = input.action;
-  let restoreSource: SnapshotInfo | undefined;
-  const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
-  const dump =
-    action === "import" || (action === "seed" && input.file !== undefined)
-      ? yield* ensureReadableDump(file, deps.plan.root)
-      : undefined;
-  const expectedDigest = dump?.digest;
-  const compression = dump?.compression ?? compressionFromExportPath(file);
-  const steps: DbCommandStep[] = [
-    {
-      id: action,
-      label: `${action} ${target.name}`,
-      target: target.name,
-      destructive: action === "import" || action === "reset" || action === "restore",
-    },
-  ];
-
-  if (action === "import") {
-    const counted = yield* deps
-      .exec(target.name, countCommand(target.family, creds), env)
-      .pipe(Effect.catch(() => Effect.succeed({ ok: false, stdout: "" })));
-    const count = counted.ok ? parseCount(counted.stdout) : undefined;
-    yield* confirmOrFail(
-      input,
-      deps.confirm,
-      target.name,
-      steps,
-      count === undefined || count > 0
-        ? `Import will replace data in ${target.name}.`
-        : `Import will initialize ${target.name}.`,
-    );
-  }
-  if (action === "reset") {
-    yield* confirmOrFail(
-      input,
-      deps.confirm,
-      target.name,
-      steps,
-      `Reset will destroy data in ${target.name}.`,
-    );
-  }
-  if (action === "restore") {
-    yield* confirmOrFail(
-      input,
-      deps.confirm,
-      target.name,
-      steps,
-      `Restore will replace data in ${target.name}.`,
-    );
-  }
-  if (action === "restore" || (action === "seed" && input.snapshotId !== undefined)) {
-    const scope = yield* resolveSnapshotSource({
-      app: deps.plan.id,
-      ...(store === undefined ? {} : { store: store.store }),
-      ...(deps.plan.identity?.ownerKey === undefined ? {} : { ownerKey: deps.plan.identity.ownerKey }),
-      service: target.name,
-      hostCwd: input.hostCwd ?? process.cwd(),
-      canonicalizePath: deps.canonicalizeSourcePath,
-    });
-    restoreSource = yield* deps.resolveSnapshot(input.snapshotId ?? "", scope);
-  }
-
-  let prunePolicy: PrunePolicy | undefined;
-  let pruneCandidates: ReadonlyArray<SnapshotInfo> | undefined;
-  if (action === "prune") {
-    const filter = yield* resolveSnapshotSource({
-      app: deps.plan.id,
-      ...(store === undefined ? {} : { store: store.store }),
-      ...(deps.plan.identity?.ownerKey === undefined ? {} : { ownerKey: deps.plan.identity.ownerKey }),
-      ...(deps.plan.identity?.repoGroupKey === undefined
-        ? {}
-        : { repoGroupKey: deps.plan.identity.repoGroupKey }),
-      service: target.name,
-      ...(input.fromApp === undefined ? {} : { fromApp: input.fromApp }),
-      ...(input.fromPath === undefined ? {} : { fromPath: input.fromPath }),
-      hostCwd: input.hostCwd ?? process.cwd(),
-      canonicalizePath: deps.canonicalizeSourcePath,
-    });
-    const keepLatest = input.keepLatest ?? DEFAULT_SNAPSHOT_KEEP_LATEST;
-    const snapshots = yield* deps.listSnapshots(filter);
-    prunePolicy = { filter, keepLatest };
-    pruneCandidates = [...snapshots]
-      .filter((snapshot) => snapshot.metadata?.recoveryReason === "manual")
-      .sort((left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt))
-      .slice(keepLatest);
-    if (input.preview !== true) {
+        command,
+        env,
+      });
+      const count = parseCount(counted.stdout);
       yield* confirmOrFail(
         input,
         deps.confirm,
         target.name,
         steps,
-        `Retention will delete ${pruneCandidates.length} snapshot(s) for ${target.name}.`,
+        count === undefined || count > 0
+          ? `Import will replace data in ${target.name}.`
+          : `Import will initialize ${target.name}.`,
       );
     }
-  }
-
-  const progress = yield* publishTree(deps.publish, `db:${action}`, steps);
-
-  const io = {
-    plan: deps.plan,
-    service: target.name,
-    family: target.family,
-    creds,
-    env,
-    file,
-    compression,
-    ...(input.action === "export" && input.compressionLevel !== undefined
-      ? { compressionLevel: input.compressionLevel }
-      : {}),
-    ...(expectedDigest === undefined ? {} : { expectedDigest }),
-  };
-  let snapshotId: string | undefined;
-  let listedSnapshots: ReadonlyArray<SnapshotInfo> | undefined;
-  let prunedSnapshotIds: ReadonlyArray<SnapshotId> | undefined;
-  let retentionApplied: boolean | undefined;
-  let transfer: DataTransferResult | undefined;
-  let seedStatus: "seeded" | undefined;
-  const runPhysical = <A, E>(
-    reason: Parameters<typeof runPhysicalOperation<A, E>>[0]["reason"],
-    body: Parameters<typeof runPhysicalOperation<A, E>>[0]["body"],
-    resumeAfterSnapshot: boolean,
-    preflight?: Parameters<typeof runPhysicalOperation<A, E>>[0]["preflight"],
-    retainSnapshotIds?: ReadonlyArray<string>,
-  ) =>
-    runPhysicalOperation({
-      deps: { ...deps, resume: resumeDatabase },
-      plan: deps.plan,
-      service,
-      serviceName: target.name,
-      family: target.family,
-      creds,
-      env,
-      ...(input.label === undefined ? {} : { label: input.label }),
-      ...(input.compression === undefined
-        ? {}
-        : {
-            format:
-              input.compression === "gzip" ? "tar.gz" : input.compression === "zstd" ? "tar.zst" : "tar",
-          }),
-      reason,
-      publish: deps.publish,
-      resumeAfterSnapshot,
-      ...(preflight === undefined ? {} : { preflight }),
-      ...(retainSnapshotIds === undefined ? {} : { retainSnapshotIds }),
-      body,
-    });
-  switch (action) {
-    case "export":
-      transfer = yield* runExport(deps, deps.exec, io);
-      break;
-    case "import":
-      transfer = yield* runPhysical("import", () => runImport(deps, deps.exec, io), true);
-      break;
-    case "reset":
-      yield* runPhysical("reset", () => runReset(deps.exec, target.name, target.family, creds, env), true);
-      break;
-    case "snapshot": {
-      const handle = yield* runPhysical(
-        "manual",
-        (_context, recoveryId) => Effect.succeed({ id: recoveryId }),
-        true,
+    if (action === "reset") {
+      yield* confirmOrFail(
+        input,
+        deps.confirm,
+        target.name,
+        steps,
+        `Reset will destroy data in ${target.name}.`,
       );
-      snapshotId = handle.id;
-      break;
     }
-    case "snapshots": {
+    if (action === "restore") {
+      yield* confirmOrFail(
+        input,
+        deps.confirm,
+        target.name,
+        steps,
+        `Restore will replace data in ${target.name}.`,
+      );
+    }
+    if (action === "restore" || (action === "seed" && input.snapshotId !== undefined)) {
+      const scope = yield* resolveSnapshotSource({
+        app: deps.plan.id,
+        ...(store === undefined ? {} : { store: store.store }),
+        ownerKey: owner.ownerKey,
+        service: target.name,
+        hostCwd: input.hostCwd ?? process.cwd(),
+        canonicalizePath: deps.canonicalizeSourcePath,
+      });
+      restoreSource = yield* deps.resolveSnapshot(input.snapshotId ?? "", scope);
+    }
+
+    let prunePolicy: PrunePolicy | undefined;
+    let pruneCandidates: ReadonlyArray<SnapshotInfo> | undefined;
+    if (action === "prune") {
       const filter = yield* resolveSnapshotSource({
         app: deps.plan.id,
         ...(store === undefined ? {} : { store: store.store }),
-        ...(deps.plan.identity?.ownerKey === undefined ? {} : { ownerKey: deps.plan.identity.ownerKey }),
+        ownerKey: owner.ownerKey,
         ...(deps.plan.identity?.repoGroupKey === undefined
           ? {}
           : { repoGroupKey: deps.plan.identity.repoGroupKey }),
@@ -260,77 +185,215 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         hostCwd: input.hostCwd ?? process.cwd(),
         canonicalizePath: deps.canonicalizeSourcePath,
       });
-      listedSnapshots = yield* deps.listSnapshots(filter);
-      break;
-    }
-    case "prune": {
-      if (input.preview === true) {
-        prunedSnapshotIds = [];
-        retentionApplied = false;
-        break;
-      }
-      if (prunePolicy === undefined) return yield* Effect.die(new Error("retention policy was not resolved"));
-      prunedSnapshotIds = yield* deps.pruneSnapshots(prunePolicy);
-      retentionApplied = true;
-      break;
-    }
-    case "restore":
-      snapshotId = restoreSource?.id ?? "";
-      {
-        yield* runPhysical(
-          "restore",
-          (context) =>
-            Effect.gen(function* () {
-              yield* context.verifyVolume;
-              yield* deps.restore(snapshotId ?? "", context.volume);
-              if (context.running) yield* context.resume;
-            }),
-          false,
-          (context) => requireRestoreCompatibleSnapshot(restoreSource, context),
-          // The snapshot just restored from may itself be an automatic recovery snapshot.
-          restoreSource === undefined ? [] : [restoreSource.id],
+      const keepLatest = input.keepLatest ?? DEFAULT_SNAPSHOT_KEEP_LATEST;
+      const snapshots = yield* deps.listSnapshots(filter);
+      prunePolicy = { filter, keepLatest };
+      pruneCandidates = [...snapshots]
+        .filter((snapshot) => snapshot.metadata?.recoveryReason === "manual")
+        .sort(
+          (left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
+        )
+        .slice(keepLatest);
+      if (input.preview !== true) {
+        yield* confirmOrFail(
+          input,
+          deps.confirm,
+          target.name,
+          steps,
+          `Retention will delete ${pruneCandidates.length} snapshot(s) for ${target.name}.`,
         );
       }
-      break;
-    case "seed":
-      transfer = yield* withPhysicalVolumeLock({
-        deps,
+    }
+
+    const progress = yield* publishTree(deps.publish, `db:${action}`, steps);
+
+    const io = {
+      plan: deps.plan,
+      service: target.name,
+      family: target.family,
+      creds,
+      env,
+      file,
+      compression,
+      ...(input.compressionLevel === undefined ? {} : { compressionLevel: input.compressionLevel }),
+      ...(expectedDigest === undefined ? {} : { expectedDigest }),
+    };
+    let snapshotId: string | undefined;
+    let listedSnapshots: ReadonlyArray<SnapshotInfo> | undefined;
+    let prunedSnapshotIds: ReadonlyArray<SnapshotId> | undefined;
+    let retentionApplied: boolean | undefined;
+    let transfer: DataTransferResult | undefined;
+    let seedStatus: "seeded" | undefined;
+    let completionReceipt:
+      | { readonly recoverySnapshotId: string; readonly operation: SqlRecoveryOperationError["operation"] }
+      | undefined;
+    const runPhysical = <A, E>(
+      reason: Parameters<typeof runPhysicalOperation<A, E>>[0]["reason"],
+      body: Parameters<typeof runPhysicalOperation<A, E>>[0]["body"],
+      resumeAfterSnapshot: boolean,
+      preflight?: Parameters<typeof runPhysicalOperation<A, E>>[0]["preflight"],
+      retainSnapshotIds?: ReadonlyArray<string>,
+    ) =>
+      runPhysicalOperation({
+        deps: { ...deps, resume: resumeDatabase },
         plan: deps.plan,
         service,
         serviceName: target.name,
         family: target.family,
         creds,
         env,
-        body: (context) =>
-          executeSeed({ ...deps, resume: resumeDatabase }, context, {
-            ...io,
-            store: context.volume,
-            ...(restoreSource === undefined ? {} : { snapshot: restoreSource }),
-            ...(seedSource === undefined ? {} : { source: seedSource }),
-          }),
-      });
-      seedStatus = "seeded";
-      break;
-    default:
-      return absurd<never>(action);
-  }
+        ...(input.label === undefined ? {} : { label: input.label }),
+        ...(input.compression === undefined
+          ? {}
+          : {
+              format:
+                input.compression === "gzip" ? "tar.gz" : input.compression === "zstd" ? "tar.zst" : "tar",
+            }),
+        reason,
+        publish: deps.publish,
+        resumeAfterSnapshot,
+        ...(preflight === undefined ? {} : { preflight }),
+        ...(retainSnapshotIds === undefined ? {} : { retainSnapshotIds }),
+        body,
+      }).pipe(
+        Effect.map(({ result, recoverySnapshotId }) => {
+          completionReceipt = { recoverySnapshotId, operation: reason === "manual" ? "snapshot" : reason };
+          return result;
+        }),
+      );
+    switch (action) {
+      case "export":
+        transfer = yield* runExport(deps, deps.exec, io);
+        break;
+      case "import":
+        transfer = yield* runPhysical(
+          "import",
+          () => runImport(deps, deps.exec, io).pipe(Effect.provideService(SqlEnvironmentSession, session)),
+          true,
+        );
+        break;
+      case "reset":
+        yield* runPhysical(
+          "reset",
+          () =>
+            runReset(deps.exec, target.name, target.family, creds, env).pipe(
+              Effect.provideService(SqlEnvironmentSession, session),
+            ),
+          true,
+        );
+        break;
+      case "snapshot": {
+        const handle = yield* runPhysical(
+          "manual",
+          (_context, recoveryId) => Effect.succeed({ id: recoveryId }),
+          true,
+        );
+        snapshotId = handle.id;
+        break;
+      }
+      case "snapshots": {
+        const filter = yield* resolveSnapshotSource({
+          app: deps.plan.id,
+          ...(store === undefined ? {} : { store: store.store }),
+          ownerKey: owner.ownerKey,
+          ...(deps.plan.identity?.repoGroupKey === undefined
+            ? {}
+            : { repoGroupKey: deps.plan.identity.repoGroupKey }),
+          service: target.name,
+          ...(input.fromApp === undefined ? {} : { fromApp: input.fromApp }),
+          ...(input.fromPath === undefined ? {} : { fromPath: input.fromPath }),
+          hostCwd: input.hostCwd ?? process.cwd(),
+          canonicalizePath: deps.canonicalizeSourcePath,
+        });
+        listedSnapshots = yield* deps.listSnapshots(filter);
+        break;
+      }
+      case "prune": {
+        if (input.preview === true) {
+          prunedSnapshotIds = [];
+          retentionApplied = false;
+          break;
+        }
+        if (prunePolicy === undefined)
+          return yield* Effect.die(new Error("retention policy was not resolved"));
+        prunedSnapshotIds = yield* deps.pruneSnapshots(prunePolicy);
+        retentionApplied = true;
+        break;
+      }
+      case "restore": {
+        if (restoreSource === undefined)
+          return yield* Effect.die(new Error("Restore source was not resolved"));
+        snapshotId = restoreSource.id;
+        const handle = snapshotHandle(restoreSource);
+        yield* runPhysical(
+          "restore",
+          (context) =>
+            Effect.gen(function* () {
+              yield* context.verifyVolume;
+              yield* deps.restore(handle, context.volume);
+              if (context.running) yield* context.resume;
+            }),
+          false,
+          (context) => requireRestoreCompatibleSnapshot(restoreSource, context),
+          // The snapshot just restored from may itself be an automatic recovery snapshot.
+          [restoreSource.id],
+        );
+        break;
+      }
+      case "seed":
+        transfer = yield* withPhysicalVolumeLock({
+          deps,
+          plan: deps.plan,
+          service,
+          serviceName: target.name,
+          family: target.family,
+          creds,
+          env,
+          body: (context) =>
+            executeSeed({ ...deps, resume: resumeDatabase }, context, {
+              ...io,
+              store: context.volume,
+              ...(restoreSource === undefined ? {} : { snapshot: restoreSource }),
+              ...(seedSource === undefined ? {} : { source: seedSource }),
+            }).pipe(Effect.provideService(SqlEnvironmentSession, session)),
+        });
+        seedStatus = "seeded";
+        break;
+      default:
+        return absurd<never>(action);
+    }
 
-  yield* progress.complete;
-  return {
-    service: target.name,
-    family: target.family,
-    steps,
-    redactionTokens: [...tokens, ...(seedSource?.redactionTokens ?? [])],
-    ...(action === "import" || action === "export" ? { file } : {}),
-    ...(snapshotId === undefined ? {} : { snapshotId }),
-    ...(listedSnapshots === undefined ? {} : { snapshots: listedSnapshots }),
-    ...(pruneCandidates === undefined
-      ? {}
-      : { pruneCandidates: pruneCandidates.map((snapshot) => snapshot.id) }),
-    ...(prunedSnapshotIds === undefined ? {} : { prunedSnapshotIds }),
-    ...(retentionApplied === undefined ? {} : { retentionApplied }),
-    ...(seedStatus === undefined ? {} : { seedStatus }),
-    ...(transfer?.accelerated === undefined ? {} : { accelerated: transfer.accelerated }),
-    ...(transfer?.sizeBytes === undefined ? {} : { sizeBytes: transfer.sizeBytes }),
-  };
-});
+    yield* progress.complete.pipe(
+      Effect.mapError((cause) =>
+        completionReceipt === undefined
+          ? cause
+          : new SqlRecoveryOperationError({
+              message: `${completionReceipt.operation} COMPLETED for ${target.name}, but its completion notification failed. Snapshot ${completionReceipt.recoverySnapshotId} remains available.`,
+              service: target.name,
+              operation: completionReceipt.operation,
+              recoverySnapshotId: completionReceipt.recoverySnapshotId,
+              cause,
+              remediation:
+                "Do not repeat the completed database operation. Resolve the notification failure; use lando db:snapshots to inspect available snapshots. No automatic rollback was performed.",
+            }),
+      ),
+    );
+    return {
+      service: target.name,
+      family: target.family,
+      steps,
+      redactionTokens: [...tokens, ...(seedSource?.redactionTokens ?? [])],
+      ...(action === "import" || action === "export" ? { file } : {}),
+      ...(snapshotId === undefined ? {} : { snapshotId }),
+      ...(listedSnapshots === undefined ? {} : { snapshots: listedSnapshots }),
+      ...(pruneCandidates === undefined
+        ? {}
+        : { pruneCandidates: pruneCandidates.map((snapshot) => snapshot.id) }),
+      ...(prunedSnapshotIds === undefined ? {} : { prunedSnapshotIds }),
+      ...(retentionApplied === undefined ? {} : { retentionApplied }),
+      ...(seedStatus === undefined ? {} : { seedStatus }),
+      ...(transfer?.accelerated === undefined ? {} : { accelerated: transfer.accelerated }),
+      ...(transfer?.sizeBytes === undefined ? {} : { sizeBytes: transfer.sizeBytes }),
+    };
+  }).pipe(Effect.provideService(SqlEnvironmentSession, session));
+}, Effect.scoped);

@@ -8,28 +8,31 @@ tags: [beta, docs, schemas, library]
 
 # Validate a Landofile with Standard Schema
 
+Use `LandofileStandardSchema` in a host program to validate a parsed `.lando.yml`
+object before resolving its expressions. In the example, `input` is that parsed
+object, not a YAML string. Read `result.issues` for validation problems or
+`result.value` for the accepted authoring shape.
+
 ```ts
 import { LandofileStandardSchema } from "@lando/sdk/schema/standard";
 
 const result = await LandofileStandardSchema["~standard"].validate(input);
 if (result.issues) {
   for (const issue of result.issues) console.error(issue.path, issue.message);
-} else {
-  start(result.value);
 }
 ```
 
 [Standard Schema](https://standardschema.dev) is the interface form
 libraries, routers, and AI SDKs accept instead of asking you which validator
 you use. `@lando/sdk/schema/standard` exports Lando's input contracts in that
-form, so any tool that takes a Standard Schema can validate a Landofile with
-Lando's own decoder, not a copy of it.
+form, so any tool that takes a Standard Schema can check a Landofile with
+Lando's own authoring rules, not a copy of them.
 
 ## What the subpath exports
 
 | Export | Validates |
 | --- | --- |
-| `LandofileStandardSchema` | a parsed `.lando.yml` object |
+| `LandofileStandardSchema` | a parsed `.lando.yml` object, as you wrote it |
 | `GlobalConfigStandardSchema` | the global Lando config object |
 | `PluginManifestStandardSchema` | a plugin manifest |
 | `RecipeManifestStandardSchema` | a recipe manifest |
@@ -50,12 +53,59 @@ are errors and every problem is reported in one pass, the same settings
 `LandofileValidationError` reports, so a tool can show the user the same
 line whichever side caught it.
 
-## One decoder, three surfaces
+## What the Landofile view checks
+
+`LandofileStandardSchema` validates the file as authored, before any
+`{{ ... }}` resolves. It does not have your env or recipe options, so it
+can't tell you what `{{ env.PORT }}` is worth. It can tell you whether the
+expression belongs there:
+
+| Site | Accepts |
+| --- | --- |
+| text field (`name`, `type`, `environment` values) | plain text, or text with any `{{ ... }}` mixed in |
+| boolean, number, list, or object field | the literal type, or one `{{ ... }}` with no text around it |
+| any field | nothing else: `primary: maybe` and `httpPort: abc` fail |
+
+At a typed field the expression gets parsed. Whole means one interpolation
+and no surrounding text, so `"  {{ recipe.flag }}  "` fails there.
+`{{-` / `-}}` inside the braces is still whole. Plan-time scopes (`app`,
+`proxy`, `services`) fail there with `Planner scopes require a string site.`
+because they only ever fill text. Helpers with a known return type must
+match the site, so `name: "{{ number(env.PORT) }}"` fails too. Unknown keys
+and reserved map keys fail the same as before.
+
+A success `value` is the authored shape: a plain field comes back as the
+literal, and an expression field comes back as a parsed
+`AuthoringExpression` (`source`, `expectedType`, `scopes`, parsed
+`template`), not the value it will resolve to. Resolve values with
+`lando app:config --format=json`; see [Landofile
+expressions](../landofile/expressions.mdx#whole-value-expressions-keep-their-type).
+
+`LandofileStandardJSONSchema` describes that same input. Its draft-07
+document is the editor schema byte for byte. At a typed field it accepts the
+literal or one whole `{{ ... }}`, with `{{-` / `-}}` trim markers allowed
+inside the braces. Surrounding text is not whole. JSON Schema can't parse the
+expression, so that document doesn't check scopes or helper types. A valid
+body that contains a quoted `}}` or adjacent object-closing braces, for
+example `{{ length({a:{b:1}}) }}`, is accepted by the loader and by
+`LandofileStandardSchema`, but the editor pattern can't match it.
+
+The other three exports (`GlobalConfigStandardSchema`,
+`PluginManifestStandardSchema`, `RecipeManifestStandardSchema`) validate
+literal values; those files don't carry expressions.
+
+## One contract, two views
 
 The Standard Schema views, the [published JSON Schema
 artifacts](./json-schema-artifacts.mdx), and the editor schema all project the
-same Effect Schema. A parity test runs every valid guide and recipe fixture
-plus a curated invalid set through all three and requires the same answer.
+same Effect Schema contracts, from two angles. The authoring view
+(`LandofileStandardSchema`, `LandofileStandardJSONSchema`, and the editor
+`landofile.schema.json`) accepts expressions where they're legal. The runtime
+view (`LandofileShape` and the published `landofile-shape.json`) is strict:
+it checks resolved values, which is what `lando start` sees after the
+loader has run. A parity test runs every guide and recipe fixture plus curated
+valid and invalid inputs through each pair and requires the same answer,
+with the JSON Schema gaps above listed by name.
 
 <Guide>
   <Scenario id="validate-with-standard-schema" render>
@@ -66,7 +116,7 @@ plus a curated invalid set through all three and requires the same answer.
 const valid = yield* Effect.promise(async () =>
   LandofileStandardSchema["~standard"].validate({
     name: "standard-demo",
-    services: { web: { type: "compose", image: "nginx:1.27-alpine", home: false } },
+    services: { web: { type: "compose", image: "nginx:1.27-alpine" } },
   }),
 );
 expect("issues" in valid && valid.issues).toBeFalsy();
@@ -74,26 +124,54 @@ expect("value" in valid && valid.value.name).toBe("standard-demo");
 const invalid = yield* Effect.promise(async () =>
   LandofileStandardSchema["~standard"].validate({
     name: "standard-demo",
-    services: { web: { type: "compose", imgae: "nginx:1.27-alpine", home: false } },
+    services: { web: { type: "compose", imgae: "nginx:1.27-alpine" } },
   }),
 );
 expect("issues" in invalid && invalid.issues).toBeTruthy();
 const firstIssue = ("issues" in invalid && invalid.issues ? invalid.issues : [])[0];
 const firstPath = (firstIssue?.path ?? []).map((segment) => (typeof segment === "object" ? segment.key : segment));
-expect(firstPath).toEqual(["services", "web", "imgae"]);`}
+expect(firstPath).toEqual(["services", "web", "imgae"]);
+const authored = yield* Effect.promise(async () =>
+  LandofileStandardSchema["~standard"].validate({
+    name: "standard-demo",
+    services: { web: { type: "node:22", primary: "{{ boolean(env.STANDARD_DEMO_PRIMARY) }}" } },
+  }),
+);
+expect("issues" in authored && authored.issues).toBeFalsy();
+expect(JSON.stringify("value" in authored ? authored.value : null)).toMatch(/"primary":\{"_tag":"AuthoringExpression"/);
+const planner = yield* Effect.promise(async () =>
+  LandofileStandardSchema["~standard"].validate({
+    name: "standard-demo",
+    services: { web: { type: "node:22", primary: "{{ app.name }}" } },
+  }),
+);
+const plannerIssue = ("issues" in planner && planner.issues ? planner.issues : [])[0];
+expect(plannerIssue?.message).toMatch(/Planner scopes require a string site/);`}
         displayCode={`import { LandofileStandardSchema } from "@lando/sdk/schema/standard";
 
 const valid = await LandofileStandardSchema["~standard"].validate({
   name: "standard-demo",
-  services: { web: { type: "compose", image: "nginx:1.27-alpine", home: false } },
+  services: { web: { type: "compose", image: "nginx:1.27-alpine" } },
 });
 // valid.value is the decoded Landofile
 
 const invalid = await LandofileStandardSchema["~standard"].validate({
   name: "standard-demo",
-  services: { web: { type: "compose", imgae: "nginx:1.27-alpine", home: false } },
+  services: { web: { type: "compose", imgae: "nginx:1.27-alpine" } },
 });
-// invalid.issues[0].path is ["services", "web", "imgae"]`}
+// invalid.issues[0].path is ["services", "web", "imgae"]
+
+const authored = await LandofileStandardSchema["~standard"].validate({
+  name: "standard-demo",
+  services: { web: { type: "node:22", primary: "{{ boolean(env.STANDARD_DEMO_PRIMARY) }}" } },
+});
+// authored.value.services.web.primary is a parsed AuthoringExpression, not a boolean
+
+const planner = await LandofileStandardSchema["~standard"].validate({
+  name: "standard-demo",
+  services: { web: { type: "node:22", primary: "{{ app.name }}" } },
+});
+// planner.issues[0].message: "boolean authoring site: Planner scopes require a string site."`}
       />
     </Step>
   </Scenario>

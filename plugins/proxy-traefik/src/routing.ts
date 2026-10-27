@@ -1,12 +1,33 @@
 import type { AppId, ProxyAuthority, RoutePlan } from "@lando/sdk/schema";
 
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
+import { routeBackendUrl, routeMiddlewareConfig } from "./route-provider-config.ts";
 
-const routeRule = (route: RoutePlan): string => {
+export const quoteRuleArgument = (value: string): string =>
+  `"${value.toWellFormed().replace(/["\\\p{Cc}\uFEFF]/gu, (character) => {
+    switch (character) {
+      case '"':
+        return '\\"';
+      case "\\":
+        return "\\\\";
+      case "\n":
+        return "\\n";
+      case "\t":
+        return "\\t";
+      case "\r":
+        return "\\r";
+      default:
+        return `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`;
+    }
+  })}"`;
+
+export const routeRule = (route: RoutePlan): string => {
   const host = route.hostname.includes("*")
-    ? `HostRegexp(\`^${route.hostname.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, (character) => (character === "*" ? "[a-z0-9-]+" : `\\${character}`))}$\`)`
-    : `Host(\`${route.hostname}\`)`;
-  return route.pathPrefix === undefined ? host : `${host} && PathPrefix(\`${route.pathPrefix}\`)`;
+    ? `HostRegexp(${quoteRuleArgument(`^${route.hostname.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, (character) => (character === "*" ? "[a-z0-9-]+" : `\\${character}`))}$`)})`
+    : `Host(${quoteRuleArgument(route.hostname)})`;
+  return route.pathPrefix === undefined
+    ? host
+    : `${host} && PathPrefix(${quoteRuleArgument(route.pathPrefix)})`;
 };
 
 export const routeSchemes = (route: RoutePlan): ReadonlyArray<"http" | "https"> =>
@@ -63,16 +84,24 @@ const hostnameFromRuleLine = (line: string): string | undefined => {
   let rule: unknown;
   try {
     rule = JSON.parse(quoted);
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
     return undefined;
   }
   if (typeof rule !== "string") return undefined;
-  const hostPart = rule.split(" && ")[0] ?? rule;
-  const literal = /^Host\(`([^`]+)`\)$/.exec(hostPart)?.[1];
-  if (literal !== undefined) return literal;
-  const pattern = /^HostRegexp\(`\^(.+)\$`\)$/.exec(hostPart)?.[1];
-  if (pattern === undefined) return undefined;
-  return pattern.replaceAll("[a-z0-9-]+", "*").replace(/\\(.)/g, "$1");
+  const match = /^(Host|HostRegexp)\(("(?:\\.|[^"\\])*")\)(?: && |$)/.exec(rule);
+  if (match?.[2] === undefined) return undefined;
+  let argument: unknown;
+  try {
+    argument = JSON.parse(match[2]);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    return undefined;
+  }
+  if (typeof argument !== "string") return undefined;
+  if (match[1] === "Host") return argument;
+  if (!argument.startsWith("^") || !argument.endsWith("$")) return undefined;
+  return argument.slice(1, -1).replaceAll("[a-z0-9-]+", "*").replace(/\\(.)/g, "$1");
 };
 
 export const persistedAuthorities = (
@@ -125,43 +154,13 @@ export const renderTraefikDynamicConfig = (
     `    route-${namespace}-${index}:`,
     "      loadBalancer:",
     "        servers:",
-    `          - url: ${route.backend.protocol}://${route.backend.host ?? `${String(route.backend.service)}.${String(app)}.internal`}:${route.backend.port}`,
+    `          - url: ${routeBackendUrl(route, app)}`,
   ]);
   const middlewares = routes.flatMap((route, index) =>
     (route.filters ?? []).flatMap((filter, filterIndex) => {
-      const name = `    ${JSON.stringify(`route-${namespace}-${index}-f${filterIndex}-${filter.type}`)}:`;
-      switch (filter.type) {
-        case "stripPrefix":
-          return [name, "      stripPrefix:", `        prefixes: [${JSON.stringify(filter.prefix)}]`];
-        case "addPrefix":
-          return [name, "      addPrefix:", `        prefix: ${JSON.stringify(filter.prefix)}`];
-        case "requestHeader":
-          return [
-            name,
-            "      headers:",
-            "        customRequestHeaders:",
-            `          ${JSON.stringify(filter.header)}: ${JSON.stringify(filter.value)}`,
-          ];
-        case "responseHeader":
-          return [
-            name,
-            "      headers:",
-            "        customResponseHeaders:",
-            `          ${JSON.stringify(filter.header)}: ${JSON.stringify(filter.value)}`,
-          ];
-        case "redirect":
-          return [
-            name,
-            "      redirectRegex:",
-            `        regex: ${JSON.stringify("^.*$")}`,
-            `        replacement: ${JSON.stringify(filter.to)}`,
-            ...(filter.permanent === undefined
-              ? []
-              : [`        permanent: ${JSON.stringify(filter.permanent)}`]),
-          ];
-        default:
-          throw new TypeError(`Unsupported route filter: ${JSON.stringify(filter satisfies never)}`);
-      }
+      return [
+        `    ${JSON.stringify(`route-${namespace}-${index}-f${filterIndex}-${filter.type}`)}: ${JSON.stringify(routeMiddlewareConfig(filter))}`,
+      ];
     }),
   );
   const tls =

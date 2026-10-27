@@ -7,7 +7,7 @@ tags: [beta, docs, apache, service, webserver]
 
 # Add Apache
 
-Put `type: apache` in your services block. Lando pulls `httpd:2.4-alpine` and listens on `80`:
+Add `type: apache` under `services` in `.lando.yml`. Lando pulls `httpd:2.4-alpine` and listens on `80`:
 
 ```yaml
 name: apache-demo
@@ -74,7 +74,7 @@ services:
     user: www-data
 ```
 
-A non-root process still can't bind a port below 1024 on the default `lando` provider, and the image's own config says `Listen 80`. Set `port:` to 1024 or above and Apache listens there instead. Lando passes `Listen <port>` as a `-c` directive and drops the image's `Listen 80` from `httpd.conf` during the build, so the daemon binds only the port you picked:
+On the default `lando` provider, this non-root configuration also needs a port of 1024 or above: the process cannot bind the image's default port `80`. Set `port:` to 1024 or above and Apache listens there instead. Lando passes `Listen <port>` as a `-c` directive and drops the image's `Listen 80` from `httpd.conf` during the build, so the daemon binds only the port you picked:
 
 ```yaml
 services:

@@ -20,13 +20,13 @@ describe("lifecycle confirmation boundary", () => {
     },
     {
       flags: { root: confirmationRoot, "purge-caches": true },
-      message: `Delete the containers and cache volumes left by ${confirmationRoot}? Data volumes are kept.`,
+      message: `Delete the containers and cache volumes left by ${confirmationRoot}? Named data volumes are kept.`,
     },
-    { flags: {}, message: "Delete this app's containers? Data volumes are kept." },
+    { flags: {}, message: "Delete this app's containers? Named data volumes are kept." },
     { flags: { volumes: true }, message: "Delete this app's containers and data volumes?" },
     {
       flags: { "purge-caches": true },
-      message: "Delete this app's containers and cache volumes? Data volumes are kept.",
+      message: "Delete this app's containers and cache volumes? Named data volumes are kept.",
     },
     { flags: { purge: true }, message: "Delete this app's containers, data volumes and snapshots?" },
     {
@@ -58,6 +58,8 @@ describe("lifecycle confirmation boundary", () => {
                 Layer.succeed(
                   RuntimeProviderRegistry,
                   RuntimeProviderRegistry.of({
+                    resolveAppliedPlan: () => Effect.succeed(undefined),
+                    appliedPlansFor: () => Effect.succeed([]),
                     list: Effect.die("Unexpected provider list"),
                     capabilities: Effect.die("Unexpected capabilities"),
                     select: () => Effect.die("Unexpected provider selection"),
@@ -103,6 +105,9 @@ describe("lifecycle confirmation boundary", () => {
           Layer.succeed(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              resolveAppliedPlan: () => Effect.succeed(undefined),
+              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.die("Unexpected provider list"),
               capabilities: Effect.die("Unexpected provider capabilities"),
               select: () => Effect.die("Unexpected provider selection"),
@@ -117,7 +122,7 @@ describe("lifecycle confirmation boundary", () => {
           command: spec.id,
           resultFormat: "json",
           rendererMode: "plain",
-          formatError: commandErrorMessage,
+          formatError: (failure) => commandErrorMessage(failure, spec.id),
           resultSchema: spec.resultSchema,
           setExitCode: (code) => codes.push(code),
         });

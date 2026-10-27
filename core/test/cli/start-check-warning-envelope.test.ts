@@ -26,7 +26,6 @@ const plan: AppPlan = {
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},
@@ -67,7 +66,7 @@ test.each(["app-error", "service-error", "lando-error"] as const)(
       command: "app:start",
       resultSchema: StartAppResultSchema,
       io,
-      formatError: String,
+      formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
     const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(io.stdout()));

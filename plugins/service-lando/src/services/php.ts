@@ -1,9 +1,10 @@
-import { Schema } from "effect";
+import { Effect, Schema, absurd } from "effect";
 
 import type { ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
+  ServiceConfigIssue,
   addEnvRecord,
   loopbackTcpHealthcheck,
   rootIdentity,
@@ -11,7 +12,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
@@ -26,16 +27,14 @@ import {
 } from "./php-prerequisites.ts";
 import {
   PHP_CLI_KEEP_ALIVE,
-  type PhpVia,
   apacheDefaultSiteRemovalBuildStep,
   apacheStartCommand,
   assertPhpViaKeys,
   fpmStartCommand,
   hasCustomPhpImage,
-  phpEndpointProtocol,
   phpImageFor,
-  phpListenPort,
   phpLogSources,
+  phpServingMode,
   resolvePhpVia,
 } from "./php-via.ts";
 import { PHP_WP_CLI_STEP } from "./php-wp-cli.ts";
@@ -91,17 +90,22 @@ const validateVersion = (
   if ((SUPPORTED_PHP_VERSIONS as ReadonlyArray<string>).includes(version)) {
     return version as SupportedPhpVersion;
   }
-  throw new Error(`Unsupported PHP version "${version}". ${REMEDIATION_VERSION(version)}`);
+  throw new ServiceConfigIssue(
+    ["type"],
+    `Unsupported PHP version "${version}".`,
+    REMEDIATION_VERSION(version),
+  );
 };
 
-const configFor = (ctx: ServiceFeatureContext): PhpFeatureConfig => ctx.config as PhpFeatureConfig;
+const configFor = (ctx: { readonly config: Readonly<Record<string, unknown>> }): PhpFeatureConfig =>
+  ctx.config as PhpFeatureConfig;
 
 const applyApacheShape = (
   ctx: ServiceFeatureContext,
-  webroot: string,
-  allowOverride: boolean,
+  config: PhpFeatureConfig,
   listenPort: number | undefined,
 ): void => {
+  const { webroot, allowOverride } = config;
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
   if (
     !hasCustomPhpImage(ctx.normalizedConfig) &&
@@ -120,14 +124,9 @@ const applyApacheShape = (
   }
 };
 
-const applyFpmShape = (ctx: ServiceFeatureContext): void => {
+const applyFpmShape = (ctx: ServiceFeatureContext, port: number): void => {
   if (!hasCustomPhpImage(ctx.normalizedConfig) && ctx.normalizedConfig.command === undefined) {
-    ctx.setCommand(
-      fpmStartCommand(
-        phpListenPort("fpm", authoredListenPort(ctx.normalizedConfig.port)),
-        ctx.normalizedConfig.user === undefined,
-      ),
-    );
+    ctx.setCommand(fpmStartCommand(port, ctx.normalizedConfig.user === undefined));
   }
 };
 
@@ -137,31 +136,26 @@ const applyCliShape = (ctx: ServiceFeatureContext): void => {
   }
 };
 
-const applyServingMode = (
-  ctx: ServiceFeatureContext,
-  via: PhpVia,
-  webroot: string,
-  allowOverride: boolean,
-  listenPort: number | undefined,
-): void => {
-  switch (via) {
+const applyServingMode = (ctx: ServiceFeatureContext, mode: ReturnType<typeof phpServingMode>): void => {
+  switch (mode.via) {
     case "apache":
-      applyApacheShape(ctx, webroot, allowOverride, listenPort);
+      applyApacheShape(ctx, configFor(ctx), mode.authoredApachePort);
       return;
     case "fpm":
-      applyFpmShape(ctx);
+      applyFpmShape(ctx, mode.listener.port);
       return;
     case "cli":
       applyCliShape(ctx);
       return;
+    default:
+      absurd(mode);
   }
 };
 
 const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { allowOverride, version, via, webroot } = configFor(ctx);
-  const listenPort = authoredListenPort(service.port);
-  const port = phpListenPort(via, listenPort);
+  const mode = phpServingMode(via, authoredListenPort(service.port));
   const customImage = hasCustomPhpImage(service);
   const artifact = customImage && service.image !== undefined ? service.image : phpImageFor(version, via);
 
@@ -184,10 +178,9 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   if (xdebug !== false) {
     addEnvRecord(ctx, phpXdebugConfigEnv());
   }
-  applyServingMode(ctx, via, webroot, allowOverride, listenPort);
-  if (via !== "cli") {
-    addServicePortEndpoints(ctx, { port, protocol: phpEndpointProtocol(via) });
-    ctx.setHealthcheck(loopbackTcpHealthcheck(port, 10));
+  applyServingMode(ctx, mode);
+  if (mode.listener !== undefined) {
+    ctx.setHealthcheck(loopbackTcpHealthcheck(mode.listener.port, 10));
   }
 
   applyAuthoredProcessFields(ctx, ["user", "command", "entrypoint"]);
@@ -204,6 +197,12 @@ export const phpServiceFeature: ServiceFeatureDefinition = {
   id: PHP_FEATURE_ID,
   schema: PhpFeatureConfigSchema as Schema.Codec<unknown>,
   priority: PHP_FEATURE_PRIORITY,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => {
+      const { via } = configFor(ctx);
+      const { listener } = phpServingMode(via, authoredListenPort(ctx.normalizedConfig.port));
+      return listener === undefined ? [] : servicePortEndpoints(ctx, listener);
+    }),
   apply: serviceFeatureApply(PHP_FEATURE_ID, "service-lando.php failed to apply", applyPhpFeature),
 };
 
@@ -213,7 +212,12 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   base: "lando",
   versions: SUPPORTED_PHP_VERSIONS,
   artifacts: PHP_ARTIFACTS,
-  identity: rootIdentity(),
+  // Verified /etc/passwd in php:8.3-apache-bookworm and php:8.3-fpm-bookworm (linux/amd64):
+  // configs sha256:8a992dacb2cb44f327c2f353176b825f52dec230383f37131db1c6cb9dda68a5
+  // and sha256:7d56462eb335f178afb9536578454ea1bc7d30136ac2153df2632b86e420dd12.
+  // www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin; image User and HOME are unset.
+  // /var/www is 0755 root:root, so Lando prepares the passwd home for www-data in its derived image.
+  identity: { ...rootIdentity({ "www-data": "/var/www" }), preparedHomes: ["www-data"] },
   schema: PhpServiceConfig,
   resolve: (input) =>
     serviceTypeResolve(`php:${version}`, `Failed to resolve php:${version}`, () => {

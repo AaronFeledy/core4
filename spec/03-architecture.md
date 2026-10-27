@@ -1,6 +1,6 @@
 # Lando v4: Architecture, Lifecycle, and Events
 
-> **Part 3 of 19** · [Index](./README.md)
+> **Part 3 of 20** · [Index](./README.md)
 > **Read next:** [04 Pluggability](./04-pluggability.md)
 
 This part defines the runtime structure, bootstrap levels, core services, lifecycle taxonomy, event bus, and imperative shells.
@@ -30,8 +30,8 @@ Levels form a chain `none` → `minimal` → `plugins` → `commands`; `tooling`
 
 | Level | Meaning | Service membership |
 |---|---|---|
-| `none` | Command-base depth with no prebuilt runtime; the fast-path subset skips dispatcher and Effect entirely | none |
-| `minimal` | Host configuration and safe local primitives | eager: `PathsService`, `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `StateStore`, `EventService`, `DeprecationService`, `RedactionService`, `TemplateEngineRegistry`, `TemplateRenderer`, `HttpClient`, `Downloader`; lazy: `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `BunSelfRunner`, `InteractionService`, `ManagedFileService` |
+| `none` | Command-base depth with no prebuilt runtime; dispatcher-routed commands receive the internal runtime-factory and captured-config-source ports but no decoded configuration or minimal runtime; the static fast-path subset skips dispatcher and Effect entirely and constructs no services | none |
+| `minimal` | Host configuration and safe local primitives | eager: `PathsService`, `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `StateStore`, `EventService`, `DeprecationService`, `RedactionService`, `TemplateEngineRegistry`, `TemplateRenderer`, `HttpClient`, `Downloader`; lazy: `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `BunSelfRunner`, `InteractionService`, `ManagedFileService`, `ExecutionSessionService` |
 | `plugins` | Plugin discovery, manifest validation, and contribution graph | `minimal` + eager `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`, `FileSyncEngineRegistry`; lazy `PrivilegeService`; plugin implementations register here |
 | `commands` | Complete native command registry and command-cache refresh | `plugins` + `CommandRegistry` |
 | `tooling` | Command services plus cache-only `ToolingProgram` and app-plan access | `commands` + lazy selected `ToolingEngine`; no live provider or full planner |
@@ -45,6 +45,10 @@ The `LandoCommandSpec` registry is canonical for command-to-level assignment (§
 **Level-`none` fast path:** `bin/lando.ts` MUST recognize only the fixed static version, top-level help, shellenv, and recipe-list argv shapes before importing the dispatcher, Effect, service tags, or plugin code. It MUST use embedded constants, perform no file or network IO, construct no service, and meet §2.1 budgets. Unrecognized flags MUST fall through to normal dispatch. Dispatcher-routed `none` commands MAY construct their own runtime and then emit events, but MUST NOT rely on command-base bootstrap; load-bearing safe-mode commands such as `meta:doctor` MUST remain exempt from bootstrap promotion.
 
 Bootstrap levels are sequential. Independent IO-bound work within a level MUST run concurrently with Effect concurrency primitives; sequential work is a performance defect unless required by data dependency (§2.4). Tooling routing uses cached command indexes and `ToolingProgram`; provider initialization occurs only when a provider-backed step executes (§12.2, §12.5).
+
+The host-module table and registration (§7.1.1) MUST remain outside the cold import graph and pre-dispatch fast path; registration occurs only on first author-module evaluation.
+
+Execution sessions honor the requested runtime tier and caller context; host-only work MUST NOT implicitly construct app, scratch, or provider services (§22.2).
 
 ### 3.3 Source layout
 
@@ -90,6 +94,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `CacheService` | Atomic ephemeral cache operations (§12) |
 | `StateStore` | Durable, atomic, versioned, schema-validated, lockable state (§12.7); host/test-overridable, never plugin-replaceable |
 | `ManagedFileService` | Canonical guarded working-tree writes (§10.13); host/test-overridable, never plugin-replaceable |
+| `CodeSync` | Host-`git` application-code fetch, fast-forward, and branch switch for remote sync and init acquisition (§10.12.1); host/test-overridable, never plugin-replaceable |
 | `FileSystem` | Bun-first filesystem boundary |
 | `ProcessRunner` | Exact argv subprocess execution through `Bun.spawn` |
 | `ShellRunner` | Cross-platform embedded Bun Shell through an embedded `bun exec` self-spawn |
@@ -99,6 +104,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `DataMover` | Canonical local/volume byte movement and snapshots (§10.11); not plugin-replaceable |
 | `PrivilegeService` | Platform elevation boundary |
 | `EmbeddedAssetService` | Unified compiled-binary and library asset access; host/test-overridable, never plugin-contributed |
+| `ContainerHelperAssets` | Resolves the static in-container helper executable for a Linux target (§17.3), extracting it under `PathsService` roots; host/test-overridable, never plugin-contributed |
 | `PathsService` | Authoritative Lando roots and derived paths (§7.5.1) |
 | `Logger` | Structured Effect logging |
 | `Renderer` | User-facing output strategy (§8.9) |
@@ -110,8 +116,10 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `McpService` | Retained-runtime MCP projection and dispatch (§10.14); not plugin-replaceable |
 | `GlobalAppService` | Global app regeneration, planning, lifecycle, and auto-start (§20) |
 | `ScratchAppService` | Scoped scratch app acquisition, lifecycle, registry, and reap (§21) |
+| `ExecutionSessionService` | Opt-in in-process ownership, admission, observations, process handles, and local artifact access over existing services (§22); not plugin-replaceable |
 | `Telemetry` | Non-blocking usage telemetry (§2.4) |
 | `RedactionService` | Canonical secret and PII masking (§3.7); never plugin-replaceable |
+| `AppOutputRedaction` | Plugin-facing app-output preparation backed by the engine's shared registration step; reads current provider and trusted worker credentials, never resolves or persists secret-store values (§3.7) |
 
 The replaceability and default Layers for all pluggable tags remain canonical in §4.2. Hosts enumerating runtime services SHOULD combine §3.4 and §4.2.
 
@@ -127,7 +135,7 @@ Events are typed, schema-validated, and drawn from a closed registry. Plugin sub
 |---|---|
 | Lando | `pre-bootstrap-<level>`, `post-bootstrap-<level>`, `post-bootstrap`, `ready`, `pre-setup`, `post-setup`, `before-exit` |
 | App | `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
-| Provider | `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `pre-provider-logs`, `post-provider-logs` |
+| Provider | `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `pre-provider-logs`, `post-provider-logs`, `image-pull-progress` |
 | Process / shell / network | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec`, `pre-bun-self-exec`, `post-bun-self-exec`, `pre-http-call`, `post-http-call`, `pre-download`, `download-progress`, `post-download` |
 | File sync | `pre-file-sync-create`, `post-file-sync-create`, `pre-file-sync-pause`, `post-file-sync-pause`, `pre-file-sync-resume`, `post-file-sync-resume`, `pre-file-sync-terminate`, `post-file-sync-terminate`, `file-sync-conflict-detected`, `file-sync-progress` |
 | Host proxy | `pre-host-proxy-call`, `post-host-proxy-call` |
@@ -141,12 +149,23 @@ Events are typed, schema-validated, and drawn from a closed registry. Plugin sub
 | CLI | `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, `cli-<canonical-id>-error` |
 | Global | `pre-global-start`, `post-global-start`, `pre-global-stop`, `post-global-stop`, `pre-global-rebuild`, `post-global-rebuild`, `pre-global-destroy`, `post-global-destroy`, `pre-global-dist-regenerate`, `post-global-dist-regenerate` |
 | Scratch | `pre-scratch-acquire`, `post-scratch-acquire`, `pre-scratch-materialize`, `post-scratch-materialize`, `pre-scratch-start`, `post-scratch-start`, `pre-scratch-stop`, `post-scratch-stop`, `pre-scratch-destroy`, `post-scratch-destroy`, `pre-scratch-gc`, `post-scratch-gc` |
-| Sync | `pre-pull`, `post-pull`, `pre-push`, `post-push`, `pre-dataset-fetch`, `post-dataset-fetch`, `pre-dataset-apply`, `post-dataset-apply`, `pre-dataset-capture`, `post-dataset-capture`, `pre-dataset-send`, `post-dataset-send` |
+| Sync | `pre-pull`, `post-pull`, `pre-push`, `post-push`, `pre-switch`, `post-switch`, `pre-code-sync`, `post-code-sync`, `pre-remote-setup`, `post-remote-setup`, `pre-dataset-fetch`, `post-dataset-fetch`, `pre-dataset-apply`, `post-dataset-apply`, `pre-dataset-capture`, `post-dataset-capture`, `pre-dataset-send`, `post-dataset-send`, `pre-tunnel-open`, `post-tunnel-open`, `pre-tunnel-close`, `post-tunnel-close`, `pre-tether`, `post-tether`, `pre-remote-operation`, `post-remote-operation` |
+| Config refresh | `pre-config-refresh`, `post-config-refresh`, `config-source-drift` |
+| Init source | `pre-init-source-auth`, `post-init-source-auth`, `pre-init-source-acquire`, `post-init-source-acquire` |
+| Execution | `execution-session-opened`, `execution-session-closing`, `execution-session-closed`, `execution-operation-started`, `execution-operation-finished` |
 | Cross-cutting | `deprecation-used` |
+
+`pre-destroy` and `post-destroy` bracket one user-app destroy invocation. Each recorded app identity the teardown addresses (applied plan, orphan groups, ownership inventory, purged snapshots) gets one pair, and a teardown that finds nothing publishes neither. `evidence` names the primary resolution basis: `applied` (recorded applied plan), `retained` (an unfinished accelerated start, §10.6.3), `orphans`, `inventory` (ownership hints alone), or `snapshots` (`--purge` with only catalogued snapshots). Read-only resolution and validation run before the bracket. `pre-destroy` fires before any destructive step, including retained-writer quiescence. `post-destroy` fires only after every step succeeds, including inventory cleanup, journal completion, cache cleanup, and the `--root` follow-up orphan sweep, and carries the invocation's aggregate `outcome` (`destroyed` or `unchanged`). A failure after `pre-destroy` publishes no `post-destroy`. Authored Landofile and `hostEvents` destroy steps run only for `evidence: applied` (§8.5.7); a resumed file-sync disposal skips the `pre-destroy` steps. Other evidence publishes the bus events without authored steps, because only a recorded applied plan gives them a trustworthy execution topology; retained attempts and orphans may still have running containers.
+
+Remote lifecycle publishers MUST be core orchestration wrappers, including dataset, tunnel, setup, and operation wrappers (§10.12); plugin contributions do not gain arbitrary publish authority. Payloads MUST retain nonsecret target identity, partial-completion and cleanup outcomes, and tether status where applicable, but MUST NOT carry secret values, authorization codes, or live credential-bearing endpoints. Required post-processing failures MUST remain failed outcomes with applied-data receipts, not synthetic rollback events.
 
 `LandoEvent` is the closed union of these events and generated CLI lifecycle events. Plugins MUST NOT add schemas, arbitrary names, or wider publish authority; their only publish seam is the closed `RenderEvent` subset (§9.8). For a resolved command, `-init` fires after bootstrap and before the body; exactly one of `-run` or `-error` follows before scope finalization. Unknown commands do not emit `-init`.
 
 CLI payloads carry `CommandInvocationCorrelation`: an outer invocation has a unique `invocationId` and no parent; nested canonical dispatch has its own id and the enclosing `parentInvocationId`. All phases of one invocation share the pair. Only the outer invocation is eligible for foreground notification, though nested terminal events remain observable.
+
+`cli-<canonical-id>-error` carries the projected primary `failureTag` and optional non-empty `additionalFailures: [{ failureTag, role }]`. Roles are `rollback`, `cleanup`, or `peer`, read from reason annotations through the same projection as command envelopes (§8.11.1). Interruptions are excluded from additional failures. Error identities are redacted before event publication.
+
+Execution event payloads follow §22.7. Inner lifecycle events remain intact; only the outer invocation may produce foreground completion notification.
 
 ### 3.6 Imperative shells
 
@@ -161,8 +180,12 @@ Both shells MUST provide the generated layer for the resolved level, run with sc
 
 Redaction is one non-replaceable security invariant shared by logs, events, runners, network and data movement, managed files, build and doctor output, telemetry, config translation, caches, and executable-guide transcripts.
 
-1. The value layer masks known resolved secrets, registry tokens, proxy credentials, and caller-supplied tokens by literal longest-first match. The string and payload layers MUST draw on the same values and skip values rejected by `isUsableExactRedactionValue`.
-2. The pattern layer then masks the canonical secret classes (`secretAssignment`, `urlUserinfo`, `bearerToken`, `signedQueryParam`, `secretKeyedField`) and, where the selected profile requires it, the normalization classes `url`, `email`, `uuid`, `hostname`, `posixPath`, `windowsPath`, `uncPath`, `homeAlias`, `port`, `containerId`, `digest`, `highEntropyToken`, `user`, `host`, and `root`.
+1. The value layer masks known resolved secrets, registry tokens, proxy credentials, and caller-supplied tokens by literal match, including URL-encoded, JSON-escaped, and UTF-8 base64 forms (standard and base64url, with and without padding) of each known value. It finds every occurrence of every value and replaces each run of overlapping occurrences with one `[redacted]`, so overlapping values never expose part of either; adjacent occurrences stay separate. Before a log line's truncation marker, the string layer also masks a trailing proper prefix of a known value (§6.14.5). The string and payload layers MUST share one matcher, draw on the same values, and skip values rejected by `isUsableExactRedactionValue`; rejected encoded variants are dropped, never treated as authoritative suppressors. The string layer ignores a match that lies wholly inside an existing `[redacted]` sentinel and widens a match that partly overlaps one to cover it, failing closed; when a value could overlap a sentinel it inserted, it repeats until the output stops changing.
+2. The pattern layer then masks the canonical secret classes (`secretAssignment`, `urlUserinfo`, `bearerToken`, `signedQueryParam`, `secretKeyedField`) and, where the selected profile requires it, the normalization classes `url`, `email`, `uuid`, `hostname`, `posixPath`, `windowsPath`, `uncPath`, `homeAlias`, `port`, `containerId`, `digest`, `highEntropyToken`, `user`, `host`, and `root`. The string classes run as ordered stages, URL userinfo first. Each consumes an existing `[redacted]` sentinel as one opaque value. `secretAssignment` matches only a whole key, masks quoted values whole, and never starts after `?` or `&`, so `signedQueryParam` masks a single query value and keeps the other parameters.
+
+One vocabulary in `@lando/sdk/secrets` decides which names look secret, through three recognizers chosen by what a false positive costs. `isSecretFieldName` (any-position substring of a strong word such as `password`, `secret`, `token`, `credential`, `bearer`, or `apikey`) drives deep-key masking and the assignment, query, and transcript grammars, where a false positive hides only its own value. `isSecretEnvName` drives heuristic collection from environment and label maps: it splits camelCase, acronym, and `._-` segments and accepts a segment that is a strong word or its plural, the weak words `key`, `keys`, and `pass`, or the alias `REDISCLI_AUTH`, because a collected value is masked in all output. It MUST NOT guess concatenated names such as `PGPASSWORD`: hosts and CI runners export dictionary-word defaults under them (GitHub's Windows images set `PGPASSWORD=root`), and collecting one masks that word everywhere. `isSecretStructuralName` drives collection from other config and Landofile leaves: only the last whole segment counts, and `key` counts only after a qualifier such as `api`, `secret`, `private`, or `access`, so identities and paths like `cacheKey` or `certs.key` are never collected. Grammars are generated from the vocabulary rather than copied.
+
+Redacting already-redacted text with the `secrets` profile MUST return it unchanged; output is redacted at several boundaries. A bounded redaction MUST mask exactly what the unbounded one masks, including the truncation-marker prefix, or fail closed.
 
 | Profile | Contract |
 |---|---|
@@ -170,13 +193,15 @@ Redaction is one non-replaceable security invariant shared by logs, events, runn
 | `telemetry` | `secrets` plus low-cardinality normalization placeholders |
 | `transcript` | `secrets` plus deterministic `<HOME>`, `<TMP>`, `<PORT>`, `<CONTAINER_ID>`, `<DIGEST>`, `<PROVIDER_ID>`, `<USER>`, and `<HOST>` placeholders |
 
-`@lando/sdk/secrets` owns the pure `createSecretRedactor`, `createRedactor`, pattern catalog, profiles, `REDACTED`, deep `redactValue`, and the `redactString`, optional bounded-string, and structured-value operations. A consumer requiring bounded output MUST fail closed when bounded redaction is unavailable. `RedactionService` supplies the live value set and profile redactors without network, provider, or plugin access and is eager at `minimal`. Pure helpers that build output outside an Effect context, such as CLI diagnostics and `container-runtime` provider errors, use the standalone redactor from `@lando/redaction`. It applies the same profiles and every value registered so far, never resolves the secret store, and accepts caller tokens (for example build arguments) into the same longest-first value layer.
+`@lando/sdk/secrets` owns the pure `createSecretRedactor`, `createRedactor`, pattern catalog, profiles, `REDACTED`, deep `redactValue`, and the `redactString`, optional bounded-string, and structured-value operations. A consumer requiring bounded output MUST fail closed when bounded redaction is unavailable. Each runtime owns an independent `RedactionService` registry that supplies the live value set and profile redactors and is eager at `minimal`. Profile and payload creation MUST NOT enumerate or read a SecretStore, contact a provider, or load a plugin. Explicit resolvers and credential readers register values before exposing them. Pure helpers that build output outside an Effect context, such as CLI diagnostics and `container-runtime` provider errors, use the standalone redactor from `@lando/redaction`. It applies the same patterns and caller-supplied values only, including caller tokens such as build arguments, in the same value layer; it MUST NOT resolve the secret store or inherit registrations from another runtime or a module-global registry.
 
-`createPayloadRedactor(getValues)` is the value-only byte-stream primitive for human tool and exec stdout and stderr, including container tooling, `:host`, `.bun.sh`, `app:exec`, and `apps:scratch:run`. It matches eligible resolved-secret values, registered tokens, and plan tokens longest-first on raw bytes. It retains only a trailing possible-secret prefix, at most the longest value minus one byte, flushes that tail at logical end of stream, and MUST NOT UTF-8-decode or apply pattern classes. Terminal state and UTF-8 validity MUST NOT choose redaction behavior. `getValues` is a live getter: `RedactionService.payloadValues` snapshots the secret store once and returns a getter that rebuilds when process registrations change by generation. Forwarded `agentEnv` markers identify the client, not a credential, so they MUST NOT be registered as redaction values. Registrations apply only prospectively, including to the held tail, and MUST NOT retract bytes already delivered.
+The CLI's registry owner spans bootstrap, execution, buffered rendering, event delivery, payload flush, trace export, and producer finalizers. Those paths MUST share the same service instance, including bootstrap and teardown failures. An inner operation scope may release its lookup memo without releasing output protection. Runtime registrations are cleared only after owned output and diagnostics finish; an escaping failure is sanitized before disposal. Separate embedding runtimes and standalone workers own separate registries. These registrations protect output and are not a cache used to satisfy later secret lookups.
+
+`createPayloadRedactor(getValues)` is the value-only byte-stream primitive for human tool and exec stdout and stderr, including container tooling, `:host`, `.bun.sh`, `app:exec`, and `apps:scratch:run`. It matches eligible resolved-secret values, registered tokens, and plan tokens on raw bytes under the same overlapping-union rule. It retains only a trailing possible-secret prefix, at most the longest value minus one byte, flushes that tail at logical end of stream, and MUST NOT UTF-8-decode or apply pattern classes. Terminal state and UTF-8 validity MUST NOT choose redaction behavior. `getValues` is a live getter: `RedactionService.payloadValues` combines its explicit options with its owning runtime's registrations and rebuilds by generation when that registry changes. It never reads a secret store. Forwarded `agentEnv` markers identify the client, not a credential, so they MUST NOT be registered as redaction values. Registrations apply only prospectively, including to the held tail, and MUST NOT retract bytes already delivered.
 
 After redaction, the sink MUST deliver human payload bytes only through `Renderer.output.stdout` or `stderr` (§8.9). The renderer owns fd selection and live-region suspension; the sink MUST NOT write raw IO directly.
 
-Heuristic secret-key collection MUST exclude exact, case-sensitive matches of the published default credential values (`lando`, `landolando`) exported by `@lando/sdk/secrets`, without whitespace normalization. This exclusion MUST NOT apply to explicit token registration, secret-store values, or resolved `${secret:...}` values, and MUST NOT weaken pattern or deep-key masking. An unusable explicit value suppresses the whole string detail that contains it; a byte stream cannot suppress a detail, so it has no payload match.
+Heuristic secret-key collection MUST exclude exact, case-sensitive matches of the published default credential values (`lando`, `landolando`) exported by `@lando/sdk/secrets`, without whitespace normalization. It MUST also exclude a database credential password or root password that exactly equals the same credential's user or database name, because `lando info` and connection strings print those in clear. Credentials are read from an authored `creds` block, the `LANDO_DB_*` keys, and the database family environment keys. The exclusion covers that value across one app plan or Landofile, so another service's projection of the same credential stays readable. Arbitrary keys that merely share the value never exempt it. These exclusions MUST NOT apply to explicit token registration, secret-store values, or resolved `${secret:...}` values, and MUST NOT weaken pattern or deep-key masking. An unusable explicit value suppresses the whole string detail that contains it; a byte stream cannot suppress a detail, so it has no payload match.
 
 Human tool and exec body bytes use the canonical payload redactor (value layer only). Metadata, events, diagnostics, envelopes, JSON data frames, and MCP keep `secrets`; guide capture keeps `transcript`. Consumers MUST NOT weaken the policy assigned to their surface or replace or reimplement its canonical redactor. `redactValue` MUST preserve structure and MUST NOT throw on cyclic or exotic input. The lowercase `[redacted]` sentinel is canonical; transcript placeholders are a separate byte-stable contract. Boundary and fixture gates enforce this ownership (§13.1, §13.4).
 
@@ -236,7 +261,7 @@ A cold `app:start` follows this canonical order; optional global and build detai
 7. `cli-app:start-init`
 8. `pre-init`, `post-init`
 9. `pre-start`, whose body nests, in order: the global bracket `pre-global-start` … `post-global-start` (with an optional nested global `pre-build` … `post-build`) whenever `AppFeature.requires.globalServices` yields a non-empty set, then, in SSH sidecar mode and only when the sidecar's agent does not answer, the best-effort sidecar global bracket (§20.6.3), then the user-app build bracket `pre-build`, ordered artifact then app `pre-build-phase`/step events/`post-build-phase`, `post-build`
-10. Readiness barrier (running-state check and healthchecks; §6.7), then `post-start` subscribers and app checks (§10.5.2), `ready-app`
+10. Readiness barrier (running-state check and healthchecks; §6.7), then `post-start` subscribers and app checks (§10.5.2). `post-start` after the barrier is the whole-app-ready hook; there is no separate `ready-app` event
 11. exactly one of `cli-app:start-run` or `cli-app:start-error`
 12. `before-exit`
 

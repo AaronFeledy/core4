@@ -8,6 +8,8 @@ tags: [beta, docs, tooling, shell]
 
 # Open a Lando shell
 
+From your app directory in an interactive terminal, open a shell on the host with the app’s Lando environment. This command does not enter a container:
+
 ```sh
 lando shell
 ```
@@ -16,11 +18,15 @@ With no `--service` flag, that opens a host shell scoped to the app root. The ho
 
 ## Open a shell in a service
 
+Start the app first, then select the service explicitly. Replace `appserver` with your service name:
+
 ```sh
 lando shell --service appserver
 ```
 
-`--service` starts a login shell (`sh -l`) in that container. `lando shell` takes no positional arguments. `lando shell appserver` is rejected with `Unexpected argument: appserver` instead of silently opening a host shell.
+Lando starts `bash -l` if bash is on the container's `PATH`; otherwise, it starts `sh -l`.
+
+Use the `--service` flag, not a positional argument. `lando shell appserver` fails with `Unexpected argument: appserver` instead of opening a host shell.
 
 ## Forward agent-context env
 
@@ -37,6 +43,10 @@ GROK_AGENT, AI_AGENT, AGENT, CI
 `GROK_AGENT` is forwarded only when its host value is exactly `1`. A definition name or path is dropped.
 
 Forwarded markers are the lowest-precedence layer. Configured service env and explicit command env always win.
+
+Set app `agentEnv: false`, global `agentEnv.enabled: false`, or `LANDO_AGENT_ENV=0` to veto automatic forwarding. Global policy is read through `ConfigService.get` at invocation time from the runtime's config snapshot: fresh for each CLI command, fixed for the life of an embedded runtime. Vetoes do not scrub explicit service or command env or revoke a running command.
+
+Ordinary CLI commands discover current app configuration. An embedded App handle instead retains its captured Landofile for exec, deep info, and tooling. It does not observe a later app `agentEnv: false` edit. Re-resolve with `runtime.app(originalSelector)` or `resolveApp(originalSelector)` after edits; update an object selector too. The current process `LANDO_AGENT_ENV=0` remains an immediate veto for subsequent handle invocations.
 
 ## Drive an interactive service shell
 

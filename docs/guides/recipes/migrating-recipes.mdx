@@ -8,13 +8,17 @@ tags: [beta, docs, recipes, config, migrate]
 
 # Move your Landofile to a newer recipe version without losing your edits
 
+Preview and apply recipe migrations from the root of an app created with `lando init --recipe=<id>`. Review the dry-run before continuing: migration rewrites the Landofile in place and removes YAML comments. Commit or stash your changes first if you need to preserve them.
+
+Bundled recipes currently publish no migration history, so a freshly initialized bundled app reports no changes. The procedure also supports installed recipes that do publish migrations.
+
 ```sh
 lando app:config:migrate --dry-run
 lando app:config:migrate
-lando rebuild
+lando start
 ```
 
-Run that from an app you created with `lando init --recipe=<id>`. Lando reads the recipe version recorded under `recipe.version`, walks the ordered migration edges the installed recipe publishes from that version forward, and rewrites the Landofile one edge at a time. Values you took over stay yours. Options you changed stay changed. When it lands anything, it tells you to `lando rebuild`.
+Lando reads the recipe version recorded under `recipe.version`, walks the ordered migration edges the installed recipe publishes from that version forward, and rewrites the Landofile one edge at a time. Values you took over stay yours. Options you changed stay changed. When it lands anything, the report ends with `run \`lando start\``. The file changed and the containers have not. `lando start` applies that Landofile.
 
 Migration never plans or applies the app, never follows `includes:`, and never executes a `.lando.ts`. It only edits the file.
 
@@ -51,7 +55,7 @@ lando app:config:migrate --yes
 
 `--yes` (or `-y`) selects every untouched option and structural hunk. Without a TTY and without `--yes`, migrate fails closed and tells you to re-run with `--yes`. It never hangs waiting for input.
 
-When an edge lands, the last line of the report is `run \`lando rebuild\``. Do that. The file changed; the containers haven't.
+When an edge lands, the last line of the report is `run \`lando start\``. Run it to apply the Landofile. Use `lando rebuild` only when you also want a forced image pull and build refresh.
 
 ## Read the report
 
@@ -78,7 +82,7 @@ Edge: 0.2.0 -> 0.3.0 (satisfied)
 Edge: 0.3.0 -> 0.4.0 (blocked)
   0.3.0 -> 0.4.0: option-default recipe.options.database [blocking] (site-taken-over)
     services.database.type holds a literal that differs from the new value; set it to the new value or restore {{ recipe.database }}, then re-run.
-run `lando rebuild`
+run `lando start`
 ```
 
 ### Managed sites move, taken-over sites don't

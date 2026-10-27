@@ -36,7 +36,7 @@ for (const error of failures) {
       formatError: (failure) =>
         renderPlainBugReport(
           buildBugReport({
-            error: failure,
+            ...failure,
             context: { commandId: "app:config", cacheRoot: "/cache" },
           }),
         ),

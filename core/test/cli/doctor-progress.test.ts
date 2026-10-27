@@ -122,7 +122,22 @@ describe("doctor progress outcomes", () => {
     expect(appConfigOutcome(undefined)).toEqual({ summary: "app-config · skipped" });
     expect(appConfigOutcome({ app: "a", file: "f", valid: true, violations: [] })).toEqual({});
     expect(
-      appConfigOutcome({ app: "a", file: "f", valid: false, violations: [{ path: ["x"], message: "m" }] }),
+      appConfigOutcome({
+        app: "a",
+        file: "f",
+        valid: true,
+        violations: [
+          { rule: "env-file.literal", severity: "warning", path: ["env_file", 0], message: "literal" },
+        ],
+      }),
+    ).toEqual({ summary: "app-config · 1 warning", warned: true });
+    expect(
+      appConfigOutcome({
+        app: "a",
+        file: "f",
+        valid: false,
+        violations: [{ rule: "landofile.validation", severity: "error", path: ["x"], message: "m" }],
+      }),
     ).toEqual({ summary: "app-config · 1 violation", failed: true });
   });
 
@@ -188,15 +203,17 @@ describe("doctor progress events", () => {
       .filter((event) => event._tag === "task.start")
       .map((event) => event.taskId);
     expect(starts).toEqual([
+      "subsystems",
       "provider",
       "certificate-authority",
       "network-trust",
-      "subsystems",
       "global-app",
       "mcp",
     ]);
     expect(recorder.events.filter((event) => event._tag === "task.fail")).toEqual([]);
-    expect(recorder.events.find((event) => event._tag === "task.complete")).toMatchObject({
+    expect(
+      recorder.events.find((event) => event._tag === "task.complete" && event.taskId === "provider"),
+    ).toMatchObject({
       taskId: "provider",
       summary: "provider · 1 warning",
       outcome: "warn",

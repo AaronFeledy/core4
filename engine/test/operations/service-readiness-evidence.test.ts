@@ -18,6 +18,7 @@ const stopped = {
   service: web.name,
   providerId: plan.provider,
   status: "stopped",
+  publications: { status: "unknown" as const },
   exitCode: 17,
 };
 const target = { plan, service: web.name };
@@ -28,6 +29,7 @@ test("readiness inspection transport failures are tagged, redacted, and retain a
     message: `inspect saw password=${secret}`,
     providerId: "lando",
     operation: "inspect",
+    remediation: "Install or start the `lando` provider and confirm it can perform `inspect`.",
   });
   const harness = makeHarness({
     inspect: () => Effect.fail(providerError),
@@ -71,6 +73,7 @@ test("provider observation failure cannot become a supervised restart", async ()
           providerId: "lando",
           operation: "inspect",
           message: "provider unreachable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `inspect`.",
         }),
       ),
   } satisfies RuntimeProviderShape;
@@ -130,6 +133,7 @@ test.each(["failed", "timeout"] as const)(
                 providerId: "lando",
                 operation: "logs",
                 message: "capture failed",
+                remediation: "Install or start the `lando` provider and confirm it can perform `logs`.",
               }),
             ),
     } satisfies RuntimeProviderShape;

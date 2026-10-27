@@ -1,9 +1,13 @@
 # hugo
 
-Hugo static-site scaffold with a Node-based build helper plus an nginx
-static frontend. Init emits `.lando.yml` and a small starter site (Hugo
-config, archetype, and layouts for the home page and new content), so the
-first `lando start` serves a page.
+Use this recipe to start a Hugo site with a Node-based build helper and an
+nginx frontend for static files. Initialization writes `.lando.yml` and a starter
+site with Hugo configuration, an archetype, and layouts for the home page and
+new content. The first `lando start` serves a page.
+
+## Host prerequisites
+
+- Lando v4 install with `provider-lando` or `provider-docker`.
 
 ## Generated services
 
@@ -27,7 +31,3 @@ first `lando start` serves a page.
   in your Hugo config, point `webroot` on `web` at the new directory.
 - The static frontend serves files only; advanced routing/rewrites are
   deferred.
-
-## Host prerequisites
-
-- Lando v4 install with `provider-lando` or `provider-docker`.

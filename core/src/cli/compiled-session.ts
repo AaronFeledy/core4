@@ -133,9 +133,18 @@ export const beginNestedCommandInvocation = (
   return activeCommandInvocation as CliInvocationSnapshot;
 };
 
-export const commandErrorMessage = (error: unknown, commandId: string = activeCommandId): string => {
+export const commandErrorMessage = (
+  failure: import("@lando/sdk/command-result").ProjectedFailure,
+  commandId: string = activeCommandId,
+  redactor?: import("@lando/sdk/secrets").Redactor,
+): string => {
   const context: BugReportContext = { commandId };
-  return formatBugReport({ error, context, rendererMode: activeRendererMode });
+  return formatBugReport({
+    ...failure,
+    context,
+    rendererMode: activeRendererMode,
+    ...(redactor === undefined ? {} : { redactor }),
+  });
 };
 
 export const emitResultLine = (text: string): Promise<void> =>

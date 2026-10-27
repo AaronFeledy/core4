@@ -1,5 +1,5 @@
 import { stdin } from "node:process";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import { AppPlan, type AppRef } from "@lando/sdk/schema";
 import {
@@ -14,7 +14,7 @@ import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/prox
 import { scopedHostProxyRunLandoSession } from "@lando/engine/subsystems/host-proxy/transport";
 import { hostProxyMountInfoFromPlan } from "@lando/engine/subsystems/host-proxy/worker-service-plan";
 import type { RootOverrides } from "@lando/paths";
-import type { RedactionService } from "@lando/redaction/service";
+import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
 import { detachStdioWrites, writeStdioLine } from "@lando/renderer/io";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../generated/host-proxy-allowlist";
@@ -35,6 +35,7 @@ const WorkerInput = Schema.Struct({
     platform: Schema.optional(Schema.String),
   }),
   shimArtifactPath: Schema.String,
+  configDigest: Schema.String,
   shimTarget: Schema.optional(
     Schema.Union([
       Schema.Struct({ os: Schema.Literal("linux"), arch: Schema.Literal("x64") }),
@@ -67,69 +68,90 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
   const app = { kind: input.app.kind, id: input.app.id, root: input.app.root } as AppRef;
   const runtime = makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
   // Runtime Layer scope must outlive session create (EventService acquires scoped resources).
-  await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const runtimeContext = yield* Effect.context<
-          ShellRunner | EventService | RedactionService | RouterService
-        >();
-        const session = yield* scopedHostProxyRunLandoSession({
-          app,
-          mountInfo: hostProxyMountInfoFromPlan(input.plan),
-          allowlist: HOST_PROXY_RUNLANDO_ALLOWLIST,
-          callerService: "lando",
-          executor: (request) =>
-            runOpenForHostProxy(input.plan, request).pipe(Effect.provide(runtimeContext)),
-          paths: rootOverridesFromWorkerInput(input.paths),
-          shimArtifactPath: input.shimArtifactPath,
-          ...(input.shimTarget === undefined ? {} : { shimTarget: input.shimTarget }),
-          ...(input.hostGatewayName === undefined ? {} : { hostGatewayName: input.hostGatewayName }),
-        });
-        let bridge: { readonly socketPath: string } | undefined;
-        if (session.transport === "tcp-host-gateway" && session.url !== undefined) {
-          const registry = yield* RuntimeProviderRegistry;
-          const provider = yield* registry.select(input.plan);
-          if (provider.openHostProxyBridge !== undefined) {
-            bridge = yield* provider.openHostProxyBridge({
-              appId: input.plan.id,
-              sessionId: session.sessionId,
-              loopbackUrl: session.url,
-            });
+  const owner = makeRedactionOwner();
+  const sourceEnv = { ...process.env };
+  const redactionLayer = Layer.succeed(RedactionService, owner.service);
+  try {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtimeContext = yield* Effect.context<
+            ShellRunner | EventService | RedactionService | RouterService | RuntimeProviderRegistry
+          >();
+          let currentPlan = input.plan;
+          const session = yield* scopedHostProxyRunLandoSession({
+            app,
+            get mountInfo() {
+              return hostProxyMountInfoFromPlan(currentPlan);
+            },
+            allowlist: HOST_PROXY_RUNLANDO_ALLOWLIST,
+            callerService: "lando",
+            executor: (request) =>
+              runOpenForHostProxy(currentPlan, request).pipe(Effect.provide(runtimeContext)),
+            providerId: input.plan.provider,
+            configure: async (body) => {
+              const next = Schema.decodeUnknownSync(AppPlan)(body);
+              if (next.id !== app.id || next.root !== app.root || next.provider !== input.plan.provider)
+                throw new TypeError("Host-proxy plan identity does not match the worker.");
+              currentPlan = next;
+            },
+            paths: rootOverridesFromWorkerInput(input.paths),
+            shimArtifactPath: input.shimArtifactPath,
+            configDigest: input.configDigest,
+            ...(input.shimTarget === undefined ? {} : { shimTarget: input.shimTarget }),
+            ...(input.hostGatewayName === undefined ? {} : { hostGatewayName: input.hostGatewayName }),
+          });
+          let bridge: { readonly socketPath: string } | undefined;
+          if (session.transport === "tcp-host-gateway" && session.url !== undefined) {
+            const registry = yield* RuntimeProviderRegistry;
+            const provider = yield* registry.select(input.plan);
+            if (provider.openHostProxyBridge !== undefined) {
+              bridge = yield* provider.openHostProxyBridge({
+                appId: input.plan.id,
+                sessionId: session.sessionId,
+                loopbackUrl: session.url,
+              });
+            }
           }
-        }
-        let resolveShutdown: () => void = () => undefined;
-        const shutdownComplete = new Promise<void>((resolve) => {
-          resolveShutdown = resolve;
-        });
-        const shutdown = () => {
-          void session.close().finally(resolveShutdown);
-        };
-        process.once("SIGTERM", shutdown);
-        process.once("SIGINT", shutdown);
-        void session.closed.then(resolveShutdown);
-        yield* Effect.sync(() => {
-          const socketPath = bridge?.socketPath ?? session.socketPath;
-          writeStdioLine(
-            "stdout",
-            JSON.stringify({
-              _tag: "ready",
-              appId: session.appId,
-              sessionId: session.sessionId,
-              token: session.token,
-              controlToken: session.controlToken,
-              ...(socketPath === undefined ? {} : { socketPath }),
-              ...(session.url === undefined ? {} : { url: session.url }),
-              ...(bridge !== undefined || session.containerUrl === undefined
-                ? {}
-                : { containerUrl: session.containerUrl }),
-              shimPath: session.shimPath,
-              transport: bridge === undefined ? session.transport : "unix-socket",
-            }),
-          );
-          detachStdioWrites();
-        });
-        yield* Effect.promise(() => shutdownComplete);
-      }),
-    ).pipe(Effect.provide(runtime)),
-  );
+          let resolveShutdown: () => void = () => undefined;
+          const shutdownComplete = new Promise<void>((resolve) => {
+            resolveShutdown = resolve;
+          });
+          const shutdown = () => {
+            void session.close().finally(resolveShutdown);
+          };
+          process.once("SIGTERM", shutdown);
+          process.once("SIGINT", shutdown);
+          void session.closed.then(resolveShutdown);
+          yield* Effect.sync(() => {
+            const socketPath = bridge?.socketPath ?? session.socketPath;
+            writeStdioLine(
+              "stdout",
+              JSON.stringify({
+                _tag: "ready",
+                appId: session.appId,
+                sessionId: session.sessionId,
+                token: session.token,
+                controlToken: session.controlToken,
+                ...(socketPath === undefined ? {} : { socketPath }),
+                ...(session.url === undefined ? {} : { url: session.url }),
+                ...(bridge !== undefined || session.containerUrl === undefined
+                  ? {}
+                  : { containerUrl: session.containerUrl }),
+                shimPath: session.shimPath,
+                transport: bridge === undefined ? session.transport : "unix-socket",
+              }),
+            );
+            detachStdioWrites();
+          });
+          yield* Effect.promise(() => shutdownComplete);
+        }),
+      ).pipe(Effect.provide(runtime.pipe(Layer.provide(redactionLayer))), Effect.provide(redactionLayer)),
+    );
+  } catch (cause) {
+    const redactor = await Effect.runPromise(owner.service.forProfile("secrets", { sourceEnv }));
+    throw new Error(redactor.redactString(String(cause)));
+  } finally {
+    owner.dispose();
+  }
 };

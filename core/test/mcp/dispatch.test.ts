@@ -35,7 +35,9 @@ const spec = (
 const directExecute = (): McpDispatchDeps["execute"] => (entry, runInput) =>
   entry.spec.run(runInput).pipe(
     Effect.map((value) => ({ _tag: "success", value }) satisfies CommandResultOutcome),
-    Effect.catch((error) => Effect.succeed({ _tag: "failure", error } satisfies CommandResultOutcome)),
+    Effect.catch((error) =>
+      Effect.succeed({ _tag: "failure", error, additionalErrors: [] } satisfies CommandResultOutcome),
+    ),
   ) as Effect.Effect<CommandResultOutcome, never>;
 
 interface Harness {
@@ -57,6 +59,8 @@ const harness = (
       effective: allowlist,
       allowlistSource: "defaults",
       redactor: createRedactor("secrets", { values: [...(options.secrets ?? [])] }),
+      resultRedactor: (tokens) =>
+        Effect.succeed(createRedactor("secrets", { values: [...(options.secrets ?? []), ...tokens] })),
       execute: directExecute(),
       publish: (event) =>
         Effect.sync(() => {
@@ -429,9 +433,15 @@ describe("dispatchTool", () => {
     );
 
     // Then
-    expect(exit._tag).toBe("Failure");
+    expect(exit._tag).toBe("Success");
+    if (exit._tag === "Success") {
+      expect(exit.value).toMatchObject({
+        ok: false,
+        envelope: { ok: false, error: { _tag: "LandoInternalError" } },
+      });
+    }
     expect(events.map((event) => event._tag)).toEqual(["pre-mcp-call", "post-mcp-call"]);
-    expect(events[1]).toMatchObject({ outcome: "failure", failureDetail: "Defect" });
+    expect(events[1]).toMatchObject({ outcome: "failure", failureDetail: "LandoInternalError" });
   });
 
   test("rejects hostile command failures without invoking their hooks", async () => {
@@ -458,13 +468,19 @@ describe("dispatchTool", () => {
     const accessorExit = await Effect.runPromiseExit(
       dispatchTool(
         { toolId: "app:unsafe-failure" },
-        { ...deps, execute: () => Effect.succeed({ _tag: "failure", error: accessorError }) },
+        {
+          ...deps,
+          execute: () => Effect.succeed({ _tag: "failure", error: accessorError, additionalErrors: [] }),
+        },
       ),
     );
     const proxyExit = await Effect.runPromiseExit(
       dispatchTool(
         { toolId: "app:unsafe-failure" },
-        { ...deps, execute: () => Effect.succeed({ _tag: "failure", error: proxyError }) },
+        {
+          ...deps,
+          execute: () => Effect.succeed({ _tag: "failure", error: proxyError, additionalErrors: [] }),
+        },
       ),
     );
 

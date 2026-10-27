@@ -24,6 +24,7 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
+      Effect.map((compiled) => compiled.document),
       Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
@@ -138,12 +139,8 @@ describe("LandofileService layer — Compose service spellings", () => {
       // Then
       expect(Exit.isSuccess(exit)).toBe(true);
       if (!Exit.isSuccess(exit)) return;
-      expect(exit.value.services?.[ServiceName.make("disabled")]?.healthcheck).toEqual({
-        kind: "none",
-      });
-      expect(exit.value.services?.[ServiceName.make("none")]?.healthcheck).toEqual({
-        kind: "none",
-      });
+      expect(exit.value.services?.[ServiceName.make("disabled")]?.healthcheck).toBe(false);
+      expect(exit.value.services?.[ServiceName.make("none")]?.healthcheck).toBe(false);
       expect(exit.value.services?.[ServiceName.make("mixed")]?.healthcheck).toEqual({
         kind: "command",
         command: ["echo", "lando"],

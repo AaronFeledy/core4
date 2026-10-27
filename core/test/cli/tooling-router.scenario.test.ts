@@ -1,51 +1,22 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { Effect } from "effect";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
+import {
+  type RouterFixture,
+  type RunResult,
+  lastEnvelope,
+  makeFixture,
+  runProcess,
+  runSource,
+  sourceCli,
+} from "./subprocess-support";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const sourceCli = resolve(repoRoot, "core/bin/lando.ts");
 const runCliPath = resolve(repoRoot, "core/src/cli/run.ts");
-
-interface RunResult {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-interface RouterFixture {
-  readonly root: string;
-  readonly cacheRoot: string;
-  readonly env: Record<string, string>;
-  readonly cleanup: () => Promise<void>;
-}
-
-const makeFixture = async (name: string): Promise<RouterFixture> => {
-  const fixtureRoot = await mkdtemp(join(tmpdir(), `lando-tooling-router-${name}-`));
-  const root = join(fixtureRoot, "app");
-  const cacheRoot = join(fixtureRoot, "cache");
-  await mkdir(root, { recursive: true });
-  await writeFile(join(root, ".lando.yml"), `name: router-${name}\n`);
-  const inheritedEnv = Object.fromEntries(
-    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-  );
-  return {
-    root,
-    cacheRoot,
-    env: {
-      ...inheritedEnv,
-      PATH: "/no-such-path",
-      LANDO_USER_CACHE_ROOT: cacheRoot,
-      LANDO_USER_DATA_ROOT: join(fixtureRoot, "data"),
-      LANDO_USER_CONF_ROOT: join(fixtureRoot, "conf"),
-    },
-    cleanup: () => rm(fixtureRoot, { recursive: true, force: true }),
-  };
-};
 
 const writeTask = async (
   fixture: RouterFixture,
@@ -119,25 +90,6 @@ const writeFreshDeclaredInputCache = async (fixture: RouterFixture, taskName: st
   );
 };
 
-const runProcess = async (command: ReadonlyArray<string>, fixture: RouterFixture): Promise<RunResult> => {
-  const proc = Bun.spawn({
-    cmd: [...command],
-    cwd: fixture.root,
-    env: fixture.env,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  return { exitCode, stdout, stderr };
-};
-
-const runSource = (fixture: RouterFixture, argv: ReadonlyArray<string>): Promise<RunResult> =>
-  runProcess([process.execPath, sourceCli, ...argv], fixture);
-
 const runCompiledDispatcher = async (
   fixture: RouterFixture,
   argv: ReadonlyArray<string>,
@@ -154,16 +106,50 @@ const runCompiledDispatcher = async (
   return runProcess([process.execPath, runner, ...argv], fixture);
 };
 
-const lastEnvelope = (output: string): Record<string, unknown> => {
-  const line = output
-    .split("\n")
-    .map((entry) => entry.trim())
-    .findLast((entry) => entry.startsWith("{") && entry.endsWith("}"));
-  if (line === undefined) throw new Error(`No JSON envelope in output: ${output.slice(0, 200)}`);
-  const parsed: unknown = JSON.parse(line);
-  if (parsed === null || typeof parsed !== "object") throw new Error("Expected a JSON object envelope");
-  return Object.fromEntries(Object.entries(parsed));
-};
+for (const [command, commandId] of [
+  ["start", "app:start"],
+  ["hello", "cli:alias-resolution"],
+] as const) {
+  test(`${command} reports a tagged conflict without a stack for dual-form Landofiles`, async () => {
+    // Given
+    const fixture = await makeFixture(`dual-${command}`);
+    try {
+      await writeFile(
+        join(fixture.root, ".lando.yml"),
+        "name: conflict\ntooling:\n  hello:\n    cmd: echo hello\n",
+      );
+      await writeFile(join(fixture.root, ".lando.ts"), 'export default { name: "conflict" };\n');
+      // When
+      const result = await runSource(fixture, [command, "--format=json"]);
+      // Then
+      expect(result.exitCode, result.stderr).toBe(1);
+      expect(lastEnvelope(result.stdout)).toMatchObject({
+        command: commandId,
+        ok: false,
+        error: { _tag: "LandofileFormConflictError", remediation: expect.stringMatching(/\S/u) },
+      });
+      expect(`${result.stdout}\n${result.stderr}`).not.toMatch(/\n\s+at |"stack"\s*:/u);
+    } finally {
+      await fixture.cleanup();
+    }
+  }, 30_000);
+}
+
+test("stop reports unchanged for a never-started dual-form app", async () => {
+  // Given
+  const fixture = await makeFixture("dual-stop");
+  try {
+    await writeFile(join(fixture.root, ".lando.ts"), 'export default { name: "conflict" };\n');
+    // When
+    const result = await runSource(fixture, ["stop", "--format=json"]);
+    // Then
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(lastEnvelope(result.stdout)).toMatchObject({ ok: true, result: { outcome: "unchanged" } });
+    expect(`${result.stdout}\n${result.stderr}`).not.toMatch(/\n\s+at |"stack"\s*:/u);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 30_000);
 
 test("Given fresh app caches, when global help heads are dispatched, then both paths render root help", async () => {
   const source = await makeFixture("source-root-help");
@@ -433,7 +419,13 @@ test("Given separate failing tasks, when routed, then both dispatchers propagate
     expect(compiledResult.exitCode, compiledResult.stderr).toBe(7);
     const expectedFailure = {
       command: "app:fail",
-      ok: true,
+      ok: false,
+      error: {
+        _tag: "LandoCommandError",
+        commandId: "app:fail",
+        exitCode: 7,
+        remediation: expect.any(String),
+      },
       result: {
         service: ":host",
         exitCode: 7,

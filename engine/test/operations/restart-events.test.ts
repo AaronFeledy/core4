@@ -6,8 +6,9 @@ import { RouterService, ToolingEngine, physicalVolumeLockKey } from "@lando/sdk/
 import { TestRouterService } from "@lando/sdk/test";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
-import { attachEffectiveEvents, effectiveEventsForPlan } from "../../src/planner/effective-events.ts";
-import { byTag, makeHarness, plan } from "./start-progress-topology-support.ts";
+import { effectiveEventsForPlan } from "../../src/planner/effective-events.ts";
+import { withAuthoredProjectEvents as withProjectEvents } from "./event-plan.ts";
+import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const recordingEngine = (executed: string[], failure?: string) => ({
   id: "recording",
@@ -30,8 +31,20 @@ const recordingEngine = (executed: string[], failure?: string) => ({
 });
 
 const eventPlan = () =>
-  attachEffectiveEvents(
-    { ...plan },
+  withProjectEvents(
+    {
+      ...plan,
+      routes: [
+        {
+          hostname: "web.test-start.lndo.site",
+          priority: 2,
+          scheme: "https",
+          service: web.name,
+          endpoint: 3000,
+          backend: { service: web.name, protocol: "http", port: 3000 },
+        },
+      ],
+    },
     {
       "pre-init": ["{{ event._tag }}"],
       "post-init": ["{{ event._tag }}"],

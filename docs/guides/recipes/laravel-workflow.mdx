@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, laravel, php, node, mariadb, redis]
 
 # Run the Laravel recipe
 
+Create a local Laravel environment with PHP, MariaDB, Redis, and Node. Run the commands from your host terminal, then scaffold Laravel below.
+
 ```sh
 lando init --recipe laravel --name=laravel-demo --yes
 cd laravel-demo
@@ -16,6 +18,51 @@ lando start
 The named init creates `laravel-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, and no worker. Apache is up after start. Drop a Laravel app in so `artisan` exists.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
+
+## Run Artisan, Composer, npm, and the clients
+
+`create-project` wants an empty directory, and `.lando.yml` is already there:
+
+```sh
+lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
+```
+
+Copy the application into the root, keeping `.lando.yml`, then check its
+dependencies and tools:
+
+```sh
+lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
+lando composer install --no-interaction
+lando artisan --version
+lando composer --version
+lando redis-cli ping
+lando mariadb
+```
+
+## Check a Laravel route
+
+Lando enables Apache's `mod_rewrite` during the stock PHP service build, and the
+recipe enables `.htaccess` processing. Laravel's `/up` health route reaches the
+front controller without a custom build step:
+
+```sh
+lando exec appserver -- curl -fsS http://localhost/up
+```
+
+If the app was built with an older Lando version, run `lando start` after
+upgrading to apply the new Apache defaults.
+
+## Build the frontend with npm
+
+`lando npm` runs in the `node` service, a `node:22` container that idles until you call it:
+
+```sh
+lando npm --version
+lando npm install
+lando npm run build
+```
+
+`public/build` lands in the shared `/app`, so Apache serves it right away. `node_modules` lives in a volume private to the `node` service.
 
 ## See what the recipe writes
 
@@ -71,51 +118,6 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
     </Step>
   </Scenario>
 </Guide>
-
-## Run Artisan, Composer, npm, and the clients
-
-`create-project` wants an empty directory, and `.lando.yml` is already there:
-
-```sh
-lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
-```
-
-Copy the application into the root, keeping `.lando.yml`, then check its
-dependencies and tools:
-
-```sh
-lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
-lando composer install --no-interaction
-lando artisan --version
-lando composer --version
-lando redis-cli ping
-lando mariadb
-```
-
-## Check a Laravel route
-
-Lando enables Apache's `mod_rewrite` during the stock PHP service build, and the
-recipe enables `.htaccess` processing. Laravel's `/up` health route reaches the
-front controller without a custom build step:
-
-```sh
-lando exec appserver -- curl -fsS http://localhost/up
-```
-
-If the app was built with an older Lando version, run `lando rebuild` after
-upgrading to apply the new Apache defaults.
-
-## Build the frontend with npm
-
-`lando npm` runs in the `node` service, a `node:22` container that idles until you call it:
-
-```sh
-lando npm --version
-lando npm install
-lando npm run build
-```
-
-`public/build` lands in the shared `/app`, so Apache serves it right away. `node_modules` lives in a volume private to the `node` service.
 
 ## Add a queue worker
 

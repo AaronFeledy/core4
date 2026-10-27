@@ -8,8 +8,7 @@ tags: [beta, docs, config, services, security, ca]
 
 # Trust a corporate CA and proxy
 
-Project-specific certificate authorities belong under each service's `security` block. The canonical
-form is a list of certificate paths:
+Add a project-specific certificate authority to the service’s `security` block in your Landofile. Obtain the PEM certificate from your organization’s trusted source and save it at `certs/corporate-root.pem` under your app directory before using this fragment:
 
 ```yaml
 services:
@@ -20,6 +19,8 @@ services:
       inheritNetworkCa: true
       inheritNetworkProxy: false
 ```
+
+From the app directory, run `lando app:config:lint --format=json` to check the configuration, then `lando start` to apply the CA material. A valid configuration is not proof of HTTPS trust: check the outbound HTTPS request your application needs after the service starts.
 
 `inheritNetworkCa` and `inheritNetworkProxy` override the corresponding host network-injection
 setting for only that service. Omit either flag to inherit the host default.
@@ -80,7 +81,7 @@ override `network.proxy.injectIntoServices`. Values other than `true` or `false`
 invalid global config. `LANDO_NETWORK_CA_CERTS` remains a JSON array of additional CA paths; it does
 not replace either injection flag.
 
-## Runtime CA environment and rebuilds
+## Runtime CA environment
 
 When a `type: lando` service receives one or more injected CAs, each host PEM is mounted read-only
 under `/usr/local/share/ca-certificates`. The runtime trust paths stay fixed before and after the
@@ -110,8 +111,8 @@ The bundled language service types consume that trust material as follows:
 
 These runtime variables are absent when the service receives no injected CA material.
 
-Run `lando rebuild` after CA material changes so the service artifact registers the updated trust
-store. The bundle and directory paths do not change across that rebuild.
+Run `lando start` after CA material changes so the service artifact registers the updated trust
+store. The bundle and directory paths do not change across that start.
 
 ## Confirm injection during setup
 
@@ -138,10 +139,9 @@ service out. Read a service's effective trust material from its plan or from
 
 ## Configure a global proxy
 
-Set your corporate proxy under `network.proxy` in the global config. Set both
-`http` and `https` if the same proxy handles both kinds of request. Use `noProxy`
-for destinations that should connect directly. `injectIntoServices` controls
-whether Lando also passes the resolved proxy settings to `type: lando` services:
+Author the corporate proxy under `network.proxy` in the global config. `http` and `https` are each
+a URL string or `null`; `noProxy` is a list of hostnames or suffixes; `injectIntoServices` controls
+whether the resolved proxy env reaches `type: lando` services:
 
 ```yaml
 network:
@@ -154,39 +154,14 @@ network:
     injectIntoServices: false
 ```
 
-### Choose destinations that bypass the proxy
-
-`noProxy` accepts these patterns:
-
-| Pattern | Matches |
-| --- | --- |
-| `example.com` | That hostname and its subdomains |
-| `.example.com` or `*.example.com` | Subdomains only, not `example.com` itself |
-| `example.com:8443` | That exact hostname and port |
-| An IPv4 or IPv6 address | A URL whose hostname is that literal IP address |
-| `10.0.0.0/8` or `fd00::/8` | Literal IP addresses in that CIDR range |
-| `*` | Every destination |
-
-IP patterns do not resolve hostnames through DNS. Lando always connects directly
-to `localhost`, IPv4 loopback addresses in `127.0.0.0/8`, and IPv6 `::1`,
-even if they are not listed.
-
-### Choose config or environment variables
-
-Lando selects the whole `network.proxy` block when it contains a non-empty proxy
-URL, an explicit `null`, or a non-empty `noProxy` list. It then ignores proxy
-environment variables, including values for fields you left unset. Within that
-block, `null` disables a scheme; an unset scheme also connects directly rather
-than borrowing the other scheme's proxy.
-
-If the block has none of those values, Lando uses the first non-empty environment
-variable in each row:
-
-| Setting | Precedence, highest first |
-| --- | --- |
-| HTTP proxy | `HTTP_PROXY`, `http_proxy`, `ALL_PROXY`, `all_proxy` |
-| HTTPS proxy | `HTTPS_PROXY`, `https_proxy`, `ALL_PROXY`, `all_proxy` |
-| Bypass patterns | `NO_PROXY`, `no_proxy` |
+Proxy precedence is block-level, not field-level: a non-empty `http` or `https` value, or a
+non-empty `noProxy` list, makes the whole `network.proxy` block the sole source of proxy values for
+outbound requests. Lando then ignores the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment
+variables (and their lowercase forms), even for a field you left unset. An absent block, or a block
+whose `http`, `https`, and `noProxy` values are all empty or unset, falls back to those environment
+variables instead. Within a block selected by another non-empty proxy value, set `http` or `https`
+to `null` to disable that direction without falling back to its environment variable. A block that
+contains only `null` values does not select config precedence by itself.
 
 `network.proxy.injectIntoServices` defaults to `false`, the opposite of
 `network.ca.injectIntoServices`'s default `true`. Proxy URLs can carry embedded credentials
@@ -206,3 +181,18 @@ list (an empty string is still a defined `NO_PROXY=` env entry, not an absent va
 resolved), `proxyInjectIntoServices`, and `noProxyCount`. It does not print the resolved proxy URL
 or any embedded credential. `lando setup` does not publish those proxy fields; proxy failures still
 run through the command redaction boundary before they reach a human or a `--format json` consumer.
+
+Confirm the opt-out is valid config before you start the app.
+
+<Guide>
+  <Scenario id="ca-opt-out-lints" render>
+    <Step name="lint-opt-out">
+      <UseFixture name="ca-opt-out" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"inheritNetworkCa\":\\s*false" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"inheritNetworkProxy\":\\s*false" } }} />
+    </Step>
+  </Scenario>
+</Guide>

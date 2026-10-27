@@ -11,7 +11,7 @@ import { DRUPAL_CMS_PHP_INI, DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET 
 
 export const DRUPAL_CMS_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CMS_CONTENT_DIGEST =
-  "sha256:83b2f937875e51e229a082996523e92aee288e6996bddb83c718e0e49140337b";
+  "sha256:3f57c861c0e0ff50594f235753cdf0b91c723aec5c4e2f1be341c518bbc084f4";
 export const drupalCmsProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-drupal-cms",

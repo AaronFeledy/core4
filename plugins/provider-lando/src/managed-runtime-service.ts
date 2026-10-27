@@ -10,7 +10,7 @@ import {
   managedConmonPathForPodman,
   reapLingeringExecConmons,
 } from "./exec-conmon.ts";
-import { LANDO_CTX } from "./provider-context.ts";
+import { providerContextForEnv } from "./provider-context.ts";
 
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
@@ -176,7 +176,8 @@ export const verifyOwnedRuntimePid = (
   processSeam: ProcessSeam = realProcessSeam,
 ): Effect.Effect<boolean> => ownedRuntimePid(spec, processSeam).pipe(Effect.map((pid) => pid !== undefined));
 
-const defaultApiClient = (socketPath: string): EngineHttpApi => makePodmanApiClient(socketPath, LANDO_CTX);
+const defaultApiClient = (socketPath: string): EngineHttpApi =>
+  makePodmanApiClient(socketPath, providerContextForEnv({ ...process.env }));
 
 const StorageContainers = Schema.fromJsonString(
   Schema.Array(Schema.Struct({ Id: Schema.String, State: Schema.optionalKey(Schema.String) })),

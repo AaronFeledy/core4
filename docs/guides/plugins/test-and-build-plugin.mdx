@@ -15,7 +15,9 @@ lando meta:plugin:test
 lando meta:plugin:build
 ```
 
-Dash, then Bun flags. Everything after `--` is none of Lando's business.
+After both commands succeed, check `dist/` for the built entrypoints and
+`dist/package.json` for the package metadata. To select test files or pass Bun
+flags, use the form below.
 
 ## Test
 
@@ -33,7 +35,7 @@ A non-zero Bun exit is a non-zero Lando exit.
 lando meta:plugin:build
 ```
 
-Build reads `package.json` `exports`, compiles those entrypoints to `./dist` as ESM for Bun, emits declaration files, then writes `dist/package.json`. Nested `dist/` under a source export tree, or `package.json` `exports` that mix source and dist entrypoints, fail closed.
+Build reads `package.json` `exports`, compiles those entrypoints to `./dist` as ESM for Bun, emits declaration files, then writes `dist/package.json`. Nested `dist/` under a source export tree, or `package.json` `exports` that mix source and dist entrypoints, are rejected rather than built.
 
 ## Verify
 

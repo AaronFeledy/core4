@@ -51,7 +51,6 @@ describe("ScanPlan", () => {
       provider: "docker",
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata,

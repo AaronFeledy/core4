@@ -1,0 +1,37 @@
+name: mageos
+services:
+  appserver:
+    type: "php:8.4"
+    primary: true
+    webroot: pub
+    allowOverride: true
+    build:
+      artifact:
+        - "apt-get update && apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev && rm -rf /var/lib/apt/lists/*"
+        - "docker-php-ext-install -j\"$(nproc)\" bcmath ftp soap sockets xsl"
+    mounts:
+      - source: ./php.ini
+        target: /usr/local/etc/php/conf.d/zz-magento.ini
+        readOnly: true
+  database:
+    type: mariadb
+    creds:
+      user: magento
+      password: magento
+      database: magento
+  search:
+    type: opensearch
+tooling:
+  composer:
+    service: appserver
+    cmd: [composer]
+    dir: /app
+    env:
+      COMPOSER_ALLOW_SUPERUSER: "1"
+    description: Run Composer inside the appserver service.
+  magento:
+    service: appserver
+    cmd: [php, bin/magento]
+    dir: /app
+    user: www-data
+    description: Run bin/magento inside the appserver service.

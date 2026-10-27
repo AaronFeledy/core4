@@ -23,6 +23,7 @@ const snapshot = (appRoot = root, cache = false, runtimeObserved = true): Provid
       service: ServiceName.make("web"),
       status: "running",
       containerId: "observed-container",
+      publications: { status: "unknown" },
     },
   ],
   volumes: [
@@ -55,6 +56,9 @@ const snapshot = (appRoot = root, cache = false, runtimeObserved = true): Provid
 });
 const registry = (snapshots: ReadonlyArray<ProviderRuntimeSnapshot>) =>
   RuntimeProviderRegistry.of({
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(TestRuntimeProvider),
@@ -86,6 +90,8 @@ test("returns one redacted manual warning when app state cannot be read", async 
     providerId,
     operation: "observeRuntime",
     message: "Unable to inspect secret-path applied plan state.",
+    remediation:
+      "Install or start the selected runtime provider and confirm it can perform `observeRuntime`.",
   });
   // When doctor collects missing-root checks.
   const checks = await Effect.runPromise(

@@ -113,7 +113,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -156,6 +155,7 @@ const makeLogsLayer = (
   } = {},
 ) => {
   const effectivePlan = overrides.appPlan ?? plan;
+  const currentPlan = currentTestPlan(effectivePlan);
   const logCalls: Array<{ readonly target: LogTarget; readonly options: LogOptions }> = [];
   const effectiveCapabilities: ProviderCapabilities = {
     ...capabilities,
@@ -185,6 +185,7 @@ const makeLogsLayer = (
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -193,6 +194,7 @@ const makeLogsLayer = (
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,
@@ -203,6 +205,7 @@ const makeLogsLayer = (
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.succeed({ kind: "destroyed" as const }),
     removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    readAppEnvironment: () => Effect.succeed([]),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -223,10 +226,11 @@ const makeLogsLayer = (
         providerId,
         status: "running",
         state: "running",
-        endpoints: [],
+        publications: { status: "present", bindings: [] },
       }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
+    removeVolumeSnapshot: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
     locateVolume: () => Effect.die("not used"),
     listVolumes: () => Effect.succeed([]),
@@ -240,12 +244,17 @@ const makeLogsLayer = (
   const layer = Layer.mergeAll(
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: "test-logs", services: {} }) }),
+      LandofileService.of({
+        discover: Effect.succeed(literalLandofile({ name: "test-logs", services: {} }, effectivePlan.root)),
+      }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(effectivePlan) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentPlan) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(defaultProviderCapabilities),
         select: () => Effect.succeed(provider),
@@ -253,7 +262,7 @@ const makeLogsLayer = (
     ),
   );
 
-  return { layer, logCalls };
+  return { layer, currentPlan, logCalls };
 };
 
 describe("lando logs", () => {
@@ -262,7 +271,7 @@ describe("lando logs", () => {
     const result = await Effect.runPromise(logsApp().pipe(Effect.provide(harness.layer)));
 
     expect(harness.logCalls.map((call) => String(call.target.service))).toEqual(["web", "database"]);
-    expect(harness.logCalls.every((call) => call.target.plan === plan)).toBe(true);
+    expect(harness.logCalls.every((call) => call.target.plan === harness.currentPlan)).toBe(true);
     expect(harness.logCalls.every((call) => call.options.follow === false)).toBe(true);
     expect(result.lines.map((line) => `${line.service}/${line.stream}/${line.line}`)).toEqual([
       "web/stdout/web line 1",
@@ -523,7 +532,7 @@ describe("lando logs", () => {
       streaming: StreamFrame,
       streamingMode: "live",
       io,
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
 
     const frames = io.stdoutLines().map((line) => JSON.parse(line) as { _tag: string; source?: string });
@@ -648,7 +657,7 @@ describe("lando logs", () => {
 
     expect(result.lines).toEqual([]);
     expect(harness.logCalls.every((call) => call.options.follow === true)).toBe(true);
-    expect(harness.logCalls.every((call) => call.target.plan === plan)).toBe(true);
+    expect(harness.logCalls.every((call) => call.target.plan === harness.currentPlan)).toBe(true);
     expect(emitted.map((frame) => `${frame.service}/${frame._tag}/${frame.chunk}`).sort()).toEqual(
       [
         "database/stderr/database warn",
@@ -671,7 +680,7 @@ describe("lando logs", () => {
       streaming: StreamFrame,
       streamingMode: "live",
       io,
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
 
     const frames = io.stdoutLines().map((line) => JSON.parse(line) as { _tag: string });
@@ -754,7 +763,7 @@ describe("lando logs", () => {
     expect(released).toBe(true);
   });
 
-  test("follow mode streams human lines live to stdout under text format", async () => {
+  test("follow mode preserves stdout and stderr for live human lines under text format", async () => {
     const harness = makeLogsLayer();
     const io = createBufferedRendererIO({ isTTY: false });
     await runWithRendererHandling(followLogsApp({ follow: true }), {
@@ -766,12 +775,17 @@ describe("lando logs", () => {
       streaming: StreamFrame,
       streamingMode: "live",
       io,
-      formatError: (error) => String(error),
+      formatError: ({ error }) => String(error),
     });
 
-    const out = io.stdout();
-    expect(out).toContain("web stdout: web line 1");
-    expect(out).toContain("database stderr: database warn");
+    expect(io.stdout().trim().split("\n").sort()).toEqual([
+      "database stdout: database line 1",
+      "web stdout: web line 1",
+    ]);
+    expect(io.stderr().trim().split("\n").sort()).toEqual([
+      "database stderr: database warn",
+      "web stderr: web warn",
+    ]);
   });
 
   test("fails outside an app directory with init remediation", async () => {
@@ -826,3 +840,4 @@ describe("lando logs", () => {
     });
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

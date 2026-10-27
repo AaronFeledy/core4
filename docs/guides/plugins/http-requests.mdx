@@ -27,13 +27,18 @@ const notifyDeploy: SubscriberFactory = (ctx) => (event) =>
 export default notifyDeploy;
 ```
 
-Do not call `fetch` yourself. It bypasses Lando's resolved proxy and private-CA settings, along with the `pre-http-call` and `post-http-call` events.
+Do not call `fetch` yourself. A bare `fetch` skips the user's proxy, ignores their private CA, and hides the request from Lando's `pre-http-call` and `post-http-call` events.
 
 ## What Lando adds to every request
 
-- **Proxy and `NO_PROXY`.** Lando uses `network.proxy` config when it contains explicit values. Otherwise, it reads `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`, including lowercase forms. Scheme-specific variables take precedence over `ALL_PROXY`. Bypass rules support hostnames, `host:port`, literal IP addresses, and CIDR ranges; loopback always connects directly. See [global proxy configuration](../config/corporate-network-trust.mdx#configure-a-global-proxy) for precedence and matching rules.
+- **Proxy and `NO_PROXY`.** Lando reads `network.proxy` from global config plus the usual `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` variables.
 - **Private CAs.** Certificates from `network.ca.certs` or `LANDO_NETWORK_CA_CERTS` are trusted for that request. `network.ca.trustHost: false` drops the system roots and trusts only those certificates.
-- **Per-request trust.** Each request uses an explicit `NetworkTrust` override when provided. Otherwise, it resolves proxy and CA settings through the runtime's configuration service.
+- **Trust resolution per request.** Lando resolves trust when the request runs,
+  using the configuration service in that request's Effect context unless an
+  explicit `NetworkTrust` is supplied. A standard runtime keeps a configuration
+  snapshot: later config-file or environment changes require a new runtime.
+  CA file contents are read again when trust is resolved without an explicit
+  trust override.
 - **Redacted telemetry.** Each request is a span named `HttpClient.request`, with the method and a URL that has credentials and query values stripped. Lifecycle events record the origin and method, not the raw URL.
 - **Interrupts abort.** Interrupting the fiber aborts the connection. Stream the body with `response.stream` when the payload is large; nothing is buffered until you ask for it.
 

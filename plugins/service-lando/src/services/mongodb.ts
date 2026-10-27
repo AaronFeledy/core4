@@ -1,20 +1,25 @@
+import { concatenateEnvironmentValues, encodeEnvironmentComponent } from "@lando/sdk/expressions";
 import { Effect, Schema } from "effect";
 
-import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
+import {
+  type EnvironmentValue,
+  PortNumber,
+  PortablePath,
+  type ServiceConfig,
+  type ServiceCreds,
+} from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import {
-  addEnvRecord,
-  loopbackTcpHealthcheck,
-  rootIdentity,
-  serviceFeatureApply,
-} from "./_feature-helpers.ts";
+import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
+import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
+import { mongodbProbes } from "./mongodb-probes.ts";
 
 const DEFAULT_IMAGE = "mongo:7";
 const VERSIONS = ["7"] as const;
@@ -48,48 +53,85 @@ const credsFor = (
   });
 };
 
-const mongoUri = (creds: ServiceCreds, port: number): string =>
-  `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@127.0.0.1:${port}/${encodeURIComponent(creds.database)}?authSource=admin`;
+const mongoUri = (creds: ServiceCreds, port: number): EnvironmentValue =>
+  concatenateEnvironmentValues([
+    "mongodb://",
+    encodeEnvironmentComponent(creds.user),
+    ":",
+    encodeEnvironmentComponent(creds.password),
+    `@127.0.0.1:${port}/`,
+    encodeEnvironmentComponent(creds.database),
+    "?authSource=admin",
+  ]);
+
+const connectMongo =
+  '(async () => { try { db=await connect(process.env.MONGO_URI); } catch (error) { if (error.code === 18 || error.codeName === "AuthenticationFailed") { error.message += " MongoDB rejected the configured credentials. Existing volumes retain their original users; restore the matching credentials or update the user with an authorized administrator. Your data has been retained."; } throw error; } })()';
 
 const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  const port = service.port ?? DEFAULT_PORT;
-  const creds = credsFor(ctx, service);
+  const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, {
     ...familyEnvFor(FAMILY, creds),
-    ...landoDbEnvFor(creds),
+    ...landoDbEnvFor(creds, port),
   });
   ctx.addStorage({
     store: `${appName}-mongodb-data`,
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
 
-  if (addServerConfigMount(ctx, MONGODB_CONFIG_TARGET)) {
-    if (service.command === undefined && service.entrypoint === undefined) {
-      ctx.setCommand(["mongod", "--config", MONGODB_CONFIG_TARGET]);
-    }
+  const serverConfig = addServerConfigMount(ctx, MONGODB_CONFIG_TARGET);
+  if (
+    (serverConfig || service.port !== undefined) &&
+    service.command === undefined &&
+    service.entrypoint === undefined
+  ) {
+    ctx.setCommand([
+      "mongod",
+      ...(serverConfig ? ["--config", MONGODB_CONFIG_TARGET] : []),
+      "--port",
+      String(port),
+    ]);
   }
 
   applyAuthoredProcessFields(ctx);
 
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
+  const probes = mongodbProbes(port);
+  ctx.setHealthcheck(probes.healthcheck);
+  ctx.setReadiness(probes.readiness);
 };
 
 export const mongodbServiceFeature: ServiceFeatureDefinition = {
   id: MONGODB_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(
     MONGODB_FEATURE_ID,
     "mongodb service feature failed to apply",
     applyMongodbFeature,
   ),
 };
+
+const mongodbToolingForConnection: NonNullable<ServiceType["toolingForConnection"]> = (name, connection) =>
+  connection.family !== "mongodb"
+    ? {}
+    : {
+        mongosh: {
+          service: name,
+          cmd: [
+            "sh",
+            "-c",
+            `for arg do case "$arg" in --eval|--eval=*|--json|--json=*|--shell|-f|--file|--file=*|*.js|*.mongodb) exec mongosh --nodb --eval '${connectMongo}' "$@";; esac; done; exec mongosh --nodb --eval '${connectMongo}' --shell "$@"`,
+            "mongosh",
+          ],
+          env: { MONGO_URI: mongoUri(connection.creds, connection.port) },
+        },
+      };
 
 export const mongodbServiceType: ServiceType = {
   id: "mongodb",
@@ -99,27 +141,30 @@ export const mongodbServiceType: ServiceType = {
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
   schema: Schema.Unknown,
+  toolingForConnection: mongodbToolingForConnection,
   resolve: (input) => {
-    const creds = credsFor(input, input.service);
-    return Effect.succeed({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: "mongodb",
-        creds,
-        environment: {
-          ...input.service.environment,
-          ...familyEnvFor(FAMILY, creds),
+    return serviceTypeResolve("mongodb", "mongodb service type failed to resolve", () => {
+      const creds = credsFor(input, input.service);
+      const port = PortNumber.make(input.service.port ?? DEFAULT_PORT);
+      return {
+        base: "lando",
+        connection: { family: "mongodb", creds, port },
+        normalizedConfig: {
+          ...input.service,
+          type: "mongodb",
+          creds,
+          environment: {
+            ...input.service.environment,
+            ...familyEnvFor(FAMILY, creds),
+          },
         },
-      },
-      features: [{ id: MONGODB_FEATURE_ID }],
-      tooling: {
-        mongosh: {
-          service: input.name,
-          cmd: ["mongosh"],
-          env: { MONGO_URI: mongoUri(creds, input.service.port ?? DEFAULT_PORT) },
-        },
-      },
+        features: [{ id: MONGODB_FEATURE_ID }],
+        tooling: mongodbToolingForConnection(ServiceName.make(input.name), {
+          family: "mongodb",
+          creds,
+          port,
+        }),
+      };
     });
   },
 };

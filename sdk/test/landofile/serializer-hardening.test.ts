@@ -186,9 +186,9 @@ describe("Landofile serializer hardening — quoted ${…} round-trips as a lite
     expect(await roundTrip(value)).toEqual(value);
   });
 
-  test("an UNQUOTED ${VAR} in raw YAML is still rejected as an expression", () => {
+  test("unquoted expression text stays literal in syntax-only parsing", async () => {
     const program = parseLandofile({ file: ".lando.yml", content: "x: ${VAR}\n", cwd: "/tmp" });
-    expect(Effect.runPromise(program)).rejects.toThrow();
+    expect(await Effect.runPromise(program)).toEqual({ x: "${VAR}" });
   });
 });
 

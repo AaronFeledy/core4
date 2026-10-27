@@ -25,7 +25,7 @@ import {
   LandofileShape,
   PluginManifest,
   ServiceConfig,
-  ToolingTaskShape,
+  ToolingTaskInput,
   assertJsonSchemaDeprecationsValid,
   assertPublicSchemaAnnotations,
   getEditorJsonSchema,
@@ -118,7 +118,7 @@ const main = async (): Promise<void> => {
   for (const root of [
     LandofileShape,
     ServiceConfig,
-    Schema.Record(Schema.String, ToolingTaskShape),
+    Schema.Record(Schema.String, ToolingTaskInput),
     IncludeEntry,
   ])
     assertLayerMergeCompleteness(root);

@@ -1,6 +1,5 @@
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 
-import { routerEnabled } from "@lando/engine/config/router-config";
 import type {
   HostProxyRunLandoExecutorInput,
   HostProxyRunLandoResult,
@@ -8,10 +7,15 @@ import type {
 import { RedactionService } from "@lando/redaction/service";
 import type { AppPlan, CommandResultEnvelope } from "@lando/sdk/schema";
 import { CommandResultEnvelope as CommandResultEnvelopeSchema } from "@lando/sdk/schema";
-import { type EventService, RouterService, type ShellRunner } from "@lando/sdk/services";
+import type { EventService, RouterService, RuntimeProviderRegistry, ShellRunner } from "@lando/sdk/services";
 
-import { buildCommandResultEnvelope } from "@lando/sdk/command-result";
+import {
+  buildCommandResultEnvelope,
+  failureOutcomeFromCause,
+  normalizeDefect,
+} from "@lando/sdk/command-result";
 import { OpenAppResultSchema, openForPlan } from "../commands/open";
+import { collectOpenConnections } from "../commands/open-connections";
 import { parseOpenOptionsFromRunLandoArgv } from "./open-argv";
 
 const redactCommandEnvelope = (
@@ -26,35 +30,35 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
 ): Effect.fn.Return<
   HostProxyRunLandoResult,
   never,
-  ShellRunner | EventService | RedactionService | RouterService
+  ShellRunner | EventService | RedactionService | RouterService | RuntimeProviderRegistry
 > {
   const redaction = yield* RedactionService;
   const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
   const parsed = parseOpenOptionsFromRunLandoArgv(input.argv, { tty: process.stdout.isTTY === true });
   const encoded =
     parsed._tag === "failure"
-      ? { outcome: { _tag: "failure" as const, error: parsed.error }, exitCode: parsed.error.exitCode ?? 2 }
+      ? { outcome: parsed, exitCode: parsed.error.exitCode ?? 2 }
       : yield* Effect.gen(function* () {
           const outcome = yield* Effect.exit(
             Effect.gen(function* () {
-              if (plan.routes.length === 0 || !routerEnabled(plan))
-                return yield* openForPlan(plan, parsed.options);
-              const router = yield* RouterService;
-              const status = yield* router.status;
-              return yield* openForPlan(plan, parsed.options, status.authorities, status.ports);
+              const connections = yield* collectOpenConnections(plan, parsed.options);
+              return yield* openForPlan(plan, parsed.options, connections);
             }),
           );
           if (Exit.isSuccess(outcome)) {
             return { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 };
           }
           return {
-            outcome: {
-              _tag: "failure" as const,
-              error: Option.getOrElse(Cause.findErrorOption(outcome.cause), () => ({
-                _tag: "HostProxyDispatchError",
-                message: Cause.pretty(outcome.cause),
-              })),
-            },
+            outcome: outcome.cause.reasons.every(Cause.isInterruptReason)
+              ? {
+                  _tag: "failure" as const,
+                  additionalErrors: [],
+                  error: {
+                    _tag: "HostProxyDispatchError",
+                    message: Cause.pretty(outcome.cause),
+                  },
+                }
+              : failureOutcomeFromCause(outcome.cause, normalizeDefect),
             exitCode: 1,
           };
         });

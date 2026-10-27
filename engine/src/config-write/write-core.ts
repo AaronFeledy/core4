@@ -3,7 +3,7 @@ import { Predicate, Result, Schema } from "effect";
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
 
-import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
+import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { type PathSegment, parsePathSegments, setAtPath, unsetAtPath } from "./dot-path";
 import { type ValueType, parseTypedValue } from "./value-parse";
 
@@ -50,11 +50,6 @@ export const parseConfigValue = (
   return Result.succeed(parsed.success);
 };
 
-export const decodeIssues = (decoded: Result.Result<unknown, unknown>): readonly ValidationIssue[] => {
-  if (Result.isSuccess(decoded)) return [];
-  return validationIssuesFromCause(decoded.failure, { fallback: "Invalid config." });
-};
-
 export interface SetMutationInput {
   readonly tree: Record<string, unknown>;
   readonly key: string;
@@ -94,13 +89,15 @@ export const writeValidationErrorFromIssues = (input: {
   readonly file: string;
   readonly issues: readonly ValidationIssue[];
   readonly path?: string;
+  readonly remediation?: string;
 }): LandofileWriteValidationError =>
   new LandofileWriteValidationError({
     message: `The resulting config failed validation for ${input.file}.`,
     file: input.file,
     ...(input.path === undefined ? {} : { path: input.path }),
     issues: input.issues,
-    remediation: "Fix the reported issue(s), then retry the write. The file was left unchanged.",
+    remediation:
+      input.remediation ?? "Fix the reported issue(s), then retry the write. The file was left unchanged.",
   });
 
 export const emitConfigYaml = (input: {

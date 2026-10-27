@@ -44,7 +44,7 @@ describe("db command machine output", () => {
       encodeCommandResult({
         command: "db:seed",
         resultSchema: DbCommandResult,
-        outcome: { _tag: "failure", error },
+        outcome: { _tag: "failure", error, additionalErrors: [] },
         redactor: identityRedactor,
       }),
     );
@@ -63,13 +63,13 @@ describe("db command machine output", () => {
     expect(encoded).not.toContain("target-secret");
   });
 
-  test("preserves export file paths containing the public default password", async () => {
-    const harness = makeSqlTestDeps({ password: "lando" });
+  test("preserves lando in export file paths when it is not a connection password", async () => {
+    const harness = makeSqlTestDeps({ password: "export-credential" });
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
         executeDbCommand(harness.deps, {
           action: "export",
-          file: "backups/Drupal backup with spaces.sql",
+          file: "backups/lando Drupal backup with spaces.sql",
           yes: true,
         }),
       ),
@@ -79,6 +79,7 @@ describe("db command machine output", () => {
 
     const tokens = dbCommandRedactionTokens(exit.value);
     expect(tokens).not.toContain("lando");
+    expect(tokens).toContain("export-credential");
     const encoded = await Effect.runPromise(
       encodeCommandResult({
         command: "db:export",
@@ -183,6 +184,7 @@ describe("db command machine output", () => {
         resultSchema: DbCommandResult,
         outcome: {
           _tag: "failure",
+          additionalErrors: [],
           error: new SqlServiceAmbiguousError({
             message: "Multiple SQL services are available.",
             available: ["analytics", "database"],
@@ -205,7 +207,7 @@ describe("db command machine output", () => {
       encodeCommandResult({
         command: "db:reset",
         resultSchema: DbCommandResult,
-        outcome: { _tag: "failure", error: deniedError },
+        outcome: { _tag: "failure", error: deniedError, additionalErrors: [] },
         redactor: identityRedactor,
       }),
     );
@@ -230,6 +232,7 @@ describe("db command machine output", () => {
         resultSchema: DbCommandResult,
         outcome: {
           _tag: "failure",
+          additionalErrors: [],
           error: new SqlConfirmRequiredError({
             message: "Reset requires confirmation.",
             service: "database",
@@ -254,10 +257,12 @@ describe("db command machine output", () => {
       sizeBytes: 1_572_864,
       createdAt: DateTime.makeUnsafe("2026-09-11T10:00:00Z"),
       label: "before-upgrade",
-      metadata: {
-        sourceRoot: AbsolutePath.make("/workspace/sql-app"),
+      owner: {
+        appRoot: AbsolutePath.make("/workspace/sql-app"),
         ownerKey: "owner:sql-app",
         repoGroupKey: "repository:sql-app",
+      },
+      metadata: {
         service: ServiceName.make("database"),
         volumeInstanceId: "volume-instance:database",
         family: "mysql",
@@ -285,10 +290,12 @@ describe("db command machine output", () => {
           id: "snap-before-upgrade",
           sizeBytes: 1_572_864,
           label: "before-upgrade",
-          metadata: {
-            sourceRoot: "/workspace/sql-app",
+          owner: {
+            appRoot: "/workspace/sql-app",
             ownerKey: "owner:sql-app",
             repoGroupKey: "repository:sql-app",
+          },
+          metadata: {
             version: "8.4",
             recoveryReason: "manual",
           },

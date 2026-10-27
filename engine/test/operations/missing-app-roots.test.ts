@@ -26,7 +26,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},
@@ -44,6 +43,7 @@ const service = {
   service: ServiceName.make("web"),
   providerId,
   status: "running",
+  publications: { status: "unknown" as const },
   containerId: "observed-container",
 };
 const volume = (name: string, labels: Readonly<Record<string, string>> = {}): VolumeInfo => ({
@@ -69,6 +69,9 @@ const run = (
       return yield* findMissingAppRoots.pipe(
         Effect.provideService(FileSystem, { ...fs, exists }),
         Effect.provideService(RuntimeProviderRegistry, {
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(TestRuntimeProvider),
@@ -119,7 +122,14 @@ test("returns only missing roots and treats filesystem failures as present", asy
     ],
     (path) =>
       path === "/denied"
-        ? Effect.fail(new FileIoError({ path, message: "denied" }))
+        ? Effect.fail(
+            new FileIoError({
+              path,
+              message: "denied",
+              remediation:
+                "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+            }),
+          )
         : Effect.succeed(path === "/present"),
   );
   expect(result.map((item) => item.root)).toEqual([root]);
@@ -152,7 +162,9 @@ test.each([
     "scratch-volume": snapshot({ volumes: [volume("data", { "dev.lando.scratch": "TRUE" })] }),
     "unowned-volume": snapshot({ volumes: [{ ref: { app, store: "data" } }] }),
     "unowned-service": snapshot({
-      services: [{ app, service: service.service, providerId, status: "running" }],
+      services: [
+        { app, service: service.service, providerId, status: "running", publications: { status: "unknown" } },
+      ],
     }),
   }[kind];
   expect(await run(evidence === undefined ? [] : [evidence])).toEqual([]);

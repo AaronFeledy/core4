@@ -11,6 +11,7 @@ import { layer as sshService } from "../src/ssh-service.ts";
 
 const globalApp = {
   id: "global" as const,
+  providerId: Effect.die("global provider resolution is unused"),
   root: Effect.succeed(AbsolutePath.make("/unused")),
   ensureRoot: Effect.void,
   paths: Effect.succeed({
@@ -82,6 +83,7 @@ test("setup reports the deepest cause when global service startup fails", async 
   const cause = new GlobalAppError({
     message: "Unable to ensure global services are running.",
     cause: { _tag: "ServiceStartError", message: "container create failed with HTTP 500", cause: rootCause },
+    remediation: "Run `lando doctor`, fix the reported issue, then retry the global operation.",
   });
   try {
     // When the real SSH service attempts setup.

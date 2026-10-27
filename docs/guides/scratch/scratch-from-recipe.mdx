@@ -14,7 +14,10 @@ tags: [beta, docs, scratch, recipe]
 lando scratch:start --from lamp --yes --detach
 ```
 
-Scratch is a hotel room. Init is a lease.
+This accepts the recipe defaults and returns after the services pass startup
+readiness. Use `lando scratch:list` to find the new id, then inspect it with
+`lando scratch:info <id>`. Unlike `lando init`, this does not create a permanent
+project in your current directory.
 
 ## Pick exactly one source
 
@@ -32,6 +35,9 @@ lando scratch:start --fork --detach
 `--yes` accepts recipe prompt defaults. `--answer key=value` (repeatable) fills prompts. `--option` is an alias for `--answer`.
 
 ## Inspect and destroy
+
+Replace `<id>` with the scratch id from the list. The final command destroys that
+scratch; run it when you have finished inspecting or using the app.
 
 ```sh
 lando scratch:list

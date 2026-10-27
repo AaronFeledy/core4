@@ -19,26 +19,30 @@ const provider = (input: Partial<Pick<RuntimeProviderShape, "id" | "version" | "
   platform: input.platform ?? "linux",
 });
 
-const service = (input: Partial<ServicePlan> = {}): ServicePlan => ({
-  name: ServiceName.make("web"),
-  type: "node",
-  provider: providerId,
-  primary: true,
-  environment: {},
-  mounts: [],
-  storage: [],
-  endpoints: [],
-  routes: [],
-  dependsOn: [],
-  hostAliases: [],
-  metadata: {
-    resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00.000Z"),
-    source: "build-key.test",
-    runtime: 4,
-  },
-  extensions: {},
-  ...input,
-});
+const service = (input: Partial<ServicePlan> = {}): ServicePlan => {
+  const { connection, nonSqlCreds, ...fields } = input;
+  return {
+    name: ServiceName.make("web"),
+    type: "node",
+    provider: providerId,
+    primary: true,
+    environment: {},
+    mounts: [],
+    storage: [],
+    endpoints: [],
+    routes: [],
+    dependsOn: [],
+    hostAliases: [],
+    metadata: {
+      resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00.000Z"),
+      source: "build-key.test",
+      runtime: 4,
+    },
+    extensions: {},
+    ...fields,
+    ...(nonSqlCreds === undefined ? (connection === undefined ? {} : { connection }) : { nonSqlCreds }),
+  };
+};
 
 const key = (plan: ServicePlan, runtime: RuntimeProviderShape = provider()) =>
   Effect.runPromise(buildKeyForService(runtime, plan));

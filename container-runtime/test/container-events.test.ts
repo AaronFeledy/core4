@@ -16,10 +16,12 @@ const diedEvent = {
 const landoCtx: ProviderErrorContext = {
   providerId: "lando",
   remediation: "Run `lando doctor`, then `lando setup` if the runtime is unhealthy.",
+  env: {},
 };
 const podmanCtx: ProviderErrorContext = {
   providerId: "podman",
   remediation: "Start the Podman service, then retry.",
+  env: {},
 };
 const contexts: ReadonlyArray<ProviderErrorContext> = [landoCtx, podmanCtx];
 

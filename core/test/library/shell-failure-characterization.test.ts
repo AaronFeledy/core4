@@ -77,7 +77,7 @@ describe("library shell failure characterization", () => {
     });
   });
 
-  test("embedding operation preserves multiple typed failures instead of selecting the first", async () => {
+  test("embedding operation returns primary and additional typed failures", async () => {
     const operation = Effect.failCause(
       Cause.combine(
         Cause.fail(new ShellFailure({ message: "first failure", remediation: "Retry first." })),
@@ -85,7 +85,7 @@ describe("library shell failure characterization", () => {
       ),
     );
     const renderedErrors: string[] = [];
-    const exit = await Effect.runPromiseExit(
+    const result = await Effect.runPromise(
       invokeOperation(operation, {
         renderError: (error) => {
           renderedErrors.push(error.message);
@@ -93,38 +93,32 @@ describe("library shell failure characterization", () => {
         },
       }),
     );
-    if (!Exit.isFailure(exit)) throw new Error("Expected combined failure to propagate");
-    const defect = Cause.findDefect(exit.cause);
-    if (defect._tag !== "Success" || !(defect.success instanceof Error))
-      throw new Error("Expected an Error defect");
-    expect(normalizeRejectionJson(defect.success.cause)).toEqual({
-      _id: "Cause",
-      failures: [
+    expect(result).toMatchObject({
+      ok: false,
+      error: { _tag: "ShellFailure", message: "first failure", remediation: "Retry first." },
+      additionalErrors: [
         {
-          _tag: "Fail",
-          error: { _tag: "ShellFailure", message: "first failure", remediation: "Retry first." },
-        },
-        {
-          _tag: "Fail",
+          role: "peer",
           error: { _tag: "ShellFailure", message: "second failure", remediation: "Retry second." },
         },
       ],
+      output: "first failure",
     });
-    expect(defect.success.message).toContain("first failure");
-    expect(defect.success.message).toContain("second failure");
-    expect(renderedErrors).toEqual([]);
+    expect(renderedErrors).toEqual(["first failure"]);
   });
 
-  for (const scenario of shellFailureCases.filter((entry) => entry.kind !== "tagged")) {
+  for (const scenario of shellFailureCases.filter(
+    (entry) => entry.kind !== "tagged" && entry.kind !== "combined",
+  )) {
     test(`embedding operation propagates ${scenario.kind} instead of returning a failure envelope`, async () => {
       // Given
       const renderedErrors: string[] = [];
       // When
       const rejection: unknown = await Effect.runPromise(
         invokeOperation(scenario.effect(), {
-          renderError: (error) => {
-            renderedErrors.push(error.message);
-            return error.message;
+          renderError: () => {
+            renderedErrors.push("unexpected render");
+            return "unexpected render";
           },
         }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
       ).then(
@@ -136,10 +130,14 @@ describe("library shell failure characterization", () => {
       // Then
       expect(rejection).toBeInstanceOf(Error);
       if (!(rejection instanceof Error)) throw new Error("Expected an Error rejection");
-      expect(rejection.name).toBe("Error");
-      expect(rejection.message.replaceAll(/fiber \(#\d+\)/g, "fiber (#<id>)")).toBe(scenario.causeText);
-      expect(Cause.isCause(rejection.cause)).toBe(true);
-      expect(normalizeRejectionJson(rejection.cause)).toEqual(scenario.rejectionCause);
+      expect(rejection.name).toBe(scenario.rejectionName);
+      expect(rejection.message).toBe(scenario.rejectionMessage);
+      expect(normalizeRejectionJson(rejection)).toEqual(scenario.rejectionJson);
+      const exit = await Effect.runPromiseExit(invokeOperation(scenario.effect()));
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        expect(normalizeRejectionJson(exit.cause)).toEqual(scenario.rejectionCause);
+      }
       expect(renderedErrors).toEqual([]);
     });
   }

@@ -15,7 +15,8 @@ const encodings = [
 ] as const;
 
 for (const explicitNoProxy of [false, true]) {
-  test.each([...encodings])(
+  // Both Bun fetch and node:http reject mapped IPv6 sockets on Windows with EADDRNOTAVAIL.
+  test.skipIf(process.platform === "win32" && explicitNoProxy).each([...encodings])(
     `decodes $encoding like Bun fetch with explicitNoProxy=${explicitNoProxy}`,
     async ({ encoding, bytes }) => {
       // Given compressed wire bytes and unchanged content headers at a local endpoint.
@@ -33,7 +34,7 @@ for (const explicitNoProxy of [false, true]) {
       });
       const url = explicitNoProxy ? `http://[::ffff:127.0.0.1]:${server.port}/` : server.url.href;
       try {
-        const baseline = await fetch(server.url, {
+        const baseline = await fetch(url, {
           signal: AbortSignal.timeout(1000),
           proxy: false,
         });

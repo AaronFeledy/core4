@@ -518,6 +518,7 @@ export const TestFileSyncEngine: FileSyncEngineShape & TestFileSyncEngineStateCa
           engineId: "test",
           message: "Test rejection sentinel triggered",
           sessionSpec: spec,
+          remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
         }),
       );
     }
@@ -527,6 +528,7 @@ export const TestFileSyncEngine: FileSyncEngineShape & TestFileSyncEngineStateCa
           engineId: "test",
           message: "Source must resolve inside the app root",
           sessionSpec: spec,
+          remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
         }),
       );
     }
@@ -580,6 +582,8 @@ export const TestFileSyncEngine: FileSyncEngineShape & TestFileSyncEngineStateCa
           engineId: "test",
           sessionRef: ref,
           message: "Test stop-failure sentinel triggered",
+          remediation:
+            "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
         }),
       );
     }
@@ -605,6 +609,7 @@ export const TestFileSyncEngine: FileSyncEngineShape & TestFileSyncEngineStateCa
           sessionRef: ref,
           conflictedPaths: ["README.md"],
           suggestedMode: "two-way-resolved",
+          remediation: "Resolve the conflicting README.md versions before resuming this sync session.",
         }),
       );
     }

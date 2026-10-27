@@ -1,9 +1,8 @@
 import { Schema } from "effect";
 
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import { ServiceConfigIssue, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
-import { publishedEndpointsFromPorts } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const LANDO_FEATURE_ID = "service-lando.lando" as const;
@@ -14,17 +13,15 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
   const hasImage = service.image !== undefined && service.image.length > 0;
   const hasComposeBuild = service.build !== undefined && "context" in service.build;
   if (!hasImage && !hasComposeBuild) {
-    throw new Error(
-      `lando service "${ctx.serviceName}" requires "image:" or "build:" (Compose build block) — the raw \`type: lando\` base has no default artifact.`,
+    throw new ServiceConfigIssue(
+      ["type"],
+      "The raw type: lando base has no default artifact.",
+      'Set "image:" or "build:" (Compose build block).',
     );
   }
 
   if (hasImage) ctx.setArtifact({ kind: "ref", ref: service.image });
   applyAuthoredProcessFields(ctx, ["command", "entrypoint", "user"]);
-
-  for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
-    ctx.addEndpoint(endpoint);
-  }
 };
 
 export const landoServiceFeature: ServiceFeatureDefinition = {

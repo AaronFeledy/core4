@@ -1,0 +1,132 @@
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { isIP } from "node:net";
+import type { Transform } from "node:stream";
+import { checkServerIdentity } from "node:tls";
+import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
+
+export interface DirectHttpInit {
+  readonly method: string;
+  readonly headers: Headers;
+  readonly signal: AbortSignal;
+  readonly ca: ReadonlyArray<string> | undefined;
+  readonly body?: RequestInit["body"] | undefined;
+  readonly connectionAddress?: string;
+}
+
+export type DirectHttpTransport = (url: URL, init: DirectHttpInit) => Promise<Response>;
+
+/** Dial an explicit address while preserving the URL's Host, SNI, and certificate identity. */
+export const directHttpRequest: DirectHttpTransport = (url, init) =>
+  new Promise((resolve, reject) => {
+    const identity = url.hostname.replace(/^\[|\]$/gu, "");
+    const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(
+      url,
+      {
+        method: init.method,
+        headers: Object.fromEntries(init.headers),
+        signal: init.signal,
+        agent: false,
+        ...(init.ca === undefined ? {} : { ca: [...init.ca] }),
+        rejectUnauthorized: true,
+        ...(init.connectionAddress === undefined
+          ? {}
+          : {
+              hostname: init.connectionAddress,
+              servername: isIP(identity) === 0 ? identity : "",
+              checkServerIdentity: (
+                _hostname: string,
+                certificate: Parameters<typeof checkServerIdentity>[1],
+              ) => checkServerIdentity(identity, certificate),
+            }),
+      },
+      (incoming) => {
+        const headers = new Headers();
+        for (let index = 0; index < incoming.rawHeaders.length; index += 2) {
+          const name = incoming.rawHeaders[index];
+          const value = incoming.rawHeaders[index + 1];
+          if (name !== undefined && value !== undefined) headers.append(name, value);
+        }
+        const status = incoming.statusCode ?? 500;
+        if (init.method === "HEAD" || status === 204 || status === 205 || status === 304) {
+          incoming.destroy();
+          resolve(new Response(null, { status, headers }));
+          return;
+        }
+        let decoder: Transform | undefined;
+        switch (headers.get("content-encoding")?.trim().toLowerCase()) {
+          case "gzip":
+            decoder = createGunzip();
+            break;
+          case "deflate":
+            decoder = createInflate();
+            break;
+          case "br":
+            decoder = createBrotliDecompress();
+            break;
+          default:
+            break;
+        }
+        const source = decoder ?? incoming;
+        let finished = false;
+        let receivedBytes = false;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            source.pause();
+            source.on("data", (chunk: Buffer) => {
+              source.pause();
+              controller.enqueue(new Uint8Array(chunk));
+            });
+            source.once("end", () => {
+              if (!finished) {
+                finished = true;
+                controller.close();
+              }
+            });
+            source.once("error", (error: Error) => {
+              if (finished) return;
+              finished = true;
+              // Fetch accepts an empty wire body even when an encoding header is present.
+              if (!receivedBytes && incoming.complete) controller.close();
+              else controller.error(error);
+            });
+            if (decoder !== undefined) {
+              const decompress = decoder;
+              incoming.once("data", () => {
+                receivedBytes = true;
+              });
+              incoming.once("error", (error: Error) => decompress.destroy(error));
+              decompress.once("error", () => incoming.destroy());
+              incoming.pipe(decompress);
+            }
+          },
+          pull() {
+            source.resume();
+          },
+          cancel() {
+            finished = true;
+            source.destroy();
+            incoming.destroy();
+            request.destroy();
+          },
+        });
+        resolve(new Response(body, { status, headers }));
+      },
+    );
+    request.once("error", reject);
+    if (init.body === undefined) request.end();
+    else {
+      const body = new Response(init.body).body;
+      if (body === null) request.end();
+      else {
+        void (async () => {
+          for await (const chunk of body) {
+            if (!request.write(chunk)) await new Promise<void>((resolve) => request.once("drain", resolve));
+          }
+          request.end();
+        })().catch((error: unknown) =>
+          request.destroy(error instanceof Error ? error : new Error(String(error))),
+        );
+      }
+    }
+  });

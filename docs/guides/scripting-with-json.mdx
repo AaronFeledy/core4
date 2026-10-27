@@ -8,9 +8,9 @@ tags: [beta, docs, cli, json, scripting, agent]
 
 # Script Lando with JSON
 
-`lando version --json` prints the selectable result keys as a JSON array. It
-does not run the command body. Use `--format=json` or `-j` when you want the
-full `CommandResultEnvelope`.
+Use `lando version --format=json` or `lando version -j` to run the command and read its full `CommandResultEnvelope`. Start scripts with the exit status and `ok` field, then read `result` or `error` as appropriate.
+
+Bare `lando version --json` is different: it lists selectable result keys as a JSON array without running the command body:
 
 ```sh
 lando version --json
@@ -23,9 +23,14 @@ projects that key inside `result`. `--jq` prints a raw jq selection.
 
 On success the envelope wraps the command's typed result under `result` with
 `ok: true`. On failure it carries the tagged error JSON under `error` with
-`ok: false`. A global `apiVersion: "v4"` identifies the wire contract, and
+`ok: false`. A process that finishes unsuccessfully also retains its typed
+`result`, so failure does not discard its exit code and diagnostics. A global `apiVersion: "v4"` identifies the wire contract, and
 the redaction service runs before emission so secrets never appear in
 machine output.
+
+Failures that include a service identify it in `error.service`; scripts don't
+need to parse that name from the human message. Other JSON-safe error fields stay
+structured too. Raw causes, stacks, and redaction-token lists are not emitted.
 
 Streaming commands such as `app:logs` and `app:exec` emit `StreamFrame`
 frames under `--format json` and terminate with a single result frame.
@@ -36,9 +41,17 @@ native registry and dispatcher.
 
 Project scripts from `.lando/scripts/*.bun.sh` emit the same envelope. With
 `--format=json` or `--format=yaml`, `result` carries the script's `stdout`,
-`stderr`, and `exitCode`, and Lando exits with the script's own code even
-when `ok` is `true`. Writing those scripts is covered in
+`stderr`, and `exitCode`, and Lando exits with the script's own code. A nonzero
+script exit sets `ok: false`, retains `result`, and includes a tagged `error`.
+Writing those scripts is covered in
 [Add project commands with Bun Shell scripts](../tooling/bun-shell-scripts/).
+
+Diagnostic reports are different from failed processes. A completed lint report
+can have `ok: true`, `result.valid: false`, and shell exit status 1. Check the
+report's fields as well as `ok`. JSON and YAML preserve that exit status, just
+like text output.
+
+After adding the `stamp.bun.sh` example from that guide to your app, run these commands from its directory:
 
 ```sh
 lando app:cache:refresh
@@ -283,12 +296,49 @@ The full-envelope aliases are `--format json`, `--format=json`, `-j`, and
 The failure envelope has the shape `{ "ok": false, "error": <tagged-error> }`.
 A failing command keeps its non-zero exit code alongside the envelope so
 scripts can branch on both. The tagged error exposes a machine `_tag` plus
-human remediation, so an agent can react to the failure class without
+a required `message` and nonblank `remediation`, so an agent can react to the failure class without
 scraping prose.
+
+If rollback, cleanup, or another step also fails, `error` still describes the
+primary failure and determines the exit code. `error.additionalErrors` contains
+the other failures in cause order, each with its own `_tag`, `message`, required
+`role`, required `remediation`, and JSON-safe fields. `role` is `rollback` for
+undoing partial work, `cleanup` for release or bookkeeping, or `peer` for a
+sibling step. The array is absent when there are no
+additional failures, and its entries never contain another `additionalErrors`.
+Interruptions are not additional errors. MCP results use the same projection.
+Reason annotations select the first operation failure, not whichever failure
+happens to appear first. Human reports show the primary message and remediation
+first, followed by `Rollback also failed (<tag>)`, `Cleanup also failed (<tag>)`,
+or `Also failed (<tag>)`. Each block includes its own remediation and distinct
+diagnostic fields, without stack traces or repeated command context.
+
+An unexpected Lando defect returns `LandoInternalError` and exits `1`, including
+failures during routing, startup, formatting, or cleanup. A known error that was
+raised as a defect keeps its own tag and remediation. Its remediation tells
+you how to collect diagnostics and report the problem. Normal reports contain
+no stack traces. Rerun with `--debug --trace` to collect redacted diagnostic
+records on stderr and invocation timings. Redirect stderr to a file if you need
+to attach those records to a bug report. Runtime worker logs are separate files
+under the report's `logsDir`; debug records are not automatically saved there.
+Review diagnostics for secrets before sharing them.
+
+A failed `lando start` does not undo established app resources, so its
+envelope does not carry app-wide `rollback` entries. Other commands still
+can: role `rollback` means that command tried to undo partial work.
+Acquisition-local cleanup can still fail and show up with role `cleanup`.
+Whatever start established stays in place. The human report adds one warning
+after the error. It lists running, created/stopped, and unverified services,
+and says agent forwarding and file sync stay active where they were
+established. That warning is not in the JSON or YAML envelope. Call
+`lando info --format=json` to see what is there, then `lando start` again
+to converge.
 
 The error also keeps its remaining JSON-safe fields directly under `error`.
 For example, `ConfigExpressionError` carries `error.path` (a dotted string),
-`error.expression`, and `error.filePath`; `ConfigError` can carry `error.path`.
+`error.expression`, and `error.filePath`; `ConfigError` carries `error.path`
+and, for a global config that fails validation, `error.issues` and
+`error.remediation` (see below).
 JSON, YAML, terminal result frames, and MCP envelopes preserve the same fields
 with the same secret redaction. `cause`, `stack`, and private redaction metadata
 are excluded. Fields containing class instances, unsupported values, cycles,
@@ -299,8 +349,9 @@ diagnostic details; use the envelope for nested objects.
 ## Read validation issues
 
 A Landofile that fails validation produces a `LandofileValidationError`
-envelope at exit `1`, and the error carries every problem under
-`error.issues`. Each issue is `{ path, message, suggestion? }`. `path` is an
+envelope at exit `1` from `lando app:config`, `lando start`, and
+`lando app:cache:refresh`, and the error carries every problem under
+`error.issues`. Each issue is `{ path, message, suggestion?, source? }`. `path` is an
 array of keys and indexes, never a dotted string, so a script indexes into
 the parsed Landofile with it directly. `suggestion` is present when Lando has
 a concrete fix, such as the closest allowed key for a typo:
@@ -315,8 +366,76 @@ For a service that spells `image` as `imgae`, that first issue has `path`
 Three independent mistakes produce three issues in one run. Branch on
 `error._tag`, then loop `error.issues`; do not parse `error.message`, which
 is the human rendering of the same list. `lando app:config:lint
---format=json` reports the same issues as `violations` inside a successful
-result, which suits editors that want the list without a failing exit.
+--format=json` reports the same issues as `violations` inside an `ok: true`
+result with `valid: false`, which suits editors that want the list without a
+failing exit. Lint and planning run one shared validation stage, so a
+service-type finding such as `["services", "db", "environment", "PGPORT"]`
+or a bad route hostname shows up with the same `path`, `message`,
+`suggestion`, and `source` in both envelopes. `lando app:config` stops
+earlier: it echoes the resolved Landofile and reports schema and
+expression issues, not service-type or route findings.
+
+A global config that fails validation in any layer (`config.yml`, a
+`config.d/*.yml` drop-in, a `LANDO_CONFIG__*` or alias env var, or an
+embedding host's `config` option) produces a `ConfigError` envelope at exit
+`1` from every command that needs config, including `lando info`, `lando
+start`, and the resolved `lando config` views. Lando resolves config once at
+startup, so the error arrives before the command body runs. `lando config
+validate` checks the same layers and fails with the same `ConfigError`.
+`lando doctor` reports it inside its report under `result.globalConfig.error`
+and lists config-dependent sections under `result.skipped`.
+
+The error carries `error.path` (the `config.yml` location),
+`error.remediation`, and `error.issues`. Each issue is
+`{ path, message, suggestion, source }`. `suggestion` is the exact fix for
+that value. `source` names the layer that supplied it:
+
+| `source.layer` | Other fields | Fix shape |
+| --- | --- | --- |
+| `config-file` | `file`, `path` | `` Run `lando config unset <key>` or `lando config set <key> <value>`. `` |
+| `config-drop-in` | `file`, `path` | `Edit <file>.` |
+| `env` | `variable`, `path` | `Unset <variable> or set it to a valid value.` |
+| `host` | `path` | `` Fix the `<key>` host config option. `` |
+
+Landofile issues keep their `{ file, layer, path }` source. Branch on
+`source.layer` to pick the fix; do not parse `error.message`, which prefixes
+the first issue with `Invalid config file <path>` or `Invalid global
+configuration (<sources>)` depending on which layers failed:
+
+```sh
+lando config --format=json | jq ".error | {path, issues, remediation}"
+```
+
+`message` on each issue says what the schema expected (`Expected a value
+between 1 and 65535`, `Expected string | null`, `Expected one of lando, json,
+plain, verbose.`) and never repeats the rejected input, so the envelope is
+safe to log. An invalid `renderer` or `logLevel` in a config layer is reported
+the same way; the command falls back to the default renderer and log level to
+print it. `notify.commands` entries that match no canonical command id are
+issues too, with the closest id in `suggestion`.
+
+A `config.yml` with broken YAML syntax also fails with `ConfigError`, but
+without `error.issues`, because there is no decoded tree to report paths into.
+`error.message` is `Invalid YAML in config file <path>: <detail>`, where the
+detail is a location such as `Unsupported YAML value at line 2, column 13` or
+`Malformed YAML at line 1, column 1`, never the offending text. `--source raw`
+fails with the same message.
+
+`lando config set` and `unset` reject a candidate only when it introduces an
+issue (a new path/message pair) or leaves the written key or a descendant
+invalid. Rejections use `LandofileWriteValidationError` and `error.issues`,
+without changing the file. Unchanged issues elsewhere don't block the write;
+the successful envelope carries one `LANDO_CONFIG_PREEXISTING_ISSUES` warning
+naming every remaining issue and its fix. `app:config` and `global:config`
+set/unset use the same rule. `telemetry off` applies it to `telemetry.enabled`.
+`config edit` still validates the whole edited file.
+
+A problem in another layer does not block the write. Once the candidate file
+is valid, the successful envelope carries a warning
+with code `LANDO_CONFIG_OTHER_SOURCE_INVALID`, whose `message` and
+`remediation` name the source and the fix. Unknown-key typos surface once per
+command as warning code `LANDO_MESSAGE_WARN` from every command, `lando
+config` and `lando doctor` included. Text mode prints warnings once.
 
 The generated command reference lists every public command and documents the
 universal `--format json` flag once in its machine-readable output section.

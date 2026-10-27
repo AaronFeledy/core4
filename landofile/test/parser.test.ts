@@ -211,6 +211,14 @@ describe("parseLandofile — empty-record list item round-trip", () => {
     await expectParseError(["mounts:", "  - {a: 1}"].join("\n"), /Inline objects are not supported/);
   });
 
+  test("simple inline object remediation rewrites as a block mapping", async () => {
+    const error = await parseFailure("healthcheck: {disable: true}\n");
+    expect(error.message).toMatch(/Inline objects are not supported/);
+    expect(error.remediation).toBe(
+      ["Rewrite the flow mapping as a block mapping:", "healthcheck:", "  disable: true"].join("\n"),
+    );
+  });
+
   test("a flow-empty `{}` map value parses to an empty object", async () => {
     const result = await parse("config: {}\n");
     expect((result as Record<string, unknown>).config).toEqual({});

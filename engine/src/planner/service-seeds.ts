@@ -1,9 +1,18 @@
+import { compiledValueError } from "@lando/landofile/compiled-sites";
 import { LandofileValidationError, ServiceTypeCollisionError } from "@lando/sdk/errors";
-import type { LandofileShape, ProviderCapabilities, ServiceConfig, ServiceCreds } from "@lando/sdk/schema";
-import { ServiceName, validationIssue } from "@lando/sdk/schema";
+import type {
+  CompilationContext,
+  LandofileShape,
+  LogSource,
+  ParsedPendingSite,
+  ProviderCapabilities,
+  ServiceConfig,
+} from "@lando/sdk/schema";
+import { ServiceConfig as ServiceConfigSchema, ServiceName, validationIssue } from "@lando/sdk/schema";
 import type { FileSystem, PluginRegistry, ServiceTypeInput } from "@lando/sdk/services";
-import { type Context, Effect } from "effect";
+import { type Context, Effect, Iterable, Result, Schema } from "effect";
 import { isComposeBuild } from "../services/compose-build-artifact.ts";
+import { normalizeConnectionClients } from "../services/connection-client-resolution.ts";
 import { type UserAppDefaults, withUserAppDefaults } from "./app-defaults.ts";
 import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
 import {
@@ -14,6 +23,9 @@ import {
   serviceScopeContext,
 } from "./landofile-scopes.ts";
 import { loadAuthorizedServiceProjectFiles } from "./node-authoring.ts";
+import { type PlannerIssue, attributePlannerIssue } from "./resolved-validation.ts";
+import { validateServiceSeed } from "./seed-validation.ts";
+import { serviceExpressionFacts } from "./service-credential-facts.ts";
 import {
   loadServiceTypeWithVersion,
   resolvePinnedArtifactTag,
@@ -26,6 +38,7 @@ import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
 
 export interface ServiceSeedInput {
   readonly landofile: LandofileShape;
+  readonly context: CompilationContext;
   readonly landofilePath: string;
   readonly appSlug: string;
   readonly defaultDomain: string;
@@ -43,11 +56,9 @@ export interface ServiceSeedInput {
   readonly capabilities?: ProviderCapabilities;
 }
 
-type TopLevelEnvFiles = Effect.Success<ReturnType<typeof loadTopLevelEnvFiles>>;
-
 const resolveSeed = Effect.fnUntraced(function* (
   input: ServiceSeedInput,
-  topLevelEnvFiles: TopLevelEnvFiles,
+  topLevelEnvFiles: Effect.Success<ReturnType<typeof loadTopLevelEnvFiles>>,
   name: string,
   service: ServiceConfig,
 ) {
@@ -73,6 +84,7 @@ const resolveSeed = Effect.fnUntraced(function* (
     return yield* Effect.fail(
       new LandofileValidationError({
         message: `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
+        remediation: "Remove image or replace build with a Lando build-script block.",
         file: `${appRoot}/.lando.yml`,
         issues: [
           validationIssue(
@@ -89,11 +101,14 @@ const resolveSeed = Effect.fnUntraced(function* (
     yield* Effect.fail(rejectGlobalScope(appRoot, name, authored.globalEntry));
   const serviceTypeId = serviceTypeFor(name, serviceWithEnvironment);
   const { serviceType, version } = yield* loadServiceTypeWithVersion(pluginRegistry, serviceTypeId).pipe(
-    Effect.mapError((error) =>
-      error instanceof ServiceTypeCollisionError
-        ? serviceTypeCollision(appRoot, name, error)
-        : unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds),
-    ),
+    Effect.mapError((error) => {
+      if (error instanceof ServiceTypeCollisionError) return serviceTypeCollision(appRoot, name, error);
+      // A registered type that fails to load is a plugin problem, not an unknown type.
+      const baseId = serviceTypeId.split(":")[0];
+      return registeredServiceTypeIds.some((id) => id === serviceTypeId || id === baseId)
+        ? servicePlanError(appRoot, name, error)
+        : unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds);
+    }),
   );
   const resolvedArtifactTag = yield* resolvePinnedArtifactTag(appRoot, name, serviceType, version);
   const pinnedService: ServiceConfig =
@@ -124,7 +139,10 @@ const resolveSeed = Effect.fnUntraced(function* (
       ...(input.capabilities === undefined ? {} : { capabilities: input.capabilities }),
       projectFiles,
     })
-    .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
+    .pipe(
+      Effect.flatMap((raw) => normalizeConnectionClients(serviceType, name, { raw })),
+      Effect.mapError((error) => servicePlanError(appRoot, name, error)),
+    );
   return {
     name,
     authoredService: service,
@@ -144,11 +162,23 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   input: ServiceSeedInput,
 ) {
   const { landofile, fileSystem, appRoot } = input;
-  const topLevelEnvFiles = yield* loadTopLevelEnvFiles({
+  const issues: PlannerIssue[] = [];
+  const record = (error: LandofileValidationError) => {
+    const attributed = error.issues.map((issue) =>
+      attributePlannerIssue(landofile, { ...issue, rule: "landofile.service" }),
+    );
+    issues.push(...attributed);
+    return attributed;
+  };
+  const loadedTopLevelEnvFiles = yield* loadTopLevelEnvFiles({
     appRoot,
     envFiles: landofile.env_file ?? [],
     fileSystem,
-  });
+  }).pipe(Effect.result);
+  if (Result.isFailure(loadedTopLevelEnvFiles)) record(loadedTopLevelEnvFiles.failure);
+  const topLevelEnvFiles = Result.isSuccess(loadedTopLevelEnvFiles)
+    ? loadedTopLevelEnvFiles.success
+    : { environment: {}, inputs: [] };
   // A service type publishes credentials while it resolves, and another
   // service may read them through services.<name>.creds.*, so services resolve
   // in reference order. Each one's deferred sites are evaluated against the
@@ -162,33 +192,77 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
       landofilePath: input.landofilePath,
     }),
   );
-  const serviceCredsScope: Record<string, { readonly creds?: ServiceCreds }> = {};
-  const resolvedByName = new Map<string, ResolvedServiceSeed>();
-  for (const name of order) {
+  const serviceCredsScope: Record<string, ServiceCredsScope[string]> = {};
+  let pendingSites: readonly ParsedPendingSite[] = input.deferredSites;
+  const documents = { ...landofile.services };
+  const resolvedByName = new Map<
+    string,
+    ResolvedServiceSeed & { readonly logSources: ReadonlyArray<LogSource> }
+  >();
+  const unavailable = new Map<string, readonly PlannerIssue[]>();
+  for (const name of order.order) {
+    if (Iterable.some(order.references.get(name) ?? [], (ref) => unavailable.has(ref))) {
+      unavailable.set(name, [
+        ...new Set([...(order.references.get(name) ?? [])].flatMap((ref) => unavailable.get(ref) ?? [])),
+      ]);
+      continue;
+    }
     const authoredService = landofile.services?.[ServiceName.make(name)];
     if (authoredService === undefined) continue;
-    const service = yield* materializeServiceScopeSites({
+    const materialized = yield* materializeServiceScopeSites({
       value: authoredService,
       landofilePath: input.landofilePath,
       pathPrefix: ["services", name],
-      deferredSites: input.deferredSites,
+      deferredSites: pendingSites,
       context: serviceScopeContext({
         landofile,
+        context: input.context,
         appSlug: input.appSlug,
         defaultDomain: input.defaultDomain,
         services: serviceCredsScope,
       }),
     });
-    const seed = yield* resolveSeed(input, topLevelEnvFiles, name, service);
-    const creds = seed.resolution.normalizedConfig.creds;
-    serviceCredsScope[name] = creds === undefined ? {} : { creds };
-    resolvedByName.set(name, seed);
+    const service = yield* Schema.decodeUnknownEffect(Schema.toType(ServiceConfigSchema))(
+      materialized.document,
+    ).pipe(
+      Effect.mapError((cause) =>
+        compiledValueError(cause, {
+          filePath: input.landofilePath,
+          pendingSites,
+          pathPrefix: ["services", name],
+        }),
+      ),
+    );
+    documents[ServiceName.make(name)] = service;
+    pendingSites = pendingSites.filter((site) => !(site.path[0] === "services" && site.path[1] === name));
+    const resolved = yield* resolveSeed(input, topLevelEnvFiles, name, service).pipe(
+      Effect.map(Result.succeed),
+      Effect.catchTag("LandofileValidationError", (error) => Effect.succeed(Result.fail(error))),
+    );
+    if (Result.isFailure(resolved)) {
+      unavailable.set(name, record(resolved.failure));
+      continue;
+    }
+    const seed = resolved.success;
+    const facts = serviceExpressionFacts(seed.resolution);
+    if (facts !== undefined) serviceCredsScope[name] = facts;
+    const checked = yield* validateServiceSeed(seed, appRoot, input.landofilePath);
+    for (const error of checked.errors) record(error);
+    resolvedByName.set(name, { ...seed, logSources: checked.logSources });
   }
   // Seeds keep declaration order; only resolution ran in reference order.
   const services = Object.keys(landofile.services ?? {}).flatMap((name) => {
     const seed = resolvedByName.get(name);
     return seed === undefined ? [] : [seed];
   });
-  const credsScope: ServiceCredsScope = serviceCredsScope;
-  return { services, topLevelEnvFiles, serviceCredsScope: credsScope };
+  return {
+    services,
+    topLevelEnvFiles,
+    serviceCredsScope,
+    issues,
+    unavailable,
+    document: { ...landofile, services: documents },
+    pendingSites,
+    context: input.context,
+  };
 });

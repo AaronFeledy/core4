@@ -18,7 +18,7 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 
-import { RedactionService, collectSecretEnvValues, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
@@ -44,6 +44,7 @@ const shellError = (
     ...(output?.stdout === undefined ? {} : { stdout: output.stdout }),
     ...(output?.stderr === undefined ? {} : { stderr: output.stderr }),
     cause,
+    remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
   });
 
 const redactorForOptions = Effect.fnUntraced(function* (options: ShellCommandOptions | undefined) {
@@ -103,6 +104,7 @@ const redactShellError = Effect.fnUntraced(function* (
     ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
     ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
     cause: error.cause,
+    remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
   });
 });
 
@@ -111,7 +113,13 @@ const execWithEvents = Effect.fn("ShellRunner.exec")(function* (
   options: ShellCommandOptions | undefined,
   execute: Effect.Effect<ProcessResult, ShellExecError>,
 ) {
-  yield* registerRedactionValues([...(yield* ShellRedactionTokens), ...collectSecretEnvValues(options?.env)]);
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (redaction._tag === "Some") {
+    yield* redaction.value.registerValues([
+      ...(yield* ShellRedactionTokens),
+      ...collectSecretEnvValues(options?.env),
+    ]);
+  }
   yield* publishRedactedShellEvent(options, {
     _tag: "pre-shell-exec",
     ...shellEventShape(command, options),

@@ -19,7 +19,7 @@ import { bringUp } from "../src/podman/bring-up.ts";
 import { StartFailureLogRedactor } from "../src/redact.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("bring-up-log-tail-app");
 const slug = "bring-up-log-tail-app";
 const webName = ServiceName.make("web");
@@ -34,7 +34,7 @@ const textEncoder = new TextEncoder();
 const servicePlan = (
   name: ServicePlan["name"],
   primary: boolean,
-  overrides: Partial<ServicePlan> = {},
+  overrides: Partial<Omit<ServicePlan, "nonSqlCreds">> = {},
 ): ServicePlan => ({
   name,
   type: "generic",
@@ -54,6 +54,7 @@ const servicePlan = (
 });
 
 const standalonePlan = (): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "Bring Up Log Tail App",
   slug,
@@ -61,7 +62,6 @@ const standalonePlan = (): AppPlan => ({
   provider: providerId,
   services: { [webName]: servicePlan(webName, true) },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -83,13 +83,13 @@ const dependentPlan = (): AppPlan => {
   });
   return {
     id: appId,
+    valueModel: 1,
     name: "Bring Up Log Tail App",
     slug,
     root: AbsolutePath.make("/tmp/bring-up-log-tail-app"),
     provider: providerId,
     services: { [web.name]: web, [db.name]: db },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -98,6 +98,15 @@ const dependentPlan = (): AppPlan => {
 };
 
 const rawConsole = (line: string): Uint8Array => textEncoder.encode(`2026-10-10T00:00:00Z ${line}\n`);
+
+const consoleFrame = (stream: 1 | 2, text: string): Uint8Array => {
+  const payload = textEncoder.encode(text);
+  const frame = new Uint8Array(8 + payload.length);
+  frame[0] = stream;
+  new DataView(frame.buffer).setUint32(4, payload.length);
+  frame.set(payload, 8);
+  return frame;
+};
 
 const logsQuery = (path: string): URLSearchParams => new URLSearchParams(path.split("?")[1] ?? "");
 
@@ -173,6 +182,8 @@ const makeApi = (options: {
             providerId: "podman",
             operation: "logs",
             message: "logs unavailable",
+            remediation:
+              "Re-run the command after checking `podman` logs for the `logs` failure; if it persists, report the error with that operation name.",
           }),
         );
       }
@@ -201,7 +212,30 @@ const expectServiceStartError = (error: unknown): ServiceStartError => {
 };
 
 describe("bringUp start-failure log tail", () => {
-  test("attaches a redacted tail and still rolls back when container start returns HTTP 500", async () => {
+  test("captures whole lines from split multiplexed writes on a failed service", async () => {
+    const plan = standalonePlan();
+    const web = serviceContainerName(plan, "web");
+    const { api } = makeApi({
+      failedStarts: [web],
+      logsFor: {
+        [web]: [
+          consoleFrame(1, "2026-10-10T00:00:00Z DATABASE_PASS"),
+          consoleFrame(2, "2026-10-10T00:00:01Z err-"),
+          consoleFrame(1, "2026-10-10T00:00:02Z WORD=hunter2 failed\n"),
+          consoleFrame(2, "2026-10-10T00:00:03Z partial\n"),
+          consoleFrame(1, "2026-10-10T00:00:04Z final partial"),
+        ],
+      },
+    });
+    const error = await flipBringUp(plan, api);
+    expect(expectServiceStartError(error).logTail?.lines).toEqual([
+      "DATABASE_PASSWORD=[redacted] failed",
+      "err-partial",
+      "final partial",
+    ]);
+  });
+
+  test("attaches a redacted tail and retains the failed container when start returns HTTP 500", async () => {
     const plan = standalonePlan();
     const web = serviceContainerName(plan, "web");
     const { api, requests } = makeApi({
@@ -223,12 +257,9 @@ describe("bringUp start-failure log tail", () => {
     expect(
       requests.some((request) => request.includes("/logs?") && logsQuery(request).get("tail") === "50"),
     ).toBe(true);
-    expect(requests.some((request) => request.endsWith("/stop"))).toBe(true);
-    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
-    const logsIndex = requests.findIndex((request) => request.includes("/logs?"));
-    const deleteIndex = requests.findIndex((request) => request.startsWith("DELETE /containers/"));
-    expect(logsIndex).toBeGreaterThanOrEqual(0);
-    expect(deleteIndex).toBeGreaterThan(logsIndex);
+    // Diagnostic capture only — no compensation teardown.
+    expect(requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
+    expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
 
   test("omits an empty tail from create and start HTTP failures", async () => {
@@ -256,7 +287,7 @@ describe("bringUp start-failure log tail", () => {
     });
     expect(error.message).toContain("container start failed");
     expect(expectServiceStartError(error).logTail).toBeUndefined();
-    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+    expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
 
   test("keeps the original error when log capture times out", async () => {
@@ -278,7 +309,7 @@ describe("bringUp start-failure log tail", () => {
       operation: "bringUp.start",
     });
     expect(expectServiceStartError(error).logTail).toBeUndefined();
-    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+    expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
 
   test("does not hang capturing a running but unhealthy dependency", async () => {
@@ -303,7 +334,7 @@ describe("bringUp start-failure log tail", () => {
     expect(logRequest).toBeDefined();
     expect(logsQuery(logRequest ?? "").get("follow")).toBe("false");
     expect(requests.some((request) => request.includes("/web/logs?"))).toBe(false);
-    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+    expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   }, 2000);
 
   test("keeps the end of a capped tail, including a huge last line", async () => {
@@ -355,7 +386,7 @@ describe("bringUp start-failure log tail", () => {
     expect(line.endsWith(tail?.lines[0] ?? "")).toBe(true);
   });
 
-  test("keeps the original error and rolls back when log capture defects", async () => {
+  test("keeps the original error and retains containers when log capture defects", async () => {
     const plan = standalonePlan();
     const web = serviceContainerName(plan, "web");
     const { api, requests } = makeApi({ failedStarts: [web], dieLogs: true });
@@ -370,7 +401,7 @@ describe("bringUp start-failure log tail", () => {
     });
     expect(error.message).toContain("container start failed");
     expect(expectServiceStartError(error).logTail).toBeUndefined();
-    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+    expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
 
   test("redacts exact secrets before truncating the oldest retained line", async () => {
@@ -406,7 +437,7 @@ describe("bringUp start-failure log tail", () => {
     expect(tail?.truncated).toBe(true);
   });
 
-  test("preserves the start error and rolls back when redaction defects", async () => {
+  test("preserves the start error and retains containers when redaction defects", async () => {
     const plan = standalonePlan();
     const web = serviceContainerName(plan, "web");
     const { api, requests } = makeApi({
@@ -426,7 +457,7 @@ describe("bringUp start-failure log tail", () => {
 
     expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web", operation: "bringUp.start" });
     expect(expectServiceStartError(error).logTail).toBeUndefined();
-    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+    expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
 
   test("skips capture when start is aborted before the blocked-gate tail", async () => {
@@ -444,10 +475,10 @@ describe("bringUp start-failure log tail", () => {
 
     expect(Exit.hasInterrupts(exit)).toBe(true);
     expect(requests.some((request) => request.includes("/logs?"))).toBe(false);
-    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+    expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
 
-  test("rolls back when interrupted during a blocked-gate log capture", async () => {
+  test("retains containers when interrupted during a blocked-gate log capture", async () => {
     const plan = dependentPlan();
     const started = await Effect.runPromise(Deferred.make<void>());
     const { api, requests } = makeApi({
@@ -469,6 +500,6 @@ describe("bringUp start-failure log tail", () => {
 
     expect(Exit.match(exit, { onFailure: Cause.hasInterruptsOnly, onSuccess: () => false })).toBe(true);
     expect(requests.some((request) => request.includes("/logs?"))).toBe(true);
-    expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+    expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   });
 });

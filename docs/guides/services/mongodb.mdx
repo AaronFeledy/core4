@@ -1,13 +1,13 @@
 ---
 id: mongodb
 provider: test
-timeout: 90000
+timeout: 300000
 tags: [beta, docs, mongodb, service]
 ---
 
 # Add MongoDB
 
-Put `type: mongodb` in your services block. Lando pulls `mongo:7` and listens on `27017`:
+Add `type: mongodb` under `services` in `.lando.yml`. Lando pulls `mongo:7` and listens on `27017`:
 
 ```yaml
 name: mongodb-demo
@@ -16,7 +16,7 @@ services:
     type: mongodb
 ```
 
-Set `creds:` when you want explicit values. Defaults are `lando` / `lando` via `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`.
+Set `creds:` when you want explicit values. The default root username and password are both `lando`, set through `MONGO_INITDB_ROOT_USERNAME` and `MONGO_INITDB_ROOT_PASSWORD`. The default database is the app name.
 
 ```yaml
 services:
@@ -27,28 +27,89 @@ services:
       password: lando
 ```
 
+Check the resolved Landofile before starting the app:
+
+```sh
+lando app:config --format=json
+```
+
 <Guide>
-  <Scenario id="happy-path" render>
+  <Scenario id="inspect-plan" render>
     <Step name="scaffold">
       <UseFixture name="mongodb-demo" />
     </Step>
-    <Step name="start">
-      <Run command="lando start" />
-      <Verify event="post-start" />
+    <Step name="inspect">
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"db\"[\\s\\S]*\"type\":\\s*\"mongodb\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 
-## Check that it's healthy
+## Start, then use it right away
 
-The `mongodb` type ships the `mongosh` client task. After start:
+`lando start` returns after MongoDB's final server answers on the app network. You can write through the generated client immediately, without a sleep or a retry loop:
+
+```sh
+lando start
+lando mongosh --eval "db.notes.insertOne({_id: 'guide', value: 'persisted'})"
+lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"
+```
+
+The insert prints `acknowledged: true`. The read prints `persisted`. `lando mongosh` connects with your configured credentials to the app database, so `db` already points at the right place.
+
+The write survives a stop and start because `/data/db` lives on a named volume:
+
+```sh
+lando stop
+lando start
+lando mongosh --eval "db.notes.findOne({_id: 'guide'}).value"
+```
+
+  <Scenario id="fresh-default-port" layer="e2e" render>
+    <Step name="start">
+      <UseFixture name="mongodb-e2e-default" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="write">
+      <Verify command="lando mongosh --eval db.notes.insertOne({_id:'guide',value:'persisted'})" expect={{ stdout: { regex: "acknowledged:\\s*true" } }} />
+    </Step>
+    <Step name="read">
+      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+    </Step>
+    <Step name="stop-and-start">
+      <Verify command="lando stop --format=json" expect={{ stdout: { regex: "\"command\":\"app:stop\",\"ok\":true" } }} />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="read-persisted">
+      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+### What "ready" checks, and what it doesn't
+
+The official image runs a temporary, loopback-only `mongod` while it creates the root user on a fresh volume, then stops it and starts the real server. Even an authenticated loopback probe can pass against that temporary server and hand you a connection that drops a moment later. Lando's startup check uses the service's declared app-network listener instead:
+
+- A plain TCP dial of the planned port. Until that succeeds, Lando does not launch `mongosh` at all.
+- A credential-free MongoDB protocol `ping` with a bounded connection timeout. Only this step marks the service `ready`.
+
+After start, the service's ongoing healthcheck is the TCP dial alone, repeated on the usual interval. It starts no MongoDB shell and leaves no shell-state files behind. The protocol ping runs at startup, restart, and rebuild, not every few seconds for the life of the container.
+
+`ready` means the final server is accepting connections. It does not prove that the credentials in your Landofile match the users stored on the volume; the probe never authenticates. See [Recover when credentials don't match](#recover-when-credentials-dont-match) for that case.
+
+## Check database access
+
+Use the generated client to check access with your configured credentials:
 
 ```sh
 lando mongosh --eval "db.runCommand('ping')"
 ```
+
+The client uses your configured credentials. A successful ping returns `ok: 1`.
 
 ## Use your own mongod.conf
 
@@ -64,9 +125,139 @@ services:
 
 Lando mounts that file read-only at `/etc/lando/mongod.conf` and starts the server with `--config /etc/lando/mongod.conf`. It has to be a regular file, not a directory.
 
+Lando's planned port, `port:` or the default, beats a port line in your config file.
+
+Your config must let the final server listen on the container's network interface, not only `127.0.0.1`. For example, add this to `config/mongod.conf`:
+
+```yaml
+net:
+  bindIpAll: true
+```
+
+This allows other services to connect over the app network, and it is what the default startup check and healthcheck dial.
+
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
 If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append `--config` to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
+
+### Loopback-only or TLS-only servers
+
+The default checks use a plain, credential-free, non-TLS connection to the service's app-network address. They do not change your server's binding or TLS settings. If your config requires loopback-only clients or TLS, write a `healthcheck:` that matches the server you configured. An authored `healthcheck:` replaces both of Lando's checks, startup and ongoing, so make it one your server can pass:
+
+```yaml
+services:
+  db:
+    type: mongodb
+    config:
+      server: ./config/mongod.conf
+    mounts:
+      - type: bind
+        source: ./config/ca.pem
+        target: /etc/lando/ca.pem
+        readOnly: true
+    healthcheck:
+      - mongosh
+      - --quiet
+      - --norc
+      - --tls
+      - --tlsCAFile
+      - /etc/lando/ca.pem
+      - mongodb://db:27017/admin?directConnection=true&serverSelectionTimeoutMS=2000
+      - --eval
+      - quit(db.adminCommand({ping:1}).ok===1?0:1)
+```
+
+The service name `db` resolves inside its own container on the app network; use yours. The CA has to be the one your `mongod.conf` serves, and its certificate has to name the host the probe dials. For a loopback-only server, dial `127.0.0.1` instead of the service name and drop the TLS flags. A loopback probe can be answered by the image's first-boot initialization server a few seconds before the final server is up; that is the trade-off of binding loopback only.
+
+`healthcheck: false` turns off both checks. Start then waits only for the container to be running, and the first client call after start may race first-boot initialization on a fresh volume.
+
+## Change the port
+
+Set `port:` to move the daemon's listener, startup check, healthcheck, endpoint, and Lando's own clients together:
+
+```yaml
+services:
+  db:
+    type: mongodb
+    port: 27018
+```
+
+Lando starts `mongod` with `--port 27018`, including when `config.server` is mounted. Other services connect to `db:27018`. The service exposes `LANDO_DB_PORT=27018`; `lando mongosh` and `lando db:*` commands use the planned port too. MongoDB has no daemon-native port environment variable.
+
+With `config.server` and no `port:`, Lando pins the default `27017` on its command line. With neither, Lando leaves the image's default command alone.
+
+If you author `command:` or `entrypoint:`, you own the daemon's flags. Include `--port 27018` in your own launcher; Lando won't append it for you.
+
+Apply the change with `lando rebuild` on an existing app, or `lando start` on a fresh one. Then ask the server which port it parsed from its command line:
+
+```sh
+lando mongosh --eval "db.serverCmdLineOpts().parsed.net.port"
+```
+
+That prints `27018`, through a client that found the server on the planned port without any extra flags.
+
+  <Scenario id="fresh-custom-port" layer="e2e" render>
+    <Step name="start">
+      <UseFixture name="mongodb-e2e-port" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="write">
+      <Verify command="lando mongosh --eval db.notes.insertOne({_id:'guide',value:'persisted'})" expect={{ stdout: { regex: "acknowledged:\\s*true" } }} />
+    </Step>
+    <Step name="read">
+      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+    </Step>
+    <Step name="listener">
+      <Verify command="lando mongosh --eval db.serverCmdLineOpts().parsed.net.port" expect={{ stdout: { regex: "\\b27018\\b" } }} />
+    </Step>
+    <Step name="stop-and-start">
+      <Verify command="lando stop --format=json" expect={{ stdout: { regex: "\"command\":\"app:stop\",\"ok\":true" } }} />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"command\":\"app:start\"[\\s\\S]*\"ok\":true[\\s\\S]*\"state\":\"ready\"" } }} />
+    </Step>
+    <Step name="read-persisted">
+      <Verify command="lando mongosh --eval db.notes.findOne({_id:'guide'}).value" expect={{ stdout: { regex: "persisted" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+## Recover when credentials don't match
+
+`creds:` and `MONGO_INITDB_ROOT_*` seed a fresh volume. The image ignores them once `/data/db` holds data, so changing `creds:` on an existing app rewrites what Lando's clients send, not the users MongoDB already stores. Start still reports `ready`, because readiness checks the listener, not your login. The first authenticated call is where you find out:
+
+```sh
+lando mongosh --eval "db.runCommand('ping')"
+```
+
+An `Authentication failed` response from this client comes with Mongo-specific recovery text. Other failing scripts exit non-zero without it; a bad query is not an auth problem.
+
+Fix it without losing data, in this order:
+
+1. Put `creds:` back to the values the volume was created with, then run `lando start` so the clients pick them up.
+2. If you want the new credentials to stick, log in with the old ones and change the password inside MongoDB. `-p` with no value prompts, so the password stays out of your shell history and the container's argv:
+
+   ```sh
+   lando exec db -- mongosh -u <old-user> -p --authenticationDatabase admin
+   ```
+
+   Then, in that shell:
+
+   ```js
+   db.getSiblingDB('admin').changeUserPassword('<old-user>', '<new-password>')
+   ```
+
+   Set `creds:` to the new values and run `lando start` again.
+
+3. Only when the data is disposable, start over. This deletes the database:
+
+   ```sh
+   lando destroy -y --volumes
+   lando start
+   ```
+
+Lando never picks option 3 for you.
 
 ## Pin a version
 

@@ -44,7 +44,7 @@ export type { NetworkTrustPlan };
 export class CaPemLoadError extends Schema.TaggedError<CaPemLoadError>()("CaPemLoadError", {
   message: Schema.String,
   path: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 

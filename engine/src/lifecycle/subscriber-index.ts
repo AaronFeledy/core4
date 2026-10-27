@@ -73,7 +73,8 @@ const builtInEventNames = (): Set<string> => {
 const manifestError = (subscriber: IndexedSubscriber, event: string): PluginManifestError =>
   new PluginManifestError({
     message: `Subscriber "${subscriber.entry.id}" from ${subscriber.pluginName} selects unknown event "${event}".`,
-    issues: [event],
+    issues: [{ path: [], message: `Unknown event: ${event}` }],
+    remediation: `Change subscriber "${subscriber.entry.id}" to select a registered lifecycle event.`,
   });
 
 const levelMismatchError = (

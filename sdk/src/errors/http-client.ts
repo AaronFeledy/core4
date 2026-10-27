@@ -17,6 +17,6 @@ export class HttpTrustError extends Schema.TaggedError<HttpTrustError>()("HttpTr
   message: Schema.String,
   urlOrigin: Schema.String,
   kind: HttpTrustErrorKind,
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}

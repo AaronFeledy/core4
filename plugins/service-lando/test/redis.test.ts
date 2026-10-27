@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, ServiceConfig, ServiceName } from "@lando/sdk/schema";
 
 import { REDIS_FEATURE_ID, redisServiceFeature, redisServiceType } from "../src/services/redis.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -14,6 +14,43 @@ const metadata = {
 };
 
 describe("redis ServiceType", () => {
+  test.each([
+    {},
+    { persist: false },
+    { password: "test-secret" },
+    { persist: false, password: "test-secret" },
+  ])("moves all managed Redis launcher variants for %j", async (options) => {
+    const service = Schema.decodeUnknownSync(ServiceConfig)({ type: "redis", port: 16379, ...options });
+    const plan = await composeServicePlan({
+      serviceType: redisServiceType,
+      service,
+      appRoot: "/srv/apps/myapp",
+      serviceName: "cache",
+      metadata,
+    });
+    expect(plan.command?.slice(-2)).toEqual(["--port", "16379"]);
+    expect(plan.healthcheck?.command).toEqual(["redis-cli", "-p", "16379", "ping"]);
+    const resolution = await Effect.runPromise(
+      redisServiceType.resolve({ name: "cache", service, appRoot: "/srv/apps/myapp", metadata }),
+    );
+    expect(resolution.tooling?.["redis-cli"]?.cmd).toEqual(["redis-cli", "-p", "16379"]);
+  });
+
+  test("passes the managed command, port included, to an authored entrypoint", async () => {
+    const plan = await composeServicePlan({
+      serviceType: redisServiceType,
+      service: Schema.decodeUnknownSync(ServiceConfig)({
+        type: "redis",
+        port: 16379,
+        entrypoint: ["custom-start"],
+      }),
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+    expect(plan.entrypoint).toEqual(["custom-start"]);
+    expect(plan.command).toEqual(["redis-server", "--appendonly", "yes", "--port", "16379"]);
+  });
+
   test("plans a default Redis service with persistent data volume and append-only command", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
@@ -37,7 +74,9 @@ describe("redis ServiceType", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-redis-data");
     expect(String(plan.storage[0]?.target)).toBe("/data");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 6379, protocol: "tcp", name: "cache" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 6379, protocol: "tcp", name: "cache", primary: true },
+    ]);
   });
 
   test("respects image, port, and command overrides", async () => {

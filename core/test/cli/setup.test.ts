@@ -3,9 +3,10 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
+import { GlobalConfigSources } from "@lando/engine/services/config";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, type Context, Effect, Exit, Layer, Schema, Stream } from "effect";
+import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import {
   CertificateAuthority,
@@ -13,6 +14,7 @@ import {
   Downloader,
   EventService,
   FileSyncEngine,
+  GlobalAppService,
   HostProxyService,
   InteractionService,
   type InteractionServiceShape,
@@ -23,6 +25,8 @@ import {
 } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { hostProviderId } from "@lando/engine/providers/host-provider";
+import * as LandoConfigService from "@lando/engine/services/config";
 import * as HostProxyServiceLayer from "@lando/engine/subsystems/host-proxy/api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
@@ -31,6 +35,7 @@ import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
 import {
   AmbiguousCertificateAuthoritiesError,
+  AppPlacementError,
   HttpTrustError,
   InteractionCancelledError,
   InteractionUnavailableError,
@@ -40,10 +45,12 @@ import {
 } from "@lando/sdk/errors";
 import {
   AbsolutePath,
+  AppId,
   type AppPlan,
   GlobalConfig,
   ProviderId,
   type ProviderSetupPlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import {
   TestFileSyncEngine,
@@ -67,9 +74,11 @@ import {
   defaultSetupNetworkTrustProbe,
 } from "../../src/cli/commands/setup-network-trust.ts";
 import { readSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";
+import { validateUnknownCliFlags } from "../../src/cli/flag-value-validation.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const makeConfigService = (
   overrides: Partial<typeof GlobalConfig.Encoded> = {},
@@ -97,6 +106,7 @@ const buildSetupLayers = (
   httpFetch: typeof fetch = okProbeFetch,
 ) =>
   Layer.mergeAll(
+    Layer.succeed(GlobalConfigSources, { env: { ...process.env }, sources: { user: false, env: true } }),
     Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry)),
     Layer.succeed(ConfigService, ConfigService.of(makeConfigService(configOverrides))),
     Layer.succeed(Downloader, Downloader.of(testDownloader.service)),
@@ -105,6 +115,9 @@ const buildSetupLayers = (
   );
 
 const testRuntimeProviderRegistry = {
+  resolveAppliedPlan: () => Effect.succeed(undefined),
+  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+  appliedPlansFor: () => Effect.succeed([]),
   list: Effect.succeed([ProviderId.make("lando")]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
   select: () => Effect.succeed(TestRuntimeProvider),
@@ -311,6 +324,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -356,6 +372,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -385,6 +404,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -431,6 +453,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -461,6 +486,9 @@ describe("meta:setup command", () => {
       }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -529,6 +557,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -553,6 +584,9 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -618,6 +652,9 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make(providerId)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -650,6 +687,8 @@ describe("meta:setup command", () => {
                         new SshError({
                           sshId: "sidecar",
                           message: `${message} HTTP_PROXY_PASSWORD=super-secret`,
+                          remediation:
+                            "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
                         }),
                       ),
                   },
@@ -717,6 +756,9 @@ describe("meta:setup command", () => {
         }),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -791,6 +833,9 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -856,6 +901,9 @@ describe("meta:setup command", () => {
         getRuntimeServiceStatus: Effect.fail(new Error("status unavailable")),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -898,6 +946,9 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -951,6 +1002,9 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1001,6 +1055,9 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1071,6 +1128,9 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1128,6 +1188,208 @@ describe("meta:setup command", () => {
     }
   });
 
+  test.each(["env", "flag"])(
+    "setup switches global placement only for a persisted %s selection",
+    async (source) => {
+      const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-switch-command-"));
+      const root = AbsolutePath.make(join(userDataRoot, "global"));
+      const globalPlan: AppPlan = {
+        id: AppId.make("global"),
+        name: "global",
+        slug: "global",
+        root,
+        identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
+        provider: ProviderId.make("podman"),
+        services: {},
+        routes: [],
+        stores: [],
+        fileSync: [],
+        extensions: {},
+        metadata: { resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"), source: "test", runtime: 4 },
+      };
+      const userPlan: AppPlan = {
+        ...globalPlan,
+        id: AppId.make("left-behind"),
+        root: AbsolutePath.make(join(userDataRoot, "user")),
+        identity: { appRoot: AbsolutePath.make(join(userDataRoot, "user")), ownerKey: "user" },
+      };
+      const calls: string[] = [];
+      let globalApplied = true;
+      const oldProvider = {
+        ...TestRuntimeProvider,
+        id: "podman",
+        appliedPlans: Effect.succeed([globalPlan, userPlan]),
+        list: () => Effect.succeed([]),
+        destroy: () =>
+          Effect.sync(() => {
+            calls.push("retire");
+            globalApplied = false;
+            return { kind: "destroyed" as const };
+          }),
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("podman")]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed(globalApplied ? [globalPlan] : []),
+        select: (target?: AppPlan | ProviderId) =>
+          Effect.succeed(
+            (typeof target === "string" ? target : target?.provider) === "podman"
+              ? oldProvider
+              : {
+                  ...TestRuntimeProvider,
+                  id: "lando",
+                  setup: () =>
+                    Effect.sync(() => {
+                      calls.push("setup");
+                    }),
+                },
+          ),
+      };
+      const globalApp = GlobalAppService.of({
+        id: "global",
+        providerId: Effect.succeed(ProviderId.make("podman")),
+        root: Effect.succeed(root),
+        paths: Effect.succeed({
+          root,
+          distLandofile: AbsolutePath.make(join(root, ".lando.dist.yml")),
+          userLandofile: AbsolutePath.make(join(root, ".lando.yml")),
+        }),
+        ensureRoot: Effect.void,
+        ensureRunning: () => Effect.succeed([]),
+        ensureUserLandofile: Effect.die("unused"),
+        regenerateDist: () => Effect.die("unused"),
+      });
+      try {
+        const result = await withEnvVar("LANDO_PROVIDER", "lando", () =>
+          Effect.runPromise(
+            setupSpec
+              .run({ installDir: "/opt/lando", flags: source === "flag" ? { provider: "lando" } : {} })
+              .pipe(
+                Effect.provideService(GlobalAppService, globalApp),
+                Effect.provide(
+                  buildSetupLayersWithHostIntegrations(
+                    registry,
+                    {
+                      ca: makeTestCertificateAuthority(),
+                      proxy: {
+                        ...makeTestRouterService(),
+                        setup: () =>
+                          Effect.sync(() => {
+                            calls.push("router");
+                          }),
+                      },
+                      ssh: makeTestSshService(),
+                      fileSync: TestFileSyncEngine,
+                    },
+                    { userDataRoot },
+                  ),
+                ),
+                Effect.result,
+              ),
+          ),
+        );
+        if (source === "env") {
+          expect(result).toMatchObject({
+            _tag: "Failure",
+            failure: {
+              _tag: "AppPlacementError",
+              desiredProviderId: "lando",
+              realizedProviderId: "podman",
+              remediation: expect.stringMatching(/lando setup --provider=lando.*LANDO_PROVIDER/u),
+            },
+          });
+          expect(calls).toEqual([]);
+          expect(globalApplied).toBe(true);
+          return;
+        }
+        expect(calls).toEqual(["setup", "retire", "router"]);
+        expect(result).toMatchObject({
+          _tag: "Success",
+          success: {
+            providerSwitch: {
+              fromProviderId: "podman",
+              toProviderId: "lando",
+              remainingApps: [{ id: "left-behind" }],
+            },
+          },
+        });
+      } finally {
+        await rm(userDataRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("switch report suggests only supported command flags", () => {
+    const output =
+      setupSpec.render?.({
+        providerId: "docker",
+        installDir: "/opt/lando",
+        networkCaInjectionConfigured: false,
+        providerSwitch: {
+          fromProviderId: "lando",
+          toProviderId: "docker",
+          remainingApps: [{ kind: "user", id: "demo", root: "/apps/demo" }],
+        },
+      }) ?? "";
+    const commands = [...output.matchAll(/`lando ([^`]+)`/gu)].map((match) => match[1] ?? "");
+    expect(commands.length).toBe(2);
+    for (const command of commands) {
+      const [name, ...argv] = command.split(" ");
+      const spec = Object.values(COMMAND_REGISTRY_MANIFEST.commands).find(
+        (entry) => entry.spec.id === `app:${name}`,
+      )?.spec;
+      expect(spec).toBeDefined();
+      const definitions = spec !== undefined && "flags" in spec ? spec.flags : {};
+      expect(validateUnknownCliFlags(argv, definitions)).toBeUndefined();
+    }
+  });
+
+  test("setup preserves a router placement failure as the top-level error", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-placement-"));
+    const error = new AppPlacementError({
+      app: { kind: "global", id: "global", root: AbsolutePath.make(join(userDataRoot, "global")) },
+      desiredProviderId: "docker",
+      realizedProviderId: "lando",
+      message: "Placement mismatch",
+      remediation: "Run `lando poweroff`, then retry setup.",
+    });
+    const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+      select: () => Effect.succeed(TestRuntimeProvider),
+    };
+    try {
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: { ...makeTestRouterService(), setup: () => Effect.fail(error) },
+                ssh: makeTestSshService(),
+                fileSync: TestFileSyncEngine,
+              },
+              { userDataRoot },
+            ),
+          ),
+          Effect.result,
+        ),
+      );
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "AppPlacementError", remediation: error.remediation },
+      });
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("rerunning setup after an interruption replaces partial readiness with a ready summary", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-resume-"));
     try {
@@ -1138,6 +1400,9 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1227,6 +1492,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -1274,6 +1542,9 @@ describe("meta:setup command", () => {
       setup: () => Effect.void,
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -1303,6 +1574,9 @@ describe("meta:setup command", () => {
     };
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -1338,6 +1612,9 @@ describe("meta:setup command", () => {
           setup: () => Effect.void,
         };
         const registry = {
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando")]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -1420,6 +1697,9 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1503,6 +1783,9 @@ describe("meta:setup command", () => {
           ) as Effect.Effect<void, never, never>,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1548,6 +1831,9 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1613,6 +1899,9 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1744,6 +2033,9 @@ describe("meta:setup command", () => {
         setup: () => Effect.void,
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1796,6 +2088,7 @@ describe("meta:setup command", () => {
         message: `Proxy refused to open a tunnel: ${status}`,
         urlOrigin: "https://github.com",
         kind: "proxy-tunnel-refused",
+        remediation: "Check proxy credentials and retry.",
         cause: Object.assign(new Error("tunnel"), { code: "ERR_PROXY_TUNNEL", status }),
       });
     const cases = [
@@ -1806,12 +2099,18 @@ describe("meta:setup command", () => {
           message: "TLS trust verification failed",
           urlOrigin: "https://github.com",
           kind: "missing-custom-ca",
+          remediation: "Supply the issuer CA and retry.",
         }),
         "tls-interception",
         "LANDO_NETWORK_CA_CERTS",
       ],
       [
-        new HttpTrustError({ message: "blocked", urlOrigin: "https://github.com", kind: "blocked-endpoint" }),
+        new HttpTrustError({
+          message: "blocked",
+          urlOrigin: "https://github.com",
+          kind: "blocked-endpoint",
+          remediation: "Allow the registry endpoint and retry.",
+        }),
         "blocked-registry",
         "network.proxy",
       ],
@@ -1844,6 +2143,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -1884,6 +2186,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2028,6 +2333,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2083,6 +2391,9 @@ describe("meta:setup command", () => {
           }),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -2134,6 +2445,9 @@ describe("meta:setup command", () => {
       setup: () => Effect.die("native bind-mount provider should not run file-sync setup"),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2170,6 +2484,9 @@ describe("meta:setup command", () => {
         setup: () => Effect.die("--skip-file-sync should not run file-sync setup"),
       };
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -2252,6 +2569,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2287,6 +2607,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2314,6 +2637,9 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -2356,6 +2682,9 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -2383,6 +2712,9 @@ describe("meta:setup command", () => {
             }),
         };
         const registry = {
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -2412,6 +2744,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("podman")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: (plan?: AppPlan | ProviderId) => {
@@ -2448,6 +2783,9 @@ describe("meta:setup command", () => {
         }),
     };
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2500,6 +2838,9 @@ describe("meta:setup command", () => {
       }),
     );
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2551,6 +2892,9 @@ describe("meta:setup command", () => {
       }),
     );
     const registry = {
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make("lando")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -2577,6 +2921,75 @@ describe("meta:setup command", () => {
   });
 
   describe("provider selection precedence", () => {
+    test("flag selection scopes CA, router, shell and file-sync to Docker despite stale configuration", async () => {
+      const root = await mkdtemp(join(tmpdir(), "lando-setup-override-"));
+      const previous = process.env.LANDO_USER_CONF_ROOT;
+      process.env.LANDO_USER_CONF_ROOT = root;
+      try {
+        const observed: string[] = [];
+        const observe = hostProviderId.pipe(
+          Effect.tap((id) =>
+            Effect.sync(() => {
+              observed.push(id);
+            }),
+          ),
+          Effect.asVoid,
+          Effect.orDie,
+        );
+        const provider = {
+          ...TestRuntimeProvider,
+          id: "docker",
+          isAvailable: Effect.succeed(true),
+          capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        };
+        const { registry } = buildRegistryThatCapturesPlan(provider);
+        await Effect.runPromise(
+          setupSpec.run({ flags: { provider: "docker" } }).pipe(
+            Effect.provide(
+              buildSetupLayersWithHostIntegrations(
+                registry,
+                {
+                  ca: { ...makeTestCertificateAuthority(), setup: () => observe },
+                  proxy: { ...makeTestRouterService(), setup: () => observe },
+                  ssh: { ...makeTestSshService(), setup: () => observe },
+                  fileSync: { ...TestFileSyncEngine, setup: () => observe },
+                },
+                { defaultProviderId: ProviderId.make("lando") },
+              ),
+            ),
+          ),
+        );
+        expect(observed).toEqual(["docker", "docker", "docker", "docker"]);
+      } finally {
+        if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+        else process.env.LANDO_USER_CONF_ROOT = previous;
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    test("provider persistence failure is returned instead of reporting successful setup", async () => {
+      const root = await mkdtemp(join(tmpdir(), "lando-setup-write-error-"));
+      const previous = process.env.LANDO_USER_CONF_ROOT;
+      process.env.LANDO_USER_CONF_ROOT = root;
+      try {
+        await mkdir(join(root, "config.yml"));
+        const { registry } = buildRegistryThatCapturesPlan({
+          ...TestRuntimeProvider,
+          id: "docker",
+          isAvailable: Effect.succeed(true),
+        });
+        const result = await Effect.runPromise(
+          setupSpec
+            .run({ flags: { provider: "docker" } })
+            .pipe(Effect.provide(buildSetupLayers(registry)), Effect.result),
+        );
+        expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ConfigError" } });
+      } finally {
+        if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+        else process.env.LANDO_USER_CONF_ROOT = previous;
+        await rm(root, { recursive: true, force: true });
+      }
+    });
     const recordingPrompter = (chosen: string): { prompter: InteractionServiceShape; calls: number } => {
       const state = { calls: 0 };
       const prompter: InteractionServiceShape = InteractionService.of({
@@ -2615,14 +3028,91 @@ describe("meta:setup command", () => {
           interaction: recorder.prompter,
         }),
       );
-      expect(String(chosen)).toBe("podman");
+      expect(String(chosen.providerId)).toBe("podman");
+      expect(chosen.source).toBe("prompt");
       expect(recorder.calls).toBe(1);
+    });
+
+    test("interactive provider choice is persisted after provider setup succeeds", async () => {
+      const root = await mkdtemp(join(tmpdir(), "lando-setup-prompt-persist-"));
+      const previous = process.env.LANDO_USER_CONF_ROOT;
+      const previousProvider = process.env.LANDO_PROVIDER;
+      process.env.LANDO_USER_CONF_ROOT = root;
+      Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+      try {
+        const recorder = recordingPrompter("podman");
+        const { registry } = buildRegistryThatCapturesPlan({
+          ...TestRuntimeProvider,
+          id: "podman",
+          isAvailable: Effect.succeed(true),
+        });
+        await Effect.runPromise(
+          setupSpec
+            .run({})
+            .pipe(
+              Effect.provideService(InteractionService, recorder.prompter),
+              Effect.provide(buildSetupLayers(registry, { defaultProviderId: null })),
+            ),
+        );
+        expect(recorder.calls).toBe(1);
+        expect(await readFile(join(root, "config.yml"), "utf8")).toContain("defaultProviderId: podman");
+      } finally {
+        if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+        else process.env.LANDO_USER_CONF_ROOT = previous;
+        if (previousProvider === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+        else process.env.LANDO_PROVIDER = previousProvider;
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    test("fresh setup through production config loading offers the provider prompt", async () => {
+      // Given: no config.yml, so no authored defaultProviderId.
+      const root = await mkdtemp(join(tmpdir(), "lando-setup-fresh-prompt-"));
+      const keys = [
+        "LANDO_USER_CONF_ROOT",
+        "LANDO_USER_DATA_ROOT",
+        "LANDO_USER_CACHE_ROOT",
+        "LANDO_PROVIDER",
+      ];
+      const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+      process.env.LANDO_USER_CONF_ROOT = join(root, "conf");
+      process.env.LANDO_USER_DATA_ROOT = join(root, "data");
+      process.env.LANDO_USER_CACHE_ROOT = join(root, "cache");
+      Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+      try {
+        const recorder = recordingPrompter("podman");
+        const { registry } = buildRegistryThatCapturesPlan({
+          ...TestRuntimeProvider,
+          id: "podman",
+          isAvailable: Effect.succeed(true),
+        });
+        // When
+        await Effect.runPromise(
+          setupSpec
+            .run({})
+            .pipe(
+              Effect.provideService(InteractionService, recorder.prompter),
+              Effect.provide(LandoConfigService.layer),
+              Effect.provide(buildSetupLayers(registry)),
+            ),
+        );
+        // Then
+        expect(recorder.calls).toBe(1);
+      } finally {
+        for (const key of keys) {
+          const value = previous[key];
+          if (value === undefined) Reflect.deleteProperty(process.env, key);
+          else process.env[key] = value;
+        }
+        await rm(root, { recursive: true, force: true });
+      }
     });
 
     test("provider selection propagates interactive cancellation", async () => {
       const cancellation = new InteractionCancelledError({
         message: "Provider selection cancelled.",
         promptName: "provider",
+        remediation: "Run lando setup --provider=docker to select a provider without this prompt.",
       });
       const interaction = {
         ...recordingPrompter("lando").prompter,
@@ -2679,7 +3169,7 @@ describe("meta:setup command", () => {
         }),
       );
 
-      expect(String(chosen)).toBe("lando");
+      expect(String(chosen.providerId)).toBe("lando");
     });
 
     test("non-default source skips the provider prompt entirely", async () => {
@@ -2697,7 +3187,7 @@ describe("meta:setup command", () => {
           interaction: recorder.prompter,
         }),
       );
-      expect(String(chosen)).toBe("docker");
+      expect(String(chosen.providerId)).toBe("docker");
       expect(recorder.calls).toBe(0);
     });
 
@@ -2719,7 +3209,7 @@ describe("meta:setup command", () => {
             interaction: recorder.prompter,
           }),
         );
-        expect(String(chosen)).toBe("lando");
+        expect(String(chosen.providerId)).toBe("lando");
         expect(recorder.calls).toBe(0);
       }
     });
@@ -2727,6 +3217,9 @@ describe("meta:setup command", () => {
     const buildRegistryThatCapturesPlan = (provider: typeof TestRuntimeProvider) => {
       const observed: { providerId?: string | undefined } = {};
       const registry = {
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([
           ProviderId.make("lando"),
           ProviderId.make("docker"),
@@ -2741,9 +3234,12 @@ describe("meta:setup command", () => {
       return { registry, observed };
     };
 
-    test("LANDO_PROVIDER overrides leftover config and the capability default", async () => {
+    test("LANDO_PROVIDER overrides config and the capability default without being persisted", async () => {
       const previous = process.env.LANDO_PROVIDER;
+      const previousConfRoot = process.env.LANDO_USER_CONF_ROOT;
+      const confRoot = await mkdtemp(join(tmpdir(), "lando-setup-env-provider-"));
       process.env.LANDO_PROVIDER = "podman";
+      process.env.LANDO_USER_CONF_ROOT = confRoot;
       try {
         const provider = {
           ...TestRuntimeProvider,
@@ -2759,9 +3255,13 @@ describe("meta:setup command", () => {
             ),
         );
         expect(observed.providerId).toBe("podman");
+        expect(await Bun.file(join(confRoot, "config.yml")).exists()).toBe(false);
       } finally {
         if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
         else process.env.LANDO_PROVIDER = previous;
+        if (previousConfRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+        else process.env.LANDO_USER_CONF_ROOT = previousConfRoot;
+        await rm(confRoot, { recursive: true, force: true });
       }
     });
 
@@ -2787,7 +3287,7 @@ describe("meta:setup command", () => {
       }
     });
 
-    test("ignores leftover defaultProviderId when neither flag nor env is set", async () => {
+    test("honors configured defaultProviderId when neither flag nor env is set", async () => {
       const previous = process.env.LANDO_PROVIDER;
       Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
       try {
@@ -2804,13 +3304,13 @@ describe("meta:setup command", () => {
               Effect.provide(buildSetupLayers(registry, { defaultProviderId: ProviderId.make("docker") })),
             ),
         );
-        expect(observed.providerId).toBe("lando");
+        expect(observed.providerId).toBe("docker");
       } finally {
         if (previous !== undefined) process.env.LANDO_PROVIDER = previous;
       }
     });
 
-    test("--yes with leftover defaultProviderId: docker selects lando without prompting", async () => {
+    test("--yes with defaultProviderId: docker selects docker without prompting", async () => {
       const previous = process.env.LANDO_PROVIDER;
       Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
       try {
@@ -2827,6 +3327,7 @@ describe("meta:setup command", () => {
             .pipe(
               Effect.provide(
                 Layer.mergeAll(
+                  Layer.succeed(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
                   Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry)),
                   Layer.succeed(
                     ConfigService,
@@ -2839,7 +3340,7 @@ describe("meta:setup command", () => {
               ),
             ),
         );
-        expect(observed.providerId).toBe("lando");
+        expect(observed.providerId).toBe("docker");
         expect(recorder.calls).toBe(0);
       } finally {
         if (previous !== undefined) process.env.LANDO_PROVIDER = previous;
@@ -2913,6 +3414,7 @@ describe("meta:setup command", () => {
             message:
               "Cannot negotiate a Docker Engine API version. Lando supports 1.43-1.44; this daemon reports 1.50-1.55.",
             details: { kind: "docker-api-version", ourRange: "1.43-1.44", daemonRange: "1.50-1.55" },
+            remediation: "Install or start the `docker` provider and confirm it can perform `docker-api`.",
           }),
         ),
       };
@@ -2954,7 +3456,7 @@ describe("meta:setup command", () => {
       });
     }
 
-    test("setup --yes after a persisted --provider=docker still selects lando", async () => {
+    test("setup --yes after a persisted --provider=docker selects docker", async () => {
       const previous = process.env.LANDO_PROVIDER;
       const confRoot = await mkdtemp(join(tmpdir(), "lando-setup-persist-then-yes-"));
       const previousConf = process.env.LANDO_USER_CONF_ROOT;
@@ -2988,7 +3490,7 @@ describe("meta:setup command", () => {
               Effect.provide(buildSetupLayers(registry, { defaultProviderId: ProviderId.make("docker") })),
             ),
         );
-        expect(observed.providerId).toBe("lando");
+        expect(observed.providerId).toBe("docker");
         expect(await readFile(join(confRoot, "config.yml"), "utf8")).toContain("defaultProviderId: docker");
       } finally {
         if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");

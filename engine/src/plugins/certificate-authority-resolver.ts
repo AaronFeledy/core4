@@ -1,3 +1,4 @@
+import { importAuthorModule } from "@lando/landofile/author-modules";
 import { Context, Effect, Layer, Result, Scope } from "effect";
 
 import {
@@ -132,12 +133,13 @@ const loadContributionLayer = (
     return Effect.succeed(Layer.succeed(CertificateAuthority, acquisition.service));
   }
   return Effect.tryPromise({
-    try: () => import(acquisition.module),
+    try: () => importAuthorModule(acquisition.module),
     catch: (cause) =>
       new PluginLoadError({
         message: `Failed to import certificate authority ${candidate.id} from ${acquisition.module}.`,
         pluginName: candidate.pluginName,
         cause,
+        remediation: `Repair plugin ${candidate.pluginName} so certificate authority ${candidate.id} loads from ${acquisition.module}.`,
       }),
   }).pipe(
     Effect.flatMap((loaded) => {
@@ -150,6 +152,7 @@ const loadContributionLayer = (
             new PluginLoadError({
               message: `Certificate authority module ${acquisition.module} does not export a ca Layer.`,
               pluginName: candidate.pluginName,
+              remediation: `Export a ca Layer from ${acquisition.module} in plugin ${candidate.pluginName}.`,
             }),
           );
     }),

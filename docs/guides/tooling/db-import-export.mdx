@@ -9,9 +9,9 @@ tags: [beta, docs, tooling, database]
 
 Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed` to fill a database Lando freshly created from a dump, a snapshot, or another running app.
 
-Run dump commands from your app directory with the database service running. A single database service needs no `--service` flag. With two or more, pass `--service <name>` to select the target.
+Run dump commands from your app directory with the database service running. A single database service needs no `--service` flag; with two or more, pass `--service <name>` to select the target.
 
-Back up any existing data before importing. An import can change or delete data, and `--yes` skips confirmation. The commands below show gzip and zstd alternatives; choose one format.
+Export a backup before importing into a database that contains data. Import can change or delete existing data, and `--yes` skips confirmation. The examples show gzip and zstd alternatives; choose one rather than importing the same dump twice.
 
 ```sh
 lando db:export dump.sql.gz
@@ -22,7 +22,7 @@ lando db:import dump.sql.zst --yes
 
 `.gz` and `.zst` compress and decompress on the host process. The default export name stays `<service>.sql.gz` when you omit a path. Import trusts magic bytes, so a gzip or zstd dump still decompresses if the suffix is missing. Host compression stages the uncompressed dump in a temp file, so a huge dump pays disk twice. Credentials stay in the service environment, not on argv.
 
-## Dump files
+## Export or import a dump
 
 `db:export` writes `<service>.sql.gz` in the current directory when you are inside the app, otherwise the app root. Relative paths resolve the same way.
 
@@ -33,20 +33,63 @@ lando db:import backups/app.sql.gz --service database --yes
 lando db:import backups/app.sql.zst --service database --yes
 ```
 
-The destination suffix selects the compression format: `.gz` for gzip or `.zst` for zstd. Use `--compression-level` to choose a balance between compression speed and file size. Gzip accepts integers from `0` through `9`; zstd accepts `1` through `22`. Omit the flag to keep the format's default level. Lando rejects the flag for an uncompressed export.
+MySQL, MariaDB, and Postgres execute the dump through the client without automatically resetting the database first; what changes depends on the dump statements. MongoDB restores its archive without automatically dropping collections. SQL Server uses `sqlcmd` backup and restore files, and its restore replaces the target database.
 
-For example, choose one of these compressed exports:
+Postgres exports include `DROP IF EXISTS` statements for the objects in the dump,
+so importing a Lando export recreates those objects and their saved data. Objects
+absent from the dump are not automatically removed. Source ownership and grants
+are omitted; the restoring user owns the recreated objects. Postgres imports stop
+at the first SQL error instead of reporting partial work as success. Earlier
+statements may already have changed data, so use the reported recovery snapshot
+if needed.
+
+For SQL Server, use a `.bak` path to make the file type clear:
 
 ```sh
-lando db:export backups/app.sql.gz --compression-level 6
-lando db:export backups/app.sql.zst --compression-level 3
+lando db:export backups/app.bak --service database
+lando db:import backups/app.bak --service database --yes
 ```
 
-MySQL, MariaDB, Postgres, and MongoDB stream through the client. SQL Server uses `sqlcmd` backup and restore files.
+Lando prepares a server-readable backup directory, completes `BACKUP DATABASE`,
+then copies the backup to your host. Import uploads the backup before running
+`RESTORE DATABASE` from `master`. A failed backup stops before copying a stale
+file. Export never creates a missing database; the
+[catalog service startup](../services/mssql.mdx) owns default database creation.
 
-## Snapshots
+## Inspect a failed database command
+
+Request JSON when you need structured diagnostics:
+
+```sh
+lando db:export backups/app.sql.gz --service database --format=json
+```
+
+Failed service-command transfers report `DataTransferError`; failed SQL actions
+report `SqlCommandFailedError`. When the command supplied them, `exitCode` and
+`stderrTail` preserve its exit status and redacted stderr. The tail is limited to
+8 KiB, including its truncation marker. Oversized unfinished lines may be
+suppressed. A provider failure without an exit status does not invent one.
+Database payloads and stdout are never included in these command failures.
+
+A failed export leaves an existing host destination unchanged. After a snapshot
+is captured, failures during database resume, readiness, import, reset, or restore
+report `recoverySnapshotId` with recovery guidance. Command failures keep their
+tag and diagnostics. A manual snapshot also remains available when restarting
+the database fails; that failure reports the captured snapshot instead of losing
+its handle. Failures outside command execution may use a different error tag.
+Fix the reported problem before retrying. Restore the snapshot only if recovery
+is needed. A failed capture never invents a snapshot ID.
+
+Import and seed stop with the same diagnostics if their emptiness query fails.
+`--yes` skips confirmation, not a failed database check.
+
+## Take and restore a snapshot
 
 Snapshots land in Lando's snapshot store, not next to your dump files. Lando briefly stops a running database before copying or restoring its volume, then starts it and waits until it accepts a SQL command. A database that was already stopped stays stopped.
+
+Each snapshot has an owner recorded from the source volume's physical identity, not just the app name. Lando keeps its catalog entry at `<userDataRoot>/snapshots/<owner-key>/<store>/<id>.json`, with a copy-mode archive beside it or a reference to a native image on the recording provider. There is no separate index. If Lando cannot prove the volume's identity, capture fails before copying data. `db:snapshot` can adopt a legacy database volume after verifying its mounted target.
+
+Take and list the snapshot first. Run `db:restore` only when you intend to replace the current database with the saved state; it is not part of taking a backup.
 
 ```sh
 lando db:snapshot --label before-change
@@ -54,9 +97,9 @@ lando db:snapshots
 lando db:restore before-change --yes
 ```
 
-`db:restore` takes a label or the id `db:snapshots` prints. Labels don't have to be unique. A label on more than one snapshot fails with `SnapshotAmbiguousError` and lists the matching ids, newest first, so pass one of those. A name that matches nothing fails with `SnapshotNotFoundError`.
+`db:restore` takes a label or the id `db:snapshots` prints. Both ids and labels resolve only within the current app, owner, and database store. Labels don't have to be unique. A label on more than one snapshot in that scope fails with `SnapshotAmbiguousError` and lists the matching ids, newest first, so pass one of those. A name that matches nothing in that scope fails with `SnapshotNotFoundError`.
 
-A snapshot restores only into the database volume that took it. Snapshots from another app or checkout don't restore, even when they show up in `db:snapshots --from-app`; move that data with `db:export` and `db:seed <file>`.
+A snapshot restores only into the database volume that took it, with matching owner, service, database family, version, and image. Snapshots from another app or checkout don't restore, even when they show up in `db:snapshots --from-app`. Native snapshots also cannot restore through another provider. Move data across providers with `db:export` on the source, then `db:import` or `db:seed <file>` on the destination.
 
 ## Seed a fresh database
 
@@ -68,7 +111,7 @@ lando start
 lando db:seed --snapshot before-change
 ```
 
-`db:seed` also copies straight from another running Lando app of the same database type. `--from-app` takes the source app's id (its Landofile `name`), `--from-path` takes its folder, and `--from-service` picks the source's database service when it has more than one. Lando streams the dump between the two containers through a checked temp file in its own scratch space; nothing lands in your checkout and credentials stay off the command line:
+`db:seed` also copies straight from another running Lando app of the same database type on the selected provider. The apps can have different owners. `--from-app` takes the source app's id (its Landofile `name`), `--from-path` takes its folder, and `--from-service` picks the source's database service when it has more than one. Lando streams the dump between the two containers through a checked temp file in its own scratch space; nothing lands in your checkout and credentials stay off the command line:
 
 ```sh
 lando db:seed --from-app shop
@@ -77,17 +120,21 @@ lando db:seed --from-path ../shop --from-service database
 
 A dump file works from anywhere on the host, including outside the app root. Seed once: a second `db:seed`, or a seed into a database that already has tables, fails with `SqlSeedStateError`. Use `db:import` to load data into a database that's already in use.
 
+If another service fails after Lando creates the database volume, fix that error and run `lando start` again. You can still use `db:seed` while the database stays fresh and empty. A volume Lando didn't create, or whose creation it couldn't record, isn't eligible.
+
 ```sh
 lando db:seed ../shared/baseline.sql.gz
 ```
 
-Snapshots survive `lando destroy` and `lando destroy --volumes`. Use `lando destroy --purge` to delete this folder's snapshots, including their provider-stored snapshot data. Snapshots from another folder or Git worktree stay put, even when the apps share a name.
+Snapshots survive `lando destroy` and `lando destroy --volumes`. **`lando destroy --purge` deletes this folder's data volumes and catalogued snapshots**, including native data through each snapshot's recording provider. Purge may start a stopped runtime to remove those snapshots. It works even when only ownership inventory remains after an earlier destroy. Snapshots from another folder or Git worktree stay put, even when the apps share a name.
 
-Lando labels native snapshot data so it can find leftovers after an interrupted snapshot write. `lando doctor` reports unindexed images older than one hour; `lando snapshots:gc --prune` removes them. Run `lando snapshots:gc` without `--prune` to inspect them first. Stopped runtimes stay stopped.
+Lando labels native snapshot data so it can find leftovers after a hard process kill before the catalog entry was saved. `lando doctor` reports uncatalogued images after a one-hour grace period. Inspect them with `lando snapshots:gc` first; **`lando snapshots:gc --prune` deletes eligible images**. GC never starts or repairs a runtime. It skips stopped runtimes during discovery; if a runtime stops after the removal recheck, the provider is reported as failed and that deletion is not counted as removed.
+
+Doctor's filesystem-only `legacy-snapshot-catalogs` check lists the count and paths of catalogs written by older development builds. Those snapshots are no longer listed or restorable, but the catalogs still protect their referenced provider images from `lando snapshots:gc`. An unreadable legacy catalog blocks GC rather than risking those images. **Deleting a legacy catalog directory releases that protection so GC can reclaim its images.** Keep the directory if you still need those images. After deleting it, run `lando snapshots:gc` to review eligible images and `lando doctor` to check the remaining catalogs.
 
 Before `db:import`, `db:reset`, or `db:restore` changes your data, Lando takes an automatic recovery snapshot. After a successful operation, Lando keeps the newest 3 recovery snapshots per database automatically, including the one just taken. Failed operations leave every recovery snapshot in place and report the snapshot ID you can restore. Retention stays within this app folder and database; another Git worktree's snapshots stay put.
 
-`lando db:snapshots:prune` handles manual snapshots created by `db:snapshot`, not automatic recovery snapshots. It keeps the newest 3 manual snapshots by default. Removing a snapshot frees its provider storage, not just its entry in the snapshot list. If automatic retention warns that cleanup failed, your database operation still succeeded; older recovery snapshots may remain until a later successful operation retries cleanup.
+`lando db:snapshots:prune` handles manual snapshots created by `db:snapshot`, not automatic recovery snapshots. It keeps the newest 3 manual snapshots by default. Prune and purge delete native data through the recording provider before removing the catalog entry. If deletion fails, the snapshot stays listed so you can retry. If automatic retention warns that cleanup failed, your database operation still succeeded; older recovery snapshots may remain until a later successful operation retries cleanup.
 
 ## Confirm destructive work
 
@@ -114,6 +161,7 @@ lando db:reset --yes
   <Scenario id="ambiguous-service" render={false} reason="Regression for multi-database --service">
     <Step name="import-ambiguous">
       <UseFixture name="two-db" />
+      <Run command="lando start" />
       <Run command="lando db:import dump.sql --format=json" expectExit={1} />
       <Verify errorTag="SqlServiceAmbiguousError" expect={{ regex: "Pass --service" }} />
     </Step>
@@ -125,6 +173,7 @@ lando db:reset --yes
   <Scenario id="restore-unknown-snapshot" render={false} reason="Regression for an unknown snapshot id or label">
     <Step name="restore-unknown">
       <UseFixture name="one-db" />
+      <Run command="lando start" />
       <Run command="lando db:restore no-such-snapshot --yes --format=json" expectExit={1} />
       <Verify errorTag="SnapshotNotFoundError" expect={{ regex: "lando db:snapshots" }} />
     </Step>
@@ -136,6 +185,7 @@ lando db:reset --yes
   <Scenario id="reset-requires-yes" render={false} reason="Regression for reset confirmation">
     <Step name="reset">
       <UseFixture name="one-db" />
+      <Run command="lando start" />
       <Run command="lando db:reset --format=json" expectExit={1} />
       <Verify errorTag="SqlConfirmRequiredError" expect={{ regex: "Reset will destroy" }} />
     </Step>

@@ -7,7 +7,7 @@ tags: [beta, docs, opensearch, service]
 
 # Add OpenSearch
 
-Put `type: opensearch` in your services block. That resolves to `opensearch:2`. Lando pulls `opensearchproject/opensearch:2` and listens on `9200`. OpenSearch is Apache 2.0 licensed, so reach for it when you need an open-source alternative to Elasticsearch's Elastic License v2:
+Add `type: opensearch` under `services` in `.lando.yml`. That resolves to `opensearch:2`. Lando pulls `opensearchproject/opensearch:2` and listens on `9200`. OpenSearch uses the Apache 2.0 license. The default local-development configuration disables the demo security plugin; do not expose it as a production service:
 
 ```yaml
 name: opensearch-demo
@@ -33,10 +33,10 @@ services:
 
 ## Check cluster health
 
-Expose a tooling alias that curls the cluster health endpoint after start to verify the node is reachable:
+After start, query the same cluster-health endpoint that Lando checks inside `search`:
 
 ```sh
-lando os-cli /_cluster/health
+lando exec search -- curl -sf http://localhost:9200/_cluster/health
 ```
 
 A healthy single-node OpenSearch reports `green` or `yellow`.
@@ -57,3 +57,7 @@ services:
 ```
 
 </Guide>
+
+## Next
+
+- [Run Magento Open Source with Mage-OS](./magento.mdx) for a full app that indexes its catalog into OpenSearch

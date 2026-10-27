@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Schema } from "effect";
 
+import { internalErrorRemediation } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { EventService, Renderer } from "@lando/sdk/services";
 
@@ -44,7 +45,7 @@ describe("command result vs message routing under --renderer=json", () => {
         command: "app:info",
         resultSchema: Schema.Struct({ name: Schema.String }),
         io,
-        formatError: String,
+        formatError: ({ error }) => String(error),
       },
     );
 
@@ -120,7 +121,7 @@ describe("command result vs message routing under --renderer=json", () => {
       resultFormat: "json",
       command: "app:start",
       io,
-      formatError: (error) => `diagnostic: ${String(error)}`,
+      formatError: ({ error }) => `diagnostic: ${String(error)}`,
       setExitCode: (code) => {
         exitCode = code;
       },
@@ -128,7 +129,11 @@ describe("command result vs message routing under --renderer=json", () => {
     const envelope = decodeEnvelope(io.stdoutLines()[0] ?? "{}");
     expect(envelope.ok).toBe(false);
     expect(envelope.command).toBe("app:start");
-    expect(envelope.error).toEqual({ _tag: "UnknownError", message: "nope" });
+    expect(envelope.error).toEqual({
+      _tag: "LandoInternalError",
+      message: "nope",
+      remediation: internalErrorRemediation,
+    });
     expect(io.stderr()).toBe("");
     expect(exitCode).toBe(1);
   });

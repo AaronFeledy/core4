@@ -11,6 +11,7 @@ import {
 } from "../commands/doctor-report";
 import { compiledCommandInputFromArgv } from "../compiled-input";
 import {
+  activeCommandId,
   activeDeprecationWarnings,
   activeJq,
   activeProjectResultKeys,
@@ -23,7 +24,7 @@ import {
 } from "../compiled-runtime";
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
 
-export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
+export const runSetup = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
   if (await rejectInvalidInvocation("meta:setup", argv)) return;
   const installDir = dirname(process.execPath);
   const input = compiledCommandInputFromArgv("meta:setup", argv);
@@ -49,6 +50,7 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       ...(projectResultKeys === undefined ? {} : { projectResultKeys }),
       ...(jqExpression === undefined ? {} : { jqExpression }),
       command: setupSpec.id,
+      ...(signal === undefined ? {} : { signal }),
       invocation: getActiveCommandInvocation() ?? {
         commandId: setupSpec.id,
         argv: input.argv,
@@ -59,8 +61,8 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       resultSchema: setupSpec.resultSchema,
       deprecationWarnings: activeDeprecationWarnings,
       render: (value, ctx) => setupSpec.render?.(value, undefined, ctx),
-      formatError: (error) => {
-        const message = commandErrorMessage(error);
+      formatError: (failure, redactor) => {
+        const message = commandErrorMessage(failure, activeCommandId, redactor);
         return activeRendererMode === "json" ? message : `${message}\nLANDO_INSTALL_DIR="${installDir}"`;
       },
     },

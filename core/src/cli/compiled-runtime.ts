@@ -1,3 +1,5 @@
+import type { CompletedCommandResult } from "@lando/sdk/command-result";
+import type { CommandCompletion } from "@lando/sdk/schema";
 import type { Effect, Layer, Schema, Tracer } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
@@ -5,6 +7,7 @@ import type { EventService, Renderer } from "@lando/sdk/services";
 
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "@lando/engine/runtime/cli-options";
+import { defaultInterruptSignals } from "@lando/engine/runtime/process-signals";
 import "../runtime/bundled-plugins";
 import { makeLandoRuntime } from "../runtime/layer";
 
@@ -92,7 +95,8 @@ export const runCompiledCommand = <A, E, R, RE>(
   options: {
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
-    readonly successExitCode?: (value: A) => number | undefined;
+    readonly completion?: (value: A) => CommandCompletion;
+    readonly renderEffect?: (completed: CompletedCommandResult<A>) => Effect.Effect<void, unknown, R>;
     readonly failureExitCode?: (error: unknown) => number | undefined;
     readonly resultSchema?: Schema.Codec<unknown, unknown>;
     readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
@@ -101,19 +105,24 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly io?: RendererIO;
     readonly runtimeForBootstrap?: CompiledRuntimeFactory;
     readonly tracer?: Tracer.Tracer;
+    readonly signal?: AbortSignal;
   } = {},
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
   const effectiveRuntime =
-    spec?.bootstrap === undefined
+    spec?.bootstrap === undefined ||
+    activeCommandId === "meta:config" ||
+    activeCommandId === "meta:doctor" ||
+    activeCommandId === "meta:uninstall"
       ? runtime
       : resolveCompiledCommandRuntime(activeCommandId, spec.bootstrap, runtime, options.runtimeForBootstrap);
   const redactionTokens = options.redactionTokens ?? spec?.redactionTokens;
-  const successExitCode =
-    options.successExitCode ??
-    (spec?.successExitCode === undefined
+  const specCompletion = spec?.completion;
+  const completion =
+    options.completion ??
+    (specCompletion === undefined
       ? undefined
-      : (value: A) => spec.successExitCode?.(value, getActiveCommandInvocation()));
+      : (value: A) => specCompletion(value, getActiveCommandInvocation()));
   const invocation = getActiveCommandInvocation();
   const projectResultKeys = activeProjectResultKeys();
   const jqExpression = activeJq;
@@ -147,11 +156,16 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(documentOutput ? { documentOutput: true } : {}),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
-    ...(successExitCode === undefined ? {} : { successExitCode }),
+    ...(completion === undefined ? {} : { completion }),
+    ...(options.renderEffect === undefined ? {} : { renderEffect: options.renderEffect }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     ...(options.io === undefined ? {} : { io: options.io }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
     render,
-    formatError: (error: unknown) => commandErrorMessage(error),
+    formatError: (
+      failure: import("@lando/sdk/command-result").ProjectedFailure,
+      redactor: import("@lando/sdk/secrets").Redactor,
+    ) => commandErrorMessage(failure, activeCommandId, redactor),
     ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
   const selection = activeTrace();
@@ -175,15 +189,21 @@ export const runCompiledCommand = <A, E, R, RE>(
 
 export const runWithProcessAbortSignal = async (
   run: (signal: AbortSignal) => Promise<void>,
+  options: { readonly signal?: AbortSignal } = {},
 ): Promise<void> => {
+  if (options.signal !== undefined) {
+    if (!options.signal.aborted) await run(options.signal);
+    return;
+  }
   const controller = new AbortController();
-  const abort = () => controller.abort();
-  (process as NodeJS.EventEmitter).once("SIGINT", abort);
-  (process as NodeJS.EventEmitter).once("SIGTERM", abort);
+  const handlers = defaultInterruptSignals().map((signal) => {
+    const abort = () => controller.abort(signal);
+    (process as NodeJS.EventEmitter).on(signal, abort);
+    return { signal, abort };
+  });
   try {
     await run(controller.signal);
   } finally {
-    (process as NodeJS.EventEmitter).off("SIGINT", abort);
-    (process as NodeJS.EventEmitter).off("SIGTERM", abort);
+    for (const { signal, abort } of handlers) (process as NodeJS.EventEmitter).off(signal, abort);
   }
 };

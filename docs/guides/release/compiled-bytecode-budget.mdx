@@ -8,26 +8,30 @@ tags: [beta, docs, release]
 
 # Release compiled bytecode budget
 
-Release binaries use Bun bytecode. The reference `linux-x64` build has a ten-minute
-cold-build budget; exceeding it fails the release with `ReleaseCompileBudgetError`.
+Release binaries use Bun bytecode, with a ten-minute cold-build budget enforced
+on the reference `linux-x64` target. This page describes the release contract,
+not a command to compile every target locally.
 
 ## Bytecode compile budget
 
-Stage 7 compiles the canonical CLI entry, `./core/bin/lando.ts`, through
-`scripts/build-compiled-binary.ts`. The wrapper enables the equivalent of
-`--compile --bytecode` for every release target.
-
-Use Bun 1.4.3 or newer; `.bun-version` pins the CI compiler. The release targets
-are `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`,
-and `windows-arm64`. Windows release binaries must be compiled on a Windows
-host so Bun embeds the Lando icon and Windows version information. See
-[Platform scope](../../contributing/release.md#platform-scope) before choosing
-a target.
-
-The orchestrator logs each target's compile duration and the `600000ms` budget.
-Only the `linux-x64` reference target enforces that limit. The log confirms
-compilation, not completion of later signing stages; local rehearsals can skip
-those stages with warnings when credentials are missing.
-
-Release-orchestrator tests inject the runner and clock to check this contract
+Release-orchestrator tests inject the runner and clock to check the budget
 without compiling every platform binary during docs tests.
+
+Stage 7 compiles the canonical CLI entry (`./core/bin/lando.ts`).
+
+Every release binary is compiled with Bun bytecode enabled. Windows targets must compile on a Windows host so Bun embeds the Lando icon and Windows version info. See [Platform scope](../../contributing/release.md#platform-scope) for target selection. Use Bun 1.4.3 or newer; `.bun-version` pins the CI compiler.
+
+```sh
+--compile --bytecode
+```
+
+Compile targets match the Beta 1 CI platform ids (`darwin-arm64,darwin-x64,linux-arm64,linux-x64,windows-x64,windows-arm64`).
+
+The reference cold-build budget is enforced on linux-x64.
+
+A linux-x64 compile over 10 minutes fails the release with a tagged budget error (`600000ms`).
+
+Local rehearsal prints the compile duration before later signing stages are
+skipped with warnings when credentials are missing. The log includes the target,
+elapsed milliseconds, and the `600000ms` budget; it is not evidence that signing
+completed.

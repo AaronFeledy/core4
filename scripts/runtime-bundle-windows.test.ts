@@ -20,7 +20,7 @@ test("pins both Windows machine API forwarding helpers beside Podman", async () 
 
 test("pins Windows x64 Podman remote with WSL port forwarding support", async () => {
   const sources = await readRuntimeBundleSources();
-  expect(sources.runtimeVersion).toBe("0.1.6");
+  expect(sources.runtimeVersion).toBe("0.1.7");
   const podman = sources.bundles["win32-x64"]?.components.find((component) => component.name === "podman");
   expect(podman !== undefined && "version" in podman ? podman.version : undefined).toBe("6.1.2");
   expect(podman !== undefined && "url" in podman ? podman.url : undefined).toBe(

@@ -4,6 +4,7 @@ import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import type { RebuildAppResult } from "@lando/sdk/app";
 import { renderRebuildAppResult } from "../../src/cli/commands/rebuild.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
+import { connections } from "./connection-fixtures";
 
 const result: RebuildAppResult = {
   app: "windows-cms-final",
@@ -12,9 +13,15 @@ const result: RebuildAppResult = {
     {
       name: "appserver",
       state: "running",
-      endpoints: ["https://windows-cms-final.lndo.site:444", "http://windows-cms-final.lndo.site:8080"],
+      connections: [
+        ...connections([
+          "https://windows-cms-final.lndo.site:444",
+          "http://windows-cms-final.lndo.site:8080",
+        ]),
+        ...connections(["http://appserver:80"], "app"),
+      ],
     },
-    { name: "database", state: "running", endpoints: [] },
+    { name: "database", state: "running", connections: connections(["tcp://database:3306"], "app") },
   ],
 };
 
@@ -25,9 +32,11 @@ describe("rebuild result rendering", () => {
     const output = renderRebuildAppResult(result, decorated);
     const visible = stripAnsi(output);
     expect(visible).toContain("\nRebuilt\n  windows-cms-final is ready");
-    expect(visible).toContain("URLs\n");
+    expect(visible).toContain("Host\n");
     expect(visible).toContain("https://windows-cms-final.lndo.site:444");
-    expect(visible).toContain("Services\n  appserver  running\n  database  running");
+    expect(visible).toContain(
+      "Services\n  appserver  running\n    App Network : http://appserver:80\n  database  running\n    App Network : tcp://database:3306",
+    );
     expect(visible).toContain("Next\n  lando info");
     expect(visible).not.toContain("no endpoints");
     for (const line of output.split("\n")) expect(displayWidth(line)).toBeLessThanOrEqual(80);
@@ -35,7 +44,7 @@ describe("rebuild result rendering", () => {
 
   test("preserves plain text for non-TTY output", () => {
     expect(renderRebuildAppResult(result)).toBe(
-      "rebuilt: windows-cms-final - appserver (running) https://windows-cms-final.lndo.site:444, http://windows-cms-final.lndo.site:8080; database (running) no endpoints",
+      "rebuilt: windows-cms-final - appserver (running) Host: https://windows-cms-final.lndo.site:444, http://windows-cms-final.lndo.site:8080 App Network: http://appserver:80; database (running) App Network: tcp://database:3306",
     );
   });
 });

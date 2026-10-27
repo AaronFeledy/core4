@@ -1,3 +1,5 @@
+import { type DiscoveryOperation, runDiscoveryOperation } from "@lando/landofile/operation-scope";
+import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
 import { Cause, Effect, Exit, Layer } from "effect";
 
 import {
@@ -67,6 +69,7 @@ import {
 } from "./format-flags";
 import { install as installCompiledDecoders } from "./generated/compiled-decoders.mjs";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
+import { interruptOnAbort } from "./interrupt-on-abort";
 import { resolveLogLevel } from "./log-level-selection";
 import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
@@ -140,14 +143,16 @@ const HELP_SPECIAL_FLAGS = {
 
 const readAppCommandCacheOrNull = async () => {
   const exit = await Effect.runPromiseExit(Effect.result(readFreshAppCommandCacheForCwd()));
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  if (Exit.isFailure(exit)) throw exit.cause;
   const cache = exit.value;
   return cache._tag === "Success" ? cache.success : null;
 };
 
-const resolveToolingRouteExit = async (token: string | undefined) => {
-  const exit = await Effect.runPromiseExit(Effect.result(resolveToolingRoute(token)));
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+const resolveToolingRouteExit = async (token: string | undefined, signal?: AbortSignal) => {
+  const exit = await Effect.runPromiseExit(
+    interruptOnAbort(Effect.result(resolveToolingRoute(token)), signal),
+  );
+  if (Exit.isFailure(exit)) throw exit.cause;
   return exit.value;
 };
 
@@ -214,7 +219,8 @@ const dispatchHelpTarget = async (token: string): Promise<void> => {
   await failUnknownCommand(token);
 };
 
-const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
+const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
+  if (signal?.aborted) return;
   installCompiledDecoders(COMPILED_DECODER_ASTS);
   if (rawArgv[0] === AGENT_RELAY_WORKER_COMMAND) {
     setActiveLogLevel("none");
@@ -235,7 +241,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     rawEntry?.spec.id !== rawHead &&
     !rawHead.startsWith("-") &&
     (rawEntry !== undefined || !isReservedNamespaceHead(rawHead))
-      ? await resolveToolingRouteExit(rawHead)
+      ? await resolveToolingRouteExit(rawHead, signal)
       : undefined;
   const isBunOrXAlias =
     passthroughAliasResolution?._tag === "Success" &&
@@ -373,7 +379,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     (passthroughAliasResolution !== undefined || !isReservedNamespaceHead(argv[0]))
   ) {
     const argvTail = argv.slice(1);
-    const aliasResolution = passthroughAliasResolution ?? (await resolveToolingRouteExit(argv[0]));
+    const aliasResolution = passthroughAliasResolution ?? (await resolveToolingRouteExit(argv[0], signal));
     if (aliasResolution._tag === "Failure") {
       await renderAliasResolutionFailure(aliasResolution.failure);
       return;
@@ -389,11 +395,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     } else if (toolingHelpRequested(route, argvTail)) {
       await dispatchHelpTarget(route.commandId);
       return;
-    } else if (await routeResolvedTooling(route, argvTail)) {
+    } else if (await routeResolvedTooling(route, argvTail, signal)) {
       return;
     }
     if (builtInCommand === undefined) builtInCommand = resolveBuiltInCommand(argv[0]);
   }
+  if (signal?.aborted) return;
   const canonicalCommandId = builtInCommand?.spec.id ?? argv[0] ?? "cli:unknown";
   if (builtInCommand !== undefined) argv = [canonicalCommandId, ...argv.slice(1)];
   if (canonicalCommandId === "apps:scratch:start" && argv[0] !== undefined) {
@@ -447,6 +454,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     const versionSpec = resolveBuiltInCommand("meta:version")?.spec;
     if (await rejectUnsupportedResultFormat("meta:version", versionSpec)) return;
     if (await emitJsonListModeIfRequested(versionSpec?.resultSchema)) return;
+    if (signal?.aborted) return;
     await runMetaVersion();
     return;
   }
@@ -471,30 +479,31 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     if (await emitJsonListModeIfRequested(found[1].resultSchema)) return;
   }
 
+  if (signal?.aborted) return;
   if (builtInCommand?.status.kind === "deferred") {
     const error = notImplementedErrorForCommand(builtInCommand.spec.id);
     if (isEnvelopeResultFormat(activeResultFormat)) {
       await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined);
       return;
     }
-    await emitDiagnosticLine(commandErrorMessage(error));
+    await emitDiagnosticLine(commandErrorMessage({ error, additionalErrors: [] }));
     process.exitCode = 1;
     return;
   }
 
   if (found === undefined) {
     const token = argv[0] ?? "";
-    if (await tryPluginOwnedCommand(token, argv.slice(1))) return;
+    if (await tryPluginOwnedCommand(token, argv.slice(1), signal)) return;
     await failUnknownCommand(token);
     return;
   }
 
   if (builtInCommand?.status.kind === "embedding-exempt") {
-    await runNativeOnlyBuiltIn(builtInCommand, argv.slice(1));
+    await runNativeOnlyBuiltIn(builtInCommand, argv.slice(1), signal);
     return;
   }
   if (builtInCommand !== undefined) {
-    await runBuiltInCommand(builtInCommand, argv.slice(1));
+    await runBuiltInCommand(builtInCommand, argv.slice(1), signal);
     return;
   }
 
@@ -504,6 +513,36 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 export interface RunCliOptions {
   readonly argv: ReadonlyArray<string>;
   readonly rootUrl: string;
+  readonly discovery?: DiscoveryOperation;
+  readonly signal?: AbortSignal;
 }
 
-export const runCli = (options: RunCliOptions): Promise<void> => runCompiledCli(options.argv);
+export const runCli = async (options: RunCliOptions): Promise<void> => {
+  if (options.signal?.aborted) return;
+  try {
+    await runDiscoveryOperation(
+      options.discovery ?? { cwd: process.cwd(), resolver: makeAppDiscoveryResolver() },
+      () => runCompiledCli(options.argv, options.signal),
+    );
+  } catch (error) {
+    const cause = Cause.isCause(error) ? error : Cause.die(error);
+    if (options.signal?.aborted && Cause.hasInterruptsOnly(cause)) return;
+    const logLevel = Effect.runSync(
+      Effect.result(
+        Effect.try({
+          try: () => resolveLogLevel({ argv: options.argv, env: process.env }),
+          catch: (selectionError) => selectionError,
+        }),
+      ),
+    );
+    if (logLevel._tag === "Success" && logLevel.success.source !== "default") {
+      setActiveLogLevel(logLevel.success.level);
+    }
+    const output = preCommandOutputMode({ argv: options.argv, env: process.env });
+    setActiveRendererMode(output.rendererMode);
+    if (output.resultFormat !== undefined) setActiveResultFormat(output.resultFormat);
+    await runCompiledCommand(Effect.failCause(cause), Layer.empty, () => undefined, {
+      preCommand: true,
+    });
+  }
+};

@@ -10,7 +10,7 @@ import {
 } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
 import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
-import { renderConfigLintViolation } from "./config-lint-rendering";
+import { renderConfigLintViolations } from "./config-lint-rendering";
 import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
 import type { DoctorSelfReport } from "./doctor-self";
 export { renderDoctorReportAsNdjson } from "./doctor-report-ndjson";
@@ -203,15 +203,21 @@ const appConfigSection = (
   result: ConfigLintResult,
   options: DoctorRenderOptions,
 ): SummarySection | undefined => {
-  if (result.valid) {
+  if (result.valid && result.violations.length === 0) {
     return options.all === true
       ? { title: "app config", rows: [{ label: "lint", tone: "ok", value: "pass" }] }
       : undefined;
   }
   return {
     title: "app config",
-    rows: [{ label: "lint", tone: "error", fields: [{ label: "file", value: result.file }] }],
-    notes: result.violations.map(renderConfigLintViolation),
+    rows: [
+      {
+        label: "lint",
+        tone: result.valid ? "warn" : "error",
+        fields: [{ label: "file", value: result.file }],
+      },
+    ],
+    notes: renderConfigLintViolations(result.violations),
   };
 };
 
@@ -262,6 +268,7 @@ export const countDoctorChecks = (
 } => {
   const checks = allChecks(report);
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
+  const appConfigWarned = report.appConfig?.violations.some((issue) => issue.severity === "warning") === true;
   const selfChecks = report.self?.checks ?? [];
   const deprecations = report.deprecations?.entries ?? [];
   const deprecationWarnings = deprecations.filter((entry) => entry.severity === "warn").length;
@@ -269,13 +276,17 @@ export const countDoctorChecks = (
   return {
     checks: checks.length + (report.appConfig === undefined ? 0 : 1) + selfChecks.length,
     passed:
-      checks.filter((check) => check.status === "pass").length + (report.appConfig?.valid === true ? 1 : 0),
+      checks.filter((check) => check.status === "pass").length +
+      (report.appConfig?.valid === true && !appConfigWarned ? 1 : 0),
     failed:
       checks.filter((check) => check.status === "fail").length +
       (appConfigInvalid ? 1 : 0) +
       selfChecks.length +
       deprecationErrors,
-    warned: checks.filter((check) => check.status === "warn").length + deprecationWarnings,
+    warned:
+      checks.filter((check) => check.status === "warn").length +
+      deprecationWarnings +
+      (appConfigWarned ? 1 : 0),
   };
 };
 
@@ -337,6 +348,35 @@ export const buildDoctorReportSummary = (
   const push = (section: SummarySection | undefined): void => {
     if (section !== undefined) sections.push(section);
   };
+  if (report.globalConfig !== undefined)
+    push({
+      title: "global-config",
+      rows: [
+        {
+          label: "global-config",
+          value: report.globalConfig.status,
+          tone: report.globalConfig.status === "pass" ? "ok" : "error",
+        },
+      ],
+      ...(report.globalConfig.error === undefined
+        ? {}
+        : {
+            notes: [
+              report.globalConfig.error.message,
+              report.globalConfig.error.remediation ?? "lando config validate",
+            ],
+          }),
+    });
+  if (report.skipped !== undefined)
+    push({
+      title: "skipped",
+      rows: report.skipped.map((entry) => ({
+        label: entry.section,
+        value: "SKIPPED",
+        tone: "skipped",
+        fields: [{ label: "reason", value: entry.reason }],
+      })),
+    });
   push(checkSection("provider", report.provider.checks, options));
   push(checkSection("subsystems", report.subsystems.checks, options));
   push(checkSection("global app", report.globalApp.checks, options));
@@ -405,8 +445,12 @@ const renderSelfSection = (report: DoctorSelfReport): string => {
 };
 
 const renderAppConfigSection = (result: ConfigLintResult): string => {
-  const lines = [`app-config-lint: ${result.valid ? "pass" : "fail"}`, `file: ${result.file}`];
-  lines.push(...result.violations.map(renderConfigLintViolation));
+  const warned = result.violations.some((issue) => issue.severity === "warning");
+  const lines = [
+    `app-config-lint: ${result.valid ? (warned ? "warn" : "pass") : "fail"}`,
+    `file: ${result.file}`,
+  ];
+  lines.push(...renderConfigLintViolations(result.violations));
   return lines.join("\n");
 };
 
@@ -432,6 +476,18 @@ export const renderDoctorReport = (
   const version = report.version === undefined || report.version === "" ? "" : `version: ${report.version}`;
   const parts = [
     version,
+    ...(report.globalConfig === undefined
+      ? []
+      : [
+          `global-config: ${report.globalConfig.status}`,
+          ...(report.globalConfig.error === undefined
+            ? []
+            : [
+                report.globalConfig.error.message,
+                report.globalConfig.error.remediation ?? "lando config validate",
+              ]),
+        ]),
+    ...(report.skipped ?? []).map((entry) => `${entry.section}: SKIPPED · ${entry.reason}`),
     provider,
     subsystems,
     globalApp,

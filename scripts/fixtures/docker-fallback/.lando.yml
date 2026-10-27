@@ -1,0 +1,11 @@
+name: docker-fallback
+services:
+  web:
+    type: compose
+    image: nginx:1.27-alpine
+    primary: true
+    ports:
+      - "80"
+proxy:
+  web:
+    - docker-fallback.lndo.site

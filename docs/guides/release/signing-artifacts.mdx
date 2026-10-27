@@ -8,9 +8,13 @@ tags: [beta, docs, release, signing]
 
 # Signing release artifacts
 
-Platform signing breaks down like this:
+Release signing uses different tools for each platform:
 
-- **macOS** — Developer ID, `notarytool`, and `stapler`.
-- **Windows** — Authenticode `signtool` plus keyless `cosign`.
-- **Linux** — GPG/cosign checksum manifests.
+| Platform | Signing tools or artifacts |
+| --- | --- |
+| macOS | Developer ID, `notarytool`, and `stapler` |
+| Windows | Authenticode `signtool` plus keyless `cosign` |
+| Linux | GPG/cosign checksum manifests |
 
+For the release procedure and credentials, use
+[the contributor release workflow](../../contributing/release.md).

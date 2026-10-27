@@ -9,12 +9,16 @@ import type {
 import type {
   AbsoluteContainerPath,
   ContainerUser,
+  DatabaseConnection,
+  HostPlatform,
   LogSource,
   PlanMetadata,
   PluginManifest,
   ProviderCapabilities,
   ProviderId,
   ServiceConfig,
+  ServiceCreds,
+  ServiceName,
   ToolingTaskShape,
 } from "../schema/index.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
@@ -24,6 +28,14 @@ export class PluginRegistry extends Context.Service<
   PluginRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<PluginManifest>, PluginManifestError>;
+    /**
+     * A provider's capabilities declared offline for the given host, without constructing the provider.
+     * Undefined when the provider contributes no offline declaration.
+     */
+    readonly declaredProviderCapabilities?: (
+      id: ProviderId,
+      platform: HostPlatform,
+    ) => ProviderCapabilities | undefined;
     readonly load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>;
     readonly loadServiceType: (
       id: string,
@@ -103,6 +115,8 @@ export interface FeatureRef {
  * A service type MUST NOT hand-build a `ServicePlan`.
  */
 export interface ServiceTypeResolution {
+  readonly connection?: DatabaseConnection;
+  readonly nonSqlCreds?: ServiceCreds;
   readonly base: "l337" | "lando";
   readonly normalizedConfig: ServiceConfig;
   readonly features: ReadonlyArray<FeatureRef>;
@@ -113,6 +127,13 @@ export interface ServiceTypeResolution {
    * service/directory values and merge below environment/variable keys.
    */
   readonly tooling?: Readonly<Record<string, ToolingTaskShape>>;
+  /**
+   * Generated connection-client task names. Omission seeds from this declaration's
+   * own factory; an explicit array suppresses seeding. Inheritance retains parent
+   * claims except tasks explicitly contributed by a child, unless reauthorized.
+   * Composed resolutions always carry an explicit array, including empty claims.
+   */
+  readonly connectionClientNames?: readonly string[];
   readonly metadata?: Record<string, unknown>;
 }
 
@@ -128,6 +149,9 @@ export interface ServiceImageIdentity {
   readonly defaultUser: ContainerUser;
   /** Home directory per user principal, keyed without any `:group` suffix. */
   readonly homes: Readonly<Record<string, AbsoluteContainerPath>>;
+  /** Principals whose passwd home the image does not create or give to that user.
+   * Lando creates and owns it in a root build step so a fresh home store seeds correctly. */
+  readonly preparedHomes?: ReadonlyArray<string>;
 }
 
 /**
@@ -144,6 +168,10 @@ export interface ServiceType {
   readonly extends?: string;
   readonly artifacts?: Readonly<Record<string, string>>;
   readonly identity?: ServiceImageIdentity;
+  readonly toolingForConnection?: (
+    name: ServiceName,
+    connection: DatabaseConnection,
+  ) => Readonly<Record<string, ToolingTaskShape>>;
   readonly projectFiles?: (service: ServiceConfig) => ReadonlyArray<ServiceTypeProjectFileDeclaration>;
   readonly schema: Schema.Codec<unknown, unknown>;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;

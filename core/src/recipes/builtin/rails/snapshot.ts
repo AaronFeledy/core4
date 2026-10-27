@@ -6,7 +6,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { RAILS_GEMFILE } from "./scaffold.ts";
 
 export const RAILS_RECIPE_VERSION = "0.1.0";
-export const RAILS_CONTENT_DIGEST = "sha256:69ccb9f104fce3c49f12c08c7e2b2abe6bcc9ba28755e92f5aae9dbfc41cee1d";
+export const RAILS_CONTENT_DIGEST = "sha256:dfdcaac443cabe74d0f0f5b3d8b8cf8711495be0ea3a0cee2f01a68921b16903";
 export const railsProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-rails",
@@ -41,7 +41,7 @@ export const railsSnapshot: RecipeSnapshot = {
                   [
                     "DATABASE_URL",
                     lit(
-                      "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+                      "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
                     ),
                   ],
                   ["REDIS_URL", lit("redis://cache:6379")],

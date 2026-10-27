@@ -1,3 +1,4 @@
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { Effect, Schema, type Scope } from "effect";
 
 import type { AppPlanResolutionError, ShareAppError } from "@lando/sdk/app";
@@ -10,6 +11,7 @@ import {
   TunnelStopRequest,
   TunnelTarget,
   type TunnelTarget as TunnelTargetType,
+  selectHttpEndpoint,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -108,7 +110,7 @@ const resolvePlan = Effect.fnUntraced(function* (
   const landofileService = yield* LandofileService;
   const registry = yield* RuntimeProviderRegistry;
   const planner = yield* AppPlanner;
-  const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? process.cwd());
+  const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? (yield* discoveryCwd()));
   const capabilities = yield* registry.capabilities;
   return yield* planner.plan(landofile, capabilities);
 });
@@ -118,9 +120,21 @@ const resolvePlan = Effect.fnUntraced(function* (
  * router publishes it, so a disabled router shares the app itself instead.
  */
 export const defaultTunnelTarget = (plan: AppPlan): TunnelTargetType => {
-  const firstRoute = routerEnabled(plan) ? plan.routes[0] : undefined;
-  if (firstRoute !== undefined)
-    return { _tag: "route", routeId: firstRoute.hostname, hostname: firstRoute.hostname };
+  const routes = routerEnabled(plan) ? plan.routes : [];
+  const primary = Object.values(plan.services).find((service) => service.primary);
+  const endpoint = primary === undefined ? undefined : selectHttpEndpoint(primary.endpoints);
+  const preferred =
+    endpoint?.status === "selected" && primary !== undefined
+      ? routes.filter(
+          (route) =>
+            route.service === primary.name &&
+            route.backend.port === endpoint.endpoint.port &&
+            route.backend.protocol === endpoint.endpoint.protocol,
+        )
+      : [];
+  const candidates = preferred.length > 0 ? preferred : routes;
+  const route = candidates.length === 1 ? candidates[0] : undefined;
+  if (route !== undefined) return { _tag: "route", routeId: route.hostname, hostname: route.hostname };
   return { _tag: "route", routeId: plan.id };
 };
 

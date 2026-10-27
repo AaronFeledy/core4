@@ -15,7 +15,6 @@ services:
   appserver:
     type: compose
     image: dunglas/frankenphp:1.12.7-php8.4
-    home: false
     ports:
       - 9080:9080
     environment:
@@ -28,8 +27,6 @@ tooling:
     service: appserver
     cmd: frankenphp
 ```
-
-Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](../home-and-host/).
 
 `SERVER_NAME: ":9080"` tells FrankenPHP (Caddy) to listen for HTTP on container port `9080`. The short port form publishes that port on the host. Drop a page at `public/index.php`, then start:
 
@@ -65,7 +62,7 @@ On the 2026-10-01 live check, `lando php -v` printed `PHP 8.4.26 (cli)` and `lan
 
 ## Add Composer with a Dockerfile
 
-The stock `dunglas/frankenphp` image does not ship Composer. Bake it in with a tiny Dockerfile, then point the service at `build:` instead of `image:`:
+The stock `dunglas/frankenphp` image does not ship Composer. Save the following `Dockerfile` in the app root to add Composer, then replace the service's `image:` with `build: .` in `.lando.yml`:
 
 ```dockerfile
 FROM dunglas/frankenphp:1.12.7-php8.4
@@ -77,7 +74,6 @@ services:
   appserver:
     type: compose
     build: .
-    home: false
     ports:
       - 9080:9080
     environment:
@@ -99,7 +95,7 @@ lando start
 lando composer --version
 ```
 
-On the 2026-10-01 live check, `lando composer --version` printed `Composer version 2.10.3` (the `composer:2` tag can float the patch). Rebuild after Dockerfile changes so the new layer lands.
+On the 2026-10-01 live check, `lando composer --version` printed `Composer version 2.10.3` (the `composer:2` tag can float the patch). Dockerfile changes land as a new layer on the next `lando start`. Use `lando rebuild` when you want to force a pull and build refresh, including floating tags.
 
 ## Pin a FrankenPHP and PHP version
 
@@ -151,7 +147,7 @@ From another service, call that URL. Do not use `localhost` inside another conta
   </Scenario>
 </Guide>
 
-`lando destroy -y` removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes containers and networks. Named volumes stay unless you pass `--volumes` or `--purge`.
 
 ## Next
 

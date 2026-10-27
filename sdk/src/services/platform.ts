@@ -2,6 +2,7 @@ import { Context, type Effect, type Scope } from "effect";
 import type { AppId } from "../schema/primitives.ts";
 
 import type {
+  AppPlacementError,
   CaError,
   HealthcheckError,
   HealthcheckTimeoutError,
@@ -26,6 +27,7 @@ import type {
   ProxyCapabilities,
   ProxyConfig,
   ProxyStatus,
+  RouteEvidence,
   RoutePlan,
   ScanVerdict,
   ServiceName,
@@ -68,7 +70,10 @@ export class RouterService extends Context.Service<
     /** Resolve and persist route publication ports before starting required global services. */
     readonly prepare?: (
       config: ProxyConfig,
-    ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>;
+    ) => Effect.Effect<
+      void,
+      AppPlacementError | ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch
+    >;
     readonly setup: (
       config: ProxyConfig,
       options?: {
@@ -78,7 +83,7 @@ export class RouterService extends Context.Service<
       },
     ) => Effect.Effect<
       void,
-      ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
+      AppPlacementError | ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
       Scope.Scope
     >;
     /**
@@ -92,6 +97,10 @@ export class RouterService extends Context.Service<
       appId: AppId,
     ) => Effect.Effect<ProxyApplyResult, ProxyApplyError>;
     readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
+    readonly observeRoutes: (
+      app: AppId,
+      requestedRoutes: ReadonlyArray<RoutePlan>,
+    ) => Effect.Effect<RouteEvidence, ProxyError>;
     readonly status: Effect.Effect<ProxyStatus, ProxyError>;
     readonly stop: Effect.Effect<void, ProxyError>;
   }
@@ -137,6 +146,7 @@ export class HealthcheckRunner extends Context.Service<
       plan: HealthcheckPlan,
       appId: AppId,
       service: ServiceName,
+      appPlan?: AppPlan,
     ) => Effect.Effect<HealthcheckResult, HealthcheckRunError>;
   }
 >()("@lando/core/HealthcheckRunner") {}

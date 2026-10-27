@@ -3,7 +3,7 @@ import { Effect } from "effect";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, landoNetworkingPlan } from "@lando/sdk/schema";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 import { savePublishedContainerReceipt } from "../src/windows-nft-receipt.ts";
@@ -67,33 +67,77 @@ test("refreshes published ownership after start and restart but not stop", async
     expect(events).toEqual(action === "stop" ? ["stop"] : [action, "reconcile"]);
   }
 });
-test("limits optional recovery to managed global loopback TCP publications", () => {
+test("limits optional recovery to shared-only loopback TCP publications", () => {
+  const networking = landoNetworkingPlan({
+    slug: "any-app-id",
+    serviceNames: [],
+    perAppBridge: false,
+    sharedCrossAppNetwork: true,
+  });
   const endpoint = {
-    _tag: "published",
+    _tag: "published" as const,
     protocol: "http",
+    port: 80,
     publication: { bindAddress: "127.0.0.1" },
-  };
-  expect(supportsWindowsPublishedRecovery({ appId: "global", endpoints: [endpoint] })).toBe(true);
+  } as const;
+  const attachments = [{ name: "shared", aliases: [] }];
+  expect(supportsWindowsPublishedRecovery({ networking, attachments, endpoints: [endpoint] })).toBe(true);
   expect(
     supportsWindowsPublishedRecovery({
-      appId: "global",
+      networking,
+      attachments,
       endpoints: [{ ...endpoint, publication: { bindAddress: "0.0.0.0" } }],
     }),
   ).toBe(false);
   expect(
     supportsWindowsPublishedRecovery({
-      appId: "global",
+      networking,
+      attachments,
       endpoints: [{ ...endpoint, protocol: "udp" }],
     }),
   ).toBe(false);
   expect(
     supportsWindowsPublishedRecovery({
-      appId: "global",
-      networks: { one: {}, two: {} },
+      networking,
+      attachments: [...attachments, { name: "authored", aliases: [] }],
       endpoints: [endpoint],
     }),
   ).toBe(false);
-  expect(supportsWindowsPublishedRecovery({ appId: "user-app", endpoints: [endpoint] })).toBe(false);
+  expect(
+    supportsWindowsPublishedRecovery({
+      networking: { ...networking, perAppBridge: { name: "private" } },
+      attachments,
+      endpoints: [endpoint],
+    }),
+  ).toBe(false);
+  expect(
+    supportsWindowsPublishedRecovery({ networking: undefined, attachments, endpoints: [endpoint] }),
+  ).toBe(false);
+});
+test("treats internal facets of a published listener as the same physical publication", () => {
+  // Given a published listener that the normalizer also retains as an internal named facet.
+  const networking = landoNetworkingPlan({
+    slug: "any-app-id",
+    serviceNames: [],
+    perAppBridge: false,
+    sharedCrossAppNetwork: true,
+  });
+  const published = {
+    _tag: "published",
+    protocol: "http",
+    port: 80,
+    publication: { bindAddress: "127.0.0.1" },
+  } as const;
+  const facet = { _tag: "internal", protocol: "http", port: 80, name: "web" } as const;
+  const internalOnly = { _tag: "internal", protocol: "tcp", port: 9000 } as const;
+  // When / Then only an unpublished physical listener disables recovery.
+  const attachments = [{ name: "shared", aliases: [] }];
+  expect(supportsWindowsPublishedRecovery({ networking, attachments, endpoints: [facet, published] })).toBe(
+    true,
+  );
+  expect(
+    supportsWindowsPublishedRecovery({ networking, attachments, endpoints: [published, internalOnly] }),
+  ).toBe(false);
 });
 test("uses strict Docker-compatible network responses from the production endpoint", () => {
   expect(WINDOWS_COMPAT_NETWORK_LIST_PATH).toBe("/networks");

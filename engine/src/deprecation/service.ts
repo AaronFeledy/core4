@@ -18,6 +18,19 @@ interface DeprecationState {
 
 const deprecationKey = (kind: DeprecationSurfaceKind, id: string): DeprecationKey => `${kind}:${id}`;
 
+const deprecatedSurfaceRemediation = (use: DeprecationUse): string => {
+  if (use.notice.replacement !== undefined) {
+    return `Stop using ${use.kind} "${use.id}"; use ${use.notice.replacement} instead.`;
+  }
+  if (use.notice.removeIn !== undefined) {
+    return `Remove ${use.kind} "${use.id}" before ${use.notice.removeIn}; ${use.notice.note}`;
+  }
+  return `Remove or replace ${use.kind} "${use.id}"; ${use.notice.note}`;
+};
+
+const deprecationContradictionRemediation = (canonicalId: string, aliasId: string): string =>
+  `Declare a deprecation notice for alias "${aliasId}" that agrees with canonical "${canonicalId}", or stop registering the alias without its own notice.`;
+
 const makeDeprecationService = (
   state: Ref.Ref<DeprecationState>,
   eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
@@ -43,7 +56,14 @@ const makeDeprecationService = (
         ),
         Effect.flatMap(() =>
           use.notice.severity === "error"
-            ? Effect.fail(new DeprecatedSurfaceError({ kind: use.kind, id: use.id, notice: use.notice }))
+            ? Effect.fail(
+                new DeprecatedSurfaceError({
+                  kind: use.kind,
+                  id: use.id,
+                  notice: use.notice,
+                  remediation: deprecatedSurfaceRemediation(use),
+                }),
+              )
             : Effect.void,
         ),
       ),
@@ -70,7 +90,14 @@ const makeDeprecationService = (
         Effect.flatMap((current) => {
           const canonicalNotice = current.registry.get(deprecationKey(kind, canonicalId));
           if (canonicalNotice !== undefined && aliasNotice === undefined) {
-            return Effect.fail(new DeprecationContradictionError({ canonicalId, aliasId, canonicalNotice }));
+            return Effect.fail(
+              new DeprecationContradictionError({
+                canonicalId,
+                aliasId,
+                canonicalNotice,
+                remediation: deprecationContradictionRemediation(canonicalId, aliasId),
+              }),
+            );
           }
           if (aliasNotice === undefined) return Effect.void;
           return Ref.update(state, (latest) => {

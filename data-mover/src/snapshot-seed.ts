@@ -21,18 +21,18 @@ export const requireSnapshotSeedTarget = Effect.fn("DataMover.requireSnapshotSee
         "Seed only into a freshly created volume of the same app and service; move data between apps with db:export and db:seed <file>.",
     });
   if (identity === undefined) return yield* Effect.fail(reject());
-  const initialization = yield* sharedVolumeInitialization(stateStore, identity).pipe(
-    Effect.flatMap((state) => state.read),
-    Effect.mapError(reject),
-  );
   if (
     info.metadata === undefined ||
     info.store.app !== target.store.app ||
     info.store.store !== target.store.store ||
-    identity.ownerRoot !== info.metadata.sourceRoot ||
-    identity.nativeName !== target.store.store ||
-    initialization?.state._tag !== "in-progress"
+    identity.ownerRoot !== info.owner.appRoot ||
+    identity.nativeName !== target.store.store
   ) {
     return yield* Effect.fail(reject());
   }
+  const initialization = yield* sharedVolumeInitialization(stateStore, identity).pipe(
+    Effect.flatMap((state) => state.read),
+    Effect.mapError(reject),
+  );
+  if (initialization?.state._tag !== "in-progress") return yield* Effect.fail(reject());
 });

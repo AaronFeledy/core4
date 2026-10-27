@@ -23,7 +23,6 @@ import { Effect, Layer } from "effect";
 import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
 import { Downloader } from "@lando/sdk/services";
 
-import * as LandoConfigService from "@lando/engine/services/config";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { layer as downloaderLayer } from "@lando/http-client/downloader";
 import { layer as httpClientLayer } from "@lando/http-client/live";
@@ -79,7 +78,9 @@ const sourceError = (input: {
 
 const SHA256_RE = /^[0-9a-f]{64}$/u;
 
-export const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
+export const makeTarballRecipeFetcher = (
+  retainedDownloader?: typeof Downloader.Service,
+): TarballRecipeFetcher => ({
   fetch: (url) =>
     Effect.runPromise(
       Effect.scoped(
@@ -97,17 +98,17 @@ export const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
           return new Uint8Array(bytes);
         }).pipe(
           Effect.provide(
-            Layer.mergeAll(
-              downloaderLayer.pipe(
-                Layer.provide(httpClientLayer.pipe(Layer.provide(LandoEventService.layer))),
-              ),
-              LandoConfigService.layer,
-            ),
+            retainedDownloader === undefined
+              ? downloaderLayer.pipe(
+                  Layer.provide(httpClientLayer.pipe(Layer.provide(LandoEventService.layer))),
+                )
+              : Layer.succeed(Downloader, retainedDownloader),
           ),
         ),
       ),
     ),
-};
+});
+export const defaultTarballRecipeFetcher = makeTarballRecipeFetcher();
 
 const isGzip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 
