@@ -37,6 +37,19 @@ describe("shouldBypassProxy", () => {
   test("empty noProxy never bypasses", () => {
     expect(shouldBypassProxy("https://example.com/x", [])).toBe(false);
   });
+
+  test.each(["", " ", "\t\n"])("ignores blank configured NO_PROXY entry %j", (entry) => {
+    for (const url of ["https://example.com/", "https://example.com./"]) {
+      const plan = resolveNetworkTrustPlan(
+        { network: { proxy: { https: "http://proxy:3128", noProxy: [entry], injectIntoServices: false } } },
+        {},
+      );
+      expect(shouldBypassProxy(url, plan.proxy.noProxy)).toBe(false);
+      expect(fetchInitForNetwork(url, { ...plan, caPems: [] }, [])).toEqual({
+        proxy: { url: "http://proxy:3128", respectNoProxy: false },
+      });
+    }
+  });
 });
 
 const SYS_A = "-----BEGIN CERTIFICATE-----\nSYS-A\n-----END CERTIFICATE-----";

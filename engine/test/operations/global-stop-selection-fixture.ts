@@ -23,7 +23,6 @@ const service = (name: string) => ({
   artifact: { kind: "ref" as const, ref: "test:latest" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

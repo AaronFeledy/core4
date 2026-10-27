@@ -51,7 +51,6 @@ const fixture = () => {
         primary: true,
         environment: {},
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],

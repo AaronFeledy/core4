@@ -10,7 +10,8 @@ import {
   PortablePath,
   type ProviderCapabilities,
   ServiceName,
-  appMountSyncIgnores,
+  bindSyncIgnores,
+  serviceAppMount,
 } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -61,6 +62,7 @@ const head = (dir: string) => Bun.write(join(dir, "HEAD"), "ref: refs/heads/main
 
 const gitBind = (source: string, target: string, readOnly = false): MountPlan => ({
   type: "bind",
+  origin: "derived",
   source,
   target: PortablePath.make(target),
   readOnly,
@@ -89,10 +91,14 @@ test.each(["nested", "external", "no-commondir"] as const)(
       const plan = await planAt(root, {});
       const web = plan.services[ServiceName.make("web")];
       // Then host sources bind at the paths git resolves from /app, with no sync or Git shadow.
-      expect(web?.mounts).toEqual(
+      expect(
+        web?.mounts.filter(
+          (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+        ),
+      ).toEqual(
         {
           nested: [gitBind(commonDir, "/app/shared.git")],
-          external: [gitBind(commonDir, "/app/shared.git"), gitBind(gitDir, "/app/metadata")],
+          external: [gitBind(gitDir, "/app/metadata"), gitBind(commonDir, "/app/shared.git")],
           "no-commondir": [gitBind(gitDir, "/app/metadata")],
         }[kind],
       );
@@ -116,7 +122,11 @@ test("binds a relative submodule gitdir at the container-resolved path", async (
     // When planning a native app mount at /app.
     const plan = await planAt(appRoot, {});
     // Then the host module dir is the source and git's /app-relative resolution is the target.
-    expect(plan.services[ServiceName.make("web")]?.mounts).toEqual([gitBind(moduleDir, "/.git/modules/sub")]);
+    expect(
+      plan.services[ServiceName.make("web")]?.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([gitBind(moduleDir, "/.git/modules/sub")]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -137,7 +147,11 @@ test("binds a relative worktree common dir at the container-resolved path", asyn
     // When planning a native app mount at /app.
     const plan = await planAt(appRoot, {});
     // Then only the common dir binds, at /main/.git, where git looks from /app.
-    expect(plan.services[ServiceName.make("web")]?.mounts).toEqual([gitBind(commonDir, "/main/.git")]);
+    expect(
+      plan.services[ServiceName.make("web")]?.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([gitBind(commonDir, "/main/.git")]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -156,7 +170,11 @@ test("read-only app mounts get read-only Git binds", async () => {
     // When planning.
     const plan = await planAt(join(root, "app"), { readOnly: true });
     // Then the same-path metadata bind inherits the app mount's read-only intent.
-    expect(plan.services[ServiceName.make("web")]?.mounts).toEqual([gitBind(commonDir, commonDir, true)]);
+    expect(
+      plan.services[ServiceName.make("web")]?.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([gitBind(commonDir, commonDir, true)]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -208,7 +226,11 @@ test.each(["directory", "malformed", "empty", "windows", "root", "etc", "non-git
       // When planning native binds.
       const plan = await planAt(root, {});
       // Then .git stays visible without a metadata bind or empty overlay.
-      expect(plan.services[ServiceName.make("web")]?.mounts).toEqual([]);
+      expect(
+        plan.services[ServiceName.make("web")]?.mounts.filter(
+          (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+        ),
+      ).toEqual([]);
       expect(plan.stores.some((store) => store.name.includes("-app-git-"))).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -235,12 +257,20 @@ test("includes removes both overlay and sync ignores while files never shadow", 
     // Then ignores retain files, but included entries and Git binds are absent.
     expect(plan.fileSync[0]?.session.excludes).toEqual(["node_modules", "tmp", "some-file", ".git"]);
     if (web === undefined) throw new Error("Expected planned web service");
-    expect(plan.fileSync[0]?.session.excludes).toEqual(appMountSyncIgnores(web));
-    expect(web?.storage.map((mount) => String(mount.target)).sort()).toEqual([
-      "/app/node_modules",
-      "/app/tmp",
-    ]);
-    expect(web?.mounts).toEqual([]);
+    const bind = serviceAppMount(web);
+    if (bind === undefined) throw new Error("Expected app bind");
+    expect(plan.fileSync[0]?.session.excludes).toEqual(bindSyncIgnores(web, bind));
+    expect(
+      web?.mounts
+        .filter((mount) => mount.type === "volume")
+        .map((mount) => String(mount.target))
+        .sort(),
+    ).toEqual(["/app/node_modules", "/app/tmp"]);
+    expect(
+      web?.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -267,8 +297,12 @@ test.each([false, true])(
           ? ["node_modules", "vendor", "tmp", "public/uploads", ".git"]
           : ["node_modules", "vendor", "tmp", ".git"],
       );
-      expect(plan.fileSync[0]?.session.excludes).toEqual(appMountSyncIgnores(web));
-      expect(web.storage.filter((mount) => mount.target === "/app/node_modules")).toHaveLength(1);
+      const bind = serviceAppMount(web);
+      if (bind === undefined) throw new Error("Expected app bind");
+      expect(plan.fileSync[0]?.session.excludes).toEqual(bindSyncIgnores(web, bind));
+      expect(
+        web.mounts.filter((mount) => mount.type === "volume" && mount.target === "/app/node_modules"),
+      ).toHaveLength(1);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -289,7 +323,9 @@ test("including Git cancels its fixed ignore without creating an overlay", async
     // Then Git is synchronized without a shadow.
     expect(plan.fileSync[0]?.session.excludes).toEqual(["node_modules", "vendor", "tmp"]);
     expect(
-      plan.services[ServiceName.make("web")]?.storage.some((mount) => mount.target === "/app/.git"),
+      plan.services[ServiceName.make("web")]?.mounts.some(
+        (mount) => mount.type === "volume" && mount.target === "/app/.git",
+      ),
     ).toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });

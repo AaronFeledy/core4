@@ -109,7 +109,6 @@ export const webFor = (plan: AppPlan): AppPlan => ({
       command: [],
       environment: { PRIVATE: "never-persist-this" },
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

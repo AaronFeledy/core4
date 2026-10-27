@@ -27,7 +27,6 @@ interface StableBuildInput {
     readonly environment: ReadonlyArray<readonly [string, unknown]>;
     readonly user: string | undefined;
     readonly workingDirectory: string | undefined;
-    readonly appMount: unknown;
     readonly mounts: ReadonlyArray<unknown>;
     readonly buildSteps: ReadonlyArray<unknown>;
     readonly configSources: ReadonlyArray<unknown>;
@@ -102,7 +101,12 @@ const mountBuildInput = (mount: ServicePlan["mounts"][number]): unknown => ({
   type: mount.type,
   target: mount.target,
   readOnly: mount.readOnly,
-  realization: mount.realization,
+  ...(mount.type === "bind"
+    ? {
+        realization: mount.realization,
+        ...(mount.role === "app" ? { excludes: mount.excludes, includes: mount.includes } : {}),
+      }
+    : {}),
 });
 
 export const appBuildKeyForStep = (input: AppBuildKeyInput): string =>
@@ -115,15 +119,7 @@ export const appBuildKeyForStep = (input: AppBuildKeyInput): string =>
       name: String(input.service.name),
       artifact: artifactBuildInput(input.service.artifact, undefined),
       environment: providerEnvironment(input.service.environment),
-      appMount:
-        input.service.appMount === undefined
-          ? undefined
-          : {
-              target: input.service.appMount.target,
-              readOnly: input.service.appMount.readOnly,
-              realization: input.service.appMount.realization,
-            },
-      mounts: input.service.mounts.map(mountBuildInput),
+      mounts: input.service.mounts.filter((mount) => mount.type === "bind").map(mountBuildInput),
     },
   });
 
@@ -194,17 +190,7 @@ const stableBuildInput = (
         user: service.user,
         workingDirectory:
           service.workingDirectory === undefined ? undefined : String(service.workingDirectory),
-        appMount:
-          service.appMount === undefined
-            ? undefined
-            : {
-                target: service.appMount.target,
-                readOnly: service.appMount.readOnly,
-                excludes: service.appMount.excludes,
-                includes: service.appMount.includes,
-                realization: service.appMount.realization,
-              },
-        mounts: service.mounts.map(mountBuildInput),
+        mounts: service.mounts.filter((mount) => mount.type === "bind").map(mountBuildInput),
         buildSteps: artifactBuildStepsFor(service),
         configSources: configSourcesFor(service),
       },

@@ -236,7 +236,6 @@ describe("resolveLandofileEventPlan", () => {
             artifact: { kind: "ref", ref: "postgres:16" },
             environment: { DB_PASSWORD: "hunter2-secret" },
             mounts: [],
-            storage: [],
             endpoints: [],
             routes: [],
             dependsOn: [],

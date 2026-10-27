@@ -93,7 +93,6 @@ export const appliedClientFixture = (
     environment: {},
     connection: desired,
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

@@ -25,7 +25,6 @@ const servicePlan = (name: string, compose?: Record<string, unknown>): ServicePl
   primary: name === "web",
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -71,18 +70,16 @@ describe("Compose runtime knobs", () => {
     });
   });
 
-  test("Given authored and injected tmpfs entries, when knobs are merged, then every entry is preserved", () => {
+  test("Given authored tmpfs, when knobs are merged, then no tmpfs runtime knob is emitted", () => {
     // Given
-    const plan = servicePlan("web", { tmpfs: ["/run", "/plugin-cache"] });
+    const plan = servicePlan("web");
     const serviceConfig: ServiceConfig = { tmpfs: ["/authored-cache", "/run"] };
 
     // When
     const merged = mergeComposeKnobs(plan, serviceConfig);
 
     // Then
-    expect(merged.extensions.compose).toEqual({
-      tmpfs: ["/run", "/plugin-cache", "/authored-cache", "/run"],
-    });
+    expect(merged.extensions.compose).toBeUndefined();
   });
 
   test("Given knobs only in final extensions, when uses are collected, then injected knobs are capability-gated", () => {
@@ -98,10 +95,7 @@ describe("Compose runtime knobs", () => {
     const uses = collectComposeKnobs(services);
 
     // Then
-    expect(uses).toEqual([
-      { service: "web", key: "tmpfs" },
-      { service: "web", key: "deploy.resources" },
-    ]);
+    expect(uses).toEqual([{ service: "web", key: "deploy.resources" }]);
   });
 
   test("Given shuffled unsupported knobs, when support is checked repeatedly, then the first failure is stable", () => {
@@ -143,16 +137,16 @@ describe("Compose runtime knobs", () => {
 
   test("Given the fail-closed capability matrix, when one knob is checked, then only native exact support accepts it", () => {
     // Given
-    const uses = collectComposeKnobs({ web: servicePlan("web", { tmpfs: ["/run"] }) });
+    const uses = collectComposeKnobs({ web: servicePlan("web", { init: true }) });
 
     // When
     const results = [
       findUnsupportedComposeKnob(uses, capabilities("native")),
-      findUnsupportedComposeKnob(uses, capabilities("portable", { supported: ["tmpfs"] })),
-      findUnsupportedComposeKnob(uses, capabilities("native", { supported: ["tmpfs"] })),
+      findUnsupportedComposeKnob(uses, capabilities("portable", { supported: ["init"] })),
+      findUnsupportedComposeKnob(uses, capabilities("native", { supported: ["init"] })),
     ];
 
     // Then
-    expect(results).toEqual([{ service: "web", key: "tmpfs" }, { service: "web", key: "tmpfs" }, undefined]);
+    expect(results).toEqual([{ service: "web", key: "init" }, { service: "web", key: "init" }, undefined]);
   });
 });

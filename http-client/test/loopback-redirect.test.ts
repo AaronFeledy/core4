@@ -87,53 +87,56 @@ test.each(["follow", "manual", "error"] as const)(
   },
 );
 
-test("a remote redirect to loopback always bypasses the proxy", async () => {
-  // Given a proxied response pointing back to a local origin.
-  let localCalls = 0;
-  const origin = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    fetch: () => {
-      localCalls += 1;
-      return new Response(null, { status: 204 });
-    },
-  });
-  const calls: { readonly url: string; readonly proxy: BunFetchRequestInit["proxy"] }[] = [];
-  const fetchImpl: typeof fetch = Object.assign(
-    async (url: Parameters<typeof fetch>[0], init?: BunFetchRequestInit) => {
-      calls.push({ url: String(url), proxy: init?.proxy });
-      return String(url) === "http://remote.test/"
-        ? new Response(null, { status: 307, headers: { location: origin.url.href } })
-        : fetch(url, init);
-    },
-    { preconnect: fetch.preconnect },
-  );
-  try {
-    // When following the remote redirect.
-    const response = await Effect.runPromise(
-      Effect.gen(function* () {
-        const client = yield* HttpClient.HttpClient;
-        return yield* client.get("http://remote.test/");
-      }).pipe(
-        Effect.provide(layerWith({ fetch: fetchImpl })),
-        Effect.provideService(NetworkTrust, {
-          proxy: { http: "http://proxy.test:3128", noProxy: [] },
-          caPems: [],
-          trustHost: true,
-        }),
-      ),
+test.each(["127.0.0.1", "127.0.0.2", "::1"])(
+  "rejects a remote redirect to %s before connecting locally",
+  async (hostname) => {
+    // Given a proxied response pointing back to a local origin.
+    let localCalls = 0;
+    const origin = Bun.serve({
+      hostname,
+      port: 0,
+      fetch: () => {
+        localCalls += 1;
+        return new Response(null, { status: 204 });
+      },
+    });
+    const calls: { readonly url: string; readonly proxy: BunFetchRequestInit["proxy"] }[] = [];
+    const fetchImpl: typeof fetch = Object.assign(
+      async (url: Parameters<typeof fetch>[0], init?: BunFetchRequestInit) => {
+        calls.push({ url: String(url), proxy: init?.proxy });
+        return String(url) === "http://remote.test/"
+          ? new Response(null, { status: 307, headers: { location: origin.url.href } })
+          : fetch(url, init);
+      },
+      { preconnect: fetch.preconnect },
     );
-    // Then the remote hop uses the plan's proxy and the loopback hop goes directly.
-    expect(response.status).toBe(204);
-    expect(calls).toEqual([
-      { url: "http://remote.test/", proxy: { url: "http://proxy.test:3128", respectNoProxy: false } },
-      { url: origin.url.href, proxy: false },
-    ]);
-    expect(localCalls).toBe(1);
-  } finally {
-    origin.stop(true);
-  }
-});
+    try {
+      // When following the remote redirect.
+      const exit = await Effect.runPromiseExit(
+        Effect.gen(function* () {
+          const client = yield* HttpClient.HttpClient;
+          return yield* client.get("http://remote.test/");
+        }).pipe(
+          Effect.provide(layerWith({ fetch: fetchImpl })),
+          Effect.provideService(NetworkTrust, {
+            proxy: { http: "http://proxy.test:3128", noProxy: [] },
+            caPems: [],
+            trustHost: true,
+          }),
+        ),
+      );
+      // Then only the remote hop uses the plan's proxy, and no local connection occurs.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) expect(String(exit.cause)).toContain("remote redirect to loopback forbidden");
+      expect(calls).toEqual([
+        { url: "http://remote.test/", proxy: { url: "http://proxy.test:3128", respectNoProxy: false } },
+      ]);
+      expect(localCalls).toBe(0);
+    } finally {
+      origin.stop(true);
+    }
+  },
+);
 
 test("a loopback redirect to another loopback origin stays off the proxy", async () => {
   let targetCalls = 0;

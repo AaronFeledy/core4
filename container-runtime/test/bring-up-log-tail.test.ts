@@ -43,7 +43,6 @@ const servicePlan = (
   artifact: { kind: "ref", ref: "debian:12.11-slim" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

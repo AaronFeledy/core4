@@ -31,7 +31,7 @@ const assertPersistedSyncSafe = async (userDataRoot: string): Promise<void> => {
         typeof envelope !== "object" ||
         envelope === null ||
         Array.isArray(envelope) ||
-        Reflect.get(envelope, "version") !== 1
+        (Reflect.get(envelope, "version") !== 1 && Reflect.get(envelope, "version") !== 2)
       )
         throw uninstallCleanupFailure("invalid envelope");
       const plan: unknown = Reflect.get(envelope, "data");
@@ -52,9 +52,15 @@ const assertPersistedSyncSafe = async (userDataRoot: string): Promise<void> => {
       for (const service of Object.values(services)) {
         if (typeof service !== "object" || service === null || Array.isArray(service))
           throw uninstallCleanupFailure("invalid service");
-        const appMount: unknown = Reflect.get(service, "appMount");
         const mounts: unknown = Reflect.get(service, "mounts");
-        if (reserved && (appMount !== undefined || mounts !== undefined))
+        // Legacy v1 frames may still carry appMount; reject accelerated there too.
+        const appMount: unknown = Reflect.get(service, "appMount");
+        if (
+          reserved &&
+          ((Array.isArray(mounts) && mounts.length > 0) ||
+            (appMount !== undefined && appMount !== null) ||
+            (mounts !== undefined && !Array.isArray(mounts)))
+        )
           throw uninstallCleanupFailure("invalid global plan");
         if (
           typeof appMount === "object" &&
@@ -62,7 +68,15 @@ const assertPersistedSyncSafe = async (userDataRoot: string): Promise<void> => {
           Reflect.get(appMount, "realization") === "accelerated"
         )
           throw uninstallCleanupFailure("accelerated app mount");
-        if (Array.isArray(mounts) && mounts.some((mount) => mount?.realization === "accelerated"))
+        if (
+          Array.isArray(mounts) &&
+          mounts.some(
+            (mount) =>
+              typeof mount === "object" &&
+              mount !== null &&
+              Reflect.get(mount, "realization") === "accelerated",
+          )
+        )
           throw uninstallCleanupFailure("accelerated mount");
       }
     } catch (cause) {
@@ -122,7 +136,9 @@ export const assertUninstallSyncSafe = async (input: {
           allContainers.stdout
             .split(/\r?\n/u)
             .some((name) => /^lando-sync-.+-[a-f0-9]{16}$/u.test(name.trim())) ||
-          allVolumes.stdout.split(/\r?\n/u).some((name) => /-(?:app-mount|mount-[0-9]+)$/u.test(name.trim()))
+          allVolumes.stdout
+            .split(/\r?\n/u)
+            .some((name) => /-(?:app-mount|mount-(?:[0-9a-f]{8}|[0-9]+))$/u.test(name.trim()))
         )
           throw uninstallCleanupFailure(
             "possible unlabeled Lando sync helper or volume exists; inspect its data before purging",

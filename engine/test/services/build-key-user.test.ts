@@ -18,7 +18,6 @@ const baseServiceFields = {
   artifact: { kind: "ref" as const, ref: "debian:12" },
   environment: {},
   mounts: [] as ServicePlan["mounts"],
-  storage: [] as ServicePlan["storage"],
   endpoints: [] as ServicePlan["endpoints"],
   routes: [] as ServicePlan["routes"],
   dependsOn: [] as ServicePlan["dependsOn"],
@@ -75,8 +74,13 @@ describe("build step user identity", () => {
     const after = await Effect.runPromise(
       buildKeyForService(provider, {
         ...service,
-        storage: [
-          { store: homeStoreName("app", "web", "root"), target: PortablePath.make("/root"), readOnly: false },
+        mounts: [
+          {
+            type: "volume",
+            store: homeStoreName("app", "web", "root"),
+            target: PortablePath.make("/root"),
+            readOnly: false,
+          },
         ],
       }),
     );
@@ -137,8 +141,13 @@ describe("appBuildKeyForStep user identity", () => {
       ...input,
       service: {
         ...service,
-        storage: [
-          { store: homeStoreName("app", "web", "root"), target: PortablePath.make("/root"), readOnly: false },
+        mounts: [
+          {
+            type: "volume",
+            store: homeStoreName("app", "web", "root"),
+            target: PortablePath.make("/root"),
+            readOnly: false,
+          },
         ],
       },
     });

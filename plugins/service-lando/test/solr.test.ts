@@ -54,10 +54,11 @@ describe("solr ServiceType", () => {
     expect(plan.type).toBe("solr");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "solr:9" });
     expect(plan.command).toEqual(["solr-foreground", "-p", "8983"]);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-solr-data");
-    expect(String(plan.storage[0]?.target)).toBe("/var/solr");
-    expect(plan.storage[0]?.readOnly).toBe(false);
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-solr-data");
+    expect(String(volumes[0]?.target)).toBe("/var/solr");
+    expect(volumes[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 8983, protocol: "http", name: "search", primary: true },
     ]);
@@ -280,8 +281,10 @@ describe("solr ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/solr/conf",
+      relativeTo: "app",
       target: SOLR_CONFIG_TARGET,
       readOnly: true,
       realization: "passthrough",
@@ -297,8 +300,10 @@ describe("solr ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/solr/conf",
+      relativeTo: "app",
       target: SOLR_CONFIG_TARGET,
       readOnly: true,
       realization: "passthrough",
@@ -325,8 +330,10 @@ describe("solr ServiceType", () => {
 
     expect(plan.command).toEqual(["solr-foreground", "-p", "8983"]);
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/solr/conf",
+      relativeTo: "app",
       target: SOLR_CONFIG_TARGET,
       readOnly: true,
       realization: "passthrough",

@@ -33,7 +33,7 @@ const metadata = {
 
 export const planWith = (
   stepsByService: Readonly<Record<string, ReadonlyArray<unknown>>>,
-  overridesByService: Readonly<Record<string, Partial<ServicePlan>>> = {},
+  overridesByService: Readonly<Record<string, Omit<Partial<ServicePlan>, "connection" | "nonSqlCreds">>> = {},
 ): AppPlan => ({
   id: AppId.make("app-build-runner"),
   name: "App build runner",
@@ -43,7 +43,6 @@ export const planWith = (
   services: Object.fromEntries(
     Object.entries(stepsByService).map(([rawName, buildSteps]) => {
       const name = ServiceName.make(rawName);
-      const { connection, nonSqlCreds, ...fields } = overridesByService[rawName] ?? {};
       return [
         name,
         {
@@ -54,15 +53,13 @@ export const planWith = (
           artifact: { kind: "ref" as const, ref: `test/${rawName}:latest` },
           environment: {},
           mounts: [],
-          storage: [],
           endpoints: [],
           routes: [],
           dependsOn: [],
           hostAliases: [],
           metadata,
           extensions: { "@lando/core/service-features": { buildSteps } },
-          ...fields,
-          ...(nonSqlCreds === undefined ? (connection === undefined ? {} : { connection }) : { nonSqlCreds }),
+          ...overridesByService[rawName],
         },
       ];
     }),

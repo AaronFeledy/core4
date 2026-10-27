@@ -27,7 +27,6 @@ import {
 const capabilities = {
   ...TestRuntimeProvider.capabilities,
   artifactBuild: true,
-  composeKnobs: { supported: ["tmpfs"] as const },
 };
 
 const planEffect = (appRoot: string, landofile: LandofileShape, providerCapabilities = capabilities) => {
@@ -199,9 +198,15 @@ describe("AppPlanner home persistence and host reachability", () => {
       const appPlan = await plan(appRoot, landofile({ web: { type: "node:22", user: "node" } }));
       const web = appPlan.services[ServiceName.make("web")];
       const store = homeStoreName(appPlan.slug, "web", "node");
-      const homeMount = { store, target: PortablePath.make("/home/node"), readOnly: false };
-      expect(web?.storage).toContainEqual(homeMount);
-      expect(web?.storage.filter((mount) => mount.store === store)).toHaveLength(1);
+      const homeMount = {
+        origin: "derived" as const,
+        type: "volume" as const,
+        store,
+        target: PortablePath.make("/home/node"),
+        readOnly: false,
+      };
+      expect(web?.mounts).toContainEqual(homeMount);
+      expect(web?.mounts.filter((mount) => mount.type === "volume" && mount.store === store)).toHaveLength(1);
       expect(appPlan.stores).toContainEqual({ name: store, scope: "service", kind: "data" });
     });
   });
@@ -220,12 +225,14 @@ describe("AppPlanner home persistence and host reachability", () => {
       );
       const web = appPlan.services[ServiceName.make("web")];
       const homeTarget = PortablePath.make("/home/node");
-      expect(web?.storage).toContainEqual({
+      expect(web?.mounts).toContainEqual({
+        type: "volume",
         store: "keep-home",
         target: homeTarget,
+        origin: "authored",
         readOnly: false,
       });
-      expect(web?.storage.filter((mount) => mount.target === homeTarget)).toHaveLength(1);
+      expect(web?.mounts.filter((mount) => mount.target === homeTarget)).toHaveLength(1);
       expect(appPlan.stores.some((entry) => entry.name === homeStoreName(appPlan.slug, "web", "node"))).toBe(
         false,
       );
@@ -248,8 +255,14 @@ describe("AppPlanner home persistence and host reachability", () => {
           },
         }),
       );
-      expect(next.services[ServiceName.make("web")]?.storage).toEqual([
-        { store: home.store, target: PortablePath.make(home.target), readOnly: false },
+      expect(next.services[ServiceName.make("web")]?.mounts).toEqual([
+        {
+          type: "volume",
+          origin: "authored",
+          store: home.store,
+          target: PortablePath.make(home.target),
+          readOnly: false,
+        },
       ]);
       expect(next.stores).toEqual([{ name: home.store, scope: "service", kind: "data" }]);
     });
@@ -260,13 +273,31 @@ describe("AppPlanner home persistence and host reachability", () => {
       const appPlan = await plan(appRoot, landofile({ db: { type: "mariadb:11.4" } }));
       const db = appPlan.services[ServiceName.make("db")];
       const store = homeStoreName(appPlan.slug, "db", "root");
-      expect(db?.storage).toContainEqual({
+      expect(db?.mounts).toContainEqual({
+        type: "volume",
         store,
         target: PortablePath.make("/root"),
+        origin: "derived",
         readOnly: false,
       });
-      expect(db?.storage.filter((mount) => mount.store === store)).toHaveLength(1);
+      expect(db?.mounts.filter((mount) => mount.type === "volume" && mount.store === store)).toHaveLength(1);
       expect(appPlan.stores).toContainEqual({ name: store, scope: "service", kind: "data" });
+    });
+  });
+
+  test("Given a compose image without a home path, When planned, Then the home is unknown without a generated store", async () => {
+    await withAppRoot(async (appRoot) => {
+      const appPlan = await plan(
+        appRoot,
+        landofile({ web: { type: "compose", image: "traefik/whoami:v1.10" } }),
+      );
+      expect(appPlan.services[ServiceName.make("web")]?.home).toEqual({
+        state: "unknown",
+        reason: "custom-image",
+      });
+      expect(appPlan.stores.some((entry) => entry.name.startsWith(`lando-${appPlan.slug}-web-home`))).toBe(
+        false,
+      );
     });
   });
 
@@ -280,12 +311,14 @@ describe("AppPlanner home persistence and host reachability", () => {
       );
       const web = appPlan.services[ServiceName.make("web")];
       const store = homeStoreName(appPlan.slug, "web");
-      expect(web?.storage).toContainEqual({
+      expect(web?.mounts).toContainEqual({
+        type: "volume",
         store,
         target: PortablePath.make("/home/whoami"),
+        origin: "derived",
         readOnly: false,
       });
-      expect(web?.storage.filter((mount) => mount.store === store)).toHaveLength(1);
+      expect(web?.mounts.filter((mount) => mount.type === "volume" && mount.store === store)).toHaveLength(1);
     });
   });
 
@@ -294,8 +327,16 @@ describe("AppPlanner home persistence and host reachability", () => {
       const appPlan = await plan(appRoot, landofile({ web: { type: "apache", user: "www-data" } }));
       const web = appPlan.services[ServiceName.make("web")];
       const store = homeStoreName(appPlan.slug, "web", "www-data");
-      expect(web?.storage.filter((mount) => mount.store === store)).toEqual([
-        { store, target: PortablePath.make("/home/www-data"), readOnly: false },
+      expect(
+        web?.mounts.filter((mount) => mount.type === "volume").filter((mount) => mount.store === store),
+      ).toEqual([
+        {
+          type: "volume",
+          store,
+          target: PortablePath.make("/home/www-data"),
+          readOnly: false,
+          origin: "derived",
+        },
       ]);
       expect(appPlan.stores.filter((entry) => entry.name === store)).toEqual([
         { name: store, scope: "service", kind: "data" },

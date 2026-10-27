@@ -274,6 +274,6 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
   );
   const session = yield* acquire;
   return yield* options.use(
-    session === undefined ? stripSshAgentOverlay(plan) : withSshAgentOverlay(plan, session),
+    session === undefined ? stripSshAgentOverlay(plan) : yield* withSshAgentOverlay(plan, session),
   );
 });

@@ -20,7 +20,11 @@ export const resolveMysqlVolume = <Plan extends AppPlan>(
   }
   const scoped = `${plan.name}-${service.name}-mysql-data`;
   const legacy = `${plan.name}-mysql-data`;
-  if (!service.storage.some((mount) => mount.store === scoped && mount.target === "/var/lib/mysql")) {
+  if (
+    !service.mounts.some(
+      (mount) => mount.type === "volume" && mount.store === scoped && mount.target === "/var/lib/mysql",
+    )
+  ) {
     return Effect.succeed(plan);
   }
 
@@ -37,8 +41,8 @@ export const resolveMysqlVolume = <Plan extends AppPlan>(
           ...plan.services,
           [service.name]: {
             ...service,
-            storage: service.storage.map((mount) =>
-              mount.store === scoped ? { ...mount, store: legacy } : mount,
+            mounts: service.mounts.map((mount) =>
+              mount.type === "volume" && mount.store === scoped ? { ...mount, store: legacy } : mount,
             ),
           },
         },

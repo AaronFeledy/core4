@@ -46,5 +46,9 @@ export const ServiceInfoMount = Schema.Struct({
     description:
       "Retained host or declared store data, container-lifetime temporary memory, or unverified lifetime. Runtime volume names do not prove lifetime.",
   }),
+  provenance: Schema.optionalKey(Schema.Literals(["authored", "service", "derived"])).annotate({
+    description:
+      "For planned mounts: declared in the Landofile, added by the service type, or derived by Lando (exclude shadows, nested includes, Git, home).",
+  }),
 });
 export type ServiceInfoMount = typeof ServiceInfoMount.Type;

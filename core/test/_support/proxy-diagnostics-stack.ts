@@ -61,7 +61,6 @@ const servicePlan = (name: string, artifact: string, overrides: ServiceOverrides
   artifact: { kind: "ref", ref: artifact },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

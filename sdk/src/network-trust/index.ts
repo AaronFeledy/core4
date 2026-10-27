@@ -75,6 +75,7 @@ export const shouldBypassProxy = (url: string, noProxy: ReadonlyArray<string>): 
   const hostWithPort = `${host}:${port}`;
   return noProxy.some((raw) => {
     const pattern = raw.trim().toLowerCase();
+    if (pattern === "") return false;
     if (pattern === "*") return true;
     if (pattern === hostWithPort) return true;
     if (pattern.includes(":") || pattern.includes("/") || /^[\d.]+$/u.test(pattern)) {

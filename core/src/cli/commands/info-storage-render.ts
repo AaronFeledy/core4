@@ -8,7 +8,7 @@ import { escapeDiagnosticText } from "../diagnostic-text";
  * Storage presentation for `lando info`: one field per storage lifetime so the
  * label answers "does this data survive?" and the value lists where it mounts.
  * Sources (host paths, volume names) stay in the JSON contract; the default
- * summary shows targets and kinds only. Runtime-reported text is escaped with
+ * summary shows targets, kinds, and planned provenance. Runtime-reported text is escaped with
  * the shared diagnostic escaper before it reaches either renderer.
  */
 
@@ -103,6 +103,7 @@ const observationNote = (observation: ServiceInfoMount["observation"]): string |
 const mountText = (service: InfoAppService, mount: ServiceInfoMount): string => {
   const notes = [
     mountKind(service, mount),
+    mount.provenance,
     mount.readOnly === true ? "read-only" : undefined,
     observationNote(mount.observation),
   ];
@@ -164,7 +165,7 @@ export const storageRemedy = (service: InfoAppService): string | undefined => {
   return sentences.length === 0 ? undefined : sentences.join(" ");
 };
 
-/** Tab-separated `mount` rows: target, kind, source, lifetime, observation, access. */
+/** Tab-separated `mount` rows: target, kind, source, lifetime, observation, access, provenance. */
 export const plainStorageRows = (service: InfoAppService): ReadonlyArray<string> => {
   const rows = (service.mounts ?? []).map((mount) =>
     [
@@ -176,6 +177,7 @@ export const plainStorageRows = (service: InfoAppService): ReadonlyArray<string>
       LIFETIME_LABEL[mount.lifetime],
       observationNote(mount.observation) ?? "mounted",
       mount.readOnly === undefined ? "-" : mount.readOnly ? "read-only" : "read-write",
+      mount.provenance ?? "-",
     ].join("\t"),
   );
   const remedy = storageRemedy(service);

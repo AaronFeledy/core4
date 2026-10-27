@@ -101,7 +101,13 @@ import {
 } from "@lando/sdk/services";
 
 import { AGENT_RELAY_IMAGE, makeDockerDesktopAgentSocketBridge } from "./agent-socket-relay.ts";
-import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
+import {
+  listAppliedPlans,
+  listObservedPlans,
+  loadAppliedPlanStrict,
+  persistAppliedPlan,
+  removeAppliedPlan,
+} from "./applied-state.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 
 export {
@@ -152,6 +158,8 @@ export interface ProviderLayerOptions {
   readonly appliedPlanState?: PluginStateStore;
   readonly appliedPlanStateDir?: string;
   readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
+  /** Lando user-data root; file-mode bind copies live beneath it. */
+  readonly userDataRoot?: string;
 }
 
 export interface ResolveDockerHostOptions {
@@ -510,7 +518,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ...(options.sanitizeAppliedPlan === undefined
         ? {}
         : { sanitizeAppliedPlan: options.sanitizeAppliedPlan }),
-      load: loadAppliedPlan,
+      load: loadAppliedPlanStrict,
       persist: persistAppliedPlan,
       remove: removeAppliedPlan,
     });
@@ -574,7 +582,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       appliedPlans:
         options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
           ? Effect.succeed([])
-          : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir),
+          : listObservedPlans(options.appliedPlanState, options.appliedPlanStateDir),
       planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
         Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
       ),
@@ -607,7 +615,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ),
       removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
-        const previous = yield* appliedPlans.resolvePlan(plan.id);
+        const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
         yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
           api: dockerApi,
@@ -618,6 +626,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
           startFailureRemediation: dockerStartFailureRemediation,
           platform,
           daemonUrl: resolvedDockerHost,
+          userDataRoot:
+            options.userDataRoot ?? options.env?.LANDO_USER_DATA_ROOT ?? process.env.LANDO_USER_DATA_ROOT,
           ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
           ...(applyOptions.resolveServiceEnvironment === undefined
             ? {}
@@ -635,7 +645,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ...resolvedOps,
       cleanupOwnedResources: planState.cleanupOwnedResources,
       destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
-        return yield* resolvePlan(target).pipe(
+        return yield* appliedPlans.resolveMutationPlan(target.app).pipe(
+          Effect.map((previous) => target.plan ?? previous),
           Effect.flatMap((plan) =>
             plan === undefined
               ? Effect.succeed(DESTROY_NO_OP)
@@ -655,9 +666,12 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
         );
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
-        removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX }).pipe(
-          Effect.map(observedRemoval),
-        ),
+        appliedPlans
+          .resolveMutationPlan(observed.app)
+          .pipe(
+            Effect.andThen(removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX })),
+            Effect.map(observedRemoval),
+          ),
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(
@@ -801,9 +815,13 @@ export const plugin = definePlugin({
         declaredCapabilities: dockerCapabilitiesForPlatform,
         resourceOwnership: (ctx, root) =>
           makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
-        appliedPlans: (ctx) =>
+        appliedStateInventory: (ctx) =>
           Effect.flatMap(PathsService, (paths) =>
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
+          ),
+        appliedPlans: (ctx) =>
+          Effect.flatMap(PathsService, (paths) =>
+            listObservedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan, eventService } =
@@ -815,6 +833,7 @@ export const plugin = definePlugin({
             appliedPlanState: ctx.stateStore,
             appliedPlanStateDir: paths.pluginStateDir(PLUGIN_NAME),
             sanitizeAppliedPlan,
+            userDataRoot: paths.roots.userDataRoot,
           });
         }),
       },

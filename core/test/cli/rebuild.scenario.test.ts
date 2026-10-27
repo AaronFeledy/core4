@@ -106,7 +106,6 @@ const servicePlan = (name: string): ServicePlan => ({
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints:
     name === "web"
       ? [

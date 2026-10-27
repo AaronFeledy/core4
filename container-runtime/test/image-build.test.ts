@@ -37,7 +37,6 @@ const service = (input: Partial<Omit<ServicePlan, "nonSqlCreds">> = {}): Service
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

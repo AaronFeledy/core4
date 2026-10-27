@@ -115,11 +115,15 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.primary).toBe(true);
     expect(String(plan.workingDirectory)).toBe("/app");
 
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
 
-    expect(plan.mounts).toEqual([]);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
 
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
@@ -470,7 +474,7 @@ describe("php serving modes (via:)", () => {
       mounts: [{ source: "./alternate", target: "/app", readOnly: true }],
     });
 
-    expect(plan.appMount).toBeUndefined();
+    expect(serviceAppMount(plan)).toBeUndefined();
     expect(plan.mounts).toHaveLength(1);
     expect(plan.mounts[0]).toMatchObject({
       type: "bind",
@@ -508,8 +512,8 @@ describe("php serving modes (via:)", () => {
       appRoot,
     );
 
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]).toMatchObject({
+    expect(plan.mounts.filter((mount) => mount.type === "bind" && mount.role !== "app")).toHaveLength(1);
+    expect(plan.mounts.find((mount) => mount.type === "bind" && mount.role !== "app")).toMatchObject({
       type: "bind",
       source: `${appRoot}\\.lando\\php\\drupal-cms.ini`,
       target: "/usr/local/etc/php/conf.d/zz-lando-drupal-cms.ini",
@@ -642,3 +646,4 @@ describe("php serving modes (via:)", () => {
     );
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

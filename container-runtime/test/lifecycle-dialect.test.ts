@@ -28,7 +28,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "example/web:latest" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

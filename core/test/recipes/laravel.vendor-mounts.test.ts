@@ -7,7 +7,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { makeLandoPaths } from "@lando/paths";
-import { LandofileShape, ServiceName, appMountSyncIgnores } from "@lando/sdk/schema";
+import { LandofileShape, ServiceName, bindSyncIgnores, serviceAppMount } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
@@ -53,13 +53,20 @@ test.each([
     // Then worker mode shares host vendor, while the default retains its vendor shadow.
     for (const name of worker ? ["appserver", "worker"] : ["appserver"]) {
       const service = plan.services[ServiceName.make(name)];
-      expect(service?.storage.filter(({ target }) => target === "/app/vendor")).toHaveLength(worker ? 0 : 1);
-      expect(service?.appMount).toMatchObject({ source: root, target: "/app" });
-      expect(service?.mounts.some((mount) => mount.type === "bind" && mount.source === root)).toBe(false);
+      if (service === undefined) throw new Error("Expected Laravel service");
+      const vendor = service.mounts.filter(({ target }) => target === "/app/vendor");
+      expect(vendor.map(({ type }) => type)).toEqual(worker ? [] : ["volume"]);
+      const appMount = serviceAppMount(service);
+      expect(appMount).toMatchObject({ source: root, target: "/app" });
+      expect(
+        service.mounts.filter(
+          (mount) => mount.type === "bind" && mount.source === root && mount !== appMount,
+        ),
+      ).toEqual([]);
       if (slow) {
-        if (service === undefined) throw new Error("Expected Laravel service");
+        if (appMount === undefined) throw new Error("Expected Laravel app mount");
         const ignores = plan.fileSync.find(({ session }) => session.service === name)?.session.excludes;
-        expect(ignores).toEqual(appMountSyncIgnores(service));
+        expect(ignores).toEqual(bindSyncIgnores(service, appMount));
         expect(ignores?.includes("vendor")).toBe(!worker);
       }
     }
@@ -80,7 +87,10 @@ test.each([
       primary: false,
       endpoints: [],
     });
-    expect(node?.appMount).toMatchObject({ source: root, target: "/app" });
+    expect(node === undefined ? undefined : serviceAppMount(node)).toMatchObject({
+      source: root,
+      target: "/app",
+    });
     expect(node?.healthcheck).toBeUndefined();
     expect(node?.command).toEqual([
       "node",

@@ -168,3 +168,4 @@ export {
   getLayerMergeRule,
 } from "./layer-merge.ts";
 export * from "./resource-ownership.ts";
+export * from "./applied-state.ts";

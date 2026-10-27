@@ -49,7 +49,6 @@ const service = (
       primary: name === "web",
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

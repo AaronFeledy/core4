@@ -119,8 +119,12 @@ describe("tomcat ServiceType", () => {
         expect(plan.endpoints).toEqual([
           { _tag: "internal", port: 8080, protocol: "http", name: "appserver", primary: true },
         ]);
-        expect(String(plan.appMount?.target)).toBe("/app");
-        expect(plan.mounts).toEqual([]);
+        expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+        expect(
+          plan.mounts.filter(
+            (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+          ),
+        ).toEqual([]);
         expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
         expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
         expect(plan.environment.LANDO_WEBROOT).toBe("/app");
@@ -163,7 +167,7 @@ describe("tomcat ServiceType", () => {
         expect(plan.endpoints).toEqual([
           { _tag: "internal", port: 8888, protocol: "http", name: "appserver", primary: true },
         ]);
-        expect(String(plan.appMount?.target)).toBe("/app");
+        expect(String(serviceAppMount(plan)?.target)).toBe("/app");
         expect(plan.command).toEqual(["catalina.sh", "run"]);
         expect(plan.user).toBe("1000:1000");
       });
@@ -255,3 +259,4 @@ describe("tomcat ServiceType", () => {
     });
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

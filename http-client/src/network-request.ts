@@ -62,6 +62,7 @@ export const requestWithNetworkTrust = async (
   }
   let body = request.body;
   const { trust, transports, systemCaPems } = network;
+  const startsLoopback = shouldBypassProxy(url.href, []);
   const defaultCa = process.platform === "win32" && systemCaPems.length > 0 ? systemCaPems : undefined;
   const ca =
     trust === undefined
@@ -129,6 +130,14 @@ export const requestWithNetworkTrust = async (
         message: "unsupported redirect target",
         urlOrigin: url.origin,
         remediation: "Use an http(s) Location without embedded credentials for redirect targets.",
+      });
+    }
+    if (!startsLoopback && shouldBypassProxy(next.href, [])) {
+      throw new RedirectError({
+        message: "remote redirect to loopback forbidden",
+        urlOrigin: url.origin,
+        remediation:
+          "Request the local endpoint directly rather than following a remote Location to loopback.",
       });
     }
     headers.delete("host");

@@ -89,24 +89,27 @@ const makeService = (overrides: Partial<Pick<ServicePlan, "command" | "entrypoin
     "console.log('lando-contract-ready'); setInterval(() => console.log('lando-contract-tick'), 250)",
   ],
   environment: {},
-  appMount: {
-    source: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "accelerated",
-  },
   mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "accelerated",
+      mountKey: "app-mount",
+    },
     {
       type: "bind",
       source: "/tmp/lando-sdk-cache",
       target: PortablePath.make("/cache"),
       readOnly: true,
       realization: "accelerated",
+      mountKey: "mount-cace0001",
     },
   ],
-  storage: [],
   endpoints: [
     {
       _tag: "published",
@@ -156,7 +159,6 @@ const makeAliasProbePlan = (): AppPlan => ({
       command: ["node", "-e", "setInterval(() => {}, 1000)"],
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -302,7 +304,19 @@ const createBodyBinds = (body: unknown): ReadonlyArray<string> => {
   const hostConfig = Reflect.get(parsed, "HostConfig");
   if (typeof hostConfig !== "object" || hostConfig === null) return [];
   const binds = Reflect.get(hostConfig, "Binds");
-  return Array.isArray(binds) ? binds.filter((bind): bind is string => typeof bind === "string") : [];
+  const mounts = Reflect.get(hostConfig, "Mounts");
+  const strictBinds = Array.isArray(mounts)
+    ? mounts.flatMap((mount: unknown) => {
+        if (typeof mount !== "object" || mount === null || Reflect.get(mount, "Type") !== "bind") return [];
+        const source = Reflect.get(mount, "Source");
+        const target = Reflect.get(mount, "Target");
+        return typeof source === "string" && typeof target === "string" ? [`${source}:${target}`] : [];
+      })
+    : [];
+  return [
+    ...(Array.isArray(binds) ? binds.filter((bind): bind is string => typeof bind === "string") : []),
+    ...strictBinds,
+  ];
 };
 
 const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string): Uint8Array | undefined => {
@@ -996,9 +1010,9 @@ const makeDbService = (): ServicePlan => ({
   artifact: { kind: "ref", ref: "postgres:16-alpine" },
   command: ["postgres"],
   environment: { DB_PASSWORD: "hunter2" },
-  mounts: [],
-  storage: [
+  mounts: [
     {
+      type: "volume",
       store: "myapp_db_data",
       target: PortablePath.make("/var/lib/postgresql/data"),
       readOnly: false,
@@ -1154,7 +1168,14 @@ describe("provider-docker RuntimeProvider contract", () => {
           owner: { app: appId, plan },
           image: "alpine:3.20",
           command: ["sh", "-c", "true"],
-          mounts: [{ store: "cache-data", target: PortablePath.make("/data"), readOnly: false }],
+          mounts: [
+            {
+              type: "volume",
+              store: "cache-data",
+              target: PortablePath.make("/data"),
+              readOnly: false,
+            },
+          ],
         }),
       ),
     );
@@ -1266,7 +1287,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       Cmd: ["sh", "-lc", "npm start"],
       Entrypoint: ["docker-entrypoint.sh"],
       HostConfig: {
-        Binds: ["My-App-web-app-mount:/app", "My-App-web-mount-0:/cache:ro"],
+        Binds: ["My-App-web-app-mount:/app", "My-App-web-mount-cace0001:/cache:ro"],
         PortBindings: { "31080/tcp": [{ HostIp: "127.0.0.1", HostPort: "31080" }] },
       },
       NetworkingConfig: {
@@ -1679,9 +1700,18 @@ describe("provider-docker RuntimeProvider contract", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
-    const service = {
-      ...makeService(),
-      storage: [{ store: "lando-cache-npm", target: PortablePath.make("/home/node/.npm"), readOnly: false }],
+    const base = makeService();
+    const service: ServicePlan = {
+      ...base,
+      mounts: [
+        ...base.mounts,
+        {
+          type: "volume",
+          store: "lando-cache-npm",
+          target: PortablePath.make("/home/node/.npm"),
+          readOnly: false,
+        },
+      ],
     };
     const plan = {
       ...makePlan(service),

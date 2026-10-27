@@ -90,7 +90,6 @@ const baseServicePlan = (name: string, primary = false): ServicePlan => ({
   primary,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

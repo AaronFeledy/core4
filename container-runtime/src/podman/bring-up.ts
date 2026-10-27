@@ -37,6 +37,7 @@ import type {
 } from "../engine-api.ts";
 import { missingApi, parseEngineJson } from "../engine-errors.ts";
 import { literalServiceEnvironment, requireCurrentCreationPlan } from "../environment-values.ts";
+import { prepareFileModeMounts } from "../file-mode-mounts.ts";
 import {
   containerOwnershipLabels,
   inspectOwnedNativeId,
@@ -141,6 +142,7 @@ export interface BringUpOptions {
   readonly probeBind?: ServicePublishProbe;
   readonly forbidRecreate?: boolean;
   readonly completionPlan?: AppPlan;
+  readonly userDataRoot?: string | undefined;
 }
 
 interface BringUpDeps {
@@ -296,25 +298,6 @@ const inspectContainer = Effect.fnUntraced(function* (
   };
 });
 
-const hostConfig = (
-  deps: BringUpDeps,
-  plan: AppPlan,
-  service: ServicePlan,
-  endpoints: ReadonlyArray<EndpointPlan>,
-) => {
-  return containerHostConfigFragment(plan, service, {
-    endpoints,
-    onMissingBindMountSource: (mount) => {
-      throw podmanFailure(deps, {
-        service,
-        operation: "bringUp.mount",
-        message: `provider-${deps.options.ctx.providerId} bind mounts require a source.`,
-        details: { mount },
-      });
-    },
-  });
-};
-
 const createContainerRequest = (
   deps: BringUpDeps,
   plan: AppPlan,
@@ -328,37 +311,7 @@ const createContainerRequest = (
       throw podmanFailure(deps, { service, operation: "bringUp.knobs", message, details });
     },
   });
-  const baseHostConfig = hostConfig(deps, plan, service, endpoints);
-  const mountTargets = new Set<string>();
-  const binds = baseHostConfig.Binds;
-  if (Array.isArray(binds)) {
-    for (const bind of binds) {
-      if (typeof bind !== "string") continue;
-      const withoutOptions = bind.endsWith(":ro") ? bind.slice(0, -3) : bind;
-      const separator = withoutOptions.lastIndexOf(":");
-      if (separator >= 0) mountTargets.add(withoutOptions.slice(separator + 1));
-    }
-  }
-  const mounts = baseHostConfig.Mounts;
-  if (Array.isArray(mounts)) {
-    for (const mount of mounts) {
-      if (typeof mount !== "object" || mount === null) continue;
-      const target = Reflect.get(mount, "Target");
-      if (typeof target === "string") mountTargets.add(target);
-    }
-  }
-  const tmpfs = knobs.hostConfig.Tmpfs;
-  if (typeof tmpfs === "object" && tmpfs !== null && !Array.isArray(tmpfs)) {
-    const collision = Object.keys(tmpfs).find((target) => mountTargets.has(target));
-    if (collision !== undefined) {
-      throw podmanFailure(deps, {
-        service,
-        operation: "bringUp.knobs",
-        message: "Compose tmpfs destination conflicts with a planned container mount.",
-        details: { knob: "tmpfs", target: collision },
-      });
-    }
-  }
+  const baseHostConfig = containerHostConfigFragment(plan, service, { endpoints });
   const attachments = createBodyAttachments(deps, plan, service);
   const gatewayPriority =
     (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create" &&
@@ -1043,7 +996,7 @@ const captureStartFailure = (
 };
 
 export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
-  plan: AppPlan,
+  logicalPlan: AppPlan,
   options: BringUpOptions,
 ): Effect.fn.Return<ApplyResult, ProviderError> {
   const api = options.api;
@@ -1060,6 +1013,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       }),
     );
   }
+  const plan = yield* prepareFileModeMounts(logicalPlan, options.ctx, options.userDataRoot);
   const deps: BringUpDeps = {
     api,
     options,

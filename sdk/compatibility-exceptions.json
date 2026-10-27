@@ -4924,5 +4924,71 @@
     "changeKind": "property-removed",
     "path": "$.plan.networks",
     "justification": "Pre-release E6 removes the duplicate AppPlan.networks array from every schema that embeds AppPlan; AppPlan.networking is the sole network model."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "property-optional",
+    "path": "$.services.items.appMount.excludes",
+    "justification": "Pre-release one-mount-list model: info projects the app-source bind entry, which carries type bind and keeps excludes/includes optional because only binds that declare them carry them; planned app mounts always include the merged defaults."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "property-optional",
+    "path": "$.services.items.appMount.includes",
+    "justification": "Pre-release one-mount-list model: info projects the app-source bind entry, which carries type bind and keeps excludes/includes optional because only binds that declare them carry them; planned app mounts always include the merged defaults."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "property-optional",
+    "path": "$.services.items.appMount.excludes",
+    "justification": "Pre-release one-mount-list model: info projects the app-source bind entry, which carries type bind and keeps excludes/includes optional because only binds that declare them carry them; planned app mounts always include the merged defaults."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "property-optional",
+    "path": "$.services.items.appMount.includes",
+    "justification": "Pre-release one-mount-list model: info projects the app-source bind entry, which carries type bind and keeps excludes/includes optional because only binds that declare them carry them; planned app mounts always include the merged defaults."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-optional",
+    "path": "$.appMount.excludes",
+    "justification": "Pre-release one-mount-list model: info projects the app-source bind entry, which carries type bind and keeps excludes/includes optional because only binds that declare them carry them; planned app mounts always include the merged defaults."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-optional",
+    "path": "$.appMount.includes",
+    "justification": "Pre-release one-mount-list model: info projects the app-source bind entry, which carries type bind and keeps excludes/includes optional because only binds that declare them carry them; planned app mounts always include the merged defaults."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "property-added",
+    "path": "$.appMount.type",
+    "justification": "Pre-release one-mount-list model: info projects the app-source bind entry, which carries type bind and keeps excludes/includes optional because only binds that declare them carry them; planned app mounts always include the merged defaults."
+  },
+  {
+    "surface": "schema:AppMountPlan",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release one-mount-list model: ServicePlan.mounts is the single ordered list of binds (the app source is the bind with role app), named stores, and tmpfs, so separate app-mount and store-mount shapes no longer exist. The app source is BindMountPlan with role app."
+  },
+  {
+    "surface": "schema:DataStoreMountPlan",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release one-mount-list model: ServicePlan.mounts is the single ordered list of binds (the app source is the bind with role app), named stores, and tmpfs, so separate app-mount and store-mount shapes no longer exist. Store mounts are VolumeMountPlan entries, including provider ephemeral run mounts."
+  },
+  {
+    "surface": "schema:MountPlan",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Pre-release one-mount-list model: ServicePlan.mounts is the single ordered list of binds (the app source is the bind with role app), named stores, and tmpfs, so separate app-mount and store-mount shapes no longer exist. MountPlan becomes a type-discriminated union of BindMountPlan, VolumeMountPlan, and TmpfsMountPlan; tests cover every member, ordering, and duplicate-target rejection."
+  },
+  {
+    "surface": "schema:ProviderCapabilities",
+    "changeKind": "enum-narrowed",
+    "path": "$.composeKnobs.supported.items",
+    "justification": "Pre-release: Compose tmpfs is no longer a preserved runtime knob; service tmpfs and volumes tmpfs normalize into tmpfs mount entries every bundled provider realizes, so providers no longer declare tmpfs knob support."
   }
 ]

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import { PortablePath, type ServiceConfig, serviceAppMount } from "@lando/sdk/schema";
 
 import { serviceTypes } from "../src/index.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -46,7 +46,7 @@ describe("app-mount ownership", () => {
       // When
       const plan = await planService(type, service);
       // Then
-      expect(plan.appMount).toBeUndefined();
+      expect(serviceAppMount(plan)).toBeUndefined();
       expect(plan.mounts.some((mount) => mount.type === "bind" && mount.source === "/srv/project")).toBe(
         false,
       );
@@ -82,7 +82,7 @@ describe("app-mount ownership", () => {
       // When
       const plan = await planService("apache", service);
       // Then the authored mount replaces app-source intent while path defaults remain.
-      expect(plan.appMount).toBeUndefined();
+      expect(serviceAppMount(plan)).toBeUndefined();
       expect(plan.mounts).toMatchObject([{ type: "bind", source: "/srv/project/other", target: "/app" }]);
       expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
       expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
@@ -95,7 +95,7 @@ describe("app-mount ownership", () => {
     // When
     const plan = await planService("redis");
     // Then
-    expect(plan.appMount).toBeUndefined();
+    expect(serviceAppMount(plan)).toBeUndefined();
   });
 
   for (const type of ["redis", "mariadb", "php:8.3", "compose", "lando"]) {
@@ -108,11 +108,15 @@ describe("app-mount ownership", () => {
       // When
       const plan = await planService(type, service);
       // Then
-      expect(plan.mounts).toHaveLength(2);
-      expect(plan.mounts).toMatchObject([
-        { type: "bind", source: "/srv/project/config", target: "/etc/service", readOnly: true },
+      expect(
+        plan.mounts.filter((mount) => mount.target === "/scratch" || mount.target === "/etc/service"),
+      ).toMatchObject([
         { type: "tmpfs", target: "/scratch", readOnly: false },
+        { type: "bind", source: "/srv/project/config", target: "/etc/service", readOnly: true },
       ]);
+      expect(
+        plan.mounts.filter((mount) => mount.target === "/scratch" || mount.target === "/etc/service"),
+      ).toHaveLength(2);
     });
   }
 
@@ -127,11 +131,11 @@ describe("app-mount ownership", () => {
       // When
       const plan = await planService("compose", service);
       // Then
-      expect(plan.appMount).toBeUndefined();
+      expect(serviceAppMount(plan)).toBeUndefined();
       expect(plan.mounts).toHaveLength(2);
       expect(plan.mounts).toMatchObject([
-        { source: "/var/run/docker.sock", target: "/var/run/docker.sock", readOnly: true },
         { source: "/srv/project/config", target: "/etc/service", readOnly: true },
+        { source: "/var/run/docker.sock", target: "/var/run/docker.sock", readOnly: true },
       ]);
     });
   }
@@ -144,12 +148,16 @@ describe("app-mount ownership", () => {
     // When
     const plan = await planService("tomcat", service);
     // Then the app mount owns path env and cwd, independently of the document root.
-    expect(String(plan.appMount?.target)).toBe("/app");
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
     expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
     expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
     expect(plan.environment.LANDO_WEBROOT).toBe("/usr/local/tomcat/webapps/site");
     expect(String(plan.workingDirectory)).toBe("/app");
-    expect(plan.mounts.some((mount) => mount.source === "/srv/project")).toBe(false);
+    expect(
+      plan.mounts.some(
+        (mount) => mount.type === "bind" && mount.role !== "app" && mount.source === "/srv/project",
+      ),
+    ).toBe(false);
   });
 
   test("moves tomcat app intent and resolves its relative webroot", async () => {
@@ -161,7 +169,7 @@ describe("app-mount ownership", () => {
     // When
     const plan = await planService("tomcat", service);
     // Then
-    expect(String(plan.appMount?.target)).toBe("/workspace");
+    expect(String(serviceAppMount(plan)?.target)).toBe("/workspace");
     expect(plan.environment.LANDO_WEBROOT).toBe("/workspace/public");
     expect(String(plan.workingDirectory)).toBe("/workspace");
   });
@@ -172,10 +180,14 @@ describe("app-mount ownership", () => {
     // When
     const plan = await planService("compose", service);
     // Then app-source intent moves without Lando process defaults or a mirror bind.
-    expect(String(plan.appMount?.target)).toBe("/workspace");
+    expect(String(serviceAppMount(plan)?.target)).toBe("/workspace");
     expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
     expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
     expect(plan.workingDirectory).toBeUndefined();
-    expect(plan.mounts.some((mount) => mount.source === "/srv/project")).toBe(false);
+    expect(
+      plan.mounts.some(
+        (mount) => mount.type === "bind" && mount.role !== "app" && mount.source === "/srv/project",
+      ),
+    ).toBe(false);
   });
 });

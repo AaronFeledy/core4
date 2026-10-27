@@ -38,7 +38,6 @@ const makeService = (): ServicePlan => ({
   command: ["node", "-e", "console.log('ready')"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
