@@ -106,7 +106,7 @@ pgvector
 numpy
 ```
 
-Install into a venv under `/app` so the packages survive a rebuild:
+Install into `/app/.venv`. Python keeps that path as a service-owned overlay, so the packages stay in the service instead of on the host:
 
 ```sh
 lando uv venv /app/.venv
@@ -167,14 +167,14 @@ Don't import this dump back into the populated sample database unless you've cle
 
 ## Rebuild without losing rows
 
-With the same app and Postgres major, `lando rebuild -y` and `lando destroy -y` followed by `lando start` preserve the named database volume. The venv stays too, because it lives on the app mount. Check the table after rebuilding:
+With the same app and Postgres major, `lando rebuild -y` and `lando destroy -y` followed by `lando start` preserve the named database volume. The venv is a service-owned overlay: a plain destroy keeps it, and `destroy --volumes` or `--purge` removes it. Check the table after rebuilding:
 
 ```sh
 lando rebuild -y
 lando psql -c 'SELECT count(*) FROM items;'
 ```
 
-Delete the app's service-scoped volumes when you want a clean database. This deletes the database volume and any persisted service homes, but not the source files or `/app/.venv`:
+Delete the app's service-scoped volumes when you want a clean database. This deletes the database volume, persisted service homes, and the `/app/.venv` overlay, but not the source files:
 
 ```sh
 lando destroy -y --volumes

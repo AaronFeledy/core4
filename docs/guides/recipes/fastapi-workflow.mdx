@@ -15,7 +15,7 @@ cd fastapi-demo
 lando start
 ```
 
-`--yes` accepts every prompt default. The named init creates `fastapi-demo/` and writes only `.lando.yml` there. Change into that directory before app commands. Start brings up Python, Postgres, and Redis, creating `/app/.venv` on the app mount if it's missing. The recipe puts its `bin` directory first on `PATH`, so `lando pip`, `lando uvicorn`, and bare commands inside `web` use that environment. Existing packages survive restarts and container recreation. `web` still idles until you serve an app, so the URL answers only after uvicorn runs. No application files or dependencies are installed automatically, even if `requirements.txt` exists.
+`--yes` accepts every prompt default. The named init creates `fastapi-demo/` and writes only `.lando.yml` there. Change into that directory before app commands. Start brings up Python, Postgres, and Redis, creating a service-owned `/app/.venv` overlay if `/app/.venv/bin/pip` is missing. The recipe puts its `bin` directory first on `PATH`, so `lando pip`, `lando uvicorn`, and bare commands inside `web` use that environment. Restart and a plain `lando destroy` keep that overlay. `lando destroy --volumes` or `--purge` removes it, and the next start recreates an empty venv. `web` still idles until you serve an app, so the URL answers only after uvicorn runs. No application files or dependencies are installed automatically, even if `requirements.txt` exists.
 
 If something else owns 80 or 443, Lando takes the next free port (usually `:8080` / `:8443`), and `lando info` shows it.
 
@@ -39,7 +39,7 @@ def root():
     return {"hello": "lando"}
 ```
 
-Add `.venv/` to `.gitignore`. Keep `requirements.txt` in git for reproducible installs on a fresh clone or after removing `.venv`:
+Add `.venv/` to `.gitignore`. Keep `requirements.txt` in git for reproducible installs on a fresh clone or after `lando destroy --volumes` removes the overlay:
 
 ```sh
 lando pip freeze > requirements.txt

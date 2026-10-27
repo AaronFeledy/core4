@@ -3678,9 +3678,33 @@ describe("AppPlannerLayer.layer", () => {
       );
       const web = appPlan.services[ServiceName.make("web")];
       expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(
-        expect.arrayContaining([...DEFAULT_APP_MOUNT_EXCLUDES, "__pycache__", "dist"]),
+        expect.arrayContaining([...DEFAULT_APP_MOUNT_EXCLUDES, "__pycache__", ".venv", "dist"]),
       );
       expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toContain("__pycache__");
+    });
+  });
+
+  test("python preset excludes merge after defaults as __pycache__ then .venv", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        {
+          name: "pyapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("web")]: {
+              type: "python:3.12",
+              home: false,
+            },
+          },
+        },
+        providerLandoCapabilities,
+      );
+      const web = appPlan.services[ServiceName.make("web")];
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual([
+        ...DEFAULT_APP_MOUNT_EXCLUDES,
+        "__pycache__",
+        ".venv",
+      ]);
     });
   });
 

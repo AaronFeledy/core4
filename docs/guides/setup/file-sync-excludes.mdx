@@ -76,7 +76,9 @@ services:
 
 ## Framework presets
 
-Some service types add their own excludes on top of the defaults. Python adds `__pycache__`. Ruby adds `.bundle`. Merged order is defaults, then service-type presets, then your excludes.
+Some service types add their own excludes on top of the defaults. Python adds `__pycache__` and `.venv`. Ruby adds `.bundle`. Merged order is defaults, then service-type presets, then your excludes. A host `.venv` is hidden inside the container; add `appMount.includes: [.venv]` to keep the host tree.
+
+Excludes are literal paths relative to the mount target. They do not match nested directories with the same name, and they do not accept globs. A venv at `backend/.venv` needs its own `backend/.venv` exclude, the same as a nested `node_modules`.
 
 ## How an exclude works
 
