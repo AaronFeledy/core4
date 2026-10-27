@@ -16,6 +16,7 @@ import { blocked } from "./init-pipeline/errors.ts";
 import { auxiliaryDestination, renderAuxiliaryScaffold } from "./init-pipeline/files.ts";
 import { postInitSemanticIssues } from "./manifest/action-semantics.ts";
 import { shouldRunPostInitAction } from "./post-init/authorization.ts";
+import { resolveCreateTemplate } from "./post-init/create-template.ts";
 import type {
   PreparedRecipeInit,
   RecipeInitPreparationRequest,
@@ -186,11 +187,16 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
     : [];
   const actions = yield* Effect.try({
     try: () =>
-      compiled.postInit.filter(
-        ({ value }, index) =>
-          (skippedScaffold.length === 0 || value.type === "message") &&
-          shouldRunPostInitAction(value, { recipeId: manifest.id, answers }, index),
-      ),
+      compiled.postInit.filter(({ value }, index) => {
+        if (
+          (skippedScaffold.length > 0 && value.type !== "message") ||
+          !shouldRunPostInitAction(value, { recipeId: manifest.id, answers }, index)
+        )
+          return false;
+        if (value.type === "bun" && value.verb === "create")
+          resolveCreateTemplate(value.template, index, { recipeId: manifest.id, answers });
+        return true;
+      }),
     catch: () => blocked("validate"),
   });
   const authorized = outputs.filter(({ destination }) => !skippedScaffold.includes(destination));
