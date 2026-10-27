@@ -158,6 +158,7 @@ describe("composeExtendedServiceType", () => {
       identity: {
         defaultUser: "mysql",
         homes: { mysql: "/var/lib/mysql", root: "/root" },
+        preparedHomes: ["mysql"],
       },
     });
     const child = makeType("drupal-mariadb", {
@@ -165,6 +166,7 @@ describe("composeExtendedServiceType", () => {
       identity: {
         defaultUser: "drupal",
         homes: { mysql: "/home/mysql", drupal: "/home/drupal" },
+        preparedHomes: ["mysql", "drupal"],
       },
     });
     const lookup = (id: string): ServiceType | undefined => (id === "mariadb" ? parent : undefined);
@@ -174,6 +176,7 @@ describe("composeExtendedServiceType", () => {
     expect(composed.identity).toEqual({
       defaultUser: "drupal",
       homes: { mysql: "/home/mysql", root: "/root", drupal: "/home/drupal" },
+      preparedHomes: ["mysql", "drupal"],
     });
   });
 

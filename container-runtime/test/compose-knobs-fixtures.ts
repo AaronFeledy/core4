@@ -61,10 +61,6 @@ export const KNOB_FIXTURES = {
     input: { sysctls: { "net.core.somaxconn": 1024 } },
     expected: inHostConfig({ Sysctls: { "net.core.somaxconn": "1024" } }),
   },
-  tmpfs: {
-    input: { tmpfs: ["/run", "/tmp:size=64m"] },
-    expected: inHostConfig({ Tmpfs: { "/run": "", "/tmp": "size=64m" } }),
-  },
   shm_size: {
     input: { shm_size: 67108864 },
     expected: inHostConfig({ ShmSize: 67108864 }),

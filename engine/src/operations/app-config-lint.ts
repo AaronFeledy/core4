@@ -22,6 +22,7 @@ import {
   mergeLintFindings,
 } from "@lando/landofile/lint";
 import { lintLandofileSnapshot } from "../services/landofile-live.ts";
+import { lintEnvFiles, snapshotLintFileSystem } from "./config-lint-env-files.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
 
@@ -47,7 +48,9 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   const landofile = snapshot.resolved;
   const pluginRegistry = yield* PluginRegistry;
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
-  const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
+  const fileSystem = yield* snapshotLintFileSystem(
+    Option.getOrUndefined(yield* Effect.serviceOption(FileSystem)),
+  );
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
   const resolved = yield* resolveLandofileForPlanning({
     landofile,
@@ -67,6 +70,12 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     file: snapshot.landofilePath,
     appRoot: dirname(snapshot.landofilePath),
   }).pipe(Effect.result);
+  const envFindings = yield* lintEnvFiles(
+    Result.isSuccess(resolved) ? resolved.success.resolution.compiled : landofile,
+    snapshot.landofilePath,
+    fileSystem,
+    landofile.document,
+  );
   if (Result.isFailure(resolved)) {
     if (resolved.failure._tag === "ConfigExpressionError") {
       const path = configExpressionIssuePath(resolved.failure);
@@ -76,6 +85,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
         valid: false,
         violations: mergeLintFindings([
           ...result.violations,
+          ...envFindings,
           {
             rule: "landofile.expression",
             severity: "error",
@@ -94,11 +104,19 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     ...toolingAndEventIssues(resolved.success.resolution),
     ...(yield* lintCapabilityIssues(resolved.success.resolution)),
   ];
-  const evaluated = issues.map((issue) => attributeEffectiveLintIssue(landofile, issue));
-  const violations = mergeLintFindings([...result.violations, ...evaluated]);
+  const evaluated = issues
+    .filter(
+      (issue) =>
+        !envFindings.some(
+          (finding) =>
+            finding.severity === "error" && JSON.stringify(finding.path) === JSON.stringify(issue.path),
+        ),
+    )
+    .map((issue) => attributeEffectiveLintIssue(landofile, issue));
+  const violations = mergeLintFindings([...result.violations, ...envFindings, ...evaluated]);
   return {
     ...result,
-    file: sourceFile(result.violations[0]?.source) ?? sourceFile(evaluated[0]?.source) ?? result.file,
+    file: sourceFile(violations[0]?.source) ?? result.file,
     valid: !violations.some((issue) => issue.severity === "error"),
     violations,
   };

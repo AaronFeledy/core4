@@ -24,7 +24,7 @@ export const selectCi = (input: {
   readonly cwd: string;
 }): CiSelection => {
   if (input.event !== "pull_request") return { profile: "runtime", broad: true, reason: "broad event" };
-  const fallback = (reason: string): CiSelection => ({ profile: "runtime", broad: false, reason });
+  const fallback = (reason: string): CiSelection => ({ profile: "providers", broad: false, reason });
   if (![input.base, input.head].every((sha) => /^[a-f0-9]{40,64}$/.test(sha)))
     return fallback("missing or unusable SHAs");
   const repoArgs = ["rev-parse", "--git-dir"];

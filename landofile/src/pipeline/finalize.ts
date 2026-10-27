@@ -31,6 +31,7 @@ import {
   isValidSemverRange,
   rememberVersionConstraintEntries,
 } from "../version-constraint.ts";
+import { type LandofileFinalizeOverrides, applyFinalizeOverrides } from "./finalize-overrides.ts";
 import {
   type LandofileLoadScope,
   buildLandofileLoadScope,
@@ -42,9 +43,10 @@ import { getSourceDocuments, rememberSourceDocuments } from "./source-table.ts";
 
 export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   file: string,
-  document: Record<string, unknown>,
+  authoredDocument: Record<string, unknown>,
   context: {
     readonly appRoot: string;
+    readonly overrides?: LandofileFinalizeOverrides | undefined;
     readonly pendingSites?: ParsedPendingSite[] | undefined;
     readonly env?: Readonly<Record<string, string>> | undefined;
     readonly scope?: LandofileLoadScope;
@@ -53,6 +55,9 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     readonly logger?: Context.Service.Shape<typeof Logger> | undefined;
   },
 ) {
+  // Replacement origins on overridden keys make every origin-filtered site consumer drop the
+  // displaced expressions; shadowed `lando:` sites stay in scope for constraint accumulation.
+  const document = applyFinalizeOverrides(authoredDocument, context.overrides);
   const scope =
     context.scope ??
     (yield* buildLandofileLoadScope([{ file, value: document }], context.env, context.pendingSites));

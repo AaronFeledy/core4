@@ -8,7 +8,6 @@ services:
   e2e:
     type: "node:22"
     image: mcr.microsoft.com/playwright:v1.64.1-noble
-    home: false
     endpoints: []
 tooling:
   playwright:

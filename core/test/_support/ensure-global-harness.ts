@@ -35,11 +35,13 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { RedactionService } from "@lando/redaction/service";
 
+import { testStateStoreLayer } from "./landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "./legacy-service-type.ts";
 
 export interface Harness {
   readonly dataRoot: string;
   readonly layer: Layer.Layer<
+    | import("@lando/sdk/services").StateStore
     | import("@lando/sdk/services").EnvironmentValueResolver
     | AppPlanner
     | BuildOrchestrator
@@ -82,16 +84,18 @@ const fakeServiceType = makeLegacyServiceTypeFake({
       artifact: { kind: "ref", ref: "lando-global-service:test" },
       environment: service.environment ?? {},
       workingDirectory: PortablePath.make("/app"),
-      appMount: {
-        source: AbsolutePath.make(appRoot),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "passthrough",
-      },
-      mounts: [],
-      storage: [],
+      mounts: [
+        {
+          type: "bind",
+          source: AbsolutePath.make(appRoot),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          excludes: [],
+          includes: [],
+          realization: "passthrough",
+          role: "app",
+        },
+      ],
       endpoints: [
         { _tag: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
       ],
@@ -175,6 +179,7 @@ export const makeHarness = async (
     loadAppFeature: () => Effect.die("not used"),
   });
   const layer = Layer.mergeAll(
+    testStateStoreLayer,
     LandoConfigService.layer,
     AppCacheService.layer,
     BunFileSystem.layer,

@@ -74,10 +74,13 @@ test("round trips storage lifetime and the full resolved application mount", () 
       { type: "unknown", target: "/unknown", origin: "runtime", observation: "present", lifetime: "unknown" },
     ],
     appMount: {
+      type: "bind",
       source: "/host/app",
       target: "/app",
       readOnly: false,
       realization: "accelerated",
+      role: "app",
+      mountKey: "app-mount",
       includes: [".git"],
       excludes: ["node_modules"],
     },

@@ -13,6 +13,7 @@ import { Effect, Result, Schema } from "effect";
 import { analyzeComposeRejections } from "./compose/rejections.ts";
 import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
 import { healthcheckWarnings } from "./lint-healthcheck.ts";
+import { routerBindWarnings } from "./lint-router.ts";
 import { attributeLintIssue, sourceCoordinates } from "./lint-source.ts";
 import { appNameOf, rejectionViolation, violationsFromSchema } from "./lint-violations.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
@@ -70,11 +71,14 @@ const fragmentIssues = (source: SourceDocument): readonly ConfigLintViolation[] 
     onExcessProperty: "error",
     errors: "all",
   });
-  if (Result.isSuccess(decoded)) return [];
+  // A key can decode and still be rejected (for example a config grant's uid), so report rejections either way.
   const rejections = analyzeComposeRejections(source.document);
+  if (Result.isSuccess(decoded) && rejections.length === 0) return [];
   const issues = [
     ...rejections.map(rejectionViolation),
-    ...violationsFromSchema(decoded.failure.issue, source.document, rejections),
+    ...(Result.isSuccess(decoded)
+      ? []
+      : violationsFromSchema(decoded.failure.issue, source.document, rejections)),
   ];
   return issues.map((issue) =>
     attributeLintIssue(
@@ -117,7 +121,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     const retained = getSourceDocuments(merged);
     violations.push(...retained.filter((document) => !roots.has(document.file)).flatMap(fragmentIssues));
     documents = retained;
-    violations.push(...healthcheckWarnings(merged, documents));
+    violations.push(...healthcheckWarnings(merged, documents), ...routerBindWarnings(merged, documents));
     const effective = yield* finalizeLandofile(file, merged, {
       appRoot: dirname(file),
       pendingSites: acquired.runtime.pendingSites,

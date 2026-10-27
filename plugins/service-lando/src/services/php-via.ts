@@ -1,5 +1,5 @@
 import type { LogSource, ServiceConfig } from "@lando/sdk/schema";
-import { AbsolutePath, LogSourceId } from "@lando/sdk/schema";
+import { AbsolutePath, LogSourceId, sameImageReference } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
@@ -91,7 +91,7 @@ export const phpImageFor = (version: string, via: PhpVia): string =>
 export const hasCustomPhpImage = (service: ServiceConfig): boolean => {
   if (service.image === undefined) return false;
   const version = service.type?.startsWith("php:") === true ? service.type.slice("php:".length) : undefined;
-  return version === undefined || service.image !== phpImageFor(version, "apache");
+  return version === undefined || !sameImageReference(service.image, phpImageFor(version, "apache"));
 };
 
 export const phpListenPort = (via: Exclude<PhpVia, "cli">, authoredPort: number | undefined): number => {

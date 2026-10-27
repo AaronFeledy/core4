@@ -7,6 +7,7 @@ import {
 } from "./_container-helper-workflow.ts";
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
 import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
+import { renderInstallDockerCeLatestStep } from "./ci-docker-install.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 import { PROVIDER_ACCEPTANCE_CELLS, type ProviderAcceptanceCellPlan } from "./provider-matrix-plan.ts";
@@ -25,11 +26,15 @@ const setupBunSteps = `      - name: Setup Bun
           bun-version-file: .bun-version
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile`;
+        run: bun install --frozen-lockfile
 
-const matrixInclude = cells
-  .map(
-    (cell) => `          - cell: ${cell.id}
+      - name: Regenerate derived sources
+        run: bun run codegen`;
+
+const renderMatrixInclude = (includeCells: readonly ProviderAcceptanceCellPlan[]): string =>
+  includeCells
+    .map(
+      (cell) => `          - cell: ${cell.id}
             engine: ${cell.engine}
             runs-on: ${cell.runsOn}
             provider: ${cell.provider}
@@ -38,8 +43,13 @@ const matrixInclude = cells
             setup: ${cell.setup}
             advisory-skip: ${cell.advisorySkipReason === undefined ? "false" : "true"}
             notice: ${yamlString(cell.advisorySkipReason ?? "GitHub-hosted CI runtime is available.")}`,
-  )
-  .join("\n");
+    )
+    .join("\n");
+
+const dockerLatestCell = cells.find((cell) => cell.id === "docker-engine-linux-latest");
+if (dockerLatestCell === undefined) {
+  throw new Error("provider-matrix requires the docker-engine-linux-latest cell");
+}
 
 const landoRootlessPrereqStep = landoRootlessPrereqSteps.replace(
   "      - name: Provision rootless runtime prerequisites",
@@ -103,6 +113,7 @@ const managedLandoTeardown = `      - name: Teardown managed Lando runtime
           fi`;
 
 const dockerFallbackSmoke = `  docker-fallback-smoke:
+    if: \${{ github.event_name != 'pull_request' }}
     needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 15
@@ -145,21 +156,15 @@ ${containerHelperDownloadStep}
         run: bun core/bin/lando.ts global:destroy --provider=docker --yes
 `;
 
-export const renderProviderMatrixWorkflow = (): string => `${GENERATED_HEADER}
-name: provider-matrix
-
-on:
-  schedule:
-    - cron: '0 8 * * 1'
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-${renderContainerHelperJob()}
-${dockerFallbackSmoke}
-  provider-contracts:
+// GitHub evaluates a job-level `if` before the matrix expands, so a
+// `matrix.cell` filter there is a workflow-file issue. Weekly and PR
+// jobs share these steps; each job's `if` uses only github.event_name.
+const renderProviderContractsJob = (args: {
+  readonly id: string;
+  readonly condition: string;
+  readonly includeCells: readonly ProviderAcceptanceCellPlan[];
+}): string => `  ${args.id}:
+    if: \${{ ${args.condition} }}
     needs: [${CONTAINER_HELPER_JOB_ID}]
     env:
       LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE: \${{ vars.LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE }}
@@ -169,7 +174,7 @@ ${dockerFallbackSmoke}
       fail-fast: false
       matrix:
         include:
-${matrixInclude}
+${renderMatrixInclude(args.includeCells)}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
@@ -206,15 +211,17 @@ ${renderAssertPodman6Step({ condition: "matrix.cell == 'podman-podman6-linux'" }
           echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
           echo "LANDO_CONFIG__default_provider_id=\${{ matrix.provider }}" >> "$GITHUB_ENV"
 
+${renderInstallDockerCeLatestStep({ condition: "matrix.cell == 'docker-engine-linux-latest'" })}
+
       - name: Configure Docker socket
-        if: \${{ matrix.cell == 'docker-engine-linux' }}
+        if: \${{ matrix.cell == 'docker-engine-linux' || matrix.cell == 'docker-engine-linux-latest' }}
         run: |
           test -S /var/run/docker.sock
           echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"
           echo "LANDO_CONFIG__default_provider_id=\${{ matrix.provider }}" >> "$GITHUB_ENV"
 
       - name: Pull live acceptance fixture images
-        if: \${{ matrix['release-blocking'] == true }}
+        if: \${{ matrix['release-blocking'] == true || matrix.cell == 'docker-engine-linux-latest' }}
         run: |
           for image in node:22-alpine postgres:16-alpine alpine:3.20; do
             case "\${{ matrix.cell }}" in
@@ -224,7 +231,7 @@ ${renderAssertPodman6Step({ condition: "matrix.cell == 'podman-podman6-linux'" }
               podman-podman6-linux)
                 podman --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"
                 ;;
-              docker-engine-linux)
+              docker-engine-linux|docker-engine-linux-latest)
                 docker pull "$image"
                 ;;
             esac
@@ -234,6 +241,17 @@ ${renderAssertPodman6Step({ condition: "matrix.cell == 'podman-podman6-linux'" }
         if: always()
         run: |
           bun run scripts/provider-matrix-acceptance.ts --cell '\${{ matrix.cell }}' --report-dir provider-matrix-reports
+
+      - name: Assert Docker latest exec creates 0644 files
+        if: \${{ matrix.cell == 'docker-engine-linux-latest' }}
+        run: |
+          bun -e '
+            const report = await Bun.file("provider-matrix-reports/docker-engine-linux-latest.json").json();
+            const check = report.checks.find((entry) => entry.id === "exec-umask-mode");
+            if (check?.outcome !== "passed") {
+              throw new Error("exec-umask-mode " + (check?.outcome ?? "missing"));
+            }
+          '
 
       - name: Upload provider matrix cell report
         if: always()
@@ -275,6 +293,40 @@ ${managedLandoTeardown}
           path: provider-matrix-diagnostics
           if-no-files-found: ignore
           retention-days: 7
+`;
+
+export const renderProviderMatrixWorkflow = (): string => `${GENERATED_HEADER}
+name: provider-matrix
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - container-runtime/**
+      - plugins/provider-docker/**
+      - scripts/provider-matrix*
+      - scripts/build-provider-matrix-workflow.ts
+      - .github/workflows/provider-matrix.yml
+
+permissions:
+  contents: read
+
+jobs:
+${renderContainerHelperJob()}
+${dockerFallbackSmoke}
+${renderProviderContractsJob({
+  id: "provider-contracts",
+  condition: "github.event_name != 'pull_request'",
+  includeCells: cells,
+})}
+
+${renderProviderContractsJob({
+  id: "provider-contracts-docker-latest",
+  condition: "github.event_name == 'pull_request'",
+  includeCells: [dockerLatestCell],
+})}
 `;
 
 const main = async (): Promise<void> => {

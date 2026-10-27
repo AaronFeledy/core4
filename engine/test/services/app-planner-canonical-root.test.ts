@@ -102,11 +102,14 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
       expect(entry.session.source).toBe(plan.root);
     }
     const web = plan.services[ServiceName.make("web")];
-    expect(web?.appMount?.source).toBe(plan.root);
-    expect(web?.appMount?.target).toBe(PortablePath.make("/app"));
-    expect(web?.mounts.some((mount) => mount.type === "bind" && mount.source === plan.root)).toBe(false);
+    expect(serviceAppMount(web ?? { mounts: [] })?.source).toBe(plan.root);
+    expect(serviceAppMount(web ?? { mounts: [] })?.target).toBe(PortablePath.make("/app"));
+    expect(web?.mounts.filter((mount) => mount.type === "bind" && mount.source === plan.root)).toHaveLength(
+      1,
+    );
   } finally {
     realpath.mockRestore();
     await rm(canonicalRoot, { recursive: true, force: true });
   }
 });
+import { serviceAppMount } from "@lando/sdk/schema";

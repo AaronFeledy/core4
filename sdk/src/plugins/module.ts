@@ -11,6 +11,7 @@ import type {
 import type { RendererContribution } from "../renderer/index.ts";
 import type {
   AppPlan,
+  AppliedStateInventory,
   HostPlatform,
   PluginManifest,
   ProviderCapabilities,
@@ -54,6 +55,9 @@ export type RuntimeProviderFactoryRequirements =
   | AppPlanSanitizer;
 
 export interface RuntimeProviderContribution {
+  readonly appliedStateInventory?: (
+    ctx: LandoPluginContext,
+  ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError, PathsService>;
   readonly id: ProviderId;
   readonly declaredCapabilities?: (platform: HostPlatform, arch?: string) => ProviderCapabilities;
   readonly resourceOwnership?: (

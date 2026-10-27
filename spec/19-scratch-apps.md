@@ -126,8 +126,10 @@ Acquisition wraps materialization and start; scratch start wraps the standard Ap
 | Mode | `appMount` and relative mounts | Absolute mounts |
 |---|---|---|
 | `full` | Resolve against the copied scratch root. Default for fork mode. | Pass through unchanged. |
-| `baked` | Suppressed. Default for recipe mode. | Pass through unchanged. |
-| `cwd` | Resolve against the cwd captured at start. | Pass through unchanged. |
+| `baked` | Recipe mode (the default there): resolve against the Lando-owned materialized recipe root. Fork mode: suppressed, with the exclude shadows, nested includes, and file-sync sessions that belonged to them. | Pass through unchanged. |
+| `cwd` | Resolve against the cwd captured at start, in every service. | Pass through unchanged. |
+
+"Relative mounts" are the bind entries planning marked `relativeTo: app` (§6.4). Under `full` and recipe `baked`, a relative mount whose source leaves the scratch root, lexically or through a symlink on an existing ancestor, is not mounted, and acquisition publishes a warning naming the service and target; the scratch root is Lando-owned, so mounting inside it exposes no host files. `--mount-cwd` without a target rebinds those mounts to the cwd; `--mount-cwd=<path>` instead adds one plain bind of the cwd at `<path>`, replacing whatever was planned exactly there, and leaves app mounts and sessions untouched.
 
 `--mount-cwd` is sugar for `--isolate=cwd`; in fork mode it MUST warn that it overrides the safer `full` default. Combining it with an explicit incompatible isolation mode fails with `ScratchIsolationConflictError`. `--isolate=passthrough` is reserved and unsupported, raising `ScratchIsolationUnsupportedError`. Copy exclusions apply only to fork materialization.
 

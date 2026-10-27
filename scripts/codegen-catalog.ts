@@ -207,6 +207,7 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    dependsOn: ["core-service-env-catalog"],
     id: "php-base-images",
     ownership: "derived",
     script: "build-php-base-images.ts",
@@ -252,12 +253,6 @@ export const CODEGEN_CATALOG = [
     id: "runtime-bundle-workflow",
     ownership: "committed-workflow",
     script: "build-runtime-bundle-workflow.ts",
-    workspace: "repo",
-  },
-  {
-    id: "php-base-workflow",
-    ownership: "committed-workflow",
-    script: "build-php-base-workflow.ts",
     workspace: "repo",
   },
   {

@@ -250,6 +250,7 @@ suite("compiled CLI managed MCP command completion", () => {
         // Then: the process releases the read without needing another container log line.
         expect(exitCode).toBe(stop === "SIGTERM" ? 143 : 0);
         expect(stderr).toBe("");
+        expect(client.messages.filter((message) => message.id === requestId)).toEqual([]);
       } finally {
         await client.dispose();
       }

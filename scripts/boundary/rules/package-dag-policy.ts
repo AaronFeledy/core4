@@ -94,7 +94,8 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   },
   "@lando/mcp": {
     dependencies: ["@lando/sdk", "@lando/engine", "@lando/landofile", "@lando/redaction"],
-    devDependencies: [],
+    // Pipe regressions exercise the renderer-owned production Stdio adapter.
+    devDependencies: ["@lando/renderer"],
   },
   "@lando/landofile": {
     dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store"],

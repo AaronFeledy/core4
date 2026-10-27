@@ -184,7 +184,7 @@ export const withStartedGpgAgent = Effect.fnUntraced(function* <A, E, R>(
         },
       );
   return yield* options.use(
-    withGpgAgentOverlay(plan, agent.session, agent.keyringDir),
+    yield* withGpgAgentOverlay(plan, agent.session, agent.keyringDir),
     prepareGpgHome(plan, options.exec),
   );
 });

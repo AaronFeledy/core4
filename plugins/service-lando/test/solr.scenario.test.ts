@@ -32,7 +32,7 @@ import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 const providerId = ProviderId.make("lando");
 
 const capabilities: ProviderCapabilities = {
-  artifactBuild: false,
+  artifactBuild: true,
   artifactPull: false,
   buildSecrets: false,
   buildSsh: false,
@@ -194,7 +194,7 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
   test("AppPlanner produces a solr plan with HTTP endpoint, persistent storage, and HTTP healthcheck", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      services: { search: { type: "solr" } },
+      services: { search: { type: "solr", home: false } },
     });
 
     const appPlan = await planLandofile(landofile);
@@ -206,8 +206,9 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     expect(search.endpoints).toEqual([
       { _tag: "internal", port: 8983, protocol: "http", name: "search", primary: true },
     ]);
-    expect(search.storage).toHaveLength(1);
-    expect(search.storage[0]?.store).toBe("myapp-solr-data");
+    const volumes = search.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-solr-data");
     expect(search.healthcheck?.kind).toBe("command");
     expect(search.healthcheck?.command).toEqual([
       "bash",

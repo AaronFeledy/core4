@@ -1,20 +1,13 @@
-import { Context, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
 
 import { AppPlacementError, GlobalAppError } from "@lando/sdk/errors";
 import { AppId } from "@lando/sdk/schema";
-import { EnvironmentValueResolver } from "@lando/sdk/services";
-import {
-  AppPlanner,
-  BuildOrchestrator,
-  ConfigService,
-  EventService,
-  FileSystem,
-  GlobalAppService,
-  PluginRegistry,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
+import { type ConfigService, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { ensureGlobalServicesRunning } from "../operations/ensure-global-services.ts";
+import {
+  type EnsureGlobalServicesServices,
+  ensureGlobalServicesRunning,
+} from "../operations/ensure-global-services.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { globalCreateProviderId, globalObserveProviderId } from "./placement.ts";
 
@@ -23,16 +16,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const globalApp = yield* GlobalAppService;
     const registry = yield* RuntimeProviderRegistry;
-    const context = Context.make(GlobalAppService, globalApp).pipe(
-      Context.add(AppPlanner, yield* AppPlanner),
-      Context.add(EnvironmentValueResolver, yield* EnvironmentValueResolver),
-      Context.add(BuildOrchestrator, yield* BuildOrchestrator),
-      Context.add(ConfigService, yield* ConfigService),
-      Context.add(EventService, yield* EventService),
-      Context.add(FileSystem, yield* FileSystem),
-      Context.add(PluginRegistry, yield* PluginRegistry),
-      Context.add(RuntimeProviderRegistry, yield* RuntimeProviderRegistry),
-    );
+    const context = yield* Effect.context<EnsureGlobalServicesServices | ConfigService>();
     const observedProviderId = globalObserveProviderId.pipe(Effect.provide(context));
     const observedProvider = observedProviderId.pipe(Effect.flatMap((id) => registry.select(id)));
     const createProvider = globalCreateProviderId().pipe(

@@ -250,6 +250,8 @@ export const makeDockerDesktopAgentSocketBridge = (options: {
         policy: { maxAttempts: 50, delay: Duration.millis(100), timeout: Duration.seconds(10) },
       },
       Effect.gen(function* () {
+        // Read-only readiness probe: POSTs /exec directly and bypasses the shared
+        // exec path, so it does not receive umask compensation.
         const created = yield* checked({
           method: "POST",
           path: `/containers/${encodeURIComponent(container)}/exec`,

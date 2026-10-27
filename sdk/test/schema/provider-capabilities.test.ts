@@ -65,7 +65,6 @@ const COMPOSE_SERVICE_KNOB_KEYS = [
   "devices",
   "ulimits",
   "sysctls",
-  "tmpfs",
   "shm_size",
   "dns",
   "dns_search",

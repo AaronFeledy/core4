@@ -1,7 +1,8 @@
 import { Schema } from "effect";
+import { ServiceHomePlan } from "./app-plan.ts";
 
 import { ServiceCredsDisplay } from "./database-connection.ts";
-import { AppMountPlan } from "./mounts.ts";
+import { BindMountPlan } from "./mounts.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceInfoMount } from "./service-mount.ts";
 
@@ -52,8 +53,11 @@ export const ServiceInfo = Schema.Struct({
   mounts: Schema.optionalKey(Schema.Array(ServiceInfoMount)).annotate({
     description: "Planned and runtime user mounts with explicit observation and storage lifetime evidence.",
   }),
-  appMount: Schema.optionalKey(AppMountPlan).annotate({
+  appMount: Schema.optionalKey(BindMountPlan).annotate({
     description: "Full resolved application source mount, absent when disabled.",
+  }),
+  home: Schema.optionalKey(ServiceHomePlan).annotate({
+    description: "Planned service home persistence status.",
   }),
   creds: Schema.optionalKey(ServiceCredsDisplay).annotate({
     description: "Service login credentials surfaced by `lando info` when the service publishes them.",

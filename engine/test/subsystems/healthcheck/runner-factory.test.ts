@@ -113,7 +113,6 @@ describe("makeHealthcheckRunner", () => {
           primary: false,
           environment: {},
           mounts: [],
-          storage: [],
           routes: [],
           dependsOn: [],
           hostAliases: [],

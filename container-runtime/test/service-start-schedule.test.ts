@@ -46,7 +46,6 @@ const service = (name: string, overrides: Partial<ServicePlan> = {}): readonly [
       primary: name === "web",
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

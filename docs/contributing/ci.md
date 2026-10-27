@@ -16,10 +16,11 @@ Pull requests select the highest profile needed by their changed paths:
 | Profile | Changes | Work |
 | --- | --- | --- |
 | `docs` | Markdown/MDX under `docs/`, except `docs/guides/`; static files under `docs/public/` and `docs/src/assets/` | Linux static checks and the docs build |
-| `guides` | Anything under `docs/guides/`, including fixtures | Docs work plus Linux guide scenarios, live `@smoke`, and their build prerequisites |
-| `runtime` | Everything else, including recipes, code, tests, scripts, workflows, lockfiles, configuration, and unknown paths | Guide work plus the complete unit shards, isolation regressions, and performance budgets |
+| `guides` | Anything under `docs/guides/`, including fixtures | Docs work plus Linux and Windows x64 guide scenarios, live Linux `@smoke`, and their build prerequisites |
+| `runtime` | Other code, recipes, tests, configuration, lockfiles, and unknown paths | Guide work plus the complete unit shards, isolation regressions, and performance budgets |
+| `providers` | Provider and container-runtime paths, service-lando, provider contracts, or the CI selection and generation files | Runtime work plus live Linux x64 provider integration |
 
-Mixed changes select the higher profile. Missing history or an empty comparison falls back to `runtime`. Deleted and renamed paths count too. There is no package-to-test map to maintain, and `bun test --changed` is a local convenience rather than the merge gate.
+Mixed changes select the highest profile: `docs`, `guides`, `runtime`, then `providers`. An empty comparison selects `runtime`; unavailable comparison history selects `providers`. A Git command failure fails selection. Deleted and renamed paths count too. The path rules live in `scripts/ci-selection.ts`. `bun test --changed` is a local convenience, not the merge gate.
 
 Pushes to `main` and manual `ci` dispatches run broad hosted coverage, including all six binary artifacts required by the release workflow. Nightly and the scheduled evidence workflows own deep live suites and platform journeys. Use manual `ci` dispatch when a PR needs the broad hosted checks before merge.
 
@@ -54,7 +55,7 @@ bun run typecheck
 
 The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix on `ubuntu-26.04`. The selected profile controls whether those shards run; each selected suite still runs in full. Library, recipe, Linux guide, and provider test jobs also use Ubuntu 26.04 rather than running twice on different Ubuntu releases. Builds stay on `ubuntu-24.04` for the older glibc reference.
 
-`scripts/test-shards.ts` collects the unit file set and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json` because native `--shard` does not know the exclusions: `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). Shard balance comes from the committed timings file, not a hand-maintained weight table.
+`scripts/test-shards.ts` collects the unit file set and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json`. It excludes integration files except the fake-client contract suites for `provider-lando`, `provider-docker`, and `provider-podman`. Those suites run in PR shards; their socket-dependent cases may skip when no live engine is available. Dedicated library and recipe suites, plus nightly-tier meta-suites, stay outside the shards. Shard balance comes from the committed timings file.
 
 Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected because compiled-binary tests race on a shared outfile. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
 
@@ -74,11 +75,13 @@ bun run scripts/update-test-timings.ts
 
 Nightly runs the same refresh in `refresh-test-timings-linux-x64` and uploads the timings file; commit the artifact when the split has drifted. `NIGHTLY_TIER_TESTS` stay out of both the PR shards and the timings refresh.
 
-The unsharded full pass remains available locally:
+The ordinary unsharded unit suite remains available locally. It excludes integration files, including the fake-client contracts added to PR shards:
 
 ```bash
 bun run test:unit
 ```
+
+To match the added provider-contract coverage, also run `bun test plugins/provider-lando/test/contract.integration.test.ts plugins/provider-docker/test/contract.integration.test.ts plugins/provider-podman/test/contract.integration.test.ts`.
 
 Heavy meta-suites that re-run generators or other test files (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/linux-acceptance-criteria-10-14.test.ts`) run in the nightly `nightly-tier-unit-tests-linux-x64` job instead of per-PR shards; per-PR workflow drift is covered by `bun run codegen:check` in `static-checks-platform`.
 
@@ -196,11 +199,11 @@ Verify the host-architecture helper on Linux:
 bun test core/test/container-helper/helper.integration.test.ts
 ```
 
-In CI, the `container-helper` job sets up Lando with the Docker provider and no router, builds both architectures, runs the integration suite on x64, and uploads the `container-helper` artifact. The `container-helper-arm64` job downloads it and runs the same suite on `ubuntu-24.04-arm` without Lando or Docker setup. The required `static-checks` aggregate rejects any arm64 helper result other than success, including skipped and cancelled runs. Every job that compiles `lando` or runs live provider tests downloads that artifact into `core/container-helper/dist`.
+In CI, the `container-helper` job sets up Lando with the Docker provider and no router, builds both architectures, runs the integration suite on x64, and uploads the `container-helper` artifact. The `container-helper-arm64` job downloads it and runs the same suite on `ubuntu-24.04-arm` without Lando or Docker setup. The arm64 helper check runs in broad CI. A selected helper check must succeed; its expected exclusion from a smaller PR profile is not a failure. Every job that compiles `lando` or runs live provider tests downloads that artifact into `core/container-helper/dist`.
 
 ## Platform binary builds
 
-Broad `main` and manual CI runs build and smoke all six binaries. A PR that selects guides or runtime builds Linux x64 only:
+Broad `main` and manual CI runs build and smoke all six binaries. A PR that selects `guides`, `runtime`, or `providers` builds Linux x64 only:
 
 - `build-darwin-arm64` on `macos-15` → `lando-darwin-arm64`
 - `build-darwin-x64` on `macos-15-intel` → `lando-darwin-x64`
@@ -247,7 +250,7 @@ Do not commit profile dumps or `*.metafile.md` artifacts.
 
 ## Startup and tooling perf budgets
 
-The `perf-budget-linux-x64` job runs for runtime-profile PRs and broad CI. It runs `bun run bench:opentui-startup -- --binary <binary>` and the tooling hot-path benchmark against the `build-linux-x64` binary artifact. The tracked budgets live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code. `openTuiStartup` keeps the 50 ms startup and first-output p95 budgets for `lando --version`. `ttyRendererOverhead` runs `lando version --renderer=lando` 20 times piped and 20 times under a Bun PTY, then requires the TTY median to stay within 150 ms of the piped median. The explicit renderer flag bypasses the app-free `version` fast path so every sample constructs the default renderer. This catches renderer work that keeps the process alive after output. The tooling gate checks its warm p95 baseline and regression budget separately.
+The `perf-budget-linux-x64` job runs for `runtime` and `providers` PRs and broad CI. It runs `bun run bench:opentui-startup -- --binary <binary>` and the tooling hot-path benchmark against the `build-linux-x64` binary artifact. The tracked budgets live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code. `openTuiStartup` keeps the 50 ms startup and first-output p95 budgets for `lando --version`. `ttyRendererOverhead` runs `lando version --renderer=lando` 20 times piped and 20 times under a Bun PTY, then requires the TTY median to stay within 150 ms of the piped median. The explicit renderer flag bypasses the app-free `version` fast path so every sample constructs the default renderer. This catches renderer work that keeps the process alive after output. The tooling gate checks its warm p95 baseline and regression budget separately.
 
 ```bash
 bun run build
@@ -380,7 +383,9 @@ export LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock
 LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test plugins/service-lando/test/postgres-config.integration.test.ts
 ```
 
-Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (35 minutes for the live linux-x64 job, 25 minutes for linux-arm64, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
+The `providers` PR profile runs Linux x64 provider integration. Other platform-specific provider jobs remain part of broad CI. Fake-client provider contracts also run in the ordinary PR unit shards, independently of live socket availability.
+
+Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line. Linux x64 splits live coverage into two required lanes, `providers` and `services`, each with a 35-minute timeout. Both lanes must pass. Linux arm64 has a 25-minute cap; macOS and Windows contract-only targets have 20-minute caps. Linux x64 diagnostic artifacts use `provider-integration-diagnostics-linux-x64-<runner>-<suite>` so each lane keeps its own results. If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
 
 ## Lint guide YAML and negative fixtures
 
@@ -405,7 +410,7 @@ Only a standalone `nolint` fence metadata token opts out. A title such as
 
 ## Guide e2e smoke subset
 
-The scenario-layer generated guide tests run on all six PR platforms (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, `windows-arm64`) through `guide-scenarios-<platform>` jobs. Each job runs the full `bun run codegen` (there is no standalone guide-scenario codegen step; `core/test/build/ci-workflow.test.ts` asserts one is absent), validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.
+The `guides`, `runtime`, and `providers` PR profiles run generated guide scenarios on Linux x64 and Windows x64. Broad CI runs them on all six platforms through `guide-scenarios-<platform>` jobs. Each job runs the full `bun run codegen` (there is no standalone guide-scenario codegen step; `core/test/build/ci-workflow.test.ts` asserts one is absent), validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.
 
 CI sets `LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1` on both guide-scenario run steps. With it set, the wrapper tees the child's raw stdout and stderr as they arrive, between two banner lines, and still prints the source-mapped document after the child exits. The source-mapped document stays the authoritative output: the mapper is a whole-document transform that rewrites earlier lines from later stack frames, so it cannot be streamed line by line. That is why the live region is raw and unmapped, and why it repeats what the mapped document later shows. Without the variable, a local run keeps the single mapped document it prints today. Reproduce the CI shape locally:
 
@@ -445,11 +450,15 @@ Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman servi
 
 ## Provider matrix
 
-The `provider-matrix` workflow runs weekly, on manual dispatch, and automatically after the runtime-bundle publisher successfully repins the committed runtime-bundle manifest on `main`. The publisher dispatch uses the GitHub Actions API (`gh workflow run provider-matrix.yml --ref main`) because its manifest-repin push is made with `github.token` and therefore does not recursively fire `push:` triggers.
+The `provider-matrix` workflow runs weekly, on manual dispatch, on pull request when provider-matrix or Docker exec paths change, and automatically after the runtime-bundle publisher successfully repins the committed runtime-bundle manifest on `main`. The publisher dispatch uses the GitHub Actions API (`gh workflow run provider-matrix.yml --ref main`) because its manifest-repin push uses `github.token` and does not trigger another `push:` workflow.
+
+Pull requests build the container helper and run `provider-contracts-docker-latest`, not the full matrix. That job selects the `docker-engine-linux-latest` cell to test exec file permissions against the current Docker Engine. The job-level `if` filters by event name, not `matrix.cell`, because GitHub evaluates it before expanding the matrix.
 
 Cells cover Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack surfaces, plus the Lando-managed Podman 6 runtime. Native machine lifecycle cells separately cover managed Lando and system Podman machines on macOS and Windows. The matrix is structured provider acceptance, not advisory contract-only coverage. Each cell writes a JSON report with a `passed`, `failed`, or `skipped` outcome; release-blocking cells fail the workflow when they fail or skip. Advisory desktop-only cells still emit a `::notice` skip on GitHub-hosted runners so maintainers can mirror them on prepared self-hosted runners.
 
 The native machine cells are advisory because GitHub-hosted macOS and Windows runners do not provide a dependable nested-virtualization contract. Prepared runners opt in with `LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE=1` or `LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE=1`; `LANDO_TEST_PODMAN_COMMAND` may select the prepared Podman binary. Missing opt-in, unsupported hosts, and absent Podman tooling produce structured skips. Once opted in with tooling present, start/stop/restart/destroy failures are recorded as failed cells, never passes. The Docker Engine, Lando-managed Linux, and system Podman 6 Linux cells remain release-blocking.
+
+Every cell regenerates derived sources before acceptance so plugin tests can import generated bundled modules. The `docker-engine-linux-latest` cell runs on `ubuntu-26.04` and installs unpinned `docker-ce` from Docker's apt repository. It then asserts that `exec-umask-mode` passed: a missing, skipped, or failed check fails the job even though the cell is not marked release-blocking. Keep this cell out of required status checks until it has a record of passing on `main`.
 
 Release-blocking installable cells run the relevant provider contract suite plus live acceptance checks for setup readiness, app bring-up/bring-down, exec, logs, inspect/health, image resolution, and volume cleanup:
 

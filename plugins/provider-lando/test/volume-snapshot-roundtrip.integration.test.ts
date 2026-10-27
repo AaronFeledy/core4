@@ -165,7 +165,7 @@ const liveFixture = Effect.gen(function* () {
       .run({
         image: helper.ref,
         command: ["sh", "-c", "cat > /data/payload"],
-        mounts: [{ store, target: PortablePath.make("/data"), readOnly: false }],
+        mounts: [{ type: "volume", store, target: PortablePath.make("/data"), readOnly: false }],
         stdinStream: stdinOf(text),
         remove: true,
       })
@@ -174,7 +174,7 @@ const liveFixture = Effect.gen(function* () {
     .run({
       image: helper.ref,
       command: ["sh", "-c", "cat /data/payload"],
-      mounts: [{ store, target: PortablePath.make("/data"), readOnly: true }],
+      mounts: [{ type: "volume", store, target: PortablePath.make("/data"), readOnly: true }],
       captureStdout: true,
       remove: true,
     })
@@ -330,7 +330,6 @@ describe("live volume snapshot round trip", () => {
                       silentEvents,
                       passthroughRedaction,
                       Layer.succeed(PathsService, PathsService.of(paths)),
-                      Layer.succeed(RuntimeProvider, fx.provider),
                       Layer.succeed(RuntimeProviderRegistry, {
                         appliedPlansFor: () => Effect.succeed([]),
                         resolveAppliedPlan: () => Effect.succeed(undefined),
@@ -352,18 +351,19 @@ describe("live volume snapshot round trip", () => {
             fx.pulledDigests.length = 0;
 
             // When: a copy-mode snapshot is taken, the volume changes, and the snapshot is restored.
-            const handle = yield* mover.snapshot(volume, { volumeSnapshot: "copy", format: "tar" });
+            const handle = yield* mover
+              .snapshot(volume, { volumeSnapshot: "copy", format: "tar" })
+              .pipe(Effect.provideService(RuntimeProvider, fx.provider));
             yield* Effect.addFinalizer(() =>
-              mover
-                .removeSnapshot(handle)
-                .pipe(
-                  Effect.catch((cause) =>
-                    Effect.logWarning("live DataMover snapshot cleanup failed", { id: handle.id, cause }),
-                  ),
+              mover.removeSnapshot(handle).pipe(
+                Effect.provideService(RuntimeProvider, fx.provider),
+                Effect.catch((cause) =>
+                  Effect.logWarning("live DataMover snapshot cleanup failed", { id: handle.id, cause }),
                 ),
+              ),
             );
             yield* fx.write("dm-mutated");
-            yield* mover.restore(handle, volume);
+            yield* mover.restore(handle, volume).pipe(Effect.provideService(RuntimeProvider, fx.provider));
 
             // Then: the original bytes are restored from the host archive.
             expect(yield* fx.read).toBe("dm-original");

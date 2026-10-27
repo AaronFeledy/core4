@@ -88,8 +88,6 @@ Leave `port:` out and nothing changes: same launcher, same image, no extra build
 
 ## Pin a version
 
-For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
-
 Set `image:` when `httpd:2.4-alpine` isn't the version you want. For example, a Debian-based image:
 
 ```yaml

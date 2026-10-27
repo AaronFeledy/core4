@@ -64,7 +64,7 @@ const next = await Effect.runPromise(
 );
 
 // Then: only tilde sources change, and unchanged home avoids a cache rewrite.
-const mounts = next.services[service]?.mounts;
+const mounts = next.services[service]?.mounts.flatMap((mount) => (mount.type === "bind" ? [mount] : []));
 assert.equal(mounts?.find((mount) => mount.target === "/ssh")?.source, `${homedir()}/.ssh`);
 assert.equal(mounts?.find((mount) => mount.target === "/host-home")?.source, homedir());
 assert.equal(mounts?.find((mount) => mount.target === "/socket")?.source, "/var/run/example.sock");

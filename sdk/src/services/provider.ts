@@ -31,7 +31,6 @@ import type {
   AgentSocketBridgeResult,
   AppId,
   AppPlan,
-  DataStoreMountPlan,
   DoctorResourceNameQuery,
   FileSyncSessionSpec,
   HostPlatform,
@@ -39,7 +38,6 @@ import type {
   HostProxyBridgeResult,
   LogSource,
   LogSourceId,
-  MountPlan,
   NetworkConfig,
   PortNumber,
   PortablePath,
@@ -56,6 +54,7 @@ import type {
   VolumeIdentity,
   VolumeInfo,
   VolumeLocator,
+  VolumeMountPlan,
   VolumeRef,
   VolumeRestoreSpec,
   VolumeSnapshotArtifact,
@@ -199,6 +198,8 @@ export interface CommandSpec {
   readonly signal?: AbortSignal;
   readonly terminalSize?: { readonly columns: number; readonly rows: number };
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
+  /** Skip exec umask compensation. Internal probes and doctor set this; argv matching must not. */
+  readonly raw?: boolean;
 }
 
 export interface ExecResult {
@@ -215,7 +216,7 @@ export interface EphemeralRunSpec {
   readonly owner?: AppSelector;
   readonly image: string;
   readonly command: ReadonlyArray<string>;
-  readonly mounts?: ReadonlyArray<MountPlan | DataStoreMountPlan>;
+  readonly mounts?: ReadonlyArray<VolumeMountPlan>;
   readonly stdin?: "inherit" | "ignore";
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly captureStdout?: boolean;
@@ -329,6 +330,9 @@ export class RuntimeProviderRegistry extends Context.Service<
     readonly appliedPlansFor: (
       root: AbsolutePath,
     ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
+    readonly assertAppliedStateReadable?: (
+      plan: Pick<AppPlan, "id" | "provider">,
+    ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;
     readonly select: (
       target?: AppPlan | ProviderId,
     ) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
