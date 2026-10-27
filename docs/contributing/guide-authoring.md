@@ -145,11 +145,13 @@ The `expect` prop of `<Verify>` is a matcher:
 - A plain object is partial: every key you list must match, and keys you
   leave out are ignored, so `{ stdout: { ... } }` says nothing about `stderr`.
 - `{ regex: "..." }` tests the value as a string against the pattern.
-- `{ schema: "AppPlan" }` decodes the value with a named public schema,
-  such as the one on the
-  [AppPlan schema reference](../reference/schemas/app-plan.mdx). A name that
-  is not published does not match, so the verification fails when the test
-  runs.
+- `{ schema: "AppPlan" }` checks that the value has the encoded (input) shape
+  of a named public schema, such as the one on the
+  [AppPlan schema reference](../reference/schemas/app-plan.mdx). This is a
+  shape check only: it does not run the schema's transformations or the
+  extra validation its decoder applies, so a value can pass this matcher and
+  still be rejected when Lando decodes it. A name that is not published does
+  not match, so the verification fails when the test runs.
 - `{ anyOf: [...] }` passes when any listed matcher passes.
 - `{ not: ... }` inverts one matcher.
 
