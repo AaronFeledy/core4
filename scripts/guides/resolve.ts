@@ -75,8 +75,10 @@ const resolveCell = (
           if ("runtime" in component.props) libraryLine = component.line;
           else cliLine = component.line;
           break;
-        case "Cleanup":
         case "Verify":
+          if (component.props.command !== undefined) cliLine = component.line;
+          break;
+        case "Cleanup":
         case "Inspect":
         case "Inline":
         case "UseFixture":
