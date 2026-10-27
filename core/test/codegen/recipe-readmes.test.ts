@@ -133,6 +133,19 @@ describe("build-recipe-readmes strip/flatten", () => {
     });
   });
 
+  test.each([true, false])("isolates scenarios sharing a source line (first render=%s)", (render) => {
+    const scenario = (id: string, display: string, visible: boolean) =>
+      `<Scenario id="${id}" render={${visible}} reason="Regression coverage only path"><Step name="${id}"><Variable name="app" value="${id}" display="${display}" /><Run command="lando info {{app}}" /></Step></Scenario>`;
+    const source = `---\nid: same-line\nprovider: test\n---\n<Guide>${scenario("first", "first-display", render)}${scenario("second", "second-display", true)}</Guide>`;
+
+    const guide = parseGuideScenarioAst("recipes/same-line/README.mdx", source);
+    expect(guide.scenarios[0]?.line).toBe(guide.scenarios[1]?.line);
+
+    const [output] = stripRecipeReadme("recipes/same-line/README.mdx", source);
+    const commands = [...(output?.markdown.match(/lando info [^\n]+/g) ?? [])];
+    expect(commands).toEqual([...(render ? ["lando info first-display"] : []), "lando info second-display"]);
+  });
+
   test("strips the full component vocabulary into plain Markdown", () => {
     const [output, ...rest] = stripRecipeReadme("recipes/sample-recipe/README.mdx", HAPPY_MDX);
     expect(rest).toHaveLength(0);

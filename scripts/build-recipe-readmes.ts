@@ -4,7 +4,7 @@ import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { RootContent } from "mdast";
 import { toMarkdown } from "mdast-util-to-markdown";
-import { elementChildren, lineOf, propsOf } from "./guides/mdx.ts";
+import { elementChildren, propsOf } from "./guides/mdx.ts";
 import type { GuideScenarioAst, GuideStepComponent, GuideStepNode, GuideVariant } from "./guides/model.ts";
 import { parseGuideScenarioAst } from "./guides/parser.ts";
 import { resolveScenario } from "./guides/resolve.ts";
@@ -82,11 +82,14 @@ const stripGuide = (
   ctx: StripContext,
 ): ReadonlyArray<RootContent> =>
   node.children.flatMap((child) => {
-    const scenario = ctx.guide.scenarios.find((candidate) => candidate.line === lineOf(child));
-    if (scenario !== undefined && child.type === "mdxJsxFlowElement" && child.name === "Scenario")
-      return resolveScenario(ctx.guide, scenario, ctx.variant).publicSteps.flatMap((step) =>
-        stripStep(step, ctx),
-      );
+    if (child.type === "mdxJsxFlowElement" && child.name === "Scenario") {
+      const { id } = propsOf(child, ctx.guide.sourcePath);
+      const scenario = ctx.guide.scenarios.find((candidate) => candidate.id === id);
+      if (scenario !== undefined)
+        return resolveScenario(ctx.guide, scenario, ctx.variant).publicSteps.flatMap((step) =>
+          stripStep(step, ctx),
+        );
+    }
     return child.type === "mdxJsxFlowElement" ? [] : [child];
   });
 
