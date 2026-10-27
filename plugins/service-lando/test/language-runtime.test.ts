@@ -57,7 +57,7 @@ const fixtures = [
     serviceType: python312ServiceType,
     serviceFeature: pythonServiceFeature,
     baseEnv: { PYTHONUNBUFFERED: "1", PYTHONDONTWRITEBYTECODE: "1" },
-    excludes: ["__pycache__"],
+    excludes: ["__pycache__", ".venv"],
     includeWebroot: false,
     resolution: {
       base: "lando",
@@ -70,7 +70,7 @@ const fixtures = [
         { id: "lando.env", config: {} },
         {
           id: "lando.app-mount",
-          config: { target: "/app", excludes: ["__pycache__"] },
+          config: { target: "/app", excludes: ["__pycache__", ".venv"] },
         },
       ],
     },
@@ -81,7 +81,7 @@ const fixtures = [
           source: "/srv/apps/myapp",
           target: "/app",
           readOnly: false,
-          excludes: ["__pycache__"],
+          excludes: ["__pycache__", ".venv"],
           includes: [],
         },
       ],

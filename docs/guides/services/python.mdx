@@ -120,7 +120,7 @@ If host ports 80 or 443 are taken, `lando info` shows fallback ports such as `:8
 
 ## Install deps with pip or uv
 
-Lando installs `uv` in the stock Python service image, so it stays available after a restart or rebuild. Declare tooling in the Landofile (see the FastAPI example above), then install your project dependencies into a venv on `/app` so they survive rebuilds too:
+Lando installs `uv` in the stock Python service image, so it stays available after a restart or rebuild. Declare tooling in the Landofile (see the FastAPI example above), then install your project dependencies into `/app/.venv`. That path is a service-owned overlay: it is not synced to the host, and a host `.venv` is hidden inside the container. Restart and a plain `lando destroy` keep it. `lando destroy --volumes` or `--purge` removes it.
 
 ```sh
 lando uv --version
@@ -129,7 +129,7 @@ lando uv pip install --python /app/.venv/bin/python -r requirements.txt
 lando exec app -- /app/.venv/bin/python --version
 ```
 
-`lando pip install` into the image works for a quick try, but a rebuild drops those packages. A venv under `/app` stays with the app mount.
+`lando pip install` into the image works for a quick try, but a rebuild drops those packages. Use `appMount.includes: [.venv]` if you want the host tree, for example for IDE autocomplete. A nested venv such as `backend/.venv` needs its own exclude to get a service-owned overlay. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
 
 Need a one-shot system install with uv instead of a venv?
 
