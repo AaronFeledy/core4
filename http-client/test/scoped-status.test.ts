@@ -16,22 +16,21 @@ const trust: ResolvedNetworkTrust = {
 };
 
 test.each([
-  ["http://localhost:8080", "direct"],
-  ["http://LOCALHOST:8080", "direct"],
-  ["http://127.0.0.1:8080", "direct"],
-  ["http://127.254.1.2:8080", "direct"],
-  ["https://[::1]:8443", "direct"],
-  ["https://[0:0:0:0:0:0:0:1]:8443", "direct"],
-  ["https://excluded.test", "direct"],
-  ["https://remote.test", "http://secure-proxy.test:3128"],
-  ["http://app.lndo.site", "http://proxy.test:3128"],
-  ["http://0.0.0.0:8080", "http://proxy.test:3128"],
-  ["http://localhost.attacker.test", "http://proxy.test:3128"],
-  ["http://128.0.0.1", "http://proxy.test:3128"],
-])("uses endpoint proxy policy for %s without changing CA trust", async (url, proxy) => {
+  ["http://localhost:8080", false],
+  ["http://LOCALHOST:8080", false],
+  ["http://127.0.0.1:8080", false],
+  ["http://127.254.1.2:8080", false],
+  ["https://[::1]:8443", false],
+  ["https://[0:0:0:0:0:0:0:1]:8443", false],
+  ["https://excluded.test", false],
+  ["https://remote.test", { url: "http://secure-proxy.test:3128", respectNoProxy: false }],
+  ["http://app.lndo.site", { url: "http://proxy.test:3128", respectNoProxy: false }],
+  ["http://0.0.0.0:8080", { url: "http://proxy.test:3128", respectNoProxy: false }],
+  ["http://localhost.attacker.test", { url: "http://proxy.test:3128", respectNoProxy: false }],
+  ["http://128.0.0.1", { url: "http://proxy.test:3128", respectNoProxy: false }],
+] as const)("uses endpoint proxy policy for %s without changing CA trust", async (url, proxy) => {
   // Given resolved proxy and custom CA trust at the egress boundary.
   let captured: BunFetchRequestInit | undefined;
-  let direct = false;
   const fetchImpl: typeof fetch = Object.assign(
     async (_input: Parameters<typeof fetch>[0], init?: BunFetchRequestInit) => {
       captured = init;
@@ -49,18 +48,13 @@ test.each([
         layerWith({
           fetch: fetchImpl,
           systemCaPems: () => ["host-ca"],
-          direct: async (_url, init) => {
-            direct = true;
-            captured = { tls: { ca: [...(init.ca ?? [])] } };
-            return new Response(null, { status: 204 });
-          },
         }),
       ),
       Effect.provideService(NetworkTrust, trust),
     ),
   );
   // Then proxy policy changes routing only, not certificate verification.
-  expect(direct ? "direct" : captured?.proxy).toBe(proxy);
+  expect(captured?.proxy).toEqual(proxy);
   expect(captured?.tls).toEqual({ ca: ["host-ca", "custom-ca"] });
 });
 
@@ -109,11 +103,7 @@ test.each([false, true])(
           if (consume) yield* Stream.runDrain(response.stream);
         }).pipe(
           Effect.provide(
-            layerWith({
-              fetch: fetchImpl,
-              systemCaPems: () => [],
-              direct: (url, init) => fetchImpl(url, { ...init, body: init.body ?? null }),
-            }).pipe(Layer.provide(eventLayer)),
+            layerWith({ fetch: fetchImpl, systemCaPems: () => [] }).pipe(Layer.provide(eventLayer)),
           ),
         ),
       ),
@@ -172,11 +162,7 @@ test("aborts and pairs events when a header-only scoped request is interrupted b
           yield* Effect.never;
         }).pipe(
           Effect.provide(
-            layerWith({
-              fetch: fetchImpl,
-              systemCaPems: () => [],
-              direct: (url, init) => fetchImpl(url, { ...init, body: init.body ?? null }),
-            }).pipe(Layer.provide(eventLayer)),
+            layerWith({ fetch: fetchImpl, systemCaPems: () => [] }).pipe(Layer.provide(eventLayer)),
           ),
         ),
       ).pipe(Effect.forkChild);

@@ -50,29 +50,30 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "node" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "node" ? ["node", "-e", "setInterval(() => {}, 1000)"] : ["postgres", "-c", "port=55432"],
   environment: name === "node" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
-  ...(name === "node"
-    ? {
-        appMount: {
-          source: appRoot,
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          excludes: [],
-          includes: [],
-          realization: "passthrough",
-        },
-      }
-    : {}),
-  mounts: [],
-  storage:
-    name === "database"
+  mounts:
+    name === "node"
       ? [
           {
-            store: "bringdownapp_database_data",
-            target: PortablePath.make("/var/lib/postgresql/data"),
+            type: "bind",
+            role: "app",
+            source: appRoot,
+            target: PortablePath.make("/app"),
             readOnly: false,
+            excludes: [],
+            includes: [],
+            realization: "passthrough",
           },
         ]
-      : [],
+      : name === "database"
+        ? [
+            {
+              type: "volume",
+              store: "bringdownapp_database_data",
+              target: PortablePath.make("/var/lib/postgresql/data"),
+              readOnly: false,
+            },
+          ]
+        : [],
   endpoints:
     name === "node"
       ? [

@@ -1,4 +1,4 @@
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, type ServicePlan, serviceAppMount } from "@lando/sdk/schema";
 import { Predicate } from "effect";
 
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
@@ -18,8 +18,9 @@ export const hostProxyEligibleServices = (plan: AppPlan) =>
 
 export const hostProxyMountInfoFromPlan = (plan: AppPlan): HostProxyMountInfo => {
   for (const service of hostProxyEligibleServices(plan)) {
-    if (service.appMount !== undefined)
-      return { containerRoot: String(service.appMount.target), hostRoot: String(service.appMount.source) };
+    const appMount = serviceAppMount(service);
+    if (appMount !== undefined)
+      return { containerRoot: String(appMount.target), hostRoot: String(appMount.source) };
   }
   return { containerRoot: "/app", hostRoot: String(plan.root) };
 };

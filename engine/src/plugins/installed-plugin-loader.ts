@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { Result, Schema } from "effect";
 
+import { importAuthorModule } from "@lando/landofile/author-modules";
 import { PluginLoadError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
 
@@ -25,7 +26,7 @@ const loadExternalPluginEntry = async (
   if (manifest.entry === undefined) return undefined;
   const entryPath = await resolvePluginModulePath(packageRoot, String(manifest.name), manifest.entry);
   try {
-    return (await import(pathToFileURL(entryPath).href)) as ExternalPluginModule;
+    return (await importAuthorModule(pathToFileURL(entryPath).href)) as ExternalPluginModule;
   } catch (cause) {
     throw pluginLoadError(
       String(manifest.name),

@@ -24,14 +24,13 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const service = (input: Partial<ServicePlan>): ServicePlan => ({
+const service = (input: Partial<Omit<ServicePlan, "nonSqlCreds">>): ServicePlan => ({
   name: serviceName,
   type: "node",
   provider: providerId,
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

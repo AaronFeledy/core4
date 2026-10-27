@@ -7,17 +7,13 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  CurrentExecutableAppPlan,
   ProviderId,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
 
-import {
-  MAILPIT_IMAGE,
-  MAILPIT_SHARED_NETWORK_HOST,
-  MAILPIT_SMTP_PORT,
-  MAILPIT_WEB_PORT,
-} from "../src/mailpit-constants.ts";
+import { MAILPIT_IMAGE, MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../src/mailpit-constants.ts";
 
 const providerId = ProviderId.make("lando");
 const SUBJECT = "Mailpit live integration";
@@ -25,6 +21,14 @@ const RECIPIENT = "recipient@example.lndo.site";
 // Minimal base image with a busybox shell + `nc`, used to drive SMTP from inside
 // a per-app service container.
 const SENDER_IMAGE = "docker.io/library/alpine:3.21";
+const suffix = crypto.randomUUID().slice(0, 8);
+const mailpitSlug = `mailpit-live-${suffix}`;
+const senderSlug = `mailpit-sender-${suffix}`;
+const mailpitHost = `mailpit.${mailpitSlug}.internal`;
+const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+const mailpitHostPort = portProbe.port;
+portProbe.stop(true);
+if (mailpitHostPort === undefined) throw new Error("No free loopback port was assigned.");
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-05-30T00:00:00Z"),
@@ -32,19 +36,21 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const appPlan = (slug: string, service: ServicePlan): AppPlan => ({
-  id: AppId.make(slug),
-  name: slug,
-  slug,
-  root: AbsolutePath.make(`/tmp/lando-${slug}`),
-  provider: providerId,
-  services: { [service.name]: service },
-  routes: [],
-  stores: [],
-  fileSync: [],
-  metadata,
-  extensions: {},
-});
+const appPlan = (slug: string, service: ServicePlan): CurrentExecutableAppPlan =>
+  CurrentExecutableAppPlan.make({
+    valueModel: 1,
+    id: AppId.make(slug),
+    name: slug,
+    slug,
+    root: AbsolutePath.make(`/tmp/lando-${slug}`),
+    provider: providerId,
+    services: { [service.name]: service },
+    routes: [],
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  });
 
 const mailpitService = (): ServicePlan => ({
   name: ServiceName.make("mailpit"),
@@ -54,7 +60,6 @@ const mailpitService = (): ServicePlan => ({
   artifact: { kind: "ref", ref: MAILPIT_IMAGE },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     { _tag: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp", name: "smtp" },
     {
@@ -62,7 +67,7 @@ const mailpitService = (): ServicePlan => ({
       port: MAILPIT_WEB_PORT,
       protocol: "http",
       name: "web",
-      publication: { bindAddress: "127.0.0.1", hostPort: MAILPIT_WEB_PORT },
+      publication: { bindAddress: "127.0.0.1", hostPort: mailpitHostPort },
     },
   ],
   routes: [],
@@ -72,9 +77,7 @@ const mailpitService = (): ServicePlan => ({
   extensions: {},
 });
 
-// A per-app service that stays alive so the test can exec an SMTP send from
-// inside its container, exercising the shared cross-app network DNS alias the
-// per-app `LANDO_MAIL_HOST` env var points at.
+// Prove SMTP reaches the explicitly addressed Mailpit service across app networks.
 const senderService = (): ServicePlan => ({
   name: ServiceName.make("web"),
   type: "compose",
@@ -84,7 +87,6 @@ const senderService = (): ServicePlan => ({
   command: ["sleep", "infinity"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -93,9 +95,6 @@ const senderService = (): ServicePlan => ({
   extensions: {},
 });
 
-// Raw SMTP conversation piped to the global Mailpit service over the shared
-// cross-app network. Mailpit advertises PIPELINING, so the buffered commands are
-// processed in order even after the client half-closes the connection.
 const smtpPayload = [
   "HELO web.shop.internal",
   "MAIL FROM:<sender@example.lndo.site>",
@@ -117,11 +116,7 @@ const sendMailFromService = async (
 ): Promise<void> => {
   const target = { app: AppId.make(plan.slug), service: ServiceName.make("web") };
   const command = {
-    command: [
-      "sh",
-      "-c",
-      `printf '%b' '${smtpPayload}' | nc -w 5 ${MAILPIT_SHARED_NETWORK_HOST} ${MAILPIT_SMTP_PORT}`,
-    ],
+    command: ["sh", "-c", `printf '%b' '${smtpPayload}' | nc -w 5 ${mailpitHost} ${MAILPIT_SMTP_PORT}`],
   };
   const result = await Effect.runPromise(exec(plan, target, command, { api }));
   if (result.exitCode !== 0) {
@@ -136,7 +131,7 @@ const fetchMailpitMessages = async (timeoutMs: number): Promise<unknown> => {
   let lastError: unknown;
   while ((await Effect.runPromise(Clock.currentTimeMillis)) < deadline) {
     try {
-      const response = await fetch(`http://127.0.0.1:${MAILPIT_WEB_PORT}/api/v1/messages`);
+      const response = await fetch(`http://127.0.0.1:${mailpitHostPort}/api/v1/messages`);
       if (response.ok) return await response.json();
       lastError = new Error(`HTTP ${response.status}`);
     } catch (err) {
@@ -169,7 +164,7 @@ const waitForCapturedMessage = async (timeoutMs: number): Promise<void> => {
   throw new Error(`Mailpit did not capture expected message: ${JSON.stringify(lastBody)}`);
 };
 
-describe("global Mailpit capture — live integration", () => {
+describe("Mailpit cross-app capture — live integration", () => {
   test.skipIf(resolveLiveProviderSocket() === undefined)(
     "captures SMTP mail sent from a per-app service over the shared cross-app network",
     async () => {
@@ -177,10 +172,11 @@ describe("global Mailpit capture — live integration", () => {
       expect(socketPath).toBeTruthy();
 
       const api = makePodmanApiClient(socketPath);
-      const globalPlan = appPlan("global", mailpitService());
-      const shopPlan = appPlan("shop", senderService());
+      const globalPlan = appPlan(mailpitSlug, mailpitService());
+      const shopPlan = appPlan(senderSlug, senderService());
 
       try {
+        // Start the Mailpit test service.
         const mailpitApplied = await Effect.runPromise(bringUp(globalPlan, { api }));
         expect(mailpitApplied.changed).toBe(true);
 

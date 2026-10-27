@@ -58,6 +58,8 @@ services:
 
 The defaults already exclude `node_modules`, `vendor`, `.git`, and `tmp`. See [Exclude paths from file sync](./file-sync-excludes.mdx) for includes and per-service overrides.
 
+After you change `excludes`, `includes`, or what is mounted under the app mount, the next `lando start` tells you the sync settings changed, syncs pending changes back to your project, removes the old session, and creates a new one with the new settings. Named data volumes stay. The new session starts with a full initial scan. If that start is interrupted, the next `lando start` picks up where it stopped.
+
 ## Stop and resume the app
 
 ```sh

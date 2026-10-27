@@ -40,7 +40,7 @@ jobs:
         run: bun run scripts/select-ci.ts
   static-checks-platform:
     needs: [selection]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'docs' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'docs' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
@@ -64,6 +64,8 @@ jobs:
       - name: Regenerate and verify codegen catalog
         run: bun run codegen:check
 
+      - name: Type check (bun check, no emit)
+        run: bun run check:types
       - name: Typecheck
         if: matrix.platform == 'linux-x64'
         run: bun run typecheck
@@ -106,7 +108,7 @@ jobs:
 
   static-checks:
     needs: [selection, static-checks-platform, container-helper-arm64]
-    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'docs' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'docs' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -152,7 +154,7 @@ jobs:
 
   unit-tests-linux-x64-shard:
     needs: [selection, container-helper]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
@@ -197,7 +199,7 @@ jobs:
 
   unit-tests-linux-x64:
     needs: [selection, unit-tests-linux-x64-shard]
-    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -216,9 +218,46 @@ jobs:
         run: bun run scripts/validate-ci.ts
 
 
+  process-signal-tests-darwin:
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: [{"platform":"darwin-arm64","runs-on":"macos-15"},{"platform":"darwin-x64","runs-on":"macos-15-intel"}]
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Test native process signal handling
+        run: bun test core/test/cli/process-signals.test.ts
+
+      - name: Test exec umask behavior
+        run: bun test container-runtime/test/exec-umask.test.ts
+
   docs-build:
     needs: [selection]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'docs' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'docs' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
@@ -279,7 +318,7 @@ jobs:
 
   test-isolation-linux-x64:
     needs: [selection]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
@@ -309,7 +348,7 @@ jobs:
 
   container-helper:
     needs: [selection]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
@@ -391,7 +430,7 @@ jobs:
         run: bun test core/test/container-helper/helper.integration.test.ts
   schema-snapshot:
     needs: [selection]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
@@ -450,7 +489,7 @@ jobs:
 
   bundled-codegen:
     needs: [selection]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
@@ -499,7 +538,7 @@ jobs:
 
   library-api-tests-runner:
     needs: [selection]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
@@ -533,7 +572,7 @@ jobs:
 
   library-api-tests:
     needs: [selection, library-api-tests-runner]
-    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -554,7 +593,7 @@ jobs:
 
   recipe-tests-runner:
     needs: [selection]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
@@ -588,7 +627,7 @@ jobs:
 
   recipe-tests:
     needs: [selection, recipe-tests-runner]
-    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -789,7 +828,7 @@ jobs:
 
   guide-scenarios-linux-x64-runner:
     needs: [selection, static-checks, build-linux-x64, runtime-bundle-linux-x64]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
@@ -958,7 +997,7 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:lts
+          pull_image docker.io/library/node:24
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
@@ -1026,7 +1065,7 @@ jobs:
 
   guide-scenarios-linux-x64:
     needs: [selection, guide-scenarios-linux-x64-runner]
-    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -1047,7 +1086,7 @@ jobs:
 
   guide-scenarios-windows-x64:
     needs: [selection, static-checks]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
@@ -1386,7 +1425,7 @@ jobs:
 
   build-linux-x64:
     needs: [selection, static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, container-helper]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -1599,7 +1638,7 @@ jobs:
 
   runtime-bundle-linux-x64:
     needs: [selection]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -1721,7 +1760,7 @@ jobs:
 
   perf-budget-linux-x64:
     needs: [selection, build-linux-x64]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
@@ -1973,11 +2012,12 @@ jobs:
 
   provider-integration-linux-x64-runner:
     needs: [selection, build-linux-x64, runtime-bundle-linux-x64, container-helper]
-    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'providers') }}
     strategy:
       fail-fast: false
       matrix:
         runs-on: [ubuntu-26.04]
+        suite: [providers, services]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
@@ -2127,7 +2167,7 @@ jobs:
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:lts
+          pull_image docker.io/library/node:24
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
@@ -2157,13 +2197,22 @@ jobs:
           bun test plugins/provider-podman/test/capabilities.test.ts
 
       - name: Run provider integration tests
+        env:
+          LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
-          bun test core/test/live | tee /tmp/lando-provider-test-logs/core-live.log
-          bun test plugins/provider-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
-          bun test plugins/provider-docker/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
-          bun test plugins/service-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+          case "$LANDO_PROVIDER_TEST_SUITE" in
+            providers)
+              bun test core/test/live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log
+              bun test plugins/provider-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
+              bun test plugins/provider-docker/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
+              ;;
+            services)
+              bun test plugins/service-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+              ;;
+            *) echo "Unknown provider test suite: $LANDO_PROVIDER_TEST_SUITE" >&2; exit 1 ;;
+          esac
 
       - name: Teardown Lando runtime
         if: always()
@@ -2175,7 +2224,7 @@ jobs:
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
 
       - name: Collect provider diagnostics
-        if: failure()
+        if: failure() || cancelled()
         run: |
           mkdir -p provider-diagnostics/test-logs
           dist/lando doctor --format json > provider-diagnostics/doctor.json 2>&1 || true
@@ -2200,7 +2249,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}
+          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}-${{ matrix.suite }}
           path: provider-diagnostics
           if-no-files-found: ignore
           retention-days: 7
@@ -2208,11 +2257,11 @@ jobs:
       - name: Report job timing
         if: always()
         run: |
-          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
+          echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }}/${{ matrix.suite }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   provider-integration-linux-x64:
     needs: [selection, provider-integration-linux-x64-runner]
-    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true') }}
+    if: ${{ always() && !cancelled() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'providers') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -2396,7 +2445,7 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-windows-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   ci:
-    needs: [selection, static-checks-platform, static-checks, docs-build, schema-snapshot, bundled-codegen, library-api-tests-runner, library-api-tests, recipe-tests-runner, recipe-tests, container-helper, container-helper-arm64, build-linux-x64, runtime-bundle-linux-x64, guide-scenarios-linux-x64-runner, guide-scenarios-linux-x64, unit-tests-linux-x64-shard, unit-tests-linux-x64, test-isolation-linux-x64, perf-budget-linux-x64, runtime-bundle-win32-x64, build-darwin-arm64, guide-scenarios-darwin-arm64, provider-integration-darwin-arm64, build-darwin-x64, guide-scenarios-darwin-x64, provider-integration-darwin-x64, build-linux-arm64, guide-scenarios-linux-arm64, provider-integration-linux-arm64, provider-integration-linux-x64, provider-integration-linux-x64-runner, build-windows-x64, guide-scenarios-windows-x64, provider-integration-windows-x64, build-windows-arm64, guide-scenarios-windows-arm64, provider-integration-windows-arm64]
+    needs: [selection, static-checks-platform, static-checks, docs-build, schema-snapshot, bundled-codegen, library-api-tests-runner, library-api-tests, recipe-tests-runner, recipe-tests, container-helper, container-helper-arm64, build-linux-x64, runtime-bundle-linux-x64, guide-scenarios-linux-x64-runner, guide-scenarios-linux-x64, unit-tests-linux-x64-shard, unit-tests-linux-x64, test-isolation-linux-x64, process-signal-tests-darwin, perf-budget-linux-x64, runtime-bundle-win32-x64, build-darwin-arm64, guide-scenarios-darwin-arm64, provider-integration-darwin-arm64, build-darwin-x64, guide-scenarios-darwin-x64, provider-integration-darwin-x64, build-linux-arm64, guide-scenarios-linux-arm64, provider-integration-linux-arm64, provider-integration-linux-x64, provider-integration-linux-x64-runner, build-windows-x64, guide-scenarios-windows-x64, provider-integration-windows-x64, build-windows-arm64, guide-scenarios-windows-arm64, provider-integration-windows-arm64]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

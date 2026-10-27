@@ -55,7 +55,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 - A local recipe directory may contain `recipe.ts` or `recipe.yml`, never both (`resolveLocal` rejects both). `recipe.ts` default-exports a `Recipe` object or async factory, loads through `loadRecipeTs`, reuses Landofile sandbox scanning, imports via Bun's TS loader, and times out via `LANDO_RECIPE_TS_TIMEOUT_MS`.
 - `validateRecipeManifestObject` applies the same Beta rejection, strict decode, and semantic checks as YAML. `ResolvedRecipe.manifest` short-circuits `parseResolvedRecipe`, so the manifest must not be parsed twice.
 - `defineRecipe` is a value export covered by `subpathExports` in `sdk/test/fixtures/sdk-public-surface.json`; `Recipe`/`RecipeContext`/`RecipeFactory` are erased types and do not appear. No schema artifact-set refresh is needed unless `JSON_SCHEMA_REGISTRY` changes.
-- Tests outside this repo should use plain `export default { ... }`; a `recipe.ts` importing `@lando/sdk` only resolves where that package is on the module path.
+- Author TypeScript modules receive Lando's own `@lando/sdk` (including public author subpaths) and `effect` instances without a local install.
 
 ## Dynamic Prompt Choices
 
@@ -87,6 +87,7 @@ Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Register n
 - One command registry is the SoT for canonical ids, flags, bootstrap level, `run`, help metadata, and `resultSchema`. Implemented vs deferred ids must not be split across a second engine switch.
 - Declare confirmation flags with `yesFlag` or `nonPromptingYesFlag` from `core/src/cli/spec/confirmation-flag.ts`; plugin `yes` flags get `-y` from `pluginFlagDefinitions`.
 - Source (`bun core/bin/lando.ts`) and compiled `$bunfs` entries share the same dispatcher. Faithful compiled reproduction runs the binary **outside** the repo tree.
+- In source mode, `core/bin/lando.ts` adds `bun run codegen` guidance to module-resolution failures when generated modules are missing. Compiled `$bunfs` entries already embed those modules and skip this check.
 - Pre-command failures (pre-parse flag validation, missing/invalid bootstrap, runtime-layer construction) use `renderPreCommandFailure` / `runCompiledCommand(..., { preCommand: true })`: standard machine result envelope or text bug-report, non-zero exit, and **no** `cli-<id>-init`/`-run`/`-error` lifecycle events. Only resolved command execution attaches an invocation snapshot.
 - Tooling `command_not_found` routing requires a fresh `readFreshAppCommandCacheForCwd` index, never the `CommandRegistry` `list` method (its cache-miss path performs live discovery). A fresh-index miss may resolve only the matching `.lando/scripts/<segments>.bun.sh` after cached alias policy checks; stale/missing indexes never use that fallback. Script routing fingerprints cover relative paths and parsed front-matter, not executable bodies. Command listings opt into full script-inventory freshness.
 - JSON machine output must produce a schema-valid `CommandResultEnvelope` through the single `encodeCommandResult` serialization seam (never a per-command `JSON.stringify`), passed through `RedactionService` before emission; plain/`lando` stderr may differ in wrapping/prefixes but must preserve tagged-error fields.

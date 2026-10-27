@@ -7,6 +7,11 @@ import { bundledPluginModules } from "@lando/engine/composition";
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
 import { interruptOnAbort } from "./doctor-abort";
 import type { DoctorCheck, DoctorResult } from "./doctor-contract";
+import {
+  buildExecUmaskDoctorCheck,
+  collectExecUmaskDoctorCheck,
+  diagnoseExecUmask,
+} from "./doctor-exec-umask";
 import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy";
 import { HostProxyDoctorFileSystem } from "./doctor-host-proxy-filesystem";
 import { collectOomDoctorChecks } from "./doctor-oom";
@@ -219,6 +224,26 @@ export const doctor = Effect.fn("Doctor.collect")(
             ];
           })
         : [];
+    const execUmaskOutcome = yield* isolateDoctorSection({
+      section: "exec-umask",
+      effect: collectExecUmaskDoctorCheck({
+        provider,
+        engineVersion: versions?.runtime,
+        runtime: diagnosis.runtime,
+        runtimeStatus: diagnosis.runtimeMessage,
+        selection,
+      }),
+      fallback: buildExecUmaskDoctorCheck(
+        diagnoseExecUmask({ engineVersion: versions?.runtime, stdout: undefined }),
+        provider,
+        diagnosis.runtime,
+        diagnosis.runtimeMessage,
+        selection,
+      ),
+      budgetMs: probeBudget,
+      redact,
+    });
+    if (execUmaskOutcome.self !== undefined) selfChecks.push(execUmaskOutcome.self);
     const diedEventsOutcome = yield* isolateDoctorSection({
       section: "container-died-events",
       effect: containerDiedEventPayloadsFor(
@@ -267,6 +292,7 @@ export const doctor = Effect.fn("Doctor.collect")(
       ...pluginChecks,
       ...setupReadinessChecks,
       ...runtimeServiceChecks,
+      execUmaskOutcome.value,
       ...hostProxyOutcome.value,
       ...oomChecks,
     ]);

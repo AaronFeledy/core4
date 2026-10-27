@@ -111,7 +111,7 @@ services:
 
 ## Bind-mount PHP and database config
 
-There is no recipe shorthand for a custom `php.ini`. Lando mounts Compose `configs:` grants read-only. You can also mount host files with `volumes:`, as shown below. Create the files in your app's `config/` directory before starting the app.
+There is no recipe shorthand for a custom `php.ini`. Lando mounts Compose `configs:` grants read-only. You can also mount host files with `volumes:`, as shown below. Create the files in your app's `config/` directory before starting the app. To check the planned mounts before you start, run `lando app:cache:refresh`, then `lando info --format=json`, and look for each target under `services[].mounts`.
 
 ```yaml
 services:
@@ -135,6 +135,12 @@ services:
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{.*\"target\":\\s*\"/usr/local/etc/php/conf\\.d/zzz-custom\\.ini\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{.*\"target\":\\s*\"/etc/mysql/conf\\.d/zzz-custom\\.cnf\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando info --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/usr/local/etc/php/conf\\.d/zzz-custom\\.ini\",\\s*\"source\":\\s*\"[^\"]*(?:/|\\\\\\\\)bind-mounted-config(?:/|\\\\\\\\)config(?:/|\\\\\\\\)custom-php\\.ini\",\\s*\"readOnly\":\\s*true" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/etc/mysql/conf\\.d/zzz-custom\\.cnf\",\\s*\"source\":\\s*\"[^\"]*(?:/|\\\\\\\\)bind-mounted-config(?:/|\\\\\\\\)config(?:/|\\\\\\\\)custom-mariadb\\.cnf\",\\s*\"readOnly\":\\s*true" } }} />
     </Step>
   </Scenario>
 
@@ -172,4 +178,4 @@ tooling:
   </Scenario>
 </Guide>
 
-A running app still needs `lando start` after these edits. The scenarios above stop at lint and inspect.
+A running app still needs `lando start` after these edits. The scenarios above stop at lint, the resolved config, and the planned mounts.

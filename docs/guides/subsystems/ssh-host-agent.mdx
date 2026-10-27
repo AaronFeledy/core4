@@ -30,6 +30,8 @@ services:
     primary: true
 ```
 
+From your app directory, restart the app and check the agent inside the service:
+
 ```sh
 lando restart
 lando ssh -- ssh-add -l
@@ -48,7 +50,7 @@ By default Lando tries these candidates in order. The first one that accepts a c
 5. `$XDG_RUNTIME_DIR/yubikey-agent/yubikey-agent.sock`
 6. The Windows OpenSSH agent pipe `\\.\pipe\openssh-ssh-agent`
 
-To skip discovery, name the socket:
+To select one agent, set `sshAgent.socket` in your Landofile. Replace this example path with your agent's socket path:
 
 ```yaml
 sshAgent:
@@ -56,7 +58,11 @@ sshAgent:
   socket: /home/me/.1password/agent.sock
 ```
 
-An explicit `socket` has to be a real socket. A missing path, a symlink, a regular file, or a socket that refuses connections fails the start. Discovery does not fall through past it.
+On Unix, an explicit `socket` can be a socket or a symlink to a socket. Your user must own both the link and its target. Lando checks the target but connects through the path you wrote, so it can follow the link again if a session manager changes its target.
+
+An explicit path does not fall back to another agent. A missing path, dangling link, non-socket target, ownership mismatch, or failed agent connection stops the start. Remove `sshAgent.socket` if you want automatic discovery instead. The ownership check does not apply to automatic discovery, which can use a working root-owned `SSH_AUTH_SOCK`.
+
+If `SSH_AUTH_SOCK` is a dangling symlink, discovery tries the remaining candidates. Start and doctor report when another agent was selected instead.
 
 ## Keep the shared Landofile unchanged
 
@@ -103,11 +109,14 @@ Host mode fails closed. If the agent cannot be reached, `lando start` stops with
 | --- | --- | --- |
 | `SshAgentUnavailableError` | `host-agent-not-found` | No candidate accepted a connection. Start your agent, or set `sshAgent.socket` or `SSH_AUTH_SOCK`. |
 | `SshAgentUnavailableError` | `socket-missing` | The explicit `sshAgent.socket` is absent or refusing connections. Fix the path or drop it to use discovery. |
+| `SshAgentUnavailableError` | `socket-not-socket` | The explicit path, or its symlink target, is not a socket. Point `sshAgent.socket` at an agent socket. |
+| `SshAgentUnavailableError` | `socket-owner-mismatch` | The explicit socket, the symlink, or the symlink target is owned by another user. Use a socket you own. |
+| `SshAgentUnavailableError` | `env-socket-dangling` | `SSH_AUTH_SOCK` is a dangling symlink and no other agent was found. Open a new terminal, check `ssh-add -l` on the host, then restart the app. |
 | `CapabilityError` | `agentSocket` | The selected provider has no `agentSocket` delivery on this host. The planner stops before anything runs and names the provider and the alternatives; switch providers or return to sidecar mode. |
 | `SshAgentUnavailableError` | `bridge-failed` | The provider bridge did not come up. Run `lando doctor`, then `lando restart`. |
 | `SshAgentTransportError` | `stage: broker`, `worker`, or `bridge` | The relay broke after it was ready. Run `lando restart`; if it repeats, `lando doctor`. |
 
-Every error carries `remediation`. Machine consumers get the same fields in `--format=json` output.
+Every error carries `remediation`. Machine consumers get the same fields in `--format=json` output. Doctor preserves the discovery failure's `reason` and, when available, `socketPath`.
 
 Sidecar mode (the default) behaves differently on purpose. Start brings a stopped sidecar up itself. A missing capability, a sidecar that cannot start, or a broken relay produces a warning that names the cause and the fix, the app starts without `SSH_AUTH_SOCK`, and `lando doctor` shows the `ssh` check as degraded. Only the mode you opted into blocks the start.
 

@@ -35,7 +35,10 @@ const commandHealthcheck: HealthcheckPlan = {
   retries: 1,
 };
 
-const service = (name: string, overrides: Partial<ServicePlan> = {}): readonly [string, ServicePlan] => {
+const service = (
+  name: string,
+  overrides: Partial<Omit<ServicePlan, "nonSqlCreds">> = {},
+): readonly [string, ServicePlan] => {
   const serviceName = ServiceName.make(name);
   return [
     name,
@@ -46,7 +49,6 @@ const service = (name: string, overrides: Partial<ServicePlan> = {}): readonly [
       primary: name === "web",
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

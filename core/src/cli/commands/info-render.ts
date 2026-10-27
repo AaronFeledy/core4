@@ -8,10 +8,11 @@ import {
   formatSummary,
   worstSummaryTone,
 } from "@lando/renderer/summary";
+import { escapeDiagnosticText } from "../diagnostic-text";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { connectionFields, scopedConnectionText, unambiguousHostHttpUrls } from "./connection-summary";
-import { plainStorageRows, storageFields, storageRemedy } from "./info-storage-render";
+import { homeFields, plainStorageRows, storageFields, storageRemedy } from "./info-storage-render";
 import { INFO_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
 type InfoResultWithHostProxy = InfoAppResult & {
@@ -75,6 +76,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
         { label: "provider", value: service.provider },
         ...connectionFields(service.connections),
         ...storageFields(service),
+        ...homeFields(service),
         ...(service.logSources === undefined ? [] : logSourceFields(service.logSources)),
         ...(service.creds === undefined ? [] : [{ label: "creds", value: credsText(service.creds) }]),
       ],
@@ -180,7 +182,10 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
     });
     const credsRows =
       service.creds === undefined ? [] : [`${service.service}\tcreds\t${credsText(service.creds)}`];
-    return [base, ...plainStorageRows(service), ...logRows, ...credsRows];
+    const homeRows = homeFields(service).map(
+      (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
+    );
+    return [base, ...plainStorageRows(service), ...homeRows, ...logRows, ...credsRows];
   });
   return [`app\t${result.app}`, "service\tstate\tHost\tApp Network", ...rows, ...extra].join("\n");
 };

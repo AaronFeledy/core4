@@ -6,6 +6,8 @@ import { mergeLogSources } from "../services/log-sources.ts";
 import { SECURITY_FEATURE_ID } from "../services/network-inject.ts";
 import { CERTS_FEATURE_ID } from "../services/service-certs.ts";
 import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
+import type { MountAuthoringContext } from "./authored-mount-entry.ts";
+import { validateAuthoredMounts } from "./authored-mounts.ts";
 import { validateAuthoredAppMount } from "./authored.ts";
 import type { ResolvedServiceSeed } from "./service-seeds.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
@@ -17,9 +19,10 @@ export const plannerSeededFeatureIds = (base: ServiceTypeResolution["base"]): Re
 
 export const validateServiceSeed = Effect.fnUntraced(function* (
   seed: ResolvedServiceSeed,
-  appRoot: string,
+  context: MountAuthoringContext,
   landofilePath: string,
 ) {
+  const { appRoot } = context;
   const errors: LandofileValidationError[] = [];
   if (seed.resolution.connection !== undefined && seed.resolution.nonSqlCreds !== undefined) {
     const message = "A service type must publish either connection or nonSqlCreds, not both.";
@@ -53,5 +56,12 @@ export const validateServiceSeed = Effect.fnUntraced(function* (
   if (Result.isFailure(webroot)) errors.push(webroot.failure);
   const mount = validateAuthoredAppMount(seed.service, appRoot, seed.name);
   if (mount !== undefined) errors.push(mount);
+  const mounts = validateAuthoredMounts(
+    context,
+    seed.resolution.normalizedConfig,
+    seed.service.storage,
+    seed.service.appMount,
+  );
+  if (mounts !== undefined) errors.push(mounts);
   return { errors, logSources: Result.isSuccess(logs) ? logs.success : [] };
 });

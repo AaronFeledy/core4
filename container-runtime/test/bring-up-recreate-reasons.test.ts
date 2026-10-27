@@ -33,7 +33,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "nginx:1.27-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     {
       _tag: "published",
@@ -227,6 +226,32 @@ describe("bringUpRecreateReasons", () => {
     expect(reasons).toEqual(["publish-port", "bind-source", "network", "config"]);
   });
 
+  test("recreates when publication bindAddress changes on a running container", () => {
+    // Given a running container published on loopback.
+    const running = service;
+    const desired: ServicePlan = {
+      ...service,
+      endpoints: [
+        {
+          _tag: "published",
+          port: 8080,
+          protocol: "http",
+          name: "http",
+          publication: { bindAddress: "0.0.0.0", hostPort: 18080 },
+        },
+      ],
+    };
+    const snapshot = { labels: commonContainerLabels(plan, running) };
+    // When the desired bind changes.
+    const reasons = bringUpRecreateReasons(
+      { ...plan, services: { [desired.name]: desired } },
+      desired,
+      snapshot,
+    );
+    // Then create-config mismatch recreates the container.
+    expect(reasons).toEqual(["config"]);
+  });
+
   test("keeps a container with matching desired config labels", () => {
     // Given the labels actually emitted for the desired service.
     const snapshot = { labels: commonContainerLabels(plan, service) };
@@ -288,7 +313,7 @@ describe("agent socket storage reconciliation", () => {
     const sidecar: ServicePlan = {
       ...service,
       endpoints: [],
-      storage: [{ store: "agent-volume", target, readOnly: false }],
+      mounts: [{ type: "volume", store: "agent-volume", target, readOnly: false }],
     };
     expect(bringUpRecreateReasons(plan, sidecar, { bindSources: {} }, { skipAbsentFields: true })).toEqual([
       "bind-source",
@@ -315,7 +340,14 @@ describe("agent socket storage reconciliation", () => {
     const dataService: ServicePlan = {
       ...service,
       endpoints: [],
-      storage: [{ store: "database-data", target: PortablePath.make("/var/lib/database"), readOnly: false }],
+      mounts: [
+        {
+          type: "volume",
+          store: "database-data",
+          target: PortablePath.make("/var/lib/database"),
+          readOnly: false,
+        },
+      ],
     };
     expect(
       bringUpRecreateReasons(plan, dataService, { bindSources: {} }, { skipAbsentFields: true }),

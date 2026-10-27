@@ -1,3 +1,4 @@
+import { importAuthorModule } from "@lando/landofile/author-modules";
 import { Context, Effect, Layer, Result, Scope } from "effect";
 
 import {
@@ -132,7 +133,7 @@ const loadContributionLayer = (
     return Effect.succeed(Layer.succeed(CertificateAuthority, acquisition.service));
   }
   return Effect.tryPromise({
-    try: () => import(acquisition.module),
+    try: () => importAuthorModule(acquisition.module),
     catch: (cause) =>
       new PluginLoadError({
         message: `Failed to import certificate authority ${candidate.id} from ${acquisition.module}.`,

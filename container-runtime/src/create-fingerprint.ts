@@ -8,9 +8,10 @@ import {
   isCoreServiceEnvKey,
   landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
-import { composeConfigMounts } from "./compose-configs.ts";
+import { acceleratedMountVolume } from "./container-mounts.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
 import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
+import { fileModeMountIdentity } from "./file-mode-mounts.ts";
 import {
   AGENT_SESSION_LABEL,
   GPG_AGENT_OVERLAY_LABEL,
@@ -85,7 +86,6 @@ export const createConfigFingerprint = (
       throw new ContainerPlanError(message, details);
     },
   });
-  const appMount = service.appMount;
   const integrationLabels = containerIntegrationLabels(service.environment);
   const sshAgentActive = integrationLabels[SSH_AGENT_OVERLAY_LABEL] === "true";
   const gpgAgentActive = integrationLabels[GPG_AGENT_OVERLAY_LABEL] === "true";
@@ -118,18 +118,34 @@ export const createConfigFingerprint = (
           !(agentEnvironment[key] === value && (key === "SSH_AUTH_SOCK" ? sshAgentActive : gpgAgentActive)),
       ),
     ),
-    appMount:
-      appMount === undefined
-        ? undefined
-        : {
-            source: appMount.source,
-            target: appMount.target,
-            readOnly: appMount.readOnly,
-            realization: appMount.realization,
-          },
-    mounts: service.mounts.filter((mount) => !sessionMountTargets.has(mount.target)),
-    storage: service.storage,
-    configs: composeConfigMounts(plan, service),
+    mounts: service.mounts
+      .filter((mount) => !sessionMountTargets.has(mount.target))
+      .map((mount) => {
+        const common = { type: mount.type, target: mount.target, readOnly: mount.readOnly };
+        switch (mount.type) {
+          case "bind": {
+            const fileIdentity = fileModeMountIdentity(mount);
+            return {
+              ...common,
+              source:
+                mount.realization === "accelerated"
+                  ? acceleratedMountVolume(plan, service, mount)
+                  : (fileIdentity?.source ?? mount.source),
+              fileMode: mount.fileMode,
+              contentDigest: fileIdentity?.digest,
+              realization: mount.realization,
+              createHostPath:
+                mount.realization === "passthrough" && mount.createHostPath === false ? false : undefined,
+            };
+          }
+          case "volume":
+            return { ...common, store: mount.store, subpath: mount.subpath };
+          case "tmpfs":
+            return { ...common, options: mount.options };
+          default:
+            return mount satisfies never;
+        }
+      }),
     labels: Object.fromEntries(
       Object.entries(labels).filter(
         ([key]) =>

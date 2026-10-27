@@ -14,7 +14,6 @@ test.each([{}, { nonSqlCreds: { user: "default", password: "secret", database: "
       primary: true,
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
+import { homeStoreName } from "@lando/engine/planner/home";
 import { ServiceName } from "@lando/sdk/schema";
 
 import { mysqlServiceType } from "../src/services/mysql.ts";
@@ -53,18 +54,22 @@ describe("MySQL managed versions", () => {
       [ServiceName.make("db")]: { type: "mysql:8.0" },
       [ServiceName.make("analytics")]: { type: "mysql:9.7" },
     });
-    const dbStore = appPlan.services[ServiceName.make("db")]?.storage[0]?.store;
-    const analyticsStore = appPlan.services[ServiceName.make("analytics")]?.storage[0]?.store;
+    const dbStore = appPlan.services[ServiceName.make("db")]?.mounts
+      .filter((mount) => mount.type === "volume")
+      .find((mount) => mount.target === "/var/lib/mysql")?.store;
+    const analyticsStore = appPlan.services[ServiceName.make("analytics")]?.mounts
+      .filter((mount) => mount.type === "volume")
+      .find((mount) => mount.target === "/var/lib/mysql")?.store;
 
     expect(dbStore).toBe("mysql-versions-db-mysql-data");
     expect(analyticsStore).toBe("mysql-versions-analytics-mysql-data");
     expect(dbStore).not.toContain("8.0");
     expect(analyticsStore).not.toContain("9.7");
     expect(appPlan.stores.map((store) => store.name)).toEqual([
+      homeStoreName("mysql-versions", "db", "root"),
       "mysql-versions-db-mysql-data",
-      "lando-mysql-versions-db-home",
+      homeStoreName("mysql-versions", "analytics", "root"),
       "mysql-versions-analytics-mysql-data",
-      "lando-mysql-versions-analytics-home",
     ]);
   });
 
@@ -72,8 +77,14 @@ describe("MySQL managed versions", () => {
     const mysql80 = await planMysqlApp({ [ServiceName.make("db")]: { type: "mysql:8.0" } });
     const mysql97 = await planMysqlApp({ [ServiceName.make("db")]: { type: "mysql:9.7" } });
 
-    expect(mysql80.services[ServiceName.make("db")]?.storage[0]?.store).toBe(
-      mysql97.services[ServiceName.make("db")]?.storage[0]?.store,
+    expect(
+      mysql80.services[ServiceName.make("db")]?.mounts
+        .filter((mount) => mount.type === "volume")
+        .find((mount) => mount.target === "/var/lib/mysql")?.store,
+    ).toBe(
+      mysql97.services[ServiceName.make("db")]?.mounts
+        .filter((mount) => mount.type === "volume")
+        .find((mount) => mount.target === "/var/lib/mysql")?.store,
     );
   });
 

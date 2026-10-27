@@ -1,3 +1,7 @@
+// Windows stdin exec uses the Podman CLI and never enters the shared exec path
+// in container-runtime/src/podman/exec.ts, so it does not receive umask
+// compensation. Read-only internal probes that POST /exec directly (agent-socket
+// readiness and log-file helpers) likewise bypass that path.
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { Effect, Stream } from "effect";

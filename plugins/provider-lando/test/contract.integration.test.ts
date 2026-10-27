@@ -11,6 +11,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makePodmanApiClient, layer as providerLayer } from "@lando/provider-lando";
@@ -51,6 +52,38 @@ const attachBytesFrame = (stream: 1 | 2, payload: Uint8Array) => {
   return frame;
 };
 const attachFrame = (stream: 1 | 2, text: string) => attachBytesFrame(stream, textEncoder.encode(text));
+
+const recordNetworkCreate = (
+  request: EngineHttpRequest,
+  networks: Map<string, object>,
+): EngineHttpResponse | undefined => {
+  if (request.path !== "/networks/create" && request.path !== "/libpod/networks/create") return undefined;
+  const payload =
+    request.path === "/libpod/networks/create"
+      ? Schema.decodeUnknownSync(
+          Schema.Struct({
+            name: Schema.String,
+            driver: Schema.Literal("bridge"),
+            dns_enabled: Schema.Literal(true),
+            options: Schema.Struct({ metric: Schema.Literal("50") }),
+            labels: Schema.Record(Schema.String, Schema.String),
+          }),
+        )(request.body)
+      : undefined;
+  const body = Schema.decodeUnknownSync(
+    Schema.Struct({
+      Name: Schema.String,
+      Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+    }),
+  )(payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels });
+  networks.set(body.Name, { Id: body.Name, ...body });
+  return { status: 201, body: "{}" };
+};
+
+const engineInfoResponse = (): EngineHttpResponse => ({
+  status: 200,
+  body: JSON.stringify({ ID: "lando-fake-engine" }),
+});
 
 const tarBlockSize = 512;
 
@@ -103,7 +136,9 @@ const archiveFile = (name: string, payload: Uint8Array): Uint8Array | undefined 
   return output;
 };
 
-const createBodyBinds = (body: unknown): ReadonlyArray<string> => {
+type FakeBind = { readonly source: string; readonly target: string };
+
+const createBodyBinds = (body: unknown): ReadonlyArray<FakeBind> => {
   const parsed =
     typeof body === "string"
       ? (() => {
@@ -118,19 +153,35 @@ const createBodyBinds = (body: unknown): ReadonlyArray<string> => {
   const hostConfig = Reflect.get(parsed, "HostConfig");
   if (typeof hostConfig !== "object" || hostConfig === null) return [];
   const binds = Reflect.get(hostConfig, "Binds");
-  return Array.isArray(binds) ? binds.filter((bind): bind is string => typeof bind === "string") : [];
-};
-
-const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string): Uint8Array | undefined => {
-  for (const bind of binds) {
+  const result: FakeBind[] = [];
+  for (const bind of Array.isArray(binds) ? binds : []) {
+    if (typeof bind !== "string") continue;
     const withoutOptions = bind.endsWith(":ro") || bind.endsWith(":rw") ? bind.slice(0, -3) : bind;
     const separator = withoutOptions.lastIndexOf(":");
-    if (separator < 0) continue;
-    const host = withoutOptions.slice(0, separator);
-    const target = withoutOptions.slice(separator + 1);
+    if (separator >= 0)
+      result.push({
+        source: withoutOptions.slice(0, separator),
+        target: withoutOptions.slice(separator + 1),
+      });
+  }
+  const mounts = Reflect.get(hostConfig, "Mounts");
+  for (const mount of Array.isArray(mounts) ? mounts : []) {
+    if (typeof mount !== "object" || mount === null || Reflect.get(mount, "Type") !== "bind") continue;
+    const source = Reflect.get(mount, "Source");
+    const target = Reflect.get(mount, "Target");
+    if (typeof source === "string" && typeof target === "string") result.push({ source, target });
+  }
+  return result;
+};
+
+const archiveForBindTarget = (
+  binds: ReadonlyArray<FakeBind>,
+  archivePath: string,
+): Uint8Array | undefined => {
+  for (const { source, target } of binds) {
     if (target !== archivePath) continue;
     try {
-      const payload = readFileSync(host);
+      const payload = readFileSync(source);
       const name = target.slice(target.lastIndexOf("/") + 1) || target;
       return archiveFile(name, payload);
     } catch {
@@ -175,7 +226,7 @@ const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const execs = new Map<string, number>();
-  const containerBinds = new Map<string, ReadonlyArray<string>>();
+  const containerBinds = new Map<string, ReadonlyArray<FakeBind>>();
   const calls: EngineHttpRequest[] = [];
   const pulledImages = new Set<string>();
 
@@ -188,6 +239,7 @@ const makeFakeApi = () => {
 
         const image = pulledImageInspect(pulledImages, request);
         if (image !== undefined) return image;
+        if (request.path === "/info" && request.method === "GET") return engineInfoResponse();
         if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
         if (request.path === "/volumes/create") {
           const body = Schema.decodeUnknownSync(
@@ -206,16 +258,8 @@ const makeFakeApi = () => {
           return { status: volume === undefined ? 404 : 200, body: JSON.stringify(volume ?? {}) };
         }
 
-        if (request.path === "/networks/create") {
-          const body = Schema.decodeUnknownSync(
-            Schema.Struct({
-              Name: Schema.String,
-              Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-            }),
-          )(request.body);
-          networks.set(body.Name, { Id: body.Name, ...body });
-          return { status: 201, body: "{}" };
-        }
+        const createdNetwork = recordNetworkCreate(request, networks);
+        if (createdNetwork !== undefined) return createdNetwork;
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const observed = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
           return { status: observed === undefined ? 404 : 200, body: JSON.stringify(observed ?? {}) };
@@ -338,6 +382,7 @@ const makeFakeApi = () => {
     },
   };
 
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -381,6 +426,7 @@ const makeFakeApiWithHooks = () => {
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
+        if (request.path === "/info" && request.method === "GET") return engineInfoResponse();
         if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
         if (request.path === "/volumes/create") {
           const body = Schema.decodeUnknownSync(
@@ -397,16 +443,8 @@ const makeFakeApiWithHooks = () => {
           const volume = createdVolumes.get(name);
           return { status: volume === undefined ? 404 : 200, body: JSON.stringify(volume ?? {}) };
         }
-        if (request.path === "/networks/create") {
-          const body = Schema.decodeUnknownSync(
-            Schema.Struct({
-              Name: Schema.String,
-              Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-            }),
-          )(request.body);
-          networks.set(body.Name, { Id: body.Name, ...body });
-          return { status: 201, body: "{}" };
-        }
+        const createdNetwork = recordNetworkCreate(request, networks);
+        if (createdNetwork !== undefined) return createdNetwork;
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const observed = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
           return { status: observed === undefined ? 404 : 200, body: JSON.stringify(observed ?? {}) };
@@ -536,6 +574,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     request: (request) =>
       Effect.promise(async (): Promise<EngineHttpResponse> => {
         calls.push(request);
+        if (request.path === "/info" && request.method === "GET") return engineInfoResponse();
         // Pinned data-plane helpers are already cached locally; inspect reports the digest they name.
         if (
           request.method === "GET" &&
@@ -734,10 +773,43 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     },
   };
 
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
 describe("provider-lando RuntimeProvider contract", () => {
+  test("fake archives resolve both bind forms and exclude volumes and unrelated targets", () => {
+    const source = import.meta.filename;
+    const binds = createBodyBinds(
+      JSON.stringify({
+        HostConfig: {
+          Binds: [`${source}:/etc/short.ini:ro`, "C:\\config\\php.ini:/etc/windows.ini:ro"],
+          Mounts: [
+            {
+              Type: "bind",
+              Source: source,
+              Target: "/etc/strict.ini",
+              ReadOnly: true,
+              BindOptions: { CreateMountpoint: false },
+            },
+            { Type: "volume", Source: source, Target: "/etc/volume.ini" },
+          ],
+        },
+      }),
+    );
+    expect(binds).toEqual([
+      { source, target: "/etc/short.ini" },
+      { source: "C:\\config\\php.ini", target: "/etc/windows.ini" },
+      { source, target: "/etc/strict.ini" },
+    ]);
+    for (const filename of ["short.ini", "strict.ini"])
+      expect(archiveForBindTarget(binds, `/etc/${filename}`)).toEqual(
+        archiveFile(filename, readFileSync(source)),
+      );
+    expect(archiveForBindTarget(binds, "/etc/volume.ini")).toBeUndefined();
+    expect(archiveForBindTarget(binds, "/elsewhere/strict.ini")).toBeUndefined();
+  });
+
   test("passes the SDK provider contract suite", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(

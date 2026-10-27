@@ -99,26 +99,42 @@ const expectations = {
     expect(web.mounts).toContainEqual({
       type: "bind",
       source: resolve(context.appRoot, "src"),
+      origin: "authored",
+      relativeTo: "app",
       target: PortablePath.make("/workspace/src"),
       readOnly: true,
       createHostPath: false,
       realization: "passthrough",
     });
-    expect(web.storage).toContainEqual({
+    expect(web.mounts).toContainEqual({
+      type: "volume",
       store: `${context.plan.name}-cache`,
+      origin: "authored",
       target: PortablePath.make("/var/cache/app"),
       readOnly: false,
       subpath: "web",
     });
-    expect(web.extensions.compose).toMatchObject({
-      tmpfs: [{ target: "/run/app", size: 67_108_864, mode: 1770 }],
+    expect(web.mounts).toContainEqual({
+      type: "tmpfs",
+      target: PortablePath.make("/run/app"),
+      origin: "authored",
+      readOnly: false,
+      options: "size=67108864,mode=1770",
     });
   },
   "corpus/runtime-knobs.compose.yaml": (context) => {
-    expect(servicePlan(context, "database").extensions.compose).toMatchObject({
+    const database = servicePlan(context, "database");
+    expect(database.mounts).toContainEqual({
+      type: "tmpfs",
+      target: PortablePath.make("/run"),
+      origin: "authored",
+      readOnly: false,
+      options: "size=64m,mode=1770",
+    });
+    expect(valueAt(database.extensions.compose, "tmpfs")).toBeUndefined();
+    expect(database.extensions.compose).toMatchObject({
       extra_hosts: { "host.internal": "host-gateway" },
       cap_add: ["IPC_LOCK"],
-      tmpfs: ["/run:size=64m,mode=1770"],
       shm_size: 268_435_456,
       restart: "unless-stopped",
       ulimits: { nofile: { soft: 4096, hard: 8192 } },
@@ -197,6 +213,8 @@ const expectations = {
     expect(entry.mounts).toContainEqual({
       type: "bind",
       source: resolve(context.appRoot, "test_volume.txt"),
+      origin: "authored",
+      relativeTo: "app",
       target: PortablePath.make("/volumes/test_volume.txt"),
       readOnly: false,
       realization: "passthrough",

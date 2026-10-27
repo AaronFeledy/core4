@@ -85,9 +85,10 @@ describe("mariadb ServiceType", () => {
     expect(plan.environment.MYSQL_PASSWORD).toBe(plan.environment.MARIADB_PASSWORD);
     expect(plan.environment.MYSQL_DATABASE).toBe(plan.environment.MARIADB_DATABASE);
     expect(plan.environment.MYSQL_ROOT_PASSWORD).toBe(plan.environment.MARIADB_ROOT_PASSWORD);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-mariadb-data");
-    expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-mariadb-data");
+    expect(String(volumes[0]?.target)).toBe("/var/lib/mysql");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },
     ]);
@@ -230,10 +231,12 @@ describe("mariadb ServiceType", () => {
     const plan = await planMariadb(definition);
 
     // Then
-    expect(plan.mounts).toEqual([
+    expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/srv/apps/myapp/config/my.cnf",
+        relativeTo: "app",
         target: MARIADB_CONFIG_TARGET,
         readOnly: true,
         realization: "passthrough",
@@ -252,8 +255,28 @@ describe("mariadb ServiceType", () => {
     const plan = await planMariadb(definition);
 
     // Then
-    expect(plan.mounts).toEqual([]);
+    expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([]);
     expect(plan.command).toBeUndefined();
     expect(plan.entrypoint).toBeUndefined();
+  });
+
+  test.each([
+    ["./my.cnf", "/srv/apps/myapp/my.cnf", "app"],
+    ["/etc/my.cnf", "/etc/my.cnf", undefined],
+  ] as const)("plans config.server %s with lexical app relativity", async (server, source, relativeTo) => {
+    // Given a server config source in a MariaDB service.
+    const definition = { type: "mariadb", config: { server } };
+    // When service features are finalized into the plan.
+    const plan = await planMariadb(definition);
+    // Then only app-relative sources carry the marker used by scratch isolation.
+    expect(plan.mounts.find((mount) => mount.target === MARIADB_CONFIG_TARGET)).toEqual({
+      type: "bind",
+      origin: "service",
+      source,
+      target: MARIADB_CONFIG_TARGET,
+      readOnly: true,
+      realization: "passthrough",
+      ...(relativeTo === undefined ? {} : { relativeTo }),
+    });
   });
 });

@@ -44,6 +44,18 @@ describe("retained lint snapshot", () => {
     ]);
   });
 
+  test("reports a rejected key inside a decodable list entry at its field", async () => {
+    await write(
+      ".lando.yml",
+      'name: snapshot\nconfigs:\n  appini:\n    file: ./a.ini\nservices:\n  web:\n    type: compose\n    image: alpine:3.20\n    configs:\n      - source: appini\n        uid: "1000"\n',
+    );
+    const snapshot = await lint();
+    expect(snapshot.result.valid).toBe(false);
+    expect(snapshot.result.violations.map((violation) => [violation.rule, violation.path])).toEqual([
+      ["landofile.compose-rejection", ["services", "web", "configs", 0, "uid"]],
+    ]);
+  });
+
   test("retains a successful resolved object alongside masked fragment findings from includes", async () => {
     await write(
       ".lando.yml",

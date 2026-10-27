@@ -1,7 +1,15 @@
 import { Effect, type Scope } from "effect";
 
 import { type ContainerHelperUnavailableError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
-import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type AppRef,
+  type HostPlatform,
+  type ProviderCapabilities,
+  type ServicePlan,
+  duplicateMountTarget,
+  orderMounts,
+} from "@lando/sdk/schema";
 import { EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 
@@ -61,9 +69,12 @@ const hostProxyShimTargetFor = (
   return Effect.succeed(target);
 };
 
-export const withHostProxyRunLando = (plan: AppPlan, session: HostProxyRunLandoSession): AppPlan => {
+export const withHostProxyRunLando = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  session: HostProxyRunLandoSession,
+): Effect.fn.Return<AppPlan, HostProxyTransportUnavailableError> {
   const feature = hostProxyRunLandoFeature(session);
-  const services = Object.fromEntries(
+  const services: AppPlan["services"] = Object.fromEntries(
     Object.values(plan.services).map((service) => {
       if (!serviceHasHostProxyFeature(service)) return [service.name, service];
       const environment = Object.entries(service.environment);
@@ -76,11 +87,25 @@ export const withHostProxyRunLando = (plan: AppPlan, session: HostProxyRunLandoS
           mounts.push(mount);
         },
       });
-      return [service.name, { ...service, environment: Object.fromEntries(environment), mounts }];
+      return [
+        service.name,
+        { ...service, environment: Object.fromEntries(environment), mounts: orderMounts(mounts) },
+      ];
     }),
   );
+  for (const service of Object.values(services)) {
+    const duplicate = duplicateMountTarget(service.mounts);
+    if (duplicate !== undefined)
+      return yield* Effect.fail(
+        new HostProxyTransportUnavailableError({
+          message: `Host-proxy mount target ${duplicate} collides with a planned mount on ${service.name}.`,
+          socketPath: duplicate,
+          remediation: "Remove the conflicting mount or disable the host-proxy feature for this service.",
+        }),
+      );
+  }
   return { ...plan, services };
-};
+});
 
 const validateHostProxyTransportCapability = (
   platform: HostPlatform,
@@ -190,5 +215,5 @@ export const withStartedHostProxy = Effect.fnUntraced(function* <A, E, R>(
     reusePolicy: options.reusePolicy ?? "exact",
     ...(options.managed === undefined ? {} : { managed: options.managed }),
   });
-  return yield* options.use(session === undefined ? plan : withHostProxyRunLando(plan, session));
+  return yield* options.use(session === undefined ? plan : yield* withHostProxyRunLando(plan, session));
 });

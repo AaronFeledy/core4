@@ -3,7 +3,6 @@ services:
   web:
     type: compose
     image: nginx:alpine
-    home: false
     ports: [80]
     routes:
       - web.lndo.site

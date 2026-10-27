@@ -351,15 +351,7 @@ export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>
   const inspect = options.dialect.inspect;
   if (inspect === undefined) return { ref: reference };
   const request = api.request;
-  if (request === undefined) {
-    return yield* Effect.fail(
-      missingApi(
-        options.ctx,
-        "pullArtifact",
-        `provider-${options.ctx.providerId} pullArtifact inspect requires a container engine API client.`,
-      ),
-    );
-  }
+  if (request === undefined) return { ref: reference };
   const response = yield* request(inspect.request(reference));
   if (response.status !== 200) {
     return yield* Effect.fail(

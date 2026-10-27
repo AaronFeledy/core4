@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Cause, Effect, Exit, Schema } from "effect";
 
 import { GlobalAppError, GlobalServiceCollisionError } from "@lando/sdk/errors";
@@ -67,6 +70,43 @@ const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
   if (failure._tag !== "Some") throw new Error("expected typed failure");
   return failure.value;
 };
+
+test("a contribution loads host peers in a fresh process without a plugin entry", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-contribution-host-"));
+  try {
+    const contribution = join(root, "service.ts");
+    await Bun.write(
+      contribution,
+      `
+      import { Effect } from "effect";
+      import { ServiceConfig } from "@lando/sdk/schema";
+      import { LandofileService } from "@lando/sdk/services";
+      import { defineLandofile } from "@lando/sdk";
+      export { ServiceConfig, LandofileService, defineLandofile };
+      export const succeed = Effect.succeed;
+      export default Effect.succeed({ type: "nginx" });
+    `,
+    );
+    const driver = `
+      import { defaultGlobalServiceModuleLoader } from ${JSON.stringify(join(import.meta.dir, "../../src/services/global-services.ts"))};
+      import { Effect } from ${JSON.stringify(Bun.resolveSync("effect", import.meta.dir))};
+      import { Schema, Services, defineLandofile } from ${JSON.stringify(Bun.resolveSync("@lando/sdk", import.meta.dir))};
+      const config = await Effect.runPromise(defaultGlobalServiceModuleLoader.load({ plugin: "external", contribution: { id: "external", module: ${JSON.stringify(contribution)} } }));
+      const m = await import(${JSON.stringify(contribution)});
+      if (config.type !== "nginx" || m.ServiceConfig !== Schema.ServiceConfig || m.LandofileService !== Services.LandofileService || m.defineLandofile !== defineLandofile || m.succeed !== Effect.succeed) throw new Error("contribution host identity mismatch");
+    `;
+    const child = Bun.spawn([process.execPath, "--eval", driver], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+    expect(stderr).toBe("");
+    expect(code).toBe(0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 describe("global service contribution resolution", () => {
   test("returns id-sorted distinct contributions across two plugins", async () => {

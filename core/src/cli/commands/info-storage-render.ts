@@ -8,7 +8,7 @@ import { escapeDiagnosticText } from "../diagnostic-text";
  * Storage presentation for `lando info`: one field per storage lifetime so the
  * label answers "does this data survive?" and the value lists where it mounts.
  * Sources (host paths, volume names) stay in the JSON contract; the default
- * summary shows targets and kinds only. Runtime-reported text is escaped with
+ * summary shows targets, kinds, and planned provenance. Runtime-reported text is escaped with
  * the shared diagnostic escaper before it reaches either renderer.
  */
 
@@ -23,6 +23,13 @@ const LIFETIME_LABEL: Record<Lifetime, string> = {
 const LIFETIME_ORDER: ReadonlyArray<Lifetime> = ["retained", "container", "unknown"];
 
 const mountKind = (service: InfoAppService, mount: ServiceInfoMount): string => {
+  if (
+    mount.lifetime === "retained" &&
+    service.home?.state === "persisted" &&
+    service.home.target === mount.target
+  ) {
+    return "home";
+  }
   switch (mount.type) {
     case "bind":
       return mount.origin === "planned" && service.appMount?.target === mount.target
@@ -50,6 +57,33 @@ const mountKind = (service: InfoAppService, mount: ServiceInfoMount): string => 
   }
 };
 
+export const homeFields = (service: InfoAppService): ReadonlyArray<SummaryField> => {
+  const home = service.home;
+  if (home?.state !== "unknown") return [];
+  let reason: string;
+  switch (home.reason) {
+    case "custom-image":
+      reason = "image comes from your Landofile";
+      break;
+    case "no-identity":
+      reason = `${service.type} doesn't declare image users`;
+      break;
+    case "undeclared-user":
+      reason = `${service.type} doesn't know where ${home.user ?? "the planned user"}'s home is`;
+      break;
+    default: {
+      const unreachable: never = home.reason;
+      return unreachable;
+    }
+  }
+  return [
+    {
+      label: "home",
+      value: `not kept automatically · ${escapeDiagnosticText(reason)} · set services.${escapeDiagnosticText(service.service)}.home.path to keep one`,
+    },
+  ];
+};
+
 /** Observation wording that never reads as data loss: absence is "not mounted", missing evidence is "unconfirmed". */
 const observationNote = (observation: ServiceInfoMount["observation"]): string | undefined => {
   switch (observation) {
@@ -69,6 +103,7 @@ const observationNote = (observation: ServiceInfoMount["observation"]): string |
 const mountText = (service: InfoAppService, mount: ServiceInfoMount): string => {
   const notes = [
     mountKind(service, mount),
+    mount.provenance,
     mount.readOnly === true ? "read-only" : undefined,
     observationNote(mount.observation),
   ];
@@ -130,7 +165,7 @@ export const storageRemedy = (service: InfoAppService): string | undefined => {
   return sentences.length === 0 ? undefined : sentences.join(" ");
 };
 
-/** Tab-separated `mount` rows: target, kind, source, lifetime, observation, access. */
+/** Tab-separated `mount` rows: target, kind, source, lifetime, observation, access, provenance. */
 export const plainStorageRows = (service: InfoAppService): ReadonlyArray<string> => {
   const rows = (service.mounts ?? []).map((mount) =>
     [
@@ -142,6 +177,7 @@ export const plainStorageRows = (service: InfoAppService): ReadonlyArray<string>
       LIFETIME_LABEL[mount.lifetime],
       observationNote(mount.observation) ?? "mounted",
       mount.readOnly === undefined ? "-" : mount.readOnly ? "read-only" : "read-write",
+      mount.provenance ?? "-",
     ].join("\t"),
   );
   const remedy = storageRemedy(service);

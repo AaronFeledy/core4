@@ -34,7 +34,7 @@ const textEncoder = new TextEncoder();
 const servicePlan = (
   name: ServicePlan["name"],
   primary: boolean,
-  overrides: Partial<ServicePlan> = {},
+  overrides: Partial<Omit<ServicePlan, "nonSqlCreds">> = {},
 ): ServicePlan => ({
   name,
   type: "generic",
@@ -43,7 +43,6 @@ const servicePlan = (
   artifact: { kind: "ref", ref: "debian:12.11-slim" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

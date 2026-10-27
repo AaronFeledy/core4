@@ -152,10 +152,11 @@ describe("mssql ServiceType", () => {
         expect(plan.endpoints).toEqual([
           { _tag: "internal", port: 1433, protocol: "tcp", name: "database", primary: true },
         ]);
-        expect(plan.storage).toHaveLength(1);
-        expect(plan.storage[0]?.store).toBe("myapp-mssql-data");
-        expect(String(plan.storage[0]?.target)).toBe("/var/opt/mssql");
-        expect(plan.storage[0]?.readOnly).toBe(false);
+        const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+        expect(volumes).toHaveLength(1);
+        expect(volumes[0]?.store).toBe("myapp-mssql-data");
+        expect(String(volumes[0]?.target)).toBe("/var/opt/mssql");
+        expect(volumes[0]?.readOnly).toBe(false);
         expect(plan.environment).toMatchObject({
           ACCEPT_EULA: "Y",
           MSSQL_PID: "Developer",

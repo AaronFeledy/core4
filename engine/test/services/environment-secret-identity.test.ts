@@ -34,7 +34,6 @@ const service: ServicePlan = {
   primary: true,
   environment: { TOKEN: { _tag: "SecretRef", reference: "TEST" } },
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

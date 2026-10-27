@@ -93,7 +93,7 @@ test.each(["php:8.3", "nginx", "apache", "static:nginx", "tomcat"])(
     // Then the supporting server composition plans without app-context env.
     const web = result.services[ServiceName.make("web")];
     expect(web?.environment.LANDO_WEBROOT).toBeUndefined();
-    expect(web?.appMount).toBeUndefined();
+    expect(serviceAppMount(web ?? { mounts: [] })).toBeUndefined();
   },
 );
 
@@ -206,3 +206,4 @@ test.each(["python:3.12", "ruby:3.3"])(
     expect(web?.extensions["custom.root"]).toEqual({ webroot: "/srv/public" });
   },
 );
+import { serviceAppMount } from "@lando/sdk/schema";

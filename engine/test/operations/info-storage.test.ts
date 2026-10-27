@@ -6,20 +6,15 @@ import {
   type ServicePlan,
   fileSyncVolumeName,
 } from "@lando/sdk/schema";
-import { appMount, plan, runInfo, service } from "./info-storage-fixture.ts";
+import { appMount, plan, runInfo, service, withAppMount } from "./info-storage-fixture.ts";
 
 test("exposes declared storage and full app mount with one selection and inspection", async () => {
   const selected = {
     ...service,
-    appMount,
-    storage: [{ store: "database", target: PortablePath.make("/data"), readOnly: false }],
     mounts: [
-      {
-        type: "tmpfs" as const,
-        target: PortablePath.make("/memory"),
-        readOnly: false,
-        realization: "passthrough" as const,
-      },
+      appMount,
+      { type: "volume" as const, store: "database", target: PortablePath.make("/data"), readOnly: false },
+      { type: "tmpfs" as const, target: PortablePath.make("/memory"), readOnly: false },
     ],
   };
   const { row, calls } = await runInfo(selected, {
@@ -43,14 +38,6 @@ test("exposes declared storage and full app mount with one selection and inspect
       lifetime: "retained",
     },
     {
-      type: "tmpfs",
-      target: "/memory",
-      readOnly: false,
-      origin: "planned",
-      observation: "present",
-      lifetime: "container",
-    },
-    {
       type: "volume",
       source: "database",
       target: "/data",
@@ -58,6 +45,14 @@ test("exposes declared storage and full app mount with one selection and inspect
       origin: "planned",
       observation: "present",
       lifetime: "retained",
+    },
+    {
+      type: "tmpfs",
+      target: "/memory",
+      readOnly: false,
+      origin: "planned",
+      observation: "present",
+      lifetime: "container",
     },
   ]);
   expect(row?.connections).toEqual([]);
@@ -90,7 +85,7 @@ test.each([
   { status: "missing" as const },
   { status: "present" as const, mounts: [] },
 ])("distinguishes absent container and unavailable evidence: %j", async (mounts) => {
-  const { row } = await runInfo({ ...service, appMount }, mounts);
+  const { row } = await runInfo(withAppMount(service), mounts);
   expect(row?.mounts?.[0]?.observation).toBe(
     mounts?.status === "missing" || mounts?.status === "present" ? "missing" : "unknown",
   );
@@ -98,7 +93,10 @@ test.each([
 
 test("keeps incompatible source at the same destination runtime-only", async () => {
   const { row } = await runInfo(
-    { ...service, storage: [{ store: "expected", target: PortablePath.make("/data"), readOnly: false }] },
+    {
+      ...service,
+      mounts: [{ type: "volume", store: "expected", target: PortablePath.make("/data"), readOnly: false }],
+    },
     { status: "present", mounts: [{ type: "volume", source: "different", target: "/data", readOnly: true }] },
   );
   expect(row?.mounts).toEqual([
@@ -126,7 +124,7 @@ test("keeps incompatible source at the same destination runtime-only", async () 
 test("recognizes accelerated application mounts without marking them missing", async () => {
   const source = fileSyncVolumeName(plan.name, String(service.name), "app-mount");
   const { row } = await runInfo(
-    { ...service, appMount: { ...appMount, realization: "accelerated" } },
+    withAppMount(service, { ...appMount, realization: "accelerated", mountKey: "app-mount" }),
     { status: "present", mounts: [{ type: "volume", source, target: "/app", readOnly: false }] },
   );
   expect(row?.mounts).toEqual([
@@ -144,7 +142,7 @@ test("recognizes accelerated application mounts without marking them missing", a
 
 test("does not assert a missing Windows bind when the daemon exposes a mapped guest path", async () => {
   const { row } = await runInfo(
-    { ...service, appMount: { ...appMount, source: AbsolutePath.make("C:\\work\\app") } },
+    withAppMount(service, { ...appMount, source: AbsolutePath.make("C:\\work\\app") }),
     { status: "present", mounts: [{ type: "bind", source: "/mnt/c/work/app", target: "/app" }] },
   );
   expect(row?.mounts?.[0]).toMatchObject({
@@ -163,7 +161,7 @@ test("does not assert a missing Windows bind when the daemon exposes a mapped gu
 
 test("matches Windows bind spelling without guessing a guest-path translation", async () => {
   const { row } = await runInfo(
-    { ...service, appMount: { ...appMount, source: AbsolutePath.make("C:\\work\\app") } },
+    withAppMount(service, { ...appMount, source: AbsolutePath.make("C:\\work\\app") }),
     { status: "present", mounts: [{ type: "bind", source: "c:/WORK/app", target: "/app", readOnly: true }] },
   );
   expect(row?.mounts).toHaveLength(1);
@@ -172,7 +170,10 @@ test("matches Windows bind spelling without guessing a guest-path translation", 
 
 test("keeps unavailable source evidence unknown rather than confirming a declared store", async () => {
   const { row } = await runInfo(
-    { ...service, storage: [{ store: "expected", target: PortablePath.make("/data"), readOnly: false }] },
+    {
+      ...service,
+      mounts: [{ type: "volume", store: "expected", target: PortablePath.make("/data"), readOnly: false }],
+    },
     { status: "present", mounts: [{ type: "volume", target: "/data" }] },
   );
   expect(row?.mounts?.[0]?.observation).toBe("unknown");
@@ -198,11 +199,10 @@ test("omits internal agent and host-proxy mounts from user storage facts", async
       LANDO_GPG_KEYRING: "/run/lando/gpg-agent-keys",
     },
     mounts: targets.map((target) => ({
-      type: "volume",
-      source: "internal",
+      type: "volume" as const,
+      store: "internal",
       target: PortablePath.make(target),
       readOnly: true,
-      realization: "passthrough",
     })),
   };
   const { row } = await runInfo(
@@ -210,7 +210,13 @@ test("omits internal agent and host-proxy mounts from user storage facts", async
       ...selected,
       mounts: selected.mounts.map((mount) =>
         mount.target.startsWith("/usr/local") || mount.target === "/run/lando/host-proxy.sock"
-          ? { ...mount, type: "bind" }
+          ? {
+              type: "bind" as const,
+              source: mount.type === "volume" ? mount.store : "internal",
+              target: mount.target,
+              readOnly: mount.readOnly,
+              realization: "passthrough" as const,
+            }
           : mount,
       ),
     },

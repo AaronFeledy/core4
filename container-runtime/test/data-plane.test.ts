@@ -773,7 +773,9 @@ describe("provider data plane", () => {
       owner: { app: appId, plan: ownedPlan },
       image: "alpine:3.20",
       command: ["true"],
-      mounts: [{ store: "data", target: PortablePath.make("/data"), readOnly: false }],
+      mounts: [
+        { type: "volume" as const, store: "data", target: PortablePath.make("/data"), readOnly: false },
+      ],
       remove: true,
     };
 
@@ -797,7 +799,16 @@ describe("provider data plane", () => {
         "dev.lando.volume-owner": "/canonical/app",
       },
     });
-    expect(requests[containerCreateIndex]?.body).toMatchObject({ HostConfig: { Binds: ["data:/data"] } });
+    expect(requests[containerCreateIndex]?.body).toMatchObject({
+      Labels: {
+        "dev.lando.role": "data-helper",
+        "dev.lando.provider": "test",
+        "dev.lando.app": "app-id",
+        "dev.lando.app-root": "/canonical/app",
+        "dev.lando.store": "data",
+      },
+      HostConfig: { Binds: ["data:/data"] },
+    });
     expect(requests.filter(({ method }) => method === "DELETE")).toEqual([
       { method: "DELETE", path: expect.stringMatching(/^\/containers\/[^/?]+\?force=true&v=true$/u) },
     ]);
@@ -893,8 +904,8 @@ describe("provider data plane", () => {
           image: "alpine:3.20",
           command: ["true"],
           mounts: [
-            { store: "data", target: PortablePath.make("/data:ro"), readOnly: true },
-            { store: "data", target: PortablePath.make("/ordinary"), readOnly: false },
+            { type: "volume", store: "data", target: PortablePath.make("/data:ro"), readOnly: true },
+            { type: "volume", store: "data", target: PortablePath.make("/ordinary"), readOnly: false },
           ],
           remove: true,
         }),
@@ -943,7 +954,7 @@ describe("provider data plane", () => {
           owner: { app: appId, plan: ownedPlan },
           image: "alpine:3.20",
           command: ["true"],
-          mounts: [{ store: "data", target: PortablePath.make("/data"), readOnly: false }],
+          mounts: [{ type: "volume", store: "data", target: PortablePath.make("/data"), readOnly: false }],
           remove: true,
         }),
       ),
@@ -978,7 +989,7 @@ describe("provider data plane", () => {
           owner: { app: appId },
           image: "alpine:3.20",
           command: ["true"],
-          mounts: [{ store: "data", target: PortablePath.make("/data"), readOnly: false }],
+          mounts: [{ type: "volume", store: "data", target: PortablePath.make("/data"), readOnly: false }],
         }),
       ),
     );
@@ -1431,9 +1442,8 @@ describe("provider data plane", () => {
       );
     } else {
       expect(result.failure.message).toContain(reason);
-      expect(result.failure.remediation).toContain("Remove that container first");
-      expect(result.failure.remediation).toContain("lando destroy");
-      expect(result.failure.remediation).toContain("lando doctor");
+      expect(result.failure.remediation).toContain("Wait for any data operation to finish");
+      expect(result.failure.remediation).toContain("cannot verify that a leftover helper is inactive");
     }
   });
 
