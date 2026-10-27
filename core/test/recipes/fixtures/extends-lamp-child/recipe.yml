@@ -1,16 +1,19 @@
 id: extends-lamp-child
 title: Lamp Child
-description: Extends lamp, overrides one prompt, and adds a file plus postInit.
+description: Extends lamp, overrides one option, and adds a file plus postInit.
 version: 0.2.0
 extends: lamp
-prompts:
-  - name: php
-    type: select
-    message: PHP version
+config:
+options:
+  php:
+    type:
+      kind: enum
+      values:
+        - "8.2"
+        - "8.3"
     default: "8.2"
-    choices:
-      - value: "8.2"
-      - value: "8.3"
+    prompt:
+      message: PHP version
 files:
   - src: extra.txt
     dest: extra.txt

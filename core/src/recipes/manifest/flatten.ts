@@ -1,38 +1,42 @@
 import { realpath } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-
-import { Effect, Predicate } from "effect";
-
+import { dirname, isAbsolute } from "node:path";
+import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import {
   RecipeExtendsError,
   type RecipeManifestParseError,
   RecipeManifestValidationError,
   type RecipeSourceError,
 } from "@lando/sdk/errors";
-
 import { validationIssue } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { BUNDLED_RECIPES } from "../bundled";
 import type { GitRecipeCloner } from "../git-source";
-import { loadRecipeTs } from "../ts-loader";
-import { mergeRecipeManifests, stripExtendsAndDrop } from "./merge";
+import type {
+  RecipeTransportEvidence,
+  ResolvedAuthoredSource,
+  ResolvedRecipeSource,
+} from "../resolved-source-types";
+import { localParentPath, parentNotFound, readLocalParent } from "../source-parent-local";
+import { validateRecipeSourceObject } from "../source-parse";
+import { recipePathEscapes } from "../source-support";
+import { composeRecipeSources } from "./merge";
+import type { RecipeDeclarationOrigin } from "./origins";
 import { readRemoteParent } from "./parent-source";
-import { parseRecipeYaml } from "./parser";
 
 export const MAX_RECIPE_EXTENDS_DEPTH = 3;
 
 export interface FlattenRecipeContext {
   readonly onWarn?: (message: string) => void | Promise<void>;
   readonly hops: number;
-  readonly chain: ReadonlyArray<string>;
+  readonly chain: readonly string[];
   readonly userDataRoot?: string;
   readonly gitRecipeCloner?: GitRecipeCloner;
-  /** When false, local parent hops load YAML only and never execute recipe.ts. */
   readonly allowRecipeTs?: boolean;
-  /** When set, local parent hops must stay inside this published recipe root. */
   readonly jailRoot?: string;
+  readonly evaluation?: "declarative" | "typescript";
+  readonly content?: string;
+  readonly transport?: RecipeTransportEvidence;
 }
-
-type ParentScheme = "builtin" | "local" | "git" | "github" | "npm" | "registry" | "unknown";
 
 type FlattenError =
   | RecipeExtendsError
@@ -40,295 +44,110 @@ type FlattenError =
   | RecipeManifestValidationError
   | RecipeSourceError;
 
-const REMOTE_SCHEMES = new Set<ParentScheme>(["git", "github", "npm", "registry"]);
+const isRemote = (ref: string) => /^(?:github:|git\+|git@|git:\/\/|npm:|registry:)/u.test(ref);
+const isLocal = (ref: string) => isAbsolute(ref) || /^(?:\.\.?\/|~\/)/u.test(ref);
 
-const detectParentScheme = (ref: string): ParentScheme => {
-  if (ref.startsWith("github:")) return "github";
-  if (ref.startsWith("git+") || ref.startsWith("git@") || ref.startsWith("git://")) return "git";
-  if (ref.startsWith("npm:")) return "npm";
-  if (ref.startsWith("registry:")) return "registry";
-  if (ref.startsWith("./") || ref.startsWith("../") || ref.startsWith("/") || ref.startsWith("~/")) {
-    return "local";
-  }
-  if (isAbsolute(ref)) return "local";
-  if (/^[a-z0-9][a-z0-9-]*$/u.test(ref)) return "builtin";
-  return "unknown";
-};
-
-const looksLikeFilesystemPath = (source: string): boolean =>
-  source.startsWith("./") ||
-  source.startsWith("../") ||
-  source.startsWith("/") ||
-  source.startsWith("~/") ||
-  isAbsolute(source) ||
-  source.endsWith(".yml") ||
-  source.endsWith(".yaml") ||
-  source.endsWith(".ts");
-
-const localIdentity = (path: string): string => {
-  const resolved = resolve(path);
-  const base = resolved.split(/[\\/]/).pop();
-  return base === "recipe.yml" || base === "recipe.yaml" || base === "recipe.ts"
-    ? dirname(resolved)
-    : resolved;
-};
-
-const identityOf = (source: string): string =>
-  looksLikeFilesystemPath(source) ? localIdentity(source) : source;
-
-const parentNotFound = (ref: string, chain: ReadonlyArray<string>): RecipeExtendsError =>
-  new RecipeExtendsError({
-    message: `Recipe parent "${ref}" was not found.`,
-    chain: [...chain, ref],
-    kind: "parent-not-found",
-    remediation:
-      "Point extends at a bundled recipe id or a local recipe directory that contains recipe.yml or recipe.ts.",
-  });
-
-const extendsError = (kind: "cycle" | "depth", chain: ReadonlyArray<string>): RecipeExtendsError => {
-  switch (kind) {
-    case "cycle":
-      return new RecipeExtendsError({
-        message: "Recipe extends chain contains a cycle.",
-        chain,
-        kind,
-        remediation: "Remove the cycle from the recipe extends chain.",
-      });
-    case "depth":
-      return new RecipeExtendsError({
-        message: `Recipe extends chain exceeds ${MAX_RECIPE_EXTENDS_DEPTH} hops.`,
-        chain,
-        kind,
-        remediation: `Shorten the extends chain to at most ${MAX_RECIPE_EXTENDS_DEPTH} hops.`,
-      });
-    default: {
-      const _exhaustive: never = kind;
-      return _exhaustive;
-    }
-  }
-};
-
-const extendsRefOf = (parsed: Record<string, unknown>): string | undefined => {
-  const value = parsed.extends;
-  return typeof value === "string" && value !== "" ? value : undefined;
-};
-
-const expandLocalParent = (ref: string, childSource: string): string => {
-  const cwd = looksLikeFilesystemPath(childSource) ? dirname(childSource) : childSource;
-  if (ref.startsWith("~/")) return resolve(process.env.HOME ?? cwd, ref.slice(2));
-  if (isAbsolute(ref)) return ref;
-  return resolve(cwd, ref);
-};
-
-const escapesJail = (candidate: string, jailRoot: string): boolean => {
-  const rel = relative(jailRoot, candidate);
-  return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
-};
-
-const realpathOf = (
-  path: string,
-  ref: string,
-  chain: ReadonlyArray<string>,
-): Effect.Effect<string, RecipeExtendsError> =>
-  Effect.tryPromise({
-    try: () => realpath(path),
-    catch: () => parentNotFound(ref, chain),
-  });
-
-const rejectIfOutsideJail = (
-  candidate: string,
-  jailRoot: string,
-  ref: string,
-  chain: ReadonlyArray<string>,
-): Effect.Effect<void, RecipeExtendsError> =>
-  escapesJail(candidate, jailRoot) ? Effect.fail(parentNotFound(ref, chain)) : Effect.void;
-
-const parentIdentity = (ref: string, childSource: string): string => {
-  const scheme = detectParentScheme(ref);
-  switch (scheme) {
-    case "local":
-      return localIdentity(expandLocalParent(ref, childSource));
-    case "builtin":
-    case "git":
-    case "github":
-    case "npm":
-    case "registry":
-    case "unknown":
-      return ref;
-    default: {
-      const _exhaustive: never = scheme;
-      return _exhaustive;
-    }
-  }
-};
-
-interface RawParent {
-  readonly source: string;
-  readonly parsed: unknown;
-}
-
-const readText = (
-  path: string,
-  ref: string,
-  chain: ReadonlyArray<string>,
-): Effect.Effect<string, RecipeExtendsError> =>
-  Effect.tryPromise({
-    try: () => Bun.file(path).text(),
-    catch: () => parentNotFound(ref, chain),
-  });
-
-const readBuiltinParent = (
-  ref: string,
-  chain: ReadonlyArray<string>,
-): Effect.Effect<RawParent, RecipeExtendsError | RecipeManifestParseError> => {
+const readParent = Effect.fnUntraced(function* (ref: string, source: string, ctx: FlattenRecipeContext) {
+  if (isRemote(ref)) return yield* readRemoteParent(ref, ctx, ctx.chain);
+  if (isLocal(ref)) return yield* readLocalParent(ref, source, ctx);
   const entry = BUNDLED_RECIPES.find((recipe) => recipe.id === ref);
-  if (entry === undefined) return Effect.fail(parentNotFound(ref, chain));
-  return parseRecipeYaml({ source: entry.source, content: entry.manifestYaml }).pipe(
-    Effect.map((parsed) => ({ source: entry.source, parsed })),
-  );
-};
-
-const readLocalParent = Effect.fnUntraced(function* (
-  ref: string,
-  childSource: string,
-  ctx: FlattenRecipeContext,
-): Effect.fn.Return<RawParent, FlattenError> {
-  const expanded = expandLocalParent(ref, childSource);
-  const jailReal = ctx.jailRoot === undefined ? undefined : yield* realpathOf(ctx.jailRoot, ref, ctx.chain);
-  if (jailReal !== undefined) {
-    yield* rejectIfOutsideJail(resolve(expanded), jailReal, ref, ctx.chain);
-    const expandedReal = yield* realpathOf(expanded, ref, ctx.chain);
-    yield* rejectIfOutsideJail(expandedReal, jailReal, ref, ctx.chain);
-  }
-  const ymlPath = resolve(expanded, "recipe.yml");
-  const tsPath = resolve(expanded, "recipe.ts");
-  const [ymlExists, tsExists] = yield* Effect.tryPromise({
-    try: () => Promise.all([Bun.file(ymlPath).exists(), Bun.file(tsPath).exists()]),
-    catch: () => parentNotFound(ref, ctx.chain),
-  });
-  if (ymlExists && tsExists) {
-    return yield* Effect.fail(
-      new RecipeManifestValidationError({
-        message: `Both recipe.yml and recipe.ts are present in ${expanded}. A recipe ships one or the other, never both.`,
-        source: expanded,
-        issues: [
-          validationIssue([], "recipe.yml and recipe.ts are mutually exclusive in a recipe directory"),
-        ],
-      }),
-    );
-  }
-  if (tsExists && ctx.allowRecipeTs === false) {
-    return yield* Effect.fail(
-      new RecipeManifestValidationError({
-        message: `Remote recipe parents cannot execute recipe.ts at ${tsPath}.`,
-        source: tsPath,
-        issues: [
-          validationIssue(
-            [],
-            "remote extends hops load YAML only; recipe.ts is not executed from a remote parent tree",
-          ),
-        ],
-      }),
-    );
-  }
-  if (tsExists) {
-    if (jailReal !== undefined) {
-      yield* rejectIfOutsideJail(yield* realpathOf(tsPath, ref, ctx.chain), jailReal, ref, ctx.chain);
-    }
-    const content = yield* readText(tsPath, ref, ctx.chain);
-    const parsed = yield* loadRecipeTs({ filePath: tsPath, recipeRoot: expanded, content });
-    return { source: tsPath, parsed };
-  }
-  if (!ymlExists) return yield* Effect.fail(parentNotFound(ref, ctx.chain));
-  if (jailReal !== undefined) {
-    yield* rejectIfOutsideJail(yield* realpathOf(ymlPath, ref, ctx.chain), jailReal, ref, ctx.chain);
-  }
-  const content = yield* readText(ymlPath, ref, ctx.chain);
-  return { source: ymlPath, parsed: yield* parseRecipeYaml({ source: ymlPath, content }) };
-});
-
-const readParent = (
-  ref: string,
-  childSource: string,
-  ctx: FlattenRecipeContext,
-): Effect.Effect<RawParent, FlattenError> => {
-  const scheme = detectParentScheme(ref);
-  switch (scheme) {
-    case "builtin":
-      return readBuiltinParent(ref, ctx.chain);
-    case "local":
-      return readLocalParent(ref, childSource, ctx);
-    case "github":
-    case "git":
-    case "npm":
-    case "registry":
-      return readRemoteParent(ref, ctx, ctx.chain);
-    case "unknown":
-      return Effect.fail(parentNotFound(ref, ctx.chain));
-    default: {
-      const _exhaustive: never = scheme;
-      return _exhaustive;
-    }
-  }
-};
-
-const nextFlattenContext = (
-  ctx: FlattenRecipeContext,
-  ref: string,
-  parentSource: string,
-  nextIdentity: string,
-): FlattenRecipeContext => {
-  const scheme = detectParentScheme(ref);
-  const remoteJail = REMOTE_SCHEMES.has(scheme)
-    ? { allowRecipeTs: false as const, jailRoot: localIdentity(parentSource) }
-    : {};
+  if (entry === undefined) return yield* Effect.fail(parentNotFound(ref, ctx.chain));
   return {
-    ...ctx,
-    hops: ctx.hops + 1,
-    chain: [...ctx.chain, nextIdentity],
-    ...remoteJail,
+    source: entry.source,
+    parsed: entry.authoredSource,
+    content: entry.manifestYaml,
+    evaluation: "declarative" as const,
   };
-};
+});
 
 const flattenRaw = Effect.fnUntraced(function* (
   source: string,
   parsed: unknown,
   ctx: FlattenRecipeContext,
-): Effect.fn.Return<Record<string, unknown>, FlattenError> {
-  if (!Predicate.isObject(parsed)) return {};
-  const ref = extendsRefOf(parsed);
-  if (ref === undefined) return stripExtendsAndDrop(parsed);
-
-  const nextIdentity = parentIdentity(ref, source);
-  if (ctx.chain.includes(nextIdentity)) {
-    return yield* Effect.fail(extendsError("cycle", [...ctx.chain, nextIdentity]));
+): Effect.fn.Return<ResolvedRecipeSource, FlattenError> {
+  const value = yield* validateRecipeSourceObject(source, parsed);
+  let origin: RecipeDeclarationOrigin = { kind: "bundled", id: value.id };
+  if (isAbsolute(source)) {
+    origin = yield* Effect.tryPromise({
+      try: async () => {
+        const root = await realpath(dirname(source));
+        const acquisitionRoot = ctx.jailRoot === undefined ? undefined : await realpath(ctx.jailRoot);
+        if (
+          acquisitionRoot !== undefined &&
+          (recipePathEscapes(root, acquisitionRoot) ||
+            recipePathEscapes(await realpath(source), acquisitionRoot))
+        )
+          throw parentNotFound(source, ctx.chain);
+        return {
+          kind: "directory" as const,
+          root,
+          ...(acquisitionRoot === undefined ? {} : { acquisitionRoot }),
+        };
+      },
+      catch: () => parentNotFound(source, ctx.chain),
+    });
   }
-  if (ctx.hops >= MAX_RECIPE_EXTENDS_DEPTH) {
-    return yield* Effect.fail(extendsError("depth", [...ctx.chain, nextIdentity]));
+  const evaluation = ctx.evaluation ?? "declarative";
+  if (evaluation === "typescript" && ctx.allowRecipeTs === false)
+    return yield* Effect.fail(
+      new RecipeManifestValidationError({
+        source,
+        message: "Remote recipe trees cannot evaluate TypeScript.",
+        issues: [validationIssue([], "remote extends hops load YAML only")],
+      }),
+    );
+  const { extends: _extends, ...portableSource } = value;
+  const declaration: ResolvedAuthoredSource = {
+    value,
+    origin,
+    evaluation,
+    evidence: {
+      contentDigest: `sha256:${sha256Hex(canonicalJson(portableSource))}`,
+      ...(ctx.content === undefined ? {} : { rawDigest: `sha256:${sha256Hex(ctx.content)}` }),
+      ...(ctx.transport === undefined ? {} : { transport: ctx.transport }),
+    },
+  };
+  const ref = value.extends;
+  if (ref === undefined) return composeRecipeSources([], declaration);
+  const identity = isLocal(ref)
+    ? yield* Effect.tryPromise({
+        try: () => realpath(localParentPath(ref, source)),
+        catch: () => parentNotFound(ref, ctx.chain),
+      })
+    : ref;
+  const chain = [...ctx.chain, identity];
+  if (ctx.chain.includes(identity) || ctx.hops >= MAX_RECIPE_EXTENDS_DEPTH) {
+    const kind = ctx.chain.includes(identity) ? "cycle" : "depth";
+    return yield* Effect.fail(
+      new RecipeExtendsError({
+        message: `Recipe extends chain has a ${kind} violation.`,
+        chain,
+        kind,
+        remediation: `Remove cycles and keep extends chains within ${MAX_RECIPE_EXTENDS_DEPTH} hops.`,
+      }),
+    );
   }
-
   const parent = yield* readParent(ref, source, ctx);
-  const parentFlat = yield* flattenRaw(
-    parent.source,
-    parent.parsed,
-    nextFlattenContext(ctx, ref, parent.source, nextIdentity),
-  );
-  return mergeRecipeManifests(parentFlat, parsed);
+  const remote = isRemote(ref);
+  const parentRoot = "acquisitionRoot" in parent ? parent.acquisitionRoot : undefined;
+  const transport = "transport" in parent ? parent.transport : isLocal(ref) ? ctx.transport : undefined;
+  const { transport: _transport, ...inheritedContext } = ctx;
+  const ancestors = yield* flattenRaw(parent.source, parent.parsed, {
+    ...inheritedContext,
+    hops: ctx.hops + 1,
+    chain,
+    content: parent.content,
+    evaluation: parent.evaluation,
+    ...(remote ? { allowRecipeTs: false } : {}),
+    ...(parentRoot === undefined ? {} : { jailRoot: parentRoot }),
+    ...(transport === undefined ? {} : { transport }),
+  });
+  return composeRecipeSources(ancestors.sources, declaration);
 });
 
-export const flattenRecipe = (
-  source: string,
-  parsed: unknown,
-  ctx?: Partial<FlattenRecipeContext>,
-): Effect.Effect<Record<string, unknown>, FlattenError> => {
-  if (!Predicate.isObject(parsed)) return Effect.succeed({});
-  return flattenRaw(source, parsed, {
-    hops: ctx?.hops ?? 0,
-    chain: ctx?.chain ?? [identityOf(source)],
-    ...(ctx?.userDataRoot === undefined ? {} : { userDataRoot: ctx.userDataRoot }),
-    ...(ctx?.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: ctx.gitRecipeCloner }),
-    ...(ctx?.onWarn === undefined ? {} : { onWarn: ctx.onWarn }),
-    ...(ctx?.allowRecipeTs === undefined ? {} : { allowRecipeTs: ctx.allowRecipeTs }),
-    ...(ctx?.jailRoot === undefined ? {} : { jailRoot: ctx.jailRoot }),
+export const flattenRecipe = (source: string, parsed: unknown, ctx: Partial<FlattenRecipeContext> = {}) =>
+  flattenRaw(source, parsed, {
+    ...ctx,
+    hops: ctx.hops ?? 0,
+    chain: ctx.chain ?? [isAbsolute(source) ? dirname(source) : source],
   });
-};

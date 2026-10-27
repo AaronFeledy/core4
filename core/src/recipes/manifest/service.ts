@@ -1,14 +1,3 @@
-/**
- * `RecipeManifestService` live layer.
- *
- * Pipeline: pre-decode rejection, strict Effect Schema decode, and
- * tagged error preservation. Mirrors `@lando/landofile` `layer(options)`.
- *
- * Post-decode semantic validation enforces:
- *   - prompt `name` uniqueness within a recipe
- *   - `choices:` required and non-empty for `select`/`multiselect`
- *     prompts
- */
 import { Effect, Layer } from "effect";
 
 import {
@@ -27,10 +16,10 @@ import {
 } from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
 
+import { dirname, isAbsolute } from "node:path";
 import { decodeOrFail } from "@lando/landofile/decode";
-import { postInitAuthorizationIssue } from "../post-init/authorization";
-import { flattenRecipe } from "./flatten";
-import { parseRecipeYaml } from "./parser";
+import { resolveRecipeSource } from "../resolved-source";
+import { postInitSemanticIssues } from "./action-semantics.ts";
 
 export { RecipeManifestService } from "@lando/sdk/services";
 
@@ -163,72 +152,8 @@ const validateSemantics = (
 
   if (manifest.postInit !== undefined) {
     for (const [index, action] of manifest.postInit.entries()) {
-      const authorizationIssue = postInitAuthorizationIssue(action, manifest.prompts ?? []);
-      if (authorizationIssue !== undefined)
-        issues.push(validationIssue(["postInit", index], authorizationIssue));
-      if (action.type !== "bun") continue;
-      if (action.verb === "add") {
-        const categories = [
-          action.dependencies,
-          action.devDependencies,
-          action.peerDependencies,
-          action.optionalDependencies,
-        ];
-        const specs = categories.flatMap((category) => category ?? []);
-        if (specs.length === 0) {
-          issues.push(
-            validationIssue(
-              ["postInit", index],
-              "(bun add): at least one dependency category must be non-empty.",
-            ),
-          );
-        }
-        for (const spec of specs) {
-          if (spec.trim() === "" || spec.trim().startsWith("-")) {
-            issues.push(
-              validationIssue(
-                ["postInit", index],
-                `(bun add): package spec "${spec}" is invalid; flags and empty specs are not allowed.`,
-              ),
-            );
-          }
-        }
-      }
-      if (action.verb === "create") {
-        if (action.template.trim() === "") {
-          issues.push(validationIssue(["postInit", index], "(bun create): template must not be empty."));
-        } else if (action.template.trim().startsWith("-")) {
-          issues.push(
-            validationIssue(
-              ["postInit", index],
-              `(bun create): template "${action.template}" is invalid; it must not begin with "-".`,
-            ),
-          );
-        }
-      }
-      if ((action.verb === "run" || action.verb === "script") && action.script.trim() === "") {
-        issues.push(validationIssue(["postInit", index], `(bun ${action.verb}): script must not be empty.`));
-      }
-      if (action.verb === "run" && action.script.trim().startsWith("-")) {
-        issues.push(
-          validationIssue(
-            ["postInit", index],
-            `(bun run): script "${action.script}" is invalid; it must not begin with "-".`,
-          ),
-        );
-      }
-      if (action.verb === "x") {
-        if (action.spec.trim() === "") {
-          issues.push(validationIssue(["postInit", index], "(bun x): spec must not be empty."));
-        } else if (action.spec.trim().startsWith("-")) {
-          issues.push(
-            validationIssue(
-              ["postInit", index],
-              `(bun x): spec "${action.spec}" is invalid; it must not begin with "-".`,
-            ),
-          );
-        }
-      }
+      for (const issue of postInitSemanticIssues(action, manifest.prompts ?? []))
+        issues.push(validationIssue(["postInit", index], issue));
     }
   }
 
@@ -264,10 +189,17 @@ const parseRecipe = Effect.fn("RecipeManifestService.parse")(
     | RecipeSourceError
     | NotImplementedError
   > =>
-    parseRecipeYaml({ source, content }).pipe(
-      Effect.flatMap((parsed) => flattenRecipe(source, parsed)),
-      Effect.flatMap((flat) => validateRecipeManifestObject(source, flat)),
-    ),
+    Effect.gen(function* () {
+      const resolution = yield* resolveRecipeSource({
+        id: source,
+        source,
+        manifestYaml: content,
+        root: isAbsolute(source) ? dirname(source) : undefined,
+      });
+      const { compileResolvedRecipeSource } = yield* Effect.promise(() => import("../compiled-source"));
+      const manifest = yield* compileResolvedRecipeSource(resolution);
+      return yield* validateSemantics(source, manifest);
+    }),
 );
 
 const recipeManifestService = RecipeManifestService.of({

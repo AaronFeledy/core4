@@ -263,6 +263,7 @@ export const resolveGitRecipeSource = async (
     source: manifestPath,
     manifestYaml,
     root: recipeRoot,
+    acquisitionRoot: publishedDir,
     commitSha,
   };
 };

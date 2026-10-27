@@ -352,6 +352,7 @@ export const resolveTarballRecipeSource = async (
     source: manifestPath,
     manifestYaml,
     root: recipeRoot,
+    acquisitionRoot: publishedDir,
     sha256,
   };
 };
