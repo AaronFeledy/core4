@@ -1,10 +1,9 @@
 import { ConfirmationPrompt } from "@lando/engine/operations/confirmation-prompt";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { CORE_VERSION } from "@lando/engine/version";
-import type { McpTransportError } from "@lando/sdk/errors";
 import type { McpCatalog, McpServeOptions } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import { Context, Deferred, Effect, Fiber, Layer, Option, Schema, Semaphore, Stdio } from "effect";
+import { Context, Effect, Fiber, Layer, Option, Schema, Semaphore, Stdio } from "effect";
 import * as McpProtocol from "effect/ai/McpProtocol";
 import * as McpSchema from "effect/ai/McpSchema";
 import * as McpServer from "effect/ai/McpServer";
@@ -19,7 +18,7 @@ import { makeStreamFrameSink } from "./progress";
 import type { McpToolInput } from "./registry";
 import { registerResources } from "./resources";
 import type { McpRuntimeConfigShape } from "./service";
-import { guardStdio } from "./stdio-guard";
+import { withStdioConnection } from "./stdio-connection";
 import { DEFAULT_MCP_MAX_CONCURRENT, MAX_OUTSTANDING_REQUESTS, stdioTransportError } from "./stdio-limits";
 import { commandResult, rejectionResult, toolOutputSchema } from "./tool-result";
 
@@ -36,100 +35,102 @@ interface McpSession {
 
 export const serveSession = Effect.fnUntraced(
   function* (session: McpSession) {
-    const terminal = yield* Deferred.make<void, McpTransportError>();
-    const guarded = yield* guardStdio(yield* Stdio.Stdio, terminal);
-    const runtime = Context.makeUnsafe<unknown>((yield* Layer.build(session.config.runtimeLayer)).mapUnsafe);
-    const runtimeContext =
-      session.options.cwd === undefined ? runtime : Context.add(runtime, RuntimeCwd, session.options.cwd);
-    const semaphore = yield* Semaphore.make(session.options.maxConcurrent ?? DEFAULT_MCP_MAX_CONCURRENT);
-    let outstanding = 0;
-    const detach = attachMemoryPressureListener(session.handleMemoryPressure);
-    yield* Effect.addFinalizer(() => Effect.sync(detach));
-    const context = yield* Layer.build(
-      McpServer.layerStdio({
-        name: "lando",
-        version: session.config.version ?? CORE_VERSION,
-        protocols: [McpProtocol.v2025_06_18, McpProtocol.v2025_03_26, McpProtocol.v2024_11_05],
-      }).pipe(Layer.provide(Layer.succeed(Stdio.Stdio, guarded))),
-    ).pipe(Effect.forkScoped, Effect.flatMap(Fiber.join));
-    const server = Context.get(context, McpServer.McpServer);
-    for (const descriptor of session.catalog.tools) {
-      const entry = session.deps.registry.get(descriptor.toolId);
-      if (entry === undefined) continue;
-      const handle = Effect.fn("McpService.callTool")(
-        function* (input: unknown) {
-          const busy = outstanding >= MAX_OUTSTANDING_REQUESTS;
-          outstanding++;
-          yield* Effect.addFinalizer(() =>
-            Effect.sync(() => {
-              outstanding--;
+    return yield* withStdioConnection((stdio) =>
+      Effect.gen(function* () {
+        const runtime = Context.makeUnsafe<unknown>(
+          (yield* Layer.build(session.config.runtimeLayer)).mapUnsafe,
+        );
+        const runtimeContext =
+          session.options.cwd === undefined ? runtime : Context.add(runtime, RuntimeCwd, session.options.cwd);
+        const semaphore = yield* Semaphore.make(session.options.maxConcurrent ?? DEFAULT_MCP_MAX_CONCURRENT);
+        let outstanding = 0;
+        const detach = attachMemoryPressureListener(session.handleMemoryPressure);
+        yield* Effect.addFinalizer(() => Effect.sync(detach));
+        const context = yield* Layer.build(
+          McpServer.layerStdio({
+            name: "lando",
+            version: session.config.version ?? CORE_VERSION,
+            protocols: [McpProtocol.v2025_06_18, McpProtocol.v2025_03_26, McpProtocol.v2024_11_05],
+          }).pipe(Layer.provide(Layer.succeed(Stdio.Stdio, stdio))),
+        ).pipe(Effect.forkScoped, Effect.flatMap(Fiber.join));
+        const server = Context.get(context, McpServer.McpServer);
+        for (const descriptor of session.catalog.tools) {
+          const entry = session.deps.registry.get(descriptor.toolId);
+          if (entry === undefined) continue;
+          const handle = Effect.fn("McpService.callTool")(
+            function* (input: unknown) {
+              const busy = outstanding >= MAX_OUTSTANDING_REQUESTS;
+              outstanding++;
+              yield* Effect.addFinalizer(() =>
+                Effect.sync(() => {
+                  outstanding--;
+                }),
+              );
+              const request = yield* McpSchema.McpRequestContext;
+              let progress = 0;
+              const notify: McpNotify = Effect.fnUntraced(function* (frame) {
+                const token = request.requestMetadata?.progressToken;
+                if (typeof token !== "string" && typeof token !== "number") return;
+                const message = yield* stringifyBoundedJson(frame, "MCP progress payload");
+                yield* server.notifications["notifications/progress"]({
+                  progressToken: token,
+                  progress: ++progress,
+                  message,
+                });
+              });
+              const decodedInput = yield* Effect.try({
+                try: () => SchemaInput(input),
+                catch: () => stdioTransportError("MCP tool arguments must be an object."),
+              });
+              const prompt = yield* confirmationPrompt(
+                {
+                  toolId: descriptor.toolId,
+                  app:
+                    typeof decodedInput.appPath === "string"
+                      ? decodedInput.appPath
+                      : Option.getOrElse(Context.getOption(runtimeContext, RuntimeCwd), () => process.cwd()),
+                },
+                session.redactor,
+              );
+              const callContext = Option.isSome(prompt)
+                ? Context.add(runtimeContext, ConfirmationPrompt, prompt.value)
+                : runtimeContext;
+              const output = makeStreamFrameSink(notify, session.redactor, session.payloadValues);
+              const nested = makeNestedExecute(callContext, output, session.executor);
+              const execute: McpDispatchDeps["execute"] = (entry, runInput) =>
+                semaphore.withPermits(1)(nested(entry, runInput));
+              return yield* dispatchTool(
+                { toolId: descriptor.toolId, input: decodedInput },
+                {
+                  ...session.deps,
+                  execute,
+                  notify,
+                  capture: output.capture,
+                  ...(busy ? { rejection: stdioTransportError("Server busy") } : {}),
+                },
+              ).pipe(Effect.flatMap(commandResult));
+            },
+            Effect.catch((error) => rejectionResult(error, session.redactor).pipe(Effect.orDie)),
+            Effect.scoped,
+          );
+          yield* server.addTool({
+            tool: new McpSchema.Tool({
+              name: descriptor.toolId,
+              title: descriptor.title,
+              description: descriptor.description,
+              inputSchema: SchemaToolInput(descriptor.inputSchema),
+              outputSchema: toolOutputSchema(entry.spec.resultSchema),
             }),
-          );
-          const request = yield* McpSchema.McpRequestContext;
-          let progress = 0;
-          const notify: McpNotify = Effect.fnUntraced(function* (frame) {
-            const token = request.requestMetadata?.progressToken;
-            if (typeof token !== "string" && typeof token !== "number") return;
-            const message = yield* stringifyBoundedJson(frame, "MCP progress payload");
-            yield* server.notifications["notifications/progress"]({
-              progressToken: token,
-              progress: ++progress,
-              message,
-            });
+            annotations: Context.empty(),
+            handle,
           });
-          const decodedInput = yield* Effect.try({
-            try: () => SchemaInput(input),
-            catch: () => stdioTransportError("MCP tool arguments must be an object."),
-          });
-          const prompt = yield* confirmationPrompt(
-            {
-              toolId: descriptor.toolId,
-              app:
-                typeof decodedInput.appPath === "string"
-                  ? decodedInput.appPath
-                  : Option.getOrElse(Context.getOption(runtimeContext, RuntimeCwd), () => process.cwd()),
-            },
-            session.redactor,
-          );
-          const callContext = Option.isSome(prompt)
-            ? Context.add(runtimeContext, ConfirmationPrompt, prompt.value)
-            : runtimeContext;
-          const output = makeStreamFrameSink(notify, session.redactor, session.payloadValues);
-          const nested = makeNestedExecute(callContext, output, session.executor);
-          const execute: McpDispatchDeps["execute"] = (entry, runInput) =>
-            semaphore.withPermits(1)(nested(entry, runInput));
-          return yield* dispatchTool(
-            { toolId: descriptor.toolId, input: decodedInput },
-            {
-              ...session.deps,
-              execute,
-              notify,
-              capture: output.capture,
-              ...(busy ? { rejection: stdioTransportError("Server busy") } : {}),
-            },
-          ).pipe(Effect.flatMap(commandResult));
-        },
-        Effect.catch((error) => rejectionResult(error, session.redactor).pipe(Effect.orDie)),
-        Effect.scoped,
-      );
-      yield* server.addTool({
-        tool: new McpSchema.Tool({
-          name: descriptor.toolId,
-          title: descriptor.title,
-          description: descriptor.description,
-          inputSchema: SchemaToolInput(descriptor.inputSchema),
-          outputSchema: toolOutputSchema(entry.spec.resultSchema),
-        }),
-        annotations: Context.empty(),
-        handle,
-      });
-    }
-    yield* registerResources(session.config.resources ?? [], runtimeContext, session.deps).pipe(
-      Effect.provideService(McpServer.McpServer, server),
+        }
+        yield* registerResources(session.config.resources ?? [], runtimeContext, session.deps).pipe(
+          Effect.provideService(McpServer.McpServer, server),
+        );
+      }),
     );
-    yield* Deferred.await(terminal);
   },
-  Effect.scoped,
   Effect.catchTag("IllegalArgumentError", (error) => Effect.fail(stdioTransportError(error.message))),
 );
 

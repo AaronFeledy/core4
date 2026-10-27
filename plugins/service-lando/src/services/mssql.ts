@@ -112,7 +112,11 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: { defaultUser: "mssql", homes: { mssql: "/var/opt/mssql", root: "/root" } },
+  identity: {
+    defaultUser: "mssql",
+    homes: { mssql: "/home/mssql", root: "/root" },
+    preparedHomes: ["mssql"],
+  },
   schema: MssqlServiceConfig,
   toolingForConnection: mssqlToolingForConnection,
   resolve: (input) => {

@@ -17,7 +17,7 @@ import {
 import { FileSystem } from "@lando/sdk/services";
 import { yamlRoundTripRecord } from "@lando/sdk/test";
 
-import { commonContainerLabels } from "../src/plan.ts";
+import { commonContainerLabels, containerHostConfigFragment } from "../src/plan.ts";
 import { composePath, emitCompose, renderCompose } from "../src/podman/compose.ts";
 import { networkPlan } from "./authored-network-fixture.ts";
 
@@ -227,6 +227,68 @@ const plan: AppPlan = {
 
 /** The plan carries no identity, so ownership is derived from its root the way the writer derives it. */
 const ownerKey = appIdentityKey("owner", appRoot);
+
+test.each([
+  { mode: 0o755, octal: "755" },
+  { mode: 0o1770, octal: "1770" },
+  { mode: 0o2770, octal: "2770" },
+  { mode: 0o3770, octal: "3770" },
+  { mode: 1770, octal: "3352" },
+])("tmpfs bitmask $mode remains coherent across Docker, Podman and Compose", ({ mode, octal }) => {
+  const mounted: ServicePlan = {
+    ...web,
+    mounts: [
+      {
+        type: "tmpfs",
+        target: PortablePath.make("/run/app"),
+        readOnly: false,
+        options: `size=67108864,mode=${octal}`,
+      },
+      {
+        type: "tmpfs",
+        target: PortablePath.make("/run:app"),
+        readOnly: true,
+        options: `size=67108864,mode=${octal}`,
+      },
+    ],
+  };
+  expect(containerHostConfigFragment(plan, mounted).Tmpfs).toEqual({
+    "/run/app": `size=67108864,mode=${octal}`,
+    "/run:app": `ro,size=67108864,mode=${octal}`,
+  });
+  for (const providerId of ["docker", "podman"]) {
+    const document = Bun.YAML.parse(
+      renderCompose(
+        { ...plan, services: { [mounted.name]: mounted } },
+        { providerId, remediation: "Retry.", env: {} },
+      ),
+    );
+    expect(document).toMatchObject({
+      services: {
+        web: {
+          tmpfs: [`/run/app:size=67108864,mode=${octal}`],
+          volumes: [{ type: "tmpfs", target: "/run:app", read_only: true, tmpfs: { size: 67108864, mode } }],
+        },
+      },
+    });
+  }
+});
+
+test.each(["mode=1780", "mode=-1", "mode=1.5", "mode="])(
+  "Compose rejects invalid octal tmpfs option %s",
+  (options) => {
+    const mounted: ServicePlan = {
+      ...web,
+      mounts: [{ type: "tmpfs", target: PortablePath.make("/run:app"), readOnly: false, options }],
+    };
+    expect(() =>
+      renderCompose(
+        { ...plan, services: { [mounted.name]: mounted } },
+        { providerId: "docker", remediation: "Retry.", env: {} },
+      ),
+    ).toThrow("requires octal text");
+  },
+);
 
 const topLevelKeys = (content: string): string[] =>
   content

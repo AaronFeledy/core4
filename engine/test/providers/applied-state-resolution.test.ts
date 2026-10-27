@@ -1,3 +1,7 @@
+import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 
 import { Cause, DateTime, Effect, Exit } from "effect";
@@ -689,6 +693,83 @@ describe("resolveTeardownEvidence", () => {
     );
 
     expect(result).toEqual({ kind: "absent" });
+  });
+
+  test("matches exact-teardown ownership through a symlink alias of the root", async () => {
+    const realRoot = await mkdtemp(join(tmpdir(), "lando-applied-teardown-alias-"));
+    const alias = join(dirname(realRoot), `alias-${basename(realRoot)}`);
+    try {
+      await symlink(realRoot, alias, "dir");
+      const canonical = AbsolutePath.make(await realpath(realRoot));
+      const planned = {
+        ...planFor("lando"),
+        root: canonical,
+        identity: { appRoot: canonical, ownerKey: appIdentityKey("owner", canonical) },
+      };
+      const hints = {
+        appRoot: canonical,
+        ownerKey: appIdentityKey("owner", canonical),
+        providerId: ProviderId.make("docker"),
+        appIds: [AppId.make("failed-b")],
+      };
+      const a = provider("lando", { appliedPlans: Effect.succeed([planned]) });
+      const ownershipRoots: AbsolutePath[] = [];
+      const b = {
+        ...provider("docker", { isAvailable: Effect.succeed(true) }),
+        resourceOwnership: (root: AbsolutePath) => {
+          ownershipRoots.push(root);
+          return Effect.succeed(root === canonical ? hints : undefined);
+        },
+        canCleanupOwnedResources: Effect.succeed(true),
+      };
+      const evidence = await Effect.runPromise(resolveTeardownEvidence(AbsolutePath.make(alias), [a, b]));
+      expect(evidence).toEqual({ kind: "applied", plan: planned, ownership: [hints] });
+      expect(ownershipRoots).toEqual([canonical]);
+      const offline = await Effect.runPromiseExit(
+        resolveTeardownEvidence(AbsolutePath.make(alias), [a, { ...b, isAvailable: Effect.succeed(false) }]),
+      );
+      expect(Exit.isFailure(offline)).toBe(true);
+      const service = {
+        app: planned.id,
+        appRoot: canonical,
+        service: ServiceName.make("appserver"),
+        providerId: planned.provider,
+        status: "running",
+        publications: { status: "unknown" as const },
+      };
+      const orphaned = await Effect.runPromise(
+        resolveTeardownEvidence(AbsolutePath.make(alias), [
+          provider("lando", { list: () => Effect.succeed([service]) }),
+        ]),
+      );
+      expect(orphaned).toMatchObject({ kind: "orphans", groups: [{ services: [service] }] });
+    } finally {
+      await rm(alias, { recursive: true, force: true });
+      await rm(realRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("resolves applied state when the lookup root is a symlink alias of identity.appRoot", async () => {
+    const realRoot = await mkdtemp(join(tmpdir(), "lando-applied-alias-"));
+    const alias = join(dirname(realRoot), `alias-${basename(realRoot)}`);
+    try {
+      await symlink(realRoot, alias, "dir");
+      const canonical = AbsolutePath.make(await realpath(realRoot));
+      const planned = {
+        ...planFor("lando"),
+        root: canonical,
+        identity: { appRoot: canonical, ownerKey: appIdentityKey("owner", canonical) },
+      };
+      const result = await Effect.runPromise(
+        resolveAppliedPlanEvidence(AbsolutePath.make(alias), [
+          provider("lando", { appliedPlans: Effect.succeed([planned]) }),
+        ]),
+      );
+      expect(result).toEqual(planned);
+    } finally {
+      await rm(alias, { recursive: true, force: true });
+      await rm(realRoot, { recursive: true, force: true });
+    }
   });
 
   test("never adopts an ancestor app root's applied plan for a nested root", async () => {

@@ -147,7 +147,7 @@ const expectedCatalogRows = [
     ["php-msmtp-pins", "tomcat-catalog"],
   ],
   ["opentui-native-stubs", "derived", "build-opentui-native-stubs.ts", "repo"],
-  ["php-base-images", "derived", "build-php-base-images.ts", "repo"],
+  ["php-base-images", "derived", "build-php-base-images.ts", "repo", ["core-service-env-catalog"]],
   ["ci-workflow", "committed-workflow", "build-ci-workflow.ts", "repo"],
   ["nightly-workflow", "committed-workflow", "build-nightly-workflow.ts", "repo"],
   ["dependency-audit-workflow", "committed-workflow", "build-dependency-audit-workflow.ts", "repo"],
@@ -259,12 +259,15 @@ describe("codegen catalog", () => {
     // Given: `@lando/sdk/schema` re-exports generated/core-service-env.ts, so any
     // generator that imports that barrel can observe a truncated write if it
     // shares a wave with the catalog writer.
+    const phpMetadataImporters = ["php-base-images"];
     const schemaImporters = (
       await Promise.all(
         catalog.map(async (entry) => {
           if (entry.id === "core-service-env-catalog") return undefined;
           const source = await Bun.file(resolve(repositoryRoot, "scripts", entry.script)).text();
-          return source.includes("@lando/sdk/schema") ? entry : undefined;
+          return source.includes("@lando/sdk/schema") || phpMetadataImporters.includes(entry.id)
+            ? entry
+            : undefined;
         }),
       )
     ).filter((entry) => entry !== undefined);

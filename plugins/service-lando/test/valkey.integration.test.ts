@@ -9,7 +9,7 @@ import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  CurrentExecutableAppPlan,
   LandofileShape,
   ProviderId,
   ServiceName,
@@ -127,7 +127,8 @@ describe("valkey service type — live integration: RESP ping/set/get", () => {
           serviceName: "cache",
           metadata,
         });
-        const plan: AppPlan = {
+        const plan = CurrentExecutableAppPlan.make({
+          valueModel: 1,
           id: appId,
           name: "Valkey Integration App",
           slug: "valkeyinttest",
@@ -139,7 +140,7 @@ describe("valkey service type — live integration: RESP ping/set/get", () => {
           fileSync: [],
           metadata: cache.metadata,
           extensions: {},
-        };
+        });
 
         const api = makePodmanApiClient(socketPath);
         try {

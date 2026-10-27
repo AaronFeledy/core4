@@ -38,6 +38,7 @@ import {
   TRAEFIK_WEB_PORT,
   waitForMatchedRoute,
 } from "./proxy-diagnostics-requests.ts";
+import { currentTestPlan } from "./value-contracts.ts";
 
 const providerId = ProviderId.make("lando");
 const BACKEND_PORT = 31087;
@@ -173,7 +174,7 @@ export const startProxyDiagnosticsStack = async (socketPath: string): Promise<Pr
       ],
     }),
   };
-  const plan: AppPlan = {
+  const plan: AppPlan = currentTestPlan({
     id: AppId.make(slug),
     name: slug,
     slug,
@@ -190,7 +191,7 @@ export const startProxyDiagnosticsStack = async (socketPath: string): Promise<Pr
     fileSync: [],
     metadata,
     extensions: {},
-  };
+  });
   const api = makePodmanApiClient(socketPath);
   const stop = async () => {
     await Effect.runPromise(Effect.result(bringDown(plan, { api })));

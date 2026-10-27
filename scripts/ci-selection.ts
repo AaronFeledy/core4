@@ -1,6 +1,6 @@
 import { CI_PLATFORMS } from "./ci-platforms.ts";
 
-export const PROFILES = ["docs", "guides", "runtime"] as const;
+export const PROFILES = ["docs", "guides", "runtime", "providers"] as const;
 export type CiProfile = (typeof PROFILES)[number];
 export type CiTier = CiProfile | "broad";
 export type CiSelection = { readonly profile: CiProfile; readonly broad: boolean; readonly reason: string };
@@ -36,12 +36,30 @@ export const CI_JOB_TIERS: Readonly<Record<string, CiTier>> = {
       ...(id === "linux-x64" ? [`provider-integration-${id}-runner`] : []),
     ]).map((id) => [id, "broad" as const]),
   ),
+  "provider-integration-linux-x64-runner": "providers",
+  "provider-integration-linux-x64": "providers",
+  "guide-scenarios-windows-x64": "guides",
 };
+
+const affectsProviders = (path: string): boolean =>
+  path.startsWith("plugins/provider-") ||
+  path.startsWith("plugins/service-lando/") ||
+  path.startsWith("container-runtime/") ||
+  path.startsWith("engine/src/providers/") ||
+  path.startsWith("engine/test/providers/") ||
+  path.startsWith("sdk/src/services/provider") ||
+  path.startsWith("sdk/test/contract/provider") ||
+  path === ".github/workflows/ci.yml" ||
+  /^scripts\/(?:_ci-selection-workflow|build-ci-workflow|ci-selection|select-ci|validate-ci|test-shards)\.ts$/.test(
+    path,
+  );
 
 export const selectPaths = (paths: readonly string[]): CiSelection => {
   if (paths.includes(".bun-version"))
     return { profile: "runtime", broad: true, reason: "Bun toolchain change" };
   if (paths.length === 0) return { profile: "runtime", broad: false, reason: "empty diff" };
+  if (paths.some(affectsProviders))
+    return { profile: "providers", broad: false, reason: "provider or CI coverage path" };
   let profile: CiProfile = "docs";
   for (const path of paths) {
     if (path.startsWith("docs/guides/")) {

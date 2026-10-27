@@ -8,7 +8,7 @@ import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  CurrentExecutableAppPlan,
   LandofileShape,
   ProviderId,
   ServiceName,
@@ -70,7 +70,8 @@ describe("elasticsearch service type — live integration: cluster health endpoi
           serviceName: "search",
           metadata,
         });
-        const plan: AppPlan = {
+        const plan = CurrentExecutableAppPlan.make({
+          valueModel: 1,
           id: appId,
           name: "Elasticsearch Integration App",
           slug: "esinttest",
@@ -82,7 +83,7 @@ describe("elasticsearch service type — live integration: cluster health endpoi
           fileSync: [],
           metadata: search.metadata,
           extensions: {},
-        };
+        });
 
         const api = makePodmanApiClient(socketPath);
         try {
