@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { plugin } from "@lando/lando4";
@@ -57,6 +57,31 @@ const invalidFiles = [
     { src: "asset", dest: "nested/../asset" },
   ],
 ] satisfies readonly (readonly RecipeFile[])[];
+
+test("rejects an output symlink beneath the canonical app root", async () => {
+  const f = await fixture(new Uint8Array([1]));
+  const outside = join(f.root, "outside");
+  await mkdir(outside);
+  await mkdir(f.request.appRoot);
+  await symlink(outside, join(f.request.appRoot, "linked"), "junction");
+  const observed = f.request.compiled.files[0];
+  if (observed === undefined) throw new Error("Missing observed fixture file");
+  const result = await Effect.runPromise(
+    Effect.result(
+      prepareRecipeInit({
+        ...f.request,
+        answers: { required: "ok" },
+        compiled: {
+          ...f.request.compiled,
+          files: [{ ...observed, value: { src: "asset", dest: "linked/file" } }],
+        },
+      }),
+    ),
+  );
+  expect(Result.isFailure(result) && result.failure).toMatchObject({ stage: "validate" });
+  expect(await readdir(outside)).toEqual([]);
+  expect(await readdir(f.request.appRoot)).toEqual(["linked"]);
+});
 
 test.each(invalidFiles)(
   "rejects invalid static files before returning missing answers: %j",

@@ -1,5 +1,6 @@
 import { lstat } from "node:fs/promises";
-import { dirname, join, normalize, resolve, sep } from "node:path";
+import { dirname, join, normalize, sep } from "node:path";
+import { canonicalMissingAppRoot } from "@lando/engine/operations/app-mutation-lock";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
 import { eligibleBindingPath } from "@lando/landofile/secret-reference";
 import {
@@ -54,6 +55,9 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
   request: RecipeInitPreparationRequest,
 ) {
   const { compiled } = request;
+  const appRoot = yield* canonicalMissingAppRoot(request.appRoot).pipe(
+    Effect.mapError(() => blocked("validate")),
+  );
   const manifest = compiled.manifest;
   const snapshot = compiled.snapshot;
   const secrets = yield* Effect.fromResult(validateRecipeSecretPrompts(manifest)).pipe(
@@ -82,7 +86,7 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
         ...compiled.files.map(({ value }) => normalize(value.dest)),
       ];
       for (const [index, destination] of destinations.entries()) {
-        auxiliaryDestination(request.appRoot, destination);
+        auxiliaryDestination(appRoot, destination);
         if (
           destinations
             .slice(index + 1)
@@ -135,11 +139,12 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
   if (missing.length > 0) return { status: "requires-input", missing } as const;
   const encoded = yield* encodeRecipeLandofile({
     ...request,
+    appRoot,
     manifest,
     answers,
     decomposer: makeCompiledRecipeDecomposer(manifest, {
       source: manifest.id,
-      appRoot: AbsolutePath.make(request.appRoot),
+      appRoot: AbsolutePath.make(appRoot),
     }),
   });
   if (compiled.postInit.some(({ content }) => content !== undefined && encoded.containsSecret(content)))
@@ -173,9 +178,7 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
       const paths = [...new Set([...outputs.map(({ destination }) => destination), LANDOFILE_TS_NAME])];
       return (
         await Promise.all(
-          paths.map(async (path) =>
-            (await inspectPath(join(resolve(request.appRoot), path))) ? path : undefined,
-          ),
+          paths.map(async (path) => ((await inspectPath(join(appRoot, path))) ? path : undefined)),
         )
       ).filter((path): path is string => path !== undefined);
     },
@@ -218,6 +221,7 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
   };
   return Object.freeze({
     ...request,
+    appRoot,
     ...(request.secretAnswers === undefined
       ? {}
       : { secretAnswers: Object.freeze({ ...request.secretAnswers }) }),
