@@ -179,7 +179,7 @@ describe("Engine package seam", () => {
       ["effect", "catalog:"],
       ["semver", "^7.8.5"],
     ]);
-    expect(nonWorkspaceDevDependencies).toEqual([["@types/semver", "^7.7.1"]]);
+    expect(nonWorkspaceDevDependencies).toEqual([["@types/semver", "^7.8.0"]]);
   });
 
   test("runs the package seam test in CI unit shards", async () => {

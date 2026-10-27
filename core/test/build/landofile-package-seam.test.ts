@@ -124,7 +124,7 @@ describe("Landofile package seam", () => {
     // Then
     expect(dependencies.effect).toBe("catalog:");
     expect(dependencies.semver).toBe("^7.8.5");
-    expect(devDependencies["@types/semver"]).toBe("^7.7.1");
+    expect(devDependencies["@types/semver"]).toBe("^7.8.0");
   });
 
   test("routes @lando/core/landofile through the package serializer subpath", async () => {
